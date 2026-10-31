@@ -19,9 +19,9 @@
     display: flex;
     width: var(--chat-history);
     box-shadow: 8px 0 28px rgb(0 0 0 / 24%);
-    transition: transform var(--dur-3) var(--ease-glide);
+    transition: transform var(--dur-2) var(--ease-glide);
   }
-  .chat.history-collapsed.history-peek-leave .chat-history { transform: translateX(-100%); }
+  .chat.history-collapsed.history-peek-leave .chat-history { transform: translateX(-100%); transition-duration: var(--dur-1); }
   @starting-style {
     .chat.history-collapsed.history-peek .chat-history { transform: translateX(-100%); }
   }

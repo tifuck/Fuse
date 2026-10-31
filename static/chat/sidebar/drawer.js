@@ -6,8 +6,8 @@ let historyWasOpen = false;
 const STORE_HISTORY_COLLAPSED = "fuse.chat.historyCollapsed.v1";
 // Desktop peek: the pointer rests on the left edge this long before the
 // collapsed list slides in, and it stays this long after the pointer leaves.
-const PEEK_OPEN_MS = 120;
-const PEEK_CLOSE_MS = 1000;
+const PEEK_OPEN_MS = 60;
+const PEEK_CLOSE_MS = 250;
 
 function historyCollapsedPrefs() {
   try { return JSON.parse(localStorage.getItem(STORE_HISTORY_COLLAPSED) || "{}") || {}; } catch (_) { return {}; }
