@@ -256,15 +256,17 @@ SCHEMAS = {
                 "Slots persist until you change them: clear slots you no longer need, and do not trust a "
                 "slot's contents over newer facts.\n"
                 "Call with no arguments to list slot names and sizes, with name to read one slot, or with "
-                "ops to change slots (name is then ignored). All ops in one call apply together or not at "
-                "all. Up to 32 slots, 20000 characters each."
+                "ops to change slots (each op names its slot; a top-level name fills ops that omit one). "
+                "All ops in one call apply together or not at all. Up to 32 slots, 20000 characters each. "
+                "Slot names: 1-64 characters, letters, digits, underscore and hyphen only, starting with a "
+                "letter or digit (no spaces, dots or slashes)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Slot to read. Ignored when ops is set; omit both to list slots.",
+                        "description": "Slot to read; with ops, the default slot for ops that omit name. Omit both to list slots.",
                     },
                     "ops": {
                         "type": "array",
@@ -279,7 +281,7 @@ SCHEMAS = {
                                 "op": {"type": "string", "enum": ["put", "append", "edit", "clear", "delete"]},
                                 "name": {
                                     "type": "string",
-                                    "description": "Slot name, 1-64 chars: letters, digits, underscore, hyphen.",
+                                    "description": "Slot name, required on every op unless a top-level name is given: 1-64 chars, letters, digits, underscore, hyphen; first char a letter or digit.",
                                 },
                                 "text": {
                                     "type": "string",

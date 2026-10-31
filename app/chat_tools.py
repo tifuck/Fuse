@@ -838,7 +838,7 @@ def scratch_label(args: dict) -> str:
             if not isinstance(op, dict):
                 continue
             verb = _SCRATCH_VERBS.get(str(op.get("op") or "").strip().lower(), "Change")
-            parts.append(f"{verb} {str(op.get('name') or '?').strip()[:64]}")
+            parts.append(f"{verb} {str(op.get('name') or args.get('name') or '?').strip()[:64]}")
         if len(parts) > 2:
             parts = parts[:2] + [f"+{len(parts) - 2} more"]
         return ", ".join(parts)[:200] or "Change slots"
@@ -1179,6 +1179,13 @@ async def execute_tool(
                 if not isinstance(ops, list):
                     msg = "ops must be an array of {op, name, text} objects"
                     return msg, {"name": "scratch", "status": "error", "kind": "invalid_arguments", "error": msg}
+                # Models often put the slot name next to ops instead of inside each op.
+                slot = args.get("name")
+                if isinstance(slot, str) and slot.strip():
+                    ops = [
+                        {**op, "name": slot} if isinstance(op, dict) and not str(op.get("name") or "").strip() else op
+                        for op in ops
+                    ]
                 try:
                     pad = await durable_call(scratch_apply, run_id, ops)
                 except ScratchError as exc:

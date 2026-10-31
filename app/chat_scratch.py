@@ -143,8 +143,13 @@ def scratch_apply(run_id: str, ops: list[dict]) -> dict:
                 raise ScratchError(f"ops[{index}] has unknown keys: {', '.join(sorted(extra))}")
             kind = str(op.get("op") or "").strip().lower()
             name = str(op.get("name") or "").strip()
+            if not name:
+                raise ScratchError(f"ops[{index}].name is required: every op needs its own slot name")
             if not _SCRATCH_ID.match(name):
-                raise ScratchError(f"ops[{index}].name must match { _SCRATCH_ID.pattern }")
+                raise ScratchError(
+                    f"ops[{index}].name {name[:80]!r} is invalid: use 1-64 characters, only letters, digits, "
+                    "underscore and hyphen, starting with a letter or digit (no spaces, dots or slashes)"
+                )
             text = op.get("text")
             if kind == "delete":
                 kind = "clear"

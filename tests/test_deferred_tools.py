@@ -952,6 +952,14 @@ class StorageOffLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(seen), {"apply", "read", "list", "skills"})
         self.assertNotIn(loop_thread, seen.values())
 
+    async def test_scratch_top_level_name_fills_ops_without_one(self):
+        session = {"run_id": "run-1"}
+        with patch("app.chat_store.scratch_apply", return_value={"brief": "x"}) as apply:
+            args = {"name": "brief", "ops": [{"op": "put", "text": "x"}, {"op": "put", "name": "other", "text": "y"}]}
+            await execute_tool("scratch", json.dumps(args), user_id=1, allowed_urls=set(),
+                               coding=True, session=session)
+        self.assertEqual([op["name"] for op in apply.call_args.args[1]], ["brief", "other"])
+
     async def test_spawn_gets_the_live_promoted_binding(self):
         session = {"run_id": "run-1", "allow_spawn": True, "project_promoted": True}
         with patch("app.agents.spawn", new=AsyncMock(return_value=("ok", {}))) as spawn:
