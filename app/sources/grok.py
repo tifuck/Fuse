@@ -174,6 +174,11 @@ def billing_has_subscription(billing: dict | None) -> bool:
     """True when x.ai billing shows a live SuperGrok (or similar) subscription."""
     if not isinstance(billing, dict) or not billing.get("fetched_at"):
         return False
+    # x.ai's own plan label. Free accounts also report a weekly GrokBuild
+    # meter, so the usage fields below cannot tell Free from SuperGrok.
+    tier = billing.get("tier")
+    if isinstance(tier, str) and tier.strip():
+        return tier.strip().lower() != "free"
     for p in billing.get("products") or []:
         if isinstance(p, dict) and str(p.get("product") or "") in _GROK_SUB_PRODUCTS:
             return True
@@ -866,6 +871,16 @@ def _store_billing(cred_id: int, parsed: dict, *, error: str = "", profile: dict
     return billing
 
 
+async def _fetch_tier(client: httpx.AsyncClient, token: str) -> str:
+    """The plan the Grok CLI shows ("Free", "SuperGrok", ...), or "" if unknown."""
+    try:
+        r = await client.get(settings.grok_proxy + "/settings", headers=_cli_get_headers(token))
+        tier = r.json().get("subscription_tier_display") if r.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return ""
+    return tier.strip()[:40] if isinstance(tier, str) else ""
+
+
 async def refresh_billing(cred, *, force: bool = False) -> dict | None:
     async with _refresh_lock(int(cred["id"])):
         row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
@@ -878,6 +893,7 @@ async def refresh_billing(cred, *, force: bool = False) -> dict | None:
         token = extra.get("access_token") or accounts.cred_secret(row)
         status = 0
         payload: dict | None = None
+        tier = ""
         try:
             async with httpx.AsyncClient(timeout=20) as client:
                 r = await client.get(
@@ -900,12 +916,15 @@ async def refresh_billing(cred, *, force: bool = False) -> dict | None:
                         payload = r.json()
                     except json.JSONDecodeError:
                         payload = None
+                    tier = await _fetch_tier(client, token)
         except Exception:
             logger.warning("Grok billing fetch failed for credential %s", row["id"], exc_info=True)
             return _store_billing(row["id"], {}, error="fetch failed")
         if status != 200 or not isinstance(payload, dict):
             return _store_billing(row["id"], {}, error=f"http {status or 0}")
         parsed = parse_billing_payload(payload)
+        if tier:
+            parsed["tier"] = tier
         profile = None
         if not extra.get("email"):
             profile = await fetch_userinfo(token)

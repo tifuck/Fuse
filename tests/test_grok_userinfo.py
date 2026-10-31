@@ -83,6 +83,47 @@ class GrokUserinfoTest(unittest.IsolatedAsyncioTestCase):
         extra = accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (cred_id,)))
         self.assertEqual(extra["email"], "fetched@example.com")
 
+    async def test_refresh_billing_reads_plan_tier(self):
+        # A Free account still reports a weekly GrokBuild meter; only the
+        # CLI settings' tier says it has no subscription.
+        sid = grok_mod.ensure_grok_source()
+        cred_id = grok_mod.store_tokens(
+            sid,
+            {"access_token": "tok", "refresh_token": "rt", "expires_in": 3600},
+            donated_by=self.user["id"],
+            profile={"email": "linked@example.com"},
+        )
+        row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred_id,))
+        meter = {"config": {"creditUsagePercent": 2.0, "currentPeriod": {"type": "USAGE_PERIOD_TYPE_WEEKLY"},
+                            "productUsage": [{"product": "GrokBuild", "usagePercent": 2.0}]}}
+
+        class _Resp:
+            status_code = 200
+
+            def __init__(self, body):
+                self.body = body
+
+            def json(self):
+                return self.body
+
+        for tier, subscribed in (("Free", False), ("SuperGrok", True)):
+            class _Client:
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *args):
+                    return False
+
+                async def get(self, url, headers=None):
+                    return _Resp({"subscription_tier_display": tier} if url.endswith("/settings") else meter)
+
+            with patch("app.sources.grok.httpx.AsyncClient", return_value=_Client()):
+                billing = await grok_mod.refresh_billing(row, force=True)
+            self.assertEqual(billing["tier"], tier)
+            self.assertIs(grok_mod.billing_has_subscription(billing), subscribed)
+            row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred_id,))
+            self.assertIs(grok_mod.known_unsubscribed(row), not subscribed)
+
 
 if __name__ == "__main__":
     unittest.main()
