@@ -30,7 +30,9 @@ function clock(ms) {
 
 function overlayHtml() {
   const bars = Array.from({ length: BANDS * 2 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
-  return `<span class="dictation-dot" aria-hidden="true"></span>`
+  return `<svg class="dictation-mic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">`
+    + `<rect x="5.6" y="1.8" width="4.8" height="8.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>`
+    + `<path d="M3.4 7.6a4.6 4.6 0 0 0 9.2 0M8 12.2v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
     + `<span class="dictation-bars" aria-hidden="true">${bars}</span>`
     + `<span class="dictation-time" data-dictation-time>0:00</span>`
     + `<button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc">`
@@ -82,6 +84,8 @@ export function createDictation({ picker }) {
   }
 
   // One request at a time, finished phrases first; GPU decodes take ~0.3 s.
+  // A failed decode is retried with a short backoff; only three in a row show
+  // the error, which clears itself on the next good decode.
   async function pump() {
     if (!run || run.busy) return;
     const p = run.phrases.next(run.stopping ? 0 : 500);
@@ -91,13 +95,16 @@ export function createDictation({ picker }) {
     try {
       await decode(p);
       current.failures = 0;
+      picker.releaseHint("dictation");
     } catch (err) {
       if (current.abort.signal.aborted) return;
       current.failures += 1;
-      if (current.failures >= 3 || current.stopping) {
-        picker.setHint(err.message || "Dictation failed.", true);
+      if (current.failures >= 3) {
+        picker.holdHint("dictation", err.message || "Dictation failed.", true, null);
         p.sent = p.samples;
         current.failures = 0;
+      } else {
+        await new Promise(done => setTimeout(done, 300 * current.failures));
       }
     } finally {
       current.busy = false;
@@ -109,6 +116,8 @@ export function createDictation({ picker }) {
 
   function frame() {
     if (!run || !run.analyser) return;
+    // Sending, switching chats and slash commands set the box without an input event.
+    if (S.input.value !== run.written) { detach(); return; }
     const data = run.freq;
     const half = BANDS;
     // Height is loudness (-55 dB silent, -15 dB full); the spectrum only
@@ -291,6 +300,8 @@ export function createDictation({ picker }) {
   button.title = `Dictate · ${HOTKEY_LABEL}`;
 
   S.input.addEventListener("input", () => { if (run && !run.writing) detach(); });
+  // The send button: what is in the box goes; stop before more text lands in it.
+  S.form.addEventListener("submit", detach, true);
 
   let hotkeyAt = 0;
   document.addEventListener("keydown", (event) => {

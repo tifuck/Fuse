@@ -52,24 +52,14 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation {
 }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation[hidden] { display: none; }
 
-html[data-chat-console="true"] .chat[data-view="console"] .dictation-dot {
-  position: relative;
-  width: 8px;
-  height: 8px;
+html[data-chat-console="true"] .chat[data-view="console"] .dictation-mic {
+  display: block;
   flex: none;
-  border-radius: 50%;
-  background: var(--brass);
+  color: var(--brass);
+  animation: dictation-blink 1.6s ease-in-out infinite;
 }
-html[data-chat-console="true"] .chat[data-view="console"] .dictation-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: var(--brass);
-  animation: dictation-ring 1.6s ease-out infinite;
-}
-html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-starting, .is-finishing) .dictation-dot { background: var(--mute); }
-html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-starting, .is-finishing) .dictation-dot::after { animation: none; opacity: 0; }
+html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-voiced .dictation-mic { animation: none; }
+html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-starting, .is-finishing) .dictation-mic { color: var(--mute); animation: none; }
 
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars {
   display: flex;
@@ -124,10 +114,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
 @keyframes dictation-in {
   from { opacity: 0; transform: translate(-50%, 6px); }
 }
-@keyframes dictation-ring {
-  from { opacity: 0.55; transform: scale(1); }
-  to { opacity: 0; transform: scale(2.6); }
-}
 @keyframes dictation-blink {
   50% { opacity: 0.25; }
 }
@@ -143,6 +129,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
 
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-console="true"] .chat[data-view="console"] .dictation,
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation-dot::after,
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-mic,
   html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live::after { animation: none; }
 }

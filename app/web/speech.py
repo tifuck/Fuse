@@ -40,7 +40,10 @@ async def speech_transcribe(request: Request):
         return _fail(str(exc), 400)
     try:
         text = await speech.transcribe(body)
-    except (speech.SpeechError, httpx.HTTPError) as exc:
+    except speech.SpeechError as exc:
+        logger.warning("Speech transcription failed: %s", exc)
+        return _fail("The speech server could not transcribe that.", 502)
+    except httpx.HTTPError as exc:
         logger.warning("Speech transcription failed: %s", str(exc) or type(exc).__name__)
         return _fail("The speech server did not answer.", 502)
     return JSONResponse({"text": text}, headers={"Cache-Control": "no-store"})

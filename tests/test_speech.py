@@ -127,8 +127,15 @@ def test_route_forwards_valid_audio(monkeypatch, signed_in):
     assert asyncio.run(speech_routes.speech_transcribe(_request(b"RIFF junk"))).status_code == 400
     forward.assert_not_awaited()
 
-    forward.side_effect = speech.SpeechError("down")
-    assert asyncio.run(speech_routes.speech_transcribe(_request(audio))).status_code == 502
+    forward.side_effect = speech.SpeechError("speech server returned HTTP 500")
+    response = asyncio.run(speech_routes.speech_transcribe(_request(audio)))
+    assert response.status_code == 502
+    assert json.loads(response.body)["error"]["message"] == "The speech server could not transcribe that."
+
+    forward.side_effect = httpx.ConnectTimeout("slow")
+    response = asyncio.run(speech_routes.speech_transcribe(_request(audio)))
+    assert response.status_code == 502
+    assert json.loads(response.body)["error"]["message"] == "The speech server did not answer."
 
 
 def test_route_rate_limits_per_user(monkeypatch, signed_in):
