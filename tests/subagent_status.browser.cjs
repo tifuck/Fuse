@@ -159,7 +159,7 @@ function bump(id, patch) {
     assert.match(byId.charlie.cls, /is-interrupted/);
     assert.notEqual(byId.alpha.dot, byId.bravo.dot, 'completed and failed dots differ');
     assert.notEqual(byId.delta.dot, byId.alpha.dot, 'a running dot differs from a completed one');
-    assert.equal(byId.charlie.dot, byId.delta.dot, 'interrupted shares the live dot colour');
+    assert.notEqual(byId.charlie.dot, byId.delta.dot, 'interrupted (amber) differs from the running (green) dot');
     assert.equal(ui.running, '2 running', 'the main row counts the live children');
     console.log('PASS tree status labels, classes and dots');
 

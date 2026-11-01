@@ -12,7 +12,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
   font: calc(var(--console-type) * 0.92)/var(--work-row) var(--mono);
   color: var(--mist);
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { max-height: calc(var(--work-main) + 9 * var(--work-row)); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { --work-gap: 0.6rem; max-height: calc(var(--work-main) + 9 * var(--work-row)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
   margin-top: 0.15rem;
@@ -21,7 +21,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
   height: var(--work-row);
   padding: 0 0.5rem 0 0.75rem;
-  column-gap: 0.6rem;
+  column-gap: var(--work-gap, 0.6rem);
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main { height: var(--work-main); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row):hover {
@@ -58,7 +58,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents::-webkit-scrollbar-track { margin-top: var(--work-main); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name {
-  max-width: min(62%, 48ch);
+  max-width: 40ch;
   color: color-mix(in srgb, var(--mist) 86%, var(--ink));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"] .chat-agents-name { color: var(--mist); }
@@ -86,15 +86,19 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work {
     --work-main: max(var(--work-row), 1.6rem);
   }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { max-height: calc(var(--work-main) + 5 * var(--work-row)); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents {
+    --work-gap: 0.4rem;
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(6ch, auto) 1.6rem;
+    max-height: calc(var(--work-main) + 5 * var(--work-row));
+  }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
-    grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem;
     padding: 0 0.1rem 0 var(--console-gutter, 0.55rem);
-    column-gap: 0.4rem;
+    column-gap: var(--work-gap, 0.4rem);
   }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-act, .chat-jobs-kill) { width: 1.6rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name { max-width: 72%; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name { max-width: 24ch; }
 }
 /* Narrow phones: a subagent row is its task and dot (the dot carries its
    state, the full line is in its tooltip); a command row is its command. */

@@ -1,7 +1,9 @@
 /* Agents and background commands: the work strip under the header, and a
    subagent's transcript shown in place of the main one. Rows share one grid
-   (pick | clock | action) so agent and command clocks line up; the console
-   theme sets the type and density (themes/console/styles/design-012-work.css). */
+   (pick | clock | action) so agent and command clocks line up; the agents list
+   is one grid that its rows subgrid, so task, state, detail and clock are columns.
+   The console theme sets the type and density
+   (themes/console/styles/design-012-work.css). */
 .chat-work[hidden],
 .chat-work-agents[hidden],
 .chat-work-jobs[hidden] { display: none; }
@@ -23,6 +25,13 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.chat-work-agents {
+  --work-gap: 0.5rem;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) minmax(6ch, auto) 1.4rem;
+  align-content: start;
+  column-gap: var(--work-gap);
+}
 .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) { border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
 
 .chat-agents-row,
@@ -33,6 +42,11 @@
   align-items: center;
   column-gap: 0.5rem;
   min-width: 0;
+}
+.chat-work-agents > .chat-agents-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: var(--work-gap);
 }
 .chat-agents-pick,
 .chat-jobs-output-link {
@@ -59,7 +73,20 @@
    the negative margin cancels the pick's gap, so level k's glyph starts under
    the square of a row k levels deep. */
 .chat-agents-row { --tree-gap: 0.5rem; --tree-line: color-mix(in srgb, var(--mist) 40%, var(--ink)); }
-.chat-agents-pick { gap: var(--tree-gap); }
+.chat-agents-row > .chat-agents-pick {
+  grid-column: 1 / 4;
+  display: grid;
+  grid-template-columns: subgrid;
+  column-gap: var(--work-gap);
+}
+.chat-agents-head {
+  display: flex;
+  align-items: center;
+  gap: var(--tree-gap);
+  min-width: 0;
+  overflow: hidden;
+}
+.chat-agents-row .chat-agents-meta { display: contents; }
 .chat-agents-tree {
   display: flex;
   flex: 0 0 auto;
@@ -98,8 +125,6 @@
 .chat-agents-state { flex-shrink: 0; }
 .chat-agents-doing,
 .chat-agents-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.chat-agents-doing::before,
-.chat-agents-sum::before { content: "· "; }
 .chat-agents-time {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -125,7 +150,7 @@ span.chat-agents-act { cursor: default; }
 .chat-agents-act.is-resume:hover { color: var(--brass); }
 .chat-jobs-kill:disabled { opacity: 0.5; cursor: default; }
 .chat-agents-fold {
-  grid-column: 2 / -1;
+  grid-column: 4 / -1;
   justify-self: end;
   display: inline-flex;
   align-items: center;
@@ -147,7 +172,7 @@ span.chat-agents-act { cursor: default; }
 
 /* State is carried by a small square, the console's mark for agents and
    background commands alike (drawn as a pseudo-element so state colours
-   ride on currentColor). queued/running: in flight, blinking.
+   ride on currentColor). queued/running: in flight, blinking green.
    interrupted/cancelled: stopped by the user, solid amber. */
 .chat-agents-dot {
   flex: 0 0 auto;
@@ -163,7 +188,7 @@ span.chat-agents-act { cursor: default; }
   background: currentColor;
 }
 :is(.chat-agents-row:is(.is-queued, .is-running, .is-working), .chat-jobs-row.is-running) .chat-agents-dot {
-  color: var(--status-live);
+  color: var(--status-run);
   animation: chat-agents-blink 2s steps(1, end) infinite;
 }
 .chat-agents-row.is-idle .chat-agents-dot { color: var(--mute); }
@@ -171,7 +196,7 @@ span.chat-agents-act { cursor: default; }
 .chat-agents-row.is-completed .chat-agents-dot { color: var(--status-done); }
 :is(.chat-agents-row:is(.is-failed, .is-stalled), .chat-jobs-row:is(.is-failed, .is-error, .is-timed_out, .is-lost)) .chat-agents-dot { color: var(--status-fail); animation: none; }
 :is(.chat-agents-row, .chat-jobs-row):is(.is-interrupted, .is-cancelled) .chat-agents-dot { color: var(--status-live); }
-.chat-agents-row:is(.is-running, .is-queued, .is-working) .chat-agents-state { color: var(--status-live); }
+.chat-agents-row:is(.is-running, .is-queued, .is-working) .chat-agents-state { color: var(--status-run); }
 .chat-agents-row.is-completed .chat-agents-state { color: var(--status-done); }
 .chat-agents-row:is(.is-failed, .is-stalled) .chat-agents-state,
 .chat-agents-sum { color: var(--status-fail); }

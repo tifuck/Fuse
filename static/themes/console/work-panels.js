@@ -44,9 +44,10 @@ function agentRowHtml(row, opts = {}) {
     return (
       `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}" role="listitem"${opts.selected ? ' aria-current="true"' : ""}>` +
       `<button type="button" class="chat-agents-pick" data-agent-id="${id}" title="${deps.escapeHtml(title)}">` +
+      '<span class="chat-agents-head">' +
       (opts.tree && opts.tree.length ? `<span class="chat-agents-tree" aria-hidden="true">${opts.tree.map((kind) => `<i class="is-${deps.escapeHtml(kind)}">${TREE_GLYPHS[kind] || ""}</i>`).join("")}</span>` : "") +
       '<span class="chat-agents-dot" aria-hidden="true"></span>' +
-      `<span class="chat-agents-name">${deps.escapeHtml(row.description || "Subagent")}</span>` +
+      `<span class="chat-agents-name">${deps.escapeHtml(row.description || "Subagent")}</span></span>` +
       `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(status)}</span>` +
       (alert ? `<span class="chat-agents-sum">${deps.escapeHtml(alert.slice(0, 180))}</span>` : doing ? `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>` : "") +
       "</span></button>" +
@@ -62,8 +63,8 @@ function agentMainRowHtml({ state, doing, selected, total, expanded }) {
     return (
       `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem"${selected ? ' aria-current="true"' : ""}>` +
       '<button type="button" class="chat-agents-pick" data-agent-main title="Main agent">' +
-      '<span class="chat-agents-dot" aria-hidden="true"></span>' +
-      '<span class="chat-agents-name">main</span>' +
+      '<span class="chat-agents-head"><span class="chat-agents-dot" aria-hidden="true"></span>' +
+      '<span class="chat-agents-name">main</span></span>' +
       `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(state)}</span>${doing ? `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>` : ""}</span>` +
       "</button>" +
       `<button type="button" class="chat-agents-fold" data-agents-fold aria-expanded="${expanded ? "true" : "false"}" title="${expanded ? "Hide" : "Show"} subagents">` +
