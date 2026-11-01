@@ -381,9 +381,11 @@ def _child_display(run: dict, *, include_current: bool = False) -> tuple[list[di
                 "noActions": True,
             })
         is_followup = text.lstrip().startswith(FOLLOWUP_FRAME_HEAD)
+        is_user_message = text.lstrip().startswith(USER_FRAME_HEAD)
         from .chat_generation.inbox import RESULTS_HEAD
 
-        if text.lstrip().startswith("[Fuse]") and not is_followup and not text.lstrip().startswith(RESULTS_HEAD):
+        if (text.lstrip().startswith("[Fuse]") and not is_followup and not is_user_message
+                and not text.lstrip().startswith(RESULTS_HEAD)):
             # Server notes to the model (restart/continue notes, provider-error
             # retries, wrap-up nudges) are not events; the main thread never
             # shows them either.
@@ -391,8 +393,8 @@ def _child_display(run: dict, *, include_current: bool = False) -> tuple[list[di
         out.append({
             "id": f"agent-hist-{n}",
             "role": "user",
-            "content": (followup_display_text(text) if is_followup else text)[: chats_mod.CONTENT_MAX],
-            "auto": text.lstrip().startswith("[Fuse]") and not is_followup,
+            "content": (followup_display_text(text) if is_followup or is_user_message else text)[: chats_mod.CONTENT_MAX],
+            "auto": text.lstrip().startswith("[Fuse]") and not is_followup and not is_user_message,
             "fromParent": is_followup,
             "noActions": True,
         })
@@ -550,6 +552,8 @@ def followup_text(item) -> str:
     """The text a child sees for one queued follow-up (its delivery receipt)."""
     if isinstance(item, dict):
         body = str(item.get("text") or "").strip()
+        if body and item.get("user"):
+            body = f"{USER_TAG} {body}"
         marker = _followup_marker(item)
         return f"{marker} {body}" if marker and body else body
     return str(item or "").strip()
@@ -568,12 +572,13 @@ _FOLLOWUP_ID_RE = re.compile(r"\(followup:[0-9a-f]{1,32}\)\s*")
 
 def followup_display_text(text: str) -> str:
     """Body of a follow-up envelope for display: no preamble, no receipt marker."""
-    body = str(text or "")
-    if body.lstrip().startswith(FOLLOWUP_FRAME_HEAD):
-        _head, sep, rest = body.partition("\n\n")
-        if sep:
-            body = rest
-    return _FOLLOWUP_ID_RE.sub("", body).strip()
+    lines = str(text or "").split("\n")
+    body = "\n".join(line for line in lines if not line.startswith((FOLLOWUP_FRAME_HEAD, USER_FRAME_HEAD)))
+    return _FOLLOWUP_ID_RE.sub("", body).replace(USER_TAG + " ", "").strip()
+
+
+def is_user_followup(text: str) -> bool:
+    return _FOLLOWUP_ID_RE.sub("", str(text or "")).lstrip().startswith(USER_TAG)
 
 
 def _pending_followup_rows(run: dict) -> list[dict]:
@@ -593,7 +598,7 @@ def _pending_followup_rows(run: dict) -> list[dict]:
         text = followup_text(item)
         if not text or _followup_delivered(item, transcript):
             continue
-        body = _FOLLOWUP_ID_RE.sub("", text).strip()
+        body = followup_display_text(text)
         if not body:
             continue
         ident = item.get("id") if isinstance(item, dict) else None
@@ -601,7 +606,7 @@ def _pending_followup_rows(run: dict) -> list[dict]:
             "id": f"agent-followup-{ident or index}",
             "role": "user",
             "content": body[: chats_mod.CONTENT_MAX],
-            "fromParent": True,
+            "fromParent": not is_user_followup(text),
             "pending": True,
             "noActions": True,
         })
@@ -609,6 +614,10 @@ def _pending_followup_rows(run: dict) -> list[dict]:
 
 
 FOLLOWUP_FRAME_HEAD = "[Fuse] Follow-up from the parent"
+# A message the user typed into a subagent's panel rides the follow-up queue
+# with this tag, so the child is told who wrote it (chat_generation.inbox).
+USER_FRAME_HEAD = "[Fuse] Message from the user"
+USER_TAG = "[from the user]"
 
 
 def _display_mark(message):

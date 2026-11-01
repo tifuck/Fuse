@@ -287,6 +287,33 @@ def test_cancel_settles_each_active_state_and_resume_round_trips(client):
     assert client.post("/chat/runs/missing/resume").status_code == 404
 
 
+def test_message_reaches_the_subagent_live_or_finished(client):
+    _login(client)
+    thread, pk = _thread(client, "message-create")
+    uid = _uid()
+    root = chat_store.start_turn(uid, pk, "parent", thread["revision"], "message-turn")["run"]
+    db.execute(
+        f"""INSERT INTO chat_runs(id,thread_id,user_id,status,request,message_id,message,created_at,updated_at,
+               parent_run_id,root_run_id,agent_depth,{db.provider_column()},resume_count)
+           VALUES('msg-child',?,?,'running',?,'m-msg','{{}}',?,?,?,?,1,?,0)""",
+        (pk, uid, _json({"model": "offline", "agent": {"description": "worker"}}), db.now(), db.now(),
+         root["id"], root["id"], _json([{"role": "user", "content": "work"}])),
+    )
+    got = client.post("/chat/runs/msg-child/message", json={"text": "also this"})
+    assert got.status_code == 200, got.text
+    assert got.json()["delivery"] == "queued"
+    assert chat_store.take_followups("msg-child")[0].endswith("[from the user] also this")
+    db.execute("UPDATE chat_runs SET status='completed' WHERE id='msg-child'")
+    with patch("app.chat_runs.start", new=AsyncMock()) as start:
+        got = client.post("/chat/runs/msg-child/message", json={"text": "now this"})
+    assert got.status_code == 200, got.text
+    assert got.json()["delivery"] == "continued" and got.json()["run"]["status"] == "queued"
+    start.assert_awaited_once()
+    # The main agent is not a subagent; the composer's turn path owns it.
+    assert client.post(f"/chat/runs/{root['id']}/message", json={"text": "x"}).status_code == 404
+    assert client.post("/chat/runs/msg-child/message", json={"text": "x", "model": "y"}).status_code == 422
+
+
 def test_cancel_scope_self_spares_a_sibling(client):
     _login(client)
     thread, pk = _thread(client, "scope-create")

@@ -32,6 +32,10 @@ FOLLOWUP_HEAD = (
     "[Fuse] Follow-up from the parent — not written by the end user. "
     "Stay in the assigned task and host/cwd unless this follow-up changes them:"
 )
+USER_FOLLOWUP_HEAD = (
+    "[Fuse] Message from the user, typed directly into this subagent's view. "
+    "It is a real user instruction and may change your task; your report still goes to the parent:"
+)
 
 # The display copy of one delivery is clipped per item: the model got the
 # whole envelope; the row shows a preview and the agent pane has the rest.
@@ -106,7 +110,12 @@ def results_message(envelopes: list[str]) -> dict:
 
 
 def followup_message(followups: list[str]) -> dict:
-    return {"role": "user", "content": FOLLOWUP_HEAD + "\n\n" + "\n\n".join(followups)}
+    from ..chat_views import is_user_followup
+
+    parent = [text for text in followups if not is_user_followup(text)]
+    user = [text for text in followups if is_user_followup(text)]
+    sections = [head + "\n\n" + "\n\n".join(texts) for head, texts in ((FOLLOWUP_HEAD, parent), (USER_FOLLOWUP_HEAD, user)) if texts]
+    return {"role": "user", "content": "\n\n".join(sections)}
 
 
 def _clip(envelope: str) -> str:

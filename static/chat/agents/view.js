@@ -4,7 +4,7 @@ import { S } from '../state.js';
 let _agentViewQueued = false;
 
 export function createView(ctx) {
-  const { jobs, live: agentLiveUi, net, overlays, sync, traces, transcript, ui } = ctx;
+  const { jobs, live: agentLiveUi, net, overlays, picker, sync, traces, transcript, ui } = ctx;
     function scheduleAgentView() {
     if (_agentViewQueued) return;
     _agentViewQueued = true;
@@ -113,6 +113,7 @@ export function createView(ctx) {
     if (S.toolGestureOwner && S.agentBodyEl.contains(S.toolGestureOwner)) { S.pendingAgentPaint = true; return; }
     agentLiveUi.renderAgentHead();
     agentLiveUi.renderAgentsList();
+    picker.syncAgentPicker();
     const live = agentLiveUi.agentLive(S.agentRun.status);
     const wasAtBottom = S.agentStick;
     const savedTop = S.agentLogEl.scrollTop;
@@ -360,6 +361,14 @@ export function createView(ctx) {
     jobs.refreshJobs();
   }
 
+    // The user's message to a subagent: a live one takes it at its next step,
+  // a finished one continues its session with it (app/chat_children.message_child).
+  async function messageAgent(id, text) {
+    await net.api("/chat/runs/" + encodeURIComponent(id) + "/message", { method: "POST", body: JSON.stringify({ text }) });
+    if (S.agentsOpen && S.agentViewId === id) await pollAgentView();
+    refreshAgents();
+  }
+
     // Back to the main agent's transcript.
   function closeAgentView() {
     net.sendSyncView("");
@@ -372,6 +381,7 @@ export function createView(ctx) {
     agentNearBottom,
     agentSeedArticle,
     closeAgentView,
+    messageAgent,
     pinAgentLog,
     pollAgentView,
     refreshAgents,

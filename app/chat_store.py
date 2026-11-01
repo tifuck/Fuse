@@ -135,6 +135,7 @@ from .chat_children import (
     mark_child_background,
     mark_child_background_if_pending,
     mark_followup_display,
+    message_child,
     promote_run_binding,
     purge_orphan_subagents,
     queue_child_result,

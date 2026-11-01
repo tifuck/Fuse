@@ -64,14 +64,17 @@ function renderUser(msg, index, live) {
     const article = document.createElement("article");
     article.className = "chat-turn is-user";
     article.setAttribute("aria-label", "Your message");
-    if (msg.fromParent) {
+    if (msg.fromParent || msg.pending) {
       // A parent follow-up inside a subagent panel: a real message, not an
-      // automated-event chip. Queued ones say they are still being delivered.
-      article.classList.add("is-from-agent");
-      article.setAttribute("aria-label", msg.pending ? "Message from the main agent, awaiting delivery" : "Message from the main agent");
+      // automated-event chip. Queued ones (the user's own message to a busy
+      // subagent too) say they are still being delivered.
+      if (msg.fromParent) article.classList.add("is-from-agent");
+      const label = msg.fromParent ? "Message from the main agent" : "Your message";
+      article.setAttribute("aria-label", msg.pending ? label + ", awaiting delivery" : label);
       const tag = document.createElement("div");
       tag.className = "chat-agent-note";
-      tag.textContent = msg.pending ? "From main agent · delivering at the next step" : "From main agent";
+      const who = msg.fromParent ? "From main agent" : "You";
+      tag.textContent = msg.pending ? who + " · delivering at the next step" : who;
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
       bubble.textContent = msg.content;

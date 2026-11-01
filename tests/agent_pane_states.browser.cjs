@@ -114,7 +114,7 @@ function agent(id, patch) {
     child('nov', { thread_id: THREAD_A, description: 'Nov worker', message: { role: 'assistant', content: 'NOV_STALLED_TEXT', tools: [
       { id: 'n-read', name: 'read_file', status: 'running', path: 'nov.md' },
     ] } });
-    child('tate', { thread_id: THREAD_A, description: TATE_DESC, message: { role: 'assistant', content: 'TATE_DRAFT', tools: [] } });
+    child('tate', { thread_id: THREAD_A, description: TATE_DESC, model: 'tate-model-x', message: { role: 'assistant', content: 'TATE_DRAFT', tools: [] } });
     child('que', { thread_id: THREAD_A, description: 'Queued worker', status: 'queued', work_ms: 0, work_live: false });
     child('rex', { thread_id: THREAD_A, description: 'Rex worker', status: 'interrupted', work_live: false,
       resumable: true, has_transcript: true, resume_count: 3,
@@ -128,7 +128,7 @@ function agent(id, patch) {
     agentsByThread[THREAD_A] = [
       agent('kilo', { description: 'Kilo worker' }),
       agent('nov', { description: 'Nov worker' }),
-      agent('tate', { description: TATE_DESC }),
+      agent('tate', { description: TATE_DESC, model: 'tate-model-x' }),
       agent('que', { description: 'Queued worker', status: 'queued', work_ms: 0, work_live: false }),
       agent('rex', { description: 'Rex worker', status: 'interrupted', work_live: false, resumable: true }),
       agent('lima', { description: 'Lima worker', status: 'completed', work_live: false }),
@@ -402,13 +402,24 @@ function agent(id, patch) {
     await back();
     await openPane('tate');
     await page.locator('[data-agent-log-body]').getByText('TATE_DRAFT').waitFor();
-    // (c) A model switch leaves the pane exactly where it was.
+    // (c) The picker names the open child's model, read-only (a child's model
+    // is fixed at spawn); a chat model switch made on main leaves the child's
+    // pane and model exactly as they were.
+    ui = await read();
+    assert.match(ui.modelBtn, /tate-model-x/, `the picker shows the child's model, not the chat's: ${ui.modelBtn}`);
+    await page.locator('[data-chat-picker] .chat-picker-btn').click();
+    assert.equal(await page.locator('.chat-picker-menu').isVisible(), false, "the child's model cannot be switched from its pane");
+    await back();
+    assert.doesNotMatch((await read()).modelBtn, /tate-model-x/, "back on main, the picker shows the chat's model");
     await page.locator('[data-chat-picker] .chat-picker-btn').click();
     await page.locator('.chat-picker-menu').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.chat-picker-list button[data-id]').count(), 2, 'the picker offers the second fixture model');
     await page.locator('.chat-picker-list button[data-id="offline-two"]').click();
     await page.waitForFunction(() => (document.querySelector('[data-chat-picker] .chat-picker-btn')?.textContent || '').includes('Offline fixture two'));
+    await openPane('tate');
+    await page.locator('[data-agent-log-body]').getByText('TATE_DRAFT').waitFor();
     ui = await read();
+    assert.match(ui.modelBtn, /tate-model-x/, 'the chat model switch does not relabel the child');
     assert.equal(ui.viewOpen, true, 'the pane survives a model switch');
     assert.match(ui.title, /^Tate worker/, 'the model switch does not reset the pane');
     assert.equal(ui.badge, 'running');
@@ -417,6 +428,26 @@ function agent(id, patch) {
     assert.match(ui.text, /TATE_DRAFT/);
     assert.equal(ui.docks, 1);
     assert.equal(ui.panes, 1);
+    // (e) The composer talks to the child on screen, never the main agent.
+    const sent = [];
+    const mainPosts = [];
+    const onRequest = (req) => {
+      if (req.method() === 'POST' && /\/chat\/threads\/[^/]+\/(turns|queue|steer)$/.test(new URL(req.url()).pathname)) mainPosts.push(req.url());
+    };
+    page.on('request', onRequest);
+    await page.route('**/chat/runs/*/message', (route) => {
+      sent.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+      return route.fulfill({ json: { ok: true, delivery: 'queued', run: runs.get('tate') } });
+    });
+    await page.locator('[data-chat-input]').fill('TATE_PLEASE_CHECK');
+    await page.locator('[data-chat-input]').press('Enter');
+    await page.waitForFunction(() => !document.querySelector('[data-chat-input]').value);
+    page.off('request', onRequest);
+    assert.deepEqual(sent, [{ path: '/chat/runs/tate/message', body: { text: 'TATE_PLEASE_CHECK' } }], 'the message goes to the open child');
+    assert.deepEqual(mainPosts, [], 'nothing is sent to the main agent');
+    ui = await read();
+    assert.equal(ui.viewOpen, true, 'sending to the child keeps its pane on screen');
+    assert.match(ui.title, /^Tate worker/);
     // (d) Reload: no orphaned pane, then the dock and content re-attach.
     await page.reload();
     await page.locator('[data-sync-label]').filter({ hasText: 'Live sync' }).waitFor({ state: 'attached' });
@@ -441,7 +472,7 @@ function agent(id, patch) {
     assert.equal(ui.dockHidden, false, 'the dock re-attaches after the reload');
     assert.equal(ui.spin, true, 'the spinner is back exactly once');
     assert.equal((await paneText()).split('TATE_DRAFT').length - 1, 1, 'no duplicated content after the reload');
-    console.log('PASS the open child survives folding, a model switch, and reload');
+    console.log('PASS the open child shows its own model, takes the composer, and survives folding, a model switch, and reload');
 
     // --- 7. Thread switch: the pane resets cleanly, never orphans, never bleeds ---
     const openRow = async (id) => {

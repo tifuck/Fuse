@@ -737,6 +737,38 @@ class AgentChildrenTest(AgentCapsBase):
         self.assertIn("stopped by cancellation", report)
         self.assertIn("check the lexer too", report)
 
+    def test_user_message_to_a_subagent_is_framed_as_the_users(self):
+        from app.chat_generation import inbox
+
+        thread, parent = self._parent()
+        child = self._live_child(thread, parent)
+        store.save_turn_progress(child["id"], [{"role": "user", "content": "Audit the parser"}])
+        # Live: queued for the next tool boundary, shown pending as the user's.
+        self.assertEqual(store.message_child(1, child["id"], "check the lexer too"), "queued")
+        pending = [row for row in store.child_display_messages(store.get_run(1, child["id"])) if row.get("pending")]
+        self.assertEqual([(row["content"], row["fromParent"]) for row in pending], [("check the lexer too", False)])
+        store.queue_followup(child["id"], "and the tests")
+        note = inbox.followup_message(store.take_followups(child["id"]))["content"]
+        # The parent's words keep the parent frame; the user's get the user's.
+        self.assertTrue(note.startswith(inbox.FOLLOWUP_HEAD))
+        user_at = note.index(inbox.USER_FOLLOWUP_HEAD)
+        self.assertLess(note.index("and the tests"), user_at)
+        self.assertGreater(note.index("check the lexer too"), user_at)
+        store.save_turn_progress(child["id"], [{"role": "user", "content": "Audit the parser"}, {"role": "user", "content": note}])
+        self.assertEqual(store.take_followups(child["id"]), [])
+        # Finished, even stopped: the same session continues with the message.
+        store.finish_run(child["id"], {"content": "REPORT", "tools": []}, "cancelled")
+        self.assertEqual(store.message_child(1, child["id"], "now fix it"), "continued")
+        resumed = store.get_run(1, child["id"])
+        self.assertEqual(resumed["status"], "queued")
+        self.assertFalse(resumed["cancel_requested"])
+        self.assertTrue(resumed["request"]["agent"]["user_resumed_at"])
+        self.assertTrue(resumed["request"]["messages"][-1]["content"].startswith(inbox.USER_FOLLOWUP_HEAD))
+        mine = [row for row in store.child_display_messages(resumed) if row["role"] == "user"][-1]
+        self.assertEqual((mine["content"], mine["fromParent"], mine["auto"]), ("now fix it", False, False))
+        with self.assertRaises(chats.ChatValidationError):
+            store.message_child(1, parent["id"], "not a subagent")
+
     def test_main_agent_follows_up_a_live_child_from_an_earlier_turn(self):
         from app import agents
 

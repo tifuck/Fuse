@@ -147,8 +147,30 @@ export function createSheet(ctx) {
     }
   }
 
+    // While a subagent is on screen the button names the model that subagent
+    // runs on, read-only: a child's model is fixed when it is spawned.
+    function agentModel() {
+    if (!S.agentsOpen || !S.agentViewId) return null;
+    const row = S.agentRun || S.agentsRows.find((item) => String(item.id) === S.agentViewId);
+    const id = String(row?.model || "");
+    if (!id) return null;
+    return { model: S.modelsById.get(id) || { id, name: id, type: "" }, effort: String(row.reasoning_effort || "") };
+  }
+
+    const agentPickerKey = (agent) => agent ? agent.model.id + "\n" + agent.effort : "";
+
+    // A subagent snapshot can bring a model or effort the button lacks.
+    function syncAgentPicker() {
+    if (agentPickerKey(agentModel()) !== (S.pickerHost.dataset.agentModel || "")) renderPickerButton();
+  }
+
     function openPicker() {
     if (!S.allModels.length) return;
+    const agent = agentModel();
+    if (agent) {
+      setHint(`This subagent runs on ${agent.model.name}, set when it was spawned. Go back to the main agent to change the chat's model.`);
+      return;
+    }
     perms.setPermsOpen(false);
     S.pickerOpen = true;
     overlays.overlayPush("picker");
@@ -178,7 +200,9 @@ export function createSheet(ctx) {
   }
 
     function renderPickerButton() {
-    const model = context.currentModel();
+    const agent = agentModel();
+    const model = agent ? agent.model : context.currentModel();
+    S.pickerHost.dataset.agentModel = agentPickerKey(agent);
     S.pickerHost.innerHTML = "";
     // On mobile the sheet lives on the chat root, outside pickerHost; drop it
     // too or every re-render leaves an orphaned sheet behind.
@@ -195,12 +219,13 @@ export function createSheet(ctx) {
       S.pickerHost.appendChild(btn);
       return;
     }
-    const effort = list.currentEffort();
-    const think = list.effortLabel(effort);
-    btn.innerHTML = `${sidebar.providerLogo(model.type)}<span></span><small></small>${PICKER_CHEV}`;
+    const effort = agent ? agent.effort : list.currentEffort();
+    const think = agent && !effort ? "" : list.effortLabel(effort, model);
+    btn.innerHTML = `${sidebar.providerLogo(model.type)}<span></span><small></small>${agent ? "" : PICKER_CHEV}`;
     btn.querySelector("span").textContent = model.name;
     btn.querySelector("small").textContent = think;
-    btn.title = think ? model.id + " · " + think : model.id;
+    btn.title = (agent ? "Subagent model: " : "") + (think ? model.id + " · " + think : model.id);
+    if (agent) btn.setAttribute("aria-haspopup", "false");
     btn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -311,6 +336,7 @@ export function createSheet(ctx) {
     releaseHint,
     renderPickerButton,
     setHint,
+    syncAgentPicker,
     unpinHint,
   };
 }

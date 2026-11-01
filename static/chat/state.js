@@ -344,6 +344,8 @@ function initState() {
   S.agentsRows = [];
   S.agentsLoadedFor = "";
   S.agentViewId = "";
+  // A composer message to the open subagent is in flight.
+  S.agentSending = false;
   S.agentLastEventAt = 0;
   S._agentTickRenderAt = 0;
   S._syncViewSent = "";

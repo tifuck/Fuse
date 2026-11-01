@@ -701,7 +701,7 @@ def _parent_instruction(text: str) -> bool:
     body = (text or "").lstrip()
     if not body or is_compact_preamble(body):
         return False
-    return not body.startswith("[Fuse]") or body.startswith("[Fuse] Follow-up from the parent")
+    return not body.startswith("[Fuse]") or body.startswith(("[Fuse] Follow-up from the parent", "[Fuse] Message from the user"))
 
 def pinned_assignment(dropped: list | None, kept: list | None = None) -> str:
     """Verbatim parent assignment for a subagent handoff, or "".

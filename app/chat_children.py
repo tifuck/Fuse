@@ -170,8 +170,9 @@ def take_child_results(parent_run_id: str) -> list[str]:
     return out
 
 
-def queue_followup(run_id: str, text: str) -> bool:
-    """Queue a parent follow-up onto a live child (Grok send_subagent_message)."""
+def queue_followup(run_id: str, text: str, *, from_user: bool = False) -> bool:
+    """Queue a parent follow-up onto a live child (Grok send_subagent_message).
+    from_user: the user typed it into the child's view (USER_TAG framing)."""
     if not run_id or not str(text or "").strip():
         return False
     with chat_tx.transaction() as conn:
@@ -200,7 +201,7 @@ def queue_followup(run_id: str, text: str) -> bool:
         # A unique id marks delivery. Matching the text itself dropped any
         # follow-up whose words already appeared in the child's transcript
         # ("yes", a repeated "keep going") while telling the parent it was sent.
-        pending.append({"id": uuid4().hex[:12], "text": str(text)[: chats_mod.CONTENT_MAX]})
+        pending.append({"id": uuid4().hex[:12], "text": str(text)[: chats_mod.CONTENT_MAX], **({"user": True} if from_user else {})})
         agent["pending_followups"] = pending
         req["agent"] = agent
         conn.execute(
@@ -218,6 +219,39 @@ def queue_followup(run_id: str, text: str) -> bool:
         )
     run_inbox.arrived(run_id, "followup")
     return True
+
+
+def message_child(user_id: int, run_id: str, text) -> str:
+    """Deliver a message the user typed into a subagent's view.
+
+    A live child takes it at its next tool boundary (the follow-up queue,
+    framed as the user's); a finished one continues its session with it.
+    Returns "queued" or "continued"; the caller starts a continued run.
+    """
+    from . import chats
+    from .chat_recovery import _check_resume_admission
+
+    text = chats._text(text if text is not None else "", "text", chats.CONTENT_MAX)
+    if not text.strip():
+        raise chats.ChatValidationError("text cannot be empty")
+    sql = "SELECT id,status,parent_run_id,root_run_id FROM chat_runs WHERE id=? AND user_id=?"
+    row = db.fetchone(sql, (run_id, user_id))
+    if row is None or not row["parent_run_id"]:
+        raise chats.ChatValidationError("subagent not found", 404)
+    if row["status"] in chat_tx.ACTIVE:
+        if queue_followup(run_id, text, from_user=True):
+            return "queued"
+        # Refused while live (stopping, queue full), or it just finished.
+        row = db.fetchone(sql, (run_id, user_id))
+        if row is None or row["status"] in chat_tx.ACTIVE:
+            raise chats.ChatValidationError(
+                "This subagent is stopping or has too many undelivered messages; try again shortly.", 409)
+    item = {"id": uuid4().hex[:12], "text": text, "user": True}
+    with _child_admission_lock:
+        _check_resume_admission(row, user_id, True)
+        if not continue_child_with_followups(run_id, [item], by_user=True):
+            raise chats.ChatValidationError("This subagent could not be continued; reload and try again.", 409)
+    return "continued"
 
 
 def take_followups(run_id: str) -> list[str]:
@@ -248,7 +282,7 @@ def take_followups(run_id: str) -> list[str]:
     return leftover
 
 
-def continue_child_with_followups(run_id: str, followups: list) -> bool:
+def continue_child_with_followups(run_id: str, followups: list, *, by_user: bool = False) -> bool:
     """Seamlessly continue a just-completed child that still has queued parent follow-ups.
 
     Same mechanism as the runtime's live drain (chat_runtime take_followups):
@@ -257,6 +291,9 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
     instead of reporting 'unconsumed follow-up' to the parent. The run row is
     terminal when called (post-finish); the durable queue is consumed in the
     same transaction that commits the continuation.
+
+    by_user: the user messaged a finished child from its view. Any terminal
+    child continues, and the user's intent lifts a thread Stop like a resume.
     """
     texts = [chat_views.followup_text(t) for t in (followups or []) if chat_views.followup_text(t)]
     if not texts:
@@ -267,8 +304,8 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         ).fetchone()
         if (
             row is None
-            or row["status"] != "completed"
-            or row["cancel_requested"]
+            or row["status"] not in (chat_tx.TERMINAL if by_user else ("completed",))
+            or (row["cancel_requested"] and not by_user)
             or not row["parent_run_id"]
         ):
             return False
@@ -276,7 +313,7 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         if req is None:
             return False
         agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
-        if chat_run_state.automatic_stop_guard(
+        if not by_user and chat_run_state.automatic_stop_guard(
             conn, row["user_id"], row["thread_id"], parent_run_id=row["parent_run_id"],
             resumed_at=str(agent.get("user_resumed_at") or ""),
         ):
@@ -285,7 +322,10 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         if isinstance(pending, list):
             undelivered = [chat_views.followup_text(t) for t in pending
                            if chat_views.followup_text(t) and not chat_views._followup_delivered(t, row["provider_messages"] or "")]
-            if not undelivered:
+            if by_user:
+                # Still queued when the child finished: they ride along.
+                texts = [*undelivered, *texts]
+            elif not undelivered:
                 # The queued follow-ups were already delivered into the sealed
                 # transcript (or the queue is gone): nothing to continue with.
                 return False
@@ -313,7 +353,7 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         # The report this leg just wrote was never delivered (the run is
         # continuing instead); carry it so the continuation's report leads
         # with it rather than silently replacing it.
-        prior = chat_views.child_writeup({"id": row["id"], "status": "completed",
+        prior = chat_views.child_writeup({"id": row["id"], "status": row["status"],
                                "message": finished_message if isinstance(finished_message, dict) else {},
                                "request": req}, conn)
         if prior:
@@ -321,12 +361,9 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         # The continuation starts a fresh message; bank this leg's work time.
         agent["work_ms_before"] = chat_run_state.row_work_ms(row)
         sealed = chat_run_state.seal_provider_messages(messages)
-        note = (
-            f"{chat_views.FOLLOWUP_FRAME_HEAD} — not written by the end user. "
-            "Stay in the assigned task and host/cwd unless this follow-up changes them:\n\n"
-            + "\n\n".join(texts)
-        )
-        sealed = [*sealed, {"role": "user", "content": note}]
+        from .chat_generation import inbox
+
+        sealed = [*sealed, inbox.followup_message(texts)]
         req["messages"] = sealed
         req["display_seed"] = sealed
         agent["pending_followups"] = []
@@ -334,6 +371,8 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         agent.pop("followup_marks", None)
         agent["background"] = True
         agent["followup_continuation"] = True
+        if by_user:
+            agent["user_resumed_at"] = db.now()
         # The sealed provider transcript (tool calls and results) replays as-is;
         # a fresh spawn's seed was sanitized, but this one must not be.
         agent["skip_sanitize"] = True
@@ -356,8 +395,8 @@ def continue_child_with_followups(run_id: str, followups: list) -> bool:
         )[0]
         updated = conn.execute(
             f"""UPDATE chat_runs SET status='queued', request=?, message=?, activity=NULL, {db.set_provider_sql(conn)},
-               cancel_requested=0, updated_at=? WHERE id=? AND status='completed'""",
-            (chat_tx.dumps(req), chat_tx.dumps(assistant), chat_tx.dumps(sealed), db.now(), run_id),
+               cancel_requested=0, updated_at=? WHERE id=? AND status=?""",
+            (chat_tx.dumps(req), chat_tx.dumps(assistant), chat_tx.dumps(sealed), db.now(), run_id, row["status"]),
         )
         if updated.rowcount == 0:
             return False
@@ -708,7 +747,7 @@ def followup_display_deliveries(run_id: str) -> list[str]:
             skip_users -= 1
             continue
         text = str(item.get("content") or "")
-        if not text.lstrip().startswith(chat_views.FOLLOWUP_FRAME_HEAD):
+        if not text.lstrip().startswith((chat_views.FOLLOWUP_FRAME_HEAD, chat_views.USER_FRAME_HEAD)):
             continue
         ids.extend(re.findall(r"\(followup:([0-9a-f]{1,32})\)", text))
     return [ident for ident in ids if ident not in marked]

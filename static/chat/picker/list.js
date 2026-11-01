@@ -47,8 +47,7 @@ export function createList(ctx) {
     return defaultEffort();
   }
 
-    function effortLabel(effort) {
-    const model = context.currentModel();
+    function effortLabel(effort, model = context.currentModel()) {
     if (model && model.type === "zai") return effort === "none" ? "Off" : "On";
     return EFFORT_LABELS[effort] || effort;
   }

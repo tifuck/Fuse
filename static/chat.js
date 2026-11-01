@@ -1028,13 +1028,40 @@ import { createDictation } from './chat/dictation.js';
     }
   }
 
-    // The composer always talks to the main agent: a message sent (or queued)
-  // while a subagent is on screen brings the main transcript back to show it.
+    // The composer talks to whichever agent is on screen. Slash commands stay
+  // the main agent's and bring its transcript back to show them.
   function showMainForSend() {
     if (S.agentsOpen && (S.input.value.trim() || (S.attachList && !S.attachList.hidden))) agents.closeAgentView();
   }
 
+    async function sendToAgent(text) {
+    if (S.pendingAttachments.length) {
+      picker.setHint("Files can't be sent to a subagent. Remove them, or go back to the main agent.", true);
+      return;
+    }
+    if (S.agentSending || !net.requireLive()) return;
+    S.agentSending = true;
+    try {
+      await agents.messageAgent(S.agentViewId, text);
+      if (S.input.value.trim() === text) {
+        S.input.value = "";
+        S.drafts.delete(draftKey());
+        composer.restoreEnterKeyHint();
+        composer.resizeInput();
+      }
+    } catch (error) {
+      sync.showFailure("Could not message the subagent", error);
+    } finally {
+      S.agentSending = false;
+    }
+  }
+
     function sendFromComposer() {
+    const text = S.input.value.trim();
+    if (S.agentsOpen && S.agentViewId && text && !text.startsWith("/")) {
+      sendToAgent(text);
+      return;
+    }
     showMainForSend();
     turns.send();
   }

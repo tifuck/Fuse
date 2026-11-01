@@ -366,7 +366,7 @@ export function createLive(ctx) {
     }
     const next = Boolean(open);
     if (next === S.agentsOpen) {
-      if (next) syncAgentsUi();
+      if (next) { syncAgentsUi(); picker.renderPickerButton(); }
       return;
     }
     S.agentsOpen = next;
@@ -391,6 +391,8 @@ export function createLive(ctx) {
     }
     syncAgentsUi();
     syncAgentLiveDock();
+    // The picker shows the model of the agent on screen.
+    picker.renderPickerButton();
     if (!next && S.thread) {
       const saved = S.mainScroll;
       S.mainScroll = null;

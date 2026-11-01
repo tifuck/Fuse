@@ -302,6 +302,7 @@ def test_threads_and_runs_are_private_to_their_owner(client):
         ("GET", f"/chat/runs/{run['id']}", None, 404),
         ("POST", f"/chat/runs/{run['id']}/cancel", None, 404),
         ("POST", f"/chat/runs/{run['id']}/resume", None, 404),
+        ("POST", f"/chat/runs/{run['id']}/message", {"text": "pwned"}, 404),
     ]
     for method, path, body, expected in attempts:
         res = client.request(method, path, json=body)

@@ -322,6 +322,7 @@ async def chat_run_get(request: Request, run_id: str):
                 )
             ),
             "model": req.get("model") or "",
+            "reasoning_effort": req.get("reasoning_effort") or "",
             "description": str(agent.get("description") or "")[:200],
             "subagent_type": str(agent.get("subagent_type") or ""),
             "activity": agent.get("activity"),
@@ -387,6 +388,34 @@ async def chat_run_resume(request: Request, run_id: str):
             logger.exception("Resume start failed for %s", run_id)
         run = chat_store.get_run(user["id"], run_id) or run
     return JSONResponse({"ok": True, "run": _chat_public_run(run)}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/chat/runs/{run_id}/message")
+async def chat_run_message(request: Request, run_id: str):
+    """A message the user typed into a subagent's view, for that subagent."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
+        raise HTTPException(429, "Too many requests")
+    raw = await _json_object(request)
+    if set(raw) - {"text"}:
+        raise HTTPException(422, "Unsupported message fields")
+    if not isinstance(raw.get("text"), str):
+        raise HTTPException(422, "text cannot be empty")
+    try:
+        delivery = await asyncio.to_thread(chat_store.message_child, user["id"], run_id, raw["text"])
+    except chats.ChatValidationError as exc:
+        raise _chat_validation_error(exc) from None
+    run = chat_store.get_run(user["id"], run_id)
+    if delivery == "continued" and run and run["status"] == "queued":
+        try:
+            await chat_runs.start(request, user, run)
+        except Exception:
+            logger.exception("Subagent continuation start failed for %s", run_id)
+        run = chat_store.get_run(user["id"], run_id) or run
+    return JSONResponse({"ok": True, "delivery": delivery, "run": _chat_public_run(run)},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/threads/{thread_id}/steer")
