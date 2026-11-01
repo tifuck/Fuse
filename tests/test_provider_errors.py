@@ -101,6 +101,11 @@ def test_reset_sources():
     reset = pe.classify("openrouter", 429, {"error": {"message": "x", "metadata": {"headers": {"X-RateLimit-Reset": str(int((NOW + 90) * 1000))}}}}, now=NOW)
     assert reset["retry_after"] == pytest.approx(90)
     assert pe.retry_after_seconds("Wed, 21 Oct 2015 07:28:00 GMT", now=0) > 0
+    # Z.AI's reset stamp is Beijing time: 08:37:16 +08:00 is 00:37:16 UTC.
+    zai = {"error": {"code": "1308", "message": "Usage limit reached for 5 hour. Your limit will reset at 2026-11-01 08:37:16"}}
+    stamp = 1_793_493_436.0  # 2026-11-01T00:37:16Z
+    info = pe.classify("zai", 429, zai, now=stamp - 600)
+    assert info["reset_at"] == stamp and info["retry_after"] == 600
 
 
 def test_long_rate_limit_is_spent_allowance():

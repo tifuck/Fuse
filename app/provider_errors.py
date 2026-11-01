@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 from .proxy import scrub_secrets
@@ -452,9 +452,12 @@ def retry_after_seconds(value, now: float | None = None) -> float | None:
 
 _TRY_AGAIN = re.compile(r"try again in (\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?)\b", re.I)
 _TRY_AGAIN_ZH = re.compile(r"请约\s*(\d+(?:\.\d+)?)\s*秒后重试")  # MiMo TPM limit
+# Z.AI 1308/1310: "Your limit will reset at 2026-11-01 08:37:16", Beijing time.
+_ZAI_RESET = re.compile(r"will reset at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+_BEIJING = timezone(timedelta(hours=8))
 
 
-def _reset_at(err, meta, h, message, now) -> float | None:
+def _reset_at(provider, err, meta, h, message, now) -> float | None:
     for value in (err.get("resets_at"), meta.get("resets_at")):
         at = _epoch(value)
         if at:
@@ -486,6 +489,9 @@ def _reset_at(err, meta, h, message, now) -> float | None:
         unit = hit.group(2).lower()
         scale = 0.001 if unit.startswith("ms") or unit.startswith("milli") else 60.0 if unit.startswith("m") else 1.0
         return now + float(hit.group(1)) * scale
+    hit = _ZAI_RESET.search(message) if provider == "zai" else None
+    if hit:
+        return datetime.fromisoformat(hit.group(1)).replace(tzinfo=_BEIJING).timestamp()
     return None
 
 
@@ -544,7 +550,7 @@ def classify(provider: str, status: int, body, headers=None, *, now: float | Non
         known = status in _STATUS_REWRITE
     if kind is None:
         return None
-    reset_at = _reset_at(err, meta, h, message, now)
+    reset_at = _reset_at(provider, err, meta, h, message, now)
     retry_after = max(0.0, reset_at - now) if reset_at else None
     # A "rate limit" that clears in hours is a spent allowance.
     if kind == "rate_limit" and retry_after and retry_after > 3600:
