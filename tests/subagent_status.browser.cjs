@@ -238,9 +238,21 @@ function bump(id, patch) {
     assert.notEqual(ui.sidebarBusy, 'true');
     console.log('PASS sidebar activity outlives the main turn');
 
+    // --- 4b. The main row: back to main keeps the tree; on main it folds ---
+    const childRows = () => page.evaluate(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length);
+    assert.equal(await childRows(), 0, 'with nothing live the tree is folded to its main row');
+    await page.evaluate(() => fuseToolFixture.todo.openAgent('alpha'));
+    await page.locator('[data-agent-log-body]').getByText('ALPHA_REPORT_ONLY', { exact: true }).waitFor();
+    assert.equal(await childRows(), 5, 'a subagent on screen unfolds the tree');
+    await back();
+    assert.equal(await childRows(), 5, 'main from a subagent switches back and leaves the tree open');
+    await page.locator('[data-agents-list] [data-agent-main]').click();
+    assert.equal(await childRows(), 0, 'clicking main while on main folds the tree');
+    console.log('PASS main row folds on main, keeps the tree from a subagent');
+
     // --- 5. Resuming an interrupted child: dock, pane, held wake ---
-    // With nothing live the tree is folded to its main row.
-    await page.locator('[data-agents-list] [data-agents-fold]').click();
+    // Folded and on main: the main row unfolds the tree.
+    await page.locator('[data-agents-list] [data-agent-main]').click();
     await page.locator('[data-agent-id="charlie"]').click();
     await page.locator('[data-agent-log-body]').getByText('CHARLIE_PARTIAL').waitFor();
     await page.locator('[data-agents-list] [aria-current="true"] [data-agent-resume]').waitFor({ state: 'visible' });

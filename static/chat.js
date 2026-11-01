@@ -1442,7 +1442,18 @@ import { createDictation } from './chat/dictation.js';
         agents.setAgentsFold(btn.getAttribute("aria-expanded") !== "true");
         return;
       }
-      if (event.target.closest("[data-agent-main]")) { agents.closeAgentView(); return; }
+      // Main row: from a subagent, back to main with the tree left as it is;
+      // already on main, it folds or unfolds the tree.
+      if (event.target.closest("[data-agent-main]")) {
+        const unfolded = () => S.agentsListEl.querySelector("[data-agents-fold]")?.getAttribute("aria-expanded") === "true";
+        const expanded = unfolded();
+        if (!S.agentsOpen) agents.setAgentsFold(!expanded);
+        else {
+          agents.closeAgentView();
+          if (expanded && !unfolded()) agents.setAgentsFold(true);
+        }
+        return;
+      }
       const row = event.target.closest("[data-agent-id]");
       if (row) agents.showAgent(row.getAttribute("data-agent-id"));
     });
