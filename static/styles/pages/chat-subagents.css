@@ -29,7 +29,7 @@
 .chat-jobs-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6ch 1.4rem;
+  grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.4rem;
   align-items: center;
   column-gap: 0.5rem;
   min-width: 0;

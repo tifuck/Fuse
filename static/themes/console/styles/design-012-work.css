@@ -89,7 +89,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { max-height: calc(var(--work-main) + 5 * var(--work-row)); }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
-    grid-template-columns: minmax(0, 1fr) 6ch 1.6rem;
+    grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem;
     padding: 0 0.1rem 0 var(--console-gutter, 0.55rem);
     column-gap: 0.4rem;
   }
