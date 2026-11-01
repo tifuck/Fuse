@@ -87,6 +87,14 @@ function consoleChangeText(added, removed) {
     return "";
   }
 
+function consoleEditDiff(trace) {
+    const diff = [trace.preview, trace.output].find((value) => deps.looksLikeDiff(value));
+    if (diff || trace.name !== "search_replace") return diff;
+    // An unanchored one-line deletion has no header: one "-" row next to
+    // context, or a removed blank line ("-"), which looksLikeDiff misses.
+    return /^[-+]/m.test(String(trace.preview || "")) ? trace.preview : undefined;
+  }
+
 function consoleDiffCounts(diff) {
     const rows = consoleDiffRows(diff);
     return {
@@ -162,7 +170,7 @@ function consoleFold(trace, presentation, verbose) {
     }
     if (name === "kill_command" || name === "kill_subagent") return { status, preview: "", full: "" };
     if (name === "search_replace" || name === "write_file") {
-      const diff = [trace.preview, trace.output].find((value) => deps.looksLikeDiff(value));
+      const diff = consoleEditDiff(trace);
       if (diff) {
         const counted = consoleDiffCounts(diff);
         const added = Number(trace.added ?? trace.lines_added);
@@ -266,7 +274,7 @@ function consoleDetailHtml(trace, failed, running) {
       return `<div class="chat-console-out is-web">${deps.webResultsHtml([row], 1)}${text ? `<pre class="chat-console-out is-stdout">${deps.escapeHtml(deps.toolText(text, 1200))}</pre>` : ""}</div>`;
     }
     if (trace && trace.name === "search_replace") {
-      const diff = [trace.preview, trace.output].find((value) => deps.looksLikeDiff(value));
+      const diff = consoleEditDiff(trace);
       if (diff) return `<div class="chat-console-out is-diff">${consoleDiffHtml(diff, { numbers: trace.name !== "search_replace" || /^@@\s+-\d+/.test(diff) })}</div>`;
     }
     let body = deps.consoleOutputText(trace, failed, running);
@@ -352,7 +360,7 @@ function consoleResultLine(trace, presentation) {
     if (name === "search_replace") {
       const added = Number(trace.added ?? trace.lines_added);
       const removed = Number(trace.removed ?? trace.lines_removed);
-      const counted = consoleDiffCounts([trace.preview, trace.output].find((value) => deps.looksLikeDiff(value)) || "");
+      const counted = consoleDiffCounts(consoleEditDiff(trace) || "");
       return consoleChangeText(Number.isFinite(added) ? added : counted.added, Number.isFinite(removed) ? removed : counted.removed) || "Updated";
     }
     if (name === "todo_write") {

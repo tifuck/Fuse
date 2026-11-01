@@ -252,6 +252,13 @@ function scenarios() {
       truth: { call: { [edit.id]: 'done' } },
       has: ['Update(/root/fuse-dev/app/config.py)', 'retries = 5'], bareDiff: true };
   });
+  add('an unanchored one-line deletion counts its removed lines, not a bare "Updated"', () => {
+    const context = tool('search_replace', { path: '/root/fuse-dev/app/config.py', preview: '    load()\n-    retries = 3', output: 'updated' });
+    const blank = tool('search_replace', { path: '/root/fuse-dev/app/other.py', preview: '-\n-    timeout = 9', output: 'updated' });
+    return { rows: [user('Go.'), turn([say('Editing.\n\n'), T(context), T(blank)], [context, blank], ended)],
+      truth: { call: { [context.id]: 'done', [blank.id]: 'done' } },
+      has: ['Removed 1 line', 'Removed 2 lines', 'retries = 3', 'timeout = 9'], lacks: ['Updated'] };
+  });
   add('a failed edit is red and keeps the error, with no diff', () => {
     const edit = tool('search_replace', { path: '/srv/qa/app/missing.py', status: 'error', error: 'old_string not found', preview: '' });
     return { rows: [user('Go.'), turn([say('Editing.\n\n'), T(edit)], [edit], ended)],
