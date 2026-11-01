@@ -194,6 +194,19 @@ function snap() {
     check(s.clocks.length === 0 && !s.labels.some((l) => /^Thinking for/.test(l)), `nothing still ticks or streams after done: ${s.clocks} ${s.labels}`);
     check((s.prose.join(' ').match(/Read it\./g) || []).length === 1 && (s.prose.join(' ').match(/Retries are now 5\./g) || []).length === 1, `no prose is doubled across the state boundaries: ${s.prose}`);
 
+    // A chat switch mounts the live message afresh: the streaming thought's
+    // clock resumes from its streamed ms instead of restarting at 1s.
+    await page.evaluate(() => {
+      const f = fuseToolFixture;
+      f.mountThread([
+        { role: 'user', content: 'Go.', reasoning: '', error: '' },
+        { id: 'tt-switch', role: 'assistant', model: 'qa/model', content: '', reasoning: 'Long plan.', tools: [],
+          segments: [{ type: 'reasoning', text: 'Long plan.', ms: 95000 }], elapsedMs: 120000 },
+      ], { live: true, phase: 'model' });
+    });
+    s = await snapNow();
+    check(s.labels.join('|') === 'Thinking for 1m 35s…', `a remounted live thought keeps its streamed duration: ${s.labels}`);
+
     // —— 2. Ragged chunk boundaries around a tool; gaps; 390px. ——
     const one = 'The retries constant lives in `app/config.py`, a path that keeps going ';
     const two = 'and the tests pin it at 3.';

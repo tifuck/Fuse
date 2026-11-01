@@ -33,8 +33,12 @@ function consoleFreezeThoughtTimes(msg, live) {
       }
     }
     if (liveKey && clock.liveKey !== liveKey) {
+      // Back-date by the thought's streamed ms, so a reload or chat switch
+      // keeps its clock instead of restarting it at this paint.
+      let streamed = 0;
+      for (let k = last.start; k <= last.index; k += 1) streamed += Number(segs[k].ms) || 0;
       clock.liveKey = liveKey;
-      clock.liveStart = elapsed;
+      clock.liveStart = Math.max(0, elapsed - streamed);
     } else if (!liveKey) {
       clock.liveKey = "";
     }
