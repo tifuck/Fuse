@@ -14,7 +14,7 @@ from ..crypto import encrypt
 from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
 from .grok import apply_usage_guard, is_held
-from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
+from .pool_pick import Failover, auth_failure_confirmed, explain_empty, lift_cooldown, note_failure, pick_account, release, reserve
 from . import pool_policy
 from .pool_session import bind, drop_cache_routing_fields, lookup
 from .token_store import log_refresh_failures
@@ -485,6 +485,9 @@ def _store_billing(cred_id: int, parsed: dict, *, error: str = "", region: str |
             accounts.update_extra(cred_id, extra)
         return billing
     clean = {k: v for k, v in parsed.items() if not str(k).startswith("_")}
+    windows = clean.get("windows") or []
+    if windows and all((w.get("percent") or 0) < 100 for w in windows):
+        lift_cooldown(cred_id)
     billing.update(clean)
     billing["fetched_at"] = now
     billing["last_error"] = ""
@@ -655,9 +658,18 @@ class ZaiSource:
         primary_id = pool_policy.primary_account(user_id, "zai")
         failover = Failover()
         why: list = []
+        rechecked = False
         while True:
             picked = self._pick(exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
+                cooling = [c for c, reason in why if reason == "cooling"]
+                if not tried and cooling and not rechecked:
+                    # Ask Z.AI before replaying a kept limit: a reset plan
+                    # lifts its cooldown in _store_billing.
+                    rechecked = True
+                    await asyncio.gather(*(refresh_quota(c, force=True) for c in cooling), return_exceptions=True)
+                    why = []
+                    continue
                 if not tried:
                     last = explain_empty("zai", why)
                 # Parity with grok/chatgpt: the final failed attempt is

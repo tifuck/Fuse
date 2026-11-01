@@ -166,6 +166,14 @@ def forget_error(cred_id: int) -> None:
         _bench_errors.pop(int(cred_id), None)
 
 
+def lift_cooldown(cid: int) -> None:
+    """A live usage read shows headroom: the account is back now, whatever
+    reset the error that benched it named (a plan reset early, a wrong stamp)."""
+    with _failure_lock:
+        _cooldown_until.pop(int(cid), None)
+        _bench_errors.pop(int(cid), None)
+
+
 def cooling_down(cid: int) -> bool:
     """Whether a credential row is in a failure cooldown."""
     return _cooling_down(int(cid))

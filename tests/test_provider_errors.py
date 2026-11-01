@@ -252,6 +252,10 @@ def test_benched_pool_replays_the_error_that_benched_it():
         # A success clears the kept error.
         pool_pick.forget_error(7)
         assert _explained("grok", [({"id": 7}, "cooling")])[0] == 503
+        # A live usage read with headroom lifts the bench before its named reset.
+        pool_pick.remember_error(7, 429, raw, {}, pe.classify("grok", 429, raw))
+        pool_pick.lift_cooldown(7)
+        assert not pool_pick.cooling_down(7) and 7 not in pool_pick._bench_errors
     finally:
         pool_pick.reset_health()
 
