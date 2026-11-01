@@ -249,7 +249,7 @@ export function createInput(ctx) {
       btn.disabled = S.sending;
     });
     S.input.disabled = !S.allModels.length;
-    if (S.attachBtn) S.attachBtn.disabled = S.streaming || S.sending || !S.modelId;
+    if (S.attachBtn) S.attachBtn.disabled = S.sending || !S.modelId;
   }
 
     // Mobile wraps the bar onto extra rows; publish its measured height so the
