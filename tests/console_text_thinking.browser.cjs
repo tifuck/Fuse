@@ -206,6 +206,18 @@ function snap() {
     });
     s = await snapNow();
     check(s.labels.join('|') === 'Thinking for 1m 35s…', `a remounted live thought keeps its streamed duration: ${s.labels}`);
+    const thinkLook = await page.evaluate(() => {
+      const li = document.querySelector('.chat-log > article:last-child li.is-console-live-think');
+      const done = document.createElement('li');
+      done.className = 'chat-step is-console-group is-done';
+      done.innerHTML = '<span class="chat-step-label">x</span>';
+      li.parentElement.append(done);
+      const grey = getComputedStyle(done.firstChild).color;
+      done.remove();
+      return { dot: getComputedStyle(li.querySelector(':scope > .chat-step-node'), '::after').content, color: getComputedStyle(li.querySelector('.chat-step-label')).color, grey };
+    });
+    check(thinkLook.dot === 'none', `a live thought line has no running dot: ${thinkLook.dot}`);
+    check(thinkLook.color === thinkLook.grey, `a live thought line is the settled grey: ${thinkLook.color} vs ${thinkLook.grey}`);
 
     // —— 2. Ragged chunk boundaries around a tool; gaps; 390px. ——
     const one = 'The retries constant lives in `app/config.py`, a path that keeps going ';

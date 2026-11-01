@@ -299,6 +299,13 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
   scrollbar-width: thin;
 }
 
+/* A thought is not a call: no running dot, and the settled lines' grey. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-console-live-think > .chat-step-node::after { content: none !important; }
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think .chat-step-label {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover .chat-step-label { color: var(--mist); }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .chat-step-label {
