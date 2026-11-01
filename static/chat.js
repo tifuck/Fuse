@@ -750,15 +750,18 @@ import { createDictation } from './chat/dictation.js';
       agents.showAgent(openAgentEl.getAttribute("data-open-agent"));
       return;
     }
+  });
+
+    // Root-level so automated-event chips open in subagent transcripts too.
+    S.root.addEventListener("click", (event) => {
     const autoToggle = event.target.closest("[data-auto-toggle]");
-    if (autoToggle) {
-      event.preventDefault();
-      const turn = autoToggle.closest(".chat-turn.is-auto");
-      if (!turn) return;
-      const open = !turn.classList.contains("is-open");
-      turn.classList.toggle("is-open", open);
-      autoToggle.setAttribute("aria-expanded", String(open));
-    }
+    if (!autoToggle) return;
+    event.preventDefault();
+    const turn = autoToggle.closest(".chat-turn.is-auto");
+    if (!turn) return;
+    const open = !turn.classList.contains("is-open");
+    turn.classList.toggle("is-open", open);
+    autoToggle.setAttribute("aria-expanded", String(open));
   });
 
     // Fuse Desktop's WebContentsView has no OS link menu, and a shipped binary

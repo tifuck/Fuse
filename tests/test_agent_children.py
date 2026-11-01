@@ -348,6 +348,31 @@ class AgentChildrenTest(AgentCapsBase):
         self.assertEqual([tool["id"] for tool in tail["tools"]], ["c2"])
         self.assertEqual(chat_views._utf16_mark({"content": "😀ab", "segments": []}, {"content": 2})["content"], 3)
 
+    def test_child_display_hides_server_notes_but_keeps_results(self):
+        from app import chat_recovery, chat_views
+        from app.chat_generation import inbox, policy
+
+        view = {
+            "id": "r",
+            "status": "completed",
+            "message": {"content": "done", "tools": []},
+            "request": {"model": "t"},
+            "provider_messages": [
+                {"role": "user", "content": "inspect"},
+                {"role": "assistant", "content": "looking"},
+                {"role": "user", "content": chat_recovery._resume_note("r", 1)},
+                {"role": "user", "content": policy._RESUME_NOTE},
+                {"role": "user", "content": inbox.results_message(['<command_result id="j1">ok</command_result>'])["content"]},
+                {"role": "assistant", "content": "done"},
+            ],
+        }
+        hist, _ = chat_views._child_display(view, include_current=True)
+        users = [item for item in hist if item["role"] == "user"]
+        self.assertEqual([u["content"] for u in users][0], "inspect")
+        self.assertEqual(len(users), 2)
+        self.assertTrue(users[1]["auto"])
+        self.assertIn('<command_result id="j1">', users[1]["content"])
+
     def test_followup_display_recovery_and_dedupe(self):
         thread, parent = self._parent()
         child = store.start_child_run(

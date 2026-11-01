@@ -381,6 +381,13 @@ def _child_display(run: dict, *, include_current: bool = False) -> tuple[list[di
                 "noActions": True,
             })
         is_followup = text.lstrip().startswith(FOLLOWUP_FRAME_HEAD)
+        from .chat_generation.inbox import RESULTS_HEAD
+
+        if text.lstrip().startswith("[Fuse]") and not is_followup and not text.lstrip().startswith(RESULTS_HEAD):
+            # Server notes to the model (restart/continue notes, provider-error
+            # retries, wrap-up nudges) are not events; the main thread never
+            # shows them either.
+            continue
         out.append({
             "id": f"agent-hist-{n}",
             "role": "user",
