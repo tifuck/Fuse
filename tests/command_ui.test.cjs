@@ -229,6 +229,23 @@ test('agent snapshots retain activity and replay cancellation without regressing
   assert.equal(c.agentRun.cancel_requested, false);
 });
 
+test('a running child snapshot applies its replay tail before queued socket events', () => {
+  const applied = [];
+  const view = chat.makeAgentView({ traces: REG, sync: { applyProgressPayload: (_msg, payload) => applied.push(payload.n) } });
+  Object.assign(chat.S, { agentRun: null, jobsRows: [], completedJobs: new Map(), agentPendingEvents: [
+    { id: 22, type: 'agent.progress', payload: { run_id: 'child', n: 22 } },
+    { id: 21, type: 'agent.progress', payload: { run_id: 'child', n: 21 } },
+  ] });
+  // The durable row covers 18; 19-21 went by as agent.tick and come with it.
+  view.acceptAgentSnapshot({ id: 'child', event_cursor: 18, status: 'running', message: {}, replay: [
+    { id: 19, type: 'agent.progress', payload: { run_id: 'child', n: 19 } },
+    { id: 20, type: 'agent.progress', payload: { run_id: 'other', n: 0 } },
+    { id: 21, type: 'agent.progress', payload: { run_id: 'child', n: 21 } },
+  ] });
+  assert.deepEqual(applied, [19, 21, 22]);
+  assert.equal(chat.S.agentRun.event_cursor, 22);
+});
+
 test('agent list rejects reads overtaken by lifecycle events and schedules a replacement', async () => {
   const c = world();
   const pending = [];

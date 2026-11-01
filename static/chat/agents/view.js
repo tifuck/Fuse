@@ -295,7 +295,10 @@ export function createView(ctx) {
     if (S.agentRun?.id === run.id && run.event_cursor < (S.agentRun.event_cursor || 0)) return false;
     S.agentRun = run;
     if (S.agentRun.message) S.agentRun.message._activity = run.activity || null;
-    for (const event of S.agentPendingEvents) {
+    // The snapshot's own replay covers patches up to the live cursor; events
+    // queued since the panel opened follow (duplicates fail the cursor check).
+    const events = [...(run.replay || []), ...S.agentPendingEvents].sort((a, b) => a.id - b.id);
+    for (const event of events) {
       if (event.payload?.run_id === run.id && event.id > S.agentRun.event_cursor) {
         sync.applyProgressPayload(S.agentRun.message, event.payload, true);
         if (event.payload.status) S.agentRun.status = event.payload.status;

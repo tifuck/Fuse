@@ -297,6 +297,7 @@ async def chat_run_get(request: Request, run_id: str):
             "thread_id": chats.public_id_for(run["thread_id"]) or run["thread_id"],
             "message_id": run["message_id"],
             "event_cursor": run["event_cursor"],
+            "replay": run.get("replay") or [],
             "status": run["status"],
             "parent_run_id": run.get("parent_run_id"),
             "root_run_id": run.get("root_run_id"),

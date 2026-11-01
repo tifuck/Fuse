@@ -1258,6 +1258,20 @@ def get_run(user_id, run_id):
     return run_view(db.fetchone("SELECT * FROM chat_runs WHERE user_id=? AND id=?", (user_id, run_id)))
 
 
+def _run_replay(conn, user_id, run_id, after, through):
+    """The run's own agent.progress events in (after, through], as the socket sends them."""
+    rows = conn.execute(
+        "SELECT id,payload FROM chat_events WHERE user_id=? AND id>? AND id<=? AND type='agent.progress' AND payload LIKE ? ORDER BY id",
+        (user_id, after, through, f'%"run_id":{json.dumps(str(run_id))}%'),
+    ).fetchall()
+    replay = []
+    for row in rows:
+        payload = json.loads(row["payload"])
+        if payload.get("run_id") == run_id:
+            replay.append({"id": int(row["id"]), "type": "agent.progress", "payload": payload})
+    return replay
+
+
 def get_run_snapshot(user_id, run_id):
     """Message, execution projections, and replay watermark from one snapshot."""
     from . import chat_checkpoint
@@ -1275,6 +1289,11 @@ def get_run_snapshot(user_id, run_id):
             # panel replays the gap instead of skipping it.
             stamped = _durable_cursor(run_id, stamps)
             if stamped is not None and stamped < run["event_cursor"]:
+                if run["parent_run_id"]:
+                    # A child's patches past the stamp reached a socket not
+                    # viewing it as agent.tick, so it cannot replay them:
+                    # they travel with the snapshot.
+                    run["replay"] = _run_replay(conn, user_id, run_id, stamped, run["event_cursor"])
                 run["event_cursor"] = stamped
         settle_spawn_traces(conn, user_id, [run["message"]])
         settle_command_traces(conn, user_id, run["thread_id"], [run["message"]])

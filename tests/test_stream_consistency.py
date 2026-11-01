@@ -106,6 +106,23 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual(len(after['message']['tools']), 5)
         self.assertGreater(after['event_cursor'], before['event_cursor'])
 
+    def test_child_snapshot_carries_the_patches_its_durable_row_lags(self):
+        run = self.run_fixture()
+        child = store.start_child_run(user_id=self.uid, thread_id=run['thread_id'], parent_run_id=run['id'], prompt='Inspect', description='Inspect', subagent_type='general-purpose', depth=0)
+        sibling = store.start_child_run(user_id=self.uid, thread_id=run['thread_id'], parent_run_id=run['id'], prompt='Other', description='Other', subagent_type='general-purpose', depth=0)
+        patch = lambda at, text: [{'fuse': {'event': 'message.patch', 'content': {'from': at, 'text': text}, 'reasoning': {'from': 0, 'text': ''}}}]
+        store.checkpoint(child['id'], {'content': 'a'})
+        store.checkpoint(sibling['id'], {'content': 'x'})
+        # Throttled token flushes: published, but the durable row stays at 'a'.
+        store.checkpoint(child['id'], {'content': 'ab'}, patch(1, 'b'), durable=False)
+        store.checkpoint(sibling['id'], {'content': 'xy'}, patch(1, 'y'), durable=False)
+        store.checkpoint(child['id'], {'content': 'abc'}, patch(2, 'c'), durable=False)
+        snap = store.get_run_snapshot(self.uid, child['id'])
+        self.assertEqual(snap['message']['content'], 'a')
+        self.assertEqual([e['payload']['events'][0]['fuse']['content']['text'] for e in snap['replay']], ['b', 'c'])
+        self.assertTrue(all(e['id'] > snap['event_cursor'] and e['payload']['run_id'] == child['id'] for e in snap['replay']))
+        self.assertEqual(snap['replay'][-1]['id'], max(e['id'] for e in store.events_after(self.uid, 0) if e['type'] == 'agent.progress' and e['payload'].get('run_id') == child['id']))
+
     def test_stream_flush_retains_new_events_and_drains_on_cancel(self):
         async def scenario(cancel):
             run = self.run_fixture()
