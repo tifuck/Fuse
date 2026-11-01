@@ -30,6 +30,7 @@ from .sources import (
     user_has_claude,
     user_has_cursor,
     user_has_nanogpt,
+    user_has_refuseless,
     user_has_zai,
 )
 from .sources import pool_pick
@@ -462,6 +463,7 @@ async def list_models(request: Request):
         allow_claude=user_has_claude(user["id"]),
         allow_cursor=user_has_cursor(user["id"]),
         allow_nanogpt=user_has_nanogpt(user["id"]),
+        allow_refuseless=user_has_refuseless(user["id"]),
         user_id=user["id"],
     )
     if not names and catalog_unavailable_for(""):
@@ -572,9 +574,11 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     claude_ok = user_has_claude(user["id"])
     cursor_ok = user_has_cursor(user["id"])
     nanogpt_ok = user_has_nanogpt(user["id"])
+    refuseless_ok = user_has_refuseless(user["id"])
     access = {
         "grok": grok_ok, "chatgpt": chatgpt_ok, "zai": zai_ok, "devin": devin_ok, "kimi": kimi_ok,
         "mimo": mimo_ok, "claude": claude_ok, "cursor": cursor_ok, "nanogpt": nanogpt_ok,
+        "refuseless": refuseless_ok,
     }
     if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
         raise HTTPException(403, "Connect an Experiential Labs API key to use its models")
@@ -590,6 +594,7 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
             allow_claude=claude_ok,
             allow_cursor=cursor_ok,
             allow_nanogpt=nanogpt_ok,
+            allow_refuseless=refuseless_ok,
             user_id=user["id"],
         )
     except explabs_mod.CatalogError:

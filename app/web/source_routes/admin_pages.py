@@ -17,6 +17,7 @@ from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
 from ...sources import nanogpt as nanogpt_mod
+from ...sources import refuseless as refuseless_mod
 from ...sources import zai as zai_mod
 from ...sources import ollama_access
 from ...sources.grok import ensure_grok_source
@@ -188,6 +189,7 @@ def _admin_pools_ctx(notice: str | None = None) -> dict:
         "claude": claude_mod.ensure_claude_source,
         "cursor": cursor_mod.ensure_cursor_source,
         "nanogpt": nanogpt_mod.ensure_nanogpt_source,
+        "refuseless": refuseless_mod.ensure_refuseless_source,
     }
     counts = {}
     for kind in pool_policy.POOL_KINDS:

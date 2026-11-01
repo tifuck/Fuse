@@ -159,6 +159,8 @@ async def probe_source(source_id: int) -> dict:
         checks = await _probe_devin(src)
     elif src.type_id == "nanogpt":
         checks = await _probe_nanogpt(src)
+    elif src.type_id == "refuseless":
+        checks = await _probe_refuseless(src)
     elif src.type_id == "explabs":
         checks = [_check("Personal keys", True, "Validated when each user connects a key; no shared-key or completion probe.", skip=True)]
     elif src.type_id == "openrouter":
@@ -636,6 +638,39 @@ async def _probe_nanogpt(src) -> list[dict]:
     catalog = await nanogpt.fetch_catalog(force=True)
     names = list(catalog["by_id"])
     checks.append(_check("Catalog", bool(names), _summary(names) if names else "Could not read the catalog"))
+    checks.append(skipped)
+    return checks
+
+
+async def _probe_refuseless(src) -> list[dict]:
+    """Credits and catalog only. Never send a Refuseless completion: it bills."""
+    from . import refuseless
+
+    skipped = _check("Chat", True, "Skipped — Fuse does not send Refuseless completions as a probe.", skip=True)
+    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (src.source_id,))
+    if not creds:
+        checks = [_check("Keys", True, "None linked yet; the catalog needs a key", skip=True), skipped]
+        return checks
+    authed = funded = 0
+    for cred in creds:
+        try:
+            await refuseless.refresh_usage(cred, force=True)
+        except Exception:
+            pass
+        row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
+        if not row:
+            continue
+        extra = accounts.cred_extra(row)
+        authed += refuseless.credential_is_authed(row, extra)
+        funded += not refuseless.out_of_credits(extra)
+    checks = [
+        _check("Keys", True, f"{len(creds)} linked"),
+        _check("Auth", authed > 0, f"{authed} of {len(creds)} still valid" if authed else "No live key"),
+        _check("Credits", funded > 0, f"{funded} with credits" if funded else "Every key is out of credits"),
+    ]
+    catalog = await refuseless.fetch_catalog(force=True)
+    names = list(catalog["by_id"])
+    checks.append(_check("Catalog", refuseless.catalog_available(), _summary(names) if names else "No models listed"))
     checks.append(skipped)
     return checks
 

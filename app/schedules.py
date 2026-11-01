@@ -815,6 +815,7 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
         from .sources.claude import user_has_claude
         from .sources.cursor import user_has_cursor
         from .sources.nanogpt import user_has_nanogpt
+        from .sources.refuseless import user_has_refuseless
         from .sources.zai import user_has_zai
 
         if schedule["fresh_each_fire"] == 0 and schedule.get("thread_id"):
@@ -868,6 +869,7 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
             allow_claude=user_has_claude(user_id),
             allow_cursor=user_has_cursor(user_id),
             allow_nanogpt=user_has_nanogpt(user_id),
+            allow_refuseless=user_has_refuseless(user_id),
             user_id=user_id,
         )
         if chosen is None:

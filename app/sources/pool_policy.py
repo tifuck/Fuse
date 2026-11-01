@@ -1,4 +1,4 @@
-"""Admin and per-user policy for donated Grok, ChatGPT, Z.AI, Devin, Kimi, Xiaomi, Claude, Cursor and NanoGPT pools.
+"""Admin and per-user policy for donated Grok, ChatGPT, Z.AI, Devin, Kimi, Xiaomi, Claude, Cursor, NanoGPT and Refuseless pools.
 
 Two admin switches per pool, stored on sources.config:
 
@@ -13,7 +13,8 @@ Two settings per user and pool, stored on users.pool_prefs, while the admin
 has sharing on:
 
 * share: who else may be routed onto this user's accounts.
-  - "everyone": anyone with access to the pool (the default).
+  - "everyone": anyone with access to the pool (the default, except in
+    pay-as-you-go pools listed in DEFAULT_SHARE).
   - "contributors": only users who share a live account in this pool too.
   - "private": nobody. A private donor also uses only their own accounts,
     so keeping accounts back never buys a seat on everyone else's.
@@ -43,7 +44,7 @@ import time
 from .. import accounts, db
 from ..crypto import DecryptionError
 
-POOL_KINDS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt")
+POOL_KINDS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless")
 POOL_KIND_SET = frozenset(POOL_KINDS)
 POOL_LABELS = {
     "grok": "x.ai",
@@ -55,11 +56,15 @@ POOL_LABELS = {
     "claude": "Claude",
     "cursor": "Cursor",
     "nanogpt": "NanoGPT",
+    "refuseless": "Refuseless",
 }
 
 SHARE_LEVELS = ("everyone", "contributors", "private")
 USE_MODES = ("pool", "mine")
 DEFAULT_PREF = {"share": "everyone", "use": "pool"}
+# Pools whose keys bill their owner per token start private: nobody else is
+# routed onto them until the owner turns Sharing on.
+DEFAULT_SHARE = {"refuseless": "private"}
 
 
 def _source_cfg(kind: str) -> dict:
@@ -109,6 +114,10 @@ def source_id(kind: str) -> int:
         from .nanogpt import ensure_nanogpt_source
 
         return ensure_nanogpt_source()
+    if kind == "refuseless":
+        from .refuseless import ensure_refuseless_source
+
+        return ensure_refuseless_source()
     raise ValueError(f"unknown pool kind {kind!r}")
 
 
@@ -150,6 +159,10 @@ def own_access(kind: str, user_id: int) -> dict:
         from .nanogpt import nanogpt_own_access
 
         return nanogpt_own_access(user_id)
+    if kind == "refuseless":
+        from .refuseless import refuseless_own_access
+
+        return refuseless_own_access(user_id)
     raise ValueError(f"unknown pool kind {kind!r}")
 
 
@@ -230,12 +243,12 @@ def user_prefs(user_id: int) -> dict:
         return {}
 
 
-def _normalize(item) -> dict:
+def _normalize(item, kind: str = "") -> dict:
     item = item if isinstance(item, dict) else {}
     legacy_private = item.get("own_only") is True
     share = item.get("share")
     if share not in SHARE_LEVELS:
-        share = "private" if legacy_private else DEFAULT_PREF["share"]
+        share = "private" if legacy_private else DEFAULT_SHARE.get(kind, DEFAULT_PREF["share"])
     use = item.get("use")
     if use not in USE_MODES:
         use = "mine" if legacy_private else DEFAULT_PREF["use"]
@@ -246,7 +259,7 @@ def user_pref(user_id: int, kind: str) -> dict:
     """What the user saved for this pool, before the admin switch applies."""
     if kind not in POOL_KIND_SET:
         return dict(DEFAULT_PREF)
-    return _normalize(user_prefs(user_id).get(kind))
+    return _normalize(user_prefs(user_id).get(kind), kind)
 
 
 def effective_pref(user_id: int, kind: str) -> dict:
@@ -270,7 +283,7 @@ def set_user_pref(user_id: int, kind: str, *, share: str | None = None, use: str
         row = conn.execute("SELECT pool_prefs FROM users WHERE id=? FOR UPDATE", (uid,)).fetchone()
         prefs = _parse_prefs(row["pool_prefs"] if row else None)
         old = prefs.get(kind)
-        pref = _normalize(old)
+        pref = _normalize(old, kind)
         if share is not None:
             pref["share"] = share
         if use is not None:
@@ -453,7 +466,7 @@ def _share_levels(kind: str) -> dict[int, str]:
             uid = int(row["id"])
         except (KeyError, IndexError, TypeError, ValueError):
             continue
-        share = _normalize(data.get(kind))["share"]
+        share = _normalize(data.get(kind), kind)["share"]
         if share != "everyone":
             out[uid] = share
     _share_cache[kind] = (now, out)

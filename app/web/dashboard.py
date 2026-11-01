@@ -20,6 +20,7 @@ from ..sources import mimo as mimo_mod
 from ..sources import claude as claude_mod
 from ..sources import cursor as cursor_mod
 from ..sources import nanogpt as nanogpt_mod
+from ..sources import refuseless as refuseless_mod
 from ..sources import zai as zai_mod
 from ..sources.grok import grok_access_state
 from .deps import (
@@ -314,6 +315,7 @@ async def api_docs(request: Request):
     claude_access = claude_mod.claude_access_state(user["id"])
     cursor_access = cursor_mod.cursor_access_state(user["id"])
     nanogpt_access = nanogpt_mod.nanogpt_access_state(user["id"])
+    refuseless_access = refuseless_mod.refuseless_access_state(user["id"])
     groups = await models_by_source(
         allow_grok=access["ok"],
         allow_chatgpt=chatgpt_access["ok"],
@@ -324,6 +326,7 @@ async def api_docs(request: Request):
         allow_claude=claude_access["ok"],
         allow_cursor=cursor_access["ok"],
         allow_nanogpt=nanogpt_access["ok"],
+        allow_refuseless=refuseless_access["ok"],
         user_id=user["id"],
     )
     groups = [group for group in groups if group.get("models")]

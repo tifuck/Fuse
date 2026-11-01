@@ -14,6 +14,7 @@ from .sources import mimo as mimo_mod
 from .sources import claude as claude_mod
 from .sources import cursor as cursor_mod
 from .sources import nanogpt as nanogpt_mod
+from .sources import refuseless as refuseless_mod
 from .sources import zai as zai_mod
 from .sources.pool_pick import (
     CHATGPT_FREE_PLANS,
@@ -1174,6 +1175,47 @@ def nanogpt_pool_meter(rows, *, owner_id: int | None = None) -> dict:
         percents.append(pct)
         plans.append("Subscription")
     return _finish_pool_meter(percents, plans, unread)
+
+
+def refuseless_pool_meter(rows, *, owner_id: int | None = None) -> dict:
+    """Pay-as-you-go: the credits left on the caller's own keys (another
+    user's balance is theirs), and how many shared keys back them up."""
+    total = None
+    mine = unread = shared = 0
+    for row in rows:
+        if row["disabled"]:
+            continue
+        extra = accounts.cred_extra(row)
+        if not refuseless_mod.credential_is_authed(row, extra):
+            continue
+        if owner_id is None or row["donated_by"] != owner_id:
+            shared += 1
+            continue
+        mine += 1
+        billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
+        available = _as_float(billing.get("available"))
+        if available is None:
+            unread += 1
+            continue
+        total = (total or 0.0) + max(available, 0.0)
+    if not mine:
+        return _empty_pool_meter(f"{shared} shared key{'s' if shared != 1 else ''}" if shared else "No keys")
+    if total is None:
+        return _empty_pool_meter("No reading yet")
+    count = f"{mine} key{'s' if mine != 1 else ''}"
+    if shared:
+        count += f" · {shared} shared"
+    if unread:
+        count += f" · {unread} no reading"
+    return {
+        "available": True,
+        "percent": None,
+        "percent_label": format_usd_cents(int(round(total * 100))),
+        "meter": 0 if total > 0 else 100,
+        "n": mine,
+        "busy": 0 if total > 0 else mine,
+        "count_label": count,
+    }
 
 
 def mimo_pool_meter(rows, *, owner_id: int | None = None) -> dict:

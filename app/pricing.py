@@ -22,6 +22,7 @@ MIMO_PROVIDER = "mimo"
 CLAUDE_PROVIDER = "claude"
 CURSOR_PROVIDER = "cursor"
 NANOGPT_PROVIDER = "nanogpt"
+REFUSELESS_PROVIDER = "refuseless"
 
 # OpenAI list prices (USD per million tokens) for the ChatGPT pool models:
 # model -> (input, cached_input, cache_write, output). GPT-5.6 charges cache
@@ -366,7 +367,7 @@ AUTO_ORIGIN = "auto"
 AUTO_PRICE_INTERVAL = 1800.0
 _AUTO_PROVIDERS = (
     CHATGPT_PROVIDER, GROK_PROVIDER, ZAI_PROVIDER, DEVIN_PROVIDER,
-    KIMI_PROVIDER, MIMO_PROVIDER, CLAUDE_PROVIDER, CURSOR_PROVIDER, NANOGPT_PROVIDER,
+    KIMI_PROVIDER, MIMO_PROVIDER, CLAUDE_PROVIDER, CURSOR_PROVIDER, NANOGPT_PROVIDER, REFUSELESS_PROVIDER,
 )
 # Effort, speed and region tails appended to one priced model id. They are a
 # service tier on ChatGPT/Devin/Cursor ids only (gpt-5.6-sol-fast, gpt-5-6-sol-low,
@@ -513,6 +514,12 @@ def _pick_reference(index: dict, provider: str, model: str) -> dict | None:
         # Its catalog prices every id it serves; a same-named pool price is
         # not NanoGPT's.
         return _nanogpt_values(model)
+    if provider == REFUSELESS_PROVIDER:
+        # Its own lineup and its own prices: never a same-named pool's.
+        from .sources import refuseless
+
+        values = _catalog_values(refuseless.catalog_record(model) or {})
+        return {**values, "openrouter_id": None} if values else None
     for key in price_keys(model, tiered=provider in _TIER_TAIL_PROVIDERS):
         refs = index.get(key)
         if not refs:
@@ -572,6 +579,9 @@ def _listed_pool_models() -> set[tuple[str, str]]:
     cache = claude_catalog._models_cache
     # The Claude pool records the upstream slug, not the claude/ Fuse id.
     out.update((CLAUDE_PROVIDER, claude.upstream_id(mid)) for mid in (cache[1] if cache else []))
+    from .sources import refuseless
+
+    out.update((REFUSELESS_PROVIDER, mid) for mid in ((refuseless.cached_catalog() or {}).get("by_id") or {}))
     cache = cursor._models_cache
     # The Cursor pool records the base model with its tier tails (resolve's slug).
     out.update((CURSOR_PROVIDER, cursor.resolve(mid, None)["slug"]) for mid in (cache[1] if cache else []))

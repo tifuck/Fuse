@@ -17,6 +17,7 @@ from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
 from ...sources import nanogpt as nanogpt_mod
+from ...sources import refuseless as refuseless_mod
 from ...sources import zai as zai_mod
 from ...sources.grok import ensure_grok_source, grok_access_state, is_held
 from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_usage_percent, grok_usage_percent
@@ -428,6 +429,37 @@ def user_sources(request: Request):
     nanogpt_pending = _nanogpt_pending_for(user["id"])
     nanogpt_owner = nanogpt_mod.nanogpt_own_access(user["id"])["ok"]
 
+    refuseless_sid = refuseless_mod.ensure_refuseless_source()
+    refuseless_rows = db.fetchall(
+        "SELECT * FROM credentials WHERE source_id=? AND disabled=0 ORDER BY id",
+        (refuseless_sid,),
+    )
+    refuseless_access = refuseless_mod.refuseless_access_state(user["id"])
+    refuseless_ui, refuseless_ids, refuseless_routable = _pool_scope(
+        user, "refuseless", refuseless_rows, refuseless_access["ok"]
+    )
+    refuseless_visible = []
+    for a in refuseless_rows:
+        if not _pool_account_visible(user, a, refuseless_ids):
+            continue
+        extra = accounts.cred_extra(a)
+        billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
+        card = _pool_card(user, a, kind="Refuseless", index=len(refuseless_visible) + 1, extra=extra)
+        _pool_card_scope(card, "refuseless", a, user, refuseless_ids)
+        # A key's balance is its owner's business.
+        shown = billing if card["show_billing"] else {k: v for k, v in billing.items() if k != "prepaid_cents"}
+        card.update(
+            {
+                "billing": stats.billing_view(shown),
+                "authed": refuseless_mod.credential_is_authed(a, extra),
+                "subscribed": not refuseless_mod.out_of_credits(extra),
+            }
+        )
+        refuseless_visible.append(card)
+    _sort_mine_first(refuseless_visible)
+    refuseless_pool = stats.refuseless_pool_meter(refuseless_routable, owner_id=user["id"])
+    _fuse_fill(refuseless_visible)
+
     openrouter_sid = openrouter_mod.ensure_openrouter_source()
     or_access = openrouter_mod.openrouter_access_state(user["id"])
     or_owned = openrouter_mod.user_credential(user["id"], openrouter_sid)
@@ -573,6 +605,14 @@ def user_sources(request: Request):
         nanogpt_prefs=nanogpt_mod.model_prefs(user["id"]),
         nanogpt_flash_kind=flash[0] if flash and flash[2] == "nanogpt" else "",
         nanogpt_flash_msg=flash[1] if flash and flash[2] == "nanogpt" else "",
+        refuseless_ui=refuseless_ui,
+        refuseless_accounts=refuseless_visible,
+        refuseless_ok=refuseless_access["ok"],
+        refuseless_reason=refuseless_access["reason"],
+        refuseless_pool=refuseless_pool,
+        refuseless_models=len((refuseless_mod.cached_catalog() or {}).get("by_id") or {}),
+        refuseless_flash_kind=flash[0] if flash and flash[2] == "refuseless" else "",
+        refuseless_flash_msg=flash[1] if flash and flash[2] == "refuseless" else "",
         zai_flash=flash,
         pool_flash_kind=flash[0] if flash and flash[2] == "pool" else "",
         pool_flash_msg=flash[1] if flash and flash[2] == "pool" else "",

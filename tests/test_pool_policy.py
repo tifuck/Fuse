@@ -67,8 +67,10 @@ class PoolPolicyTest(unittest.TestCase):
             policy = pool_policy.admin_policy(kind)
             self.assertTrue(policy["pool_shared"], kind)
             self.assertFalse(policy["open_access"], kind)
-            self.assertTrue(pool_policy.uses_shared_pool(self.alice["id"], kind), kind)
-            self.assertEqual(pool_policy.user_pref(self.alice["id"], kind), {"share": "everyone", "use": "pool"}, kind)
+            # Pay-as-you-go pools (Refuseless) start private; the rest share.
+            share = pool_policy.DEFAULT_SHARE.get(kind, "everyone")
+            self.assertEqual(pool_policy.uses_shared_pool(self.alice["id"], kind), share != "private", kind)
+            self.assertEqual(pool_policy.user_pref(self.alice["id"], kind), {"share": share, "use": "pool"}, kind)
 
     def test_admin_off_forces_own_keys_and_locks_override(self):
         pool_policy.set_admin_policy("grok", pool_shared=False, open_access=False)

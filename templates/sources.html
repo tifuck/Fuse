@@ -537,6 +537,22 @@
       </article>
       {% endif %}
     </section>
+
+    <section class="pool stack-y" id="pool-refuseless">
+      {% call pool_head(refuseless_ui, 'Refuseless', 'refuseless', pool_state(refuseless_ok, refuseless_reason, refuseless_ui, 'needs your Refuseless API key'), [('Your credits', refuseless_pool)]) %}{{ add_button('refuseless-add-dialog', 'Add key', False) }}{% endcall %}
+      <p class="sources-note">Pay as you go: every request bills the key it runs on. Your keys stay yours alone until you turn on <b>Sharing</b>; then other users who share Refuseless keys may fall back to yours, and you to theirs.</p>
+      {% if refuseless_reason == 'unauthed' %}
+      <p class="callout fault">Refuseless no longer accepts the key you linked. Remove it and link a new one.</p>
+      {% endif %}
+      {% if refuseless_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ refuseless_flash_msg }}</p>
+      {% endif %}
+      {{ table_bar(refuseless_accounts) }}
+      {{ source_table(refuseless_accounts, 'Refuseless', '/sources/refuseless', 'Remove this Refuseless key from Fuse? It stays valid on Refuseless until you revoke it there.', 'Link your Refuseless API key to use its models. Fuse checks it against your credit balance, never with a paid request.', refuseless_ui) }}
+      {% if refuseless_ok %}
+      <p class="usage-sub">{{ refuseless_models }} model{{ 's' if refuseless_models != 1 else '' }} in the live lineup, shown as <code>refuseless/…</code> · <a href="/models">Models</a></p>
+      {% endif %}
+    </section>
   </div>
 
   <div data-tab-panel="openrouter" class="stack-y{% if not openrouter_flash_msg %} hidden{% endif %}">
@@ -1112,5 +1128,32 @@
 {{ pool_share_dialog(mimo_ui, mimo_accounts) }}
 {{ pool_share_dialog(claude_ui, claude_accounts) }}
 {{ pool_share_dialog(cursor_ui, cursor_accounts) }}
+<dialog class="modal" id="refuseless-add-dialog" aria-labelledby="refuseless-add-title"{% if refuseless_flash_kind == 'err' %} data-auto-open{% endif %}>
+  <div class="modal-shell">
+    <header class="modal-head">
+      <div>
+        <p class="metric-label">Refuseless · API key</p>
+        <h2 id="refuseless-add-title">Link your Refuseless key</h2>
+      </div>
+      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close Refuseless key dialog">Close</button>
+    </header>
+    <p class="aside">Requests bill this key's credits. Fuse validates it with the free credits check, not a completion. The key stays private to you unless you turn on Sharing for Refuseless.</p>
+    {% if refuseless_flash_kind == 'err' %}
+    <p class="callout fault" role="alert">{{ refuseless_flash_msg }}</p>
+    {% endif %}
+    <form method="post" action="/sources/refuseless/add" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>API key
+        <input name="api_key" type="password" autocomplete="off" required autofocus maxlength="512" placeholder="abl_…">
+      </label>
+      <label>Label (optional)
+        <input name="label" maxlength="80" placeholder="Refuseless key">
+      </label>
+      <button type="submit" class="btn">Link key</button>
+    </form>
+  </div>
+</dialog>
+
 {{ pool_share_dialog(nanogpt_ui, nanogpt_accounts) }}
+{{ pool_share_dialog(refuseless_ui, refuseless_accounts) }}
 {% endblock %}

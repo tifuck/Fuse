@@ -126,6 +126,8 @@ def _model_type_guess(model: str) -> str | None:
         return "explabs"
     if mid.startswith("nanogpt/"):
         return "nanogpt"
+    if mid.startswith("refuseless/"):
+        return "refuseless"
     if mid.startswith("openrouter/"):
         return "openrouter"
     if mid.startswith("devin/"):

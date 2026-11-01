@@ -19,6 +19,7 @@ from ..sources import claude as claude_mod
 from ..sources import claude_catalog as claude_catalog_mod
 from ..sources import cursor as cursor_mod
 from ..sources import nanogpt as nanogpt_mod
+from ..sources import refuseless as refuseless_mod
 from ..sources import zai as zai_mod
 from ..sources.grok import grok_access_state
 from ..sources import pool_policy
@@ -37,6 +38,8 @@ def _reasoning_default(type_id: str, model: str | None = None, user_id: int | No
         return claude_mod.default_effort(model)
     if type_id == "cursor":
         return cursor_mod.default_effort(model)
+    if type_id == "refuseless" and refuseless_mod.default_effort(model):
+        return refuseless_mod.default_effort(model)
     if type_id == "chatgpt" and chatgpt_catalog_mod.default_effort(model):
         return chatgpt_catalog_mod.default_effort(model)
     efforts = _reasoning_efforts(type_id, model, user_id)
@@ -68,6 +71,7 @@ _FAMILY_TITLES = {
     "claude": "Claude",
     "cursor": "Cursor",
     "nanogpt": "NanoGPT",
+    "refuseless": "Refuseless",
     "llama": "Local inference",
     "ollama": "Ollama Cloud",
     "openrouter": "OpenRouter",
@@ -119,6 +123,10 @@ _LOCK_COPY = {
     "nanogpt": {
         "none": "Sign in with NanoGPT to use its models.",
         "unauthed": "The linked NanoGPT key is no longer valid. Sign in with NanoGPT again.",
+    },
+    "refuseless": {
+        "none": "Link your Refuseless API key to use its models.",
+        "unauthed": "The linked Refuseless key is no longer valid. Link a new key.",
     },
 }
 
@@ -303,6 +311,10 @@ def _model_display_name(model: str, type_id: str, openrouter_catalog: dict | Non
         upstream = nanogpt_mod.upstream_id(model)
         name = (nanogpt_mod.catalog_record(upstream) or {}).get("name")
         return _standardize_display_name(str(name)) if name else _humanize_model_id(upstream.split("/")[-1])
+    if type_id == "refuseless":
+        upstream = refuseless_mod.upstream_id(model)
+        name = (refuseless_mod.catalog_record(upstream) or {}).get("name")
+        return _standardize_display_name(str(name)) if name and name != upstream else _humanize_model_id(upstream)
     if type_id == "explabs":
         upstream = explabs_mod.upstream_id(model)
         record = (openrouter_catalog or {}).get("by_id", {}).get(upstream) or {}
@@ -353,6 +365,7 @@ def _model_rows(type_id: str, names: list[str], catalog: dict | None = None) -> 
             "display_id": (
                 explabs_mod.upstream_id(name) if type_id == "explabs"
                 else nanogpt_mod.upstream_id(name) if type_id == "nanogpt"
+                else refuseless_mod.upstream_id(name) if type_id == "refuseless"
                 else openrouter_mod.upstream_id(name) if type_id == "openrouter" else name
             ),
             "name": _model_display_name(name, type_id, catalog),
@@ -371,6 +384,9 @@ def _pool_catalog(type_id: str) -> list[str]:
         # Locked preview: a handful of subscription models.
         by_id = (nanogpt_mod.cached_catalog() or {}).get("by_id") or {}
         return [nanogpt_mod.public_id(mid) for mid, rec in by_id.items() if rec["subscription"]][:24]
+    if type_id == "refuseless":
+        by_id = (refuseless_mod.cached_catalog() or {}).get("by_id") or {}
+        return [refuseless_mod.public_id(mid) for mid in by_id][:24]
     cache = {
         "grok": grok_mod._models_cache,
         "chatgpt": chatgpt_catalog_mod._models_cache,
@@ -399,6 +415,8 @@ def _family_catalog(type_id: str, openrouter_catalog: dict | None, explabs_catal
         return explabs_catalog
     if type_id == "nanogpt":
         return nanogpt_mod.cached_catalog()
+    if type_id == "refuseless":
+        return refuseless_mod.cached_catalog()
     return openrouter_catalog
 
 
@@ -418,8 +436,9 @@ async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
     claude = claude_mod.claude_access_state(user["id"])
     cursor = cursor_mod.cursor_access_state(user["id"])
     nanogpt = nanogpt_mod.nanogpt_access_state(user["id"])
+    refuseless = refuseless_mod.refuseless_access_state(user["id"])
     or_state = openrouter_mod.openrouter_access_state(user["id"])
-    access = {"grok": grok, "chatgpt": chatgpt, "zai": zai, "devin": devin, "kimi": kimi, "mimo": mimo, "claude": claude, "cursor": cursor, "nanogpt": nanogpt}
+    access = {"grok": grok, "chatgpt": chatgpt, "zai": zai, "devin": devin, "kimi": kimi, "mimo": mimo, "claude": claude, "cursor": cursor, "nanogpt": nanogpt, "refuseless": refuseless}
     groups = await models_by_source(
         allow_grok=grok["ok"],
         allow_chatgpt=chatgpt["ok"],
@@ -430,6 +449,7 @@ async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
         allow_claude=claude["ok"],
         allow_cursor=cursor["ok"],
         allow_nanogpt=nanogpt["ok"],
+        allow_refuseless=refuseless["ok"],
         user_id=user["id"],
     )
     catalog = openrouter_mod.cached_catalog()
@@ -454,7 +474,7 @@ async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
         )
     have = {g["type"] for g in available}
     locked: list[dict] = []
-    for type_id in ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt"):
+    for type_id in ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless"):
         state = access[type_id]
         if state["ok"] or type_id in have:
             continue

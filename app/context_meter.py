@@ -69,6 +69,7 @@ TYPE_WINDOWS = {
     "claude": 1_000_000,
     "cursor": 200_000,
     "nanogpt": 128_000,
+    "refuseless": 128_000,
     "openrouter": 128_000,
     "explabs": 128_000,
     "openai": 128_000,
@@ -213,6 +214,8 @@ def type_id_for_model(model: str) -> str | None:
         return "explabs"
     if mid.startswith("nanogpt/"):
         return "nanogpt"
+    if mid.startswith("refuseless/"):
+        return "refuseless"
     if mid.startswith("openrouter/"):
         return "openrouter"
     if mid.startswith("devin/"):
@@ -270,6 +273,10 @@ def window_for(
         from .sources.nanogpt import cached_catalog as nanogpt_catalog
 
         catalog = nanogpt_catalog()
+    if catalog is None and kind == "refuseless":
+        from .sources.refuseless import cached_catalog as refuseless_catalog
+
+        catalog = refuseless_catalog()
     if catalog:
         rec = _catalog_record(mid, catalog)
         if rec:
@@ -339,7 +346,7 @@ def window_for(
             got = _positive_int((rec or {}).get("context_length"))
             if got:
                 return _clamp_window(got, cfg.default_window)
-    if kind in ("explabs", "nanogpt"):
+    if kind in ("explabs", "nanogpt", "refuseless"):
         # Never inherit a pool's window from the prefix heuristics below (an
         # explabs model named glm-… or grok-… is not that pool's model); the
         # remembered catalog window above already carried the real value.
@@ -359,7 +366,7 @@ def _catalog_record(model: str, catalog: dict) -> dict | None:
     mid = (model or "").strip()
     if mid in by_id and isinstance(by_id[mid], dict):
         return by_id[mid]
-    for prefix in ("openrouter/", "explabs/", "nanogpt/"):
+    for prefix in ("openrouter/", "explabs/", "nanogpt/", "refuseless/"):
         if mid.startswith(prefix) and mid[len(prefix):] in by_id:
             rec = by_id[mid[len(prefix):]]
             return rec if isinstance(rec, dict) else None

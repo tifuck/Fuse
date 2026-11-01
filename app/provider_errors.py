@@ -43,6 +43,7 @@ _LABELS = {
     "claude": "Claude", "chatgpt": "ChatGPT", "grok": "Grok", "zai": "Z.AI", "devin": "Devin",
     "kimi": "Kimi", "cursor": "Cursor", "ollama": "Ollama Cloud", "openrouter": "OpenRouter",
     "nanogpt": "NanoGPT", "mimo": "MiMo", "llama": "llama.cpp", "explabs": "Experiential Labs",
+    "refuseless": "Refuseless",
 }
 
 # Message headlines. The chat UI keys its card off these exact phrases
@@ -145,6 +146,15 @@ _CODES = {
     "all_routes_failed": "server_error",
     "backend_unavailable": "server_error",
     "provider_output_too_large": "invalid_request",
+    # Refuseless (invalid_key and model_not_found are above)
+    "insufficient_credits": "insufficient_balance",
+    "model_busy": "overloaded",
+    "model_warming": "overloaded",
+    "model_unavailable": "overloaded",
+    "worker_unavailable": "overloaded",
+    "upstream_error": "server_error",
+    "gateway_down": "server_error",
+    "gateway_error": "server_error",
     # Xiaomi MiMo (business codes 421/441 ride on HTTP 400; see _MIMO)
     "rate_limited": "rate_limit",
     "risk_control": "content_filter",

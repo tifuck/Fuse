@@ -15,6 +15,7 @@ from .sources import mimo as mimo_mod
 from .sources import claude as claude_mod
 from .sources import cursor as cursor_mod
 from .sources import nanogpt as nanogpt_mod
+from .sources import refuseless as refuseless_mod
 from .sources import zai as zai_mod
 from .sources.grok import grok_access_state
 from .web.models import _model_display_name, _opencode_model_config
@@ -26,6 +27,7 @@ _OPENCODE_NAME_PREFIX = {
     "cursor": "Cursor",
     "explabs": "Experiential Labs",
     "nanogpt": "NanoGPT",
+    "refuseless": "Refuseless",
 }
 
 
@@ -51,6 +53,7 @@ async def model_options(user_id: int, groups: list[dict] | None = None) -> list[
         claude = claude_mod.claude_access_state(user_id)
         cursor = cursor_mod.cursor_access_state(user_id)
         nanogpt = nanogpt_mod.nanogpt_access_state(user_id)
+        refuseless = refuseless_mod.refuseless_access_state(user_id)
         groups = await models_by_source(
             allow_grok=grok["ok"],
             allow_chatgpt=chatgpt["ok"],
@@ -61,6 +64,7 @@ async def model_options(user_id: int, groups: list[dict] | None = None) -> list[
             allow_claude=claude["ok"],
             allow_cursor=cursor["ok"],
             allow_nanogpt=nanogpt["ok"],
+            allow_refuseless=refuseless["ok"],
             user_id=user_id,
         )
     entries: list[dict] = []
@@ -84,6 +88,7 @@ async def model_options(user_id: int, groups: list[dict] | None = None) -> list[
         catalog = (
             explabs_catalog if group["type"] == "explabs"
             else nanogpt_mod.cached_catalog() if group["type"] == "nanogpt"
+            else refuseless_mod.cached_catalog() if group["type"] == "refuseless"
             else openrouter_catalog
         )
         for model in group["models"]:
@@ -117,6 +122,11 @@ async def model_options(user_id: int, groups: list[dict] | None = None) -> list[
                     config["limit"] = {"context": window}
             if group["type"] == "nanogpt":
                 config["limit"] = {"context": ctxmod.window_for(mid, "nanogpt", catalog=catalog)}
+            if group["type"] == "refuseless":
+                record = refuseless_mod.catalog_record(mid) or {}
+                config["limit"] = {"context": ctxmod.window_for(mid, "refuseless", catalog=catalog)}
+                if record.get("max_output_tokens"):
+                    config["limit"]["output"] = record["max_output_tokens"]
             if image is not None:
                 config["modalities"] = {"input": ["text", "image"] if image else ["text"], "output": ["text"]}
             entries.append(

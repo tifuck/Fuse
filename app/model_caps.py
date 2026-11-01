@@ -53,7 +53,7 @@ def remember(type_id: str, model: str, value) -> None:
 
 def _bare(type_id: str, model: str) -> str:
     mid = (model or "").strip()
-    prefix = {"devin": "devin/", "claude": "claude/", "cursor": "cursor/", "openrouter": "openrouter/", "explabs": "explabs/", "nanogpt": "nanogpt/"}.get(type_id)
+    prefix = {"devin": "devin/", "claude": "claude/", "cursor": "cursor/", "openrouter": "openrouter/", "explabs": "explabs/", "nanogpt": "nanogpt/", "refuseless": "refuseless/"}.get(type_id)
     if prefix and mid.startswith(prefix):
         mid = mid[len(prefix):]
     return mid.replace(".", "-") if type_id == "devin" else mid
@@ -70,6 +70,10 @@ def image_input(type_id: str, model: str, *, user_id: int | None = None) -> bool
         from .sources.nanogpt import catalog_record
 
         return (catalog_record(mid) or {}).get("image")
+    if type_id == "refuseless":
+        from .sources.refuseless import catalog_record as refuseless_record
+
+        return (refuseless_record(mid) or {}).get("image")
     if type_id == "chatgpt" and mid.endswith("-fast"):
         # `{slug}-fast` is the same model at the fast service tier.
         mid = mid[:-5]
