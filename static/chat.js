@@ -504,7 +504,7 @@ import { createDictation } from './chat/dictation.js';
     document.addEventListener("visibilitychange", () => { if (!document.hidden && !net.isLive()) sync.connectSync(); });
 
     window.addEventListener("beforeunload", (event) => {
-    if (S.dirty || S.memoryDirty || S.pendingTurns.size || S.pendingCreate) { event.preventDefault(); event.returnValue = ""; }
+    if (!S.signingIn && (S.dirty || S.memoryDirty || S.pendingTurns.size || S.pendingCreate)) { event.preventDefault(); event.returnValue = ""; }
   });
 
     window.fuseSpinDebug = {

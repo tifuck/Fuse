@@ -9,6 +9,13 @@ function csrfToken() {
   return (el && el.getAttribute("content")) || "";
 }
 
+// The session is gone, so nothing pending can be saved: the unsaved-changes
+// guard must not hold the page (Electron cancels the navigation silently).
+function signIn() {
+  S.signingIn = true;
+  window.location.assign("/login");
+}
+
 function unpackSegments(list) {
   if (!Array.isArray(list)) return;
   for (const msg of list) {
@@ -140,8 +147,10 @@ export function createNet(ctx) {
       vaultError.vaultLocked = true;
       throw vaultError;
     }
-    if (res.status === 401 || (res.status === 403 && data.error && data.error.type === "auth")) {
-      window.location.assign("/login");
+    // A CSRF refusal means the session cookie expired or was replaced; /login
+    // signs in again or, still signed in, reloads the app with a fresh token.
+    if (res.status === 401 || (res.status === 403 && ((data.error && data.error.type === "auth") || data.detail === "CSRF"))) {
+      signIn();
       const authError = new Error("Your session expired. Redirecting to sign in.");
       authError.status = res.status;
       throw authError;
@@ -211,6 +220,7 @@ export function createNet(ctx) {
     queuedParam,
     requireLive,
     sendSyncView,
+    signIn,
     VAULT_WHAT,
     isTransportError,
     unpackThread,

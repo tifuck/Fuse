@@ -42,6 +42,10 @@ async def csrf_guard(request: Request) -> None:
     if not expected or not token or not hmac.compare_digest(str(token).encode(), str(expected).encode()):
         # Compare against a dummy so missing tokens still do some work.
         hmac.compare_digest(_DUMMY_CSRF, _DUMMY_CSRF)
+        if request.url.path in ("/login", "/register") and request.session.get("uid"):
+            # A repeated submit: the first one signed in and rotated the
+            # token this form carries. Nothing is processed; go to the app.
+            raise HTTPException(303, headers={"Location": "/chat"})
         raise HTTPException(403, "CSRF")
 
 

@@ -149,6 +149,35 @@ def test_websocket_refuses_a_cookie_a_password_change_revoked(app, client):
         assert getattr(closed.value, "code", None) == 4401
 
 
+def test_active_use_renews_the_session_cookie(client):
+    _login(client)
+    signed_in = _session_cookie(client)
+    # Within the hour nothing is re-signed; past it, any authed request is.
+    assert "set-cookie" not in client.get("/chat/threads").headers
+    client.cookies.clear()
+    signer = itsdangerous.TimestampSigner(settings.app_secret)
+    session = json.loads(base64.b64decode(signer.unsign(signed_in)))
+    session["seen"] -= 3601
+    client.cookies.set("session", signer.sign(base64.b64encode(json.dumps(session).encode())).decode())
+    renewed = client.get("/chat/threads")
+    assert renewed.status_code == 200
+    assert "Max-Age=" in renewed.headers["set-cookie"]
+
+
+def test_a_second_sign_in_submit_goes_to_the_app(client):
+    limiter._hits.clear()
+    token = re.search(r'name="csrf_token" value="([^"]+)"', client.get("/login").text).group(1)
+    form = {"email": "owner@account.invalid", "password": _PASSWORD, "csrf_token": token}
+    assert client.post("/login", data=form, follow_redirects=False).status_code == 303
+    # The first submit rotated the token this form still carries.
+    again = client.post("/login", data=form, follow_redirects=False)
+    assert again.status_code == 303
+    assert again.headers["location"] == "/chat"
+    # Without a signed-in session a bad token is still refused.
+    client.cookies.clear()
+    assert client.post("/login", data=form, follow_redirects=False).status_code == 403
+
+
 def test_password_and_vault_unlock_share_the_login_rate_limit(client):
     _login(client)  # the login itself consumes one auth-window hit
     for _ in range(settings.auth_rate_per_minute - 1):

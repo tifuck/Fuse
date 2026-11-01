@@ -368,6 +368,7 @@ export function createStream(ctx) {
           S.syncState = "session";
           S.syncLabel = "Session expired. Sign in again.";
           status.syncStatus();
+          net.signIn();
           return;
         }
         retry();

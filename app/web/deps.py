@@ -57,6 +57,10 @@ _notices: dict[int, str] = {}
 _pool_flash: dict[int, tuple[str, str, str]] = {}
 _PENDING_TTL = 900
 _KEY_REVEAL_TTL = 300
+# Starlette re-signs the session cookie only when the session changes, so its
+# max_age ran from sign-in and logged active users out after a week. Touching
+# the session at most this often makes it a sliding expiry.
+_SESSION_REFRESH_S = 3600
 
 def current_user(request: Request):
     uid = request.session.get("uid")
@@ -67,6 +71,9 @@ def current_user(request: Request):
     if not user:
         request.session.clear()
         return None
+    now = int(time.time())
+    if now - int(request.session.get("seen") or 0) >= _SESSION_REFRESH_S:
+        request.session["seen"] = now
     return user
 
 
