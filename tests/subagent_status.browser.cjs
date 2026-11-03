@@ -145,7 +145,7 @@ function bump(id, patch) {
     }
     let ui = await read();
     const byId = Object.fromEntries(ui.rows.map((row) => [row.id, row]));
-    assert.deepEqual(ui.rows.map((row) => row.id), ['alpha', 'bravo', 'charlie', 'delta', 'echo'], 'rows keep spawn order, like a tree');
+    assert.deepEqual(ui.rows.map((row) => row.id), ['delta', 'echo', 'alpha', 'bravo', 'charlie'], 'live rows are pinned first, each group in spawn order');
     assert.equal(byId.delta.status, 'running');
     assert.equal(byId.echo.status, 'queued');
     assert.equal(byId.alpha.status, 'completed');

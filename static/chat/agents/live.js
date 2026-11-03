@@ -148,16 +148,19 @@ export function createLive(ctx) {
       : row);
   }
 
-    // Spawn order, each child under its parent with tree connectors.
-  // A row whose parent is not listed (pruned from the recent window) hangs
-  // off the main agent.
+    // Spawn order, each child under its parent with tree connectors, live rows
+  // first so a running child never sits at the bottom of a long list. A live
+  // row under a finished parent, or one whose parent is not listed (pruned
+  // from the recent window), hangs off the main agent.
   function agentTree() {
     const rows = agentRowsMerged().sort((a, b) =>
-      (Date.parse(a.created_at || "") || 0) - (Date.parse(b.created_at || "") || 0) || String(a.id).localeCompare(String(b.id)));
-    const ids = new Set(rows.map((row) => String(row.id)));
+      agentLive(b.status) - agentLive(a.status)
+      || (Date.parse(a.created_at || "") || 0) - (Date.parse(b.created_at || "") || 0) || String(a.id).localeCompare(String(b.id)));
+    const byId = new Map(rows.map((row) => [String(row.id), row]));
     const kids = new Map();
     rows.forEach((row) => {
-      const parent = row.parent_run_id != null && ids.has(String(row.parent_run_id)) && String(row.parent_run_id) !== String(row.id) ? String(row.parent_run_id) : "";
+      const up = byId.get(String(row.parent_run_id ?? ""));
+      const parent = up && up !== row && (agentLive(up.status) || !agentLive(row.status)) ? String(up.id) : "";
       if (!kids.has(parent)) kids.set(parent, []);
       kids.get(parent).push(row);
     });
@@ -219,10 +222,11 @@ export function createLive(ctx) {
       total: tree.length,
       expanded,
     });
-    tree.forEach((item) => {
-      const selected = String(item.row.id) === viewing;
-      // Folded, the viewed subagent still shows under main.
-      if (expanded || selected) html += ui.agentRowHtml(item.row, { tree: expanded ? item.tree : ["elbow"], selected });
+    // Folded, live subagents and the viewed one still show under main.
+    const shown = expanded ? tree : tree.filter((item) => agentLive(item.row.status) || String(item.row.id) === viewing);
+    shown.forEach((item, index) => {
+      const glyphs = expanded ? item.tree : [index === shown.length - 1 ? "elbow" : "tee"];
+      html += ui.agentRowHtml(item.row, { tree: glyphs, selected: String(item.row.id) === viewing });
     });
     FuseChatDOM.reconcile(S.agentsListEl, html);
     S.agentsListEl.hidden = false;

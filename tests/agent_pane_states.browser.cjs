@@ -208,6 +208,7 @@ function agent(id, patch) {
     assert.equal(ui.rows.find((row) => row.id === 'rex').state, 'interrupted');
     assert.equal(ui.rows.find((row) => row.id === 'lima').state, 'completed');
     assert.equal(ui.rows.find((row) => row.id === 'mike').state, 'failed');
+    assert.ok(ui.rows.slice(0, 4).every((row) => row.state === 'running' || row.state === 'queued'), `live children are pinned above the finished ones: ${JSON.stringify(ui.rows)}`);
     const countIs = (want) => page.waitForFunction((want) => (document.querySelector('[data-agents-list] .is-main .chat-agents-doing')?.textContent || '').trim() === want, want);
     const refresh = () => page.evaluate(() => fuseToolFixture.refreshAgents());
     setAgent('nov', { status: 'completed', work_live: false });
@@ -384,10 +385,13 @@ function agent(id, patch) {
     console.log('PASS empty and unavailable pane states');
 
     // --- 6. Persistence: folding the tree, model switch, reload ---
-    // (a) Folding the tree keeps the open child, and its row stays in view.
+    // (a) Folding the tree keeps the open child, and its row stays in view
+    // beside the live children, which a fold never hides.
     await page.locator('[data-agents-list] [data-agents-fold]').click();
-    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 1);
+    await page.waitForFunction(() => document.querySelector('[data-agents-list]').classList.contains('is-folded'));
     ui = await read();
+    assert.deepEqual(ui.rows.map((row) => row.id).sort(), ['lima', 'que', 'tate'], `folded: the open child plus the live ones: ${JSON.stringify(ui.rows)}`);
+    assert.equal(ui.rows.at(-1).id, 'lima', 'the live children sit above the finished open one');
     assert.equal(ui.viewOpen, true, 'folding the tree leaves the open child on screen');
     assert.equal(ui.title, 'Lima worker', 'the folded tree still shows which child is open');
     await page.locator('[data-agents-list] [data-agents-fold]').click();
