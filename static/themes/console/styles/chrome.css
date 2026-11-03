@@ -124,13 +124,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-tod
 /* —— Transcript edges —— */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { padding-top: 0.75rem; }
 
-/* Viewing a subagent, the main row reads as the way back. */
-html[data-chat-console="true"] body.is-chat .chat.is-agent-view[data-view="console"] .chat-agents-row.is-main .chat-agents-name::before {
-  content: "\2190  ";
-  color: var(--mute);
-  font-weight: 400;
-}
-
 
 /* —— Sheets —— */
 /* Appearance switches match the Skills switches: square, brass when on. */

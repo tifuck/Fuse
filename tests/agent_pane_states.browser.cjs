@@ -200,7 +200,7 @@ function agent(id, patch) {
     await page.evaluate(() => fuseToolFixture.refreshAgents());
     await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 7);
     let ui = await read();
-    assert.equal(ui.count, '4 running', `the main row counts live children (3 running + 1 queued): ${ui.count}`);
+    assert.equal(ui.count, '4 subagents running', `the main row counts live children (3 running + 1 queued): ${ui.count}`);
     assert.equal(ui.fold, '7 agents', `the fold names every child: ${ui.fold}`);
     assert.equal(ui.mainCurrent, true, 'the main transcript is the one on screen');
     assert.equal(ui.rows.filter((row) => row.state === 'running').length, 3);
@@ -213,13 +213,13 @@ function agent(id, patch) {
     const refresh = () => page.evaluate(() => fuseToolFixture.refreshAgents());
     setAgent('nov', { status: 'completed', work_live: false });
     await refresh();
-    await countIs('3 running');
+    await countIs('3 subagents running');
     setAgent('que', { status: 'completed' });
     await refresh();
-    await countIs('2 running');
+    await countIs('2 subagents running');
     setAgent('tate', { status: 'completed', work_live: false });
     await refresh();
-    await countIs('1 running');
+    await countIs('1 subagent running');
     setAgent('kilo', { status: 'completed', work_live: false });
     await refresh();
     await countIs('');
@@ -237,7 +237,7 @@ function agent(id, patch) {
     setAgent('tate', { status: 'running', work_live: true });
     setAgent('que', { status: 'queued' });
     await refresh();
-    await countIs('4 running');
+    await countIs('4 subagents running');
     console.log('PASS multi-agent tree counts and entries');
 
     // --- 2. Switching the open pane between children: no cross-delivery ---
@@ -493,7 +493,7 @@ function agent(id, patch) {
     ui = await read();
     assert.equal(ui.viewOpen, false, 'switching threads closes the child instead of orphaning it');
     assert.equal(ui.mainOpen, true, 'the new thread lands on its main transcript');
-    assert.equal(ui.count, '1 running', `the main row counts the new thread's live child: ${ui.count}`);
+    assert.equal(ui.count, '1 subagent running', `the main row counts the new thread's live child: ${ui.count}`);
     assert.doesNotMatch(ui.panelText, /Kilo|Tate|Lima|Mike|Nov|Rex|Queued|TATE_DRAFT|KILO/, `thread B's dock lists only its own children: ${ui.panelText.slice(0, 200)}`);
     await openPane('oscar');
     await page.locator('[data-agent-log-body]').getByText('OSCAR_ONLY_TEXT').waitFor();

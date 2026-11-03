@@ -160,7 +160,7 @@ function bump(id, patch) {
     assert.notEqual(byId.alpha.dot, byId.bravo.dot, 'completed and failed dots differ');
     assert.notEqual(byId.delta.dot, byId.alpha.dot, 'a running dot differs from a completed one');
     assert.notEqual(byId.charlie.dot, byId.delta.dot, 'interrupted (amber) differs from the running (green) dot');
-    assert.equal(ui.running, '2 running', 'the main row counts the live children');
+    assert.equal(ui.running, '2 subagents running', 'the main row counts the live children');
     console.log('PASS tree status labels, classes and dots');
 
     // --- 2. A report renders only in the agent it names ---

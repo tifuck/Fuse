@@ -92,6 +92,7 @@
 /* Main's state and count follow its name, not the subagent columns, so they
    stay put when the tree unfolds. */
 .chat-agents-row.is-main > .chat-agents-pick { display: flex; }
+.chat-agents-row.is-main .chat-agents-doing::before { content: "· "; }
 .chat-agents-tree {
   display: flex;
   flex: 0 0 auto;
