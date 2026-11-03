@@ -107,15 +107,17 @@ function consoleStdoutHtml(lines) {
     return `<div class="chat-console-lines is-stdout">${lines.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
   }
 
-function consoleTruncationNote(trace) {
+function consoleTruncationNote(trace, extra = "") {
     if (typeof trace?.output !== "string") return "";
     const retained = Array.from(trace.output).length;
     const total = Number.isFinite(trace.output_chars) ? trace.output_chars : retained;
+    // "9.1k+": the total is a lower bound. Partial output knows it only when exact.
+    const of = (inexact) => `${deps.ccTokens(retained)} of ${deps.ccTokens(total)}${inexact ? "+" : ""} chars`;
     let note = "";
-    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output · ${retained.toLocaleString()} characters retained · total ${trace.output_chars_exact === true ? total.toLocaleString() : `unknown (at least ${total.toLocaleString()})`}.`;
-    else if (trace.output_mode === "tail") note = `Retained tail · ${retained.toLocaleString()} of ${trace.output_chars_exact === false ? "at least " : ""}${total.toLocaleString()} characters${Number.isFinite(trace.output_start) ? ` · starts at offset ${trace.output_start.toLocaleString()}` : ""}.`;
-    else if (trace.truncated || total > retained) note = `Output truncated · ${retained.toLocaleString()} of ${trace.output_chars_exact === false ? "at least " : ""}${total.toLocaleString()} characters retained.`;
-    return note ? `<span class="chat-tool-truncated">${deps.escapeHtml(note)}</span>` : "";
+    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output · kept ${of(trace.output_chars_exact !== true)}`;
+    else if (trace.output_mode === "tail") note = `Output truncated · kept the last ${of(trace.output_chars_exact === false)}`;
+    else if (trace.truncated || total > retained) note = `Output truncated · kept ${of(trace.output_chars_exact === false)}`;
+    return note ? `<span class="chat-tool-truncated${extra}">${deps.escapeHtml(note)}</span>` : "";
   }
 
 function ccTimeoutNote(trace) {
@@ -222,7 +224,8 @@ function consoleFold(trace, presentation, verbose) {
         status: head,
         keep: nonzero || Boolean(note),
         preview: consoleStdoutHtml(cut) + (hidden > 0 ? `<div class="chat-console-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + note,
-        full: clipped ? consoleDetailHtml(trace, false, running) : "",
+        // The opened body hides the preview, so it repeats the notice.
+        full: clipped ? consoleDetailHtml(trace, false, running) + consoleTruncationNote(trace, " is-full-note") : "",
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {
@@ -284,7 +287,9 @@ function consoleDetailHtml(trace, failed, running) {
     if ((trace.name === "grep" || trace.name === "glob") && !body.includes("\n") && (body.match(/:\d+:/g) || []).length > 1) {
       body = body.replace(/\s+(\/(?:home|Users|var|tmp|opt|usr)|[A-Za-z]:\\|\S+:\d+:)/g, "\n$1").trim();
     }
-    if (deps.looksLikeDiff(body)) return `<div class="chat-console-out is-diff">${consoleDiffHtml(body)}</div>`;
+    // Output reads as a diff only under a diff header: `ls -l` rows and
+    // markdown bullets also start with "-".
+    if (deps.looksLikeDiff(body) && /^(diff --git |@@ -\d|\+\+\+ )/m.test(body)) return `<div class="chat-console-out is-diff">${consoleDiffHtml(body)}</div>`;
     const lines = String(body).replace(/\s+$/, "").replace(/^\s*\n/, "").split("\n");
     const inner = lines.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("");
     return `<pre class="chat-console-out is-stdout${deps.isCodeOutputTool(trace.name) ? " is-code" : ""}">${inner}</pre>`;

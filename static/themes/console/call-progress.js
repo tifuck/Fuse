@@ -199,7 +199,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
       const cut = lines.slice(0, show).map((line) => line.length > 400 ? line.slice(0, 399) + "…" : line);
       const hidden = lines.length - cut.length;
       const clipped = hidden > 0 || cut.some((line, i) => line !== lines[i]);
-      const body = clipped ? deps.consoleDetailHtml(trace, false, false) : "";
+      const body = clipped ? deps.consoleDetailHtml(trace, false, false) + deps.consoleTruncationNote(trace, " is-full-note") : "";
       return {
         status: "",
         keep: Boolean(note),

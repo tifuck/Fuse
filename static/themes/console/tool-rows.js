@@ -81,14 +81,9 @@ function toolDetailHtml(trace, failed, running) {
       sections.push(detailSectionHtml(outputLabel, output || (running ? "Waiting for output" : "No output"), `${output ? "is-result" : "is-result is-empty"}${deps.isCodeOutputTool(trace.name) ? " is-code" : ""}`, authoritativeOutput ? 24000 : 4000, trace.command || ""));
     }
     if (authoritativeOutput && shownOutput) {
-      const retained = Array.from(trace.output).length;
-      const total = Number.isFinite(trace.output_chars) ? trace.output_chars : retained;
-      let note = "";
-      if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output · ${retained.toLocaleString()} characters retained · total ${trace.output_chars_exact === true ? total.toLocaleString() : `unknown (at least ${total.toLocaleString()})`}.`;
-      else if (trace.output_mode === "tail") note = `Retained tail · ${retained.toLocaleString()} of ${trace.output_chars_exact === false ? "at least " : ""}${total.toLocaleString()} characters${Number.isFinite(trace.output_start) ? ` · starts at offset ${trace.output_start.toLocaleString()}` : ""}.`;
-      else if (trace.truncated || total > retained) note = `Output truncated · ${retained.toLocaleString()} of ${trace.output_chars_exact === false ? "at least " : ""}${total.toLocaleString()} characters retained.`;
-      if (note) sections.push(`<span class="chat-tool-truncated">${deps.escapeHtml(note)}</span>`);
-    } else if (trace.output_truncated && output.length <= 4000) sections.push('<span class="chat-tool-truncated">Output preview was truncated before display.</span>');
+      const note = deps.consoleTruncationNote(trace);
+      if (note) sections.push(note);
+    } else if (trace.output_truncated && output.length <= 4000) sections.push('<span class="chat-tool-truncated">Output truncated · preview only</span>');
     if (!hasImage && !error && !output && !hasResults && !trace.command && !["todo_write", "create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(trace.name)) {
       sections.push(detailSectionHtml("Output", running ? "Waiting for output"
         : trace.child_id && ["spawn_subagent", "get_subagent_output"].includes(trace.name) ? "No inline output. Open agent for its transcript." : "No output", "is-empty"));
@@ -138,7 +133,7 @@ function detailSectionHtml(label, value, kind = "", cap = 4000, command = "") {
       (command ? `<button type="button" class="chat-tool-copy" data-copy-tool data-copy-value="${deps.escapeHtml(command)}" aria-label="Copy command">Copy command</button>` : "") +
       `<button type="button" class="chat-tool-copy" data-copy-tool aria-label="Copy ${deps.escapeHtml(label.toLowerCase())}">Copy</button></div>` +
       body +
-      (characters.length > cap ? `<span class="chat-tool-truncated">Preview truncated at ${cap.toLocaleString()} characters.</span>` : "") + "</section>";
+      (characters.length > cap ? `<span class="chat-tool-truncated">Output truncated · showing ${deps.ccTokens(cap)} of ${deps.ccTokens(characters.length)} chars</span>` : "") + "</section>";
   }
 
 function toolRowLabel(trace) {

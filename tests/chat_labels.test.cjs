@@ -96,31 +96,35 @@ test('truncation notices say exactly what was kept', () => {
   assert.equal(note({ output: 'kept whole', output_chars: 10, truncated: false }), '');
   assert.equal(
     note({ output: 'ab', output_mode: 'partial', truncated: true, output_chars: 8 }),
-    'Partial output · 2 characters retained · total unknown (at least 8).');
+    'Partial output · kept 2 of 8+ chars');
   assert.equal(
     note({ output: 'abcd', output_mode: 'partial', truncated: true, output_chars: 9, output_chars_exact: true }),
-    'Partial output · 4 characters retained · total 9.');
+    'Partial output · kept 4 of 9 chars');
   assert.equal(
     note({ output: 'abcd', output_mode: 'tail', output_chars: 9, output_chars_exact: false, output_start: 5 }),
-    'Retained tail · 4 of at least 9 characters · starts at offset 5.');
+    'Output truncated · kept the last 4 of 9+ chars');
   assert.equal(
     note({ output: 'abcd', output_mode: 'tail', output_chars: 9 }),
-    'Retained tail · 4 of 9 characters.');
+    'Output truncated · kept the last 4 of 9 chars');
   assert.equal(
     note({ output: 'ab', output_chars: 8, truncated: true }),
-    'Output truncated · 2 of 8 characters retained.');
+    'Output truncated · kept 2 of 8 chars');
   assert.equal(
     note({ output: 'ab', output_chars: 8, truncated: true, output_chars_exact: false }),
-    'Output truncated · 2 of at least 8 characters retained.');
+    'Output truncated · kept 2 of 8+ chars');
   // Counts are code points, so a kept emoji counts as one retained character.
   assert.equal(
     note({ output: '😀😀', output_chars: 5, truncated: true }),
-    'Output truncated · 2 of 5 characters retained.');
+    'Output truncated · kept 2 of 5 chars');
+  // Large counts read compact, like token counts.
+  assert.equal(
+    note({ output: 'x'.repeat(4000), output_chars: 48213, truncated: true }),
+    'Output truncated · kept 4k of 48.2k chars');
   // A partial mode without truncation and nothing lost prints no notice.
   assert.equal(c.consoleTruncationNote({ output: 'ab', output_mode: 'partial', output_chars: 2, truncated: false }), '');
   const wrapped = c.consoleTruncationNote({ output: 'ab', output_chars: 8, truncated: true });
   assert.match(wrapped, /^<span class="chat-tool-truncated">/);
-  assert.match(wrapped, /characters retained\.<\/span>$/);
+  assert.match(wrapped, / chars<\/span>$/);
 });
 
 test('paths shorten against the project and fold with an honest ellipsis', () => {

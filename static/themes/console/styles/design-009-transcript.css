@@ -62,7 +62,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-perm-card-grant 
 
 .chat .chat-console-nline.is-del .chat-console-mark { color: var(--diff-del); }
 
-.chat .chat-console-more { color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.5 var(--mono); }
+.chat :is(.chat-console-more, .chat-tool-truncated) { color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.5 var(--mono); }
 
 .chat .chat-console-nline.is-bare,
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-nline.is-bare { grid-template-columns: max-content minmax(0, 1fr); }
@@ -176,7 +176,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group .chat-step-label b { font-weight: 700; }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-done:hover .chat-step-label { color: var(--mist); }
+/* Touch screens keep :hover on the last tapped line, which then stayed bright
+   after it folded. */
+@media (hover: hover) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-done:hover .chat-step-label { color: var(--mist); }
+}
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group > .chat-step-main > .chat-console-hang {
   margin: 0;
@@ -244,9 +248,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
   text-overflow: unset;
 }
 
+/* Printed in full, but a long line still scrolls sideways instead of being
+   clipped by the reveal. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-verbose .chat-console-hang.is-expanded .chat-console-out {
   max-height: none;
-  overflow: visible;
+  overflow-y: visible;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-thought {
@@ -306,7 +312,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
   color: color-mix(in srgb, var(--mist) 58%, var(--ink));
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover .chat-step-label { color: var(--mist); }
+@media (hover: hover) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover .chat-step-label { color: var(--mist); }
+}
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .chat-step-label {
   padding-left: var(--console-hang, 0);

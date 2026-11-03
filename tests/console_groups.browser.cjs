@@ -375,15 +375,15 @@ const groupGrid = () => {
       await mount([user('Go.'), turn([T(a), T(trunc)], [a, trunc])], true);
       await frame();
       const truncRow = await page.locator('[data-step="tool-cut-trunc"]').innerText();
-      check(/Output truncated · [\d,]+ of 5,000 characters retained\./.test(truncRow),
+      check(/Output truncated · kept \d+ of 5k chars/.test(truncRow),
         `the folded row says the output was truncated, saw "${truncRow}"`);
       check(truncRow.includes('kept one') && truncRow.includes('LAST_KEPT'), 'the retained output keeps both of its ends');
       const tail = sh('npm run tail', { id: 'cut-tail', output: 'tail one\nLAST_TAIL\n', extra: { output_mode: 'tail', output_start: 4000, output_chars: 5000 } });
       await mount([user('Go.'), turn([T(a), T(tail)], [a, tail])], true);
       await frame();
       const tailRow = await page.locator('[data-step="tool-cut-tail"]').innerText();
-      check(/Retained tail · [\d,]+ of 5,000 characters · starts at offset 4,000\./.test(tailRow),
-        `the folded tail says where it starts, saw "${tailRow}"`);
+      check(/Output truncated · kept the last \d+ of 5k chars/.test(tailRow),
+        `the folded tail says it kept the end, saw "${tailRow}"`);
       check(tailRow.includes('LAST_TAIL'), 'the tail keeps its last line');
       pass('folded command output says it was cut; expanding loses no end', from);
     }

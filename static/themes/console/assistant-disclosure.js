@@ -50,6 +50,34 @@ function renderAssistant(msg, live) {
         activityEl.querySelectorAll(".is-live-think .chat-think-preview").forEach(body => deps.followThinking(body, true));
       });
     });
+    // Tool output that scrolls sideways draws no scrollbar, so a mouse drags it
+    // as a finger does. A double or triple click still selects text.
+    article.addEventListener("mousedown", (event) => {
+      const box = event.button === 0 && event.detail === 1 && event.target.closest(".chat-console-lines, pre.chat-console-out.is-code");
+      if (!box || box.scrollWidth <= box.clientWidth) return;
+      const x = event.clientX;
+      const left = box.scrollLeft;
+      let moved = false;
+      const noSelect = (e) => e.preventDefault();
+      const noClick = (e) => { e.preventDefault(); e.stopPropagation(); };
+      const move = (e) => {
+        if (!moved && Math.abs(e.clientX - x) < 4) return;
+        moved = true;
+        box.classList.add("is-dragging");
+        box.scrollLeft = left - (e.clientX - x);
+      };
+      const up = () => {
+        removeEventListener("mousemove", move);
+        removeEventListener("mouseup", up);
+        article.removeEventListener("selectstart", noSelect);
+        box.classList.remove("is-dragging");
+        // The drag's own click must not fold the row it ended on.
+        if (moved) { addEventListener("click", noClick, true); setTimeout(() => removeEventListener("click", noClick, true)); }
+      };
+      article.addEventListener("selectstart", noSelect);
+      addEventListener("mousemove", move);
+      addEventListener("mouseup", up);
+    });
     function collapseConsoleGroup(group, target) {
       group.classList.remove("is-console-expanded");
       group.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", "false"));

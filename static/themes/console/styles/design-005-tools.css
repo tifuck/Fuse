@@ -291,7 +291,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines .chat-console-stdout { width: max-content; }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-more {
+/* A truncation notice reads like the "… +N lines" marker: its own quiet line. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-console-more, .chat-tool-truncated) {
+  display: block;
   margin-top: 0.12rem;
   color: var(--mute);
   font: calc(0.66rem * var(--chat-text-scale, 1))/1.4 var(--mono);

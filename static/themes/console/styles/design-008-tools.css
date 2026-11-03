@@ -37,28 +37,28 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 }
 
 /* Tool output that scrolls sideways (diffs, command output, matches, file
-   bodies) shows its scrollbar only while the pointer is over it. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code {
-  scrollbar-color: transparent transparent;
+   bodies) draws no horizontal scrollbar on any screen: a classic one kept an
+   empty row under the output, an overlay one sat over the last line. Wheel,
+   trackpad, a finger or a mouse drag (assistant-disclosure) scroll it.
+   Mouse-driven Chromium keeps the vertical bar of a tall body (reset.css
+   forces scrollbar-width back to auto there, so only the pseudo-element hides
+   the horizontal one). */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step .chat-console-lines,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step pre.chat-console-out.is-code {
+  scrollbar-width: none;
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines:hover,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code:hover {
-  scrollbar-color: var(--scroll-thumb) transparent;
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines::-webkit-scrollbar:horizontal,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code::-webkit-scrollbar:horizontal {
+  height: 0;
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines::-webkit-scrollbar-thumb,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code::-webkit-scrollbar-thumb {
-  background: transparent;
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines.is-dragging,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code.is-dragging {
+  cursor: grabbing;
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-lines:hover::-webkit-scrollbar-thumb,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] pre.chat-console-out.is-code:hover::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
-}
-
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-more {
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-console-more, .chat-tool-truncated) {
   color: color-mix(in srgb, var(--mist) 42%, var(--ink));
 }
 
@@ -147,7 +147,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-result-text,
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-out,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-nbody {
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-nbody,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-lines.is-error .chat-console-stdout {
   color: var(--fault);
   white-space: pre-wrap;
   overflow: visible;
@@ -155,6 +156,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* The folded error wraps like its opened body, so no edge cuts it off. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-lines.is-error .chat-console-stdout { width: auto; }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foot {
   min-height: 0;

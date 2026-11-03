@@ -398,7 +398,7 @@ test('output caps cut on character boundaries and say which slice survived', () 
   const html = c.detailSectionHtml('Output', emoji, 'is-result', 3);
   assert.match(html, />😀😀😀</, 'a 3-character cap keeps three whole emoji');
   assert.doesNotMatch(html, /\uFFFD|\\uD83D/);
-  assert.match(html, /Preview truncated at 3 characters\./);
+  assert.match(html, /Output truncated · showing 3 of 5 chars</);
   assert.doesNotMatch(c.detailSectionHtml('Output', 'abcd', 'is-result', 4), /truncated/);
   const note = (trace) => {
     const retained = Array.from(trace.output).length;
