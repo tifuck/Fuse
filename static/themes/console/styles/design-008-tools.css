@@ -314,7 +314,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-expanded .chat-console-out {
   max-height: min(28rem, 55vh);
   overflow-y: auto;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 

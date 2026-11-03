@@ -407,6 +407,32 @@ const groupGrid = () => {
       pass('folded command output says it was cut; expanding loses no end', from);
     }
 
+    // —— 6b. The wheel over an opened summary's printed output scrolls the
+    //       transcript: output that has nothing to scroll must not swallow it ——
+    {
+      const from = failures.length;
+      const rows = [];
+      for (let k = 0; k < 4; k++) {
+        const r = tool('read_file', { id: `wh-r${k}`, path: '/srv/qa/app/a.py', output: '1: x\n2: y\n' });
+        const c = sh('npm test', { id: `wh-c${k}`, output: Array.from({ length: 6 }, (_, i) => `ok ${i}`).join('\n') + '\n' });
+        rows.push(user(`Go ${k}.`), turn([say('Working.\n\n'), T(r), T(c), say('Done.\n\n' + 'More.\n\n'.repeat(12))], [r, c], ended));
+      }
+      await mount(rows, false);
+      await frame();
+      await page.locator('.chat-log li.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head > .chat-step-toggle').nth(2).click();
+      await frame();
+      const text = page.locator('[data-step="tool-wh-c2"] pre.chat-console-out .chat-console-stdout').first();
+      await text.scrollIntoViewIfNeeded();
+      const b = await text.boundingBox();
+      await page.mouse.move(b.x + 8, b.y + b.height / 2);
+      const top = () => page.evaluate(() => document.querySelector('.chat-thread').scrollTop);
+      const before = await top();
+      await page.mouse.wheel(0, -300);
+      await page.waitForFunction((t) => document.querySelector('.chat-thread').scrollTop < t, before, { timeout: 2000 }).catch(() => {});
+      check(await top() < before, `the wheel over command output scrolls the transcript (stayed at ${before})`);
+      pass('the wheel over an opened summary scrolls the transcript', from);
+    }
+
     // —— 7. Group rows at 390px: identifiers scroll sideways, never wrap or
     //      break the grid ——
     {
