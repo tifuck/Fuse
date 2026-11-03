@@ -11,7 +11,7 @@ function artifactCards(traces) {
       const id = verb ? String(trace.identifier || "") : "";
       if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return;
       byId.delete(id);
-      byId.set(id, { id, verb, title: trace.title || "Artifact", icon: trace.icon || "", version: trace.version, format: trace.format || "", gone: trace.artifact_gone || "" });
+      byId.set(id, { id, verb, title: trace.title || "Artifact", version: trace.version, format: trace.format || "", gone: trace.artifact_gone || "" });
     });
     return [...byId.values()];
   }
@@ -19,7 +19,7 @@ function artifactCards(traces) {
 function artifactCardHtml(card) {
     const meta = card.gone ? (card.gone === "archived" ? "Archived" : "Deleted")
       : [card.verb, card.version != null ? `v${card.version}` : "", card.format === "markdown" ? "Markdown" : ""].filter(Boolean).join(" · ");
-    const icon = card.icon ? deps.escapeHtml(card.icon) : deps.STEP_ICONS.artifact;
+    const icon = deps.STEP_ICONS.artifact;
     if (card.gone) {
       return `<div class="chat-artifact-card is-gone">` +
         `<span class="chat-artifact-card-icon" aria-hidden="true">${icon}</span>` +

@@ -208,12 +208,12 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-cod
   text-transform: uppercase;
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-bar {
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-bar, .chat-artifact-head) {
   font: 0.68rem/1.3 var(--mono);
   background: color-mix(in srgb, var(--ink) 92%, var(--panel));
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-bar-title {
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-bar-title, .chat-artifact-pick) {
   font: 0.8125rem/1.3 var(--mono);
 }
 

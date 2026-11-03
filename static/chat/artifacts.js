@@ -10,6 +10,7 @@ const WRITES = new Set(["create_artifact", "update_artifact", "edit_artifact"]);
 const AUTO_KEY = "fuse.artifact.autoOpen";
 const WIDTH_KEY = "fuse.artifact.width";
 const POLL_MS = 8000;
+const GLYPH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.8" y="3.6" width="10.4" height="8.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 9.1l1.6-1.9 1.5 1.6 2.1-2.6 2.1 2.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 function artifactContentUrl(id, version) {
   const path = "/a/" + encodeURIComponent(id) + "/content";
@@ -42,7 +43,6 @@ export function createArtifacts(ctx) {
   const panel = S.artifactPanel;
   const q = (sel) => (panel ? panel.querySelector(sel) : null);
   const el = {
-    icon: q("[data-artifact-icon]"),
     listToggle: q("[data-artifact-list-toggle]"),
     list: q("[data-artifact-list]"),
     reload: q("[data-artifact-reload]"),
@@ -215,8 +215,9 @@ export function createArtifacts(ctx) {
       .reverse()
       .map((item) => {
         const tags = [item.version === latest ? "latest" : "", cur.visibility === "public" && item.version === (cur.shared_version || latest) ? "shared" : ""].filter(Boolean);
+        // The closed picker is narrow: version and note first, tags last.
         const note = item.note ? ` · ${item.note.slice(0, 48)}` : "";
-        const label = `v${item.version}${tags.length ? ` (${tags.join(", ")})` : ""}${note}`;
+        const label = `v${item.version}${note}${tags.length ? ` (${tags.join(", ")})` : ""}`;
         return `<option value="${escapeHtml(String(item.version))}"${String(item.version) === current ? " selected" : ""}>${escapeHtml(label)}</option>`;
       })
       .join("");
@@ -270,7 +271,6 @@ export function createArtifacts(ctx) {
     const listing = S.artifactMode === "list";
     const ident = cur && !cur.missing && cur.identifier;
     if (S.artifactTitleEl) S.artifactTitleEl.textContent = listing ? "Artifacts" : (cur && cur.title) || "Artifact";
-    if (el.icon) el.icon.textContent = listing ? "" : (cur && cur.icon) || "";
     if (el.listToggle) el.listToggle.setAttribute("aria-expanded", listing ? "true" : "false");
     if (S.artifactStatusEl) {
       const text = statusText();
@@ -278,10 +278,11 @@ export function createArtifacts(ctx) {
       S.artifactStatusEl.textContent = text;
     }
     if (S.artifactVisibilityEl) {
-      const vis = !listing && cur && cur.identifier ? cur.visibility : "";
-      S.artifactVisibilityEl.hidden = !vis;
-      S.artifactVisibilityEl.textContent = vis === "public" ? "shared" : vis || "";
-      S.artifactVisibilityEl.classList.toggle("on", vis === "public");
+      // Private is the default; only a shared page is worth a badge.
+      const shared = !listing && cur && cur.identifier && cur.visibility === "public";
+      S.artifactVisibilityEl.hidden = !shared;
+      S.artifactVisibilityEl.textContent = shared ? "shared" : "";
+      S.artifactVisibilityEl.classList.toggle("on", Boolean(shared));
     }
     if (S.artifactOpenLink) {
       if (ident && !listing) {
@@ -669,6 +670,12 @@ export function createArtifacts(ctx) {
     const cur = S.currentArtifact;
     closeMenu();
     if (!cur || !cur.identifier) return;
+    if (name === "reload") {
+      S.artifactSourceLoaded = "";
+      if (S.artifactMode === "source") loadArtifactSource().catch((error) => showFailure("Could not load source", error));
+      else loadFrame(true);
+      return;
+    }
     const base = "/a/" + encodeURIComponent(cur.identifier);
     const post = (path, body) => net.api(base + path, { method: "POST", body: JSON.stringify(body || {}) });
     try {
@@ -759,7 +766,7 @@ export function createArtifacts(ctx) {
     const items = listItems.map((item) => ({ ...item, in_thread: item.in_thread || here.has(item.identifier) }));
     const row = (item) => `<li class="chat-artifact-row">
         <button type="button" class="chat-artifact-row-open" data-artifact-pick="${escapeHtml(item.identifier)}" data-in-thread="${item.in_thread ? "1" : ""}">
-          <span class="chat-artifact-row-icon" aria-hidden="true">${escapeHtml(item.icon || "▦")}</span>
+          <span class="chat-artifact-row-icon" aria-hidden="true">${GLYPH}</span>
           <span class="chat-artifact-row-copy"><span class="chat-artifact-row-title">${escapeHtml(item.title)}</span>
           <small>v${escapeHtml(String(item.version))}${item.visibility === "public" ? " · shared" : ""}</small></span>
         </button>
@@ -914,11 +921,6 @@ export function createArtifacts(ctx) {
         setMode("preview");
         if (!(cur && cur.identifier)) setArtifactOpen(false);
       } else openList();
-    });
-    el.reload?.addEventListener("click", () => {
-      S.artifactSourceLoaded = "";
-      if (S.artifactMode === "source") loadArtifactSource().catch((error) => showFailure("Could not load source", error));
-      else loadFrame(true);
     });
     el.menuToggle?.addEventListener("click", (event) => {
       event.stopPropagation();

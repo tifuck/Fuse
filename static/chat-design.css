@@ -436,8 +436,7 @@ html[data-chat-backdrop="none"] .chat-scene,
 .chat .chat-search-btn.is-on { color: var(--brass); background: transparent; }
 
 body.is-chat :is(.chat-pop, .chat-picker-menu, .chat-perms-menu, .chat-context-pop,
-  .chat-slash, .chat-rewind, .chat-sheet,
-  .chat-artifact, .chat-latest) {
+  .chat-slash, .chat-rewind, .chat-sheet, .chat-latest) {
   background: var(--panel);
   color: var(--mist);
   border-color: var(--line);

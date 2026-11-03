@@ -60,7 +60,9 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await pane.waitFor({ state: 'visible' });
     await page.waitForFunction((id) => (document.querySelector('[data-artifact-frame]').getAttribute('src') || '').includes(`/a/${id}/content`), first.identifier);
     assert.equal(await toggleText(), 'Artifact', 'the toggle settles');
-    assert.equal(await page.locator('[data-artifact-icon]').innerText(), '📊');
+    assert.equal(await page.locator('[data-artifact-title]').innerText(), 'Sales board');
+    assert.equal(await page.locator('.chat-artifact-head').innerText().then((t) => t.includes('📊')), false, 'the head keeps the site glyphs, not the model emoji');
+    assert.equal(await page.locator('[data-artifact-visibility]').isHidden(), true, 'private is the default: no badge until shared');
 
     // The bridge reports the page's error; Fix puts it in the composer.
     await page.locator('[data-artifact-alert]').waitFor({ state: 'visible', timeout: 8000 });
@@ -98,7 +100,7 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await page.evaluate((id) => fuseToolFixture.artifacts.showArtifact(id, null, { explicit: true }), first.identifier);
     await make({ identifier: first.identifier, html: PAGE('first-v2'), note: 'Q2 numbers' });
     await page.waitForFunction(() => document.querySelectorAll('[data-artifact-version] option').length === 2, null, { timeout: 15000 });
-    assert.match(await page.locator('[data-artifact-version]').innerText(), /v2 \(latest\) · Q2 numbers/);
+    assert.match(await page.locator('[data-artifact-version]').innerText(), /v2 · Q2 numbers \(latest\)/);
     await page.locator('[data-artifact-version]').selectOption('1');
     assert.match(await frameSrc(), /\?v=1$/);
     await page.locator('[data-artifact-mode="source"]').click();
