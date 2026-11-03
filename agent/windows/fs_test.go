@@ -128,6 +128,30 @@ func TestReplaceCRLFRepair(t *testing.T) {
 	}
 }
 
+func TestReplaceMixedLineEndings(t *testing.T) {
+	// An LF edit into a CRLF file leaves mixed endings; a later multi-line
+	// old_string across both must still match (read_file shows neither).
+	text := "a\r\nb\nc\r\nd\n"
+	cases := []struct{ old, new, want string }{
+		{"a\nb\nc", "x\ny", "x\r\ny\r\nd\n"},
+		{"b", "p\nq", "a\r\np\nq\nc\r\nd\n"},
+		{"c", "p\nq", "a\r\nb\np\r\nq\r\nd\n"},
+	}
+	for _, c := range cases {
+		got, n, err := applyEdit(text, fileEdit{c.old, c.new, false})
+		if err != nil || n != 1 || got != c.want {
+			t.Fatalf("%q -> %q, %d, %v; want %q", c.old, got, n, err, c.want)
+		}
+	}
+	if _, _, err := applyEdit("a\r\nb\na\nb\r\n", fileEdit{"a\nb", "x", false}); err == nil || !strings.Contains(err.Error(), "not unique (2") {
+		t.Fatalf("err %v", err)
+	}
+	got, n, err := applyEdit("a\r\nb\na\nb\r\n", fileEdit{"a\nb", "x\ny", true})
+	if err != nil || n != 2 || got != "x\r\ny\nx\ny\r\n" {
+		t.Fatalf("all: %q %d %v", got, n, err)
+	}
+}
+
 func TestReplaceTooLargeNamesLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "big.txt")

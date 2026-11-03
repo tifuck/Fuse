@@ -252,9 +252,40 @@ char *crlf_expand(const char *s, size_t n) {
     return out;
 }
 
+/* Length of old matched at p, each '\n' in old taking LF or CRLF; 0 if none. */
+static size_t eol_match(const char *p, const char *end, const char *old) {
+    const char *s = p;
+    for (; *old; old++) {
+        if (*old == '\n' && end - s >= 2 && s[0] == '\r' && s[1] == '\n') s += 2;
+        else if (s < end && *s == *old) s++;
+        else return 0;
+    }
+    return (size_t)(s - p);
+}
+
+/* Next match at or after p (length in *m), or NULL. k = old's first-line length. */
+static const char *next_match(const char *p, const char *end, const char *old, size_t k, size_t *m) {
+    while (p < end) {
+        const char *c = k ? memmem(p, (size_t)(end - p), old, k) : p + strcspn(p, "\r\n");
+        if (!c || c >= end) return NULL;
+        if ((*m = eol_match(c, end, old))) return c;
+        p = c + 1;
+    }
+    return NULL;
+}
+
+/* Whether a match ends its lines with CRLF: its own ending when it spans
+ * lines, else that of the line it sits on (CRLF on a final line). */
+static int match_crlf(const char *hit, size_t m, const char *end) {
+    if (memchr(hit, '\n', m)) return memmem(hit, m, "\r\n", 2) != NULL;
+    const char *nl = memchr(hit + m, '\n', (size_t)(end - hit - m));
+    return !nl || nl[-1] == '\r';
+}
+
 /* Apply one exact replacement to a NUL-terminated heap buffer, replacing it
- * on success. LF-only old/new against a CRLF text are converted to CRLF
- * (read_file hides carriage returns) — deterministic, never fuzzy. */
+ * on success. LF-only old/new against a text with CRLF (or mixed) endings
+ * match either ending, and new takes the matched region's (read_file hides
+ * carriage returns) — deterministic, never fuzzy. */
 int apply_edit(char **bufp, size_t *lenp, const char *old, const char *newv, int all,
                       long *reps_out, char *why, size_t whylen) {
     char *buf = *bufp;
@@ -267,39 +298,35 @@ int apply_edit(char **bufp, size_t *lenp, const char *old, const char *newv, int
         snprintf(why, whylen, "old_string and new_string are identical");
         return -1;
     }
-    char *old_crlf = NULL, *new_crlf = NULL;
-    const char *old_use = old, *new_use = newv;
+    const char *end = buf + len;
     size_t oldn = strlen(old), newn = strlen(newv);
-    long count = 0;
-    for (const char *p = buf; (p = strstr(p, old)); p += oldn) count++;
-    if (count == 0 && memmem(buf, len, "\r\n", 2) && !memchr(old, '\r', oldn) && memchr(old, '\n', oldn)) {
-        old_crlf = crlf_expand(old, oldn);
-        new_crlf = crlf_expand(newv, newn);
-        if (old_crlf && new_crlf) {
-            size_t o2 = strlen(old_crlf);
-            for (const char *q = buf; (q = strstr(q, old_crlf)); q += o2) count++;
-            if (count) {
-                old_use = old_crlf;
-                new_use = new_crlf;
-                oldn = o2;
-                newn = strlen(new_crlf);
-            }
-        }
+    int eol = memmem(buf, len, "\r\n", 2) && !strchr(old, '\r') && !strchr(newv, '\r');
+    size_t k = eol ? strcspn(old, "\n") : oldn;
+    char *new_crlf = eol ? crlf_expand(newv, newn) : NULL;
+    if (eol && !new_crlf) {
+        snprintf(why, whylen, "out of memory");
+        return -1;
+    }
+    size_t crlfn = new_crlf ? strlen(new_crlf) : newn;
+    long count = 0, final = (long)len;
+    size_t m = oldn;
+    for (const char *p = buf; (p = eol ? next_match(p, end, old, k, &m) : strstr(p, old)); p += m) {
+        count++;
+        if (count == 1 || all) final += (long)(eol && match_crlf(p, m, end) ? crlfn : newn) - (long)m;
     }
     if (count == 0) {
-        free(old_crlf); free(new_crlf);
+        free(new_crlf);
         snprintf(why, whylen, "old_string not found");
         return -1;
     }
     if (count > 1 && !all) {
-        free(old_crlf); free(new_crlf);
+        free(new_crlf);
         snprintf(why, whylen, "old_string is not unique (%ld occurrences)", count);
         return -1;
     }
     long reps = all ? count : 1;
-    long final = (long)len + reps * ((long)newn - (long)oldn);
     if (final > EDIT_FILE_MAX) {
-        free(old_crlf); free(new_crlf);
+        free(new_crlf);
         snprintf(why, whylen,
                  "replacement too large (maximum %ld bytes); apply the change with run_terminal_command",
                  EDIT_FILE_MAX);
@@ -307,24 +334,25 @@ int apply_edit(char **bufp, size_t *lenp, const char *old, const char *newv, int
     }
     char *nb = malloc((size_t)final + 1);
     if (!nb) {
-        free(old_crlf); free(new_crlf);
+        free(new_crlf);
         snprintf(why, whylen, "out of memory");
         return -1;
     }
     char *w = nb;
     const char *r = buf;
     for (long left = reps; left; left--) {
-        const char *hit = strstr(r, old_use);
+        const char *hit = eol ? next_match(r, end, old, k, &m) : strstr(r, old);
         if (!hit) break;
+        int crlf = eol && match_crlf(hit, m, end);
         size_t pre = (size_t)(hit - r);
         memcpy(w, r, pre);
         w += pre;
-        memcpy(w, new_use, newn);
-        w += newn;
-        r = hit + oldn;
+        memcpy(w, crlf ? new_crlf : newv, crlf ? crlfn : newn);
+        w += crlf ? crlfn : newn;
+        r = hit + m;
     }
     strcpy(w, r);
-    free(old_crlf); free(new_crlf);
+    free(new_crlf);
     free(buf);
     *bufp = nb;
     *lenp = strlen(nb);

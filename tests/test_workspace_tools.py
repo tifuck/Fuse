@@ -308,6 +308,19 @@ class ApplyReplaceTest(unittest.TestCase):
         self.assertEqual(updated, "one\r\ntwo\r\n")
         self.assertEqual(count, 1)
 
+    def test_mixed_line_endings_match_lf_old_string(self):
+        # An LF edit into a CRLF file leaves mixed endings; a later multi-line
+        # old_string across both must still match (read_file shows neither).
+        text = "a\r\nb\nc\r\nd\n"
+        updated, count = workspace._apply_replace(text, "a\nb\nc", "x\ny", False)
+        self.assertEqual((updated, count), ("x\r\ny\r\nd\n", 1))
+        # A region that is all LF keeps LF; a single line keeps its own ending.
+        self.assertEqual(workspace._apply_replace(text, "b", "p\nq", False)[0], "a\r\np\nq\nc\r\nd\n")
+        self.assertEqual(workspace._apply_replace(text, "c", "p\nq", False)[0], "a\r\nb\np\r\nq\r\nd\n")
+        with self.assertRaises(WorkspaceError) as ctx:
+            workspace._apply_replace("a\r\nb\na\nb\r\n", "a\nb", "x", False)
+        self.assertIn("2 occurrences, at lines 1, 3", ctx.exception.detail)
+
     def test_crlf_fallback_respects_replace_all(self):
         text = "a\r\nb\r\na\r\n"
         updated, count = workspace._apply_replace(text, "a\n", "X\n", True)

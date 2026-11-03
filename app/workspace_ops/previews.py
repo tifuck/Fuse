@@ -136,52 +136,63 @@ _NOT_FOUND_HINT = (
 )
 
 
-def _crlf_normalize(text: str, old: str, new: str) -> tuple[str, str] | None:
-    """LF-only edit strings against a CRLF file.
+def _eol_pattern(text: str, old: str, new: str) -> re.Pattern | None:
+    """LF-only edit strings against a file with CRLF (or mixed) endings.
 
     read_file strips carriage returns from the lines it shows, so the model
-    cannot reproduce a CRLF old_string byte-for-byte. When the file uses CRLF
-    and both arguments are CR-free, convert LF to CRLF — deterministic, never
-    a fuzzy match.
+    cannot reproduce them, and a file edited by LF tools can mix both. When
+    the file has CRLF and both arguments are CR-free, each newline in
+    old_string matches LF or CRLF — deterministic, never a fuzzy match.
     """
     if "\r" in old or "\r" in new or "\r\n" not in text:
         return None
-    return old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
+    return re.compile(r"\r?\n".join(re.escape(part) for part in old.split("\n")))
+
+
+def _eol_at(text: str, match: re.Match) -> str:
+    """The line ending of a matched region: its own when it spans lines,
+    else that of the line it sits on (CRLF on a final unterminated line)."""
+    hit = match.group(0)
+    if "\n" in hit:
+        return "\r\n" if "\r\n" in hit else "\n"
+    nl = text.find("\n", match.end())
+    return "\n" if nl > 0 and text[nl - 1] != "\r" else "\r\n"
+
+
+def _find_old(text: str, old: str, new: str) -> int:
+    """Offset of old_string's first match as _apply_replace sees it, or -1."""
+    rx = _eol_pattern(text, old, new)
+    if rx is None:
+        return text.find(old)
+    match = rx.search(text)
+    return match.start() if match else -1
 
 
 def _apply_replace(text: str, old: str, new: str, replace_all: bool) -> tuple[str, int]:
     """Exact replacement only; never guess at whitespace-sensitive source edits."""
     if not old:
         raise WorkspaceError("old_string is empty. Set it to the exact text to replace; use write_file to create a file")
-    count = text.count(old)
-    normalized = _crlf_normalize(text, old, new)
-    if normalized is not None and (count == 0 or "\n" not in old):
-        # A single-line match in a CRLF file still needs CRLF in `new`.
-        old, new = normalized
-        count = text.count(old)
-    if count == 1 and not replace_all and text.find(old, text.find(old) + 1) >= 0:
+    eol = _eol_pattern(text, old, new)
+    rx = eol or re.compile(re.escape(old))
+    starts = [m.start() for m in rx.finditer(text)]
+    count = len(starts)
+    if count == 1 and not replace_all and rx.search(text, starts[0] + 1):
         count = 2  # overlapping occurrences (`aa` in `aaa`) are ambiguous too
     if count == 0:
         hint = " This file uses CRLF line endings; match them or edit single lines." if "\r\n" in text else ""
         raise WorkspaceError(_NOT_FOUND_HINT + hint)
     if count > 1 and not replace_all:
-        at = _match_lines(text, old)
+        at = [text.count("\n", 0, s) + 1 for s in starts[:10]]
         where = ", ".join(str(n) for n in at) + (", …" if count > len(at) else "")
         raise WorkspaceError(
             f"old_string is not unique ({count} occurrences, at lines {where}). Include more surrounding "
             "context lines, or pass replace_all=true."
         )
-    updated = text.replace(old, new) if replace_all else text.replace(old, new, 1)
+    if eol is None:
+        updated = text.replace(old, new) if replace_all else text.replace(old, new, 1)
+    else:
+        updated = rx.sub(lambda m: new.replace("\n", _eol_at(text, m)), text, count=0 if replace_all else 1)
     return updated, (count if replace_all else 1)
-
-
-def _match_lines(text: str, needle: str, limit: int = 10) -> list[int]:
-    out: list[int] = []
-    at = text.find(needle)
-    while at >= 0 and len(out) < limit:
-        out.append(text.count("\n", 0, at) + 1)
-        at = text.find(needle, at + max(1, len(needle)))
-    return out
 
 
 def _numbered(lines: list[str], first: int, *, max_lines: int = 40, width: int = 300) -> str:
@@ -240,17 +251,12 @@ def _closest_match(text: str, old: str) -> str:
 def _edit_snippet(text: str, updated: str, old: str, new: str) -> str:
     """The edited region with line numbers, so the model can verify the result
     without re-reading the file."""
-    used_old, used_new = old, new
-    if text.find(old) < 0:
-        normalized = _crlf_normalize(text, old, new)
-        if normalized is not None:
-            used_old, used_new = normalized
-    at = text.find(used_old)
+    at = _find_old(text, old, new)
     if at < 0:
         return ""
     first = text.count("\n", 0, at) + 1
     lines = updated.replace("\r\n", "\n").split("\n")
-    span = used_new.replace("\r\n", "\n").count("\n") + 1
+    span = new.replace("\r\n", "\n").count("\n") + 1
     lo = max(1, first - 3)
     hi = min(len(lines), first + span - 1 + 3)
     return _numbered(lines[lo - 1:hi], lo)
@@ -258,12 +264,7 @@ def _edit_snippet(text: str, updated: str, old: str, new: str) -> str:
 
 def _edit_first_line(text: str, old: str, new: str) -> int | None:
     """1-based file line of old_string, or None when it cannot be located."""
-    used_old, used_new = old, new
-    if text.find(old) < 0:
-        normalized = _crlf_normalize(text, old, new)
-        if normalized is not None:
-            used_old, used_new = normalized
-    at = text.find(used_old)
+    at = _find_old(text, old, new)
     return None if at < 0 else text.count("\n", 0, at) + 1
 
 

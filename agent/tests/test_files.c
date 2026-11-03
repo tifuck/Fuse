@@ -97,6 +97,30 @@ int main(void) {
     assert(read_file_slice(path, 1, 10, out, sizeof(out)) == 0);
     assert(strcmp(out, "one\r\ntwo\r\n") == 0);
     cJSON_Delete(rep);
+    /* Mixed endings: LF old_string spans CRLF and LF lines; new takes CRLF.
+     * A single-line old keeps its own line's ending in new. */
+    {
+        char *t = strdup("a\r\nb\nc\r\nd\n");
+        size_t tl = strlen(t);
+        long reps = 0;
+        char why[320];
+        assert(apply_edit(&t, &tl, "a\nb\nc", "x\ny", 0, &reps, why, sizeof(why)) == 0);
+        assert(strcmp(t, "x\r\ny\r\nd\n") == 0 && reps == 1);
+        assert(apply_edit(&t, &tl, "d", "p\nq", 0, &reps, why, sizeof(why)) == 0);
+        assert(strcmp(t, "x\r\ny\r\np\nq\n") == 0);
+        assert(apply_edit(&t, &tl, "x", "m\nn", 0, &reps, why, sizeof(why)) == 0);
+        assert(strcmp(t, "m\r\nn\r\ny\r\np\nq\n") == 0);
+        assert(apply_edit(&t, &tl, "n\ny", "z", 1, &reps, why, sizeof(why)) == 0);
+        assert(strcmp(t, "m\r\nz\r\np\nq\n") == 0 && tl == strlen(t));
+        assert(apply_edit(&t, &tl, "q\nr", "z", 0, &reps, why, sizeof(why)) != 0);
+        assert(strstr(why, "not found"));
+        free(t);
+        t = strdup("a\r\nb\na\nb\r\n");
+        tl = strlen(t);
+        assert(apply_edit(&t, &tl, "a\nb", "x", 0, &reps, why, sizeof(why)) != 0);
+        assert(strstr(why, "not unique (2"));
+        free(t);
+    }
     /* crlf_expand: deterministic LF -> CRLF, embedded CR untouched. */
     {
         char *e = crlf_expand("a\nb\r\nc", 6);

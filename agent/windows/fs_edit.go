@@ -157,9 +157,99 @@ func replaceFile(path, old, newv string, all bool) (string, error) {
 	return replaceEdits(path, []fileEdit{{old, newv, all}})
 }
 
-// applyEdit replaces old with newv in text. LF-only strings against a CRLF
-// text are converted to CRLF (read_file hides carriage returns) —
-// deterministic line-ending repair, never a fuzzy match.
+// eolMatch is the length of old matched at text[i:], each '\n' in old
+// taking LF or CRLF; 0 if none.
+func eolMatch(text string, i int, old string) int {
+	s := i
+	for j := 0; j < len(old); j++ {
+		if old[j] == '\n' && strings.HasPrefix(text[s:], "\r\n") {
+			s += 2
+		} else if s < len(text) && text[s] == old[j] {
+			s++
+		} else {
+			return 0
+		}
+	}
+	return s - i
+}
+
+// matchCRLF: whether a match ends its lines with CRLF — its own ending when
+// it spans lines, else that of the line it sits on (CRLF on a final line).
+func matchCRLF(text string, at, n int) bool {
+	if hit := text[at : at+n]; strings.ContainsRune(hit, '\n') {
+		return strings.Contains(hit, "\r\n")
+	}
+	nl := strings.IndexByte(text[at+n:], '\n')
+	return nl < 0 || text[at+n+nl-1] == '\r'
+}
+
+// applyEditEOL is applyEdit for LF-only strings against a text with CRLF (or
+// mixed) endings: each newline in old matches either ending, and new takes
+// the matched region's.
+func applyEditEOL(text string, e fileEdit) (string, int, error) {
+	k := strings.IndexByte(e.Old, '\n')
+	if k < 0 {
+		k = len(e.Old)
+	}
+	type hit struct{ at, n int }
+	var hits []hit
+	for i := 0; i < len(text); {
+		var j int
+		if k > 0 {
+			j = strings.Index(text[i:], e.Old[:k])
+		} else {
+			j = strings.IndexAny(text[i:], "\r\n")
+		}
+		if j < 0 {
+			break
+		}
+		if n := eolMatch(text, i+j, e.Old); n > 0 {
+			hits = append(hits, hit{i + j, n})
+			i += j + n
+		} else {
+			i += j + 1
+		}
+	}
+	if len(hits) == 0 {
+		return "", 0, fmt.Errorf("old_string not found")
+	}
+	if len(hits) > 1 && !e.All {
+		return "", 0, fmt.Errorf("old_string is not unique (%d occurrences)", len(hits))
+	}
+	if !e.All {
+		hits = hits[:1]
+	}
+	crlfNew := strings.ReplaceAll(e.New, "\n", "\r\n")
+	size := len(text)
+	for _, h := range hits {
+		if matchCRLF(text, h.at, h.n) {
+			size += len(crlfNew) - h.n
+		} else {
+			size += len(e.New) - h.n
+		}
+	}
+	if size > editFileMax {
+		return "", 0, fmt.Errorf("replacement too large (maximum %d bytes); apply the change with run_terminal_command", editFileMax)
+	}
+	var b strings.Builder
+	b.Grow(size)
+	prev := 0
+	for _, h := range hits {
+		b.WriteString(text[prev:h.at])
+		if matchCRLF(text, h.at, h.n) {
+			b.WriteString(crlfNew)
+		} else {
+			b.WriteString(e.New)
+		}
+		prev = h.at + h.n
+	}
+	b.WriteString(text[prev:])
+	return b.String(), len(hits), nil
+}
+
+// applyEdit replaces old with newv in text. LF-only strings against a text
+// with CRLF line endings go through applyEditEOL (read_file hides carriage
+// returns) — deterministic line-ending repair, never a fuzzy match.
 func applyEdit(text string, e fileEdit) (string, int, error) {
 	if e.Old == "" {
 		return "", 0, fmt.Errorf("old_string required")
@@ -167,16 +257,11 @@ func applyEdit(text string, e fileEdit) (string, int, error) {
 	if e.Old == e.New {
 		return "", 0, fmt.Errorf("old_string and new_string are identical")
 	}
+	if strings.Contains(text, "\r\n") && !strings.ContainsRune(e.Old, '\r') && !strings.ContainsRune(e.New, '\r') {
+		return applyEditEOL(text, e)
+	}
 	oldUse, newUse := e.Old, e.New
 	count := strings.Count(text, oldUse)
-	if count == 0 && strings.Contains(text, "\r\n") && !strings.ContainsRune(e.Old, '\r') && strings.ContainsRune(e.Old, '\n') {
-		crlfOld := strings.ReplaceAll(e.Old, "\n", "\r\n")
-		crlfNew := strings.ReplaceAll(e.New, "\n", "\r\n")
-		if c := strings.Count(text, crlfOld); c > 0 {
-			oldUse, newUse = crlfOld, crlfNew
-			count = c
-		}
-	}
 	if count == 0 {
 		return "", 0, fmt.Errorf("old_string not found")
 	}
