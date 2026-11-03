@@ -65,6 +65,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-age
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main .chat-agents-name { font-weight: 600; color: var(--mist); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-meta, .chat-jobs-meta, .chat-agents-time, .chat-agents-fold) { color: var(--mute); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-idle .chat-agents-state { color: var(--mute); }
+/* Between the task and the clock in weight, so the three never read as one. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { color: color-mix(in srgb, var(--mist) 62%, var(--ink)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-fold:hover { color: var(--mist); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-cmd { color: color-mix(in srgb, var(--mist) 86%, var(--ink)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-output-link:hover .chat-jobs-cmd { color: var(--mist); }
@@ -99,7 +101,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-act, .chat-jobs-kill) { width: 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name { max-width: 24ch; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 16ch; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 16ch; margin-right: 0.3rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-provider { display: none; }
 }
 /* Narrow phones: a subagent row is its task and dot (the dot carries its
@@ -110,4 +112,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(6ch, auto) 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 12ch; }
+  /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main .chat-agents-state { display: none; }
 }
