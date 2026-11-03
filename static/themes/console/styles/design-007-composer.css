@@ -3,19 +3,18 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
   color: color-mix(in srgb, var(--mute) 78%, var(--ink));
 }
 
-/* Composer: one grid for every state and width.
-     >  [attachments …]
-     >  text …
-     +                     model  web  perms  context  mic  send
-   The text has its own row and + sits with the tools under it, so typing
-   never moves either. + spans into the 1fr column, which leaves column 1
-   empty, so it collapses and the > sits at the edge. The top rule keeps
-   one colour: focus shows in the prompt glyph and the caret. */
+/* Composer: one grid for every state.
+     +  >  [attachments …]
+     +  >  text …            model  web  perms  context  mic  send
+   The +/> gutter sits on the first text line and the tools on the last, so
+   typing never moves either. Once the text wraps, it takes the full width
+   and + and the tools drop to their own row under it, as on a phone. The
+   top rule keeps one colour: focus shows in the prompt glyph and the caret. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
   --composer-row: 1.75rem;
   --composer-line: 1.25rem;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(5, auto);
+  grid-template-columns: var(--composer-row) auto minmax(10rem, 1fr) minmax(0, max-content) repeat(5, auto);
   align-items: start;
   gap: 0;
   margin: 0;
@@ -55,17 +54,24 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box:focus-within::before { color: var(--brass); }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box > .chat-attach-list { grid-area: 1 / 3 / 2 / -1; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-area: 2 / 3 / 3 / -1; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { grid-area: 3 / 4; min-width: 0; max-width: 18rem; margin-left: 0.75rem; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-search-btn { grid-area: 3 / 5; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-host { grid-area: 3 / 6; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-context-wrap { grid-area: 3 / 7; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-mic-btn { grid-area: 3 / 8; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send { grid-area: 3 / 9; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 2 / 1; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-area: 2 / 3; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { grid-area: 2 / 4; min-width: 0; max-width: 18rem; margin-left: 0.75rem; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-search-btn { grid-area: 2 / 5; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-host { grid-area: 2 / 6; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-context-wrap { grid-area: 2 / 7; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-mic-btn { grid-area: 2 / 8; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send { grid-area: 2 / 9; }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { align-self: end; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { margin-top: 0.15rem; }
+
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-box { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(5, auto); }
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-compose { grid-column: 3 / -1; }
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) {
+  grid-row: 3;
+  margin-top: 0.15rem;
+}
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { margin-left: 0.3rem; }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-mic-btn, .chat-send) {
@@ -188,6 +194,17 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
     --composer-row: 1.875rem;
     --composer-line: 1.4rem;
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(5, auto);
+  }
+
+  /* A phone always keeps two rows: the text runs from the left edge and
+     + sits with the tools under it. Spanning into the 1fr column leaves
+     column 1 empty, so it collapses and the > moves to the edge. */
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-column: 3 / -1; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) {
+    grid-row: 3;
+    margin-top: 0.15rem;
   }
 
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea { font-size: 16px; }
