@@ -163,6 +163,34 @@ class ProjectsRetentionTest(unittest.TestCase):
         self.assertFalse(chats.get_thread(1, session["id"])["archived"])
         self.assertFalse(hosts.get_project(1, 7, made["id"])["archived"])
 
+    def test_a_new_session_or_a_move_unarchives_the_project_with_its_sessions(self):
+        def updates():
+            return sum(1 for e in store.events_after(1, 0) if e["type"] == "projects.updated")
+
+        made = self.project()
+        shelved, _ = self.session(made)
+        hosts.patch_project(1, 7, made["id"], {"archived": True})
+        seen = updates()
+        self.session(made)
+        self.assertFalse(hosts.get_project(1, 7, made["id"])["archived"])
+        self.assertFalse(chats.get_thread(1, shelved["id"])["archived"])
+        self.assertEqual(updates(), seen + 1, "open chat pages hear about the restore")
+        hosts.patch_project(1, 7, made["id"], {"archived": True})
+        plain = chats.create_thread(1, model="offline")
+        chats.move_thread_to_project(1, plain["id"], 7, made["id"])
+        self.assertFalse(hosts.get_project(1, 7, made["id"])["archived"])
+        self.assertFalse(chats.get_thread(1, shelved["id"])["archived"])
+
+    def test_move_to_chats_and_machine_removal_leave_plain_chats(self):
+        made = self.project()
+        moved, _ = self.session(made)
+        back = chats.move_thread_to_project(1, moved["id"], None, None)
+        self.assertEqual((back["kind"], back["host_id"], back["project_id"]), ("chat", None, None))
+        orphan, _ = self.session(made)
+        self.assertTrue(hosts.delete_host(1, 7))
+        after = chats.get_thread(1, orphan["id"])
+        self.assertEqual((after["kind"], after["host_id"], after["project_id"]), ("chat", None, None))
+
     def test_delete_project_deletes_or_detaches_sessions(self):
         doomed = self.project("doomed")
         thread, _ = self.session(doomed)

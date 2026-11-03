@@ -1082,6 +1082,22 @@ class SidebarPinsUnreadTest(unittest.TestCase):
         self.assertEqual(rows[second["id"]]["pin_order"], unpinned["pin_order"])
         self.assertFalse(rows[second["id"]]["pinned"])
 
+    def test_rename_and_archive_keep_the_rows_place_and_age(self):
+        thread = chats.create_thread(1, model="offline")
+        last_activity = "2026-09-20T12:34:56Z"
+        db.execute("UPDATE chat_threads SET updated_at=?", (last_activity,))
+        renamed = chats.update_thread(1, thread["id"], title="Renamed", expected_revision=thread["revision"])
+        self.assertEqual(renamed["updated_at"], last_activity)
+        archived = chats.update_thread(1, thread["id"], archived=True, expected_revision=renamed["revision"])
+        self.assertEqual(archived["updated_at"], last_activity)
+        # Archive time feeds retention, so it is the real time, not the activity time.
+        self.assertGreater(db.fetchone("SELECT archived_at FROM chat_threads")["archived_at"], last_activity)
+        restored = chats.update_thread(1, thread["id"], archived=False, expected_revision=archived["revision"])
+        self.assertEqual(restored["updated_at"], last_activity)
+        self.assertGreater(db.fetchone("SELECT active_at FROM chat_threads")["active_at"], last_activity)
+        switched = chats.update_thread(1, thread["id"], model="other", expected_revision=restored["revision"])
+        self.assertGreater(switched["updated_at"], last_activity, "a model switch still counts as activity")
+
     def test_root_finish_badges_but_child_finish_does_not(self):
         thread = chats.create_thread(1, model="offline")
         run = store.start_turn(1, thread["id"], "Hello", thread["revision"], "turn-1")["run"]

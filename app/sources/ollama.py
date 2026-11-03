@@ -288,11 +288,12 @@ class OllamaSource:
             r = await client.get(self.base + "/tags", headers={"Authorization": f"Bearer {key}"})
             if r.status_code != 200:
                 raise ValueError(f"ollama tags http {r.status_code}")
-            names = [
-                m["name"]
-                for m in r.json().get("models", [])
-                if isinstance(m, dict) and m.get("name")
-            ]
+            rows = [m for m in r.json().get("models", []) if isinstance(m, dict) and m.get("name")]
+            # Ollama Cloud shuffles /tags on every call. Ollama's own list is
+            # newest first; sort the same way so the picker holds still.
+            rows.sort(key=lambda m: m["name"])
+            rows.sort(key=lambda m: str(m.get("modified_at") or ""), reverse=True)
+            names = [m["name"] for m in rows]
             if not names:
                 # Never cache an empty catalog: a blip would blank the model
                 # list for a full TTL instead of falling back to cfg["model"].

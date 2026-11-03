@@ -742,6 +742,18 @@ class HostsHttpTest(unittest.TestCase):
             json={"host_id": "x", "project_id": project_id, "expected_revision": moved.json()["revision"], "command_id": "mv-3"},
         )
         self.assertEqual(bad.status_code, 422)
+        # Null ids move it back to the plain chats; leaving them out is refused.
+        unnamed = self.client.post(
+            f"/chat/threads/{chat['id']}/project", headers={"x-csrf-token": csrf},
+            json={"expected_revision": moved.json()["revision"], "command_id": "mv-4"},
+        )
+        self.assertEqual(unnamed.status_code, 422)
+        back = self.client.post(
+            f"/chat/threads/{chat['id']}/project", headers={"x-csrf-token": csrf},
+            json={"host_id": None, "project_id": None, "expected_revision": moved.json()["revision"], "command_id": "mv-5"},
+        )
+        self.assertEqual(back.status_code, 200, back.text)
+        self.assertEqual((back.json()["kind"], back.json()["project_id"]), ("chat", None))
 
     def test_new_project_thread_without_existing_session(self):
         csrf = self._login()

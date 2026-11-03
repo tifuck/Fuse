@@ -43,7 +43,9 @@ def _projects_bundle(user_id: int) -> dict:
         "projects": chats.list_sidebar_projects(user_id),
         "hosts": [
             {"id": h["id"], "alias": h["alias"], "label": h.get("label") or "", "default_cwd": h.get("default_cwd") or "",
-             "auth_type": h.get("auth_type") or "", "online": h.get("online")}
+             "auth_type": h.get("auth_type") or "", "kind": h.get("kind") or "", "online": h.get("online"),
+             "pinned": h.get("pinned"), "last_error": h.get("last_error") or "", "last_ok_at": h.get("last_ok_at"),
+             "last_seen_at": h.get("last_seen_at")}
             for h in bundle["hosts"]
         ],
         "vault": bundle["vault"],

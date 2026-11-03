@@ -156,6 +156,9 @@ class ChatSyncTest(unittest.TestCase):
         with self.socket(a["id"]) as resumed:
             update = self.until(resumed, "thread.updated")
             self.assertEqual(update["payload"]["title"], "first")
+            stale = self.client.request("DELETE", f"/chat/threads/{thread['id']}", json={"expected_revision": 0})
+            self.assertEqual(stale.status_code, 409, stale.text)
+            self.assertEqual(stale.json()["revision"], 1, "a stale delete names the revision to retry at")
             response = self.client.request("DELETE", f"/chat/threads/{thread['id']}", json={"expected_revision": 1})
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(self.until(resumed, "thread.deleted")["thread_id"], thread["id"])
@@ -271,6 +274,9 @@ class ChatSyncTest(unittest.TestCase):
                 json={"expected_revision": thread["revision"], "command_id": "summary-down", "strategy": "summarize"},
             )
         self.assertEqual(failed.status_code, 502, failed.text)
+        # The advice names something the page offers; there is no strategy control.
+        self.assertIn("pick another model", failed.json()["detail"])
+        self.assertNotIn("strategy", failed.json()["detail"])
         after = self.client.get(f"/chat/threads/{thread['id']}").json()
         self.assertFalse(after["compaction"].get("checkpoints"))
 

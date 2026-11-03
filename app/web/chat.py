@@ -892,14 +892,26 @@ async def chat_thread_delete(request: Request, thread_id: str):
     if err:
         return err
     raw = await _json_object(request)
+    revision = _chat_revision(raw)
+
+    def _delete():
+        from .. import chat_views
+
+        if chats.delete_thread(user["id"], thread_id, expected_revision=revision, command_id=raw.get("command_id")):
+            return True, None
+        pk = chats.resolve_thread_pk(user["id"], thread_id)
+        return False, chat_views.thread_revision(user["id"], pk) if pk is not None else None
+
     try:
-        if not chats.delete_thread(user["id"], thread_id, expected_revision=_chat_revision(raw), command_id=raw.get("command_id")):
-            if chats.get_thread(user["id"], thread_id) is not None:
-                raise HTTPException(409, "Chat changed; retry with the current revision")
-            raise HTTPException(404, "Chat not found")
+        deleted, current = await asyncio.to_thread(_delete)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
-    return JSONResponse({"ok": True})
+    if deleted:
+        return JSONResponse({"ok": True})
+    if current is None:
+        raise HTTPException(404, "Chat not found")
+    # The current revision lets the client retry without downloading the chat.
+    return JSONResponse({"detail": "Chat changed; retry with the current revision", "revision": current}, status_code=409)
 
 
 @router.post("/chat/threads/{thread_id}/compact")
@@ -974,7 +986,7 @@ async def chat_compact(request: Request, thread_id: str):
         # A manual compact asked for a summary; silently keeping a clipped
         # handoff instead would lose detail the user never agreed to drop.
         raise HTTPException(502, "The model could not write a summary, so nothing was compacted. "
-                                 "Try again, or choose the truncate strategy.")
+                                 "Try again, or pick another model and compact again.")
     if not checkpoint:
         chat_store.remember_compact(user["id"], _chat_command(raw), prepared["fingerprint"], thread, compacted=False)
         return JSONResponse(
@@ -1001,7 +1013,6 @@ async def chat_compact(request: Request, thread_id: str):
 
 
 @router.post("/chat/threads/{thread_id}/fork")
-@router.post("/chat/threads/{thread_id}/duplicate")
 async def chat_thread_fork(request: Request, thread_id: str):
     user, err = _chat_auth(request)
     if err:
@@ -1024,10 +1035,14 @@ async def chat_thread_move_project(request: Request, thread_id: str):
     if err:
         return err
     raw = await _json_object(request)
+    # Both ids null moves the session back to the plain chats.
+    if "host_id" not in raw or "project_id" not in raw:
+        raise HTTPException(422, "host_id and project_id are required")
+    revision, command = _chat_revision(raw), _chat_command(raw)
     try:
-        thread = chats.move_thread_to_project(
-            user["id"], thread_id, raw.get("host_id"), raw.get("project_id"),
-            expected_revision=_chat_revision(raw), command_id=_chat_command(raw),
+        thread = await asyncio.to_thread(
+            chats.move_thread_to_project, user["id"], thread_id, raw["host_id"], raw["project_id"],
+            expected_revision=revision, command_id=command,
         )
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None

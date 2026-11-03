@@ -250,6 +250,19 @@ class HistoryTest(unittest.TestCase):
         ])
         self.assertEqual(chat_threads._snippet(raw, "needle"), "the needle is here")
 
+    def test_search_snippet_reads_as_prose_and_cuts_at_words(self):
+        from app import chat_threads
+
+        markdown = ("## Plan\n\n| step | owner |\n|---|---|\n| **fix** the `needle` | 3f2a1b4c-0d9e-4f8a-b7c6-5e4d3c2b1a09 |\n\n"
+                    "```py\nprint('needle')\n```")
+        raw = json.dumps([{"role": "assistant", "content": markdown}])
+        self.assertEqual(chat_threads._snippet(raw, "needle"), "Plan step owner fix the needle print('needle')")
+        linked = json.dumps([{"role": "user", "content": 'see [the needle docs](https://x.test/a) <tag id="q1">ok</tag>'}])
+        self.assertEqual(chat_threads._snippet(linked, "needle"), "see the needle docs ok")
+        long = chat_threads._snippet(json.dumps([{"role": "user", "content": "alpha " * 20 + "needle" + " omega" * 30}]), "needle")
+        self.assertTrue(long.startswith("…alpha "), long)
+        self.assertTrue(long.endswith(" omega"), long)
+
     def test_wake_candidates_only_surface_unwoken_background_children(self):
         run = self.start("go")
         thread_id = run["thread_id"]

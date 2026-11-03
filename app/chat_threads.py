@@ -391,6 +391,18 @@ def list_threads(user_id: int, *, archived: bool | None = False) -> list[dict]:
             (user_id, 1 if archived else 0),
         )
     return [_view(r) for r in rows]
+# A search preview reads as prose: markdown syntax, table pipes, tags and ids
+# would otherwise fill the few characters a sidebar row shows.
+_SNIPPET_DROP = (
+    (re.compile(r"(?m)^[ \t]*(?:```|~~~).*$"), " "),
+    (re.compile(r"(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$"), " "),
+    (re.compile(r"(?m)^[ \t]*(?:#{1,6}|>+|[-*+]|\d+[.)])[ \t]+"), ""),
+    (re.compile(r"</?[A-Za-z][\w:-]*(?:\s[^<>]*)?/?>"), " "),
+    (re.compile(r"!?\[([^\]\n]*)\]\([^)\s]*\)"), r"\1"),
+    (re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b|\b[0-9a-f]{32}\b", re.I), " "),
+    (re.compile(r"\|"), " "),
+    (re.compile(r"[`*]+"), ""),
+)
 def _snippet(raw: str, needle: str) -> str:
     try:
         msgs = json.loads(raw or "[]")
@@ -400,12 +412,22 @@ def _snippet(raw: str, needle: str) -> str:
         # Automated turns (background results handed back) are internal markup, not a preview.
         if not isinstance(msg, dict) or msg.get("auto"):
             continue
-        content = msg.get("content") or ""
-        idx = content.lower().find(needle)
-        if idx >= 0:
-            start = max(0, idx - 42)
-            text = " ".join(content[start : idx + len(needle) + 64].split())
-            return ("…" if start > 0 else "") + text
+        text = msg.get("content") or ""
+        for pattern, repl in _SNIPPET_DROP:
+            text = pattern.sub(repl, text)
+        text = " ".join(text.split())
+        idx = text.lower().find(needle)
+        if idx < 0:
+            continue
+        # Cut at spaces so neither edge shows half a word.
+        start = max(0, idx - 42)
+        if start:
+            start = text.find(" ", start, idx) + 1 or idx
+        end = idx + len(needle) + 64
+        cut = text.rfind(" ", idx + len(needle), end + 1) if end < len(text) else -1
+        if cut > 0:
+            end = cut
+        return ("…" if start else "") + text[start:end]
     return ""
 # Transcript search is a leading-wildcard LIKE over multi-MB blobs: it cannot
 # use an index, so it only scans the newest window of threads. Title, project
@@ -517,14 +539,16 @@ def create_thread(
             except (TypeError, ValueError):
                 raise ChatValidationError("project threads need host_id and project_id")
             proj = conn.execute(
-                "SELECT p.id, p.name, p.host_id, p.default_model, p.default_permissions FROM user_projects p JOIN user_hosts h ON h.id=p.host_id "
+                "SELECT p.id, p.name, p.host_id, p.default_model, p.default_permissions, p.archived FROM user_projects p JOIN user_hosts h ON h.id=p.host_id "
                 "WHERE p.id=? AND p.user_id=? AND p.host_id=? AND h.user_id=?",
                 (pid, user_id, hid, user_id),
             ).fetchone()
             if proj is None:
                 raise ChatValidationError("project not found", 404)
-            # A new session brings an archived project back.
-            conn.execute("UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=? AND archived=1", (pid, user_id))
+            # A new session brings an archived project back, with the
+            # sessions archived along with it, as Unarchive does.
+            if int(proj["archived"] or 0):
+                hosts.set_project_archived(conn, user_id, pid, False)
             if not model:
                 try:
                     model = (proj["default_model"] or "") if "default_model" in proj.keys() else ""
@@ -560,6 +584,8 @@ def create_thread(
             (tid, user_id, title, model, 0, payload, context, tool_json, ts, ts, ts, thread_kind, hid, pid, public, sid,
              int(perms == "bypass"), int(perms == "auto")),
         )
+        if proj is not None and int(proj["archived"] or 0):
+            hosts.projects_changed(conn, user_id)
         store.thread_event(conn, user_id, tid)
         result = store.thread_view(conn, user_id, tid)
         store.remember(conn, user_id, command_id, fingerprint, result)
@@ -815,8 +841,11 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
         tool_json = json.dumps(parse_thread_tools(tools, strict=True), separators=(",", ":"))
     else:
         tool_json = row["tools"] if "tools" in row.keys() and row["tools"] is not None else json.dumps(DEFAULT_TOOLS)
-    pin_only = pinned is not None and all(value is None for value in (title, model, archived, messages, context, tools, reasoning_effort))
-    ts = row["updated_at"] if pin_only else db.now()
+    # A rename, pin or archive labels the chat; it is not activity, so the row
+    # keeps its place and age in the list.
+    now = db.now()
+    labels_only = all(value is None for value in (model, messages, context, tools, reasoning_effort))
+    ts = row["updated_at"] if labels_only else now
     compaction_json = None
     from . import context_compact as ctxmod
 
@@ -858,10 +887,10 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
     old_archived = int(row["archived"] or 0)
     if new_archived != old_archived:
         if new_archived:
-            conn.execute("UPDATE chat_threads SET archived_at=?, archived_by_project=0 WHERE id=?", (ts, row["id"]))
+            conn.execute("UPDATE chat_threads SET archived_at=?, archived_by_project=0 WHERE id=?", (now, row["id"]))
         else:
             # Restoring counts as activity, so auto-archive does not take it straight back.
-            conn.execute("UPDATE chat_threads SET archived_at='', archived_by_project=0, active_at=? WHERE id=?", (ts, row["id"]))
+            conn.execute("UPDATE chat_threads SET archived_at='', archived_by_project=0, active_at=? WHERE id=?", (now, row["id"]))
             if (row["kind"] if "kind" in row.keys() else "") == "project" and row["project_id"] is not None:
                 conn.execute(
                     "UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=? AND archived=1",
@@ -1359,11 +1388,13 @@ def promote_working_session(user_id: int, thread_id, *, host_id=None, cwd: str =
         return store.thread_view(conn, user_id, pk)
 def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expected_revision=None, command_id=None) -> dict | None:
     """Make a chat (or another project's session) a session of this project.
-    Messages and notes stay; the next turn runs in the project's folder."""
-    from . import chat_store as store
+    Messages and notes stay; the next turn runs in the project's folder.
+    No host and no project moves a session back to the plain chats."""
+    from . import chat_store as store, hosts
 
+    detach = host_id is None and project_id is None
     try:
-        hid, pid = int(host_id), int(project_id)
+        hid, pid = (None, None) if detach else (int(host_id), int(project_id))
     except (TypeError, ValueError):
         raise ChatValidationError("host_id and project_id must be integers", 422) from None
     with store.transaction() as conn:
@@ -1373,16 +1404,18 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
         pk = resolve_thread_pk(user_id, thread_id, conn)
         if pk is None:
             return None
-        row = conn.execute("SELECT * FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
+        row = conn.execute("SELECT revision FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
         if row is None:
             return None
         store.check_revision(row["revision"], expected_revision)
-        proj = conn.execute(
-            "SELECT id, archived FROM user_projects WHERE id=? AND user_id=? AND host_id=?",
-            (pid, user_id, hid),
-        ).fetchone()
-        if proj is None:
-            raise ChatValidationError("project not found", 404)
+        proj = None
+        if not detach:
+            proj = conn.execute(
+                "SELECT id, archived FROM user_projects WHERE id=? AND user_id=? AND host_id=?",
+                (pid, user_id, hid),
+            ).fetchone()
+            if proj is None:
+                raise ChatValidationError("project not found", 404)
         # A running turn keeps the folder it started with; moving it mid-run
         # would change its permission scope under it.
         if conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
@@ -1390,12 +1423,15 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
         ts = db.now()
         conn.execute(
             """UPDATE chat_threads
-               SET kind='project', host_id=?, project_id=?, updated_at=?, revision=revision+1
+               SET kind=?, host_id=?, project_id=?, archived_by_project=0, updated_at=?, revision=revision+1
                WHERE id=? AND user_id=?""",
-            (hid, pid, ts, pk, user_id),
+            ("chat" if detach else "project", hid, pid, ts, pk, user_id),
         )
-        if int(proj["archived"] or 0):
-            conn.execute("UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=?", (pid, user_id))
+        # Moving into an archived project unarchives it, as a new session does.
+        if proj is not None and int(proj["archived"] or 0):
+            hosts.set_project_archived(conn, user_id, pid, False)
+        # Both projects' session counts changed.
+        hosts.projects_changed(conn, user_id)
         store.thread_event(conn, user_id, pk)
         result = store.thread_view(conn, user_id, pk)
         store.remember(conn, user_id, command_id, fingerprint, result)

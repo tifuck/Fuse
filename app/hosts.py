@@ -278,10 +278,13 @@ def _project_view(row) -> dict:
 
 def _projects(conn, user_id: int, host_id: int) -> list[dict]:
     rows = conn.execute(
-        "SELECT * FROM user_projects WHERE user_id=? AND host_id=? ORDER BY name",
+        """SELECT p.*, (SELECT COUNT(*) FROM chat_threads c
+                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS sessions
+           FROM user_projects p WHERE p.user_id=? AND p.host_id=? ORDER BY p.name""",
         (user_id, host_id),
     ).fetchall()
-    return [_project_view(r) for r in rows]
+    # The delete confirm names how many chats go with the project.
+    return [{**_project_view(r), "sessions": int(r["sessions"] or 0)} for r in rows]
 
 
 def _public_host(row, projects=None) -> dict:
@@ -551,8 +554,11 @@ def delete_host(user_id: int, host_id: int, *, reopen_pairing: str | None = None
         bound = "user_id=? AND (host_id=? OR project_id IN (SELECT id FROM user_projects WHERE host_id=? AND user_id=?))"
         tids = [int(r["id"]) for r in conn.execute(
             "SELECT id FROM chat_threads WHERE " + bound, (user_id, host_id, host_id, user_id)).fetchall()]
+        # A session that loses its project is a plain chat again, as after a
+        # project delete that keeps its chats.
         conn.execute(
-            """UPDATE chat_threads SET host_id=NULL,
+            """UPDATE chat_threads SET kind=CASE WHEN kind='project' THEN 'chat' ELSE kind END,
+                   archived_by_project=0, host_id=NULL, revision=revision+1,
                    project_id=CASE WHEN project_id IN (SELECT id FROM user_projects WHERE host_id=? AND user_id=?) THEN NULL ELSE project_id END
                WHERE """ + bound,
             (host_id, user_id, user_id, host_id, host_id, user_id),

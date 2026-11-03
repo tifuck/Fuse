@@ -313,6 +313,24 @@ class OllamaTagsGuardTest(_OllamaSourceTestMixin, unittest.IsolatedAsyncioTestCa
             await src._tags()
         self.assertNotIn(self.SOURCE_ID, ollama_mod._tags_cache)
 
+    async def test_shuffled_tags_list_in_one_order(self):
+        rows = [
+            {"name": "b-old", "modified_at": "2025-08-05T00:00:00Z"},
+            {"name": "z-new", "modified_at": "2026-03-18T00:00:00Z"},
+            {"name": "a-new", "modified_at": "2026-03-18T00:00:00Z"},
+        ]
+        served = []
+        self._network(
+            lambda request: httpx.Response(200, json={"models": served[-1]}) if request.url.path.endswith("/tags") else httpx.Response(404),
+            keys={1: "kg"},
+        )
+        seen = []
+        for order in (rows, rows[::-1]):
+            ollama_mod._tags_cache.pop(self.SOURCE_ID, None)
+            served.append(order)
+            seen.append(await self._source([{"id": 1}])._tags())
+        self.assertEqual(seen, [["a-new", "z-new", "b-old"]] * 2)
+
 
 if __name__ == "__main__":
     unittest.main()

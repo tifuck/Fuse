@@ -123,6 +123,10 @@ def test_frozen_prompt_follows_project_attach_and_edit(thread):
     hosts.patch_project(1, host, project["id"], {"remote_path": "/srv/api-v2"})
     edited, _, _ = run_turn(thread, [result("answer")])
     assert "Project session bound to box cwd=/srv/api-v2." in edited[0]["messages"][0]["content"]
+    # Move to Chats frames the next turn as a regular chat again.
+    chats.move_thread_to_project(1, thread["id"], None, None)
+    detached, _, _ = run_turn(thread, [result("answer")])
+    assert "This is a regular chat, not a project session." in detached[0]["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("project_session,bound_label", [(False, ""), (True, ""), (True, "box cwd=/srv/api")])
