@@ -1,22 +1,6 @@
 // History list rendering, tabs, search.
 import { S, draftKey } from '../state.js';
-import { escapeHtml, safeUrl } from '../core.js';
-
-function sourceCatalog(msg) {
-  const urls = [];
-  const seen = new Set();
-  const add = (raw) => {
-    const url = safeUrl(raw);
-    if (!url || !/^https?:/i.test(url) || seen.has(url)) return;
-    seen.add(url);
-    urls.push(url);
-  };
-  (msg && msg.tools ? msg.tools : []).forEach((trace) => {
-    (trace.results || []).forEach((row) => add(row && row.url));
-    if (trace.name === "read_url") add(trace.url);
-  });
-  return urls;
-}
+import { escapeHtml } from '../core.js';
 
 function runningFirst(a, b) {
   const ra = Number(Boolean(a.running));
@@ -457,8 +441,7 @@ export function createRender(ctx) {
     syncHistoryChrome,
     historyIcons,
     runningFirst,
-    sourceCatalog,
   };
 }
 
-export { historyIcons, runningFirst, sourceCatalog };
+export { historyIcons, runningFirst };

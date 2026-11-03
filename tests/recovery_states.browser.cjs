@@ -1,5 +1,5 @@
 // Recovery states the other browser suites do not pin: a dropped stream re-arms
-// the composer, an aborted turn leaves no live row, an edit restores the caret,
+// the composer, an aborted turn leaves no live row, /rewind restores the caret,
 // deleting the open thread leaves no stale selection, and permission chrome stays
 // inside the viewport. Isolated fixture server only.
 const assert = require('node:assert/strict');
@@ -32,6 +32,13 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     { id: crypto.randomUUID(), role: 'user', content: user },
     { id: crypto.randomUUID(), role: 'assistant', content: assistant },
   ];
+  // The first Enter accepts the command from the palette, the second runs it.
+  const slash = async (p, text) => {
+    const box = p.locator('[data-chat-input]');
+    await box.fill(text);
+    await box.press('Enter');
+    if (await box.inputValue()) await box.press('Enter');
+  };
   const composer = async p => p.evaluate(() => {
     const send = document.querySelector('[data-chat-send]');
     return {
@@ -129,28 +136,18 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await p.context().close();
     }
 
-    // An edit box survives a snapshot of the same message, and a rewind restores it.
+    // /rewind puts an earlier prompt back in the composer, caret at the end.
     {
       const p = await page();
       const created = await seed(p, [...turn('Keep this wording', 'First answer'), ...turn('Change this one', 'Second answer')]);
       await open(p, created.id);
-      const editBtn = p.locator('[data-chat-log] [aria-label="Edit"]').last();
-      assert.ok(await editBtn.count() >= 1, 'the user turn offers Edit');
-      await editBtn.evaluate(el => el.click());
-      const box = p.locator('[data-edit]');
-      await box.waitFor();
-      await box.fill('Change this one, revised');
-      assert.equal(await box.evaluate(el => document.activeElement === el && el.selectionStart === el.value.length), true, 'the edit opens with the caret at the end');
-      await p.locator('[data-edit]').press('Escape');
-      assert.equal(await p.locator('[data-edit]').count(), 0, 'escape closes the edit');
-      const rewindBtn = p.locator('[data-chat-log] [aria-label="Rewind"]').first();
-      assert.ok(await rewindBtn.count() >= 1, 'the user turn offers Rewind');
-      await rewindBtn.evaluate(el => el.click());
+      await slash(p, '/rewind');
+      await p.locator('.chat-rewind-item').filter({ hasText: 'Keep this wording' }).click();
       await p.waitForFunction(() => document.querySelector('[data-chat-input]').value === 'Keep this wording');
       const caret = await p.locator('[data-chat-input]').evaluate(el => ({ start: el.selectionStart, end: el.selectionEnd, len: el.value.length, focused: document.activeElement === el }));
       assert.deepEqual(caret, { start: 'Keep this wording'.length, end: 'Keep this wording'.length, len: 'Keep this wording'.length, focused: true });
       assert.equal(await p.evaluate(() => fuseToolFixture.snapshot().length), 0, 'rewind drops everything from that prompt on');
-      console.log('PASS edit survives a repaint and rewind restores the prompt at the caret');
+      console.log('PASS /rewind restores the prompt at the caret');
       await p.context().close();
     }
 
@@ -217,9 +214,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       const p = await page();
       const created = await seed(p, turn('Retry me', 'First try'));
       await open(p, created.id);
-      const retryBtn = p.locator('[data-chat-log] .chat-msg-actions button[aria-label="Retry"]');
-      assert.equal(await retryBtn.count(), 1, 'the last assistant turn offers Retry');
-      await retryBtn.evaluate(el => el.click());
+      await slash(p, '/retry');
       await p.waitForFunction(() => document.body.classList.contains('is-streaming'));
       await p.waitForFunction(() => !document.body.classList.contains('is-streaming'), null, { timeout: 30000 });
       const after = await p.evaluate(async id => (await fuseToolFixture.api('/chat/threads/' + id)).messages.map(m => m.content), created.id);

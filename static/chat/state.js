@@ -305,8 +305,6 @@ function initState() {
     S.historyTab = "chats";
   }
   S.saveTimer = 0;
-  S.editingIndex = -1;
-  S.editingFiles = [];
   S.lightbox = null;
   S.pop = null;
   S.popRowKey = null;

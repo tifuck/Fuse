@@ -7,7 +7,7 @@ import { newSession } from '../state.js';
 const LOCAL_SLASH = new Set(["thinking", "help", "permissions", "undo", "artifacts"]);
 
 export function createSend(ctx) {
-  const { composer, context, net, overlays, panels, picker, queue, sidebar, sync, traces, transcript, ui } = ctx;
+  const { composer, context, net, overlays, panels, picker, queue, sidebar, sync, traces, transcript } = ctx;
     function closeRewind() {
     const wasOpen = S.rewindPanel && !S.rewindPanel.hidden;
     const hadFocus = wasOpen && S.rewindPanel.contains(document.activeElement);
@@ -93,23 +93,6 @@ export function createSend(ctx) {
     const last = S.messages.at(-1);
     if (last?.role !== "assistant" || !last.error) return;
     completeTurn("Continue from where you stopped. The previous attempt ended with an error; do not redo work that already completed.", [], { progress: "Continuing…" });
-  }
-
-    function syncEmptyReplyRetry() {
-    const last = S.messages.at(-1);
-    const empty = last?.role === "assistant" && !((last.content || "").trim() || (last.reasoning || "").trim() || last.error || last.tools?.length || last.permissions?.length);
-    const existing = S.log.querySelector("[data-empty-retry]");
-    if (!empty || traces.runIsActive(S.activeRun) || S.messages.at(-2)?.role !== "user") { existing?.remove(); return; }
-    if (existing?.dataset.emptyRetry === last.id) return;
-    existing?.remove();
-    const host = traces.articleFor(S.messages.at(-2))?.querySelector(".chat-msg-actions");
-    if (!host) return;
-    const button = document.createElement("button");
-    button.type = "button"; button.className = "chat-icon-btn";
-    button.dataset.emptyRetry = last.id; button.title = "Retry"; button.setAttribute("aria-label", "Retry");
-    button.innerHTML = ui.ACTION_ICONS.retry;
-    button.addEventListener("click", () => retryAssistant(S.messages.findIndex(msg => msg.id === last.id)));
-    host.appendChild(button);
   }
 
     async function stopActiveRun(scope, runId) {
@@ -343,10 +326,9 @@ export function createSend(ctx) {
       return true;
     } catch (error) {
       if (gen !== S.generation) return false;
-      if (opts?.undoSnap && !opts.edit && !S.input.value.trim() && !S.pendingAttachments.length) {
+      if (opts?.undoSnap && !S.input.value.trim() && !S.pendingAttachments.length) {
         // The transcript was never truncated, so a failed replacement only
-        // needs its text (and files) back in the composer to try again. An
-        // edit still has them in its open editor.
+        // needs its text (and files) back in the composer to try again.
         S.input.value = text;
         S.drafts.set(originDraft, text);
         S.pendingAttachments = attachments;
@@ -388,7 +370,6 @@ export function createSend(ctx) {
     requestStop,
     send,
     stopActiveRun,
-    syncEmptyReplyRetry,
     LOCAL_SLASH,
   };
 }

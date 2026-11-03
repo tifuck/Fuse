@@ -1,6 +1,5 @@
 import { create as createMarkdownSyntax } from './markdown-syntax.js';
 import { create as createMarkdownStream } from './markdown-stream.js';
-import { create as createMessageActions } from './message-actions.js';
 import { create as createUserTurn } from './user-turn.js';
 import { create as createAttachmentsAndSources } from './attachments-and-sources.js';
 import { create as createLiveDock } from './live-dock.js';
@@ -55,52 +54,25 @@ export function createConsoleTheme(runtime) {
     get snapThread() { return runtime.snapThread; },
     get stickToBottom() { return runtime.stickToBottom; },
   }));
-  Object.assign(theme, createMessageActions({
-    get ACTION_ICONS() { return theme.ACTION_ICONS; },
-    get beginEdit() { return runtime.beginEdit; },
-    get confirmDeleteAt() { return runtime.confirmDeleteAt; },
-    get copyText() { return runtime.copyText; },
-    get messages() { return runtime.messages; },
-    get partialTranscript() { return runtime.partialTranscript; },
-    get redoConversation() { return runtime.redoConversation; },
-    get redoStack() { return runtime.redoStack; },
-    get retryAssistant() { return runtime.retryAssistant; },
-    get rewindTo() { return runtime.rewindTo; },
-    get rewriteCites() { return theme.rewriteCites; },
-    get showPop() { return runtime.showPop; },
-    get sourceCatalog() { return runtime.sourceCatalog; },
-    get undoConversation() { return runtime.undoConversation; },
-    get undoStack() { return runtime.undoStack; },
-  }));
   Object.assign(theme, createUserTurn({
     get autoEventLabel() { return runtime.autoEventLabel; },
     get ccDuration() { return theme.ccDuration; },
     get ccFlat() { return theme.ccFlat; },
     get cleanToolOutput() { return theme.cleanToolOutput; },
-    get commitEdit() { return runtime.commitEdit; },
     get consoleAutoStepsHtml() { return theme.consoleAutoStepsHtml; },
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
     get displayCommand() { return theme.displayCommand; },
-    get editFilesStrip() { return theme.editFilesStrip; },
-    get editingFiles() { return runtime.editingFiles; },
-    set editingFiles(value) { runtime.editingFiles = value; },
-    get editingIndex() { return runtime.editingIndex; },
-    set editingIndex(value) { runtime.editingIndex = value; },
     get escapeHtml() { return runtime.escapeHtml; },
     get executionIdentity() { return runtime.executionIdentity; },
     get executionState() { return runtime.executionState; },
     get fillUserFiles() { return theme.fillUserFiles; },
-    get msgActions() { return theme.msgActions; },
-    get paint() { return runtime.paint; },
     get setToolReveal() { return runtime.setToolReveal; },
     get shellExitCode() { return runtime.shellExitCode; },
   }));
   Object.assign(theme, createAttachmentsAndSources({
-    get editingFiles() { return runtime.editingFiles; },
     get escapeHtml() { return runtime.escapeHtml; },
     get fileExtLabel() { return theme.fileExtLabel; },
     get imagePreviewButton() { return theme.imagePreviewButton; },
-    get openLightbox() { return runtime.openLightbox; },
     get safeUrl() { return runtime.safeUrl; },
   }));
   Object.assign(theme, createLiveDock({
@@ -289,8 +261,6 @@ export function createConsoleTheme(runtime) {
   Object.assign(theme, createAssistantDisclosure({
     get ccToolClass() { return theme.ccToolClass; },
     get followThinking() { return theme.followThinking; },
-    get messages() { return runtime.messages; },
-    get mountActions() { return theme.mountActions; },
     get pauseThreadFollow() { return runtime.pauseThreadFollow; },
     get restoreDisclosures() { return runtime.restoreDisclosures; },
     get saveDisclosures() { return runtime.saveDisclosures; },
@@ -487,7 +457,6 @@ export function createConsoleTheme(runtime) {
     formatConsoleLiveStatus: theme.formatConsoleLiveStatus,
     groupTraces: theme.groupTraces,
     jobRowHtml: theme.jobRowHtml,
-    mountActions: theme.mountActions,
     patchMarkdown: theme.patchMarkdown,
     permQueueCardHtml: theme.permQueueCardHtml,
     renderAssistant: theme.renderAssistant,

@@ -1,9 +1,7 @@
-/* Footer: usage + duration, then copy/retry/more on the same left edge. */
+/* Footer: usage + duration. */
 .chat-foot { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 0.35rem 0.55rem; min-height: 2.25rem; margin-top: 0.2rem; }
 .chat-foot[hidden] { display: none; }
 .chat-foot-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.01em; }
-.chat-foot .chat-msg-actions { flex: 0 0 auto; margin: 0; margin-left: 0.85rem; opacity: 1; }
-.chat-foot .chat-msg-actions button { color: var(--mute); }
 .chat-think-body {
   margin: 0.1rem 0 0.35rem;
   padding: 0.2rem 0 0.35rem;

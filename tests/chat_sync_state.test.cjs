@@ -1,7 +1,8 @@
 // Sync and turn state across the real modules (static/chat/**), with stub
 // collaborators: a snapshot older than the patches already applied, the gap
-// replay, progress while editing, the compacted view, queued items sent while
-// another tab reloads the queue, and unconfirmed sends that were accepted.
+// replay, live progress, the compacted view, queued items sent while another
+// tab reloads the queue, unconfirmed sends that were accepted, and a failed
+// retry handing its text back to the composer.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { S } = require('../static/chat/state.js');
@@ -11,7 +12,6 @@ const { createPersist } = require('../static/chat/sync/persist.js');
 const { createPaint } = require('../static/chat/transcript/paint.js');
 const { createQueue } = require('../static/chat/turns/queue.js');
 const { createSend } = require('../static/chat/turns/send.js');
-const { createUndo } = require('../static/chat/sidebar/undo.js');
 const { createRender } = require('../static/chat/sidebar/render.js');
 const { runIsActive } = require('../static/chat/traces/semantics.js');
 const { readQueue } = require('../static/chat/turns/queue-store.js');
@@ -37,7 +37,7 @@ const article = id => ({ dataset: { messageId: id }, querySelector: () => null }
 
 function baseState(overrides = {}) {
   Object.assign(S, {
-    currentId: 't', generation: 1, navigation: 0, editingIndex: -1, editingFiles: [], transcriptDirty: false, dirty: false,
+    currentId: 't', generation: 1, navigation: 0, transcriptDirty: false, dirty: false,
     streaming: false, sending: false, loading: false, stoppingRunId: '', serverRevision: 3, viewCursor: 0, threadWatermark: 0,
     cursor: 0, replayedThrough: 0, gapReplayFrom: 0, activeRun: null, messages: [], contextCut: null,
     completedJobs: new Map(), agentLifecycle: new Map(), agentLifecycleEpoch: 0, modelsById: new Map(), modelId: 'offline',
@@ -124,14 +124,11 @@ test('the compacted view is the stored rows after the cut, under the summary', (
   const shown = viewMessages();
   assert.deepEqual(shown.map(msg => msg.id), ['compaction:a1', 'u2', 'a2']);
   assert.equal(shown[0].summary, 'Earlier work');
-  assert.equal(shown[1], rows[2], 'rows are the transcript objects, so actions keep their S.messages index');
+  assert.equal(shown[1], rows[2], 'rows are the transcript objects, so they keep their S.messages index');
 
   // A reply that compacted mid-turn carries its own handoff marker.
   S.contextCut = { id: 'a1', include: true, summary: '' };
   assert.deepEqual(viewMessages().map(msg => msg.id), ['a1', 'u2', 'a2']);
-  S.editingIndex = 0;
-  assert.equal(viewMessages(), rows, 'editing shows the whole transcript');
-  S.editingIndex = -1;
   S.contextCut = { id: 'gone', include: false, summary: 'x' };
   assert.equal(viewMessages(), rows, 'an unknown boundary falls back to the whole transcript');
 });
@@ -149,9 +146,9 @@ function makeStream(calls, apply = {}) {
   });
 }
 
-test('run progress is applied while a message is being edited', async () => {
+test('run progress is applied to the live message', async () => {
   const live = { id: 'm', role: 'assistant', content: '', tools: [] };
-  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }, live], editingIndex: 0, cursor: 10, viewCursor: 10,
+  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }, live], cursor: 10, viewCursor: 10,
     activeRun: { id: 'r', message_id: 'm', status: 'running' } });
   const applied = [];
   const stream = makeStream({}, { applyProgressPayload: (msg, payload) => applied.push([msg, payload]) });
@@ -296,21 +293,12 @@ test('an accepted send is no longer unconfirmed when the chat changed mid-reques
   assert.equal(sessionStorage.getItem(S.STORE_PENDING_TURN || 'fuse.chat.pendingTurn'), null);
 });
 
-test('a failed edit keeps its editor and does not overwrite the composer', async () => {
+test('a failed retry puts its text and files back in the empty composer', async () => {
   const files = [{ id: 'f1', name: 'notes.txt', kind: 'text', data: 'x' }];
   baseState({ messages: [{ id: 'u', role: 'user', content: 'old', attachments: files }, { id: 'a', role: 'assistant', content: 'reply' }],
-    editingIndex: 0, editingFiles: files.slice(), input: { value: '' }, pendingAttachments: [], drafts: new Map(), draftFiles: new Map(), threadContext: '' });
+    input: { value: '' }, pendingAttachments: [], drafts: new Map(), draftFiles: new Map(), threadContext: '' });
   const send = makeSend(async () => { throw Object.assign(new Error('Server error'), { status: 503 }); });
-  const seen = [];
-  const undo = createUndo({
-    traces: stub({ runIsActive }), net: stub({ requireLive: () => true }), transcript: stub(),
-    turns: stub({ completeTurn: (...args) => { seen.push(args); return send.completeTurn(...args); } }),
-    artifacts: stub(), composer: stub(), context: stub(), picker: stub(), sync: stub(),
-  });
-  assert.equal(await undo.commitEdit(0, 'new text'), false);
-  assert.deepEqual(seen[0][1], files, 'the kept files are sent');
-  assert.equal(seen[0][2].edit, true);
-  assert.equal(S.editingIndex, 0, 'the editor stays open after the failure');
-  assert.deepEqual(S.editingFiles, files, 'a second Save still carries the attachments');
-  assert.equal(S.input.value, '', 'the edit text stays in its editor, not the composer');
+  assert.equal(await send.completeTurn('old', files.slice(), { undoSnap: [], truncatedTo: 0 }), false);
+  assert.equal(S.input.value, 'old', 'the retried text is back in the composer');
+  assert.deepEqual(S.pendingAttachments, files, 'and so are its files');
 });

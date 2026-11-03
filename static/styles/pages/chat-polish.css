@@ -19,12 +19,6 @@
 .chat-md h1 { font-size: calc(1.45rem * var(--chat-text-scale, 1)); }
 .chat-md h2 { font-size: calc(1.22rem * var(--chat-text-scale, 1)); }
 .chat-md h3 { font-size: calc(1.08rem * var(--chat-text-scale, 1)); }
-.chat-msg-actions { opacity: 1; }
-.chat-msg-actions button {
-  height: 1.85rem;
-  color: color-mix(in srgb, var(--mute) 70%, var(--mist));
-  font-size: 0.72rem;
-}
 .chat-empty { padding: 1.5rem 0 2rem; }
 .chat-empty-glyph {
   width: 3.1rem;
@@ -188,7 +182,6 @@
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: none; }
   }
-  .chat-msg-actions button { min-height: 2rem; height: 2rem; }
 }
 
 @media (max-width: 800px) {
@@ -339,11 +332,6 @@ body.is-keyboard .chat-log { padding-bottom: 0.65rem; }
   outline: 2px solid var(--steel);
   outline-offset: 1px;
 }
-.chat-msg-actions {
-  gap: 0.1rem;
-}
-.chat-msg-actions button,
-.chat-foot .chat-msg-actions button,
 .chat-code-head button {
   height: 1.85rem;
   min-height: 0;
@@ -436,9 +424,7 @@ body.is-keyboard .chat-log { padding-bottom: 0.65rem; }
 .chat-code-head .chat-icon-btn { color: var(--mute); }
 
 @media (max-width: 800px) {
-  .chat-icon-btn,
-  .chat-msg-actions button,
-  .chat-foot .chat-msg-actions button {
+  .chat-icon-btn {
     width: 2rem;
     height: 2rem;
     min-height: 2rem;

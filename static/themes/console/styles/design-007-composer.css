@@ -266,11 +266,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-tur
   font: inherit;
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-turn.is-user .chat-msg-actions,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foot .chat-msg-actions {
-  display: none;
-}
-
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md {
   display: grid;
   grid-template-columns: 0.7rem minmax(0, 1fr);

@@ -38,6 +38,14 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.locator('[data-chat-input]').fill(text);
       await page.locator('[data-chat-send]').click();
     };
+    // The first Enter accepts the command from the palette; a non-local one
+    // then needs a second Enter to run.
+    const slash = async text => {
+      const box = page.locator('[data-chat-input]');
+      await box.fill(text);
+      await box.press('Enter');
+      if (await box.inputValue()) await box.press('Enter');
+    };
 
     // Stop: the toast leaves as soon as the run is stopped, not on a timer.
     await send('Queue fixture tool-step toast stop');
@@ -66,7 +74,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await send('Plain message for toast retry');
     await streaming();
     await idle();
-    await page.evaluate(() => [...document.querySelectorAll('.is-assistant')].at(-1).querySelector('[aria-label="Retry"]').click());
+    await slash('/retry');
     await toastShows('Retrying…');
     await page.waitForFunction(() => fuseToolFixture.runInfo()?.status === 'running');
     await toastGoneWithin(1000, 'Retrying…');
@@ -75,11 +83,9 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     console.log('PASS Retrying… leaves once the retry is running');
 
     // A result toast keeps its time; the save it triggers must not wipe it.
-    await page.evaluate(() => [...document.querySelectorAll('.is-user')].at(-1).querySelector('[aria-label="More"]').click());
-    await page.locator('.chat-pop button, [role=menuitem]').filter({ hasText: /^Delete$/ }).first().click();
-    await page.locator('dialog button, .chat-confirm button').filter({ hasText: /^Delete$/ }).first().click();
+    await slash('/undo');
     await page.waitForTimeout(1200);
-    assert.equal(await toast(), 'Message deleted. /undo restores it.');
+    assert.equal(await toast(), 'Undid last turn.');
     console.log('PASS result toast survives the save it triggers');
 
     // A cache miss stays until dismissed. A passing hint covers it, then it returns.
@@ -109,15 +115,6 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await page.waitForTimeout(3000);
     assert.equal(await toast(), '', 'a dismissed effort miss does not come back');
     console.log('PASS an effort cache miss names the old and new effort');
-
-    // Deleting from the middle of a warm chat says the rest re-caches;
-    // trimming the tail (Undo/Retry/Edit) keeps the cached prefix and says nothing extra.
-    await page.evaluate(() => fuseToolFixture.cacheProbe({ at: Date.now() / 1000, prompt: 50000, ttl: 300, hit: true, model: 'offline' }));
-    await page.evaluate(() => document.querySelector('.is-user [aria-label="More"]').click());
-    await page.locator('.chat-pop button, [role=menuitem]').filter({ hasText: /^Delete$/ }).first().click();
-    await page.locator('dialog button, .chat-confirm button').filter({ hasText: /^Delete$/ }).first().click();
-    await toastShows('Message deleted · the rest of the chat re-caches on the next reply. /undo restores it.');
-    console.log('PASS mid-chat delete on a warm cache warns before the next reply');
 
     assert.deepEqual(errors, []);
   } finally {

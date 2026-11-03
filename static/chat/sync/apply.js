@@ -84,14 +84,6 @@ export function createApply(ctx) {
     perms.acceptPermThread(data);
     S.acceptedQueueCommands = new Set(data.accepted_queue_ids || []);
     turns.retireAcceptedQueue();
-    if (S.editingIndex >= 0) {
-      const editing = S.messages[S.editingIndex];
-      const next = data.messages[S.editingIndex];
-      if (!editing || !next || next.id !== editing.id || next.content !== editing.content) {
-        S.editingIndex = -1;
-        S.editingFiles = [];
-      }
-    }
     const viewport = transcript.captureThreadViewport();
     const old = new Map(S.messages.map((msg) => [msg.id, msg]));
     const previousReply = old.get(S.activeRun?.message_id);
@@ -203,7 +195,7 @@ export function createApply(ctx) {
       S.messages.forEach((msg, i) => {
         if (i >= oldLength) {
           const live = messageRunLive(msg);
-          const article = msg.role === "user" ? ui.renderUser(msg, i, live) : ui.renderAssistant(msg, live);
+          const article = msg.role === "user" ? ui.renderUser(msg, i) : ui.renderAssistant(msg, live);
           article.dataset.messageId = msg.id || "";
           if (msg.role === "assistant" && S.log.childElementCount) transcript.markArriving(article);
           S.log.appendChild(article);
@@ -213,7 +205,6 @@ export function createApply(ctx) {
         if (msg.role === "assistant") {
           const live = messageRunLive(msg);
           ui.updateAssistant(article, msg, live);
-          if (!live) ui.mountActions(article, i);
         } else if (article.querySelector(".chat-bubble")) {
           if (article.querySelector(".chat-bubble").textContent !== msg.content) article.querySelector(".chat-bubble").textContent = msg.content;
           ui.fillUserFiles(article, msg, i);
@@ -227,7 +218,6 @@ export function createApply(ctx) {
     // rows/events can predate a resume and must not overwrite it now or later.
     S.agentLifecycle.clear();
     S.agentLifecycleEpoch += 1;
-    turns.syncEmptyReplyRetry();
     sidebar.upsertLocal(data);
     sidebar.renderHistory();
     transcript.restoreThreadViewport(viewport);

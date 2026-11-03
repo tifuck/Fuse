@@ -232,10 +232,6 @@ export function createStream(ctx) {
         if (payload.revision != null) S.serverRevision = payload.revision;
         S.viewCursor = event.id;
         S.threadWatermark = event.id;
-        if (S.editingIndex < 0 && msg && !msg.noActions) {
-          const article = traces.articleFor(msg);
-          if (article) ui.mountActions(article, S.messages.indexOf(msg));
-        }
         status.syncStatus();
         context.syncContextMeter();
         if (S.transcriptDirty && !S.streaming) await persist.flushSave().catch(() => {});

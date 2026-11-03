@@ -331,7 +331,6 @@ export function createThreads(ctx) {
     panels.syncMemoryUi();
     if (data.kind === "project") panels.refreshProjectAgents();
     else panels.renderProjectAgents(null);
-    S.editingIndex = -1;
     undo.loadHistoryStacks();
     sync.setThreadUrl(S.currentId);
     if (data.kind === "project") render.setHistoryTab("projects", { persist: true, silent: true });
@@ -568,20 +567,9 @@ export function createThreads(ctx) {
     overlays.showPop(anchor, items, at);
   }
 
-    async function copyText(text) {
-    try {
-      await navigator.clipboard.writeText(text || "");
-      picker.setHint("Copied to clipboard.");
-    } catch (error) {
-      sync.showFailure("Clipboard copy failed", error);
-      throw error;
-    }
-  }
-
   return {
     savePinOrder,
     bindCreatePayload,
-    copyText,
     openThread,
     pickerHostById,
     sessionProject,

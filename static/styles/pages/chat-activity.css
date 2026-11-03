@@ -29,8 +29,6 @@ body.is-chat .topbar { flex-shrink: 0; }
 .chat-code-head { min-height: calc(2.65rem * var(--chat-text-scale, 1)); font-size: calc(0.75rem * var(--chat-text-scale, 1)); text-transform: none; letter-spacing: 0; }
 .chat-code-head button { min-height: calc(2.25rem * var(--chat-text-scale, 1)); padding: 0 calc(0.4rem * var(--chat-text-scale, 1)); font-size: calc(0.75rem * var(--chat-text-scale, 1)); }
 .chat-code pre { padding: calc(0.55rem * var(--chat-text-scale, 1)) calc(0.9rem * var(--chat-text-scale, 1)); font-size: calc(0.82rem * var(--chat-text-scale, 1)); line-height: 1.45; max-height: 32rem; overscroll-behavior: auto; }
-.chat-msg-actions { display: flex; gap: 0.25rem; }
-.chat-msg-actions button { height: 2rem; padding: 0 0.55rem; border-radius: 7px; font-family: var(--sans); font-size: 0.8rem; }
 .chat-error { margin: 0; padding: calc(0.8rem * var(--chat-text-scale, 1)) calc(1rem * var(--chat-text-scale, 1)); border: 1px solid color-mix(in srgb, var(--fault) 30%, var(--line)); border-radius: 10px; overflow-wrap: anywhere; }
 
 /* Activity timeline: quiet Grok-style chain — text, tiny icons, no circled nodes. */

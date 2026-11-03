@@ -59,7 +59,6 @@
 
   .chat-activity-summary { min-height: 1.5rem; }
   .chat-step-toggle, .chat-step-static { min-height: 1.85rem; }
-  .chat-msg-actions button { min-height: 2.5rem; }
   .chat-memory { max-height: min(30rem, 50dvh); }
   .chat-memory textarea, .chat-history input, .chat-picker-search { font-size: 16px; }
 }

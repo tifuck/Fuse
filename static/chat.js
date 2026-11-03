@@ -43,7 +43,6 @@ import { createDictation } from './chat/dictation.js';
     formatConsoleLiveStatus,
     groupTraces,
     jobRowHtml,
-    mountActions,
     patchMarkdown,
     permQueueCardHtml,
     renderAssistant,
@@ -90,22 +89,14 @@ import { createDictation } from './chat/dictation.js';
     get applySpinEl() { return sidebar.applySpinEl; },
     get assistantSegments() { return transcript.assistantSegments; },
     get autoEventLabel() { return traces.autoEventLabel; },
-    get beginEdit() { return sidebar.beginEdit; },
-    get commitEdit() { return sidebar.commitEdit; },
-    get confirmDeleteAt() { return sidebar.confirmDeleteAt; },
     get consoleSpinFrame() { return S.consoleSpinFrame; },
     set consoleSpinFrame(value) { S.consoleSpinFrame = value; },
     get consoleSpinTimer() { return S.consoleSpinTimer; },
     set consoleSpinTimer(value) { S.consoleSpinTimer = value; },
-    get copyText() { return sidebar.copyText; },
     get countsLabel() { return traces.countsLabel; },
     get deliveryTraces() { return traces.deliveryTraces; },
     get currentRunSpin() { return sidebar.currentRunSpin; },
     get detailProbe() { return S.detailProbe; },
-    get editingFiles() { return S.editingFiles; },
-    set editingFiles(value) { S.editingFiles = value; },
-    get editingIndex() { return S.editingIndex; },
-    set editingIndex(value) { S.editingIndex = value; },
     get escapeHtml() { return escapeHtml; },
     get estimateChars() { return context.estimateChars; },
     get estimateTrace() { return context.estimateTrace; },
@@ -140,9 +131,6 @@ import { createDictation } from './chat/dictation.js';
     get messages() { return S.messages; },
     get motionPaints() { return transcript.motionPaints; },
     get normalizeTodos() { return transcript.normalizeTodos; },
-    get openLightbox() { return panels.openLightbox; },
-    get paint() { return transcript.paint; },
-    get partialTranscript() { return S.partialTranscript; },
     get pauseThreadFollow() { return transcript.pauseThreadFollow; },
     get pendingFullPaint() { return S.pendingFullPaint; },
     set pendingFullPaint(value) { S.pendingFullPaint = value; },
@@ -151,13 +139,9 @@ import { createDictation } from './chat/dictation.js';
     get permCardCopy() { return perms.permCardCopy; },
     get permCardSignature() { return perms.permCardSignature; },
     get permLeftS() { return perms.permLeftS; },
-    get redoConversation() { return sidebar.redoConversation; },
-    get redoStack() { return S.redoStack; },
     get reduceMotion() { return S.reduceMotion; },
     get restoreDisclosures() { return transcript.restoreDisclosures; },
     get continueAssistant() { return turns.continueAssistant; },
-    get retryAssistant() { return turns.retryAssistant; },
-    get rewindTo() { return sidebar.rewindTo; },
     get root() { return S.root; },
     get runIsActive() { return traces.runIsActive; },
     get runIsStopping() { return runIsStopping; },
@@ -169,10 +153,8 @@ import { createDictation } from './chat/dictation.js';
     get sessionProject() { return sidebar.sessionProject; },
     get setToolReveal() { return transcript.setToolReveal; },
     get shellExitCode() { return traces.shellExitCode; },
-    get showPop() { return overlays.showPop; },
     get showThinking() { return S.showThinking; },
     get snapThread() { return transcript.snapThread; },
-    get sourceCatalog() { return sidebar.sourceCatalog; },
     get startLiveClock() { return transcript.startLiveClock; },
     get stickToBottom() { return S.stickToBottom; },
     get streaming() { return S.streaming; },
@@ -190,8 +172,6 @@ import { createDictation } from './chat/dictation.js';
     get toolPresentation() { return traces.toolPresentation; },
     get tracesSig() { return traces.tracesSig; },
     get transcriptDomOptions() { return transcript.transcriptDomOptions; },
-    get undoConversation() { return sidebar.undoConversation; },
-    get undoStack() { return S.undoStack; },
     get usageInOut() { return usageInOut; },
   });
 
@@ -211,7 +191,6 @@ import { createDictation } from './chat/dictation.js';
     formatConsoleLiveStatus,
     groupTraces,
     jobRowHtml,
-    mountActions,
     patchMarkdown,
     permQueueCardHtml,
     renderAssistant,
@@ -320,7 +299,6 @@ import { createDictation } from './chat/dictation.js';
     context,
     sidebar: { syncTitle: (...args) => sidebar.syncTitle(...args) },
     traces,
-    turns: { syncEmptyReplyRetry: (...args) => turns.syncEmptyReplyRetry(...args) },
     ui,
   });
 
@@ -355,7 +333,7 @@ import { createDictation } from './chat/dictation.js';
     sidebar,
     traces,
     transcript,
-    turns: { drainQueue: (...args) => turns.drainQueue(...args), holdQueueForStop: (...args) => turns.holdQueueForStop(...args), renderQueue: (...args) => turns.renderQueue(...args), retireAcceptedQueue: (...args) => turns.retireAcceptedQueue(...args), syncEmptyReplyRetry: (...args) => turns.syncEmptyReplyRetry(...args) },
+    turns: { drainQueue: (...args) => turns.drainQueue(...args), holdQueueForStop: (...args) => turns.holdQueueForStop(...args), renderQueue: (...args) => turns.renderQueue(...args), retireAcceptedQueue: (...args) => turns.retireAcceptedQueue(...args) },
     ui,
   });
 
@@ -978,8 +956,6 @@ import { createDictation } from './chat/dictation.js';
     S.dirty = false;
     S.transcriptDirty = false;
     S.revision += 1;
-    S.editingIndex = -1;
-    S.editingFiles = [];
     S.sessionId = newSession();
     S.liveMeter = null;
     S.compacting = false;
@@ -1988,7 +1964,7 @@ import { createDictation } from './chat/dictation.js';
         !(S.spellPop && S.spellPop.contains(t))) composer.closeSlash();
     if (S.rewindPanel && !S.rewindPanel.hidden && !S.rewindPanel.contains(event.target)) turns.closeRewind();
     if (S.contextPop && !S.contextPop.hidden && S.contextWrap && !S.contextWrap.contains(event.target)) context.closeContextPop();
-    if (S.pop && !S.pop.contains(event.target) && !event.target.closest(".more") && !event.target.closest(".chat-msg-actions")) {
+    if (S.pop && !S.pop.contains(event.target) && !event.target.closest(".more")) {
       overlays.closePop();
     }
     if (S.root.classList.contains("is-history") && S.historyToggle && !sidebar.historyPanel.contains(event.target) && !S.historyToggle.contains(event.target) && !event.target.closest(".chat-pop, dialog")) {

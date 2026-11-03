@@ -44,7 +44,7 @@ function markArriving(article) {
 let _paintLastQueued = false;
 
 export function createPaint(ctx) {
-  const { agents, artifacts, composer, context, follow, sidebar, traces, turns, ui } = ctx;
+  const { agents, artifacts, composer, context, follow, sidebar, traces, ui } = ctx;
     function playTranscriptFx() {
     S.root.classList.remove("is-docking");
     S.root.classList.add("is-entering");
@@ -163,14 +163,14 @@ export function createPaint(ctx) {
       historyObserver.observe(shell);
       return shell;
     }
-    return msg.role === "user" ? ui.renderUser(msg, index, live) : ui.renderAssistant(msg, live);
+    return msg.role === "user" ? ui.renderUser(msg, index) : ui.renderAssistant(msg, live);
   }
 
     // A compacted thread shows the session the model still has: the rows from
   // the latest handoff on, under its summary unless a reply there carries it.
   function viewMessages() {
     const cut = S.contextCut;
-    if (S.editingIndex >= 0 || !cut) return S.messages;
+    if (!cut) return S.messages;
     const at = S.messages.findIndex((msg) => msg.id === cut.id);
     if (at < 0) return S.messages;
     const rows = S.messages.slice(cut.include ? at : at + 1);
@@ -229,7 +229,7 @@ export function createPaint(ctx) {
       // Actions and edits address S.messages, which a compacted view starts partway into.
       const index = S.messages.indexOf(msg);
       const live = msg.role === "assistant" && messageRunLive(msg);
-      const signature = msg.role === "user" ? JSON.stringify([index, "console", live, S.editingIndex === index, msg.content, msg.attachments, msg.auto, msg.autoSteps, msg.noActions])
+      const signature = msg.role === "user" ? JSON.stringify([index, "console", live, msg.content, msg.attachments, msg.auto, msg.autoSteps, msg.noActions])
         : msg.role === "marker" ? msg.summary : "";
       let article = existing.get(msg.id);
       const reusable = article && article.classList.contains(msg.role === "assistant" ? "is-assistant" : msg.role === "marker" ? "is-marker" : "is-user") &&
@@ -248,14 +248,10 @@ export function createPaint(ctx) {
       cursor = article.nextElementSibling;
       keep.add(article);
       if (reusable && msg.role === "assistant") ui.updateAssistant(article, msg, live);
-      if (msg.role === "assistant" && !live && !msg.noActions) {
-        ui.mountActions(article, index);
-      }
     });
     for (const article of [...S.log.children]) if (!keep.has(article)) { ui.disposeThinking(article); historyObserver?.unobserve(article); article.remove(); }
     S.log._threadId = S.currentId;
     paintRecaps();
-    turns.syncEmptyReplyRetry();
     setActive(S.messages.length > 0);
     artifacts.rememberLatestArtifact();
     composer.syncComposer();
@@ -286,7 +282,6 @@ export function createPaint(ctx) {
     const viewport = follow.captureThreadViewport();
     ui.updateAssistant(last, msg, messageRunLive(msg));
     paintRecaps(last);
-    turns.syncEmptyReplyRetry();
     artifacts.rememberLatestArtifact();
     setActive(true);
     composer.syncComposer();

@@ -24,8 +24,8 @@ export function createView(ctx) {
       return article;
     }
     if (item.role === "user") {
-      // live=true suppresses main-chat-bound actions; the negative index
-      // can never collide with a main-chat editingIndex.
+      // The negative index keeps its attachment buttons from addressing a
+      // main-chat message.
       return ui.renderUser({
         role: "user",
         content: String(item.content || ""),
@@ -34,7 +34,7 @@ export function createView(ctx) {
         attachments: Array.isArray(item.attachments) ? item.attachments : [],
         fromParent: Boolean(item.fromParent),
         pending: Boolean(item.pending),
-      }, -2 - index, true);
+      }, -2 - index);
     }
     return ui.renderAssistant(
       {

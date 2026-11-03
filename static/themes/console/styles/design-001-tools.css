@@ -216,12 +216,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .ch
   user-select: none;
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-msg-actions {
-  margin-left: 1.5rem;
-}
-
-html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-user-files,
-html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-edit {
+html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-user-files {
   margin-left: 1.5rem;
   max-width: min(92%, 64rem);
 }

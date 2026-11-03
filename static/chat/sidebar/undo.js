@@ -286,7 +286,6 @@ export function createUndo(ctx) {
     rememberUndo(snapshotMessages());
     const marks = artifacts.versionMarks();
     fn();
-    S.editingIndex = -1;
     composer.persist(true);
     transcript.paint();
     context.recountLocalContext();
@@ -294,45 +293,6 @@ export function createUndo(ctx) {
     artifacts.offerRestore(marks);
     if (hint) picker.setHint(hint);
     return true;
-  }
-
-    function deleteAt(index, mode) {
-    if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", true);
-      return;
-    }
-    if (index < 0 || index >= S.messages.length) return;
-    // Trimming the tail keeps the cached prefix (Undo, Retry and Edit reuse
-    // the exact bytes sent); removing a row from the middle changes every
-    // request row after it, so a warm chat is told what that costs.
-    const recache = mode === "one" && index < S.messages.length - 1 && context.warmCache();
-    mutateTranscript(() => {
-      if (mode === "one") S.messages.splice(index, 1);
-      else if (mode === "from") S.messages = S.messages.slice(0, index);
-      else if (mode === "after") S.messages = S.messages.slice(0, index + 1);
-    }, recache ? "Message deleted · the rest of the chat re-caches on the next reply. /undo restores it."
-      : mode === "one" ? "Message deleted. /undo restores it." : "Removed. /undo restores it.");
-  }
-
-    async function confirmDeleteAt(index, mode) {
-    const prompts = {
-      one: "Delete this message? /undo restores it.",
-      from: "Delete this message and everything after it? /undo restores it.",
-      after: "Keep messages up to here and drop everything after? /undo restores it.",
-    };
-    // The transcript can change while the dialog is open (another tab, a
-    // reconcile): re-find the confirmed message by identity, never reuse the
-    // old index, or the wrong message or tail is deleted.
-    const thread = S.currentId;
-    const target = S.messages[index];
-    const targetId = target && target.id;
-    if (!(await askConfirm(prompts[mode] || prompts.one, { confirmLabel: "Delete", danger: true }))) return;
-    const now = targetId ? S.messages.findIndex((msg) => msg && msg.id === targetId) : (S.messages[index] === target ? index : -1);
-    if (S.currentId !== thread || now < 0) {
-      picker.setHint("The chat changed while you confirmed; nothing was deleted.", true);
-      return;
-    }
-    deleteAt(now, mode);
   }
 
     function rewindTo(index) {
@@ -361,40 +321,7 @@ export function createUndo(ctx) {
     S.input.focus();
   }
 
-    function beginEdit(index) {
-    if (traces.runIsActive(S.activeRun) || !S.messages[index] || S.messages[index].role !== "user") return;
-    S.editingIndex = index;
-    const atts = S.messages[index].attachments;
-    S.editingFiles = Array.isArray(atts) ? atts.slice() : [];
-    transcript.paint();
-    const box = S.log.querySelector("[data-edit]");
-    if (box) {
-      box.focus();
-      box.setSelectionRange(box.value.length, box.value.length);
-    }
-  }
-
-    function commitEdit(index, text) {
-    if (traces.runIsActive(S.activeRun) || S.sending) return;
-    if (!net.requireLive()) return;
-    const next = (text || "").trim();
-    const kept = S.editingFiles.slice();
-    if (!next && !kept.length) {
-      S.editingIndex = -1;
-      S.editingFiles = [];
-      transcript.paint();
-      return;
-    }
-    // The editor stays open until the replacement is accepted: acceptThread
-    // closes it once the snapshot replaces this message. A failed or refused
-    // send leaves the text and files in the editor, matching what it shows.
-    return turns.completeTurn(next, kept, { undoSnap: snapshotMessages(), truncatedTo: index, edit: true, progress: "Sending edit…" });
-  }
-
   return {
-    beginEdit,
-    commitEdit,
-    confirmDeleteAt,
     dropHistoryStacks,
     loadHistoryStacks,
     mutateTranscript,

@@ -119,9 +119,12 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.waitForFunction(() => !fuseToolFixture.runInfo());
       await check('stop before steer delivery');
       assert.equal(await page.evaluate(() => [...document.querySelectorAll('.chat-turn.is-assistant:not([data-deferred-message])')].some(el => !el.hidden && !el.querySelector('[data-flow]')?.textContent.trim() && !el.querySelector('[data-err]')?.textContent.trim())), false, 'no empty assistant artifact/footer');
-      const emptyRetry = page.locator('[data-empty-retry]');
-      assert.equal(await emptyRetry.count(), 1, 'the empty continuation offers Retry');
-      await emptyRetry.evaluate(el => el.click());
+      // /retry picks the empty continuation up. The first Enter accepts the
+      // command from the palette, the second runs it.
+      const box = page.locator('[data-chat-input]');
+      await box.fill('/retry');
+      await box.press('Enter');
+      if (await box.inputValue()) await box.press('Enter');
       await page.waitForFunction(() => document.querySelector('[data-chat-log]').textContent.includes('Synchronized answer: Accepted immediately before stop'));
       await page.waitForFunction(() => !fuseToolFixture.runInfo());
       await send('Fresh message after stopping');

@@ -186,11 +186,12 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     await restored('send');
 
     await archive();
-    // Retry exists only on the last assistant turn, so it has to run before undo
-    // drops that turn.
-    const retryBtn = page.locator('[data-chat-log] .chat-msg-actions button[aria-label="Retry"]');
-    assert.equal(await retryBtn.count(), 1, 'the last assistant turn offers Retry');
-    await retryBtn.evaluate(el => el.click());
+    // /retry needs the last assistant turn, so it has to run before undo drops
+    // that turn. The first Enter accepts it from the palette, the second runs it.
+    const box = page.locator('[data-chat-input]');
+    await box.fill('/retry');
+    await box.press('Enter');
+    if (await box.inputValue()) await box.press('Enter');
     await page.waitForFunction(() => document.body.classList.contains('is-streaming'));
     await stopped();
     await restored('retry');

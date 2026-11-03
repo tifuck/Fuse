@@ -80,14 +80,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-foot-meta {
   font-size: calc(0.7rem * var(--chat-text-scale, 1));
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-foot .chat-msg-actions {
-  margin-left: 0.9rem;
-}
-
-html[data-chat-console="true"] .chat[data-view="console"] .chat-msg-actions button { color: color-mix(in srgb, var(--mist) 58%, var(--ink)); transition: color var(--dur-1) ease, background var(--dur-1) ease; }
-
-html[data-chat-console="true"] .chat[data-view="console"] .chat-msg-actions button:hover { color: var(--mist); }
-
 html[data-chat-console="true"] .chat[data-view="console"] .chat-project-chip { border-color: var(--line); color: var(--steel); }
 
 html[data-chat-console="true"] .chat[data-view="console"]:not(.is-empty) .chat-dock {

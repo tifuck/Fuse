@@ -161,37 +161,6 @@ body.is-chat main {
   white-space: pre-wrap;
   line-height: 1.55;
 }
-.chat-edit {
-  width: min(100%, 36rem);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.chat-edit textarea {
-  min-height: 4.5rem;
-  max-height: 14rem;
-  resize: vertical;
-}
-.chat-edit-actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
-.chat-msg-actions {
-  display: flex;
-  gap: 0.15rem;
-  opacity: 0;
-}
-.chat-turn:hover .chat-msg-actions,
-.chat-turn:focus-within .chat-msg-actions { opacity: 1; }
-.chat-msg-actions button {
-  height: 1.7rem;
-  padding: 0 0.45rem;
-  border-radius: 6px;
-  color: var(--mute);
-  font-family: var(--mono);
-  font-size: 0.66rem;
-}
-.chat-msg-actions button:hover { color: var(--mist); background: var(--raise); }
-@media (hover: none) {
-  .chat-msg-actions { opacity: 1; }
-}
 .chat-assistant { display: flex; flex-direction: column; gap: 0.55rem; }
 .chat-think {
   margin: 0;

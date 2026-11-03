@@ -411,10 +411,3 @@
 }
 .chat-user-file-x:hover { background: rgba(6, 7, 6, 0.88); color: var(--brass); }
 .chat-user-file.is-file .chat-user-file-x:hover { background: var(--ink); color: var(--mist); }
-.chat-edit-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.55rem;
-}
-.chat-edit-files .chat-attach-chip { margin: 0; }

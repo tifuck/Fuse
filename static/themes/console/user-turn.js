@@ -60,7 +60,7 @@ function renderAutoSteps(msg) {
     return article;
   }
 
-function renderUser(msg, index, live) {
+function renderUser(msg, index) {
     const article = document.createElement("article");
     article.className = "chat-turn is-user";
     article.setAttribute("aria-label", "Your message");
@@ -97,47 +97,6 @@ function renderUser(msg, index, live) {
         '<div class="chat-auto-reveal"><div class="chat-auto-reveal-inner"><pre>' + deps.escapeHtml(msg.content) + "</pre></div></div>";
       return article;
     }
-    if (deps.editingIndex === index) {
-      const wrap = document.createElement("div");
-      wrap.className = "chat-edit";
-      const area = document.createElement("textarea");
-      area.dataset.edit = "1";
-      area.setAttribute("aria-label", "Edit message");
-      area.value = msg.content;
-      const actions = document.createElement("div");
-      actions.className = "chat-edit-actions";
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "btn ghost sm";
-      cancel.textContent = "Cancel";
-      cancel.addEventListener("click", () => {
-        deps.editingIndex = -1;
-        deps.editingFiles = [];
-        deps.paint();
-      });
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "btn sm";
-      save.textContent = "Save & resend";
-      save.addEventListener("click", () => deps.commitEdit(index, area.value));
-      area.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-          deps.editingIndex = -1;
-          deps.editingFiles = [];
-          deps.paint();
-        } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          deps.commitEdit(index, area.value);
-        }
-      });
-      actions.appendChild(cancel);
-      actions.appendChild(save);
-      wrap.appendChild(area);
-      if (deps.editingFiles.length) wrap.appendChild(deps.editFilesStrip());
-      wrap.appendChild(actions);
-      article.appendChild(wrap);
-      return article;
-    }
     deps.fillUserFiles(article, msg, index);
     if (msg.content) {
       const bubble = document.createElement("div");
@@ -145,7 +104,6 @@ function renderUser(msg, index, live) {
       bubble.textContent = msg.content;
       article.appendChild(bubble);
     }
-    if (!live && !msg.noActions) article.appendChild(deps.msgActions(index, "user"));
     return article;
   }
 

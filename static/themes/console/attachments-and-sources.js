@@ -36,38 +36,6 @@ function fillUserFiles(article, msg, index) {
     row.innerHTML = files.map((att, position) => attachmentChipHtml(att, position)).join("");
   }
 
-function editFilesStrip() {
-    const strip = document.createElement("div");
-    strip.className = "chat-edit-files";
-    strip.setAttribute("aria-label", "Attachments kept with this message");
-    strip.innerHTML = deps.editingFiles
-      .map((att, index) => {
-        const thumb =
-          att.kind === "image" && att.data
-            ? `<button type="button" class="chat-attach-thumb" data-image-preview="${deps.escapeHtml(att.data)}" data-image-name="${deps.escapeHtml(att.name || "")}" aria-label="Preview ${deps.escapeHtml(att.name || "image")}"><img src="${deps.escapeHtml(att.data)}" alt=""></button>`
-            : `<span class="chat-attach-icon">${FILE_CHIP_ICON}</span>`;
-        return `<div class="chat-attach-chip">${thumb}<span>${deps.escapeHtml(att.name || "File")}</span><button type="button" data-edit-file-remove="${index}" aria-label="Remove ${deps.escapeHtml(att.name || "file")}"><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>`;
-      })
-      .join("");
-    strip.addEventListener("click", (event) => {
-      const view = event.target.closest("[data-image-preview]");
-      if (view) {
-        event.preventDefault();
-        deps.openLightbox(view.getAttribute("data-image-preview"), view.getAttribute("data-image-name") || "");
-        return;
-      }
-      const btn = event.target.closest("[data-edit-file-remove]");
-      if (!btn) return;
-      event.preventDefault();
-      deps.editingFiles.splice(Number(btn.getAttribute("data-edit-file-remove")), 1);
-      const next = editFilesStrip();
-      strip.replaceWith(next);
-      const box = next.parentElement?.querySelector("[data-edit]");
-      if (box) box.focus();
-    });
-    return strip;
-  }
-
 function sourceList(rows) {
     const items = (rows || []).map((row) => {
       const url = deps.safeUrl(row.url);
@@ -86,5 +54,5 @@ function sourceList(rows) {
 const FILE_CHIP_ICON =
     '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4.3 2.7h5.1l2.4 2.5v8.1H4.3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.4 2.7v2.5h2.4M6.1 8.4h3.8M6.1 10.6h2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  return { attachmentRemoveButton, attachmentChipHtml, fillUserFiles, editFilesStrip, sourceList, FILE_CHIP_ICON };
+  return { attachmentRemoveButton, attachmentChipHtml, fillUserFiles, sourceList, FILE_CHIP_ICON };
 }
