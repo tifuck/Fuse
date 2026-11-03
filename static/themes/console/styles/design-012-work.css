@@ -88,7 +88,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents {
     --work-gap: 0.4rem;
-    grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) minmax(6ch, auto) 1.6rem;
+    grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) auto minmax(6ch, auto) 1.6rem;
     max-height: calc(var(--work-main) + 5 * var(--work-row));
   }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
@@ -99,6 +99,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-act, .chat-jobs-kill) { width: 1.6rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name { max-width: 24ch; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 16ch; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-provider { display: none; }
 }
 /* Narrow phones: a subagent row is its task and dot (the dot carries its
    state, the full line is in its tooltip); a command row is its command. */
@@ -106,5 +108,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-meta,
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-meta { display: none; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { grid-template-columns: auto auto minmax(0, 1fr) minmax(6ch, auto) 1.6rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(6ch, auto) 1.6rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 12ch; }
 }

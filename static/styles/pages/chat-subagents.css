@@ -30,7 +30,7 @@
   display: grid;
   /* The state column fits "waiting on model", so a row changing state does
      not move every row's detail. */
-  grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) minmax(6ch, auto) 1.4rem;
+  grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) auto minmax(6ch, auto) 1.4rem;
   align-content: start;
   column-gap: var(--work-gap);
 }
@@ -76,7 +76,7 @@
    the square of a row k levels deep. */
 .chat-agents-row { --tree-gap: 0.5rem; --tree-line: color-mix(in srgb, var(--mist) 40%, var(--ink)); }
 .chat-agents-row > .chat-agents-pick {
-  grid-column: 1 / 4;
+  grid-column: 1 / 5;
   display: grid;
   grid-template-columns: subgrid;
   column-gap: var(--work-gap);
@@ -91,8 +91,9 @@
 .chat-agents-row .chat-agents-meta { display: contents; }
 /* Main's state and count follow its name, not the subagent columns, so they
    stay put when the tree unfolds. */
-.chat-agents-row.is-main > .chat-agents-pick { display: flex; }
+.chat-agents-row.is-main > .chat-agents-pick { display: flex; grid-column: 1 / 4; }
 .chat-agents-row.is-main .chat-agents-doing::before { content: "· "; }
+.chat-agents-row.is-main .chat-agents-head { flex: none; }
 .chat-agents-tree {
   display: flex;
   flex: 0 0 auto;
@@ -131,6 +132,18 @@
 .chat-agents-state { flex-shrink: 0; }
 .chat-agents-doing,
 .chat-agents-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The model column: provider slug and model name, clipped so a long one
+   never pushes the clock. */
+.chat-agents-model {
+  grid-column: 4;
+  max-width: 30ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+.chat-agents-provider { opacity: 0.6; }
+.chat-agents-provider::after { content: " · "; }
 .chat-agents-time {
   text-align: right;
   font-variant-numeric: tabular-nums;

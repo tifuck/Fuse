@@ -73,13 +73,23 @@ function agentActivitySummary(row) {
     .filter(([, n]) => Number(n) > 0)
     .map(([name, n]) => `${n} ${AGENT_ACTIVITY_LABELS[name] || name}`)
     .join(", ");
-  if (agentIsStalled(row)) return counts ? `stalled · ${counts}` : "stalled";
-  if (agentIsWaiting(row) && (!row.current || row.current === "thinking" || row.current === "waiting")) {
-    return counts ? `waiting · ${counts}` : "waiting on model";
-  }
+  // The state column already says stalled or waiting on model.
+  if (agentIsStalled(row)) return counts;
+  if (agentIsWaiting(row) && (!row.current || row.current === "thinking" || row.current === "waiting")) return counts;
   if (!row.current) return counts;
   const label = row.current === "thinking" ? "thinking" : AGENT_ACTIVITY_LABELS[row.current] || row.current;
   return counts ? `${label} · ${counts}` : label;
+}
+
+// The row's model, short: its provider slug and the picker's name for it.
+function agentModelParts(row) {
+  const id = String((row && row.model) || "");
+  if (!id) return null;
+  const listed = S.modelsById && S.modelsById.get(id);
+  const slash = id.indexOf("/");
+  return listed
+    ? { provider: listed.type || "", name: listed.name || id }
+    : { provider: slash > 0 ? id.slice(0, slash) : "", name: id.slice(id.lastIndexOf("/") + 1) || id };
 }
 
 function agentResumeAvailable(run) {
@@ -187,11 +197,10 @@ export function createLive(ctx) {
     return Boolean(S.streaming || traces.runIsActive(S.activeRun));
   }
 
-    // The tree opens by itself while subagents run or one is on screen, and
-  // folds to the main row once they are all done; a click on its toggle
-  // holds the user's choice until the thread changes.
-  function agentsExpanded(liveCount) {
-    return S.agentsFold != null ? S.agentsFold : liveCount > 0 || Boolean(S.agentViewId);
+    // The tree starts folded (main, the live subagents and the one on screen);
+  // a click on its toggle holds the user's choice until the thread changes.
+  function agentsExpanded() {
+    return S.agentsFold ?? false;
   }
 
     function syncWorkStrip() {
@@ -214,7 +223,7 @@ export function createLive(ctx) {
     }
     const tree = agentTree();
     const liveCount = tree.filter((item) => agentLive(item.row.status)).length;
-    const expanded = agentsExpanded(liveCount);
+    const expanded = agentsExpanded();
     let html = ui.agentMainRowHtml({
       state: mainBusy() ? "working" : "idle",
       doing: liveCount ? `${liveCount} subagent${liveCount === 1 ? "" : "s"} running` : "",
@@ -444,6 +453,7 @@ export function createLive(ctx) {
     syncAgentsUi,
     agentActivitySummary,
     agentDurationSeconds,
+    agentModelParts,
     agentIsStalled,
     agentLive,
     agentQuietSeconds,
@@ -451,4 +461,4 @@ export function createLive(ctx) {
   };
 }
 
-export { agentActivitySummary, agentDurationSeconds, agentIsStalled, agentLive, agentQuietSeconds, compactionMarkerText };
+export { agentActivitySummary, agentDurationSeconds, agentIsStalled, agentModelParts, agentLive, agentQuietSeconds, compactionMarkerText };

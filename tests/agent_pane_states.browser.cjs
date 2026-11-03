@@ -198,8 +198,13 @@ function agent(id, patch) {
 
     // --- 1. Multi-agent tree: counts, states and entries appear/disappear ---
     await page.evaluate(() => fuseToolFixture.refreshAgents());
-    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 7);
+    // The tree opens folded: main and only the live children.
+    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 4);
     let ui = await read();
+    assert.deepEqual(ui.rows.map((row) => row.id).sort(), ['kilo', 'nov', 'que', 'tate'], `folded by default, live children only: ${JSON.stringify(ui.rows)}`);
+    await page.locator('[data-agents-list] [data-agents-fold]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 7);
+    ui = await read();
     assert.equal(ui.count, '4 subagents running', `the main row counts live children (3 running + 1 queued): ${ui.count}`);
     assert.equal(ui.fold, '7 agents', `the fold names every child: ${ui.fold}`);
     assert.equal(ui.mainCurrent, true, 'the main transcript is the one on screen');
@@ -209,6 +214,8 @@ function agent(id, patch) {
     assert.equal(ui.rows.find((row) => row.id === 'lima').state, 'completed');
     assert.equal(ui.rows.find((row) => row.id === 'mike').state, 'failed');
     assert.ok(ui.rows.slice(0, 4).every((row) => row.state === 'running' || row.state === 'queued'), `live children are pinned above the finished ones: ${JSON.stringify(ui.rows)}`);
+    await page.locator('[data-agents-list] [data-agents-fold]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 4);
     const countIs = (want) => page.waitForFunction((want) => (document.querySelector('[data-agents-list] .is-main .chat-agents-doing')?.textContent || '').trim() === want, want);
     const refresh = () => page.evaluate(() => fuseToolFixture.refreshAgents());
     setAgent('nov', { status: 'completed', work_live: false });
@@ -462,8 +469,10 @@ function agent(id, patch) {
       fuseToolFixture.sidebar.update({ id: other, title: 'Pane states B', updated_at: new Date().toISOString(), running: false });
     }, { thread: THREAD_A, other: THREAD_B, tools: spawnTools(THREAD_A) });
     await page.evaluate(() => fuseToolFixture.refreshAgents());
-    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 7);
+    // Folded again after the reload: only the live children are listed.
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-agents-list] [data-agent-id="tate"]')));
     ui = await read();
+    assert.ok(ui.rows.every((row) => /running|queued|waiting|stalled/.test(row.state)), `reload: the tree is folded to its live children: ${JSON.stringify(ui.rows)}`);
     assert.equal(ui.viewOpen, false, 'after a reload nothing is left open by itself');
     assert.equal(ui.mainOpen, true, 'the reload lands on the main transcript, not a stale child');
     assert.equal(ui.docks, 1);
@@ -502,8 +511,10 @@ function agent(id, patch) {
     assert.equal(ui.badge, 'running');
     assert.doesNotMatch(ui.text, /TATE_DRAFT|KILO|MIKE|LIMA/, 'no cross-thread content in the pane');
     await openRow(THREAD_A);
-    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 7);
+    // Folded again after the thread switch: only the live children are listed.
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-agents-list] [data-agent-id="tate"]')));
     ui = await read();
+    assert.ok(ui.rows.every((row) => /running|queued|waiting|stalled/.test(row.state)), `thread switch: the tree is folded to its live children: ${JSON.stringify(ui.rows)}`);
     assert.equal(ui.viewOpen, false, 'coming back resets the pane again — no stale view of the other thread');
     assert.doesNotMatch(ui.panelText, /Oscar|OSCAR/, `thread A's dock lists only its own children: ${ui.panelText.slice(0, 200)}`);
     await openPane('tate');

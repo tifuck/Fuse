@@ -21,6 +21,7 @@ function agentRowHtml(row, opts = {}) {
     const status = deps.agentStatusText(row);
     const doing = activity && !activity.startsWith(status) ? activity : "";
     const commands = deps.jobsFor(row.id).length;
+    const model = deps.agentModelParts(row);
     const title = [
       row.description || "Subagent",
       status,
@@ -50,7 +51,9 @@ function agentRowHtml(row, opts = {}) {
       `<span class="chat-agents-name">${deps.escapeHtml(row.description || "Subagent")}</span></span>` +
       `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(status)}</span>` +
       (alert ? `<span class="chat-agents-sum">${deps.escapeHtml(alert.slice(0, 180))}</span>` : doing ? `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>` : "") +
-      "</span></button>" +
+      "</span>" +
+      (model ? `<span class="chat-agents-model">${model.provider ? `<span class="chat-agents-provider">${deps.escapeHtml(model.provider)}</span>` : ""}${deps.escapeHtml(model.name)}</span>` : "") +
+      "</button>" +
       `<span class="chat-agents-time">${dur != null ? deps.formatActivityClock(dur) : ""}</span>` +
       action +
       "</div>"

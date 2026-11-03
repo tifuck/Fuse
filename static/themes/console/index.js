@@ -435,6 +435,7 @@ export function createConsoleTheme(runtime) {
     get agentActivitySummary() { return runtime.agentActivitySummary; },
     get agentResumeAvailable() { return runtime.agentResumeAvailable; },
     get agentDurationSeconds() { return runtime.agentDurationSeconds; },
+    get agentModelParts() { return runtime.agentModelParts; },
     get agentIsStalled() { return runtime.agentIsStalled; },
     get agentLive() { return runtime.agentLive; },
     get agentStatusText() { return runtime.agentStatusText; },

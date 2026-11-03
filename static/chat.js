@@ -79,6 +79,7 @@ import { createDictation } from './chat/dictation.js';
     get agentActivitySummary() { return agents.agentActivitySummary; },
     get agentResumeAvailable() { return agents.agentResumeAvailable; },
     get agentDurationSeconds() { return agents.agentDurationSeconds; },
+    get agentModelParts() { return agents.agentModelParts; },
     get agentIsStalled() { return agents.agentIsStalled; },
     get agentLive() { return agents.agentLive; },
     get agentLiveDock() { return S.agentLiveDock; },

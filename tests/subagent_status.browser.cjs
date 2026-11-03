@@ -134,7 +134,7 @@ function bump(id, patch) {
     const agentsRes = await agentsResponse;
     assert.equal(agentsRes.status(), 200, 'agents refresh must be served by the suite mock');
     try {
-      await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 5);
+      await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 2);
     } catch (error) {
       const dock = await page.evaluate(() => ({
         list: document.querySelector('[data-agents-list]')?.innerText?.slice(0, 400) || '',
@@ -144,6 +144,10 @@ function bump(id, patch) {
       throw error;
     }
     let ui = await read();
+    assert.deepEqual(ui.rows.map((row) => row.id), ['delta', 'echo'], 'the tree opens folded to its live children');
+    await page.locator('[data-agents-list] [data-agents-fold]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 5);
+    ui = await read();
     const byId = Object.fromEntries(ui.rows.map((row) => [row.id, row]));
     assert.deepEqual(ui.rows.map((row) => row.id), ['delta', 'echo', 'alpha', 'bravo', 'charlie'], 'live rows are pinned first, each group in spawn order');
     assert.equal(byId.delta.status, 'running');
@@ -240,14 +244,18 @@ function bump(id, patch) {
 
     // --- 4b. The main row: back to main keeps the tree; on main it folds ---
     const childRows = () => page.evaluate(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length);
-    assert.equal(await childRows(), 0, 'with nothing live the tree is folded to its main row');
+    assert.equal(await childRows(), 5, 'the tree unfolded in step 1 stays unfolded');
+    await page.locator('[data-agents-list] [data-agent-main]').click();
+    assert.equal(await childRows(), 0, 'clicking main while on main folds the tree; with nothing live it is the main row');
     await page.evaluate(() => fuseToolFixture.todo.openAgent('alpha'));
     await page.locator('[data-agent-log-body]').getByText('ALPHA_REPORT_ONLY', { exact: true }).waitFor();
-    assert.equal(await childRows(), 5, 'a subagent on screen unfolds the tree');
+    assert.equal(await childRows(), 1, 'folded, the subagent on screen still shows under main');
     await back();
-    assert.equal(await childRows(), 5, 'main from a subagent switches back and leaves the tree open');
+    assert.equal(await childRows(), 0, 'main from a subagent switches back and leaves the tree folded');
     await page.locator('[data-agents-list] [data-agent-main]').click();
-    assert.equal(await childRows(), 0, 'clicking main while on main folds the tree');
+    assert.equal(await childRows(), 5, 'clicking main while on main unfolds the tree');
+    await page.locator('[data-agents-list] [data-agent-main]').click();
+    assert.equal(await childRows(), 0, 'and folds it again');
     console.log('PASS main row folds on main, keeps the tree from a subagent');
 
     // --- 5. Resuming an interrupted child: dock, pane, held wake ---
