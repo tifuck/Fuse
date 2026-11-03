@@ -1,7 +1,7 @@
 // Dictation: the composer's mic. Speech streams into the message box as it
 // is recognised (the open phrase is re-decoded about once a second, each
 // phrase once more when it ends), under a small live overlay.
-import { S } from './state.js';
+import { S, draftKey } from './state.js';
 import { Phrases, splice, wav } from './dictation-core.js';
 
 const BANDS = 14;
@@ -56,12 +56,18 @@ export function createDictation({ picker }) {
 
   let run = null;
 
+  // Text goes to the chat dictation started in: the box while it is on
+  // screen, its saved draft while another chat is.
+  function here(r = run) { return draftKey() === r.key; }
+  function boxText() { return here() ? S.input.value : S.drafts.get(run.key) || ""; }
+
   function write(text) {
     if (!run || run.detached) return;
-    if (S.input.value !== run.written) { detach(); return; }
+    if (boxText() !== run.written) { detach(); return; }
     const { value, caret } = splice(run.before, text, run.after);
     if (value === run.written) return;
     run.written = value;
+    if (!here()) { S.drafts.set(run.key, value); return; }
     run.writing = true;
     S.input.value = value;
     S.input.setSelectionRange(caret, caret);
@@ -116,8 +122,8 @@ export function createDictation({ picker }) {
 
   function frame() {
     if (!run || !run.analyser) return;
-    // Sending, switching chats and slash commands set the box without an input event.
-    if (S.input.value !== run.written) { detach(); return; }
+    // Sending and slash commands set the box without an input event.
+    if (boxText() !== run.written) { detach(); return; }
     const data = run.freq;
     const half = BANDS;
     // Height is loudness (-55 dB silent, -15 dB full); the spectrum only
@@ -180,7 +186,7 @@ export function createDictation({ picker }) {
     const from = S.input.selectionStart ?? value.length;
     const to = S.input.selectionEnd ?? value.length;
     const r = run = {
-      original: value, before: value.slice(0, from), after: value.slice(to), written: value,
+      key: draftKey(), original: value, before: value.slice(0, from), after: value.slice(to), written: value,
       phrases: new Phrases(), abort: new AbortController(), busy: false, failures: 0,
       stopping: false, detached: false, started: performance.now(), levels: new Array(BANDS).fill(0),
     };
@@ -260,18 +266,18 @@ export function createDictation({ picker }) {
     const r = run;
     write(r.phrases.text());
     end();
-    if (!r.detached && matchMedia("(pointer: fine)").matches) S.input.focus({ preventScroll: true });
+    if (!r.detached && here(r) && matchMedia("(pointer: fine)").matches) S.input.focus({ preventScroll: true });
   }
 
   function cancel() {
     const r = run;
     if (!r) return;
-    const restore = !r.detached && S.input.value === r.written;
+    const restore = !r.detached && boxText() === r.written && r.written !== r.original;
     end();
-    if (restore && r.written !== r.original) {
-      S.input.value = r.original;
-      S.input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
+    if (!restore) return;
+    if (!here(r)) { S.drafts.set(r.key, r.original); return; }
+    S.input.value = r.original;
+    S.input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   // The box changed under us (typing, another chat): keep it, stop dictating.
@@ -299,9 +305,10 @@ export function createDictation({ picker }) {
   overlay.querySelector("[data-dictation-done]").addEventListener("click", finish);
   button.title = `Dictate · ${HOTKEY_LABEL}`;
 
-  S.input.addEventListener("input", () => { if (run && !run.writing) detach(); });
+  // Typing or sending in another chat leaves the dictated one alone.
+  S.input.addEventListener("input", () => { if (run && !run.writing && here()) detach(); });
   // The send button: what is in the box goes; stop before more text lands in it.
-  S.form.addEventListener("submit", detach, true);
+  S.form.addEventListener("submit", () => { if (run && here()) detach(); }, true);
 
   let hotkeyAt = 0;
   document.addEventListener("keydown", (event) => {
@@ -314,7 +321,7 @@ export function createDictation({ picker }) {
       toggle();
       return;
     }
-    if (!run || event.isComposing) return;
+    if (!run || event.isComposing || !here()) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopImmediatePropagation();

@@ -28,7 +28,9 @@
 .chat-work-agents {
   --work-gap: 0.5rem;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) minmax(6ch, auto) 1.4rem;
+  /* The state column fits "waiting on model", so a row changing state does
+     not move every row's detail. */
+  grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) minmax(6ch, auto) 1.4rem;
   align-content: start;
   column-gap: var(--work-gap);
 }
@@ -87,6 +89,9 @@
   overflow: hidden;
 }
 .chat-agents-row .chat-agents-meta { display: contents; }
+/* Main's state and count follow its name, not the subagent columns, so they
+   stay put when the tree unfolds. */
+.chat-agents-row.is-main > .chat-agents-pick { display: flex; }
 .chat-agents-tree {
   display: flex;
   flex: 0 0 auto;
