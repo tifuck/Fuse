@@ -177,7 +177,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
         const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : "Failed in the background")
           : `Ran in the background${exit !== null && exit !== 0 ? ` · exit code ${exit}` : ""}`;
         const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-        const shown = body ? deps.consoleStdoutHtml(body.split("\n").slice(0, 4)) : "";
+        const shown = body ? deps.consoleTailHtml(body.split("\n"), 4).html : "";
         return { status, preview: shown, full: deps.consoleSameText(out, "") ? "" : out, keep: true };
       }
       const raw = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output)
@@ -187,23 +187,20 @@ function consoleOnlyFold(trace, presentation, verbose) {
       const exit = deps.shellExitCode(trace);
       const meaning = deps.ccExitMeaning(deps.displayCommand(trace), exit);
       if (failed || meaning.isError) {
-        if (exit !== null && exit !== 0) return deps.ccErrorFold([`Exit code ${exit}`, ...(empty ? [] : lines)]);
+        if (exit !== null && exit !== 0) return deps.ccErrorFold([`Exit code ${exit}`, ...(empty ? [] : lines)], true);
         const failure = ccFailure(trace);
-        return deps.ccErrorFold([deps.ccFlat(failure.error), ...(failure.output ? failure.output.split("\n") : [])]);
+        return deps.ccErrorFold([deps.ccFlat(failure.error), ...(failure.output ? failure.output.split("\n") : [])], true);
       }
       // No file diff here: a working-tree snapshot around the call cannot tell
       // its edits from another agent's in the same repository.
       const note = deps.consoleTruncationNote(trace);
       if (empty) return { status: meaning.message || (note ? "" : "(No output)"), preview: note, full: "", keep: Boolean(note) };
-      const show = lines.length === 4 ? 4 : 3;
-      const cut = lines.slice(0, show).map((line) => line.length > 400 ? line.slice(0, 399) + "…" : line);
-      const hidden = lines.length - cut.length;
-      const clipped = hidden > 0 || cut.some((line, i) => line !== lines[i]);
-      const body = clipped ? deps.consoleDetailHtml(trace, false, false) + deps.consoleTruncationNote(trace, " is-full-note") : "";
+      const tail = deps.consoleTailHtml(lines);
+      const body = tail.clipped ? deps.consoleDetailHtml(trace, false, false) + deps.consoleTruncationNote(trace, " is-full-note") : "";
       return {
         status: "",
         keep: Boolean(note),
-        preview: deps.consoleStdoutHtml(cut) + (hidden > 0 ? `<div class="chat-console-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + note,
+        preview: tail.html + note,
         full: body,
       };
     }
@@ -213,7 +210,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
     }
     if (name === "run_terminal_command" && trace.backgroundResult && !running) {
       const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-      if (body) return { status: deps.consoleResultLine(trace, presentation), preview: deps.consoleStdoutHtml(body.split("\n").slice(0, 4)), full: "", keep: true };
+      if (body) return { status: deps.consoleResultLine(trace, presentation), preview: deps.consoleTailHtml(body.split("\n"), 4, false).html, full: "", keep: true };
     }
     if (failed && name !== "run_terminal_command" && name !== "get_command_output") {
       return deps.ccErrorFold(ccFailure(trace).error.split("\n"));
@@ -227,17 +224,14 @@ function ccInterruptedFold(trace, shell) {
     const text = ccInterruptedText(trace);
     const kept = shell && typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
     if (!kept) return { status: text, preview: "", full: "", keep: false };
-    const lines = kept.split("\n");
-    const show = lines.length === 4 ? 4 : 3;
-    const cut = lines.slice(0, show);
-    const hidden = lines.length - cut.length;
+    const tail = deps.consoleTailHtml(kept.split("\n"));
     const note = (extra = "") => `<div class="chat-console-result-text is-stop-note${extra}">${deps.escapeHtml(text)}</div>`;
     return {
       status: "",
-      preview: deps.consoleStdoutHtml(cut) + (hidden > 0 ? `<div class="chat-console-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + note(),
+      preview: tail.html + note(),
       // The opened body repeats the reason under the whole output; folded,
       // only the preview's copy shows.
-      full: hidden > 0 ? deps.consoleDetailHtml(trace, false, false) + note(" is-full-note") : "",
+      full: tail.hidden > 0 ? deps.consoleDetailHtml(trace, false, false) + note(" is-full-note") : "",
       keep: true,
     };
   }
@@ -319,10 +313,11 @@ function consoleMonitorEventHtml(trace, key) {
     }
     const text = `Monitor event: ${deps.escapeHtml(description)}`;
     if (!lines.length) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
+    // The newest lines of the event, under the count of the older ones.
     const show = lines.length === 4 ? 4 : 3;
     const hidden = Math.max(0, lines.length - show);
-    const preview = `<div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${stdout(lines.slice(0, show))}` +
-      (hidden ? `<div class="chat-console-dim is-event-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + `</div></div>`;
+    const preview = `<div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">` +
+      (hidden ? `<div class="chat-console-dim is-event-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + `${stdout(lines.slice(hidden))}</div></div>`;
     if (!hidden) return row(`<span class="chat-console-notice-text">${text}</span>`, preview);
     return row(
       `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${text}</button></div>`,

@@ -446,6 +446,9 @@ test('a monitor event leads with its description and counts the hidden lines', (
   assert.match(described, /^<li[^>]*>[\s\S]*Monitor event: deploy log/);
   assert.ok(described.indexOf('Monitor event: deploy log') < described.indexOf('line 1'), described);
   assert.match(described, /\+2 lines/);
+  const folded = described.slice(0, described.indexOf('chat-step-reveal'));
+  assert.ok(folded.indexOf('+2 lines') < folded.indexOf('line 3') && folded.includes('line 5'), 'the fold keeps the newest lines under the count');
+  assert.doesNotMatch(folded, /line 1</, 'the oldest lines wait for the open');
   const bare = c.consoleMonitorEventHtml({ url: 'wss://logs.example/ws', summary: 'connected\nmore' }, 'k2');
   assert.match(bare, /Monitor event: connected[\s\S]* · wss:\/\/logs\.example\/ws/);
   assert.ok(bare.indexOf('Monitor event:') < bare.indexOf('wss://logs.example/ws'));

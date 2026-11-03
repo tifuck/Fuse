@@ -61,6 +61,7 @@ export function createConsoleTheme(runtime) {
     get cleanToolOutput() { return theme.cleanToolOutput; },
     get consoleAutoStepsHtml() { return theme.consoleAutoStepsHtml; },
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
+    get consoleTailHtml() { return theme.consoleTailHtml; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
     get executionIdentity() { return runtime.executionIdentity; },
@@ -68,6 +69,7 @@ export function createConsoleTheme(runtime) {
     get fillUserFiles() { return theme.fillUserFiles; },
     get setToolReveal() { return runtime.setToolReveal; },
     get shellExitCode() { return runtime.shellExitCode; },
+    get tailConsoleOutput() { return theme.tailConsoleOutput; },
   }));
   Object.assign(theme, createAttachmentsAndSources({
     get escapeHtml() { return runtime.escapeHtml; },
@@ -328,6 +330,7 @@ export function createConsoleTheme(runtime) {
     get consoleResultLine() { return theme.consoleResultLine; },
     get consoleSameText() { return theme.consoleSameText; },
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
+    get consoleTailHtml() { return theme.consoleTailHtml; },
     get consoleTruncationNote() { return theme.consoleTruncationNote; },
     get consoleWakeNoticeHtml() { return theme.consoleWakeNoticeHtml; },
     get displayCommand() { return theme.displayCommand; },
@@ -417,6 +420,7 @@ export function createConsoleTheme(runtime) {
     get syncActivitySpin() { return theme.syncActivitySpin; },
     get syncLiveDock() { return theme.syncLiveDock; },
     get syncThinkingMode() { return theme.syncThinkingMode; },
+    get tailConsoleOutput() { return theme.tailConsoleOutput; },
     get thinkingPosition() { return theme.thinkingPosition; },
     get todoLineHtml() { return theme.todoLineHtml; },
     get todoSettleLines() { return runtime.todoSettleLines; },

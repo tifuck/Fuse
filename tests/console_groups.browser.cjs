@@ -354,12 +354,13 @@ const groupGrid = () => {
       await frame();
       const row = page.locator('[data-step="tool-cut-cmd"]');
       const folded = await row.innerText();
-      check(folded.includes('FIRST_LINE'), 'the fold shows the first lines');
-      check(!folded.includes('LAST_LINE'), 'the fold hides the tail');
+      check(folded.includes('LAST_LINE') && folded.includes('out 8'), 'the fold shows the newest lines');
+      check(!folded.includes('FIRST_LINE'), 'the fold hides the oldest lines');
       const more = row.locator('.chat-console-more');
       check(await more.count() === 1, 'the fold carries a "… +N lines" marker');
       check(((await more.textContent()) || '').trim() === '… +7 lines', `the marker counts the hidden lines, saw "${await more.textContent()}"`);
       check(await more.isVisible(), 'a folded command says how much output it hides');
+      check(folded.indexOf('… +7 lines') < folded.indexOf('LAST_LINE'), 'the marker sits above the lines it follows');
       // The marker is the expander: clicking it opens the fold.
       await more.click();
       await frame();
@@ -385,6 +386,24 @@ const groupGrid = () => {
       check(/Output truncated · kept the last \d+ of 5k chars/.test(tailRow),
         `the folded tail says it kept the end, saw "${tailRow}"`);
       check(tailRow.includes('LAST_TAIL'), 'the tail keeps its last line');
+
+      // Output taller than the opened box starts at its newest line, and a
+      // repaint keeps where the user scrolled to.
+      const long = sh('npm run long', { id: 'cut-long', output: Array.from({ length: 200 }, (_, i) => `row ${i + 1}`).join('\n') + '\n' });
+      await mount([user('Go.'), turn([T(a), T(long)], [a, long])], true);
+      await frame();
+      const longRow = page.locator('[data-step="tool-cut-long"]');
+      check((await longRow.innerText()).includes('row 200'), 'the long fold shows its last line');
+      await longRow.locator('.chat-console-more').click();
+      await frame();
+      const box = () => longRow.evaluate((li) => { const o = li.querySelector('.chat-console-hang.is-expanded pre.chat-console-out'); return o && { top: o.scrollTop, max: o.scrollHeight - o.clientHeight }; });
+      let pos = await box();
+      check(pos && pos.max > 0 && pos.top >= pos.max - 1, `the opened box starts at the bottom: ${JSON.stringify(pos)}`);
+      await longRow.evaluate((li) => { li.querySelector('.chat-console-hang.is-expanded pre.chat-console-out').scrollTop = 40; });
+      await page.evaluate(() => fuseToolFixture.update('cut-long', { duration_ms: 4300 }, true));
+      await frame();
+      pos = await box();
+      check(pos && pos.top === 40, `a repaint keeps the user's scroll: ${JSON.stringify(pos)}`);
       pass('folded command output says it was cut; expanding loses no end', from);
     }
 

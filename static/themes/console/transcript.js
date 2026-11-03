@@ -327,7 +327,7 @@ function updateAssistant(article, msg, live) {
       const focusedThinking = focused?.matches("[data-reason-preview]") ? focused.dataset.reasonPreview : null;
       const focusedSection = focused?.matches("[data-copy-tool]") ? focused.closest("[data-tool-section]")?.dataset.toolSection : "";
       const preKey = (el, i) => el.closest("[data-tool-section]") ? `${el.closest("[data-step]")?.dataset.step}:${el.closest("[data-tool-section]").dataset.toolSection}` : `pre-${i}`;
-      const positions = new Map([...flow.querySelectorAll("pre")].map((el, i) => [preKey(el, i), [el.scrollLeft, el.scrollTop]]));
+      const positions = new Map([...flow.querySelectorAll("pre")].map((el, i) => [preKey(el, i), [el.scrollLeft, el.scrollTop, el._tailed]]));
 
 
 
@@ -354,7 +354,7 @@ function updateAssistant(article, msg, live) {
       [...flow.children].forEach((node, blockIndex) => { node._blockSig = blockSig(blocks[blockIndex], blockIndex); });
       flow.querySelectorAll("pre").forEach((el, i) => {
         const position = positions.get(preKey(el, i));
-        if (position) { el.scrollLeft = position[0]; el.scrollTop = position[1]; }
+        if (position) { el.scrollLeft = position[0]; el.scrollTop = position[1]; el._tailed = position[2]; }
       });
       deps.hydratePermissionCards(flow);
       if (focusedStep && focusedControl) {
@@ -363,6 +363,7 @@ function updateAssistant(article, msg, live) {
       if (focusedStep && focusedSection) flow.querySelector(`[data-step="${CSS.escape(focusedStep)}"] [data-tool-section="${CSS.escape(focusedSection)}"] [data-copy-tool]`)?.focus({ preventScroll: true });
       if (focusedThinking != null) flow.querySelector(`[data-reason-preview="${CSS.escape(focusedThinking)}"]`)?.focus({ preventScroll: true });
     }
+    deps.tailConsoleOutput(flow);
     if (live) deps.syncLiveDock();
     normalized.filter((part) => part.type === "reasoning").forEach((part) => {
       const peek = flow.querySelector(`[data-reason-preview="${part.segmentIndex}"]`);

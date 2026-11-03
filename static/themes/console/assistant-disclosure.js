@@ -196,11 +196,23 @@ function renderAssistant(msg, live) {
           peek.scrollTop = 0;
         }
       }
+      if (open) tailConsoleOutput(li);
       deps.saveDisclosures(msg);
     });
     deps.updateAssistant(article, msg, live);
     return article;
   }
 
-  return { consoleGroupOpenKeys, renderAssistant };
+// An opened command's output box starts at its newest line, once per box: a
+// repaint patches the same node (or restores its offset), so scrolling up to
+// read stays put. Listings and file bodies keep reading from the top.
+function tailConsoleOutput(root) {
+    root.querySelectorAll(':is([data-tool="run_terminal_command"], [data-tool="get_command_output"], .is-event) .chat-console-hang.is-expanded pre.chat-console-out.is-stdout').forEach((box) => {
+      if (box._tailed || !box.clientHeight) return;
+      box._tailed = true;
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+
+  return { consoleGroupOpenKeys, renderAssistant, tailConsoleOutput };
 }

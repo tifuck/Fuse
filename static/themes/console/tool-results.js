@@ -107,6 +107,18 @@ function consoleStdoutHtml(lines) {
     return `<div class="chat-console-lines is-stdout">${lines.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
   }
 
+// Command output folds to its newest lines, as a terminal shows it: the
+// "… +N lines" marker above the last few. Exactly one more line than the
+// budget prints whole rather than hide a single line.
+function consoleTailHtml(lines, n = 3, toggle = true) {
+    const show = lines.length === n + 1 ? n + 1 : n;
+    const hidden = Math.max(0, lines.length - show);
+    const cut = lines.slice(hidden).map((line) => line.length > 400 ? line.slice(0, 399) + "…" : line);
+    const clipped = hidden > 0 || cut.some((line, i) => line !== lines[hidden + i]);
+    const more = hidden > 0 ? `<div class="chat-console-more"${toggle ? " data-step-toggle" : ""}>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "";
+    return { html: more + consoleStdoutHtml(cut), hidden, clipped };
+  }
+
 function consoleTruncationNote(trace, extra = "") {
     if (typeof trace?.output !== "string") return "";
     const retained = Array.from(trace.output).length;
@@ -216,14 +228,12 @@ function consoleFold(trace, presentation, verbose) {
         : deps.toolBackground(trace) ? status : "";
       const note = typeof consoleTruncationNote === "function" ? consoleTruncationNote(trace) : "";
       if (empty) return { status: head || (note ? "" : "(No output)"), preview: note, full: "", keep: nonzero || Boolean(note) };
-      const show = lines.length === 4 ? 4 : 3;
-      const cut = lines.slice(0, show).map((line) => line.length > 400 ? line.slice(0, 399) + "…" : line);
-      const hidden = lines.length - cut.length;
-      const clipped = hidden > 0 || cut.some((line, i) => line !== lines[i]);
+      const tail = consoleTailHtml(lines);
+      const clipped = tail.clipped;
       return {
         status: head,
         keep: nonzero || Boolean(note),
-        preview: consoleStdoutHtml(cut) + (hidden > 0 ? `<div class="chat-console-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + note,
+        preview: tail.html + note,
         // The opened body hides the preview, so it repeats the notice.
         full: clipped ? consoleDetailHtml(trace, false, running) + consoleTruncationNote(trace, " is-full-note") : "",
       };
@@ -469,5 +479,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

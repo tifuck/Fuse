@@ -30,7 +30,7 @@ function consoleWakeNoticeHtml(trace) {
     const took = Number(trace.latency_ms ?? trace.duration_ms);
     const detail = Number.isFinite(took) && took > 0 ? ` · ${deps.ccDuration(Math.max(1000, took))}` : "";
     const body = !monitor && typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-    const output = body ? `<div class="chat-console-hang is-expanded"><span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${deps.consoleStdoutHtml(body.split("\n").slice(0, 4))}</div></div>` : "";
+    const output = body ? `<div class="chat-console-hang is-expanded"><span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${deps.consoleTailHtml(body.split("\n"), 4, false).html}</div></div>` : "";
     return (
       `<li class="chat-step is-console-notice is-${tone}" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
@@ -56,6 +56,7 @@ function renderAutoSteps(msg) {
       const open = !reveal.classList.contains("is-open");
       deps.setToolReveal(reveal, open);
       li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", String(open)));
+      if (open) deps.tailConsoleOutput(li);
     });
     return article;
   }

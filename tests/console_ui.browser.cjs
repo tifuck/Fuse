@@ -116,8 +116,8 @@ function scenarios() {
       '19:54:15 SUCCESS: SteamGameServer_Init(0,8766)\n19:54:16 SUCCESS: Mission read\n19:54:17 SUCCESS: Server ready\n19:54:18 SUCCESS: Steam OK\n19:54:19 SUCCESS: Players 0/60\n</monitor_event>';
     return { rows: [user('Go.'), turn([say('Watching.\n\n'), T(mon)], [mon], ended), user(event, { auto: true })],
       truth: { call: { [mon.id]: 'done' }, exec: { mon1: 'running' }, monitor: { mon1: 'Game startup milestones in new log' } },
-      has: ['Monitor event: Game startup milestones in new log', '19:54:15 SUCCESS', '… +2 lines', 'Monitor started · task mon1', '(timeout: 5m)'],
-      lacks: ['19:54:19'], expand: { click: '.is-event [data-step-toggle].is-event-more', has: ['19:54:19 SUCCESS: Players 0/60'] } };
+      has: ['Monitor event: Game startup milestones in new log', '19:54:19 SUCCESS', '… +2 lines', 'Monitor started · task mon1', '(timeout: 5m)'],
+      lacks: ['19:54:15'], expand: { click: '.is-event [data-step-toggle].is-event-more', has: ['19:54:15 SUCCESS: SteamGameServer_Init(0,8766)'] } };
   });
   // A settled command folds into its summary line; as the newest call of a
   // live turn it prints on its own row, which is where its dot shows.
