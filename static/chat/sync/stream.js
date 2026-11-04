@@ -284,14 +284,6 @@ export function createStream(ctx) {
     status.syncStatus();
     const retry = () => {
       if (epoch !== S.syncEpoch) return;
-      // Lost for 5 s in a window the user is looking at; brief drops and
-      // backgrounded phones stay silent.
-      if (!S.offlineCueTimer && !document.hidden) {
-        S.offlineCueTimer = window.setTimeout(() => {
-          if (document.hidden || S.syncState === "live") return;
-          S.offlineCued = window.fuseSound?.play("offline", { event: true }) || false;
-        }, 5000);
-      }
       S.syncState = navigator.onLine ? "reconnecting" : "offline";
       S.syncLabel = navigator.onLine ? (S.reconnectAttempt ? "Disconnected" : "Reconnecting") : "Disconnected";
       status.syncStatus();
@@ -376,10 +368,6 @@ export function createStream(ctx) {
             S.reconnectAttempt = 0;
             S.syncState = "live";
             S.syncLabel = "Live sync";
-            window.clearTimeout(S.offlineCueTimer);
-            S.offlineCueTimer = 0;
-            if (S.offlineCued) window.fuseSound?.play("online", { event: true });
-            S.offlineCued = false;
             status.syncStatus();
             await persist.flushPending().catch(() => {});
             if (epoch === S.syncEpoch && net.isLive()) turns.drainQueue();

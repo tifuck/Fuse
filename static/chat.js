@@ -1002,7 +1002,6 @@ import { createDictation } from './chat/dictation.js';
       return;
     }
     if (nav === S.navigation) {
-      window.fuseSound?.play("newChat");
       sidebar.setHistoryTab("chats");
       clearChatState();
     }

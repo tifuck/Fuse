@@ -74,49 +74,50 @@
     tone(t, freq * 3, dur * 0.4, { g: g * 0.08, a: 0.003 });
   }
 
-  function knock(t) {
-    tone(t, 784, 0.045, { type: "triangle", g: 0.14 });
-    tone(t, 196, 0.05, { g: 0.08 });
-    noise(t, 0.015, { lp: 2500, g: 0.05 });
+  // Two sines a few cents apart: the slow beat reads as "wrong" without a buzz.
+  function sour(t, freq, dur, g, o = {}) {
+    tone(t, freq, dur, { ...o, g, a: 0.006 });
+    tone(t, freq, dur, { ...o, g: g * 0.5, a: 0.006, det: 14 });
   }
 
-  function stopThud(t) {
-    tone(t, 230, 0.09, { to: 105, g: 0.24 });
-    noise(t, 0.03, { lp: 700, g: 0.08 });
+  function knock(t) {
+    tone(t, 740, 0.04, { type: "triangle", g: 0.1, lp: 3000, a: 0.002 });
+    tone(t, 185, 0.05, { g: 0.07, a: 0.002 });
+  }
+
+  function thock(t, from) {
+    tone(t, from, 0.1, { to: from / 2, g: 0.2, a: 0.003 });
+    noise(t, 0.02, { lp: 500, g: 0.04 });
   }
 
   // name: [tier, priority, vibration, synth]. "key" plays in Key moments and
   // All; "all" only in All. A higher priority swallows a lower one within 300 ms.
+  // Every pitch is from E major pentatonic, so the cues sound like one family.
   const SOUNDS = {
-    send: ["key", 1, 0, (t) => { tone(t, 520, 0.09, { to: 1040, g: 0.14 }); tone(t, 260, 0.08, { to: 520, g: 0.05 }); noise(t, 0.018, { hp: 3000, g: 0.03 }); }],
-    queue: ["key", 1, 0, (t) => { tone(t, 660, 0.045, { type: "triangle", g: 0.1 }); tone(t + 0.05, 495, 0.06, { type: "triangle", g: 0.09 }); }],
-    stop: ["key", 2, 12, (t) => stopThud(t)],
-    stopAll: ["key", 2, [12, 70, 12], (t) => { stopThud(t); stopThud(t + 0.1); }],
-    done: ["key", 3, 0, (t) => { bell(t, 659, 0.18, 0.12); bell(t + 0.09, 988, 0.3, 0.11); }],
-    doneSoft: ["key", 3, 0, (t) => { bell(t, 659, 0.14, 0.05); bell(t + 0.08, 988, 0.22, 0.05); }],
-    error: ["key", 5, 20, (t) => { tone(t, 440, 0.13, { type: "triangle", g: 0.11 }); tone(t + 0.11, 349, 0.22, { type: "triangle", g: 0.11, det: 9 }); tone(t + 0.11, 175, 0.2, { g: 0.05 }); }],
-    errorSoft: ["key", 5, 0, (t) => tone(t, 349, 0.12, { type: "triangle", g: 0.08, det: 7 })],
-    agentDone: ["key", 2, 0, (t) => { bell(t, 1175, 0.08, 0.06); bell(t + 0.05, 1568, 0.12, 0.06); }],
-    agentFail: ["key", 2, 0, (t) => tone(t, 392, 0.15, { to: 311, type: "triangle", g: 0.09 })],
+    send: ["key", 1, 0, (t) => { tone(t, 659, 0.075, { to: 1319, g: 0.08, a: 0.005 }); bell(t + 0.055, 1319, 0.09, 0.035); }],
+    queue: ["key", 1, 0, (t) => { bell(t, 988, 0.07, 0.05); bell(t + 0.06, 740, 0.1, 0.045); }],
+    stop: ["key", 2, 12, (t) => thock(t, 196)],
+    stopAll: ["key", 2, [12, 70, 12], (t) => { thock(t, 196); thock(t + 0.09, 165); }],
+    done: ["key", 3, 0, (t) => { bell(t, 659, 0.2, 0.1); bell(t + 0.085, 988, 0.38, 0.09); }],
+    doneSoft: ["key", 3, 0, (t) => { bell(t, 659, 0.14, 0.045); bell(t + 0.08, 988, 0.24, 0.04); }],
+    error: ["key", 5, 20, (t) => { sour(t, 494, 0.12, 0.08); sour(t + 0.11, 392, 0.26, 0.08); }],
+    errorSoft: ["key", 5, 0, (t) => sour(t, 392, 0.16, 0.05)],
+    agentDone: ["key", 2, 0, (t) => { bell(t, 1319, 0.07, 0.045); bell(t + 0.045, 1661, 0.12, 0.045); }],
+    agentFail: ["key", 2, 0, (t) => sour(t, 415, 0.16, 0.06, { to: 330 })],
     permission: ["key", 4, [10, 90, 10], (t) => { knock(t); knock(t + 0.12); }],
     permWarn: ["key", 4, 10, (t) => knock(t)],
-    allow: ["key", 1, 0, (t) => tone(t, 700, 0.06, { to: 940, g: 0.1 })],
-    deny: ["key", 1, 0, (t) => tone(t, 520, 0.07, { to: 340, g: 0.1 })],
-    copy: ["key", 1, 0, (t) => { noise(t, 0.012, { hp: 4500, g: 0.05 }); tone(t, 2100, 0.022, { g: 0.035 }); }],
-    attach: ["key", 1, 0, (t) => { tone(t, 1250, 0.025, { type: "triangle", g: 0.07 }); tone(t + 0.035, 1650, 0.03, { type: "triangle", g: 0.06 }); }],
-    micOn: ["key", 1, 0, (t) => tone(t, 587, 0.09, { to: 880, g: 0.1 })],
-    micOff: ["key", 1, 0, (t) => tone(t, 880, 0.09, { to: 587, g: 0.1 })],
-    newChat: ["key", 1, 0, (t) => { tone(t, 300, 0.07, { to: 620, g: 0.11 }); noise(t, 0.02, { hp: 2500, g: 0.02 }); }],
-    undo: ["key", 1, 0, (t) => tone(t, 880, 0.11, { to: 470, g: 0.08 })],
-    redo: ["key", 1, 0, (t) => tone(t, 470, 0.11, { to: 880, g: 0.08 })],
-    rewind: ["key", 1, 0, (t) => tone(t, 620, 0.19, { to: 190, type: "sawtooth", g: 0.035, lp: 1400 })],
-    archive: ["key", 1, 0, (t) => noise(t, 0.15, { bp: [1900, 500], g: 0.07 })],
-    delete: ["key", 1, 0, (t) => { noise(t, 0.12, { lp: 900, g: 0.1 }); tone(t, 165, 0.09, { g: 0.12 }); }],
-    compacted: ["key", 1, 0, (t) => [880, 659, 523].forEach((f, i) => bell(t + i * 0.06, f, 0.1, 0.05))],
-    offline: ["key", 1, 0, (t) => tone(t, 330, 0.16, { g: 0.08, type: "triangle" })],
-    online: ["key", 1, 0, (t) => tone(t, 440, 0.1, { to: 660, g: 0.07 })],
-    artifact: ["all", 1, 0, (t) => [1047, 1319, 1568].forEach((f, i) => bell(t + i * 0.04, f, 0.08, 0.045))],
-    saved: ["all", 1, 0, (t) => bell(t, 880, 0.08, 0.07)],
+    allow: ["key", 1, 0, (t) => tone(t, 740, 0.06, { to: 988, g: 0.08, a: 0.005 })],
+    deny: ["key", 1, 0, (t) => tone(t, 659, 0.07, { to: 494, g: 0.08, a: 0.005 })],
+    copy: ["key", 1, 0, (t) => { noise(t, 0.01, { hp: 5000, g: 0.035 }); bell(t, 1976, 0.03, 0.025); }],
+    micOn: ["key", 1, 0, (t) => tone(t, 659, 0.08, { to: 988, g: 0.08, a: 0.005 })],
+    micOff: ["key", 1, 0, (t) => tone(t, 988, 0.08, { to: 659, g: 0.08, a: 0.005 })],
+    undo: ["key", 1, 0, (t) => tone(t, 988, 0.1, { to: 659, g: 0.06, a: 0.005 })],
+    redo: ["key", 1, 0, (t) => tone(t, 659, 0.1, { to: 988, g: 0.06, a: 0.005 })],
+    rewind: ["key", 1, 0, (t) => tone(t, 740, 0.2, { to: 247, type: "sawtooth", g: 0.025, lp: 1200, a: 0.008 })],
+    delete: ["key", 1, 0, (t) => { noise(t, 0.11, { bp: [1400, 300], g: 0.06 }); tone(t, 165, 0.1, { to: 110, g: 0.09, a: 0.003 }); }],
+    compacted: ["key", 1, 0, (t) => [988, 831, 659].forEach((f, i) => bell(t + i * 0.055, f, 0.1, 0.04))],
+    artifact: ["all", 1, 0, (t) => [1319, 1661, 1976].forEach((f, i) => bell(t + i * 0.04, f, 0.08, 0.035))],
+    saved: ["all", 1, 0, (t) => bell(t, 988, 0.09, 0.055)],
   };
   // Bursts merge: five subagents finishing together are one sound.
   const GAP_MS = { agentDone: 400, agentFail: 400 };
@@ -149,7 +150,18 @@
       if (!Ctor) return null;
       ctx = new Ctor();
       master = ctx.createGain();
-      master.connect(ctx.destination);
+      // A gentle top-end roll-off and a soft compressor keep every cue round
+      // and stop overlapping ones from peaking.
+      const air = ctx.createBiquadFilter();
+      air.type = "lowpass";
+      air.frequency.value = 8000;
+      const glue = ctx.createDynamicsCompressor();
+      glue.threshold.value = -18;
+      glue.knee.value = 12;
+      glue.ratio.value = 3;
+      master.connect(air);
+      air.connect(glue);
+      glue.connect(ctx.destination);
     }
     if (ctx.state !== "running") ctx.resume().catch(() => {});
     return ctx;

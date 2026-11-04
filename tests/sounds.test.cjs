@@ -40,6 +40,7 @@ function boot({ saved, visible = true, focused = true, state = 'running', activa
       createOscillator() { return node(); }
       createGain() { return node(); }
       createBiquadFilter() { return node(); }
+      createDynamicsCompressor() { return { ...node(), threshold: {}, knee: {}, ratio: {} }; }
       createBufferSource() { return node(); }
       createBuffer(_, length) { return { getChannelData: () => new Float32Array(length) }; }
     },
@@ -62,6 +63,13 @@ test('key moments mode plays key sounds and holds back the "all" tier', () => {
   ui.sound.setPrefs({ mode: 'all' });
   assert.equal(ui.sound.play('saved'), true);
   assert.equal(ui.sound.play('nope'), false);
+});
+
+test('routine actions have no sound', () => {
+  const ui = boot({ saved: { mode: 'all', volume: 0.7 } });
+  for (const name of ['newChat', 'attach', 'archive', 'offline', 'online']) {
+    assert.equal(name in ui.sound.SOUNDS, false, name);
+  }
 });
 
 test('off mode and zero volume are silent', () => {
@@ -102,7 +110,7 @@ test('a higher-priority sound swallows a lower one right after it', () => {
 
 test('at most four sounds a second', () => {
   const ui = boot();
-  const names = ['send', 'copy', 'attach', 'undo', 'redo'];
+  const names = ['send', 'copy', 'micOn', 'undo', 'redo'];
   const played = names.map((name) => { ui.tick(130); return ui.sound.play(name); });
   assert.deepEqual(played, [true, true, true, true, false]);
 });

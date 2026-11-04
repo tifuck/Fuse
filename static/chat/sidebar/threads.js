@@ -208,7 +208,6 @@ export function createThreads(ctx) {
     try {
       await sync.flushPending();
       if (nav !== S.navigation) return;
-      window.fuseSound?.play("newChat");
       render.setHistoryTab("projects", { persist: true, silent: true });
       chatApi.clearChatState();
       S.pendingProject = info;
@@ -493,7 +492,6 @@ export function createThreads(ctx) {
           await sync.flushPending();
           if (nav !== S.navigation) return;
           const copy = await net.api("/chat/threads/" + id + "/fork", { method: "POST", body: JSON.stringify({ expected_revision: threadById(id)?.revision, command_id: newSession() }) });
-          window.fuseSound?.play("newChat");
           upsertLocal(copy);
           render.renderHistory();
           picker.setHint("Forked. The copy runs on its own: new chat, subagent and command ids.");
@@ -516,7 +514,6 @@ export function createThreads(ctx) {
               command_id: newSession(),
             }),
           });
-          window.fuseSound?.play("archive");
           upsertLocal(updated);
           if (nav === S.navigation && S.currentId === id && updated.archived) chatApi.clearChatState({ keepList: true });
           render.renderHistory();
