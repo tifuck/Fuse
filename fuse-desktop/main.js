@@ -1,5 +1,6 @@
 const { app, BaseWindow, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { spawnSync } = require("child_process");
 const { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } = require("fs");
 const path = require("path");
 const { MAX_INSTALL_TRIES, launchNotice } = require("./update-notice");
@@ -367,6 +368,28 @@ function flushToasts() {
 const UPDATE_CHECK_MS = 4 * 60 * 60 * 1000;
 let restartToUpdate = null;
 
+// Variables systemd sets per unit; the relaunched unit gets its own.
+const UNIT_ENV = new Set(["INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "MANAGERPIDFDID", "SYSTEMD_EXEC_PID", "MEMORY_PRESSURE_WATCH", "MEMORY_PRESSURE_WRITE"]);
+
+// app.relaunch() starts the new Fuse from Electron's relauncher helper, which
+// runs under no_new_privs. Where unprivileged user namespaces are restricted
+// (Ubuntu 24.04+), Chromium sandboxes through the setuid chrome-sandbox, which
+// cannot become root under that flag, so the relaunched Fuse aborted on start
+// ("Zygote process exited prematurely") before any of this file ran. The
+// user's systemd starts it clean instead, once this process has exited (an
+// instance started earlier would only hand off to this one and quit).
+function relaunchFromSystemd() {
+  const args = [
+    "--user", "--collect", "--quiet",
+    ...Object.keys(process.env).filter((key) => !UNIT_ENV.has(key)).map((key) => `--setenv=${key}`),
+    "--", "/bin/sh", "-c",
+    'i=0; while kill -0 "$1" 2>/dev/null && [ "$i" -lt 150 ]; do sleep 0.2; i=$((i+1)); done; shift; exec "$@"',
+    "fuse-relaunch", String(process.pid), process.execPath, ...process.argv.slice(1),
+  ];
+  const run = spawnSync("systemd-run", args, { stdio: "ignore", timeout: 10000 });
+  return !run.error && run.status === 0;
+}
+
 function startUpdater() {
   const dir = app.getPath("logs");
   try {
@@ -440,7 +463,19 @@ function startUpdater() {
     if (!offered || restarting) return;
     restarting = true;
     installing();
-    autoUpdater.quitAndInstall(true, true);
+    if (process.platform !== "linux" || process.env.APPIMAGE) {
+      autoUpdater.quitAndInstall(true, true);
+      return;
+    }
+    autoUpdater.quitAndInstall(true, false);
+    // The .deb install runs synchronously; a failed one already fired "error".
+    // The quit itself waits for the next tick, so app.relaunch() is still in time.
+    if (!restarting) return;
+    if (relaunchFromSystemd()) write("info")("Relaunching through systemd-run --user");
+    else {
+      write("warn")("systemd-run --user failed; relaunching through app.relaunch()");
+      app.relaunch();
+    }
   };
 
   // Registered before any download, so it runs ahead of the install on quit.
