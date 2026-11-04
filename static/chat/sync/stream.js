@@ -37,7 +37,6 @@ export function createStream(ctx) {
       if (payload.origin !== S.draftOrigin) composer.applyRemoteDraft(String(payload.key ?? ""), payload.text);
     } else if (event.type === "compaction.done" || event.type === "compaction.updated" || event.type === "compaction.pruned") {
       if (event.thread_id === S.currentId) {
-        if (event.type === "compaction.done") cue("compacted");
         if (payload && payload.meter) context.acceptMeter(payload.meter);
         else if (payload && payload.compaction && payload.compaction.meter) context.acceptMeter(payload.compaction.meter);
         else context.syncContextMeter();

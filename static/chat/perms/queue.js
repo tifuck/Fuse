@@ -409,7 +409,6 @@ export function createQueue(ctx) {
         method: "POST",
         body: JSON.stringify({ action }),
       });
-      window.fuseSound?.play(action === "deny" ? "deny" : "allow");
       S.permCards.delete(id);
       renderPermQueue();
       if (S.permsOpen && (action === "allow_session" || action === "allow_host")) menu.refreshPerms();

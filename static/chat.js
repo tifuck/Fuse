@@ -596,7 +596,6 @@ import { createDictation } from './chat/dictation.js';
       try {
         if (reject) {
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/reject", { method: "POST", body: "{}" });
-          window.fuseSound?.play("deny");
         } else {
           const body = {
             slug: card.querySelector("[data-perm-slug]")?.value,
@@ -606,7 +605,6 @@ import { createDictation } from './chat/dictation.js';
             replace: Boolean(card.querySelector("[data-perm-replace]")?.checked),
           };
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/confirm", { method: "POST", body: JSON.stringify(body) });
-          window.fuseSound?.play("allow");
         }
         await composer.refreshSkills();
         await sync.reconcileThread();

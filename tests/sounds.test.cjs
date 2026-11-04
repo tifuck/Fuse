@@ -67,7 +67,7 @@ test('key moments mode plays key sounds and holds back the "all" tier', () => {
 
 test('routine actions have no sound', () => {
   const ui = boot({ saved: { mode: 'all', volume: 0.7 } });
-  for (const name of ['newChat', 'attach', 'archive', 'offline', 'online']) {
+  for (const name of ['newChat', 'attach', 'archive', 'offline', 'online', 'undo', 'redo', 'rewind', 'compacted', 'allow', 'deny']) {
     assert.equal(name in ui.sound.SOUNDS, false, name);
   }
 });
@@ -110,7 +110,7 @@ test('a higher-priority sound swallows a lower one right after it', () => {
 
 test('at most four sounds a second', () => {
   const ui = boot();
-  const names = ['send', 'copy', 'micOn', 'undo', 'redo'];
+  const names = ['send', 'copy', 'micOn', 'micOff', 'queue'];
   const played = names.map((name) => { ui.tick(130); return ui.sound.play(name); });
   assert.deepEqual(played, [true, true, true, true, false]);
 });

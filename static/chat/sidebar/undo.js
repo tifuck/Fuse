@@ -169,7 +169,6 @@ export function createUndo(ctx) {
     const marks = artifacts.versionMarks();
     let restored;
     S.sending = true;
-    window.fuseSound?.play("undo");
     composer.syncComposer();
     try {
       await sync.flushPending();
@@ -254,7 +253,6 @@ export function createUndo(ctx) {
       return;
     }
     S.sending = true;
-    window.fuseSound?.play("redo");
     try {
       const updated = await net.api('/chat/threads/' + origin, { method: 'PATCH', body: JSON.stringify({
         messages: next, expected_revision: S.serverRevision, command_id: newSession(),
@@ -308,7 +306,6 @@ export function createUndo(ctx) {
     if (!mutateTranscript(() => {
       S.messages = S.messages.slice(0, index);
     }, "Rewound. Edit and send, or keep going.")) return;
-    window.fuseSound?.play("rewind");
     const fresh = S.pendingAttachments.filter(
       (att) => !kept.some((other) => String(other.id || "") && String(other.id) === String(att.id))
     );
