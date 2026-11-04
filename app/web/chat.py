@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
-from .. import artifacts, speech, chat_drafts, chat_events, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
+from .. import artifacts, speech, chat_drafts, model_favorites, chat_events, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
 from ..config import settings
 from ..security import limiter
 from ..sources import openrouter as openrouter_mod
@@ -58,6 +58,7 @@ async def chat_page(request: Request):
         chat_config={
             "families": families,
             "locked": [group["title"] for group in locked],
+            "favorites": model_favorites.list_favorites(user["id"]),
             "preselect": (request.query_params.get("model") or "").strip()[:200],
             "tools": chat_tools.AVAILABLE,
             "context": chats.get_user_context(user["id"]),
@@ -114,6 +115,7 @@ async def chat_sync_snapshot(request: Request):
                 "context": chats._context_view(account),
                 "live_agents": int(live_agents),
                 "drafts": chat_drafts.list_drafts(user["id"], conn),
+                "favorites": model_favorites.from_prefs(account["pool_prefs"] if account else None),
             }
         data["projects"] = chats.list_sidebar_projects(user["id"])
         return data
@@ -1126,6 +1128,21 @@ async def chat_draft_put(request: Request):
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     return Response(status_code=204)
+
+
+@router.put("/chat/favorites")
+async def chat_favorite_put(request: Request):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    raw = await _json_object(request)
+    if set(raw) - {"model", "on"}:
+        raise HTTPException(422, "Unsupported favorite fields")
+    try:
+        ids = await asyncio.to_thread(model_favorites.set_favorite, user["id"], raw.get("model"), raw.get("on"))
+    except chats.ChatValidationError as exc:
+        raise _chat_validation_error(exc) from None
+    return JSONResponse({"models": ids})
 
 
 @router.post("/chat/completions")

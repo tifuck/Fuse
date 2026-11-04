@@ -227,20 +227,20 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-list { pa
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-group > p { padding-inline: 0.8rem; }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > button {
+html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > [role="option"] {
   min-height: 1.85rem;
-  padding: 0.25rem 0.8rem;
+  padding: 0.25rem 2.2rem 0.25rem 0.8rem;
   border-radius: 0;
   box-shadow: inset 2px 0 0 transparent;
   font: 0.8rem/1.2 var(--mono);
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > button:is(:hover, .is-active) {
+html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > [role="option"]:is(:hover, .is-active) {
   background: color-mix(in srgb, var(--brass) 9%, transparent);
   box-shadow: inset 2px 0 0 var(--brass);
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > button.is-selected > span { font-weight: 500; color: var(--brass); }
+html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > [role="option"].is-selected > span { font-weight: 500; color: var(--brass); }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-efforts-slider::-webkit-slider-thumb { border-radius: 1px; border-color: var(--ink); }
 

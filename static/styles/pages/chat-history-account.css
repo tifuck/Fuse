@@ -52,7 +52,7 @@ body.is-pin-dragging .chat-history-item:hover { background: none; }
 }
 .chat :is(.chat-send, .chat-attach-btn, .chat-search-btn, .chat-bar-btn, .chat-history-toggle, .chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-menu-close):not(:disabled):active { scale: 0.92; transition-duration: 60ms; }
 .chat-history-tab:not([aria-selected="true"]):active { background: color-mix(in srgb, var(--mist) 6%, transparent); scale: 0.97; transition-duration: 60ms; }
-.chat-picker-row > button:active { background: color-mix(in srgb, var(--mist) 10%, transparent); transition-duration: 0ms; }
+.chat-picker-row > [role="option"]:active { background: color-mix(in srgb, var(--mist) 10%, transparent); transition-duration: 0ms; }
 .chat-history-foot:active,
 .user-dock-btn:active { background: color-mix(in srgb, var(--mist) 10%, transparent); transition-duration: 0ms; }
 

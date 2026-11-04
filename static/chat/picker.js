@@ -4,7 +4,7 @@ import { createSheet } from './picker/sheet.js';
 
 export function createPicker(ctx) {
   const list = createList({ ...ctx,
-    sheet: { closePicker: (...args) => sheet.closePicker(...args), renderPickerButton: (...args) => sheet.renderPickerButton(...args) },
+    sheet: { closePicker: (...args) => sheet.closePicker(...args), renderPickerButton: (...args) => sheet.renderPickerButton(...args), setHint: (...args) => sheet.setHint(...args) },
   });
   const sheet = createSheet({ ...ctx,
     list,

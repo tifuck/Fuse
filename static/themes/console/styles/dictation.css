@@ -132,3 +132,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-mic,
   html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live::after { animation: none; }
 }
+
+/* A composer popover opened mid-dictation covers the strip instead of
+   showing it through its list. */
+html[data-chat-console="true"] .chat[data-view="console"] :is(.chat-picker-menu, .chat-perms-menu, .chat-context-pop):not(.is-sheet) { z-index: 31; }

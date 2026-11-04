@@ -149,6 +149,9 @@ function initState() {
     }))
   );
   S.modelsById = new Map(S.allModels.map((model) => [model.id, model]));
+  // Starred model ids, saved per account (PUT /chat/favorites).
+  S.favorites = new Set(Array.isArray(S.config.favorites) ? S.config.favorites : []);
+  S.favoritesPending = 0;
   S.DEVIN_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
   S.effortByModel = {};
     try {

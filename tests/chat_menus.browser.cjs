@@ -177,6 +177,54 @@ const FAMILIES = [
       await picker().waitFor({ state: 'hidden' });
     }
 
+    // The menu sits flush with the composer's right edge and rides its top
+    // edge while dictated text grows the box. A starred model leads the list
+    // in a Favorites group, saved on the account, so a reload keeps it.
+    {
+      const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const rects = () => page.evaluate(() => ({
+        menu: document.querySelector('.chat-picker-menu').getBoundingClientRect().toJSON(),
+        box: document.querySelector('.chat-box').getBoundingClientRect().toJSON(),
+        send: document.querySelector('[data-chat-send]').getBoundingClientRect().toJSON(),
+      }));
+      await pickerBtn().click();
+      await picker().waitFor();
+      const open = await rects();
+      assert.ok(Math.abs(open.menu.right - open.send.right) <= 1, `the picker lines up with the composer's right edge: ${open.menu.right} vs ${open.send.right}`);
+      // Dictation writes the field and fires input without focusing it.
+      await page.locator('[data-chat-input]').evaluate(el => { el.value = 'dictated line\n'.repeat(6); el.dispatchEvent(new Event('input', { bubbles: true })); });
+      await frames();
+      const grown = await rects();
+      assert.ok(grown.box.height > open.box.height + 20, `the composer grew: ${open.box.height} -> ${grown.box.height}`);
+      assert.ok(Math.abs((grown.box.top - grown.menu.bottom) - (open.box.top - open.menu.bottom)) <= 1, `the menu follows the composer top: ${open.box.top - open.menu.bottom} -> ${grown.box.top - grown.menu.bottom}`);
+      await page.locator('[data-chat-input]').evaluate(el => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
+
+      assert.equal(await page.locator('.chat-picker-list [data-star]').count(), 3, 'every model has a star');
+      const [saved] = await Promise.all([
+        page.waitForResponse(res => res.request().method() === 'PUT' && new URL(res.url()).pathname === '/chat/favorites'),
+        page.locator('.chat-picker-list [data-star="offline"]').click(),
+      ]);
+      assert.deepEqual((await saved.json()).models, ['offline']);
+      assert.deepEqual(await optionIds(), ['offline', 'grok-short', 'grok-long'], 'a starred model leads the list');
+      assert.equal(await page.locator('.chat-picker-group.is-favorites [data-id="offline"]').count(), 1, 'in its own Favorites group');
+      assert.equal(await page.locator('[data-star="offline"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.chat-picker-search')), true, 'starring leaves focus in the search');
+      await page.keyboard.press('Escape');
+      await page.reload();
+      await live();
+      await pickerBtn().click();
+      await picker().waitFor();
+      assert.deepEqual(await optionIds(), ['offline', 'grok-short', 'grok-long'], 'the favorite survives a reload');
+      await Promise.all([
+        page.waitForResponse(res => res.request().method() === 'PUT' && new URL(res.url()).pathname === '/chat/favorites'),
+        page.locator('.chat-picker-list [data-star="offline"]').click(),
+      ]);
+      assert.deepEqual(await optionIds(), ['grok-short', 'grok-long', 'offline'], 'unstarring returns it to its provider');
+      assert.equal(await page.locator('.chat-picker-group.is-favorites').count(), 0);
+      await page.keyboard.press('Escape');
+      await picker().waitFor({ state: 'hidden' });
+    }
+
     // Ask / Bypass labels, and the mode follows the thread across a switch.
     {
       const chip = page.locator('[data-perm-chip]');
@@ -468,6 +516,11 @@ const FAMILIES = [
       assert.equal(sheet.sheet, true, 'a phone picker is a sheet');
       assert.equal(await p.evaluate(() => document.activeElement === document.querySelector('.chat-picker-menu')), true, 'the phone sheet itself takes focus, no keyboard');
       phoneInside(sheet, 'phone model sheet');
+      const starFit = await p.locator('.chat-picker-row').first().evaluate(row => {
+        const r = row.getBoundingClientRect(), s = row.querySelector('.chat-picker-star').getBoundingClientRect();
+        return { row: [r.top, r.bottom], star: [s.top, s.bottom] };
+      });
+      assert.ok(Math.abs(starFit.star[0] - starFit.row[0]) <= 1 && Math.abs(starFit.star[1] - starFit.row[1]) <= 1, `the star spans its own row only: ${JSON.stringify(starFit)}`);
       // The slider keeps one width whatever the value label says: a wider
       // "Extra high" narrowed it and moved the thumb under a dragging finger.
       await p.locator('.chat-picker-list [data-id="offline"]').click();

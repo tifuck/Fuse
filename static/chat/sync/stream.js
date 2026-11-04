@@ -33,6 +33,8 @@ export function createStream(ctx) {
         S.projects = payload.projects;
         sidebar.renderHistory();
       }
+    } else if (event.type === "favorites.updated") {
+      picker.acceptFavorites(payload.models);
     } else if (event.type === "draft.updated") {
       if (payload.origin !== S.draftOrigin) composer.applyRemoteDraft(String(payload.key ?? ""), payload.text);
     } else if (event.type === "compaction.done" || event.type === "compaction.updated" || event.type === "compaction.pruned") {
@@ -300,6 +302,7 @@ export function createStream(ctx) {
         if (Array.isArray(data.projects)) S.projects = data.projects;
         apply.acceptContext(data.context);
         composer.acceptDrafts(data.drafts);
+        picker.acceptFavorites(data.favorites);
         sidebar.resetSearchLists();
         if (S.historyQuery) sidebar.queueSearch();
         sidebar.renderHistory();

@@ -19,6 +19,11 @@ const PICKER_CHECK =
 const IMAGE_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="6.6" r="1.2" fill="currentColor"/><path d="M2.8 12l3.6-3.6 2.4 2.4 1.6-1.6 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
 
+const starIcon = (on) =>
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M8 1.9l1.85 3.75 4.15.6-3 2.92.7 4.13L8 11.35 4.3 13.3l.7-4.13-3-2.92 4.15-.6z" fill="${on ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+
+let favoritesSaving = Promise.resolve();
+
 export function createList(ctx) {
   const { composer, context, net, sheet, sidebar } = ctx;
     function modelEfforts() {
@@ -74,12 +79,15 @@ export function createList(ctx) {
     function filteredModels() {
     const q = S.pickerFilter.trim().toLowerCase();
     const pinned = S.modelsById.get(S.pickerPinId);
-    let list = S.allModels;
-    if (pinned) {
-      const same = S.allModels.filter((m) => m.type === pinned.type && m.id !== pinned.id);
-      const rest = S.allModels.filter((m) => m.type !== pinned.type);
+    // Starred models lead, in catalog order; the open model's family follows.
+    const starred = S.allModels.filter((m) => S.favorites.has(m.id));
+    let list = S.allModels.filter((m) => !S.favorites.has(m.id));
+    if (pinned && !S.favorites.has(pinned.id)) {
+      const same = list.filter((m) => m.type === pinned.type && m.id !== pinned.id);
+      const rest = list.filter((m) => m.type !== pinned.type);
       list = [pinned, ...same, ...rest];
     }
+    list = [...starred, ...list];
     if (!q) return list;
     return list.filter(
       (model) =>
@@ -103,9 +111,11 @@ export function createList(ctx) {
     }
     const groups = [];
     items.forEach((model, index) => {
+      const fav = S.favorites.has(model.id);
+      const type = fav ? "favorites" : model.type;
       let group = groups[groups.length - 1];
-      if (!group || group.type !== model.type) {
-        group = { type: model.type, title: model.title, items: [] };
+      if (!group || group.type !== type) {
+        group = { type, fav, title: fav ? "Favorites" : model.title, items: [] };
         groups.push(group);
       }
       group.items.push({ model, index });
@@ -115,7 +125,8 @@ export function createList(ctx) {
         (group) =>
           // The provider mark sits once on the group label; rows carry the
           // name and context window only, so the list stays dense.
-          `<div class="chat-picker-group" role="group" aria-labelledby="chat-pg-${escapeHtml(group.type)}"><p id="chat-pg-${escapeHtml(group.type)}">${sidebar.providerLogo(group.type)}<span>${escapeHtml(group.title)}</span></p>${group.items
+          // Favorites mix providers, so there each row carries its own mark.
+          `<div class="chat-picker-group${group.fav ? " is-favorites" : ""}" role="group" aria-labelledby="chat-pg-${escapeHtml(group.type)}"><p id="chat-pg-${escapeHtml(group.type)}">${group.fav ? starIcon(true) : sidebar.providerLogo(group.type)}<span>${escapeHtml(group.title)}</span></p>${group.items
             .map(({ model, index }) => {
               const selected = model.id === S.modelId;
               const ctx = model.contextWindow ? formatTokens(model.contextWindow) : "";
@@ -123,18 +134,52 @@ export function createList(ctx) {
                 `<button type="button" role="option" id="chat-pm-${index}" tabindex="-1" data-id="${escapeHtml(model.id)}" aria-selected="${
                   selected ? "true" : "false"
                 }" class="${selected ? "is-selected" : ""}${index === S.pickerIndex ? " is-active" : ""}">` +
+                (group.fav ? sidebar.providerLogo(model.type) : "") +
                 `<span>${escapeHtml(model.name)}</span>` +
                 (model.image ? `<i class="chat-picker-image" title="Reads images">${IMAGE_ICON}<span class="visually-hidden">, reads images</span></i>` : "") +
                 (ctx ? `<small class="chat-picker-meta" title="Context window">${ctx}</small>` : "") +
                 `<i class="chat-picker-mark" aria-hidden="true">${selected ? PICKER_CHECK : ""}</i>` +
                 `</button>`;
-              return `<div class="chat-picker-row" role="none">${row}</div>`;
+              const label = (group.fav ? "Unfavorite " : "Favorite ") + model.name;
+              const star =
+                `<button type="button" class="chat-picker-star${group.fav ? " is-on" : ""}" data-star="${escapeHtml(model.id)}" tabindex="-1" aria-pressed="${group.fav}" aria-label="${escapeHtml(label)}" title="${group.fav ? "Unfavorite" : "Favorite"}">${starIcon(group.fav)}</button>`;
+              return `<div class="chat-picker-row" role="none">${row}${star}</div>`;
             })
             .join("")}</div>`
       )
       .join("");
     // Arrow keys move a highlight while focus stays in the search box.
     search?.setAttribute("aria-activedescendant", "chat-pm-" + S.pickerIndex);
+  }
+
+    // Applies the account's favorites from the server, unless a toggle of
+    // this tab's is still saving (its own answer lands after it).
+    function acceptFavorites(ids) {
+    if (!Array.isArray(ids) || S.favoritesPending) return;
+    S.favorites = new Set(ids);
+    if (S.pickerOpen) renderPickerList();
+  }
+
+    // Optimistic; saves are chained so the last answer is the final state.
+    function toggleFavorite(id) {
+    if (!S.modelsById.has(id)) return;
+    const on = !S.favorites.has(id);
+    const activeId = filteredModels()[S.pickerIndex]?.id;
+    const flip = (value) => {
+      if (value) S.favorites.add(id);
+      else S.favorites.delete(id);
+      const index = filteredModels().findIndex((model) => model.id === activeId);
+      if (index >= 0) S.pickerIndex = index;
+      if (S.pickerOpen) renderPickerList();
+    };
+    flip(on);
+    S.favoritesPending++;
+    favoritesSaving = favoritesSaving
+      .then(() => net.api("/chat/favorites", { method: "PUT", body: JSON.stringify({ model: id, on }) }))
+      .then(
+        (data) => { S.favoritesPending--; acceptFavorites(data.models); },
+        (err) => { S.favoritesPending--; flip(!on); sheet.setHint(err?.message || "Couldn't save the favorite.", true); }
+      );
   }
 
     function renderPickerThinking() {
@@ -239,6 +284,7 @@ export function createList(ctx) {
   }
 
   return {
+    acceptFavorites,
     currentEffort,
     effortLabel,
     filteredModels,
@@ -246,5 +292,6 @@ export function createList(ctx) {
     renderPickerList,
     selectModel,
     setEffort,
+    toggleFavorite,
   };
 }

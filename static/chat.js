@@ -2072,6 +2072,10 @@ import { createDictation } from './chat/dictation.js';
       const beforeDock = S.root.style.getPropertyValue("--dock-h");
       composer.syncDockSpace();
       if (window.FuseComposerSpell) FuseComposerSpell.syncMetrics();
+      // Open popovers sit on the composer's top edge; follow it as the text grows.
+      if (S.pickerOpen) picker.placePicker();
+      if (S.permsOpen) perms.placePermsMenu();
+      if (S.contextPop && !S.contextPop.hidden) composer.placeComposerPop(S.contextPop, S.contextBtn, 30 * 16);
       if (following && S.root.style.getPropertyValue("--dock-h") !== beforeDock) transcript.restoreThreadScroll(true, savedTop);
     });
     S.dockResizeObserver.observe(S.form);

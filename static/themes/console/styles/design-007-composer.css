@@ -1,7 +1,14 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea::placeholder {
   font-style: normal;
   color: color-mix(in srgb, var(--mute) 78%, var(--ink));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* A field squeezed by a long model name clips its hint instead of wrapping
+   it onto a second, scrolling row. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea:placeholder-shown { overflow: hidden; }
 
 /* Composer: one grid for every state.
      +  >  [attachments …]

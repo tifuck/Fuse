@@ -66,7 +66,7 @@
     padding: 0.2rem 0.5rem calc(0.8rem + var(--safe-bottom));
   }
   .chat-picker-menu.is-sheet .chat-picker-group > p { padding: 0.75rem 0.55rem 0.3rem; }
-  .chat-picker-menu.is-sheet .chat-picker-row > button {
+  .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] {
     min-height: 2.75rem;
     padding: 0.35rem 0.6rem;
     border-radius: 9px;
@@ -84,6 +84,4 @@
   from { transform: translateX(-100%); }
   to { transform: translateX(0); }
 }
-.chat-md.is-writing > :last-child::after { content: ""; display: inline-block; width: 0.4rem; height: 1em; margin-left: 0.3rem; vertical-align: -0.1em; border-radius: 1px; background: var(--brass); animation: chat-signal 1s ease-in-out infinite; }
-.chat-md.is-writing > :is(pre, table, ul, ol, .chat-code):last-child::after { display: none; }
 

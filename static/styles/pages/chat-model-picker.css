@@ -144,7 +144,7 @@
 }
 .chat-picker-group:first-child > p { padding-top: 0.4rem; }
 .chat-picker-group > p .provider-logo { width: 0.8rem; height: 0.8rem; opacity: 0.75; }
-.chat-picker-row > button {
+.chat-picker-row > [role="option"] {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -157,20 +157,20 @@
   font-size: 0.83rem;
   line-height: 1.2;
 }
-.chat-picker-row > button:hover,
-.chat-picker-row > button.is-active {
+.chat-picker-row > [role="option"]:hover,
+.chat-picker-row > [role="option"].is-active {
   background: color-mix(in srgb, var(--mist) 7%, transparent);
   color: var(--mist);
 }
-.chat-picker-row > button.is-selected { color: var(--mist); }
-.chat-picker-row > button > span {
+.chat-picker-row > [role="option"].is-selected { color: var(--mist); }
+.chat-picker-row > [role="option"] > span {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-picker-row > button.is-selected > span { font-weight: 600; }
+.chat-picker-row > [role="option"].is-selected > span { font-weight: 600; }
 .chat-picker-image {
   display: inline-flex;
   flex-shrink: 0;
@@ -190,6 +190,40 @@
   font-style: normal;
 }
 .chat-picker-check { width: 0.85rem; height: 0.85rem; flex-shrink: 0; color: var(--brass); }
+/* The star overlays the row's right end so the row highlight spans it. */
+.chat-picker-row { position: relative; }
+.chat-picker-row > [role="option"] { padding-right: 2.1rem; }
+.chat-picker-row > [role="option"] .provider-logo { width: 0.8rem; height: 0.8rem; flex-shrink: 0; opacity: 0.75; }
+.chat-picker-star {
+  --star: #FACC15;
+  position: absolute;
+  top: 0;
+  right: 0.2rem;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--mute) 70%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+/* Row height, not the phone's 44px list-button minimum: a taller star
+   overlaps the next row's. */
+body.is-chat .chat-picker-list .chat-picker-star { min-height: 0; }
+.chat-picker-star:hover { color: var(--star); }
+.chat-picker-star.is-on { color: var(--star); }
+.chat-picker-group.is-favorites > p svg { width: 0.8rem; height: 0.8rem; color: #FACC15; }
+@media (hover: none) {
+  .chat-picker-star { width: 2.4rem; right: 0; }
+}
+@media (hover: hover) {
+  .chat-picker-star:not(.is-on) { opacity: 0; }
+  .chat-picker-row:hover .chat-picker-star,
+  .chat-picker-row > .is-active + .chat-picker-star { opacity: 1; }
+}
 .chat-picker-thinking-host {
   flex: 0 0 auto;
   border-top: 1px solid var(--line);

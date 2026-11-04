@@ -195,8 +195,11 @@ export function createSheet(ctx) {
     placePicker();
   }
 
+    // Flush with the composer's right edge (the send button), wherever the
+    // model button sits in the row.
     function placePicker() {
-    composer.placeComposerPop(S.pickerMenuEl, S.pickerHost.querySelector(".chat-picker-btn"), 26 * 16, true);
+    const edge = S.form?.querySelector(".chat-send") || S.pickerHost.querySelector(".chat-picker-btn");
+    composer.placeComposerPop(S.pickerMenuEl, edge, 26 * 16, true);
   }
 
     function renderPickerButton() {
@@ -295,6 +298,14 @@ export function createSheet(ctx) {
         closePicker();
         const btn = S.pickerHost.querySelector(".chat-picker-btn");
         if (btn && !S.pickerSheetQuery.matches) btn.focus();
+        return;
+      }
+      const star = event.target.closest("[data-star]");
+      if (star) {
+        event.preventDefault();
+        list.toggleFavorite(star.getAttribute("data-star"));
+        // The re-render drops the clicked star; keep typing and arrows working.
+        if (!S.pickerSheetQuery.matches) menu.querySelector(".chat-picker-search")?.focus();
         return;
       }
       const target = event.target.closest("button[data-id]");

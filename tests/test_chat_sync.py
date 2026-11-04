@@ -307,6 +307,25 @@ class ChatSyncTest(unittest.TestCase):
             self.assertEqual(self.client.put("/chat/drafts", json={"key": 5, "text": "x"}).status_code, 422)
             self.assertEqual(self.client.put("/chat/drafts", json={"key": "", "text": "x", "files": []}).status_code, 422)
 
+    def test_favorite_models_sync_between_devices(self):
+        db.execute("UPDATE users SET pool_prefs=? WHERE id=1", (json.dumps({"grok": {"share": "private"}}),))
+        with self.socket() as ws:
+            self.assertEqual(ws.receive_json()["type"], "ready")
+            for model in ("grok-4", "glm-5"):
+                saved = self.client.put("/chat/favorites", json={"model": model, "on": True})
+                self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json(), {"models": ["grok-4", "glm-5"]})
+            self.assertEqual(self.until(ws, "favorites.updated")["payload"], {"models": ["grok-4"]})
+            self.assertEqual(self.until(ws, "favorites.updated")["payload"], {"models": ["grok-4", "glm-5"]})
+            self.client.put("/chat/favorites", json={"model": "grok-4", "on": True})
+            self.assertEqual(self.client.put("/chat/favorites", json={"model": "grok-4", "on": False}).json(), {"models": ["glm-5"]})
+            self.assertEqual(self.client.get("/chat/sync").json()["favorites"], ["glm-5"])
+            prefs = json.loads(db.fetchone("SELECT pool_prefs FROM users WHERE id=1")["pool_prefs"])
+            self.assertEqual(prefs["grok"], {"share": "private"}, "pool settings beside the favorites are untouched")
+            self.assertEqual(self.client.put("/chat/favorites", json={"model": "", "on": True}).status_code, 422)
+            self.assertEqual(self.client.put("/chat/favorites", json={"model": "x", "on": "yes"}).status_code, 422)
+            self.assertEqual(self.client.put("/chat/favorites", json={"model": "x", "on": True, "pin": 1}).status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

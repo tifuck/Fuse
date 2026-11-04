@@ -201,7 +201,8 @@ function createWindow() {
   win = new BaseWindow({
     width: 1280,
     height: 820,
-    minWidth: 420,
+    // The site switches to its phone layout at 800 CSS px and below.
+    minWidth: 820,
     minHeight: 480,
     backgroundColor: background,
     autoHideMenuBar: true,
