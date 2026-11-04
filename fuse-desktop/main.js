@@ -1,9 +1,10 @@
-const { app, BaseWindow, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
+const { app, BaseWindow, clipboard, Menu, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawnSync } = require("child_process");
 const { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } = require("fs");
 const path = require("path");
 const { MAX_INSTALL_TRIES, launchNotice } = require("./update-notice");
+const { contextMenuTemplate } = require("./context-menu");
 
 // The site this build wraps: FUSE_URL at runtime, else the fuseUrl that
 // scripts/dist.js stamps into package.json, else site.json for `npm start`.
@@ -272,6 +273,13 @@ function createWindow() {
       openExternalSafe(url);
     }
     return { action: "deny" };
+  });
+
+  wc.on("context-menu", (_event, params) => {
+    const items = contextMenuTemplate(params, wc, { openExternal: openExternalSafe, copyText: (text) => clipboard.writeText(text) });
+    if (!items.length) return;
+    const at = site.getBounds();
+    Menu.buildFromTemplate(items).popup({ window: win, x: at.x + params.x, y: at.y + params.y });
   });
 
   wc.on("will-navigate", (event, url) => {

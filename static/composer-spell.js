@@ -699,7 +699,10 @@
   function openAtCaret() {
     if (!env || !env.input || composing || !prefs().spell) return;
     if (env.input.selectionStart !== env.input.selectionEnd) return;
-    const issue = issueAtCaret();
+    openIssue(issueAtCaret());
+  }
+
+  function openIssue(issue) {
     if (!issue) return;
     popIssue = issue;
     popSuggestions = suggest(issue.word);
@@ -876,6 +879,19 @@
       if (composing) return;
       if (input.selectionStart !== input.selectionEnd) return;
       openAtCaret();
+    });
+    // Right-click on an underlined word offers the same corrections; anywhere
+    // else it keeps the browser's (or Fuse Desktop's) Cut/Copy/Paste menu.
+    input.addEventListener("contextmenu", (event) => {
+      if (composing || !prefs().spell || !env.mirror) return;
+      const hit = (rect) => event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      const span = [...env.mirror.querySelectorAll(".chat-misspell")]
+        .find((el) => [...el.getClientRects()].some(hit));
+      const issue = span && lastIssues.find((iss) => span.dataset.i === iss.start + ":" + iss.end);
+      if (!issue) return;
+      event.preventDefault();
+      openIssue(issue);
     });
   }
 

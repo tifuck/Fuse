@@ -369,6 +369,23 @@ const FAMILIES = [
       assert.equal((await active('[data-chat-input]')).text, 'Add to dictionary', 'arrows reach the dictionary action');
       await page.keyboard.press('Escape');
       assert.equal(await input.getAttribute('aria-activedescendant'), null, 'closing the popover clears it');
+
+      // Right-click on the underlined word opens the same corrections and
+      // keeps the native menu away; right-click elsewhere leaves it alone.
+      await input.evaluate(el => { el.setSelectionRange(8, 8); window.FuseComposerSpell.refresh(); });
+      const word = await page.locator('[data-chat-compose-mirror] .chat-misspell').first().boundingBox();
+      const rightClick = (x, y) => page.evaluate(([cx, cy]) => {
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 2 });
+        document.querySelector('[data-chat-input]').dispatchEvent(event);
+        return event.defaultPrevented;
+      }, [x, y]);
+      assert.equal(await rightClick(word.x + word.width / 2, word.y + word.height / 2), true, 'a right-click on a misspelling replaces the native menu');
+      await page.locator('[data-chat-spell-pop]:not([hidden])').waitFor();
+      const viaRightClick = await page.locator('[data-chat-spell-pop] [role="option"]').allTextContents();
+      assert.deepEqual(viaRightClick, options, 'right-click offers what Alt+Enter offers');
+      await page.locator('[data-chat-spell-pop] [role="option"]').first().click();
+      assert.equal((await input.inputValue()).startsWith('teh'), false, `picking a suggestion corrects the word: ${await input.inputValue()}`);
+      assert.equal(await rightClick(word.x + word.width + 30, word.y + word.height / 2), false, 'a right-click off any misspelling keeps the native menu');
       await input.fill('');
     }
 
