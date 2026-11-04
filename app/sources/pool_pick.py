@@ -91,14 +91,15 @@ class Failover:
     deferred until another account serves the same request, and failover
     stops once the request has failed on FAILOVER_SERVER_ERRORS accounts.
     A 504 (read timeout) never fails over: upstream may already have run it.
+    A connect timeout (phase "pre_generation": nothing was sent) does.
     """
 
     def __init__(self) -> None:
         self._suspect: list[tuple[int, float]] = []
 
-    def server_error(self, cid: int, status: int, cooldown_seconds: float) -> bool:
+    def server_error(self, cid: int, status: int, cooldown_seconds: float, phase: str = "") -> bool:
         """Record a 5xx; True when another account may be tried."""
-        if status == 504:
+        if status == 504 and phase != "pre_generation":
             return False
         self._suspect.append((int(cid), cooldown_seconds))
         return len(self._suspect) < FAILOVER_SERVER_ERRORS

@@ -883,7 +883,11 @@ class ChatGPTSource:
                         credential_id=cred["id"],
                         model=model,
                     )
-                    failover.server_error(cred["id"], 504, 30)
+                    # A connect/pool timeout sent nothing: another account may serve it.
+                    sent = not isinstance(exc, (httpx.ConnectTimeout, httpx.PoolTimeout))
+                    if failover.server_error(cred["id"], 504, 30, phase="" if sent else "pre_generation"):
+                        attempts.append({"credential_id": cred["id"], "status": 504, "usage": {}})
+                        continue
                     last.attempts = attempts
                     return last
                 except httpx.TransportError as exc:

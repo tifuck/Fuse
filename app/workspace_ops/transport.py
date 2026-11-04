@@ -162,7 +162,8 @@ class _AgentExec:
         code = data.get("exit")
         if data.get("error") and code is None:
             code = 1
-        self.exit_status = int(code) if isinstance(code, int) else (0 if data.get("ok") else 1)
+        # A missing or non-integer exit is unknown, not success (agent_hub maps it to None).
+        self.exit_status = int(code) if isinstance(code, int) else (None if data.get("ok") else 1)
 
 
 class _ExecResult:

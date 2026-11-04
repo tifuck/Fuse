@@ -111,6 +111,14 @@ def _error_text(body) -> str:
     return str(err.get("message") or "") if isinstance(err, dict) else str(err or "")
 
 
+def _quota_trailer(body) -> bool:
+    """A Connect trailer (it carries its code as `type`) that spent the account."""
+    err = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(err, dict) or not err.get("type"):
+        return False
+    return err["type"] == "resource_exhausted" or "quota" in _error_text(body).lower()
+
+
 def _headers(*, streaming: bool = False) -> dict:
     if streaming:
         return {
@@ -670,7 +678,11 @@ class DevinSource:
                     attempts.append({"credential_id": cred["id"], "status": 401, "usage": result.usage or {}})
                     continue
                 if result.status == 429:
-                    note_failure(cred["id"], cooldown_seconds=60)
+                    if _quota_trailer(result.body):
+                        # Same daily-window cooldown the stream path applies.
+                        note_failure(cred["id"], cooldown_seconds=900, affinity_safe=False)
+                    else:
+                        note_failure(cred["id"], cooldown_seconds=60)
                     attempts.append({"credential_id": cred["id"], "status": 429, "usage": result.usage or {}})
                     continue
                 if (result.usage or {}).get("failure_phase") == "response_received":
@@ -781,9 +793,10 @@ class DevinSource:
             await resp.aclose()
             await client.aclose()
         if trailer_error:
+            error = obj.get("error") or {"message": trailer_error}
             return ChatResult(
-                status=502,
-                body={"error": {"message": trailer_error}},
+                status=error.get("code") or 502,
+                body={"error": error},
                 credential_id=cred["id"],
                 model=model,
             )

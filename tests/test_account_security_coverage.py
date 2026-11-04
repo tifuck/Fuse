@@ -93,6 +93,26 @@ def test_wrong_old_password_is_rejected_and_changes_nothing(client):
     assert accounts.password_fingerprint(user) == before
 
 
+def test_undecryptable_vault_is_not_reported_as_a_wrong_password(client, monkeypatch):
+    _login(client)
+
+    def broken(*_args):
+        raise accounts.DecryptionError("wrapped DEK is corrupt")
+
+    monkeypatch.setattr(accounts, "vault_unlock", broken)
+    monkeypatch.setattr(accounts, "vault_rewrap", broken)
+    unlock = client.post("/account/vault/unlock", json={"password": _PASSWORD})
+    assert unlock.status_code == 500
+    assert unlock.json()["detail"] == "Your account vault could not be decrypted."
+    change = client.post(
+        "/account/password",
+        json={"old_password": _PASSWORD, "new_password": _NEW_PASSWORD},
+    )
+    assert change.status_code == 500
+    assert "vault could not be decrypted" in change.json()["detail"]
+    assert client.post("/account/vault/unlock", json={"password": "not-the-password"}).status_code == 401
+
+
 def test_password_change_invalidates_other_sessions_but_not_the_changer(app, client):
     with TestClient(app, base_url="https://testserver") as bystander:
         _login(client)

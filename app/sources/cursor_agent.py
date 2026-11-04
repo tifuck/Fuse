@@ -20,6 +20,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import re
 import struct
 import time
@@ -28,6 +29,8 @@ import uuid
 import httpx
 
 from .devin_proto import CONNECT_END_STREAM, ProtoDecoder, ProtoEncoder, connect_frame, iter_connect_frames
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_LEAD = "Configuration for this session, set by the operator of this API gateway:"
 SYSTEM_ACK = "Understood. I will follow that configuration for the rest of this conversation."
@@ -621,6 +624,7 @@ class CursorRun:
 
     async def _read(self) -> None:
         buf = b""
+        undecodable = False
         try:
             async for chunk in self._resp.aiter_bytes():
                 buf += chunk
@@ -638,6 +642,10 @@ class CursorRun:
                     try:
                         event = decode_server_message(payload)
                     except (ValueError, struct.error):
+                        # Whatever it carried (text, a tool call) is lost.
+                        if not undecodable:
+                            logger.warning("Cursor sent a frame Fuse cannot decode (%d bytes); skipping it", len(payload))
+                        undecodable = True
                         continue
                     await self._handle(event)
             self.queue.put_nowait(("closed",))

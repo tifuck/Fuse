@@ -475,6 +475,7 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
     usage: dict = {}
     raw_usage: dict = {}
     trailer_error = ""
+    trailer_frame: dict = {}
     async for chunk in resp.aiter_bytes():
         pending += chunk
         frames, pending = proto.iter_connect_frames(pending)
@@ -488,6 +489,10 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
                 error = _connect_error(payload)
                 if error and not trailer_error:
                     trailer_error = error
+                    # Same frame _stream_sse sends: the Connect code and its
+                    # status are what the chat loop classifies on.
+                    trailer_frame = {"message": error, "type": _trailer_code(payload),
+                                     "code": _trailer_status(payload, error)}
                     kind = _trailer_sku_kind(payload)
                     if kind:
                         note_sku_failure(uid, kind)
@@ -520,7 +525,8 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
     if pending or not ended:
         trailer_error = trailer_error or "incomplete Devin Connect response"
     if trailer_error:
-        return {"error": {"message": trailer_error}}, usage, trailer_error
+        frame = trailer_frame or {"message": trailer_error}
+        return {"error": {k: v for k, v in frame.items() if v}}, usage, trailer_error
     terminal_stop = stop if stop_terminal else 0
     # See _stream_sse: STOP_MAX_TOKENS terminally is a normal end of turn.
     finish = (

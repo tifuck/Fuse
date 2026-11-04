@@ -28,6 +28,24 @@ def test_after_commit_runs_only_once_committed():
 
 
 @needs_db
+def test_failing_after_commit_callback_still_runs_the_rest_and_wakes_observers():
+    with isolated_database():
+        ran = []
+
+        def boom():
+            raise RuntimeError("settle failed")
+
+        with patch("app.chat_events.notify") as notify:
+            with pytest.raises(RuntimeError, match="settle failed"):
+                with chat_tx.transaction():
+                    chat_tx._writes.users.add(7)
+                    chat_tx.after_commit(boom)
+                    chat_tx.after_commit(lambda: ran.append("second"))
+        assert ran == ["second"]
+        notify.assert_called_once_with({7})
+
+
+@needs_db
 def test_rolled_back_receipt_keeps_pending_monitor_events():
     with isolated_database():
         rec = {"id": "job1", "delivered_event_seq": 0,

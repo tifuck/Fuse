@@ -1609,6 +1609,9 @@ async def browse(user_id: int, host_id: int, path: str = "") -> dict:
             {"cwd": needle, "cmd": "pwd; ls -1p", "timeout_ms": 15000},
             18,
         )
+        # As on SSH below: a failed ls is an error, not an empty directory.
+        if not listing.get("ok") or listing.get("exit") not in (0, None) or not (listing.get("out") or "").strip():
+            raise _agent_error(listing, "browse failed")
         lines = (listing.get("out") or "").splitlines()
         cwd = lines[0].strip() if lines else needle
         return _browse_from_ls(cwd, "", "\n".join(lines[1:]))

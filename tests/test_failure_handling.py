@@ -182,6 +182,11 @@ class FailoverGuardTest(unittest.TestCase):
 
     def test_timeout_never_fails_over(self):
         self.assertFalse(pool_pick.Failover().server_error(1, 504, 30))
+        self.assertFalse(pool_pick.Failover().server_error(1, 504, 30, phase="request_sent"))
+
+    def test_connect_timeout_fails_over(self):
+        # Nothing reached upstream: another account may serve the request.
+        self.assertTrue(pool_pick.Failover().server_error(1, 504, 30, phase="pre_generation"))
 
     def test_auth_failure_needs_a_repeat(self):
         self.assertFalse(pool_pick.auth_failure_confirmed(7))

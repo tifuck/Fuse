@@ -496,6 +496,18 @@ class BrowseViewTest(unittest.TestCase):
         cleaned = workspace._browse_view("/x", "", "/home", [{"name": "../etc", "kind": "dir"}, {"name": "ok", "kind": "dir"}])
         self.assertEqual([item["name"] for item in cleaned["entries"]], ["ok"])
 
+    def test_agent_ls_fallback_failure_is_an_error_not_an_empty_dir(self):
+        calls = [
+            {"ok": False, "error": "unknown op browse"},
+            {"ok": True, "exit": 2, "out": "/nope\n", "err": "ls: cannot open directory"},
+        ]
+        with patch.object(workspace, "_is_agent", return_value=True), \
+                patch.object(workspace, "_agent_call", AsyncMock(side_effect=calls)), \
+                patch.object(workspace, "_is_windows_row", return_value=False):
+            with self.assertRaises(workspace.WorkspaceError):
+                asyncio.run(workspace.browse(1, 2, "/nope"))
+
+
     def test_make_folder_creates_one_named_child(self):
         calls = []
 
@@ -515,6 +527,14 @@ class BrowseViewTest(unittest.TestCase):
                 with self.assertRaisesRegex(workspace.WorkspaceError, "invalid folder name"):
                     asyncio.run(workspace.make_folder(1, 2, "/srv", bad))
         self.assertEqual(len(calls), 2)
+
+
+class AgentExecStatusTest(unittest.TestCase):
+    def test_missing_exit_is_unknown_not_success(self):
+        self.assertIsNone(workspace._AgentExec({"ok": True}).exit_status)
+        self.assertIsNone(workspace._AgentExec({"ok": True, "exit": "137"}).exit_status)
+        self.assertEqual(workspace._AgentExec({"ok": True, "exit": 3}).exit_status, 3)
+        self.assertEqual(workspace._AgentExec({"ok": False}).exit_status, 1)
 
 
 class DenylistTest(unittest.TestCase):

@@ -55,26 +55,32 @@ static char *read_all_fd(int fd, size_t *len) {
 
 /* Rewrite an existing regular file in place: same inode, so hard links,
  * owner, ACLs and xattrs are untouched. Not atomic; used only when a sibling
- * temp file would break a hard link or cannot be created at all. The old
+ * temp file would break a hard link or cannot be created at all. The new
+ * bytes overwrite the old ones before the file is cut to length, and the old
  * bytes are kept so a failed write (ENOSPC, EIO) puts them back instead of
- * leaving the file truncated. */
+ * leaving the file truncated. A readable file whose copy cannot be taken is
+ * not rewritten. */
 static int write_in_place(const char *path, const char *content, size_t n) {
     char *orig = NULL;
     size_t olen = 0;
     int fd = open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
-    if (fd >= 0) orig = read_all_fd(fd, &olen);
-    else fd = open(path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); /* write-only: no copy */
-    if (fd < 0) return -1;
-    if (ftruncate(fd, 0) != 0 || lseek(fd, 0, SEEK_SET) < 0) {
-        int e = errno;
-        free(orig);
-        close(fd);
-        errno = e;
-        return -1;
+    if (fd >= 0) {
+        errno = 0;
+        orig = read_all_fd(fd, &olen);
+        if (!orig) {
+            int e = errno ? errno : EIO;
+            close(fd);
+            errno = e;
+            return -1;
+        }
+    } else {
+        fd = open(path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); /* write-only: no copy */
     }
-    if (write_all_fd(fd, content, n) != 0 || fsync(fd) != 0) {
+    if (fd < 0) return -1;
+    if (lseek(fd, 0, SEEK_SET) < 0 || write_all_fd(fd, content, n) != 0 ||
+        ftruncate(fd, (off_t)n) != 0 || fsync(fd) != 0) {
         int e = errno;
-        if (orig && ftruncate(fd, 0) == 0 && lseek(fd, 0, SEEK_SET) == 0 && write_all_fd(fd, orig, olen) == 0)
+        if (orig && lseek(fd, 0, SEEK_SET) == 0 && write_all_fd(fd, orig, olen) == 0 && ftruncate(fd, (off_t)olen) == 0)
             fsync(fd);
         free(orig);
         close(fd);

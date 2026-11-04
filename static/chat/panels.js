@@ -144,7 +144,10 @@ export function createPanels(ctx) {
         S.memoryDirty = false;
         try {
           sync.acceptContext(await net.api("/chat/context"));
-        } catch (_) {}
+        } catch (_) {
+          // The edit lost the conflict and the winner could not be shown: say so.
+          throw error;
+        }
         return;
       }
       if (net.isTransportError(error)) net.markDisconnected();

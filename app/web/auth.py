@@ -135,6 +135,8 @@ async def account_password(request: Request):
             raise HTTPException(401, "Current password is wrong.") from None
         if code == "password":
             raise HTTPException(400, "Password must be between 8 and 256 characters.") from None
+        if code == "vault":
+            raise HTTPException(500, "Password was not changed: your account vault could not be decrypted.") from None
         raise HTTPException(400, "Password could not be changed.") from None
     from .. import host_events
 
@@ -163,7 +165,9 @@ async def account_vault_unlock(request: Request):
         raise HTTPException(400, "password required")
     try:
         accounts.unlock_vault(user["id"], password)
-    except ValueError:
+    except ValueError as exc:
+        if str(exc) == "vault":
+            raise HTTPException(500, "Your account vault could not be decrypted.") from None
         raise HTTPException(401, "Password is wrong.") from None
     resp = JSONResponse({"ok": True, "vault": "unlocked"})
     _set_vault_cookie(resp, user["id"])

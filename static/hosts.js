@@ -60,6 +60,7 @@
   let activePairing = null;
   let hostsSocket = null;
   let hostsEpoch = 0;
+  let hostsRetry = 0;
   let testingId = null;
   const browseState = {
     open: false,
@@ -842,11 +843,15 @@
         paint();
       }
     };
-    ws.onclose = () => {
-      if (epoch !== hostsEpoch) return;
+    ws.onopen = () => {
+      if (epoch === hostsEpoch) hostsRetry = 0;
+    };
+    ws.onclose = (event) => {
+      // 4401: the session is gone; reconnecting cannot succeed until sign-in.
+      if (epoch !== hostsEpoch || event.code === 4401) return;
       window.setTimeout(() => {
         if (epoch === hostsEpoch) connectHosts();
-      }, 1500);
+      }, Math.min(30000, 1500 * 2 ** Math.min(hostsRetry++, 5)));
     };
     ws.onerror = () => {
       try { ws.close(); } catch (_) {}

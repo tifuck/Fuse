@@ -1139,7 +1139,7 @@ class KimiSource:
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     last.attempts = attempts
                     continue
-                if status >= 500 and failover.server_error(cred["id"], status, 15):
+                if status >= 500 and failover.server_error(cred["id"], status, 15, phase=usage.get("failure_phase", "")):
                     last.response_headers = response_headers
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     last.attempts = attempts

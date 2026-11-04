@@ -69,8 +69,14 @@ def transaction(*, immediate=True):
         _writes.threads = None
         _writes.cursors = None
         _writes.after = None
+    # The commit stands whatever a callback does: run them all and wake the
+    # observers below before reporting a failure.
+    failed = None
     for callback in after:
-        callback()
+        try:
+            callback()
+        except Exception as exc:
+            failed = failed or exc
     # Wake observers only after commit; SQLite remains the replay source of truth.
     if cursors or threads:
         with _committed_lock:
@@ -85,6 +91,8 @@ def transaction(*, immediate=True):
     if users:
         from .chat_events import notify
         notify(users)
+    if failed is not None:
+        raise failed
 
 
 def after_commit(callback) -> None:

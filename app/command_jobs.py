@@ -644,7 +644,9 @@ async def _supervise(rec: dict, runner) -> None:
             return
         if rec.get("_max_events_hit"):
             rec["termination_confirmed"] = True
-            await finish(status="completed", exit_code=0, error=str(rec.get("error") or ""))
+            # The watch was cut, not the command finished: only a real exit is reported.
+            await finish(status="completed", exit_code=code if code is not None and code >= 0 else None,
+                         error=str(rec.get("error") or ""))
             return
         if _is_monitor(rec) and rec.get("source") == "ws":
             rec["termination_confirmed"] = True
@@ -675,7 +677,7 @@ async def _supervise(rec: dict, runner) -> None:
             await finish(status="cancelled", exit_code=None, error=error or "monitor auto-stopped: too many events")
         elif rec.get("_max_events_hit"):
             rec["termination_confirmed"] = True
-            await finish(status="completed", exit_code=0, error=error)
+            await finish(status="completed", exit_code=None, error=error)
         else:
             await finish(status="cancelled", exit_code=None,
                           error="cancellation requested; remote termination is not confirmed")

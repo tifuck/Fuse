@@ -593,7 +593,7 @@ class RefuselessSource:
                     note_failure(cid, cooldown_seconds=300)
                     retry = True
                 elif status >= 500:
-                    retry = failover.server_error(cid, status, 15)
+                    retry = failover.server_error(cid, status, 15, phase=usage.get("failure_phase", ""))
                 # 429 is model_busy / model_warming: the model, not the key, so
                 # another key would hit the same wall. It goes back with its
                 # retry-after for the caller's own backoff.

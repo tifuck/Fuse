@@ -962,6 +962,21 @@ class StreamTrailerFailoverTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("trailer_status", collected)
         self.assertNotIn('"code"', text)
 
+    async def test_non_stream_trailer_keeps_its_connect_code(self):
+        # The non-stream path used to drop the code: a spent account came
+        # back as a generic 502 with no quota cooldown.
+        body = json.dumps({"error": {"code": "resource_exhausted", "message": "limit reached"}}).encode()
+        end = bytes([proto.CONNECT_END_STREAM]) + len(body).to_bytes(4, "big") + body
+        obj, _usage, error = await devin_stream._collect_completion(_FrameResp([end]), "swe-2", "uid-1")
+        self.assertEqual(error, "limit reached")
+        self.assertEqual(obj["error"], {"message": "limit reached", "type": "resource_exhausted", "code": 429})
+        self.assertTrue(devin_mod._quota_trailer(obj))
+        self.assertFalse(devin_mod._quota_trailer({"error": {"message": "daily quota"}}))  # HTTP 429 body
+        body = json.dumps({"error": {"code": "invalid_argument", "message": "bad request"}}).encode()
+        end = bytes([proto.CONNECT_END_STREAM]) + len(body).to_bytes(4, "big") + body
+        obj, _usage, _error = await devin_stream._collect_completion(_FrameResp([end]), "swe-2", "uid-1")
+        self.assertEqual(obj["error"], {"message": "bad request", "type": "invalid_argument"})
+
 
 if __name__ == "__main__":
     unittest.main()

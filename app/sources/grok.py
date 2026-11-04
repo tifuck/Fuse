@@ -632,7 +632,7 @@ class GrokSource:
                     status in (402, 429)
                     or spent
                     or rejected
-                    or (status >= 500 and failover.server_error(cred["id"], status, 30))
+                    or (status >= 500 and failover.server_error(cred["id"], status, 30, phase=usage.get("failure_phase", "")))
                 ):
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     continue

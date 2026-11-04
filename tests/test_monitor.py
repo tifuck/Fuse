@@ -271,6 +271,9 @@ class MonitorJobs(unittest.IsolatedAsyncioTestCase):
         envelope = monitor.result_envelope(rec)
         self.assertIn("\nended: max_events reached (normal stop)\n", envelope)
         self.assertNotIn("error:", envelope)
+        # The command was cut while running: it has no exit code to report.
+        self.assertIsNone(rec["exit_code"])
+        self.assertNotIn("exit_code:", envelope)
 
     async def test_timeout_reports_event_count(self):
         async def runner(sink):

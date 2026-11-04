@@ -936,7 +936,7 @@ class NanoGPTSource:
                     note_failure(cid, cooldown_seconds=_retry_after(headers))
                     retry = True
                 elif status >= 500:
-                    retry = failover.server_error(cid, status, 15)
+                    retry = failover.server_error(cid, status, 15, phase=usage.get("failure_phase", ""))
                 if retry:
                     attempts.append({"credential_id": cid, "status": status, "usage": usage or {}})
                     last.attempts = attempts

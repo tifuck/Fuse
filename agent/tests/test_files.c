@@ -278,6 +278,13 @@ int main(void) {
         assert(save_config(conf) != 0);
         assert(setrlimit(RLIMIT_FSIZE, &old) == 0);
         assert(read_file_slice(hard, 1, 10, back, sizeof(back)) == 0 && strcmp(back, "abc") == 0);
+        /* A write refused before its first byte (and so is the restore): the
+         * old bytes stay, the file is not left empty. */
+        lim.rlim_cur = 0;
+        assert(setrlimit(RLIMIT_FSIZE, &lim) == 0);
+        assert(write_file_atomic(hard, "xyz") != 0);
+        assert(setrlimit(RLIMIT_FSIZE, &old) == 0);
+        assert(read_file_slice(hard, 1, 10, back, sizeof(back)) == 0 && strcmp(back, "abc") == 0);
         g_token[0] = 0;
         assert(load_config(conf) == 0 && strcmp(g_token, "fa_token") == 0);
         assert(unlink(twin) == 0 && unlink(hard) == 0 && unlink(conf) == 0);
