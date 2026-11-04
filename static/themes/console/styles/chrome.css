@@ -112,7 +112,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-his
   }
 
   /* The account menu fits a laptop screen without hiding Settings. */
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .user-dock-menu { max-height: calc(100dvh - 4.5rem); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .user-dock-menu { bottom: 100%; max-height: calc(100dvh - 4.5rem); }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.user-dock-nav a, .user-dock-out button) { min-height: 1.75rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .user-dock-label { margin: 0.5rem 0.625rem 0.15rem; }
 }
