@@ -80,6 +80,24 @@
     <div class="ap-fonts" data-chat-font-grid role="radiogroup" aria-label="Font"></div>
   </div>
 </section>
+<section class="ap-section" aria-labelledby="ap-h-sounds">
+  <div class="ap-intro">
+    <h2 id="ap-h-sounds">Sounds</h2>
+    <p>Short cues for sends, stops, finished replies, subagents and permission asks. This device only.</p>
+  </div>
+  <div class="ap-body">
+    <div class="ap-filters" role="group" aria-label="Sounds">
+      <button type="button" data-sound-mode="off" aria-pressed="false">Off</button>
+      <button type="button" data-sound-mode="key" aria-pressed="true">Key moments</button>
+      <button type="button" data-sound-mode="all" aria-pressed="false">All</button>
+    </div>
+    <div class="ap-slider">
+      <label for="chat-sound-volume">Volume</label>
+      <input id="chat-sound-volume" class="ap-range" data-sound-volume type="range" min="0" max="100" step="5" value="70">
+      <output for="chat-sound-volume" data-sound-volume-value>70%</output>
+    </div>
+  </div>
+</section>
 <section class="ap-section" aria-labelledby="ap-h-composer">
   <div class="ap-intro">
     <h2 id="ap-h-composer">Composer</h2>

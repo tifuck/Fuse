@@ -220,6 +220,9 @@ function initState() {
   S.gapReplayFrom = 0;
   S.socket = null;
   S.reconnectTimer = 0;
+  // The "sync lost" sound: its pending timer, and whether it played.
+  S.offlineCueTimer = 0;
+  S.offlineCued = false;
   S.dockResizeObserver = null;
   S.reconnectAttempt = 0;
   S.syncEpoch = 0;

@@ -596,6 +596,7 @@ import { createDictation } from './chat/dictation.js';
       try {
         if (reject) {
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/reject", { method: "POST", body: "{}" });
+          window.fuseSound?.play("deny");
         } else {
           const body = {
             slug: card.querySelector("[data-perm-slug]")?.value,
@@ -605,6 +606,7 @@ import { createDictation } from './chat/dictation.js';
             replace: Boolean(card.querySelector("[data-perm-replace]")?.checked),
           };
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/confirm", { method: "POST", body: JSON.stringify(body) });
+          window.fuseSound?.play("allow");
         }
         await composer.refreshSkills();
         await sync.reconcileThread();
@@ -1000,6 +1002,7 @@ import { createDictation } from './chat/dictation.js';
       return;
     }
     if (nav === S.navigation) {
+      window.fuseSound?.play("newChat");
       sidebar.setHistoryTab("chats");
       clearChatState();
     }
@@ -1018,6 +1021,7 @@ import { createDictation } from './chat/dictation.js';
     }
     if (S.agentSending || !net.requireLive()) return;
     S.agentSending = true;
+    window.fuseSound?.play("send");
     try {
       await agents.messageAgent(S.agentViewId, text);
       if (S.input.value.trim() === text) {
@@ -1379,6 +1383,7 @@ import { createDictation } from './chat/dictation.js';
         ? "Force stop this subagent now? It is wedged in stopping; force-finalize its state."
         : "Stop this subagent? Its children stop too; the main agent keeps running.";
       if (!(await sidebar.askConfirm(ask, { confirmLabel: force ? "Force stop" : "Stop", danger: true }))) return;
+      window.fuseSound?.play("stop");
       // Held until the subagent is seen finished (agents/live.js).
       picker.holdHint("agent-stop:" + id, force ? "Force-stopping subagent…" : "Stopping subagent…");
       try {
@@ -1392,6 +1397,7 @@ import { createDictation } from './chat/dictation.js';
 
     async function resumeAgent(id) {
       if (!(await sidebar.askConfirm("Resume this subagent from where it stopped? Its report goes to the main agent when it finishes.", { confirmLabel: "Resume" }))) return;
+      window.fuseSound?.play("send");
       try {
         const data = await net.api("/chat/runs/" + encodeURIComponent(id) + "/resume", { method: "POST", body: "{}" });
         if (data && data.run && S.agentViewId === id) {

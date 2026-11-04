@@ -1,6 +1,18 @@
 // Event stream: receiveEvent and the websocket connect loop.
 import { S } from '../state.js';
 
+// Terminal run/agent events and their sounds. Cancelled is silent: the Stop
+// that caused it already played one.
+const RUN_SOUND = { "run.completed": "done", "run.failed": "error", "run.interrupted": "error" };
+const OTHER_RUN_SOUND = { "run.completed": "doneSoft", "run.failed": "errorSoft", "run.interrupted": "errorSoft" };
+const AGENT_SOUND = { "agent.completed": "agentDone", "agent.failed": "agentFail", "agent.interrupted": "agentFail" };
+
+// Only events that arrive live play: the backlog a (re)connect or gap replay
+// sends before "ready" happened while nobody was listening.
+function cue(name) {
+  if (name && S.syncState === "live") window.fuseSound?.play(name, { event: true });
+}
+
 export function createStream(ctx) {
   const { agents, apply, composer, context, net, perms, persist, picker, sidebar, status, traces, transcript, turns, ui } = ctx;
     async function receiveEvent(event) {
@@ -25,6 +37,7 @@ export function createStream(ctx) {
       if (payload.origin !== S.draftOrigin) composer.applyRemoteDraft(String(payload.key ?? ""), payload.text);
     } else if (event.type === "compaction.done" || event.type === "compaction.updated" || event.type === "compaction.pruned") {
       if (event.thread_id === S.currentId) {
+        if (event.type === "compaction.done") cue("compacted");
         if (payload && payload.meter) context.acceptMeter(payload.meter);
         else if (payload && payload.compaction && payload.compaction.meter) context.acceptMeter(payload.compaction.meter);
         else context.syncContextMeter();
@@ -88,6 +101,7 @@ export function createStream(ctx) {
         }
       }
       status.notifyTurnDone(event.thread_id, payload, event.type);
+      cue(OTHER_RUN_SOUND[event.type]);
     } else if (event.thread_id === S.currentId && event.type === "agent.tick") {
       // Compact progress for subagents this socket is not viewing. Enough
       // for the agent tree and permission asks; the full patch stream of the
@@ -108,6 +122,7 @@ export function createStream(ctx) {
       }
     } else if (event.thread_id === S.currentId && event.type.startsWith("agent.")) {
       const cid = payload.child_id || payload.run_id;
+      cue(AGENT_SOUND[event.type]);
       if (cid && event.type !== "agent.progress") {
         S.agentLifecycleEpoch += 1;
         const row = { ...payload, id: cid };
@@ -223,6 +238,7 @@ export function createStream(ctx) {
         // A Stop from any tab or device pauses this device's queue for the thread.
         if (isTracked && event.type === "run.cancelled" && event.thread_id === S.currentId) turns.holdQueueForStop(payload.run_id, true);
         if (isTracked) {
+          cue(RUN_SOUND[event.type]);
           if (S.compacting) { S.compacting = false; context.syncContextMeter(); }
           S.stoppingRunId = "";
           S.activeRun = null;
@@ -268,6 +284,14 @@ export function createStream(ctx) {
     status.syncStatus();
     const retry = () => {
       if (epoch !== S.syncEpoch) return;
+      // Lost for 5 s in a window the user is looking at; brief drops and
+      // backgrounded phones stay silent.
+      if (!S.offlineCueTimer && !document.hidden) {
+        S.offlineCueTimer = window.setTimeout(() => {
+          if (document.hidden || S.syncState === "live") return;
+          S.offlineCued = window.fuseSound?.play("offline", { event: true }) || false;
+        }, 5000);
+      }
       S.syncState = navigator.onLine ? "reconnecting" : "offline";
       S.syncLabel = navigator.onLine ? (S.reconnectAttempt ? "Disconnected" : "Reconnecting") : "Disconnected";
       status.syncStatus();
@@ -352,6 +376,10 @@ export function createStream(ctx) {
             S.reconnectAttempt = 0;
             S.syncState = "live";
             S.syncLabel = "Live sync";
+            window.clearTimeout(S.offlineCueTimer);
+            S.offlineCueTimer = 0;
+            if (S.offlineCued) window.fuseSound?.play("online", { event: true });
+            S.offlineCued = false;
             status.syncStatus();
             await persist.flushPending().catch(() => {});
             if (epoch === S.syncEpoch && net.isLive()) turns.drainQueue();

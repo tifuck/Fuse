@@ -817,7 +817,10 @@
       }
       if (data.type === "host") {
         upsertHost(data.host);
-        if (activePairing && data.host && data.host.kind === "agent") closeConnector();
+        if (activePairing && data.host && data.host.kind === "agent") {
+          window.fuseSound?.play("done", { event: true });
+          closeConnector();
+        }
         paint();
         return;
       }

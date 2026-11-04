@@ -342,6 +342,7 @@ export function createQueue(ctx) {
       picker.setHint("Could not queue this message: browser storage is full or blocked. It is still in the box.", true);
       return;
     }
+    window.fuseSound?.play("queue");
     S.input.value = "";
     S.drafts.delete(draftKey());
     S.pendingAttachments = [];
@@ -363,6 +364,7 @@ export function createQueue(ctx) {
 
     async function sendQueuedNow(item) {
     if (!item || inFlight.has(item.id)) return;
+    window.fuseSound?.play("send");
     // Send now interrupts: the running reply is stopped outright (a wedged
     // worker is force-finished after the grace window), then this message
     // starts a new turn. Unlike Stop, even the subagents the reply waits on

@@ -36,6 +36,8 @@ window.fuseConfirm = function fuseConfirm(message, opts) {
     };
     const onYes = (event) => {
       event.preventDefault();
+      // One sound for every confirmed delete or removal on the site.
+      if (options.danger && /^(delete|remove)\b/i.test(label)) window.fuseSound?.play("delete");
       finish(true);
     };
     const onNo = (event) => {
@@ -930,7 +932,9 @@ async function pollDevice(endpoint, interval, redirect) {
         return;
       }
       if (data.ok) {
-        window.location.href = redirect;
+        // Let the sign-in chime finish before the page goes.
+        const chimed = window.fuseSound?.play("done", { event: true });
+        window.setTimeout(() => { window.location.href = redirect; }, chimed ? 300 : 0);
         return;
       }
       if (data.pending) {
@@ -1114,10 +1118,16 @@ document.querySelectorAll(".probe").forEach((btn) => {
     el.appendChild(act);
     el.appendChild(x);
     let timer = null;
+    let kind = "";
     const ctrl = {
       el,
       update(next) {
         next = next || {};
+        if ((next.kind || "idle") !== kind) {
+          kind = next.kind || "idle";
+          if (kind === "ok") window.fuseSound?.play("saved");
+          else if (kind === "err") window.fuseSound?.play("errorSoft");
+        }
         el.className = "fuse-toast is-" + (next.kind || "idle");
         title.textContent = next.title || "";
         msg.textContent = next.msg || "";

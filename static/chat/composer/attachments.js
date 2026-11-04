@@ -164,16 +164,19 @@ export function createAttachments(ctx) {
       picker.setHint("Up to " + S.ATTACH_MAX + " attachments per message.", true);
       return true;
     };
+    let added = 0;
     for (const file of files) {
       if (full()) break;
       try {
         const att = await fileToAttachment(file);
         if (full()) break;
         target().push(att);
+        added += 1;
       } catch (error) {
         sync.showFailure("Could not attach file", error);
       }
     }
+    if (added) window.fuseSound?.play("attach");
     renderAttachList();
     context.warnTextOnlyModel();
   }

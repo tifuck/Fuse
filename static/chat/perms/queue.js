@@ -10,6 +10,7 @@ const permWarned = new Set();
 function speakPerm(rec) {
   if (permSpoken.has(rec.id)) return;
   permSpoken.add(rec.id);
+  globalThis.fuseSound?.play("permission", { event: true });
   const copy = permCardCopy(rec);
   const who = rec.requester && rec.requester !== "Main agent" ? ` from ${rec.requester}` : "";
   globalThis.fuseAnnounce?.(`Permission needed${who}: ${copy.action}${copy.path ? " " + copy.path : ""}. Allow or Deny.`, true);
@@ -374,6 +375,7 @@ export function createQueue(ctx) {
       card.classList.toggle("is-low", left <= 15);
       if (left <= 15 && !permWarned.has(rec.id)) {
         permWarned.add(rec.id);
+        globalThis.fuseSound?.play("permWarn", { event: true });
         globalThis.fuseAnnounce?.(`${Math.ceil(left)} seconds left to answer the permission request.`, true);
       }
     }
@@ -407,6 +409,7 @@ export function createQueue(ctx) {
         method: "POST",
         body: JSON.stringify({ action }),
       });
+      window.fuseSound?.play(action === "deny" ? "deny" : "allow");
       S.permCards.delete(id);
       renderPermQueue();
       if (S.permsOpen && (action === "allow_session" || action === "allow_host")) menu.refreshPerms();

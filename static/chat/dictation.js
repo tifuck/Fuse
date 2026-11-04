@@ -182,6 +182,7 @@ export function createDictation({ picker }) {
       picker.setHint("Dictation needs a browser with microphone access over HTTPS.", true);
       return;
     }
+    window.fuseSound?.play("micOn");
     const value = S.input.value;
     const from = S.input.selectionStart ?? value.length;
     const to = S.input.selectionEnd ?? value.length;
@@ -254,6 +255,7 @@ export function createDictation({ picker }) {
     if (!run || run.stopping) return;
     // Still waiting on the mic (permission prompt): nothing was heard yet.
     if (!run.live) { cancel(); return; }
+    window.fuseSound?.play("micOff");
     run.stopping = true;
     release(run);
     run.phrases.close();
@@ -272,6 +274,7 @@ export function createDictation({ picker }) {
   function cancel() {
     const r = run;
     if (!r) return;
+    window.fuseSound?.play("micOff");
     const restore = !r.detached && boxText() === r.written && r.written !== r.original;
     end();
     if (!restore) return;

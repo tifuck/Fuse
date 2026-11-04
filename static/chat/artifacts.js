@@ -443,6 +443,7 @@ export function createArtifacts(ctx) {
       return;
     }
     finishActivity(rec);
+    if (rec.name === "create_artifact" && S.syncState === "live") window.fuseSound?.play("artifact", { event: true });
     const cur = S.currentArtifact;
     if (S.artifactOpen && (!cur || !cur.identifier || cur.building || cur.identifier === id)) {
       showArtifact(id, rec, { keepMode: true, force: true }).catch(() => {});

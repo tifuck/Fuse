@@ -128,14 +128,19 @@ export function createSend(ctx) {
     async function requestStop() {
     const id = S.activeRun?.id;
     const running = S.agentsRows.filter((row) => row.background && !row.cancel_requested && ["queued", "running"].includes(row.status)).length;
-    if (!id || !running || typeof window.fuseChoose !== "function") return stopActiveRun();
+    if (!id || !running || typeof window.fuseChoose !== "function") {
+      window.fuseSound?.play("stop");
+      return stopActiveRun();
+    }
     const one = running === 1;
     const choice = await window.fuseChoose(
       `Stop the main agent?\n${running} background subagent${one ? " is" : "s are"} still running. ` +
       `${one ? "It keeps" : "They keep"} working unless you choose Stop all.`,
       [{ label: "Stop main agent", value: "main" }, { label: "Stop all", value: "all", danger: true }],
     );
-    if (choice) await stopActiveRun(choice === "all" ? "all" : "", id);
+    if (!choice) return;
+    window.fuseSound?.play(choice === "all" ? "stopAll" : "stop");
+    await stopActiveRun(choice === "all" ? "all" : "", id);
   }
 
     async function send() {
@@ -203,6 +208,8 @@ export function createSend(ctx) {
     const originDraft = draftKey();
     const settings = { model: S.modelId, tools: panels.enabledTools(), context: S.threadContext };
     S.sending = true;
+    // A queue drain starts its turn on its own; Send now played its own sound.
+    if (!opts?.queueId) window.fuseSound?.play("send");
     // Retry, edit and continue replace history, so they say so until the
     // replacement turn is accepted; the live status line takes over from there.
     if (opts?.progress) picker.holdHint("turn", opts.progress);
@@ -326,6 +333,7 @@ export function createSend(ctx) {
       return true;
     } catch (error) {
       if (gen !== S.generation) return false;
+      window.fuseSound?.play("error");
       if (opts?.undoSnap && !S.input.value.trim() && !S.pendingAttachments.length) {
         // The transcript was never truncated, so a failed replacement only
         // needs its text (and files) back in the composer to try again.
