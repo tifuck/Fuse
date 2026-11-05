@@ -73,19 +73,21 @@ export function createDrawer(ctx) {
     }, PEEK_CLOSE_MS);
   }
 
-    // Real travel only: the zone appearing under a resting pointer (page load,
-  // a collapse) fires pointerenter but no movement. A held button is a drag,
-  // such as a text selection run to the edge.
-  historyEdge?.addEventListener("pointermove", (event) => {
-    if (event.pointerType !== "mouse" || event.buttons || !(event.movementX || event.movementY)) return;
-    if (!canPeek() || peeking() || peekOpenTimer) return;
-    peekHover = false;
-    peekOpenTimer = setTimeout(() => setHistoryPeek(true), PEEK_OPEN_MS);
-  });
-
-    historyEdge?.addEventListener("pointerleave", () => {
-    if (!peeking()) clearPeekTimers();
-    else if (!peekHover) schedulePeekClose();
+    // The left edge and the bar toggle both peek. Real travel only: the zone
+  // appearing under a resting pointer (page load, a collapse) fires
+  // pointerenter but no movement. A held button is a drag, such as a text
+  // selection run to the edge.
+  [historyEdge, S.historyToggle].forEach((zone) => {
+    zone?.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse" || event.buttons || !(event.movementX || event.movementY)) return;
+      if (!canPeek() || peeking() || peekOpenTimer) return;
+      peekHover = false;
+      peekOpenTimer = setTimeout(() => setHistoryPeek(true), PEEK_OPEN_MS);
+    });
+    zone?.addEventListener("pointerleave", () => {
+      if (!peeking()) clearPeekTimers();
+      else if (!peekHover) schedulePeekClose();
+    });
   });
 
     historyPanel?.addEventListener("pointerenter", (event) => {

@@ -25,7 +25,10 @@
   @starting-style {
     .chat.history-collapsed.history-peek .chat-history { transform: translateX(-100%); }
   }
-  .chat.history-peek .chat-history-collapse { display: grid; }
+  /* The peek covers the bar toggle, so its own toggle takes that spot: a
+     click there pins instead of landing on the brand link. */
+  .chat.history-peek .chat-history-head { justify-content: flex-start; }
+  .chat.history-peek .chat-history-collapse { display: grid; order: -1; }
 }
 .chat-history-edge { display: none; }
 @media (min-width: 801px) and (hover: hover) {

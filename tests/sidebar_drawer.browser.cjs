@@ -20,6 +20,8 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 const LONG_TITLE = 'Sidebar truncation fixture ' + 'with a very long title '.repeat(14);
 const LONG_PROJECT = 'A very long project name '.repeat(10);
 const NOW = '2026-10-05T00:00:00Z';
+// The artifact viewer's menu is a hidden .chat-pop that is always in the page.
+const ROW_MENU = '.chat-pop:not([data-artifact-menu])';
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
@@ -62,7 +64,7 @@ const NOW = '2026-10-05T00:00:00Z';
     const row = page.locator(`[data-thread="${id}"]`);
     await row.hover();
     await row.locator('button.more').click();
-    await page.locator('.chat-pop').waitFor();
+    await page.locator(ROW_MENU).waitFor();
   };
   try {
     // Desktop: the collapse toggle, its aria state, and the saved pref.
@@ -135,7 +137,7 @@ const NOW = '2026-10-05T00:00:00Z';
       await page.waitForTimeout(1300);
       assert.equal((await state()).peek, true, 'an open row menu holds the peek');
       await page.keyboard.press('Escape');
-      await page.locator('.chat-pop').waitFor({ state: 'detached' });
+      await page.locator(ROW_MENU).waitFor({ state: 'detached' });
       assert.equal((await state()).peek, true, 'escape closes the menu before the peek');
       await peekShut();
 
@@ -151,12 +153,30 @@ const NOW = '2026-10-05T00:00:00Z';
       assert.equal(await page.locator('[data-history-edge]').isVisible(), false, 'phone widths have no edge zone');
       await page.setViewportSize({ width: 1440, height: 1000 });
 
+      const bar = await page.locator('.chat-bar [data-history-toggle]').boundingBox();
+      const [tx, ty] = [bar.x + bar.width / 2, bar.y + bar.height / 2];
+      await page.mouse.move(900, 500);
+      await page.mouse.move(tx, ty);
+      await peekOpen();
+      assert.equal((await state()).collapsed, true, 'hovering the bar toggle peeks without unpinning');
+      await page.mouse.move(900, 500);
+      await peekShut();
+      await page.mouse.move(tx, ty);
+      await peekOpen();
+      await page.evaluate(() => Promise.all(document.querySelector('[data-history]').getAnimations().map(a => a.finished)));
+      assert.equal(await page.evaluate(([x, y]) => Boolean(document.elementFromPoint(x, y).closest('.chat-history-head [data-history-toggle]')), [tx, ty]), true, 'the peek puts its own toggle where the bar toggle was, not the brand link');
+      await page.mouse.click(tx, ty);
+      await peekShut();
+      assert.deepEqual(await state(), { collapsed: false, peek: false, inert: false }, 'clicking the hovered toggle pins the list');
+      await page.locator('.chat-history-head [data-history-toggle]').click();
+      await page.locator('[data-history-list]').waitFor({ state: 'hidden' });
+
       await edge();
       await page.locator('.chat-history-head [data-history-toggle]').click();
       await peekShut();
       assert.deepEqual(await state(), { collapsed: false, peek: false, inert: false }, 'the head toggle pins the peeked list');
       assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('fuse.chat.historyCollapsed.v1') || '{}'))).console, false, 'pinning is remembered');
-      console.log('PASS desktop edge peek: overlay, hover hold, delayed close, menu hold, escape, phone, pin');
+      console.log('PASS desktop edge peek: overlay, hover hold, delayed close, menu hold, escape, phone, toggle hover, pin');
       await page.context().close();
     }
 
@@ -422,7 +442,7 @@ const NOW = '2026-10-05T00:00:00Z';
       const lower = boxA.y > boxB.y ? a : b;
       const upper = boxA.y > boxB.y ? b : a;
       await rowMenu(page, lower.id);
-      assert.deepEqual(await page.locator('.chat-pop button').allTextContents(), ['Pin to top', 'Rename', 'Fork', 'Archive', 'Move to project', 'Delete'], 'the chat menu labels match the row state');
+      assert.deepEqual(await page.locator(`${ROW_MENU} button`).allTextContents(), ['Pin to top', 'Rename', 'Fork', 'Archive', 'Move to project', 'Delete'], 'the chat menu labels match the row state');
       assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the open menu flags its row');
       assert.equal(await page.locator(`[data-thread="${lower.id}"].is-menu`).count(), 1);
       // The flag alone must hold the row's ⋯ button once the pointer leaves
@@ -440,12 +460,12 @@ const NOW = '2026-10-05T00:00:00Z';
       assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the flag survives a list repaint');
       assert.equal(await page.locator(`[data-thread="${lower.id}"].is-menu`).count(), 1);
       await rowMenu(page, upper.id);
-      assert.equal(await page.locator('.chat-pop').count(), 1, 'opening another row replaces the menu: only one is open');
+      assert.equal(await page.locator(ROW_MENU).count(), 1, 'opening another row replaces the menu: only one is open');
       assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the flag follows the replaced menu');
       assert.equal(await page.locator(`[data-thread="${upper.id}"].is-menu`).count(), 1);
       await page.keyboard.press('Escape');
-      await page.locator('.chat-pop').waitFor({ state: 'detached' });
-      assert.equal(await page.locator('.chat-pop').count(), 0, 'escape closes the row menu');
+      await page.locator(ROW_MENU).waitFor({ state: 'detached' });
+      assert.equal(await page.locator(ROW_MENU).count(), 0, 'escape closes the row menu');
       assert.equal(await page.locator('.chat-history-item.is-menu').count(), 0, 'closing the menu clears the row flag');
 
       // Keyboard: Enter on ⋯ opens a menu with focus on its first item, arrows
@@ -453,7 +473,7 @@ const NOW = '2026-10-05T00:00:00Z';
       const moreBtn = page.locator(`[data-thread="${a.id}"] button.more`);
       await moreBtn.focus();
       await page.keyboard.press('Enter');
-      await page.locator('.chat-pop[role="menu"]').waitFor();
+      await page.locator(`${ROW_MENU}[role="menu"]`).waitFor();
       const focused = () => page.evaluate(() => ({ role: document.activeElement.getAttribute('role'), text: document.activeElement.textContent, label: document.activeElement.getAttribute('aria-label'), expanded: document.activeElement.getAttribute('aria-expanded') }));
       assert.deepEqual(await focused().then(f => [f.role, f.text]), ['menuitem', 'Pin to top'], 'the menu opens with focus on its first item');
       assert.equal(await moreBtn.getAttribute('aria-expanded'), 'true', 'the trigger reports the open menu');
@@ -463,7 +483,7 @@ const NOW = '2026-10-05T00:00:00Z';
       await page.keyboard.press('ArrowUp');
       assert.equal((await focused()).text, 'Delete', 'ArrowUp wraps to the last item');
       await page.keyboard.press('Escape');
-      await page.locator('.chat-pop').waitFor({ state: 'detached' });
+      await page.locator(ROW_MENU).waitFor({ state: 'detached' });
       const back = await focused();
       assert.equal(back.label, 'Actions for Rename target thread', 'Escape returns focus to the row trigger, named for its chat');
       assert.equal(back.expanded, 'false');
