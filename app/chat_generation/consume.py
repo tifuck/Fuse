@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from ..chat_prompts import _text_of
 from ..proxy import merge_usage, usage_from_obj
@@ -54,6 +55,79 @@ def _stall_message(exc: TimeoutError) -> str:
     where = _STALL_PHASES.get(exc.phase, "")
     kept = ", though keep-alives kept arriving" if exc.quiet_s - exc.unheard_s > 1.0 else ""
     return f"No output for {span} {where}{kept} (idle timeout).".replace("  ", " ")
+
+
+def _now() -> float:
+    return time.monotonic()
+
+
+# A window shorter than this has no measurable speed: its tokens still count
+# toward the reply, not toward tok/s.
+GEN_MIN_S = 0.25
+
+
+def _call_text(calls) -> str:
+    if not isinstance(calls, list):
+        return ""
+    fns = [call.get("function") for call in calls if isinstance(call, dict)]
+    return "".join(str(fn.get("name") or "") + (fn["arguments"] if isinstance(fn.get("arguments"), str) else "")
+                   for fn in fns if isinstance(fn, dict))
+
+
+class GenClock:
+    """Generation time of one model call, for tok/s.
+
+    The window runs from the first sign of generation (a source's thinking
+    mark or the first output delta) to the last output delta, so the wait for
+    the first token, tool execution and a stream lingering after its last
+    delta stay outside it. Server-measured decode timings (llama.cpp's
+    `timings`, which the Ollama translation also emits) win when present.
+    """
+
+    def __init__(self, opened: float):
+        self.opened = opened
+        self.first = self.last = None
+        self.marked = False
+        self.bytes = self.first_bytes = self.reasoning_bytes = 0
+        self.timings = None
+
+    def mark(self, now: float) -> None:
+        if self.first is None:
+            self.first, self.marked = now, True
+
+    def frame(self, now: float, text: str, reasoning: str) -> None:
+        size, think = len(text.encode()), len(reasoning.encode())
+        if not size + think:
+            return
+        if self.first is None:
+            self.first = now
+        if now == self.first and not self.marked:
+            # Generated before the first frame arrived, in no measured time.
+            self.first_bytes += size + think
+        self.last = now
+        self.bytes += size + think
+        self.reasoning_bytes += think
+
+    def result(self, usage: dict) -> dict | None:
+        timings = self.timings if isinstance(self.timings, dict) else {}
+        n, ms = timings.get("predicted_n"), timings.get("predicted_ms")
+        if type(n) is int and n > 0 and isinstance(ms, (int, float)) and ms > 0:
+            return {"gen_ms": max(1, round(ms)), "gen_out": n}
+        out = usage.get("output_tokens") if isinstance(usage, dict) else None
+        if type(out) is not int or out <= 0 or self.last is None:
+            return None
+        hidden = usage.get("reasoning_tokens")
+        if type(hidden) is int and hidden > 0 and not self.marked and self.reasoning_bytes < 2 * hidden:
+            # Reasoning the stream did not carry (hidden, or only a summary)
+            # ran before the first delta. Its start is unknown: time it from
+            # the stream opening, which also holds the wait for the first token.
+            span = self.last - self.opened
+            return {"gen_ms": round(span * 1000), "gen_out": out, "gen_est": 1} if span >= GEN_MIN_S else None
+        span = self.last - self.first
+        tokens = out - round(out * self.first_bytes / self.bytes)
+        if span < GEN_MIN_S or tokens <= 0:
+            return None
+        return {"gen_ms": round(span * 1000), "gen_out": tokens}
 
 
 def _calling_name(calls: dict, hints) -> str:
@@ -172,6 +246,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
     xml_at = -1
     xml_scan = 0
     held_out: list[dict] = []
+    clock = GenClock(_now())
     try:
         async for kind, payload in _paced_chunks(
             _terminated_chunks(tapped), IDLE_TIMEOUT_S, CHUNK_GAP_TIMEOUT_S, PROVIDER_BEAT_S
@@ -179,6 +254,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
             if kind == "beat":
                 yield ("beat", payload)
                 continue
+            now = _now()
             chunk = payload
             buf += chunk
             if len(buf) > 2_500_000:
@@ -188,6 +264,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                 if line.strip() == THINKING_MARK:
                     # A think that may stream no text (Claude's omitted
                     # display): the status line says so instead of "waiting".
+                    clock.mark(now)
                     yield ("out", {"fuse": {"event": "activity", "phase": "model", "thinking": True}})
                     continue
                 parsed = _parse_sse_line(line.decode(errors="replace"))
@@ -207,18 +284,23 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                 got = usage_from_obj(obj, reasoning_separate=(src.type_id == "grok"))
                 if got:
                     usage = merge_usage(usage, got) if usage else dict(got)
+                if isinstance(obj.get("timings"), dict):
+                    clock.timings = obj["timings"]
                 choice = (obj.get("choices") or [{}])[0] if isinstance(obj.get("choices"), list) else {}
                 if isinstance(choice, dict):
                     delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
                     message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
-                    content += _text_of(delta.get("content")) or (
+                    text = _text_of(delta.get("content")) or (
                         _text_of(message.get("content")) if not choice.get("delta") else ""
                     )
-                    reasoning += _text_of(delta.get("reasoning_content")) or _text_of(delta.get("reasoning")) or (
+                    thought = _text_of(delta.get("reasoning_content")) or _text_of(delta.get("reasoning")) or (
                         _text_of(message.get("reasoning_content")) or _text_of(message.get("reasoning"))
                         if not choice.get("delta")
                         else ""
                     )
+                    content += text
+                    reasoning += thought
+                    clock.frame(now, text + _call_text(delta.get("tool_calls") or message.get("tool_calls")), thought)
                     _take_calls(calls, delta.get("tool_calls") or message.get("tool_calls"))
                     _take_thinking(thinking, delta.get("claude_thinking") or message.get("claude_thinking"))
                     _take_thinking(thinking, [delta if delta.get("devin_signature") else message])
@@ -290,4 +372,5 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
         for pending in held_out:
             yield ("out", pending)
         held_out.clear()
-    yield ("done", {"calls": native, "finish": finish, "content": content, "reasoning": reasoning, "thinking": thinking, "usage": usage, "error": error})
+    yield ("done", {"calls": native, "finish": finish, "content": content, "reasoning": reasoning, "thinking": thinking, "usage": usage, "error": error,
+                    "gen": None if error else clock.result(usage)})

@@ -176,6 +176,20 @@ function ccTokens(n) {
     return value >= 1000 ? CC_COMPACT.format(value).toLowerCase() : String(value);
   }
 
+// tok/s: tokens generated over the time spent generating them, measured per
+// model call on the server (tool runs and waits for a first token are not in
+// it). Too little to measure is no number at all.
+function ccGenSpeed(out, ms, est) {
+    out = Number(out);
+    ms = Number(ms);
+    if (!(out >= 20 && ms >= 1000)) return null;
+    const rate = (out * 1000) / ms;
+    const text = `${est ? "~" : ""}${rate < 10 ? rate.toFixed(1).replace(/\.0$/, "") : Math.round(rate)} tok/s`;
+    const title = `${Math.round(out).toLocaleString("en-US")} tokens generated in ${ccDuration(ms)} of generation; tool runs and waiting are not counted`
+      + (est ? ". Approximate: some calls hid their reasoning, so their time includes the wait for the first token" : "");
+    return { text, title };
+  }
+
 function ccBytes(n) {
     const bytes = Math.max(0, Math.round(Number(n) || 0));
     const fixed = (value) => value.toFixed(1).replace(/\.0$/, "");
@@ -206,5 +220,5 @@ function ccErrorFold(lines, tail = false) {
 
 const CC_COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
-  return { consoleFreezeThoughtTimes, ccVowels, ccIng, ccPast, ccCase, ccVerbLike, ccChain, ccInflect, ccRunningForm, ccTimeoutText, ccDuration, ccFlat, ccClip, ccTokens, ccBytes, ccErrorFold, CC_COMPACT };
+  return { consoleFreezeThoughtTimes, ccVowels, ccIng, ccPast, ccCase, ccVerbLike, ccChain, ccInflect, ccRunningForm, ccTimeoutText, ccDuration, ccFlat, ccClip, ccTokens, ccGenSpeed, ccBytes, ccErrorFold, CC_COMPACT };
 }

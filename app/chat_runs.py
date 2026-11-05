@@ -883,6 +883,7 @@ async def _run(request, user, run):
             patch["error"] = stored.get("error", "")
             if output._stream_out:
                 patch["streamOut"] = int(output._stream_out)
+                patch["streamMs"] = output.stream_ms()
             drafting = output.drafting()
             if drafting:
                 patch["drafting"] = drafting

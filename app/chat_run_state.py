@@ -1010,6 +1010,10 @@ def list_thread_agents(user_id, thread_id, limit=100):
             "quiet_s": round(quiet_s, 1),
             "wake_state": _agent_wake_state(agent, row["status"], stopped_at, row["cancel_requested"]),
             "context": chat_views._agent_context_chip(req, agent, row),
+            # The child's own tok/s (gen_ms/gen_out/gen_est, see consume.GenClock).
+            "gen": {key: value for key, value in usage.items()
+                    if key in ("gen_ms", "gen_out", "gen_est") and type(value) is int}
+            if isinstance(usage := message.get("usage"), dict) else {},
             **run_work_fields(row["id"], agent, message),
         }
         out.append(entry)

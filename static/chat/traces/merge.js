@@ -123,6 +123,9 @@ export function createMerge(ctx) {
         const uses = Object.values(row.tool_counts || {}).reduce((sum, n) => sum + (Number(n) || 0), 0);
         if (row.tool_counts) next.agent_tool_uses = uses;
         if (Number(row.context?.used) > 0) next.agent_tokens = Number(row.context.used);
+        for (const key of ["gen_ms", "gen_out", "gen_est"]) {
+          if (Number.isInteger(row.gen?.[key])) next[`agent_${key}`] = row.gen[key];
+        }
         // The child's total active time; its spawn call returned long before.
         // While the row runs, (agent_work_ms, _workSnap) is one pair captured
         // at the same instant and its clock ticks forward from the base. Both
@@ -215,7 +218,7 @@ export function createMerge(ctx) {
     if (trace.summary) rec.summary = String(trace.summary).slice(0, 2000);
     if (trace.description) rec.description = String(trace.description).slice(0, 200);
     if (trace.subagent_type) rec.subagent_type = String(trace.subagent_type).slice(0, 32);
-    for (const key of ["bytes", "http_status", "agent_tool_uses", "agent_tokens"]) {
+    for (const key of ["bytes", "http_status", "agent_tool_uses", "agent_tokens", "agent_gen_ms", "agent_gen_out", "agent_gen_est"]) {
       const n = Number(trace[key]);
       if (trace[key] != null && Number.isInteger(n) && n >= 0) rec[key] = n;
     }

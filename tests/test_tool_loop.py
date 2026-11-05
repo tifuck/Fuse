@@ -414,6 +414,45 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
                 chunks.append(b)
             return b"".join(chunks), invoke
 
+    async def test_tok_s_sums_generation_over_every_round_of_the_turn(self):
+        # Tokens over generation time, summed across the tool round and the
+        # answer: tool execution is in neither. llama.cpp's decode timings
+        # keep the numbers exact.
+        calls = 0
+
+        async def invoke(request, user, payload, **_kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                delta = {"tool_calls": [{"index": 0, "id": "search", "type": "function",
+                                         "function": {"name": "web_search", "arguments": '{"query":"offline"}'}}]}
+                tail = {"finish_reason": "tool_calls", "usage": {"prompt_tokens": 100, "completion_tokens": 40},
+                        "timings": {"predicted_n": 40, "predicted_ms": 1000.0}}
+            else:
+                delta = {"content": "final"}
+                tail = {"finish_reason": "stop", "usage": {"prompt_tokens": 140, "completion_tokens": 60},
+                        "timings": {"predicted_n": 60, "predicted_ms": 2000.0}}
+
+            async def stream():
+                yield f"data: {json.dumps({'choices': [{'delta': delta}]})}\n\n".encode()
+                end = {"choices": [{"delta": {}, "finish_reason": tail["finish_reason"]}], "usage": tail["usage"], "timings": tail["timings"]}
+                yield f"data: {json.dumps(end)}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+
+            result = FakeResult(usage=tail["usage"])
+            result.stream = stream()
+            return user, FakeSrc("llama"), "m", "m", result
+
+        with patch("app.chat_runtime.execute_tool", AsyncMock(return_value=("offline result", {"name": "web_search", "status": "done", "results": []}))), \
+                patch("app.api._tap", side_effect=lambda s, *a, **k: s):
+            wire, _ = await self._run(invoke)
+        frames = [json.loads(line[6:]) for line in wire.decode().splitlines() if line.startswith("data: {")]
+        usage = [frame["usage"] for frame in frames if frame.get("usage")][-1]
+        self.assertEqual(calls, 2)
+        self.assertEqual(usage["completion_tokens"], 100)
+        self.assertEqual((usage["gen_out"], usage["gen_ms"]), (100, 3000))
+        self.assertNotIn("gen_est", usage)
+
     async def test_ui_usage_is_cumulative_between_rounds_without_polluting_context(self):
         calls = 0
         async def invoke(request, user, payload, **_kwargs):

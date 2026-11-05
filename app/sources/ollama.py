@@ -676,6 +676,9 @@ async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | 
                     "choices": [],
                     "usage": usage,
                 }
+                # Ollama measures decode time itself (ns); llama.cpp's shape.
+                if type(chunk.get("eval_count")) is int and type(chunk.get("eval_duration")) is int and chunk["eval_duration"] > 0:
+                    usage_chunk["timings"] = {"predicted_n": chunk["eval_count"], "predicted_ms": chunk["eval_duration"] / 1e6}
                 yield f"data: {json.dumps(usage_chunk)}\n\n".encode()
                 yield b"data: [DONE]\n\n"
                 if collected is not None:

@@ -160,6 +160,8 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         source_patch = next((entry.get("fuse") for entry in events or [] if (entry.get("fuse") or {}).get("event") == "message.patch"), None)
         if source_patch and type(source_patch.get("streamOut")) is int and source_patch["streamOut"] >= 0:
             patch["streamOut"] = source_patch["streamOut"]
+            if type(source_patch.get("streamMs")) is int:
+                patch["streamMs"] = source_patch["streamMs"]
         for field in ("content", "reasoning"):
             before, after = old.get(field) or "", current.get(field) or ""
             offset = 0

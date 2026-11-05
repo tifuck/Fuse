@@ -128,6 +128,7 @@ export function createConsoleTheme(runtime) {
   Object.assign(theme, createLiveStatus({
     get applySpinEl() { return runtime.applySpinEl; },
     get ccDuration() { return theme.ccDuration; },
+    get ccGenSpeed() { return theme.ccGenSpeed; },
     get currentActivity() { return theme.currentActivity; },
     get currentRunSpin() { return runtime.currentRunSpin; },
     get estimateChars() { return runtime.estimateChars; },
@@ -315,6 +316,7 @@ export function createConsoleTheme(runtime) {
     get ccErrorFold() { return theme.ccErrorFold; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
     get ccFlat() { return theme.ccFlat; },
+    get ccGenSpeed() { return theme.ccGenSpeed; },
     get ccLiveText() { return theme.ccLiveText; },
     get ccShellHint() { return theme.ccShellHint; },
     get ccShellKind() { return theme.ccShellKind; },
@@ -358,6 +360,7 @@ export function createConsoleTheme(runtime) {
     get ccDoneAt() { return theme.ccDoneAt; },
     get ccDuration() { return theme.ccDuration; },
     get ccFlat() { return theme.ccFlat; },
+    get ccGenSpeed() { return theme.ccGenSpeed; },
     get ccGitOps() { return theme.ccGitOps; },
     get ccRunningForm() { return theme.ccRunningForm; },
     get ccStillRunningText() { return theme.ccStillRunningText; },

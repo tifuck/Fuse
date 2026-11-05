@@ -14,6 +14,7 @@ import time
 import httpx
 
 from ..proxy import usage_from_obj
+from .base import THINKING_MARK
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,10 @@ class _Translator:
                         ]
                     }
                 )
+            if item.get("type") == "reasoning":
+                # Reasoning starts here; its summary (all the stream shows)
+                # comes later. Marks the think for the pacer and for tok/s.
+                return THINKING_MARK + b"\n\n"
             return None
         if etype == "response.output_item.done":
             item = event.get("item") if isinstance(event.get("item"), dict) else {}

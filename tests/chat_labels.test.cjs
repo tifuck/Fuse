@@ -281,6 +281,21 @@ test('agent done receipts count tool uses, tokens, and time', () => {
     'Done (14 tool uses · 32.1k tokens · 1m 5s)');
   assert.equal(c.ccAgentDoneText({ agent_tool_uses: 'x', agent_tokens: 'y', agent_work_ms: 'z' }), 'Done',
     'non-numeric receipts contribute nothing');
+  assert.equal(c.ccAgentDoneText({ agent_work_ms: 65000, agent_gen_out: 860, agent_gen_ms: 18000 }), 'Done (1m 5s · 48 tok/s)');
+  assert.equal(c.ccAgentDoneText({ agent_gen_out: 860, agent_gen_ms: 21000, agent_gen_est: 1 }), 'Done (~41 tok/s)');
+});
+
+test('tok/s is measured tokens over generation time, or nothing', () => {
+  const c = vm.createContext({});
+  for (const name of ['ccDuration', 'ccGenSpeed']) load(name, c);
+  assert.equal(c.ccGenSpeed(2150, 41200).text, '52 tok/s');
+  assert.equal(c.ccGenSpeed(74, 10000).text, '7.4 tok/s', 'one decimal below 10');
+  assert.equal(c.ccGenSpeed(60, 10000).text, '6 tok/s');
+  assert.equal(c.ccGenSpeed(900, 20000, true).text, '~45 tok/s', 'an estimate says so');
+  assert.match(c.ccGenSpeed(900, 20000, true).title, /^900 tokens generated in 20s of generation; .*Approximate/);
+  assert.equal(c.ccGenSpeed(19, 5000), null, 'too few tokens to measure');
+  assert.equal(c.ccGenSpeed(500, 999), null, 'too short to measure');
+  assert.equal(c.ccGenSpeed(undefined, undefined), null, 'old replies have no measurement');
 });
 
 test('background task counts pluralize each kind', () => {

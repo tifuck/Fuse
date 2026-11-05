@@ -1461,6 +1461,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 summary or {"calls": [], "finish": None, "content": "", "reasoning": "", "usage": {}, "error": None}
             )
             total_usage = _add_usage(total_usage, summary.get("usage"))
+            # tok/s: generated tokens over generation time, kept beside (not in)
+            # the round's usage so billing and the meters never see it.
+            total_usage = _add_usage(total_usage, summary.get("gen"))
             if summary.get("usage"):
                 last_round_usage = dict(summary.get("usage") or {})
                 # Checkpoint cumulative usage before the next tool/model boundary

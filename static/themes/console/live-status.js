@@ -41,7 +41,10 @@ function ensureConsoleRound(msg, status, meter = deps.liveMeter) {
     // After a tool round the first new tokens are already on the message
     // when we notice the switch. Keep the origin snapshotted when tools began.
     const keepOrigin = prev && flow === "down" && String(prev.key).startsWith("up|");
-    if (prev) delete msg.streamOut;
+    if (prev) {
+      delete msg.streamOut;
+      delete msg.streamMs;
+    }
     const meterUsed = meter && typeof meter.used === "number" ? Math.max(0, Math.round(Number(meter.used) || 0)) : 0;
     msg._consoleRound = {
       key,
@@ -143,6 +146,11 @@ function formatConsoleLiveStatus(msg, groups, opts) {
       const n = consoleUpTokens(msg, round, meter);
       if (n) tokenText = `↑ ${formatConsoleCount(n)} tokens`;
     }
+    // The turn's average over its finished calls; before the first one is
+    // measured, an estimate from the call still streaming.
+    const usage = (msg && msg.usage) || {};
+    const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0)
+      || deps.ccGenSpeed(msg && msg.streamOut, msg && msg.streamMs, true);
     const thought = ccThinkingState(msg, status.phase === "thinking");
     // A tool call being written or run, a stop request or a requeue replaces
     // the "thought for Ns" flash at once: that is the newer activity.
@@ -151,7 +159,8 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     // Claude Code shows the clock once there is something else to show, or
     // after 16s.
     const clock = tokenText || state || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
-    const parts = [clock, tokenText, state].filter(Boolean);
+    // Last: a narrow dock cuts the speed before what the run is doing.
+    const parts = [clock, tokenText, state, speed && speed.text].filter(Boolean);
     const verb = ccSpinnerVerb(msg);
     return { verb: /(…|\.\.\.)$/.test(verb) ? verb : `${verb}…`, meta: parts.length ? `(${parts.join(" · ")})` : "" };
   }

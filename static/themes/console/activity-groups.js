@@ -11,7 +11,10 @@ function ccTurnLineHtml(msg, latest) {
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
     const done = outcome ? "" : deps.ccDoneAt(msg.endedAt);
     const still = latest ? deps.ccStillRunningText() : "";
+    const usage = msg.usage || {};
+    const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
     return `${head}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
+      `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
       `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
   }
 

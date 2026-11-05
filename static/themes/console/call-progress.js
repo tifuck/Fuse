@@ -128,6 +128,8 @@ function ccAgentDoneText(trace) {
     if (Number.isFinite(uses) && uses >= 0 && trace.agent_tool_uses != null) parts.push(uses === 1 ? "1 tool use" : `${uses} tool uses`);
     if (Number.isFinite(tokens) && tokens > 0) parts.push(`${deps.ccTokens(tokens)} tokens`);
     if (Number.isFinite(work) && work >= 0 && trace.agent_work_ms != null) parts.push(deps.ccDuration(Math.max(1000, work)));
+    const speed = deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
+    if (speed) parts.push(speed.text);
     return parts.length ? `Done (${parts.join(" · ")})` : "Done";
   }
 
@@ -441,11 +443,13 @@ function ccAgentsGroupHtml(agents, live) {
       // the trace so the next poll anchors the pair at server work_ms.
       const since = trace._workSnap || Date.now();
       const took = hasWork ? ` · ${deps.ccDuration(Math.max(1000, base))}` : "";
+      const speed = presentation.running ? null : deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
+      const rate = speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "";
       const stats = resolvedBackground
         ? ` · ${presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished"}${presentation.failed || presentation.interrupted ? "" : took}`
         : liveClock
           ? ` · <span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
-          : ` · ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` · ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}`;
+          : ` · ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` · ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
       const status = presentation.running
         ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…")
         : presentation.failed ? "Failed" : presentation.interrupted ? "Interrupted" : "Done";

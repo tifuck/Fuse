@@ -1003,7 +1003,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             "event_count",
             "max_events",
             "bytes", "http_status",
-            "subagent_type", "agent_tool_uses", "agent_tokens",
+            "subagent_type", "agent_tool_uses", "agent_tokens", "agent_gen_ms", "agent_gen_out", "agent_gen_est",
             # Bash edit tracking (retired): still accepted so saved threads
             # load, but nothing writes or renders them any more.
             "edited_files", "edit_diff", "lines_added", "lines_removed", "image",
@@ -1148,7 +1148,8 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             except (TypeError, ValueError):
                 if strict:
                     raise ChatValidationError(f"{field}[{index}].event_count must be an integer")
-        for count_key in ("bytes", "http_status", "agent_tool_uses", "agent_tokens", "lines_added", "lines_removed"):
+        for count_key in ("bytes", "http_status", "agent_tool_uses", "agent_tokens", "agent_gen_ms", "agent_gen_out", "agent_gen_est",
+                          "lines_added", "lines_removed"):
             value = item.get(count_key)
             if value is None:
                 continue

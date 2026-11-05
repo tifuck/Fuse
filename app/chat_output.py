@@ -71,6 +71,7 @@ class Output:
         self._round_reasoning = len(msg.get("reasoning") or "")
         self._round_tool_chars = 0
         self._stream_out = 0
+        self._stream_first = self._stream_last = None
         self._draft = None
         # Thought timing, as Claude Code measures it: from the transcript's
         # previous event (a tool result, the round starting) to the thought's
@@ -213,6 +214,7 @@ class Output:
         self._round_reasoning = 0
         self._round_tool_chars = 0
         self._stream_out = 0
+        self._stream_first = self._stream_last = None
         self._draft = None
 
     def settle_tool_xml(self):
@@ -234,7 +236,15 @@ class Output:
         self._round_reasoning = len(self.message.get("reasoning") or "")
         self._round_tool_chars = 0
         self._stream_out = 0
+        self._stream_first = self._stream_last = None
         self._draft = None
+
+    def stream_ms(self) -> int:
+        """How long this round's output has been streaming: the live tok/s
+        estimate's clock until the round's own measurement lands in usage."""
+        if self._stream_first is None:
+            return 0
+        return int((self._stream_last - self._stream_first) * 1000)
 
     def drafting(self) -> dict | None:
         """The artifact write being streamed this round: name, title, size."""
@@ -297,7 +307,13 @@ class Output:
         if obj is not None:
             self._round_tool_chars += self._tool_call_delta_chars(obj)
         chars = visible + self._round_tool_chars
-        self._stream_out = (chars + 3) // 4 if chars else 0
+        stream_out = (chars + 3) // 4 if chars else 0
+        if stream_out > self._stream_out:
+            now = _now()
+            if self._stream_first is None:
+                self._stream_first = now
+            self._stream_last = now
+        self._stream_out = stream_out
 
     def apply(self, obj):
         msg = self.message
