@@ -522,8 +522,7 @@ const FAMILIES = [
       assert.equal(fan.find(item => item.label === 'New chat').off, 'false');
       for (const item of fan) phoneInside({ ...item.box, width: 390, height: 844, overflow: 0 }, item.label);
       await p.locator('.fuse-dial-sat[data-action="retry"]').click({ force: true });
-      await p.locator('[data-chat-hint]').waitFor();
-      assert.match(await p.locator('[data-chat-hint]').innerText(), /Nothing to retry/);
+      await p.locator('.fuse-toast[data-toast-key^="chat:"]').filter({ hasText: 'Nothing to retry' }).waitFor();
       await p.locator('[data-fuse-dial].is-open').waitFor({ state: 'hidden' });
       await p.keyboard.press('Escape');
 

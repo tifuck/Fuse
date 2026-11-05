@@ -632,7 +632,8 @@ export function createArtifacts(ctx) {
       showAlert("Links to other pages do not resolve inside an artifact; it is one page (use #anchors).");
       return;
     }
-    if (window.confirm(`Open this link from the artifact in a new tab?\n\n${url.href}`)) window.open(url.href, "_blank", "noopener,noreferrer");
+    window.fuseConfirm(`Open this link from the artifact in a new tab?\n\n${url.href}`, { confirmLabel: "Open" })
+      .then((ok) => ok && window.open(url.href, "_blank", "noopener,noreferrer"));
   }
 
   function onFrameMessage(event) {
@@ -693,7 +694,7 @@ export function createArtifacts(ctx) {
         cur.shared_version = data.shared_version;
         hint(data.shared_version ? `Viewers now see v${data.shared_version} only.` : "Viewers now see the latest version.");
       } else if (name === "rotate") {
-        if (!window.confirm("Reset the share link? The current link stops working for everyone.")) return;
+        if (!(await window.fuseConfirm("Reset the share link? The current link stops working for everyone.", { confirmLabel: "Reset link", danger: true }))) return;
         const data = await post("/rotate-link");
         cur.share_url = data.share_url;
         await copyText(absolute(data.share_url), "New share link copied. The old one no longer works.");

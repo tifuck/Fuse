@@ -148,7 +148,7 @@ export function createUndo(ctx) {
 
     async function undoConversation(times = 1) {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", true);
+      picker.setHint("Wait for the current reply to finish.", "warn");
       return;
     }
     if (S.loading || S.partialTranscript || !net.requireLive()) return;
@@ -181,7 +181,7 @@ export function createUndo(ctx) {
         if (stacked && !restorable(previous, currentIds)) {
           S.undoStack.pop();
           saveHistoryStacks();
-          picker.setHint("History changed elsewhere; that undo point is no longer valid.", true);
+          picker.setHint("History changed elsewhere; that undo point is no longer valid.", "warn");
           break;
         }
         if (!stacked && previous.length === current.length) break;
@@ -249,7 +249,7 @@ export function createUndo(ctx) {
     if (!restorable(next, lineageIds(current))) {
       S.redoStack.pop();
       saveHistoryStacks();
-      picker.setHint("History changed elsewhere; that redo point is no longer valid.", true);
+      picker.setHint("History changed elsewhere; that redo point is no longer valid.", "warn");
       return;
     }
     S.sending = true;
@@ -279,7 +279,7 @@ export function createUndo(ctx) {
 
     function mutateTranscript(fn, hint) {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", true);
+      picker.setHint("Wait for the current reply to finish.", "warn");
       return false;
     }
     if (!net.requireLive()) return false;
@@ -312,7 +312,7 @@ export function createUndo(ctx) {
     const merged = kept.concat(fresh);
     S.pendingAttachments = merged.slice(0, S.ATTACH_MAX);
     if (merged.length > S.ATTACH_MAX) {
-      picker.setHint("Up to " + S.ATTACH_MAX + " attachments stay in the composer; some were left out.", true);
+      picker.setHint("Up to " + S.ATTACH_MAX + " attachments stay in the composer; some were left out.", "warn");
     }
     S.input.value = text;
     composer.renderAttachList();

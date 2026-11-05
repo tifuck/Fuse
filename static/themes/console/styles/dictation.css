@@ -32,11 +32,14 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live:
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box.is-dictating::before { color: var(--brass); }
 
+/* Hangs above the composer and its open todo list (chat-todo.css stacks the
+   sync badge and "Jump to latest" above it); the composer's own popovers
+   (z-index 7 with the box) cover it. */
 html[data-chat-console="true"] .chat[data-view="console"] .dictation {
   position: absolute;
-  bottom: calc(100% + 0.7rem);
+  bottom: calc(100% + 0.7rem + var(--todo-lift, 0px));
   left: 50%;
-  z-index: 30;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -132,7 +135,3 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-mic,
   html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live::after { animation: none; }
 }
-
-/* A composer popover opened mid-dictation covers the strip instead of
-   showing it through its list. */
-html[data-chat-console="true"] .chat[data-view="console"] :is(.chat-picker-menu, .chat-perms-menu, .chat-context-pop):not(.is-sheet) { z-index: 31; }

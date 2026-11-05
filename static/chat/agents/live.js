@@ -259,12 +259,13 @@ export function createLive(ctx) {
     // "Stopping subagent…" (chat.js) leaves once that subagent is seen
   // finished, in its open transcript or in the list.
     function syncAgentStopHint() {
-    const held = picker.heldHint();
-    if (!held.startsWith("agent-stop:")) return;
-    const id = held.slice("agent-stop:".length);
-    const run = S.agentRun && String(S.agentRun.id) === id ? S.agentRun : S.agentsRows.find((row) => String(row.id) === id);
-    if (!run) picker.releaseHint(held);
-    else if (!agentLive(run.status)) picker.releaseHint(held, "Stopped subagent.");
+    for (const held of picker.heldHints()) {
+      if (!held.startsWith("agent-stop:")) continue;
+      const id = held.slice("agent-stop:".length);
+      const run = S.agentRun && String(S.agentRun.id) === id ? S.agentRun : S.agentsRows.find((row) => String(row.id) === id);
+      if (!run) picker.releaseHint(held);
+      else if (!agentLive(run.status)) picker.releaseHint(held, "Stopped subagent.");
+    }
   }
 
     function renderAgentHead() {

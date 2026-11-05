@@ -53,7 +53,7 @@ const shots = process.env.STOP_PROMPT_SHOTS || '';
       await page.evaluate(() => fuseToolFixture.refreshAgents());
       await page.waitForFunction((id) => Boolean(document.querySelector(`[data-agents-list] [data-agent-id="${id}"]`)), child);
       // The first Stop's "Stopping…" toast has left; the prompt itself holds none.
-      await page.waitForFunction(() => !document.querySelector('[data-chat-hint]').classList.contains('is-on'));
+      await page.waitForFunction(() => ![...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Stopping'));
       await sendBtn.click();
       await dialog.waitFor({ state: 'visible' });
       const prompt = await page.evaluate(() => {
@@ -73,7 +73,7 @@ const shots = process.env.STOP_PROMPT_SHOTS || '';
       assert.deepEqual(prompt.buttons, [['Stop main agent', 'btn sm'], ['Stop all', 'btn sm danger']]);
       assert.ok(prompt.x && prompt.corner, `an X in the top right corner: ${JSON.stringify(prompt)}`);
       assert.equal(prompt.focused, 'Stop main agent', 'the choice that keeps the subagents has focus');
-      assert.equal(await page.evaluate(() => document.querySelector('[data-chat-hint]').classList.contains('is-on')), false, 'nothing says Stopping before a choice');
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Stopping')), false, 'nothing says Stopping before a choice');
       if (shots) await page.screenshot({ path: `${shots}/stop-prompt-${width}.png` });
 
       // The X and Esc close it and stop nothing; the shared confirm gets its own buttons back.

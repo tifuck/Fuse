@@ -46,7 +46,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       label: send.getAttribute('aria-label'),
       disabled: send.disabled,
       pending: document.querySelectorAll('.chat-pending-send').length,
-      hint: document.querySelector('[data-chat-hint]')?.textContent || '',
+      hint: [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n'),
     };
   });
   const states = p => p.evaluate(() => [...document.querySelectorAll('[data-chat-log] [data-state]')].map(el => el.dataset.state));
@@ -100,7 +100,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await p.locator('[data-chat-input]').fill('Send the server rejects');
       await p.route('**/turns', route => route.fulfill({ status: 409, json: { detail: 'Revision changed' } }), { times: 1 });
       await p.locator('[data-chat-send]').click();
-      await p.waitForFunction(() => (document.querySelector('[data-chat-hint]')?.textContent || '').includes('Revision changed'));
+      await p.waitForFunction(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Revision changed'));
       const after = await composer(p);
       assert.equal(await p.locator('[data-sync-label]').innerText(), 'Live sync', 'a 409 keeps the socket');
       assert.equal(after.pending, 0);

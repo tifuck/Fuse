@@ -8,131 +8,101 @@ const PICKER_CHEV =
 // flashes one in and out within a frame or two.
 const HINT_MIN_HELD_MS = 500;
 
-// Unheld toasts stay long enough to read: about 45ms per character on top of
-// a base, never under 2.2s (4.5s for a fault) or over 8s.
-function hintMs(text, fault) {
-  return Math.min(8000, Math.max(fault ? 4500 : 2200, 1600 + String(text).length * 45));
-}
+// `fault`: true for an error, "warn" for a limit or a guardrail.
+const toneOf = (fault) => (fault === "warn" ? "warn" : fault ? "err" : "idle");
 
 export function createSheet(ctx) {
   const { composer, context, list, overlays, perms, sidebar } = ctx;
-    // The one toast above the composer. A plain hint reports something that
-  // already happened and times out; holdHint ties it to an action in flight.
-    function setHint(text, fault, duration) {
-    if (!S.hint) return;
-    window.clearTimeout(S.hintTimer);
-    window.clearTimeout(S.hintReleaseTimer);
-    S.hintKey = "";
-    if (S.hintFrame) {
-      window.cancelAnimationFrame(S.hintFrame);
-      S.hintFrame = 0;
-    }
-    S.hint.classList.toggle("is-fault", Boolean(fault));
-    S.hint.classList.remove("is-pinned");
-    const show = Boolean(text);
-    // The toast is unhidden and filled in one tick, too late for a live
-    // region of its own; the page announcer reads it instead.
-    if (show && text !== S.hintSpoken) globalThis.fuseAnnounce?.(text, Boolean(fault));
-    S.hintSpoken = show ? text : "";
-    if (!show && S.pinnedHint) {
-      showPinned();
-      return;
-    }
-    if (!show) {
-      S.hint.classList.remove("is-on");
-      S.hintTimer = window.setTimeout(() => {
-        S.hint.hidden = true;
-        S.hint.textContent = "";
-      }, 180);
-      return;
-    }
-    S.hint.hidden = false;
-    S.hint.textContent = "";
-    S.hint.appendChild(document.createTextNode(text));
-    S.hintFrame = window.requestAnimationFrame(() => {
-      S.hintFrame = 0;
-      S.hint.classList.add("is-on");
-    });
-    if (duration === 0) return;
-    const ms = duration != null ? duration : hintMs(text, fault);
-    S.hintTimer = window.setTimeout(() => setHint(""), ms);
+  // Chat notices are the site's toasts (fuseUI.toast in app.js), keyed
+  // "chat:<key>". key -> { ctrl, text, mode: "hint" | "hold" | "pin", at }.
+  const toasts = new Map();
+
+  function live(key) {
+    const entry = toasts.get(key);
+    if (entry && entry.ctrl.el.isConnected) return entry;
+    toasts.delete(key);
+    return null;
   }
 
-    // A toast owned by `key` (e.g. "stop:<run id>"). It stays until
-  // releaseHint(key) or until any other toast replaces it. Pass duration null
-  // for a keyed toast that also times out normally.
-    function holdHint(key, text, fault = false, duration = 0) {
-    if (S.hintKey === key && S.hint?.textContent === text) return;
-    setHint(text, fault, duration);
-    S.hintKey = key;
-    S.hintHeldAt = Date.now();
+  function show(key, mode, text, opts) {
+    if (!window.fuseUI) return;
+    const ctrl = window.fuseUI.toast({ key: "chat:" + key, msg: text, ...opts });
+    window.clearTimeout(toasts.get(key)?.release);
+    toasts.set(key, { ctrl, text, mode, at: Date.now() });
   }
 
-    // Ends a held toast: hides it, or swaps in `text` as a normal timed hint.
-  // A no-op once something else owns the toast.
+  function drop(key) {
+    const entry = live(key);
+    toasts.delete(key);
+    if (entry) {
+      window.clearTimeout(entry.release);
+      entry.ctrl.close();
+    }
+  }
+
+    // Something that already happened; it times out. One toast per tone, so
+  // a newer hint replaces the last instead of piling up.
+    function setHint(text, fault, duration, title) {
+    if (!text) return;
+    const kind = toneOf(fault);
+    show("hint:" + kind, "hint", text, { kind, title, ttl: duration ?? undefined });
+  }
+
+    // A toast owned by `key` (e.g. "stop:<run id>") for an action in flight:
+  // it stays until releaseHint(key). Pass duration null for one that also
+  // times out normally.
+    function holdHint(key, text, fault = false, duration = 0, title) {
+    const held = live(key);
+    if (held && held.mode === "hold" && held.text === text) return;
+    show(key, "hold", text, { kind: toneOf(fault), title, ttl: duration ?? undefined });
+  }
+
+    // Ends a held toast: closes it, or turns it into a timed `text`.
     function releaseHint(key, text, fault) {
-    if (!key || S.hintKey !== key) return;
-    window.clearTimeout(S.hintReleaseTimer);
-    const wait = HINT_MIN_HELD_MS - (Date.now() - S.hintHeldAt);
+    const held = key && live(key);
+    if (!held || held.mode !== "hold") return;
+    window.clearTimeout(held.release);
+    const wait = HINT_MIN_HELD_MS - (Date.now() - held.at);
     if (wait > 0) {
-      S.hintReleaseTimer = window.setTimeout(() => releaseHint(key, text, fault), wait);
+      held.release = window.setTimeout(() => releaseHint(key, text, fault), wait);
       return;
     }
-    setHint(text || "", fault);
+    if (text) show(key, "hint", text, { kind: toneOf(fault) });
+    else drop(key);
   }
 
-    function heldHint() {
-    return S.hintKey || "";
+    function heldHints() {
+    return [...toasts.keys()].filter((key) => live(key)?.mode === "hold");
   }
 
-    // A toast that stays until the user closes it (or the chat changes). A
-  // passing hint may cover it; it comes back when that hint ends. An action
-  // ({label, run}) adds a button that runs it and closes the toast.
+    // A toast that stays until the user closes it (or the chat changes). An
+  // action ({label, run}) adds a button that runs it and closes the toast.
     function pinHint(key, text, action = null) {
-    S.pinnedHint = { key, text, action };
-    showPinned();
-  }
-
-    function showPinned() {
-    const pin = S.pinnedHint;
-    setHint(pin.text, false, 0);
-    S.hintKey = pin.key;
-    S.hint.classList.add("is-pinned");
-    if (pin.action) {
-      const act = document.createElement("button");
-      act.type = "button";
-      act.className = "chat-toast-action";
-      act.textContent = pin.action.label;
-      act.addEventListener("click", () => { pin.action.run(); unpinHint(pin.key); });
-      S.hint.appendChild(act);
-    }
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "chat-toast-close";
-    close.setAttribute("aria-label", "Dismiss");
-    close.textContent = "\u00d7";
-    close.addEventListener("click", () => unpinHint(pin.key));
-    S.hint.appendChild(close);
+    show(key, "pin", text, {
+      kind: "warn",
+      ttl: 0,
+      actionLabel: action?.label,
+      onAction: action ? () => { action.run(); unpinHint(key); } : undefined,
+    });
   }
 
     function unpinHint(key) {
-    if (!S.pinnedHint || (key && S.pinnedHint.key !== key)) return;
-    const shown = S.hintKey === S.pinnedHint.key;
-    S.pinnedHint = null;
-    if (shown) setHint("");
+    [...toasts.keys()].forEach((k) => {
+      if ((!key || k === key) && live(k)?.mode === "pin") drop(k);
+    });
   }
 
+    // A new chat starts clean: the last chat's toasts leave with it.
     function defaultHint() {
-    S.pinnedHint = null;
+    [...toasts.keys()].forEach(drop);
     if (!S.allModels.length) {
-      setHint("No models are unlocked yet. ", false, 0);
-      const link = document.createElement("a");
-      link.href = "/sources";
-      link.textContent = "Open Sources";
-      S.hint.appendChild(link);
-      return;
+      show("no-models", "pin", "No models are unlocked yet.", {
+        kind: "warn",
+        ttl: 0,
+        actionLabel: "Open Sources",
+        onAction: () => { window.location.href = "/sources"; },
+      });
     }
-    setHint("");
   }
 
     function closePicker() {
@@ -339,7 +309,7 @@ export function createSheet(ctx) {
   return {
     closePicker,
     defaultHint,
-    heldHint,
+    heldHints,
     holdHint,
     innerScrolls,
     pinHint,

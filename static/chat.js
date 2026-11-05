@@ -43,6 +43,7 @@ import { createDictation } from './chat/dictation.js';
     formatConsoleLiveStatus,
     groupTraces,
     jobRowHtml,
+    parseProviderError,
     patchMarkdown,
     permQueueCardHtml,
     renderAssistant,
@@ -192,6 +193,7 @@ import { createDictation } from './chat/dictation.js';
     formatConsoleLiveStatus,
     groupTraces,
     jobRowHtml,
+    parseProviderError,
     patchMarkdown,
     permQueueCardHtml,
     renderAssistant,
@@ -455,7 +457,7 @@ import { createDictation } from './chat/dictation.js';
     S.root.querySelector("[data-sync-retry]").addEventListener("click", () => {
     if (!net.requireLive()) return;
     if (S.pendingTurn && S.pendingTurn.id === S.currentId) turns.completeTurn(S.pendingTurn.body.text, S.pendingTurn.body.attachments || [], { truncatedTo: S.pendingTurn.body.replace_from, undoSnap: S.pendingTurn.undoSnap });
-    else picker.setHint("Open the chat with the unconfirmed send to retry it.", true);
+    else picker.setHint("Open the chat with the unconfirmed send to retry it.", "warn");
   });
 
     const discardPending = document.createElement('button');
@@ -1013,7 +1015,7 @@ import { createDictation } from './chat/dictation.js';
 
     async function sendToAgent(text) {
     if (S.pendingAttachments.length) {
-      picker.setHint("Files can't be sent to a subagent. Remove them, or go back to the main agent.", true);
+      picker.setHint("Files can't be sent to a subagent. Remove them, or go back to the main agent.", "warn");
       return;
     }
     if (S.agentSending || !net.requireLive()) return;

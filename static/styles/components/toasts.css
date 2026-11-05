@@ -1,35 +1,40 @@
-/* —— Shared toasts + vault unlock prompt —— */
+/* —— Toasts: the one notice surface on every page (fuseUI.toast) ——
+   Under the header bar on the right (full width on a phone), clear of the
+   composer and above every panel and sheet; while a modal dialog is open the
+   stack lives inside it. Tone is the left rule and the first line: brass for
+   a limit or a guardrail, red for a fault. */
 .fuse-toasts {
   position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 64;
+  top: max(var(--toast-top, 0px), env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  z-index: 100;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   width: min(23rem, calc(100vw - 2rem));
+  margin-top: 0.5rem;
+  pointer-events: none;
 }
+.fuse-toasts:empty { display: none; }
 .fuse-toast {
+  --toast-tone: var(--line);
+  --toast-ink: var(--mist);
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.65rem 0.75rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.45rem 0.6rem 0.8rem;
   background: var(--panel);
   border: 1px solid var(--line);
+  border-left: 3px solid var(--toast-tone);
   border-radius: var(--radius);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  color: var(--mist);
+  pointer-events: auto;
+  animation: fuse-toast-in var(--dur-2, 180ms) var(--ease-snap, ease-out);
 }
-.fuse-toast-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--mute);
-}
-.fuse-toast.is-ok .fuse-toast-dot { background: var(--ok); }
-.fuse-toast.is-warn .fuse-toast-dot { background: var(--brass); }
-.fuse-toast.is-err { border-color: color-mix(in srgb, var(--fault) 40%, var(--line)); }
-.fuse-toast.is-err .fuse-toast-dot { background: var(--fault); }
+.fuse-toast.is-ok { --toast-tone: var(--ok); }
+.fuse-toast.is-warn { --toast-tone: var(--brass); --toast-ink: var(--brass); }
+.fuse-toast.is-err { --toast-tone: var(--fault); --toast-ink: var(--fault); }
 .fuse-toast-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -38,48 +43,48 @@
   gap: 0.1rem;
 }
 .fuse-toast-body b {
-  color: var(--mist);
+  color: var(--toast-ink);
   font-size: 0.85rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
+.fuse-toast-body b:empty { display: none; }
 .fuse-toast-body span {
   color: var(--mute);
   font-size: 0.8rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+.fuse-toast-body b:empty + span { color: var(--toast-ink); }
 .fuse-toast-act { display: flex; flex: 0 0 auto; }
+.fuse-toast-act:empty { display: none; }
 .fuse-toast-x {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
   border-radius: 6px;
+  background: none;
   color: var(--mute);
-  font-size: 0.72rem;
+  cursor: pointer;
 }
 .fuse-toast-x:hover { color: var(--mist); background: var(--raise); }
+@keyframes fuse-toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+@media (max-width: 800px) {
+  .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
+  .fuse-toast-x { width: 2.25rem; height: 2.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fuse-toast { animation: none; }
+}
 
-.fuse-vault-scrim {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 65;
-  background: rgba(5, 6, 6, 0.62);
-}
-.fuse-vault {
-  position: fixed;
-  right: 1.1rem;
-  bottom: 1.1rem;
-  z-index: 66;
-  width: min(21.5rem, calc(100vw - 2rem));
-  padding: 0.95rem 1rem 1rem;
-  background: var(--panel);
-  border: 1px solid color-mix(in srgb, var(--brass) 35%, var(--line));
-  border-radius: var(--radius);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.5);
-}
+/* Vault unlock prompt: a modal dialog (.modal.modal-confirm). */
 .fuse-vault-why {
   margin: 0 0 0.7rem;
   color: var(--mist);
@@ -88,7 +93,7 @@
 }
 .fuse-vault form { display: flex; flex-direction: column; gap: 0.6rem; }
 .fuse-vault-field input { min-height: var(--control); }
-.fuse-vault-err { margin: 0.55rem 0 0; font-size: 0.8rem; }
+.fuse-vault .fuse-vault-err { margin: 0.55rem 0 0; font-size: 0.8rem; }
 .fuse-vault-dismiss {
   margin: 0.75rem 0 0;
   padding: 0;
@@ -98,18 +103,3 @@
   text-underline-offset: 3px;
 }
 .fuse-vault-dismiss:hover { color: var(--mist); }
-@media (max-width: 720px) {
-  .fuse-toasts { right: 0.75rem; bottom: 0.75rem; left: 0.75rem; width: auto; }
-  .fuse-vault-scrim.is-on { display: block; }
-  .fuse-vault {
-    top: 50%;
-    left: 50%;
-    right: auto;
-    bottom: auto;
-    transform: translate(-50%, -50%);
-    width: min(24rem, calc(100vw - 1.5rem));
-    max-height: calc(100dvh - 2rem);
-    overflow: auto;
-  }
-}
-

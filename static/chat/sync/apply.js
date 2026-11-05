@@ -35,7 +35,7 @@ export function createApply(ctx) {
       }
       else if (data?.busy) picker.setHint("Title generation is already running.");
     } catch (error) {
-      if (error && error.status === 429) picker.setHint(error.message || "Title regeneration limit reached. Try again later.", true);
+      if (error && error.status === 429) picker.setHint(error.message || "Title regeneration limit reached. Try again later.", "warn");
       else status.showFailure("Could not regenerate the title", error);
     } finally {
       S.titleRegenRequest = false;

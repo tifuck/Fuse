@@ -49,7 +49,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       inputDisabled: inputEl.disabled,
       pending: document.querySelectorAll('.chat-pending-send').length,
       queue: document.querySelectorAll('.chat-queue-item').length,
-      hint: document.querySelector('[data-chat-hint]')?.textContent || '',
+      hint: [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n'),
     };
   });
   const emptyState = p => p.evaluate(() => {
@@ -201,7 +201,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await input(p).fill('Trigger a failed send once');
       await p.route('**/turns', route => route.fulfill({ status: 400, json: { detail: 'Offline rejected this turn' } }), { times: 1 });
       await sendClick(p);
-      await p.waitForFunction(() => (document.querySelector('[data-chat-hint]')?.textContent || '').includes('Send not confirmed; your draft is retained'));
+      await p.waitForFunction(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Send not confirmed; your draft is retained'));
       const failed = await sendState(p);
       assert.equal(failed.streaming, false);
       assert.equal(failed.pending, 0, 'the Sending… row is gone after the error');
@@ -268,7 +268,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await p.waitForFunction(() => document.querySelector('[data-chat-send]').getAttribute('aria-label') === 'Send');
       await sendClick(p);
       await p.locator('[data-chat-queue]').waitFor();
-      await p.waitForFunction(() => (document.querySelector('[data-chat-hint]')?.textContent || '').includes('Queued — it sends when this turn finishes.'));
+      await p.waitForFunction(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Queued — it sends when this turn finishes.'));
       const queued = await p.evaluate(() => ({
         input: document.querySelector('[data-chat-input]').value,
         label: document.querySelector('[data-chat-send]').getAttribute('aria-label'),
@@ -408,7 +408,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       const created = await seed(p, turn('Open me despite the outage', 'Recovered answer'), 'Open failure fixture');
       await p.route('**/chat/threads/*', route => route.abort('failed'));
       await p.goto(`${origin}/chat?t=${created.id}`);
-      await p.waitForFunction(() => (document.querySelector('[data-chat-hint]')?.textContent || '').includes('Chat history could not be loaded'), null, { timeout: 15000 });
+      await p.waitForFunction(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes('Chat history could not be loaded'), null, { timeout: 15000 });
       const stuck = await sendState(p);
       assert.equal(stuck.pending, 0);
       assert.equal(stuck.label, 'Send', 'the failed open leaves no stuck Stop');

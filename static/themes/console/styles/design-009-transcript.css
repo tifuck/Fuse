@@ -397,6 +397,20 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-err
   font: var(--console-type)/var(--console-leading) var(--mono);
   overflow-wrap: anywhere;
 }
+/* A subagent transcript that could not be opened is the same fault card. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agent-error:not([hidden]) {
+  display: grid;
+  justify-items: start;
+  gap: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--fault) 32%, var(--line));
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fault) 5%, transparent);
+  color: var(--fault);
+  font: var(--console-type)/var(--console-leading) var(--mono);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agent-error p { margin: 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error[data-tone="limit"] {
   border-color: color-mix(in srgb, var(--brass) 38%, var(--line));
   background: color-mix(in srgb, var(--brass) 6%, transparent);

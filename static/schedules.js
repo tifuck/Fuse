@@ -360,7 +360,7 @@
 
   root.querySelector("[data-sched-delete]")?.addEventListener("click", async () => {
     if (!editing) return;
-    if (!window.confirm("Delete this task? Existing chats stay.")) return;
+    if (!(await window.fuseConfirm("Delete this task? Existing chats stay.", { confirmLabel: "Delete", danger: true }))) return;
     try {
       await api("/schedules/" + encodeURIComponent(editing.id), { method: "DELETE" });
       items = items.filter((s) => s.id !== editing.id);

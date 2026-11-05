@@ -48,7 +48,7 @@ export function createAttachments(ctx) {
   const { context, input, net, picker, sidebar, sync, traces, ui } = ctx;
     function removeAttachment(index, key, position) {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the reply to finish before changing attachments.", true);
+      picker.setHint("Wait for the reply to finish before changing attachments.", "warn");
       return;
     }
     if (!net.requireLive()) return;
@@ -161,7 +161,7 @@ export function createAttachments(ctx) {
     };
     const full = () => {
       if (target().length < S.ATTACH_MAX) return false;
-      picker.setHint("Up to " + S.ATTACH_MAX + " attachments per message.", true);
+      picker.setHint("Up to " + S.ATTACH_MAX + " attachments per message.", "warn");
       return true;
     };
     for (const file of files) {

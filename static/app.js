@@ -137,7 +137,6 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
   const base = root.dataset.endpoint || "/sources/openrouter";
   const label = root.dataset.label || "OpenRouter";
   const settings = scope.querySelector("[data-or-settings]");
-  const status = scope.querySelector("[data-or-status]");
   const tpl = scope.querySelector("[data-or-drawer-tpl]");
   const list = root.querySelector("[data-or-list]");
   const filter = root.querySelector("[data-or-filter]");
@@ -146,15 +145,9 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
   const paidNote = root.querySelector("[data-or-paid-note]");
   const rows = Array.from(list.querySelectorAll("[data-or-row]"));
   let view = "all";
-  let statusTimer = 0;
 
   function say(text, bad) {
-    if (!status) return;
-    status.textContent = text;
-    status.classList.toggle("bad", Boolean(bad));
-    status.classList.add("show");
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => status.classList.remove("show"), bad ? 5000 : 1800);
+    window.fuseUI.toast({ key: "model-list:" + base, kind: bad ? "err" : "idle", title: label, msg: text });
   }
 
   async function send(method, url, body) {
@@ -845,7 +838,8 @@ if (artifactPage) {
       let url;
       try { url = new URL(String(data.url || "")); } catch (_) { return; }
       if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) return;
-      if (window.confirm(`Open this link from the page in a new tab?\n\n${url.href}`)) window.open(url.href, "_blank", "noopener,noreferrer");
+      fuseConfirm(`Open this link from the page in a new tab?\n\n${url.href}`, { confirmLabel: "Open" })
+        .then((ok) => ok && window.open(url.href, "_blank", "noopener,noreferrer"));
     } else if (data.type === "copy" || data.type === "compose") {
       navigator.clipboard?.writeText(String(data.text || "").slice(0, 200000)).catch(() => {});
     } else if (data.type === "error" && errorBox) {
@@ -1045,7 +1039,6 @@ document.querySelectorAll(".probe").forEach((btn) => {
   };
   let toastRoot = null;
   let vaultEl = null;
-  let vaultScrim = null;
   let vaultHandlers = [];
   let vaultUid = null;
   let autoTried = false;
@@ -1055,12 +1048,42 @@ document.querySelectorAll(".probe").forEach((btn) => {
     return (el && el.getAttribute("content")) || "";
   }
 
+  // Open modal dialogs, newest last. Everything outside the newest one is
+  // inert, so the toast stack moves into it while it is open.
+  const modals = [];
+  new MutationObserver((records) => {
+    let changed = false;
+    records.forEach(({ target }) => {
+      if (target.tagName !== "DIALOG") return;
+      changed = true;
+      const i = modals.indexOf(target);
+      if (i >= 0) modals.splice(i, 1);
+      if (target.open && target.matches(":modal")) modals.push(target);
+    });
+    if (changed) rehome();
+  }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] });
+
+  function rehome() {
+    if (!toastRoot) return;
+    const host = modals.filter((d) => d.open && d.isConnected).pop() || document.body;
+    if (toastRoot.parentElement !== host) host.appendChild(toastRoot);
+    // The stack hangs under the page's header bar (and chat's agent strip),
+    // clear of the composer.
+    let top = 0;
+    document.querySelectorAll(".chat-bar, .chat-work:not([hidden])").forEach((bar) => {
+      const r = bar.getBoundingClientRect();
+      if (r.height && r.top < 200) top = Math.max(top, r.bottom);
+    });
+    top = Math.min(top, window.innerHeight * 0.4);
+    toastRoot.style.setProperty("--toast-top", Math.round(top) + "px");
+  }
+
   function ensureRoot() {
-    if (!toastRoot || !document.body.contains(toastRoot)) {
+    if (!toastRoot) {
       toastRoot = document.createElement("div");
       toastRoot.className = "fuse-toasts";
-      document.body.appendChild(toastRoot);
     }
+    rehome();
     return toastRoot;
   }
 
@@ -1084,55 +1107,70 @@ document.querySelectorAll(".probe").forEach((btn) => {
     } catch (_) {}
   }
 
+  // The one notice system on every page. kind: "idle" (info), "ok", "warn"
+  // (a limit or a guardrail) or "err". A toast leaves after a reading time
+  // set by its kind and length, unless ttl is given: ttl 0 keeps it until it
+  // is closed or replaced (an action in flight, an error that still holds, an
+  // offer with no deadline), and so does an action without a ttl. Hovering or
+  // focusing one stops its clock. A toast with the same key changes in place.
+  const MAX_TOASTS = 4;
+  const X_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+  function readMs(kind, text) {
+    const n = text.length;
+    if (kind === "err") return Math.min(12000, Math.max(6000, 2500 + n * 60));
+    if (kind === "warn") return Math.min(10000, Math.max(5000, 2000 + n * 50));
+    return Math.min(8000, Math.max(2500, 1600 + n * 45));
+  }
+
   function toast(opts) {
-    opts = opts || {};
+    opts = typeof opts === "string" ? { msg: opts } : opts || {};
     const key = opts.key || "";
-    if (key) {
-      const root = toastRoot;
-      const existing = root && root.querySelector('[data-toast-key="' + key.replace(/"/g, '\\"') + '"]');
-      if (existing && existing._ctrl) {
-        existing._ctrl.update(opts);
-        return existing._ctrl;
-      }
+    const existing = key && toastRoot && [...toastRoot.children].find((el) => el.dataset.toastKey === key);
+    if (existing) {
+      existing._ctrl.update(opts);
+      return existing._ctrl;
     }
     const el = document.createElement("div");
     el.className = "fuse-toast is-idle";
-    if (key) el.setAttribute("data-toast-key", key);
-    el.setAttribute("role", "status");
-    const dot = document.createElement("span");
-    dot.className = "fuse-toast-dot";
-    const body = document.createElement("div");
-    body.className = "fuse-toast-body";
-    const title = document.createElement("b");
-    const msg = document.createElement("span");
-    body.appendChild(title);
-    body.appendChild(msg);
-    const act = document.createElement("span");
-    act.className = "fuse-toast-act";
-    const x = document.createElement("button");
-    x.type = "button";
-    x.className = "fuse-toast-x";
-    x.textContent = "✕";
-    x.setAttribute("aria-label", "Dismiss");
-    el.appendChild(dot);
-    el.appendChild(body);
-    el.appendChild(act);
-    el.appendChild(x);
-    let timer = null;
+    if (key) el.dataset.toastKey = key;
+    el.innerHTML = '<div class="fuse-toast-body"><b></b><span></span></div><span class="fuse-toast-act"></span>' +
+      `<button type="button" class="fuse-toast-x" aria-label="Dismiss">${X_ICON}</button>`;
+    const title = el.querySelector(".fuse-toast-body b");
+    const msg = el.querySelector(".fuse-toast-body span");
+    const act = el.querySelector(".fuse-toast-act");
+    let timer = 0;
+    let due = 0;
+    let left = 0;
+    let hovered = false;
+    let focused = false;
     let kind = "";
+    const arm = () => {
+      window.clearTimeout(timer);
+      if (!left || hovered || focused) return;
+      due = Date.now() + left;
+      timer = window.setTimeout(() => ctrl.close(), left);
+    };
+    const pause = () => {
+      if (!left || hovered || focused) return;
+      window.clearTimeout(timer);
+      left = Math.max(1500, due - Date.now());
+    };
     const ctrl = {
       el,
+      timed: () => left > 0,
       update(next) {
         next = next || {};
-        if ((next.kind || "idle") !== kind) {
-          kind = next.kind || "idle";
-          if (kind === "ok") window.fuseSound?.play("saved");
-          else if (kind === "err") window.fuseSound?.play("errorSoft");
+        const k = next.kind || "idle";
+        if (k !== kind) {
+          if (k === "ok") window.fuseSound?.play("saved");
+          else if (k === "err") window.fuseSound?.play("errorSoft");
         }
-        el.className = "fuse-toast is-" + (next.kind || "idle");
+        kind = k;
+        el.className = "fuse-toast is-" + k;
         title.textContent = next.title || "";
         msg.textContent = next.msg || "";
-        act.innerHTML = "";
+        act.replaceChildren();
         if (next.actionLabel) {
           const btn = document.createElement("button");
           btn.type = "button";
@@ -1143,8 +1181,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
           });
           act.appendChild(btn);
         }
-        window.clearTimeout(timer);
-        if (next.ttl) timer = window.setTimeout(() => ctrl.close(), next.ttl);
+        const text = [next.title, next.msg].filter(Boolean).join(". ");
+        window.fuseAnnounce?.(text, k === "err" || k === "warn");
+        left = next.ttl != null ? Number(next.ttl) || 0 : next.actionLabel ? 0 : readMs(k, text);
+        arm();
       },
       close() {
         window.clearTimeout(timer);
@@ -1152,22 +1192,29 @@ document.querySelectorAll(".probe").forEach((btn) => {
       },
     };
     el._ctrl = ctrl;
-    x.addEventListener("click", () => ctrl.close());
-    ensureRoot().appendChild(el);
+    el.querySelector(".fuse-toast-x").addEventListener("click", () => ctrl.close());
+    el.addEventListener("pointerenter", () => { pause(); hovered = true; });
+    el.addEventListener("pointerleave", () => { hovered = false; arm(); });
+    el.addEventListener("focusin", () => { pause(); focused = true; });
+    el.addEventListener("focusout", () => { focused = false; arm(); });
+    ensureRoot().prepend(el);
     ctrl.update(opts);
+    // Too many at once: the oldest timed one goes first, a held one last.
+    for (let list = [...toastRoot.children]; list.length > MAX_TOASTS; list = [...toastRoot.children]) {
+      const oldest = list.reverse();
+      (oldest.find((t) => t._ctrl.timed()) || oldest[0])._ctrl.close();
+    }
     return ctrl;
   }
 
   function closeVault() {
-    if (vaultEl) {
-      vaultEl.remove();
-      vaultEl = null;
-    }
-    if (vaultScrim) {
-      vaultScrim.remove();
-      vaultScrim = null;
-    }
+    const el = vaultEl;
+    vaultEl = null;
     vaultHandlers = [];
+    if (!el) return;
+    if (el.open) el.close();
+    el.remove();
+    rehome();
   }
 
   function emitUnlocked() {
@@ -1195,46 +1242,28 @@ document.querySelectorAll(".probe").forEach((btn) => {
       }
       return;
     }
-    const el = document.createElement("div");
-    el.className = "fuse-vault";
-    const scrim = document.createElement("div");
-    scrim.className = "fuse-vault-scrim is-on";
-    const why = document.createElement("p");
-    why.className = "fuse-vault-why";
-    why.textContent = opts.message || "Unlock machines to use SSH. Your account password unwraps those secrets here.";
-    const form = document.createElement("form");
-    const label = document.createElement("label");
-    label.className = "fuse-vault-field";
-    const span = document.createElement("span");
-    span.textContent = "Account password";
-    const input = document.createElement("input");
-    input.type = "password";
-    input.maxLength = 256;
-    input.autocomplete = "current-password";
-    input.placeholder = "Account password";
-    label.appendChild(span);
-    label.appendChild(input);
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.className = "btn sm";
-    submit.textContent = "Unlock";
-    form.appendChild(label);
-    form.appendChild(submit);
-    const err = document.createElement("p");
-    err.className = "callout fault fuse-vault-err";
-    err.hidden = true;
+    // A modal like every other prompt: it stacks over an open dialog (the
+    // project chooser asks for it) instead of sitting inert behind it.
+    const el = document.createElement("dialog");
+    el.className = "modal modal-confirm fuse-vault";
+    el.setAttribute("aria-label", "Unlock machines");
+    el.innerHTML =
+      '<div class="modal-shell"><p class="fuse-vault-why"></p><form>' +
+      '<label class="fuse-vault-field"><span>Account password</span>' +
+      '<input type="password" maxlength="256" autocomplete="current-password" placeholder="Account password"></label>' +
+      '<button type="submit" class="btn sm">Unlock</button></form>' +
+      '<p class="callout fault fuse-vault-err" hidden></p>' +
+      '<button type="button" class="fuse-vault-dismiss">Not now</button></div>';
+    el.querySelector(".fuse-vault-why").textContent = opts.message || "Unlock machines to use SSH. Your account password unwraps those secrets here.";
+    const form = el.querySelector("form");
+    const input = el.querySelector("input");
+    const submit = el.querySelector('button[type="submit"]');
+    const err = el.querySelector(".fuse-vault-err");
+    const dismiss = el.querySelector(".fuse-vault-dismiss");
     if (opts.error) {
       err.hidden = false;
       err.textContent = opts.error;
     }
-    const dismiss = document.createElement("button");
-    dismiss.type = "button";
-    dismiss.className = "fuse-vault-dismiss";
-    dismiss.textContent = "Not now";
-    el.appendChild(why);
-    el.appendChild(form);
-    el.appendChild(err);
-    el.appendChild(dismiss);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const password = input.value;
@@ -1269,14 +1298,19 @@ document.querySelectorAll(".probe").forEach((btn) => {
         submit.disabled = false;
       }
     });
-    dismiss.addEventListener("click", () => {
+    // Not now, Esc, the backdrop and the phone back gesture all dismiss it.
+    dismiss.addEventListener("click", () => el.close());
+    el.addEventListener("click", (event) => {
+      if (event.target === el) el.close();
+    });
+    el.addEventListener("close", () => {
+      if (vaultEl !== el) return;
       setDismissed();
       closeVault();
     });
     vaultEl = el;
-    vaultScrim = scrim;
-    document.body.appendChild(scrim);
     document.body.appendChild(el);
+    el.showModal();
     input.focus();
   }
 

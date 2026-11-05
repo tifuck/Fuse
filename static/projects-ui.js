@@ -246,7 +246,7 @@
 
   function toastError(err) {
     const message = (err && err.message) || "Something went wrong";
-    if (window.fuseUI && window.fuseUI.toast) window.fuseUI.toast(message);
+    if (window.fuseUI && window.fuseUI.toast) window.fuseUI.toast({ kind: "err", title: "Could not restore the project", msg: message });
     else alert(message);
   }
 

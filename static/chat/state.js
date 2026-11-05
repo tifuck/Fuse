@@ -36,7 +36,6 @@ function initState() {
   S.input = S.root.querySelector("[data-chat-input]");
   S.sendBtn = S.root.querySelector("[data-chat-send]");
   S.newBtns = [...S.root.querySelectorAll("[data-chat-new]")];
-  S.hint = S.root.querySelector("[data-chat-hint]");
   S.pickerHost = S.root.querySelector("[data-chat-picker]");
   S.attachBtn = S.root.querySelector("[data-chat-attach]");
   S.fileInput = S.root.querySelector("[data-chat-file]");
@@ -322,12 +321,6 @@ function initState() {
   S.dirty = false;
   S.memoryDirty = false;
   S.projectAgentsOk = false;
-  S.hintTimer = 0;
-  S.hintFrame = 0;
-  S.hintKey = "";
-  S.hintHeldAt = 0;
-  S.hintReleaseTimer = 0;
-  S.pinnedHint = null;
   S.cacheProbe = null;
   S.cacheNoticed = new Set();
   S.ignoreScroll = false;

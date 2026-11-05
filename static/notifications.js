@@ -44,8 +44,6 @@
 
   const btn = document.querySelector("[data-notif-toggle]");
   if (!btn) return;
-  const label = btn.querySelector("span");
-  const IDLE = "Alerts";
   const STORE_KEY = "fuse.alerts.mode";
   let busy = false;
   let vapid = "";
@@ -140,14 +138,9 @@
     }
   }
 
-  let hintTimer = 0;
-  function hint(text) {
-    if (!label) return;
-    label.textContent = text;
-    window.clearTimeout(hintTimer);
-    hintTimer = window.setTimeout(() => {
-      label.textContent = IDLE;
-    }, 4000);
+  // The bell is an icon; what a click did is said in a toast.
+  function hint(kind, msg) {
+    window.fuseUI?.toast({ key: "alerts", kind, title: "Alerts", msg });
   }
 
   async function tryEnablePush() {
@@ -181,12 +174,12 @@
 
   async function enable() {
     if (!("Notification" in window)) {
-      hint("Unsupported");
+      hint("err", "This browser can't show notifications.");
       return;
     }
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
-      hint("Blocked");
+      hint("warn", "Notifications are blocked for this site. Allow them in the browser's site settings.");
       return;
     }
     try {
@@ -198,7 +191,7 @@
     }
     save();
     paint();
-    hint(mode === "push" ? "On" : "On · open");
+    hint("ok", mode === "push" ? "On for this device." : "On for this device while Fuse is open.");
     try {
       new Notification("Fuse", {
         body:
@@ -217,7 +210,7 @@
       const browser = await localSub.unsubscribe().catch(() => false);
       // Either side gone stops delivery; with both still live, alerts are on.
       if (!server && !browser) {
-        hint("Failed");
+        hint("err", "Could not turn alerts off. Try again.");
         return;
       }
     }
@@ -225,7 +218,7 @@
     localSub = null;
     save();
     paint();
-    hint("Off");
+    hint("idle", "Off for this device.");
   }
 
   async function refresh() {
@@ -270,7 +263,7 @@
       if (mode) await disable();
       else await enable();
     } catch {
-      hint("Failed");
+      hint("err", "Could not change alerts. Try again.");
     }
     busy = false;
   });

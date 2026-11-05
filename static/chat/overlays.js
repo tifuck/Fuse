@@ -222,7 +222,7 @@ export function createOverlays(ctx) {
     let top = at ? at.y : rect.bottom + 4;
     if (left < 8) left = 8;
     if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
-    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4);
+    if (top + height > window.innerHeight - 8) top = Math.max(8, (at ? at.y : rect.top) - height - 4);
     S.pop.style.left = left + "px";
     S.pop.style.top = top + "px";
     S.pop.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });

@@ -208,7 +208,7 @@
   gap: 0.5rem;
   padding: 0.45rem 0.6rem 0.45rem 1rem;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--status-live, #fbbf24) 10%, var(--panel));
+  background: color-mix(in srgb, var(--brass) 10%, var(--panel));
   color: var(--mist);
   font-size: 0.8rem;
 }

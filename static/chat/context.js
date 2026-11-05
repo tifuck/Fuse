@@ -528,7 +528,7 @@ export function createContext(ctx) {
     async function runCompact(instructions) {
     // Holds the id of the chat whose compaction is in flight.
     if (S.compactingRequest) {
-      if (S.compactingRequest !== S.currentId) picker.setHint("Another chat is compacting. Try again when it finishes.", true);
+      if (S.compactingRequest !== S.currentId) picker.setHint("Another chat is compacting. Try again when it finishes.", "warn");
       return;
     }
     if (!S.currentId || !S.messages.length) {
@@ -536,7 +536,7 @@ export function createContext(ctx) {
       return;
     }
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for this reply to finish, then compact.", true);
+      picker.setHint("Wait for this reply to finish, then compact.", "warn");
       return;
     }
     if (!net.requireLive()) return;

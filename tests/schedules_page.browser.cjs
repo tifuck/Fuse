@@ -193,6 +193,7 @@ const LONG_PROMPT = 'Summarize overnight changes.\n\n' + 'Keep the full diff con
     // Delete: confirming removes the row and restores the empty state.
     await row('Hourly digest').locator('[data-edit]').click();
     await page.locator('[data-sched-delete]').click();
+    await page.locator('dialog[data-confirm] [data-confirm-yes]').click();
     await page.locator('[data-sched-modal]').waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('[data-sched-body]').children.length === 0);
     assert.equal(await page.locator('[data-sched-empty]').isVisible(), true, 'deleting the last task restores the empty copy');

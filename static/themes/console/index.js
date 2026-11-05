@@ -465,6 +465,7 @@ export function createConsoleTheme(runtime) {
     formatConsoleLiveStatus: theme.formatConsoleLiveStatus,
     groupTraces: theme.groupTraces,
     jobRowHtml: theme.jobRowHtml,
+    parseProviderError: theme.parseProviderError,
     patchMarkdown: theme.patchMarkdown,
     permQueueCardHtml: theme.permQueueCardHtml,
     renderAssistant: theme.renderAssistant,

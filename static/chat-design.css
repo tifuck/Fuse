@@ -296,6 +296,7 @@ html[data-chat-backdrop="none"] .chat-scene,
   color: var(--fault);
   pointer-events: auto;
 }
+.chat .chat-sync:not(.is-fault) { color: var(--brass); }
 .chat .chat-sync[hidden] { display: none !important; }
 .chat .chat-dock { position: relative; }
 .chat .chat-send { background: var(--brass); color: var(--on-brass, var(--ink)); border-radius: 6px; }

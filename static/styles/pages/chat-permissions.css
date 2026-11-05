@@ -261,7 +261,7 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--perm-color, var(--brass)) 45%, transparent);
 }
 .chat-perm-card:not(.is-pending) { border-color: var(--line); box-shadow: none; opacity: 0.85; }
-.chat-perm-card.is-denied .chat-perm-card-title, .chat-perm-card.is-timeout .chat-perm-card-title { color: #e0654f; }
+.chat-perm-card.is-denied .chat-perm-card-title, .chat-perm-card.is-timeout .chat-perm-card-title { color: var(--fault); }
 .chat-perm-card.is-allowed .chat-perm-card-title { color: var(--brass); }
 .chat-perm-card-sub-inline { margin-left: auto; font-size: 0.72rem; color: var(--mute); }
 

@@ -31,16 +31,17 @@
 /* The composer's own popovers (model picker, permissions, context) open
    upward over the list, never under it. */
 .chat .chat-dock > .chat-box { z-index: 7; }
-/* What floats above the composer ("Jump to latest", the toast) rides above
-   the open list of the transcript on screen: --todo-lift is its height. */
+/* What floats above the composer stacks bottom-up and never overlaps: the
+   open list of the transcript on screen (--todo-lift is its height), the
+   dictation strip, the sync badge, then "Jump to latest". */
 .chat:not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) { --todo-lift: var(--todo-push, 0px); }
 .chat.is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
-.chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px)); }
-.chat .chat-dock > .chat-toast { bottom: calc(100% + 0.7rem + var(--todo-lift, 0px)); }
-/* A toast while "Jump to latest" shows stacks above the pill, not on it. */
-.chat:has(> .chat-stage > .chat-latest:not([hidden])) .chat-dock > .chat-toast { bottom: calc(100% + 2.75rem + var(--todo-lift, 0px)); }
+.chat:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 3.3rem; }
+.chat:has(.chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
+.chat .chat-dock > .chat-sync { bottom: calc(100% + 0.35rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px)); }
+.chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
 @media (max-width: 800px) {
-  .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.2rem + var(--todo-lift, 0px)); }
+  .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.2rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
 }
 /* Open, the transcript makes room for the drawer's page (todos.js measures
    it into --todo-push), so the chat ends where the list begins. The console

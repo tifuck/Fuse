@@ -50,7 +50,7 @@ export function createDictation({ picker }) {
   overlay.setAttribute("role", "status");
   overlay.setAttribute("aria-label", "Dictation");
   overlay.innerHTML = overlayHtml();
-  S.chatBox.append(overlay);
+  S.form.append(overlay);
   const bars = [...overlay.querySelectorAll(".dictation-bars i")];
   const timeEl = overlay.querySelector("[data-dictation-time]");
 

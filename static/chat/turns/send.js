@@ -65,7 +65,7 @@ export function createSend(ctx) {
 
     function retryLastTurn() {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", true);
+      picker.setHint("Wait for the current reply to finish.", "warn");
       return;
     }
     if (!net.requireLive()) return;
@@ -87,7 +87,7 @@ export function createSend(ctx) {
     // already did; Retry instead drops the turn and replays the prompt.
     function continueAssistant() {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", true);
+      picker.setHint("Wait for the current reply to finish.", "warn");
       return;
     }
     const last = S.messages.at(-1);

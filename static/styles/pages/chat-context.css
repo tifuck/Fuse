@@ -208,14 +208,6 @@
   background: currentColor;
   border-radius: 2px;
 }
-.chat-hint {
-  min-height: 1.15rem;
-  margin: 0.45rem 0.15rem 0;
-  color: var(--mute);
-  font-size: 0.78rem;
-}
-.chat-hint a { margin-left: 0.2rem; }
-.chat-hint.is-fault { color: var(--fault); }
 
 @media (max-width: 800px) {
   body.is-chat.is-app {

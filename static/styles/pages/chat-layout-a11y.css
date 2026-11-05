@@ -16,8 +16,6 @@
 .chat-send { width: 2.6rem; height: 2.6rem; }
 .chat-context { width: 2.4rem; height: 2.4rem; }
 .chat-context svg { width: 1.55rem; height: 1.55rem; }
-.chat-hint { text-align: center; margin-top: 0.6rem; min-height: 0; overflow-wrap: anywhere; }
-.chat-hint:empty { display: none; }
 /* Anchor to the thread's grid area, not its scrolling content or a guessed dock height. */
 .chat-memory { position: absolute; z-index: 9; inset: auto 0 calc(100% + 0.65rem); margin: 0; padding: 1rem; max-height: min(34rem, 55dvh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35); gap: 1rem; }
 .chat-memory-head { align-items: center; }

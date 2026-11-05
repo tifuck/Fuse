@@ -39,7 +39,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.locator('.chat-picker-btn').click();
       assert.equal(await page.locator('.chat-picker-image').count(), 1);
       await page.evaluate(() => imageFixture.selectModel('fixture-text', true));
-      await page.waitForFunction(() => document.querySelector('[data-chat-hint]')?.textContent.includes("can't view images"));
+      await page.waitForFunction(() => [...document.querySelectorAll('.fuse-toast[data-toast-key^="chat:"] .fuse-toast-body')].map(el => el.textContent).join('\n').includes("can't view images"));
       assert.equal(await page.evaluate(() => imageFixture.images()), 1);
       assert.equal(await page.evaluate(() => imageFixture.imageTokens()), 30);
       await page.evaluate(() => imageFixture.selectModel('offline', true));

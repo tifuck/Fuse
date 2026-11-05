@@ -6,11 +6,14 @@ let renderedRunState = "";
 
 export function createStatus(ctx) {
   const { agents, apply, composer, net, picker, sidebar, traces, transcript, turns, ui } = ctx;
-    // `key` lets the action that failed clear its own error once it recovers.
+    // What failed is the title, why is the message. A provider limit reads as
+  // a warning, as it does in the transcript. With `key` the error stays
+  // until the action that failed clears it by succeeding (or it is closed).
     function showFailure(action, error, key) {
     const message = (error && error.message) || "Request failed.";
-    if (key) picker.holdHint(key, `${action}: ${message}`, true, null);
-    else picker.setHint(`${action}: ${message}`, true);
+    const tone = ui?.parseProviderError?.(message).tone === "limit" ? "warn" : true;
+    if (key) picker.holdHint(key, message, tone, 0, action);
+    else picker.setHint(message, tone, undefined, action);
   }
 
     function syncStatus() {
@@ -79,8 +82,9 @@ export function createStatus(ctx) {
     ui.syncLiveDock();
     turns.renderQueue();
     // "Stopping…" leaves the moment its run is no longer active.
-    const held = picker.heldHint();
-    if (held.startsWith("stop:") && !(traces.runIsActive(S.activeRun) && S.activeRun.id === held.slice(5))) picker.releaseHint(held);
+    for (const held of picker.heldHints()) {
+      if (held.startsWith("stop:") && !(traces.runIsActive(S.activeRun) && S.activeRun.id === held.slice(5))) picker.releaseHint(held);
+    }
   }
 
     function notifyTurnDone(threadId, payload, type) {

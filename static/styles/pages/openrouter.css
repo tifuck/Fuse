@@ -112,15 +112,6 @@
 .or-drawer-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .or-drawer-hint { color: var(--mute); font-size: 0.78rem; }
 
-.or-status {
-  position: fixed; left: 50%; bottom: 1.25rem; z-index: 60; transform: translate(-50%, 0.5rem);
-  padding: 0.5rem 0.9rem; border-radius: 9px; background: var(--raise); border: 1px solid var(--line);
-  color: var(--mist); font-size: 0.85rem; opacity: 0; pointer-events: none;
-  transition: opacity var(--dur-2) ease, transform var(--dur-2) var(--ease-snap);
-}
-.or-status.show { opacity: 1; transform: translate(-50%, 0); }
-.or-status.bad { border-color: color-mix(in srgb, var(--fault) 55%, transparent); color: var(--fault); }
-
 @media (max-width: 640px) {
   .or-row-main { grid-template-columns: auto minmax(0, 1fr) auto; }
   .or-row-price { grid-column: 2; grid-row: 2; }
@@ -132,7 +123,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .or-drawer { animation: none; }
-  .or-status, .or-switch input::after, .or-toggle input::after { transition: none; }
+  .or-switch input::after, .or-toggle input::after { transition: none; }
 }
 
 
