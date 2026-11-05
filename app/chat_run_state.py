@@ -1147,8 +1147,14 @@ def finish_run(run_id, message, status):
             )
             from . import chat_history
             chat_history.finalize(conn, row, request, messages, aggregate_message)
-        chat_tx.event(conn, row["user_id"], "run." + status, row["thread_id"],
-              {"run_id": run_id, "message_id": row["message_id"], "message": message, "status": status, "revision": revision})
+        payload = {"run_id": run_id, "message_id": row["message_id"], "message": message, "status": status, "revision": revision}
+        if status == "completed":
+            # A turn that leaves subagents or background commands working, or
+            # their results undelivered, is not the end of the work: the wake
+            # turn that delivers the last of them is. The dashboard chimes then.
+            from . import chat_recaps
+            payload["settled"] = chat_recaps._settled(conn, row["user_id"], row["thread_id"])
+        chat_tx.event(conn, row["user_id"], "run." + status, row["thread_id"], payload)
         if thread:
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
 

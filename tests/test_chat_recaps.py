@@ -125,6 +125,18 @@ class RecapTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Fix token validation", job["source"])
         self.assertIn("Merged findings", job["source"])
 
+    def test_root_completion_says_whether_background_work_remains(self):
+        # The dashboard skips the done chime on a soft stop; the last wake turn plays it.
+        self.child(background=True)
+        self.complete()
+        db.execute("UPDATE chat_runs SET status='completed',request=? WHERE id='child'",
+                   (json.dumps({"agent": {"background": True, "wake_sent": True}}),))
+        view = chats.get_thread(1, self.pk)
+        wake = store.start_turn(1, self.pk, "Background results", view["revision"], "wake", auto=True)
+        store.finish_run(wake["run"]["id"], {"content": "Merged findings."}, "completed")
+        settled = [e["payload"].get("settled") for e in store.events_after(1, 0) if e["type"] == "run.completed"]
+        self.assertEqual(settled, [False, True])
+
     def test_stopped_thread_can_recap_only_after_children_and_commands_finish(self):
         self.complete("cancelled")
         self.child()

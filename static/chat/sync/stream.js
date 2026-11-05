@@ -2,7 +2,9 @@
 import { S } from '../state.js';
 
 // Terminal run/agent events and their sounds. Cancelled is silent: the Stop
-// that caused it already played one.
+// that caused it already played one. So is a soft stop, a completed turn that
+// leaves subagents or background commands working (settled: false): the wake
+// turn that delivers the last of them chimes. Failures always sound.
 const RUN_SOUND = { "run.completed": "done", "run.failed": "error", "run.interrupted": "error" };
 const OTHER_RUN_SOUND = { "run.completed": "doneSoft", "run.failed": "errorSoft", "run.interrupted": "errorSoft" };
 const AGENT_SOUND = { "agent.completed": "agentDone", "agent.failed": "agentFail", "agent.interrupted": "agentFail" };
@@ -102,7 +104,7 @@ export function createStream(ctx) {
         }
       }
       status.notifyTurnDone(event.thread_id, payload, event.type);
-      cue(OTHER_RUN_SOUND[event.type]);
+      cue(payload.settled !== false && OTHER_RUN_SOUND[event.type]);
     } else if (event.thread_id === S.currentId && event.type === "agent.tick") {
       // Compact progress for subagents this socket is not viewing. Enough
       // for the agent tree and permission asks; the full patch stream of the
@@ -239,7 +241,7 @@ export function createStream(ctx) {
         // A Stop from any tab or device pauses this device's queue for the thread.
         if (isTracked && event.type === "run.cancelled" && event.thread_id === S.currentId) turns.holdQueueForStop(payload.run_id, true);
         if (isTracked) {
-          cue(RUN_SOUND[event.type]);
+          cue(payload.settled !== false && RUN_SOUND[event.type]);
           if (S.compacting) { S.compacting = false; context.syncContextMeter(); }
           S.stoppingRunId = "";
           S.activeRun = null;
