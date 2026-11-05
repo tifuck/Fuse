@@ -13,9 +13,6 @@ const EFFORT_LABELS = {
   max: "Max",
 };
 
-const PICKER_CHECK =
-  '<svg class="chat-picker-check" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8.6l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
 const IMAGE_ICON =
   '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="6.6" r="1.2" fill="currentColor"/><path d="M2.8 12l3.6-3.6 2.4 2.4 1.6-1.6 3 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';
 
@@ -125,8 +122,8 @@ export function createList(ctx) {
         (group) =>
           // The provider mark sits once on the group label; rows carry the
           // name and context window only, so the list stays dense.
-          // Favorites mix providers, so there each row carries its own mark
-          // and provider name.
+          // Favorites mix providers, so there each row names its provider
+          // under the model name.
           `<div class="chat-picker-group${group.fav ? " is-favorites" : ""}" role="group" aria-labelledby="chat-pg-${escapeHtml(group.type)}"><p id="chat-pg-${escapeHtml(group.type)}">${group.fav ? starIcon(true) : sidebar.providerLogo(group.type)}<span>${escapeHtml(group.title)}</span></p>${group.items
             .map(({ model, index }) => {
               const selected = model.id === S.modelId;
@@ -136,12 +133,10 @@ export function createList(ctx) {
                   selected ? "true" : "false"
                 }" class="${selected ? "is-selected" : ""}${index === S.pickerIndex ? " is-active" : ""}">` +
                 (group.fav
-                  ? sidebar.providerLogo(model.type) +
-                    `<span class="chat-picker-fav-name"><b>${escapeHtml(model.name)}</b><small>${escapeHtml(model.title)}</small></span>`
+                  ? `<span class="chat-picker-fav-name"><b>${escapeHtml(model.name)}</b><small>${sidebar.providerLogo(model.type)}${escapeHtml(model.title)}</small></span>`
                   : `<span>${escapeHtml(model.name)}</span>`) +
                 (model.image ? `<i class="chat-picker-image" title="Reads images">${IMAGE_ICON}<span class="visually-hidden">, reads images</span></i>` : "") +
                 (ctx ? `<small class="chat-picker-meta" title="Context window">${ctx}</small>` : "") +
-                `<i class="chat-picker-mark" aria-hidden="true">${selected ? PICKER_CHECK : ""}</i>` +
                 `</button>`;
               const label = (group.fav ? "Unfavorite " : "Favorite ") + model.name;
               const star =

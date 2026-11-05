@@ -124,6 +124,7 @@
   letter-spacing: 0.04em;
 }
 .chat-picker-list {
+  --star-col: 1.9rem;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -134,9 +135,9 @@
 .chat-picker-group > p {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
   margin: 0;
-  padding: 0.55rem 0.5rem 0.25rem;
+  padding: 0.55rem 0.5rem 0.25rem calc((var(--star-col) - 0.8rem) / 2);
+  gap: calc((var(--star-col) - 0.8rem) / 2);
   color: var(--mute);
   font: 500 0.6rem/1 var(--mono);
   letter-spacing: 0.09em;
@@ -150,7 +151,7 @@
   gap: 0.55rem;
   width: 100%;
   min-height: 2rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 0.6rem 0.3rem var(--star-col);
   border-radius: 7px;
   color: color-mix(in srgb, var(--mist) 88%, var(--mute));
   text-align: left;
@@ -178,26 +179,19 @@
 }
 .chat-picker-meta {
   flex-shrink: 0;
+  min-width: 2.6em;
+  text-align: right;
   color: var(--mute);
   font: 0.64rem/1 var(--mono);
   font-variant-numeric: tabular-nums;
 }
-.chat-picker-mark {
-  display: grid;
-  flex: 0 0 0.9rem;
-  place-items: center;
-  color: var(--brass);
-  font-style: normal;
-}
-.chat-picker-check { width: 0.85rem; height: 0.85rem; flex-shrink: 0; color: var(--brass); }
-/* The star overlays the row's right end so the row highlight spans it. */
+/* The star overlays the row's left column (under the group's provider mark)
+   so the row highlight spans it and the context window ends the row. */
 .chat-picker-row { position: relative; }
-.chat-picker-row > [role="option"] { padding-right: 2.1rem; }
-.chat-picker-row > [role="option"] .provider-logo { width: 0.95rem; height: 0.95rem; flex-shrink: 0; opacity: 0.85; }
 .chat-picker-fav-name {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.22rem;
   padding: 0.1rem 0;
 }
 .chat-picker-fav-name > * { overflow: hidden; text-overflow: ellipsis; }
@@ -207,15 +201,22 @@
   font: 0.6rem/1 var(--mono);
   letter-spacing: 0.04em;
 }
+.chat-picker-fav-name .provider-logo {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.3rem;
+  vertical-align: -0.12rem;
+  opacity: 0.75;
+}
 .chat-picker-star {
   --star: var(--brass);
   position: absolute;
   top: 0;
-  right: 0.2rem;
+  left: 0;
   bottom: 0;
   display: grid;
   place-items: center;
-  width: 1.8rem;
+  width: var(--star-col);
   padding: 0;
   border: 0;
   background: none;
@@ -231,7 +232,7 @@ body.is-chat .chat-picker-list .chat-picker-star { min-height: 0; }
 .chat-picker-star.is-on { color: var(--star); }
 .chat-picker-group.is-favorites > p svg { width: 0.8rem; height: 0.8rem; color: var(--brass); }
 @media (hover: none) {
-  .chat-picker-star { width: 2.4rem; right: 0; }
+  .chat-picker-list { --star-col: 2.3rem; }
 }
 @media (hover: hover) {
   .chat-picker-star:not(.is-on) { opacity: 0; }

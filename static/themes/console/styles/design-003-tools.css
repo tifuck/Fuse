@@ -225,11 +225,11 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-search { 
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-list { padding: 0.15rem 0 0.3rem; }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-group > p { padding-inline: 0.8rem; }
+html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-group > p { padding-inline: calc((var(--star-col) - 0.8rem) / 2) 0.8rem; }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-picker-row > [role="option"] {
   min-height: 1.85rem;
-  padding: 0.25rem 2.2rem 0.25rem 0.8rem;
+  padding: 0.25rem 0.8rem 0.25rem var(--star-col);
   border-radius: 0;
   box-shadow: inset 2px 0 0 transparent;
   font: 0.8rem/1.2 var(--mono);

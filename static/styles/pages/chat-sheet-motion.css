@@ -65,10 +65,10 @@
   .chat-picker-menu.is-sheet .chat-picker-list {
     padding: 0.2rem 0.5rem calc(0.8rem + var(--safe-bottom));
   }
-  .chat-picker-menu.is-sheet .chat-picker-group > p { padding: 0.75rem 0.55rem 0.3rem; }
+  .chat-picker-menu.is-sheet .chat-picker-group > p { padding: 0.75rem 0.55rem 0.3rem calc((var(--star-col) - 0.8rem) / 2); }
   .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] {
     min-height: 2.75rem;
-    padding: 0.35rem 0.6rem;
+    padding: 0.35rem 0.6rem 0.35rem var(--star-col);
     border-radius: 9px;
     font-size: 0.95rem;
   }
