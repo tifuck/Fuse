@@ -77,15 +77,23 @@ static int write_in_place(const char *path, const char *content, size_t n) {
         fd = open(path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); /* write-only: no copy */
     }
     if (fd < 0) return -1;
-    if (lseek(fd, 0, SEEK_SET) < 0 || write_all_fd(fd, content, n) != 0 ||
-        ftruncate(fd, (off_t)n) != 0 || fsync(fd) != 0) {
+    if (lseek(fd, 0, SEEK_SET) < 0) {
         int e = errno;
-        if (orig && lseek(fd, 0, SEEK_SET) == 0 && write_all_fd(fd, orig, olen) == 0 && ftruncate(fd, (off_t)olen) == 0)
-            fsync(fd);
         free(orig);
         close(fd);
         errno = e;
         return -1;
+    }
+    if (write_all_fd(fd, content, n) != 0 || ftruncate(fd, (off_t)n) != 0 || fsync(fd) != 0) {
+        int e = errno;
+        int restored = orig && lseek(fd, 0, SEEK_SET) == 0 && write_all_fd(fd, orig, olen) == 0 &&
+                       ftruncate(fd, (off_t)olen) == 0 && fsync(fd) == 0;
+        free(orig);
+        close(fd);
+        errno = e;
+        /* -2: the old bytes are not back (no copy, or the restore failed), so
+         * the file may hold part of each; the caller must say so. */
+        return restored ? -1 : -2;
     }
     free(orig);
     return close(fd);

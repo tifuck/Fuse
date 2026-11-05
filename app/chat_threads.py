@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 import threading
 import time
 from uuid import uuid4
 
 from . import chat_images, db
+from .chat_scratch import _stored_request
 from .chat_tools import AVAILABLE, DEFAULT_TOOLS
 from .chat_schema import (
     CONTEXT_MAX,
@@ -34,6 +36,8 @@ from .chat_schema import (
 )
 from .chat_titles import _clean_title
 from .chat_generation import cache_watch
+
+logger = logging.getLogger(__name__)
 
 # Any active run keeps a thread "running", subagents included: a background
 # child can outlive the root turn that spawned it and the sidebar must keep
@@ -961,7 +965,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
 
         command_jobs.cancel_thread(user_id, pk)
     except Exception:
-        pass
+        logger.exception("Failed to cancel command jobs for deleted thread %s", pk)
     return True
 def delete_schedule_owned_thread(user_id: int, thread_id: int, *, keep_thread_id: int | None = None) -> bool:
     """Delete one completed schedule-owned thread. Never deletes user chats."""
@@ -995,7 +999,7 @@ def delete_schedule_owned_thread(user_id: int, thread_id: int, *, keep_thread_id
 
         command_jobs.cancel_thread(user_id, tid)
     except Exception:
-        pass
+        logger.exception("Failed to cancel command jobs for deleted thread %s", tid)
     return True
 # Run ids and message ids are UUIDs; command job ids are 12 hex digits. A
 # fork rewrites every occurrence (traces, provider transcripts, "task_id: …"
@@ -1372,11 +1376,10 @@ def promote_working_session(user_id: int, thread_id, *, host_id=None, cwd: str =
                WHERE id=? AND user_id=?""",
             (hid, int(proj["id"]), db.now(), pk, user_id),
         )
-        if run:
-            try:
-                req = json.loads(run["request"] or "{}")
-            except Exception:
-                req = {}
+        req = _stored_request(run["request"]) if run else None
+        if run and req is None:
+            logger.warning("Run %s request is unreadable; promoted without rebinding it", run["id"])
+        if req is not None:
             agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
             agent["coding"] = True
             agent["project_session"] = True

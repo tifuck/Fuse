@@ -1150,12 +1150,20 @@ async def _ask_and_wait(gate: Gate, payload: dict, auto_judge=None) -> str:
 
 
 def _finish_ask(ask_id: str, status: str) -> None:
-    try:
-        with db.tx() as conn:
-            conn.execute("UPDATE chat_permission_asks SET status=?, resolved_at=? WHERE id=? AND status='pending'",
-                         (status, db.now(), ask_id))
-    except Exception:
-        pass
+    # A card left pending stays answerable (Allow could still mint a grant)
+    # after its tool has moved on: retry a transient failure, never drop it
+    # silently. It does not raise: the caller's own exit must stand.
+    for delay in (0.2, 1.0, None):
+        try:
+            with db.tx() as conn:
+                conn.execute("UPDATE chat_permission_asks SET status=?, resolved_at=? WHERE id=? AND status='pending'",
+                             (status, db.now(), ask_id))
+            return
+        except Exception:
+            if delay is None:
+                logger.exception("Could not close permission ask %s as %s", ask_id, status)
+                return
+            time.sleep(delay)
 
 
 def _deny_detail(target: str, action: str, why: str = "") -> str:

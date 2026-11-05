@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import html as html_lib
 import re
-from urllib.parse import urljoin
-
 import httpx
 
 from ..client import TIMEOUT_WIKI
-from ..ssrf import public_http_url, wiki_page_url
-from .base import ProviderResponse, SearchHit, read_json
+from ..ssrf import host_of, public_http_url, wiki_page_url
+from .base import ProviderResponse, SearchHit, read_json, safe_get
 
 _UA = "FuseChat/1.0 (dashboard search for signed-in users)"
 _SEARCH_HOSTS = {"en.wikipedia.org"}
 _TAG = re.compile(r"(?is)<[^>]+>")
+
+
+def _search_host_ok(url: str) -> bool:
+    host = host_of(url)
+    return host in _SEARCH_HOSTS or host.endswith(".wikipedia.org")
 
 
 def _strip(text: str) -> str:
@@ -36,8 +39,10 @@ class WikipediaProvider:
         last_timeout = timeout
         url = "https://en.wikipedia.org/w/api.php"
         try:
-            resp = await client.get(
+            resp = await safe_get(
+                client,
                 url,
+                host_ok=_search_host_ok,
                 params={
                     "action": "query",
                     "list": "search",
@@ -54,11 +59,9 @@ class WikipediaProvider:
             return ProviderResponse(hits=[], status=0, error="timeout", last_timeout=last_timeout)
         except httpx.HTTPError:
             return ProviderResponse(hits=[], status=0, error="http", last_timeout=last_timeout)
-        if resp.status_code in (301, 302, 303, 307, 308):
-            loc = resp.headers.get("location") or ""
-            nxt = urljoin(url, loc)
-            if "wikipedia.org" not in (httpx.URL(nxt).host or ""):
-                return ProviderResponse(hits=[], status=resp.status_code, error="redirect", last_timeout=last_timeout)
+        except ValueError:
+            # A redirect off Wikipedia, or a loop.
+            return ProviderResponse(hits=[], status=0, error="redirect", last_timeout=last_timeout)
         if resp.status_code != 200:
             return ProviderResponse(hits=[], status=resp.status_code, error="http", last_timeout=last_timeout)
         try:

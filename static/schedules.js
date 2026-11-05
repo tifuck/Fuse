@@ -270,7 +270,7 @@
     }).join("") || `<tr><td colspan="3" class="sched-muted">No fires yet.</td></tr>`;
   }
 
-  async function refreshDetail(item) {
+  async function refreshDetail(item, first = false) {
     try {
       const data = await api("/schedules/" + encodeURIComponent(item.id));
       const fresh = items.find((s) => s.id === item.id);
@@ -279,7 +279,13 @@
         renderDetail(fresh || item, data.fires || []);
         render();
       }
-    } catch (_) {}
+    } catch (_) {
+      // A background refresh keeps what is shown and retries on the next
+      // poll; a first load must not sit at "Loading…".
+      if (first && openId === item.id && detail) {
+        detailFires.innerHTML = `<tr><td colspan="3" class="sched-muted">Could not load runs. They load again on the next refresh.</td></tr>`;
+      }
+    }
   }
 
   async function toggleDetail(item) {
@@ -292,7 +298,7 @@
     openId = item.id;
     render();
     if (detail) detailFires.innerHTML = `<tr><td colspan="3" class="sched-muted">Loading…</td></tr>`;
-    await refreshDetail(item);
+    await refreshDetail(item, true);
   }
 
   root.querySelector("[data-sched-new]")?.addEventListener("click", () => openModal(null));

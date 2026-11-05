@@ -546,5 +546,26 @@ class KimiCapabilityDenialTest(unittest.TestCase):
         self.assertFalse(kimi_mod._capability_denial({}))
 
 
+class RetrievalFirstFailureTest(unittest.IsolatedAsyncioTestCase):
+    async def test_search_crash_is_an_error_not_no_results(self):
+        # "No results." told the model the web had nothing when the search broke.
+        from app.chat_generation import messages as msgs
+        from app.search.pack import MODEL_SEARCH_FAILED
+
+        class Req:
+            async def is_disconnected(self):
+                return False
+
+        async def boom(*_args, **_kwargs):
+            raise RuntimeError("search bug")
+
+        with patch("app.search.engine.search_bulk", boom):
+            out = [item async for item in msgs._retrieval_first(
+                Req(), 1, [{"role": "user", "content": "latest rust release"}], {})]
+        final = [item for item in out if isinstance(item, dict) and item.get("status") in ("done", "error")]
+        self.assertEqual(final[-1]["status"], "error")
+        self.assertEqual(out[-1], ("packed", MODEL_SEARCH_FAILED))
+
+
 if __name__ == "__main__":
     unittest.main()

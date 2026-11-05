@@ -266,11 +266,6 @@ class LineBatcher:
         self.stamps.append(time.monotonic())
         try:
             self.on_batch(lines, overflow)
-        except TypeError:
-            try:
-                self.on_batch(lines)
-            except Exception:
-                logger.exception("monitor batch delivery failed")
         except Exception:
             logger.exception("monitor batch delivery failed")
 

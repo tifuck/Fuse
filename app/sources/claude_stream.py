@@ -119,12 +119,20 @@ class _Translator:
     def _note_usage(self, raw) -> None:
         if not isinstance(raw, dict):
             return
+
+        def count(value, prior):
+            # A malformed count must not abort an otherwise good stream.
+            try:
+                return int(value or 0)
+            except (TypeError, ValueError, OverflowError):
+                return prior
+
         if raw.get("input_tokens") is not None:
-            self.input_tokens = int(raw.get("input_tokens") or 0)
+            self.input_tokens = count(raw.get("input_tokens"), self.input_tokens)
         if raw.get("output_tokens") is not None:
-            self.output_tokens = int(raw.get("output_tokens") or 0)
-        self.cache_read = int(raw.get("cache_read_input_tokens") or self.cache_read or 0)
-        self.cache_write = int(raw.get("cache_creation_input_tokens") or self.cache_write or 0)
+            self.output_tokens = count(raw.get("output_tokens"), self.output_tokens)
+        self.cache_read = count(raw.get("cache_read_input_tokens") or self.cache_read, self.cache_read)
+        self.cache_write = count(raw.get("cache_creation_input_tokens") or self.cache_write, self.cache_write)
         prompt = self.input_tokens + self.cache_read + self.cache_write
         self.usage = {
             "prompt_tokens": prompt,

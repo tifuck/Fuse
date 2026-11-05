@@ -273,7 +273,7 @@ int main(void) {
         lim.rlim_cur = 16; /* soft limit only: the hard one could not be raised back */
         lim.rlim_max = old.rlim_max;
         assert(setrlimit(RLIMIT_FSIZE, &lim) == 0);
-        assert(write_file_atomic(hard, "a much longer replacement that does not fit") != 0);
+        assert(write_file_atomic(hard, "a much longer replacement that does not fit") == -1); /* restored */
         strcpy(g_token, "fa_a_much_longer_replacement_token");
         assert(save_config(conf) != 0);
         assert(setrlimit(RLIMIT_FSIZE, &old) == 0);
@@ -282,7 +282,8 @@ int main(void) {
          * old bytes stay, the file is not left empty. */
         lim.rlim_cur = 0;
         assert(setrlimit(RLIMIT_FSIZE, &lim) == 0);
-        assert(write_file_atomic(hard, "xyz") != 0);
+        /* The restore cannot be confirmed either: reported as maybe partial. */
+        assert(write_file_atomic(hard, "xyz") == -2);
         assert(setrlimit(RLIMIT_FSIZE, &old) == 0);
         assert(read_file_slice(hard, 1, 10, back, sizeof(back)) == 0 && strcmp(back, "abc") == 0);
         g_token[0] = 0;

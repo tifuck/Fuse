@@ -122,21 +122,31 @@ func writeInPlace(path, content string, max int) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.WriteString(content); err != nil {
+	// Any failure after the first write may leave new bytes in the file: put
+	// the old body back, and say so when that is not possible.
+	fail := func(err error) error {
+		restored := restorable
 		if restorable {
-			_, _ = f.WriteAt(orig, 0)
-			_ = f.Truncate(int64(len(orig)))
+			if _, werr := f.WriteAt(orig, 0); werr != nil {
+				restored = false
+			} else if f.Truncate(int64(len(orig))) != nil || f.Sync() != nil {
+				restored = false
+			}
 		}
 		f.Close()
+		if !restored {
+			return fmt.Errorf("%w; the file may now be partially written, read it before retrying", err)
+		}
 		return err
+	}
+	if _, err := f.WriteString(content); err != nil {
+		return fail(err)
 	}
 	if err := f.Truncate(int64(len(content))); err != nil {
-		f.Close()
-		return err
+		return fail(err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
+		return fail(err)
 	}
 	return f.Close()
 }

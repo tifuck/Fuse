@@ -280,7 +280,10 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
                 if hosts.delete_project(user_id, int(p["host_id"]), int(p["id"]), sessions="delete", cancel_active=False,
                                         archived_before=delete_cutoff):
                     stats["deleted_projects"] += 1
-            except hosts.HostError:
+            except hosts.HostError as exc:
+                # Restored or still busy since the check, or a real failure:
+                # either way say why the project was kept.
+                logger.info("Retention kept project %s for user %s: %s", p["id"], user_id, exc.detail)
                 continue
         for t in threads:
             if not t["archived"] or t["pinned"] or t["schedule_id"] is not None or t["id"] in busy:

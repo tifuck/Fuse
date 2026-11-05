@@ -42,43 +42,40 @@ def queue_child_result(parent_run_id: str, envelope: str, child_id: str | None =
     finishes first still wakes. notify=False is for a result the parent is
     receiving inline as a tool result (a join or foreground spawn): it must
     not cut short the parent's other waits as if something new arrived.
+
+    False means the parent cannot take it (not live, unreadable, superseded).
+    A database error raises: callers must not read it as "parent finished".
     """
     if not parent_run_id or not envelope:
         return False
-    try:
-        with chat_tx.transaction() as conn:
-            row = conn.execute("SELECT id,status,request FROM chat_runs WHERE id=?", (parent_run_id,)).fetchone()
-            if row is None or row["status"] not in chat_tx.ACTIVE:
-                return False
-            req = _stored_request(row["request"])
-            if req is None:
-                return False
-            agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
-            pending = agent.get("pending_child_results")
-            if not isinstance(pending, list):
-                pending = []
-            pending = [
-                item for item in pending
-                if not (isinstance(item, dict) and str(item.get("id") or "") == str(child_id or ""))
-            ]
-            child = conn.execute("SELECT request FROM chat_runs WHERE id=?", (child_id,)).fetchone() if child_id else None
-            child_agent = (json.loads(child["request"]).get("agent") or {}) if child else {}
-            generation = str(child_agent.get("delivery_generation") or "")
-            if generation and f"<task_generation>{generation}</task_generation>" not in envelope:
-                return False  # A result from a superseded execution must not be queued.
-            pending.append({"id": str(child_id or ""), "text": str(envelope), "generation": generation})
-            agent["pending_child_results"] = pending[-PENDING_CHILD_RESULTS:]
-            req["agent"] = agent
-            conn.execute(
-                "UPDATE chat_runs SET request=?,updated_at=? WHERE id=?",
-                (chat_tx.dumps(req), db.now(), parent_run_id),
-            )
-    except Exception:
-        logger.warning(
-            "queue_child_result failed for parent %s child %s",
-            parent_run_id, child_id, exc_info=True,
+    with chat_tx.transaction() as conn:
+        row = conn.execute("SELECT id,status,request FROM chat_runs WHERE id=?", (parent_run_id,)).fetchone()
+        if row is None or row["status"] not in chat_tx.ACTIVE:
+            return False
+        req = _stored_request(row["request"])
+        if req is None:
+            return False
+        agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
+        pending = agent.get("pending_child_results")
+        if not isinstance(pending, list):
+            pending = []
+        pending = [
+            item for item in pending
+            if not (isinstance(item, dict) and str(item.get("id") or "") == str(child_id or ""))
+        ]
+        child = conn.execute("SELECT request FROM chat_runs WHERE id=?", (child_id,)).fetchone() if child_id else None
+        child_req = (_stored_request(child["request"]) or {}) if child else {}
+        child_agent = child_req.get("agent") if isinstance(child_req.get("agent"), dict) else {}
+        generation = str(child_agent.get("delivery_generation") or "")
+        if generation and f"<task_generation>{generation}</task_generation>" not in envelope:
+            return False  # A result from a superseded execution must not be queued.
+        pending.append({"id": str(child_id or ""), "text": str(envelope), "generation": generation})
+        agent["pending_child_results"] = pending[-PENDING_CHILD_RESULTS:]
+        req["agent"] = agent
+        conn.execute(
+            "UPDATE chat_runs SET request=?,updated_at=? WHERE id=?",
+            (chat_tx.dumps(req), db.now(), parent_run_id),
         )
-        return False
     if notify:
         run_inbox.arrived(parent_run_id, str(child_id or ""))
     return True
@@ -153,7 +150,9 @@ def take_child_results(parent_run_id: str) -> list[str]:
     generations = {}
     if ids:
         for child in db.fetchall(f"SELECT id,request FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)})", ids):
-            generations[child["id"]] = str((json.loads(child["request"]).get("agent") or {}).get("delivery_generation") or "")
+            child_req = _stored_request(child["request"]) or {}
+            child_agent = child_req.get("agent") if isinstance(child_req.get("agent"), dict) else {}
+            generations[child["id"]] = str(child_agent.get("delivery_generation") or "")
     out = []
     for item in pending:
         if isinstance(item, dict):
@@ -628,7 +627,9 @@ def close_steer_window(run_id):
         row = conn.execute("SELECT request,status FROM chat_runs WHERE id=?", (run_id,)).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return True
-        request = json.loads(row["request"] or "{}")
+        request = _stored_request(row["request"])
+        if request is None:
+            return True  # take_steers reads nothing from an unreadable row
         agent = request.get("agent") if isinstance(request.get("agent"), dict) else {}
         if agent.get("pending_steers"):
             return False
@@ -643,9 +644,10 @@ def steer_display_deliveries(run_id):
     row = db.fetchone(f"SELECT {chat_checkpoint.request_column()} FROM chat_runs WHERE id=?", (run_id,))
     if row is None:
         return []
-    request = json.loads(chat_checkpoint.request_text(None, run_id, row) or "{}")
-    awaiting = [part["steer_id"] for part in (request.get("agent") or {}).get("display_parts") or []
-                if part.get("awaiting_delivery") and part.get("steer_id")]
+    request = _stored_request(chat_checkpoint.request_text(None, run_id, row)) or {}
+    agent = request.get("agent") if isinstance(request.get("agent"), dict) else {}
+    awaiting = [part["steer_id"] for part in agent.get("display_parts") or []
+                if isinstance(part, dict) and part.get("awaiting_delivery") and part.get("steer_id")]
     if not awaiting:
         return []  # checked every round: skip the transcript read
     transcript = _provider_text(run_id)
@@ -658,9 +660,15 @@ def seal_steer_display(run_id, steer_ids):
         row = conn.execute("SELECT request,provider_messages,status FROM chat_runs WHERE id=?", (run_id,)).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return
-        request = json.loads(row["request"] or "{}")
+        request = _stored_request(row["request"])
+        if request is None:
+            logger.warning("Run %s request is unreadable; steer display not sealed", run_id)
+            return
         ids = set(steer_ids)
-        for part in (request.get("agent") or {}).get("display_parts") or []:
+        agent = request.get("agent") if isinstance(request.get("agent"), dict) else {}
+        for part in agent.get("display_parts") or []:
+            if not isinstance(part, dict):
+                continue
             ident = part.get("steer_id")
             if ident in ids and chat_tx._json_needle(f"(steer:{ident})") in (row["provider_messages"] or ""):
                 part["awaiting_delivery"] = False
@@ -677,8 +685,12 @@ def mark_followup_display(run_id, followup_ids, message):
         row = conn.execute("SELECT request,status,user_id,thread_id FROM chat_runs WHERE id=?", (run_id,)).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return
-        request = json.loads(row["request"] or "{}")
-        agent = request.setdefault("agent", {})
+        request = _stored_request(row["request"])
+        if request is None:
+            logger.warning("Run %s request is unreadable; follow-up display not marked", run_id)
+            return
+        agent = request.get("agent") if isinstance(request.get("agent"), dict) else {}
+        request["agent"] = agent
         marked = {
             ident
             for part in agent.get("followup_marks") or []
@@ -1102,7 +1114,9 @@ def _start_child_run(
             raise SpawnCapError("max depth reached.")
         if not allow_nested_spawn and parent_depth >= 1:
             raise SpawnCapError("nested spawn is off; only the parent may spawn.")
-        req = json.loads(parent["request"])
+        req = _stored_request(parent["request"])
+        if req is None:
+            raise SpawnCapError("parent run state is unreadable.")
         agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
         if not resume_from_id:
             used = int(agent.get("spawns_used") or 0)

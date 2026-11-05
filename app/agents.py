@@ -387,6 +387,16 @@ async def _review_child_cwd(user_id: int, pagent: dict, host_id, cwd: str, gate)
     return resolved, ""
 
 
+async def _queue_receipt(parent_run_id: str, envelope: str, child_id: str, **kwargs) -> None:
+    """Queue a child result the parent also gets another way (inline as this
+    tool's result, or by wake while wake_sent is unset): a failure here must
+    not turn a good tool result into "Tool failed."."""
+    try:
+        await durable_call(chat_store.queue_child_result, parent_run_id, envelope, child_id=child_id, **kwargs)
+    except Exception:
+        logger.warning("queue_child_result failed for parent %s child %s", parent_run_id, child_id, exc_info=True)
+
+
 async def _hand_off(user_id: int, parent_run_id: str, child_id: str, description: str) -> None:
     """Make a child the parent was told is "running" report in the background.
 
@@ -397,9 +407,7 @@ async def _hand_off(user_id: int, parent_run_id: str, child_id: str, description
     await durable_call(chat_store.mark_child_background, child_id)
     row = await asyncio.to_thread(chat_store.get_run, user_id, child_id)
     if row is not None and row.get("status") in chat_store.TERMINAL:
-        await durable_call(
-            chat_store.queue_child_result, parent_run_id, _envelope(row, description=description), child_id=child_id
-        )
+        await _queue_receipt(parent_run_id, _envelope(row, description=description), child_id)
 
 
 def _child_summary(row: dict) -> str:
@@ -746,7 +754,7 @@ async def spawn(
             # Returning a tool result is not durable delivery. Keep a receipt
             # pending until save_turn_progress saves this exact envelope.
             await durable_call(chat_store.mark_child_background, child["id"])
-            await durable_call(chat_store.queue_child_result, parent_run_id, _envelope(done, description=description), child_id=child["id"], notify=False)
+            await _queue_receipt(parent_run_id, _envelope(done, description=description), child["id"], notify=False)
     text = _envelope(done, fallback_id=child["id"], description=description)
     work = {"agent_work_ms": _work_ms(done)} if done and done.get("status") in chat_store.TERMINAL else {}
     return text, _spawn_rec(
@@ -825,7 +833,7 @@ async def get_output(*, user_id: int, arguments: str, thread_id=None, parent_run
             text = _envelope(row)
             if parent_run_id:
                 await durable_call(chat_store.mark_child_background, child_id)
-                await durable_call(chat_store.queue_child_result, str(parent_run_id), text, child_id=child_id, notify=False)
+                await _queue_receipt(str(parent_run_id), text, child_id, notify=False)
             status = "done" if row["status"] == "completed" else "error"
             if row["status"] in ("cancelled", "interrupted"):
                 status = "interrupted"

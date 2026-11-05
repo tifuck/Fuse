@@ -141,8 +141,10 @@ static int http_get_file(const char *base, const char *path, int fd, size_t max_
     }
     int rc = http_read_response(tls_reader, &t, f, max_bytes);
     if (fflush(f) != 0) rc = -1;
-    if (rc == 0) fsync(fd);
-    fclose(f);
+    /* The file is renamed over the live binary next: bytes not yet on disk
+     * would leave a short binary after a crash, so an fsync error fails it. */
+    if (rc == 0 && fsync(fd) != 0) rc = -1;
+    if (fclose(f) != 0) rc = -1;
     tls_close(&t);
     return rc;
 }
@@ -375,7 +377,10 @@ int maybe_update(int mode) {
         unlink(neu);
         UPDATE_FAIL("downloaded binary failed its sha256 check");
     }
-    chmod(neu, 0755);
+    if (chmod(neu, 0755) != 0) {
+        unlink(neu);
+        UPDATE_FAIL("could not make the new binary executable");
+    }
     if (rename(neu, self) != 0) {
         unlink(neu);
         UPDATE_FAIL("could not replace the installed binary");

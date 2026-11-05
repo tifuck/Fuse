@@ -926,11 +926,11 @@ async function pollDevice(endpoint, interval, redirect) {
         method: "POST",
         headers: { "X-CSRF-Token": csrfToken() },
       });
-      const data = await r.json();
       if (r.status === 401) {
         window.location.assign("/login");
         return;
       }
+      const data = await r.json();
       if (data.ok) {
         // Let the sign-in chime finish before the page goes.
         const chimed = window.fuseSound?.play("done", { event: true });
@@ -946,6 +946,7 @@ async function pollDevice(endpoint, interval, redirect) {
       if (status) status.textContent = data.error || "Sign-in failed.";
     } catch (e) {
       if (status) status.textContent = "Could not reach the server.";
+      wait = Math.min(wait * 2, 30000);
       setTimeout(tick, wait);
     }
   }

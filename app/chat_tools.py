@@ -1344,15 +1344,15 @@ async def execute_tool(
         args = json.loads(arguments or "{}")
         if not isinstance(args, dict):
             args = {}
-    except json.JSONDecodeError:
-        if name in ARTIFACT_TOOL_IDS:
-            return "Tool error: arguments were invalid JSON. Call again with a valid JSON object; escape quotes and newlines inside the HTML string.", {
-                "name": name,
-                "status": "error",
-                "kind": "invalid_arguments",
-                "error": "arguments were invalid JSON",
-            }
-        args = {}
+    except (json.JSONDecodeError, RecursionError):
+        # Running the tool with {} instead told the model "no valid query".
+        hint = "; escape quotes and newlines inside the HTML string" if name in ARTIFACT_TOOL_IDS else ""
+        return f"Tool error: arguments were invalid JSON. Call again with a valid JSON object{hint}.", {
+            "name": name,
+            "status": "error",
+            "kind": "invalid_arguments",
+            "error": "arguments were invalid JSON",
+        }
     if name in ARTIFACT_TOOL_IDS:
         if (session or {}).get("artifacts") is False:
             msg = "Artifacts are turned off (Settings › Chat defaults, or by the site admin)."

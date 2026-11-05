@@ -7,6 +7,8 @@
 
 #include "agent.h"
 
+/* 0 on success, -1 on failure with the file unchanged, -2 when an in-place
+ * rewrite failed and the file may now be partially written. errno is set. */
 int write_file_atomic(const char *path, const char *content);
 int write_file_atomic_limit(const char *path, const char *content, long max);
 int load_whole(const char *path, char **buf, size_t *len);

@@ -1654,7 +1654,8 @@ async def make_folder(user_id: int, host_id: int, parent: str, name: str) -> Non
         cmd = (f"New-Item -ItemType Directory -Path {_ps_literal(name)} -ErrorAction Stop | Out-Null"
                if _is_windows_row(row) else f"mkdir -- {shlex.quote(name)}")
         data = await _agent_call(user_id, host_id, "exec", {"cwd": cwd, "cmd": cmd, "timeout_ms": 10000}, 14)
-        if not data.get("ok") or (data.get("exit") or 0) != 0:
+        # agent_hub reports an exit it could not read as None: unknown is not 0.
+        if not data.get("ok") or data.get("exit") != 0:
             raise WorkspaceError(_mkdir_error(_exec_text(data) or data.get("error")))
         return
     from . import ssh_pool

@@ -84,14 +84,21 @@ export function createDictation({ picker }) {
       signal: run.abort.signal,
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((data.error && data.error.message) || `Dictation failed (${r.status}).`);
+    if (!r.ok) {
+      const err = new Error((data.error && data.error.message) || `Dictation failed (${r.status}).`);
+      // The server refused this audio: a retry decodes it no better.
+      err.permanent = r.status >= 400 && r.status < 500 && r.status !== 408 && r.status !== 429;
+      throw err;
+    }
     p.text = String(data.text || "").trim();
     p.sent = samples;
   }
 
   // One request at a time, finished phrases first; GPU decodes take ~0.3 s.
-  // A failed decode is retried with a short backoff; only three in a row show
-  // the error, which clears itself on the next good decode.
+  // A failed decode is retried with a growing backoff; three in a row show
+  // the error, which clears itself on the next good decode. A phrase is given
+  // up (its words lost) only once dictation is stopping or the server refused
+  // its audio: dropping it on a short outage lost what was said.
   async function pump() {
     if (!run || run.busy) return;
     const p = run.phrases.next(run.stopping ? 0 : 500);
@@ -105,12 +112,12 @@ export function createDictation({ picker }) {
     } catch (err) {
       if (current.abort.signal.aborted) return;
       current.failures += 1;
-      if (current.failures >= 3) {
-        picker.holdHint("dictation", err.message || "Dictation failed.", true, null);
+      if (current.failures >= 3) picker.holdHint("dictation", err.message || "Dictation failed.", true, null);
+      if (current.failures >= 3 && (current.stopping || err.permanent)) {
         p.sent = p.samples;
         current.failures = 0;
       } else {
-        await new Promise(done => setTimeout(done, 300 * current.failures));
+        await new Promise(done => setTimeout(done, Math.min(300 * 2 ** (current.failures - 1), 5000)));
       }
     } finally {
       current.busy = false;

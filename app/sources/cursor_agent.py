@@ -624,7 +624,6 @@ class CursorRun:
 
     async def _read(self) -> None:
         buf = b""
-        undecodable = False
         try:
             async for chunk in self._resp.aiter_bytes():
                 buf += chunk
@@ -642,11 +641,12 @@ class CursorRun:
                     try:
                         event = decode_server_message(payload)
                     except (ValueError, struct.error):
-                        # Whatever it carried (text, a tool call) is lost.
-                        if not undecodable:
-                            logger.warning("Cursor sent a frame Fuse cannot decode (%d bytes); skipping it", len(payload))
-                        undecodable = True
-                        continue
+                        # Unknown messages decode as ("other",): this frame is
+                        # corrupt, and whatever it carried (text, a tool call)
+                        # is lost, so the turn cannot end as complete.
+                        logger.warning("Cursor sent a frame Fuse cannot decode (%d bytes)", len(payload))
+                        self.queue.put_nowait(("error", TurnError(502, "Cursor sent a response frame Fuse cannot decode")))
+                        return
                     await self._handle(event)
             self.queue.put_nowait(("closed",))
         except asyncio.CancelledError:

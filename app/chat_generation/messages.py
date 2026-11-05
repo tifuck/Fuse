@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import re
 
 from fastapi import Request
@@ -16,9 +17,11 @@ from fastapi import Request
 from ..chat_prompts import WEB_CONTEXT_DELIM, _text_of
 from ..config import settings
 from ..search.expand import expand_user_question
-from ..search.pack import pack_search
+from ..search.pack import MODEL_SEARCH_FAILED, pack_search
 
 from .stream import _SENTINEL, HEARTBEAT_S
+
+logger = logging.getLogger(__name__)
 
 
 def _drop_tools(payload: dict, messages: list[dict]) -> tuple[dict, list[dict]]:
@@ -177,23 +180,30 @@ async def _retrieval_first(request: Request, user_id: int, messages: list[dict],
 
     async def work():
         try:
-            results = await search_bulk(
-                queries,
-                user_id=user_id,
-                recency_days=recency,
-                cancel=cancel,
-                on_query_done=on_done,
-            )
+            try:
+                results = await search_bulk(
+                    queries,
+                    user_id=user_id,
+                    recency_days=recency,
+                    cancel=cancel,
+                    on_query_done=on_done,
+                )
+            except Exception:
+                logger.exception("Retrieval-first search failed")
+                queue.put_nowait(("done", None))
+                return
             # This model cannot call read_url, so the page excerpts are the
             # only page text it will see: read one more page than tool runs.
             pages = int(settings.web_search_excerpt_pages or 0)
             if pages:
                 from ..search.excerpts import attach_excerpts
 
-                results = await attach_excerpts(results, user_id=user_id, max_pages=pages + 1, deadline=3.0)
+                try:
+                    results = await attach_excerpts(results, user_id=user_id, max_pages=pages + 1, deadline=3.0)
+                except Exception:
+                    # Excerpts only add page text; the hits still stand.
+                    logger.warning("Retrieval-first excerpts failed", exc_info=True)
             queue.put_nowait(("done", results))
-        except Exception:
-            queue.put_nowait(("done", []))
         finally:
             cancel.set()
             queue.put_nowait(_SENTINEL)
@@ -219,8 +229,9 @@ async def _retrieval_first(request: Request, user_id: int, messages: list[dict],
             if item is _SENTINEL:
                 break
             if isinstance(item, tuple) and item and item[0] == "done":
+                crashed = item[1] is None
                 results = item[1] or []
-                packed = pack_search(results) if results else "No results."
+                packed = MODEL_SEARCH_FAILED if crashed else pack_search(results) if results else "No results."
                 hits = []
                 for r in results:
                     for h in r.hits:
@@ -233,7 +244,7 @@ async def _retrieval_first(request: Request, user_id: int, messages: list[dict],
                             }
                         )
                 kinds = {r.kind for r in results} if results else set()
-                failed = bool(results) and kinds <= {"provider_error", "rate_limit"}
+                failed = crashed or (bool(results) and kinds <= {"provider_error", "rate_limit"})
                 yield {
                     "event": "tool",
                     "id": job_id,

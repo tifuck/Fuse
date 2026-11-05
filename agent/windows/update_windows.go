@@ -154,7 +154,17 @@ func runSwapHelper(target, staged, config string, asService bool) int {
 		rc = 1
 	}
 	if asService {
-		if out, err := exec.Command("net", "start", serviceName).CombinedOutput(); err != nil {
+		// One failed start (SCM busy, binary briefly locked) left the service
+		// stopped until reboot: nothing else restarts it after this point.
+		var out []byte
+		var err error
+		for attempt := 0; attempt < 3; attempt++ {
+			if out, err = exec.Command("net", "start", serviceName).CombinedOutput(); err == nil {
+				break
+			}
+			time.Sleep(3 * time.Second)
+		}
+		if err != nil {
 			log.Printf("fuse-agent: swap helper: net start: %v: %s", err, out)
 			rc = 1
 		}

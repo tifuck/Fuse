@@ -28,8 +28,9 @@ static int write_unit(int system_wide, const char *bin, const char *cfg) {
     }
     FILE *f = fopen(path, "w");
     if (!f) return -1;
+    int wrote;
     if (system_wide) {
-        fprintf(f,
+        wrote = fprintf(f,
                 "[Unit]\n"
                 "Description=Fuse connector\n"
                 "After=network-online.target\n"
@@ -50,7 +51,7 @@ static int write_unit(int system_wide, const char *bin, const char *cfg) {
     } else {
         /* User systemd has no network-online.target; After= on it is a no-op.
            Resume reconnect is in-process (logind, default route, ping timeout). */
-        fprintf(f,
+        wrote = fprintf(f,
                 "[Unit]\n"
                 "Description=Fuse connector\n"
                 "# User systemd has no network-online.target. After sleep the process\n"
@@ -70,7 +71,9 @@ static int write_unit(int system_wide, const char *bin, const char *cfg) {
                 "WantedBy=default.target\n",
                 bin, cfg);
     }
-    fclose(f);
+    /* A full disk cuts the unit short; enabling it then fails later and
+     * less clearly than refusing here. fclose flushes, so check it too. */
+    if (fclose(f) != 0 || wrote < 0) return -1;
     return 0;
 }
 
@@ -93,8 +96,8 @@ static int write_sleep_hook(void) {
           "fi\n"
           "exit 0\n",
           f);
-    fclose(f);
-    chmod(path, 0755);
+    int wrote = !ferror(f);
+    if (fclose(f) != 0 || !wrote || chmod(path, 0755) != 0) return -1;
     return 0;
 }
 

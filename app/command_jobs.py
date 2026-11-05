@@ -841,6 +841,26 @@ def _child_run_state(run_id) -> str | None:
     return "active" if row["status"] in ("queued", "running") else "finished"
 
 
+# A lock wait or deadlock on the parent's row is transient: retry before
+# treating the result as one its run cannot take.
+QUEUE_RETRY_DELAYS = (0.5, 2.0)
+
+
+async def _queue_result(rec: dict, envelope: str, child_id: str) -> bool | None:
+    """queue_child_result with retries: its answer, or None when every attempt
+    failed (unknown, never "the run has finished")."""
+    from . import chat_store
+
+    for delay in (*QUEUE_RETRY_DELAYS, None):
+        try:
+            return await asyncio.to_thread(chat_store.queue_child_result, str(rec["run_id"]), envelope, child_id=child_id)
+        except Exception:
+            logger.exception("Queue result failed for job %s", rec["id"])
+        if delay is None:
+            return None
+        await asyncio.sleep(delay)
+
+
 async def _deliver(rec: dict) -> None:
     """Hand a terminal result to the owning run (active) or thread (idle).
 
@@ -859,16 +879,12 @@ async def _deliver(rec: dict) -> None:
     run_id = rec.get("run_id")
     queued = False
     if run_id:
-        from . import chat_store
-
-        envelope = notification(rec)
-        try:
-            queued = await asyncio.to_thread(
-                chat_store.queue_child_result, str(run_id), envelope, child_id=str(rec["id"])
-            )
-        except Exception:
-            logger.exception("Queue command result failed for job %s", rec["id"])
+        queued = await _queue_result(rec, notification(rec), str(rec["id"]))
     if await asyncio.to_thread(_child_run_state, run_id) is not None:
+        if queued is None:
+            # Outcome unknown: stay undelivered (readable by id) instead of
+            # acknowledging a result its live subagent never saw.
+            return
         if not queued:
             # The subagent that started it has finished: nobody is waiting.
             # The result stays readable in the jobs panel and by id.
@@ -898,15 +914,7 @@ async def _deliver_monitor_event(rec: dict, envelope: str, seq: int) -> None:
     run_id = rec.get("run_id")
     queued = False
     if run_id:
-        from . import chat_store
-
-        try:
-            queued = await asyncio.to_thread(
-                chat_store.queue_child_result,
-                str(run_id), envelope, child_id=monitor_mod.event_receipt_id(rec["id"], seq),
-            )
-        except Exception:
-            logger.exception("Queue monitor event failed for job %s", rec["id"])
+        queued = await _queue_result(rec, envelope, monitor_mod.event_receipt_id(rec["id"], seq))
     if queued:
         return
     if await asyncio.to_thread(_child_run_state, run_id) is not None:

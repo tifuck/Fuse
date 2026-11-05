@@ -342,7 +342,7 @@ async def hosts_test(request: Request, host_id: int):
         except hosts.HostError as exc:
             hosts.set_host_status(user["id"], host_id, ok=False, error=exc.detail)
             return _host_fail(exc)
-        if "ok" not in (data.get("out") or "").lower() and not data.get("ok"):
+        if not data.get("ok") or data.get("exit") != 0 or "ok" not in (data.get("out") or "").lower():
             hosts.set_host_status(user["id"], host_id, ok=False, error="connector test failed")
             return _host_fail(hosts.HostError("connector test failed"))
         hosts.set_host_status(user["id"], host_id, ok=True)

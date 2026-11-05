@@ -267,9 +267,13 @@ static void handle_job_impl(struct tls *t, cJSON *msg) {
     if (strcmp(op, "write") == 0) {
         const char *path = json_cstr(msg, "path", "");
         const char *content = json_cstr(msg, "content", "");
-        if (write_file_atomic(path, content) != 0) {
+        int wr = write_file_atomic(path, content);
+        if (wr != 0) {
             char why[256];
-            if (errno == EFBIG)
+            if (wr == -2)
+                snprintf(why, sizeof(why), "write failed: %s; the file may now be partially written, read it before retrying",
+                         strerror(errno));
+            else if (errno == EFBIG)
                 snprintf(why, sizeof(why), "content exceeds %ld bytes; split the write", WRITE_FILE_MAX);
             else if (errno == EINVAL)
                 snprintf(why, sizeof(why), "write target must be a regular file");
@@ -376,7 +380,10 @@ static void handle_job_impl(struct tls *t, cJSON *msg) {
         free(buf);
         if (wr != 0) {
             char why[288];
-            if (errno == EFBIG)
+            if (wr == -2)
+                snprintf(why, sizeof(why), "write failed: %s; the file may now be partially written, read it before retrying",
+                         strerror(errno));
+            else if (errno == EFBIG)
                 snprintf(why, sizeof(why), "replacement too large (maximum %ld bytes)", EDIT_FILE_MAX);
             else
                 snprintf(why, sizeof(why), "write failed: %s", strerror(errno));

@@ -10,6 +10,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from . import db, chat_tx
+from .chat_scratch import _stored_request
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,17 @@ def with_activity(request, row):
 
 
 def run_view(row):
+    """The run as readers see it; None when its stored JSON is unreadable, so
+    one corrupt row reads as missing instead of failing every view of it."""
     if row is None:
         return None
     result = dict(row)
-    result["request"] = with_activity(json.loads(row["request"]), row)
-    result["message"] = json.loads(row["message"])
+    request, message = _stored_request(row["request"]), _stored_request(row["message"])
+    if request is None or message is None:
+        logger.warning("Run %s has an unreadable request or message", result.get("id"))
+        return None
+    result["request"] = with_activity(request, row)
+    result["message"] = message
     result["cancel_requested"] = bool(row["cancel_requested"])
     return result
 
@@ -1165,6 +1172,8 @@ def settle_spawn_traces(conn, user_id, messages):
     from . import chat_run_state
     wanted = []
     for msg in messages if isinstance(messages, list) else []:
+        if not isinstance(msg, dict):
+            continue
         for tool in msg.get("tools") or []:
             if (
                 isinstance(tool, dict)
@@ -1282,8 +1291,8 @@ def _run_replay(conn, user_id, run_id, after, through):
     ).fetchall()
     replay = []
     for row in rows:
-        payload = json.loads(row["payload"])
-        if payload.get("run_id") == run_id:
+        payload = _stored_request(row["payload"])
+        if payload is not None and payload.get("run_id") == run_id:
             replay.append({"id": int(row["id"]), "type": "agent.progress", "payload": payload})
     return replay
 

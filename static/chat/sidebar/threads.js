@@ -545,15 +545,22 @@ export function createThreads(ctx) {
               return;
             }
             if (error.status === 409) {
-              const fresh = await net.api("/chat/threads/" + id).catch(() => null);
-              if (!fresh) {
-                threadGone(id);
-                return;
+              // Only a 404 means it is gone: a failed refetch or retry left
+              // the chat on the server, so it must stay in the list.
+              try {
+                const fresh = await net.api("/chat/threads/" + id);
+                await net.api("/chat/threads/" + id, {
+                  method: "DELETE",
+                  body: JSON.stringify({ expected_revision: fresh.revision, command_id: newSession() }),
+                });
+              } catch (retryError) {
+                if (retryError.status === 404) {
+                  threadGone(id);
+                  return;
+                }
+                S.pendingDeletes.delete(id);
+                throw retryError;
               }
-              await net.api("/chat/threads/" + id, {
-                method: "DELETE",
-                body: JSON.stringify({ expected_revision: fresh.revision, command_id: newSession() }),
-              });
             } else {
               S.pendingDeletes.delete(id);
               throw error;

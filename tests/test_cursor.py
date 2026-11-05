@@ -319,6 +319,26 @@ class CursorRunTest(unittest.IsolatedAsyncioTestCase):
             await run.aclose()
         self.assertEqual(ctx.exception.status, 429)
 
+    async def test_undecodable_frame_fails_the_turn(self):
+        # Skipping it ended the turn "stop" with its text or tool call gone.
+        async def server():
+            yield _update(1, _text(1, "partial"))
+            yield _frame(b"\x0a\xff")  # field 1 claims 255 bytes it does not carry
+            yield _turn_end(input_tokens=5, output_tokens=2)
+            yield _frame(b"{}", 0x02)
+
+        def handler(request):
+            return httpx.Response(200, content=server()) if request.url.path.endswith("/RunSSE") else httpx.Response(200, json={})
+
+        with patch.object(agent.httpx, "AsyncClient", lambda **kw: _RealClient(transport=httpx.MockTransport(handler), **kw)):
+            run = agent.CursorRun(base="https://x", headers={}, timeout=httpx.Timeout(5.0), blobs={}, tools=[])
+            await run.start(b"\x0a\x00")
+            with self.assertRaises(agent.TurnError) as ctx:
+                async for _ in run.round():
+                    pass
+            await run.aclose()
+        self.assertEqual(ctx.exception.status, 502)
+
 
 class FakeRun:
     """Stands in for agent.CursorRun: a tool round, then the turn's end."""

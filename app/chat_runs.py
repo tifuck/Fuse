@@ -1291,7 +1291,12 @@ async def _run(request, user, run):
                             description=str(child_agent.get("description") or ""),
                             generation=str(child_agent.get("delivery_generation") or ""),
                         )
-                        if not await durable_call(chat_store.queue_child_result, str(current["parent_run_id"]), envelope, child_id=ident):
+                        try:
+                            queued = await durable_call(chat_store.queue_child_result, str(current["parent_run_id"]), envelope, child_id=ident)
+                        except Exception:
+                            logger.exception("Queue child report failed for %s; waking the thread instead", ident)
+                            queued = False
+                        if not queued:
                             schedule_wake(user["id"], run["thread_id"])
                     else:
                         schedule_wake(user["id"], run["thread_id"])

@@ -32,6 +32,24 @@ def test_user_stop_delivers_to_owner(child):
         ack.assert_not_called()
 
 
+def test_failed_queue_leaves_a_live_subagents_result_undelivered():
+    # A lock wait is not "the subagent finished": acknowledging it lost the result.
+    rec = {"id": "job", "user_id": 1, "thread_id": 7, "run_id": "child", "status": "completed",
+           "command": "test", "out": "done", "exit_code": 0}
+    with patch.object(command_jobs, "QUEUE_RETRY_DELAYS", (0,)), \
+         patch.object(command_jobs, "_mark_delivered") as ack, \
+         patch.object(command_jobs, "_child_run_state", return_value="active"), \
+         patch.object(chat_store, "queue_child_result", side_effect=RuntimeError("Lock wait timeout")) as queue:
+        asyncio.run(command_jobs._deliver(rec))
+    assert queue.call_count == 2
+    ack.assert_not_called()
+    with patch.object(command_jobs, "_mark_delivered") as ack, \
+         patch.object(command_jobs, "_child_run_state", return_value="finished"), \
+         patch.object(chat_store, "queue_child_result", return_value=False):
+        asyncio.run(command_jobs._deliver(rec))
+    ack.assert_called_once_with(["job"])
+
+
 def test_agent_kill_does_not_notify_again():
     with patch.object(chat_store, "queue_child_result") as queue:
         asyncio.run(command_jobs._deliver({"status": "cancelled", "run_id": "owner"}))

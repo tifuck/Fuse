@@ -628,7 +628,13 @@ async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | 
             if not isinstance(chunk, dict):
                 raise ValueError("upstream sent an invalid stream object")
             if chunk.get("error"):
-                raise ValueError("upstream reported a stream error")
+                # Pass Ollama's own words on: a generic error reads as an
+                # interruption and is retried even when it cannot succeed.
+                err = chunk["error"]
+                message = str((err.get("message") if isinstance(err, dict) else err) or "upstream reported a stream error")
+                yield f"data: {json.dumps({'id': request_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model, 'choices': [], 'error': {'message': message[:1000], 'type': 'upstream_error'}})}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+                return
             message = chunk.get("message", {})
             delta = {"content": message.get("content", "")}
             if isinstance(message.get("thinking"), str) and message["thinking"]:

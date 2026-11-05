@@ -1229,7 +1229,9 @@ def _evict_pool(user_id: int, host_id: int) -> None:
 
         ssh_pool.evict(user_id, host_id)
     except Exception:
-        pass
+        # The edit is committed; a session left pooled keeps the old
+        # credentials until it drops, so this must not go unnoticed.
+        logger.exception("Failed to evict pooled SSH session for host %s", host_id)
 
 
 def mint_pairing(user_id: int, alias_hint: str = "") -> dict:
