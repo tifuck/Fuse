@@ -4,6 +4,7 @@ import binascii
 import json
 import logging
 import math
+import re
 
 import anyio
 from fastapi import APIRouter, HTTPException, Request
@@ -43,6 +44,9 @@ from .sources.pool_session import related_session_id, session_id_from
 
 router = APIRouter()
 _LINE_CAP = 1_048_576
+# An inline error frame (scrubbed when whole) that outgrows _LINE_CAP is
+# dropped rather than forwarded raw.
+_ERROR_FRAME_HEAD = re.compile(rb'\s*data:\s*\{\s*"error"')
 _CLOSE_SECONDS = 5
 _MAX_MESSAGES = 1_000
 _MAX_MESSAGE_CHARS = 1_500_000
@@ -329,6 +333,7 @@ async def _tap(
     buf = b""
     saw_done = False
     saw_error = False
+    skip_line = False
     request_status = "success"
 
     def inspect(line: bytes) -> bytes:
@@ -370,14 +375,24 @@ async def _tap(
             out = b""
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
+                if skip_line:
+                    skip_line = False
+                    continue
                 out += inspect(line) + b"\n"
             if len(buf) > _LINE_CAP:
-                out, buf = out + buf, b""
+                if skip_line or _ERROR_FRAME_HEAD.match(buf):
+                    if not skip_line:
+                        request_status, saw_error = "failed", True
+                        error = {"error": {"message": "upstream error frame too large", "type": "api_error", "code": 502}}
+                        out += f"data: {json.dumps(error, separators=(',', ':'))}\n".encode()
+                    skip_line, buf = True, b""
+                else:
+                    out, buf = out + buf, b""
             if out:
                 yield out
-        if buf:
+        if buf and not skip_line:
             yield inspect(buf)
-            buf = b""
+        buf = b""
         if not saw_done:
             # Upstream closed cleanly but early: without a terminal frame the
             # client would read a cut-off answer as a normal end.

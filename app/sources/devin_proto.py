@@ -8,6 +8,7 @@ from __future__ import annotations
 import gzip
 import io
 import struct
+import zlib
 from typing import Any
 
 
@@ -163,14 +164,20 @@ class ProtoDecoder:
 def gunzip(data: bytes, *, cap: int = MAX_GUNZIP) -> bytes:
     """gzip.decompress with a hard output cap; a larger payload is a protocol error."""
     out = bytearray()
-    with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
-        while len(out) <= cap:
-            chunk = gz.read(min(1 << 20, cap + 1 - len(out)))
-            if not chunk:
-                break
-            out.extend(chunk)
-            if len(out) > cap:
-                raise ValueError("gzip payload exceeds decompression cap")
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
+            while len(out) <= cap:
+                chunk = gz.read(min(1 << 20, cap + 1 - len(out)))
+                if not chunk:
+                    break
+                out.extend(chunk)
+                if len(out) > cap:
+                    raise ValueError("gzip payload exceeds decompression cap")
+    except (OSError, EOFError, zlib.error) as exc:
+        # Truncated (EOFError), bad header (BadGzipFile) or corrupt deflate
+        # (zlib.error): one protocol error type, so every caller's
+        # ValueError handling covers it.
+        raise ValueError(f"corrupt gzip payload ({type(exc).__name__})") from exc
     return bytes(out)
 
 

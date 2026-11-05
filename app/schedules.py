@@ -1137,7 +1137,9 @@ def recover() -> None:
                          fire_d.get("error") or "", fire_d.get("thread_id"), fire_d.get("run_id"), consume=True)
 
 
-async def tick() -> float:
+def _claim_due():
+    """Recover, reconcile and claim due rows (blocking DB work: run it in a
+    thread). Returns (claimed, backlog, cooling, now)."""
     global _last_reconcile
     recover()
     # reconcile() full-scans schedule_fires; on a long-lived instance that is a
@@ -1224,18 +1226,29 @@ async def tick() -> float:
                     )
                 conn.execute("UPDATE chat_schedules SET firing_at=? WHERE id=?", (iso_utc(now), item["id"]))
                 claimed.append((item, {"slot_key": slot, "fire_id": fire_id, "status": fire_status, "run_id": None}))
+    return claimed, backlog, cooling, now
+
+
+async def tick() -> float:
+    import asyncio
+
+    # Off the event loop: a pool checkout can block for up to 30s.
+    claimed, backlog, cooling, now = await asyncio.to_thread(_claim_due)
     for item, fire in claimed:
         _inflight_enter(item["id"])
         try:
             await _fire(item, fire, consume_slot=True)
         finally:
             _inflight_exit(item["id"])
-            db.execute("UPDATE chat_schedules SET firing_at=NULL WHERE id=? AND firing_at IS NOT NULL", (item["id"],))
+            await asyncio.to_thread(
+                db.execute, "UPDATE chat_schedules SET firing_at=NULL WHERE id=? AND firing_at IS NOT NULL", (item["id"],)
+            )
     if backlog:
         return 0.5
     # Rows due at the claim time were all handled or are cooling down; only
     # later ones (including any that came due while firing) set the wake-up.
-    row = db.fetchone(
+    row = await asyncio.to_thread(
+        db.fetchone,
         """SELECT next_fire_at FROM chat_schedules
            WHERE enabled=1 AND paused=0 AND next_fire_at IS NOT NULL AND next_fire_at > ?
            ORDER BY next_fire_at LIMIT 1""",

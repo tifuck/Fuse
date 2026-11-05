@@ -1184,7 +1184,8 @@ def _acknowledge(rec: dict) -> None:
 
             chat_store.drop_pending_child_result(str(run_id), str(rec["id"]))
         except Exception:
-            pass
+            # The queued receipt stays and may reach the model a second time.
+            logger.exception("Could not drop queued receipt of job %s from run %s", rec["id"], run_id)
     _mark_delivered([str(rec["id"])])
 
 

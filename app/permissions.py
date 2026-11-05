@@ -956,7 +956,7 @@ def cancel_run_asks(run_id: str) -> None:
                 (db.now(), str(run_id)),
             )
     except Exception:
-        pass
+        logger.exception("Could not cancel pending permission asks of run %s", run_id)
 
 
 def recover() -> None:

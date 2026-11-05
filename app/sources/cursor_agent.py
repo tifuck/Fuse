@@ -657,6 +657,11 @@ class CursorRun:
             self.queue.put_nowait(("error", TurnError(504, "Cursor stopped sending")))
         except (httpx.HTTPError, ValueError) as exc:
             self.queue.put_nowait(("error", TurnError(502, f"Cursor transport failure ({type(exc).__name__})")))
+        except Exception as exc:
+            # round() waits on this queue with no timeout: a reader that dies
+            # without a terminal event hangs the turn and its account slot.
+            logger.exception("Cursor stream reader failed")
+            self.queue.put_nowait(("error", TurnError(502, f"Fuse could not process the Cursor reply ({type(exc).__name__})")))
         finally:
             self.closed = True
 

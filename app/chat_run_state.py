@@ -159,7 +159,8 @@ def touch_run(run_id: str) -> None:
                 (db.now(), run_id),
             )
     except Exception:
-        pass
+        # Not fatal, but repeated misses let the stall reaper kill a live run.
+        logger.warning("Liveness touch failed for run %s", run_id, exc_info=True)
 
 
 # Root-run admission: the active-run counts are plain reads, so two turns or

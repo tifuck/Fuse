@@ -339,6 +339,34 @@ class CursorRunTest(unittest.IsolatedAsyncioTestCase):
             await run.aclose()
         self.assertEqual(ctx.exception.status, 502)
 
+    async def test_reader_failure_fails_the_turn_instead_of_hanging(self):
+        # round() waits on the queue with no timeout: a reader that died
+        # without queueing an event (truncated gzip frame, a handler bug)
+        # hung the turn and held the account.
+        import gzip
+
+        truncated = gzip.compress(b"x" * 500, mtime=0)[:20]
+
+        async def boom(_event):
+            raise RuntimeError("handler bug")
+
+        for frame, handle in ((_frame(truncated, 0x01), None), (_update(1, _text(1, "hi")), boom)):
+            async def server(frame=frame):
+                yield frame
+
+            def handler(request):
+                return httpx.Response(200, content=server()) if request.url.path.endswith("/RunSSE") else httpx.Response(200, json={})
+
+            with patch.object(agent.httpx, "AsyncClient", lambda **kw: _RealClient(transport=httpx.MockTransport(handler), **kw)):
+                run = agent.CursorRun(base="https://x", headers={}, timeout=httpx.Timeout(5.0), blobs={}, tools=[])
+                if handle:
+                    run._handle = handle
+                await run.start(b"\x0a\x00")
+                with self.assertRaises(agent.TurnError) as ctx:
+                    await asyncio.wait_for(run.round().__anext__(), 5)
+                await run.aclose()
+            self.assertEqual(ctx.exception.status, 502)
+
 
 class FakeRun:
     """Stands in for agent.CursorRun: a tool round, then the turn's end."""

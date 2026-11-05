@@ -89,6 +89,14 @@ class GunzipCapTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             proto.maybe_gunzip(bomb)
 
+    def test_corrupt_payloads_are_value_errors(self):
+        # Callers only handle ValueError; EOFError, BadGzipFile and zlib.error
+        # used to escape them (and killed the Cursor reader task).
+        good = gzip.compress(b"hello world" * 100, mtime=0)
+        for data in (good[: len(good) // 2], b"\x1f\x8b\x09" + good[3:], good[:10] + b"\xff" * 8 + good[18:]):
+            with self.assertRaises(ValueError):
+                proto.gunzip(data)
+
 
 class DevinRequestCapsTest(unittest.TestCase):
     def test_zero_caps_are_omitted_from_the_wire(self):

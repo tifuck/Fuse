@@ -298,10 +298,7 @@ async def _touch_run_while(run_id, awaitable):
 
         while True:
             await asyncio.sleep(15)
-            try:
-                store.touch_run(str(run_id))
-            except Exception:
-                pass
+            await asyncio.to_thread(store.touch_run, str(run_id))
 
     task = asyncio.create_task(_beats())
     try:

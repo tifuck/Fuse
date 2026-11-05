@@ -156,6 +156,25 @@ def test_tap_scrubs_inline_stream_errors_and_keeps_usage_past_empty_frames():
     assert rec.call_args.kwargs["request_status"] == "failed"
 
 
+def test_tap_drops_an_oversized_error_frame_instead_of_forwarding_it_raw():
+    secret = b"sk-abcdef0123456789"
+    big = b'data: {"error": {"message": "' + secret + b" " + b"x" * (api._LINE_CAP + 10) + b'"}}\n\n'
+    # The first chunk outgrows the cap before the line ends.
+    chunks = [big[: api._LINE_CAP + 5], big[api._LINE_CAP + 5:], _sse({"choices": [{"delta": {"content": "after"}}]}),
+              b"data: [DONE]\n\n"]
+
+    async def run():
+        with mock.patch("app.api.db.record_usage") as rec:
+            out = b"".join([c async for c in api._tap(_Stream(chunks), 1, 1, None, "m")])
+            return rec, out
+
+    rec, out = asyncio.run(run())
+    assert secret not in out and b"xxxx" not in out
+    assert b"upstream error frame too large" in out and b"after" in out
+    assert out.endswith(b"data: [DONE]\n\n")
+    assert rec.call_args.kwargs["request_status"] == "failed"
+
+
 def test_tap_records_explicit_unknown_without_usage_frames():
     async def run():
         with mock.patch("app.api.db.record_usage") as rec:

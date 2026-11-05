@@ -265,7 +265,9 @@ def rewrap(user_id: int, old_password: str, new_password: str) -> None:
     with db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT password_hash, vault_salt, wrapped_dek, vault_kdf FROM users WHERE id=?",
+            # Row-locked like ensure_user_vault: a concurrent first unlock must
+            # not create a DEK that this rewrap then overwrites.
+            "SELECT password_hash, vault_salt, wrapped_dek, vault_kdf FROM users WHERE id=?" + db.for_update(conn),
             (user_id,),
         ).fetchone()
         if row is None or not verify_password(old_password, row["password_hash"]):

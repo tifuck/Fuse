@@ -1535,4 +1535,4 @@ def _publish(user_id: int, msg: dict) -> None:
 
         host_events.publish(user_id, msg)
     except Exception:
-        pass
+        logger.warning("Host event publish failed for user %s", user_id, exc_info=True)

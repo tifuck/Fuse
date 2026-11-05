@@ -112,7 +112,7 @@ def _clamp_interval(data: dict) -> None:
     before the value reaches a client `retry_after` or the poll page."""
     try:
         data["interval"] = max(3, min(int(data.get("interval") or 5), 30))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         data["interval"] = 5
 
 

@@ -40,7 +40,7 @@ def abort_active(run_id, status="cancelled", notice=None):
 
             workspace.cancel_run_jobs(run_id)
         except Exception:
-            pass
+            logger.exception("Failed to cancel workspace jobs for %s", run_id)
         chat_checkpoint._request_cache.pop(run_id, None)
         _finalize_abandoned(row, status, notice)
         return True
