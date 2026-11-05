@@ -193,9 +193,22 @@
 /* The star overlays the row's right end so the row highlight spans it. */
 .chat-picker-row { position: relative; }
 .chat-picker-row > [role="option"] { padding-right: 2.1rem; }
-.chat-picker-row > [role="option"] .provider-logo { width: 0.8rem; height: 0.8rem; flex-shrink: 0; opacity: 0.75; }
+.chat-picker-row > [role="option"] .provider-logo { width: 0.95rem; height: 0.95rem; flex-shrink: 0; opacity: 0.85; }
+.chat-picker-fav-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.1rem 0;
+}
+.chat-picker-fav-name > * { overflow: hidden; text-overflow: ellipsis; }
+.chat-picker-fav-name b { font-weight: inherit; }
+.chat-picker-fav-name small {
+  color: var(--mute);
+  font: 0.6rem/1 var(--mono);
+  letter-spacing: 0.04em;
+}
 .chat-picker-star {
-  --star: #FACC15;
+  --star: var(--brass);
   position: absolute;
   top: 0;
   right: 0.2rem;
@@ -206,16 +219,17 @@
   padding: 0;
   border: 0;
   background: none;
-  color: color-mix(in srgb, var(--mute) 70%, transparent);
+  color: color-mix(in srgb, var(--mute) 45%, transparent);
   cursor: pointer;
-  transition: color 120ms ease;
+  transition: color 120ms ease, opacity 120ms ease;
 }
+.chat-picker-star svg { width: 0.75rem; height: 0.75rem; }
 /* Row height, not the phone's 44px list-button minimum: a taller star
    overlaps the next row's. */
 body.is-chat .chat-picker-list .chat-picker-star { min-height: 0; }
 .chat-picker-star:hover { color: var(--star); }
 .chat-picker-star.is-on { color: var(--star); }
-.chat-picker-group.is-favorites > p svg { width: 0.8rem; height: 0.8rem; color: #FACC15; }
+.chat-picker-group.is-favorites > p svg { width: 0.8rem; height: 0.8rem; color: var(--brass); }
 @media (hover: none) {
   .chat-picker-star { width: 2.4rem; right: 0; }
 }

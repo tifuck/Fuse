@@ -125,7 +125,8 @@ export function createList(ctx) {
         (group) =>
           // The provider mark sits once on the group label; rows carry the
           // name and context window only, so the list stays dense.
-          // Favorites mix providers, so there each row carries its own mark.
+          // Favorites mix providers, so there each row carries its own mark
+          // and provider name.
           `<div class="chat-picker-group${group.fav ? " is-favorites" : ""}" role="group" aria-labelledby="chat-pg-${escapeHtml(group.type)}"><p id="chat-pg-${escapeHtml(group.type)}">${group.fav ? starIcon(true) : sidebar.providerLogo(group.type)}<span>${escapeHtml(group.title)}</span></p>${group.items
             .map(({ model, index }) => {
               const selected = model.id === S.modelId;
@@ -134,8 +135,10 @@ export function createList(ctx) {
                 `<button type="button" role="option" id="chat-pm-${index}" tabindex="-1" data-id="${escapeHtml(model.id)}" aria-selected="${
                   selected ? "true" : "false"
                 }" class="${selected ? "is-selected" : ""}${index === S.pickerIndex ? " is-active" : ""}">` +
-                (group.fav ? sidebar.providerLogo(model.type) : "") +
-                `<span>${escapeHtml(model.name)}</span>` +
+                (group.fav
+                  ? sidebar.providerLogo(model.type) +
+                    `<span class="chat-picker-fav-name"><b>${escapeHtml(model.name)}</b><small>${escapeHtml(model.title)}</small></span>`
+                  : `<span>${escapeHtml(model.name)}</span>`) +
                 (model.image ? `<i class="chat-picker-image" title="Reads images">${IMAGE_ICON}<span class="visually-hidden">, reads images</span></i>` : "") +
                 (ctx ? `<small class="chat-picker-meta" title="Context window">${ctx}</small>` : "") +
                 `<i class="chat-picker-mark" aria-hidden="true">${selected ? PICKER_CHECK : ""}</i>` +
