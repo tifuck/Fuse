@@ -45,7 +45,7 @@
       filter.frequency.value = o.hp;
     } else if (o.bp) {
       filter.type = "bandpass";
-      filter.Q.value = 1.2;
+      filter.Q.value = o.q || 1.2;
       filter.frequency.setValueAtTime(o.bp[0], t);
       filter.frequency.exponentialRampToValueAtTime(o.bp[1], t + dur);
     } else {
@@ -56,7 +56,7 @@
     src.connect(filter);
     filter.connect(gain);
     gain.connect(master);
-    envelope(gain, t, dur, o.g || 0.05);
+    envelope(gain, t, dur, o.g || 0.05, o.a);
     src.start(t);
     src.stop(t + dur + 0.02);
   }
@@ -67,51 +67,55 @@
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   }
 
-  // A soft bell: the note plus a faint octave and twelfth, so chimes are not bare sines.
-  function bell(t, freq, dur, g) {
-    tone(t, freq, dur, { g, a: 0.006 });
-    tone(t, freq * 2, dur * 0.7, { g: g * 0.22, a: 0.004 });
-    tone(t, freq * 3, dur * 0.4, { g: g * 0.08, a: 0.003 });
+  // Soft mallet: the note, a fast-fading 4th partial (marimba-like) and a 4 ms strike.
+  function pluck(t, freq, dur, g) {
+    tone(t, freq, dur, { g, a: 0.002 });
+    tone(t, freq * 4, dur * 0.25, { g: g * 0.12, a: 0.001 });
+    noise(t, 0.004, { bp: [freq * 3, freq * 3], g: g * 0.3, a: 0.001 });
   }
 
-  // Two sines a few cents apart: the slow beat reads as "wrong" without a buzz.
-  function sour(t, freq, dur, g, o = {}) {
-    tone(t, freq, dur, { ...o, g, a: 0.006 });
-    tone(t, freq, dur, { ...o, g: g * 0.5, a: 0.006, det: 14 });
+  // Muted tap: a quick flick down onto the note through a low-pass, plus a strike.
+  function tap(t, freq, g, dur = 0.05) {
+    tone(t, freq * 1.5, dur, { type: "triangle", to: freq, lp: freq * 4, g, a: 0.001 });
+    noise(t, 0.006, { bp: [freq * 4, freq * 2], g: g * 0.3, a: 0.001 });
   }
 
-  function knock(t) {
-    tone(t, 740, 0.04, { type: "triangle", g: 0.1, lp: 3000, a: 0.002 });
-    tone(t, 185, 0.05, { g: 0.07, a: 0.002 });
+  // Muted and a little detuned: the wobble reads as "off" without a buzz.
+  function dull(t, freq, dur, g) {
+    tone(t, freq, dur, { type: "triangle", lp: freq * 6, g, a: 0.003 });
+    tone(t, freq, dur, { type: "triangle", lp: freq * 6, g: g * 0.5, a: 0.003, det: 30 });
   }
 
-  function thock(t, from) {
-    tone(t, from, 0.1, { to: from / 2, g: 0.2, a: 0.003 });
-    noise(t, 0.02, { lp: 500, g: 0.04 });
+  // A knuckle on wood: fast pitch drop, a hollow body and a short strike.
+  function knock(t, f = 1) {
+    tone(t, 1250 * f, 0.03, { to: 700 * f, g: 0.07, a: 0.001 });
+    tone(t, 330 * f, 0.05, { type: "triangle", lp: 1400 * f, g: 0.06, a: 0.001 });
+    noise(t, 0.008, { bp: [2400 * f, 1200 * f], g: 0.04, a: 0.001 });
   }
 
   // name: [tier, priority, vibration, synth]. "key" plays in Key moments and
   // All; "all" only in All. A higher priority swallows a lower one within 300 ms.
-  // Every pitch is from E major pentatonic, so the cues sound like one family.
+  // Every pitch is from E major pentatonic, so the cues sound like one family;
+  // failures step a half-step off it. Nothing leans on lows a phone speaker drops.
   const SOUNDS = {
-    send: ["key", 1, 0, (t) => { tone(t, 659, 0.075, { to: 1319, g: 0.08, a: 0.005 }); bell(t + 0.055, 1319, 0.09, 0.035); }],
-    queue: ["key", 1, 0, (t) => { bell(t, 988, 0.07, 0.05); bell(t + 0.06, 740, 0.1, 0.045); }],
-    stop: ["key", 2, 12, (t) => thock(t, 196)],
-    stopAll: ["key", 2, [12, 70, 12], (t) => { thock(t, 196); thock(t + 0.09, 165); }],
-    done: ["key", 3, 0, (t) => { bell(t, 659, 0.2, 0.1); bell(t + 0.085, 988, 0.38, 0.09); }],
-    doneSoft: ["key", 3, 0, (t) => { bell(t, 659, 0.14, 0.045); bell(t + 0.08, 988, 0.24, 0.04); }],
-    error: ["key", 5, 20, (t) => { sour(t, 494, 0.12, 0.08); sour(t + 0.11, 392, 0.26, 0.08); }],
-    errorSoft: ["key", 5, 0, (t) => sour(t, 392, 0.16, 0.05)],
-    agentDone: ["key", 2, 0, (t) => { bell(t, 1319, 0.07, 0.045); bell(t + 0.045, 1661, 0.12, 0.045); }],
-    agentFail: ["key", 2, 0, (t) => sour(t, 415, 0.16, 0.06, { to: 330 })],
-    permission: ["key", 4, [10, 90, 10], (t) => { knock(t); knock(t + 0.12); }],
-    permWarn: ["key", 4, 10, (t) => knock(t)],
-    copy: ["key", 1, 0, (t) => { noise(t, 0.01, { hp: 5000, g: 0.035 }); bell(t, 1976, 0.03, 0.025); }],
-    micOn: ["key", 1, 0, (t) => tone(t, 659, 0.08, { to: 988, g: 0.08, a: 0.005 })],
-    micOff: ["key", 1, 0, (t) => tone(t, 988, 0.08, { to: 659, g: 0.08, a: 0.005 })],
-    delete: ["key", 1, 0, (t) => { noise(t, 0.11, { bp: [1400, 300], g: 0.06 }); tone(t, 165, 0.1, { to: 110, g: 0.09, a: 0.003 }); }],
-    artifact: ["all", 1, 0, (t) => [1319, 1661, 1976].forEach((f, i) => bell(t + i * 0.04, f, 0.08, 0.035))],
-    saved: ["all", 1, 0, (t) => bell(t, 988, 0.09, 0.055)],
+    send: ["key", 1, 0, (t) => { tone(t, 494, 0.04, { to: 1319, g: 0.08, a: 0.001 }); noise(t, 0.005, { hp: 3000, g: 0.02, a: 0.001 }); }],
+    queue: ["key", 1, 0, (t) => { tap(t, 1109, 0.05); tap(t + 0.06, 831, 0.04); }],
+    stop: ["key", 2, 12, (t) => { tap(t, 415, 0.14, 0.07); noise(t, 0.02, { lp: 900, g: 0.03 }); }],
+    stopAll: ["key", 2, [12, 70, 12], (t) => { tap(t, 415, 0.12, 0.07); tap(t + 0.08, 330, 0.1, 0.08); }],
+    done: ["key", 3, 0, (t) => { pluck(t, 494, 0.2, 0.09); pluck(t + 0.075, 659, 0.34, 0.085); }],
+    doneSoft: ["key", 3, 0, (t) => { pluck(t, 494, 0.14, 0.045); pluck(t + 0.065, 659, 0.22, 0.04); }],
+    error: ["key", 5, 20, (t) => { dull(t, 349, 0.1, 0.12); dull(t + 0.1, 330, 0.22, 0.11); }],
+    errorSoft: ["key", 5, 0, (t) => dull(t, 349, 0.16, 0.05)],
+    agentDone: ["key", 2, 0, (t) => pluck(t, 1661, 0.1, 0.085)],
+    agentFail: ["key", 2, 0, (t) => dull(t, 415, 0.14, 0.055)],
+    permission: ["key", 4, [10, 90, 10], (t) => { knock(t); knock(t + 0.11); }],
+    permWarn: ["key", 4, 10, (t) => knock(t, 1.25)],
+    copy: ["key", 1, 0, (t) => { noise(t, 0.006, { hp: 4500, g: 0.04, a: 0.001 }); pluck(t, 2637, 0.03, 0.012); }],
+    micOn: ["key", 1, 0, (t) => { pluck(t, 1109, 0.04, 0.04); pluck(t + 0.04, 1319, 0.06, 0.04); }],
+    micOff: ["key", 1, 0, (t) => { pluck(t, 1319, 0.04, 0.04); pluck(t + 0.04, 1109, 0.06, 0.04); }],
+    delete: ["key", 1, 0, (t) => { noise(t, 0.1, { bp: [2600, 380], q: 1, g: 0.06, a: 0.01 }); tap(t + 0.055, 330, 0.05, 0.05); }],
+    artifact: ["all", 1, 0, (t) => [1319, 1661, 1976].forEach((f, i) => pluck(t + i * 0.045, f, i === 2 ? 0.2 : 0.07, 0.03))],
+    saved: ["all", 1, 0, (t) => pluck(t, 988, 0.08, 0.06)],
   };
   // Bursts merge: five subagents finishing together are one sound.
   const GAP_MS = { agentDone: 400, agentFail: 400 };
