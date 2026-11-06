@@ -369,7 +369,7 @@ function scenarios() {
     const cmd = sh('npm test', { output: '\x1b[31mFAIL\x1b[0m suite\nok\n', extra: { exit_code: 1, status: 'error', error: 'Command exited with code 1' } });
     return { rows: [user('Go.'), turn([say('Testing.\n\n'), T(cmd)], [cmd])], live: true, phase: 'model',
       truth: { call: { [cmd.id]: 'error' }, exec: { [cmd.command_id]: 'failed' } },
-      has: ['FAIL suite', 'Exit code 1'], lacks: ['[31m', '[0m'] };
+      has: ['FAIL suiteokError: Exit code 1'], lacks: ['[31m', '[0m'] };
   });
   add('a tool error that is not an Error line still reads as one', () => {
     const read = tool('read_file', { path: '/srv/qa/missing.py', status: 'error', error: 'No such file or directory' });

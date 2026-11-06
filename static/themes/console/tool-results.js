@@ -211,7 +211,7 @@ function consoleFold(trace, presentation, verbose) {
       const lines = String(raw).replace(/\s+$/, "").replace(/^\s*\n/, "").split("\n");
       const empty = !String(raw).trim();
       const exit = deps.shellExitCode(trace);
-      // A non-zero exit prints its code above the output, as Claude Code does.
+      // A non-zero exit or failure prints under the output, where it ended.
       const nonzero = exit !== null && exit !== 0;
       // A Wait that returned before its command ended says so above the
       // output. Its saved state is the command's at that moment: "Still
@@ -230,12 +230,13 @@ function consoleFold(trace, presentation, verbose) {
       if (empty) return { status: head || (note ? "" : "(No output)"), preview: note, full: "", keep: nonzero || Boolean(note) };
       const tail = consoleTailHtml(lines);
       const clipped = tail.clipped;
+      const foot = nonzero || failed ? `<span class="chat-console-result-text">${consoleStatusHtml(head)}</span>` : "";
       return {
-        status: head,
+        status: foot ? "" : head,
         keep: nonzero || Boolean(note),
-        preview: tail.html + note,
-        // The opened body hides the preview, so it repeats the notice.
-        full: clipped ? consoleDetailHtml(trace, false, running) + consoleTruncationNote(trace, " is-full-note") : "",
+        preview: tail.html + foot + note,
+        // The opened body hides the preview, so it repeats the exit and notice.
+        full: clipped ? consoleDetailHtml(trace, false, running) + foot + consoleTruncationNote(trace, " is-full-note") : "",
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {

@@ -202,19 +202,21 @@ function ccBytes(n) {
   }
 
 // tail: the lines under the error are command output, so the fold keeps the
-// error line and the newest output (where a traceback or test summary ends).
+// newest output (where a traceback or test summary ends) with the error line
+// under it, as a terminal prints the exit status last.
 function ccErrorFold(lines, tail = false) {
     const all = lines.map((line) => String(line ?? ""));
     if (!all.length) all.push("failed");
     // A provider failure (a subagent's model call) reads like the chat's error card.
     all[0] = deps.providerErrorLine(all[0]);
     if (!/^(Error|Cancelled): /.test(all[0])) all[0] = `Error: ${all[0]}`;
+    if (tail) all.push(all.shift());
     const hidden = Math.max(0, all.length - 10);
     const html = (rows) => `<div class="chat-console-lines is-error">${rows.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
     const more = hidden > 0 ? `<div class="chat-console-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "";
     return {
       status: "",
-      preview: tail && hidden > 0 ? html(all.slice(0, 1)) + more + html(all.slice(1 + hidden)) : html(all.slice(0, 10)) + more,
+      preview: tail && hidden > 0 ? more + html(all.slice(hidden)) : html(all.slice(0, 10)) + more,
       full: hidden > 0 ? html(all) : "",
       keep: true,
     };

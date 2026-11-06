@@ -163,6 +163,7 @@ const seen = (snap) => snap.rows.map((r) => r.text).join('\n');
       assert.match(row(snap, 'bg-fail').text, /Failed in the background/, `failed launch: ${row(snap, 'bg-fail').text}`);
       assert.match(row(snap, 'wait-2').text, /Exit code 1/, `the Wait never picked up the failure: ${row(snap, 'wait-2').text}`);
       assert.match(row(snap, 'wait-2').text, /FAIL suite/, `the Wait dropped the failing output: ${row(snap, 'wait-2').text}`);
+      assert.match(row(snap, 'wait-2').text, /FAIL suite[\s\S]*Exit code 1/, `the exit code should print under the output: ${row(snap, 'wait-2').text}`);
       assert.doesNotMatch(row(snap, 'wait-2').text, /Still running|Waiting for output/, `the Wait still waits after the failure: ${row(snap, 'wait-2').text}`);
       // A relayed non-zero exit is the command's status, not a failed call: warning, not error.
       assert.equal(row(snap, 'wait-2').state, 'warning', `a Wait that observed a non-zero exit: ${row(snap, 'wait-2').cls}`);
