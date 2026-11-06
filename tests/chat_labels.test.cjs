@@ -234,7 +234,9 @@ test('tok/s is measured tokens over generation time, or nothing', () => {
   assert.equal(c.ccGenSpeed(900, 20000, true).text, '~45 tok/s', 'an estimate says so');
   assert.match(c.ccGenSpeed(900, 20000, true).title, /^900 tokens generated in 20s of generation; .*Approximate/);
   assert.equal(c.ccGenSpeed(19, 5000), null, 'too few tokens to measure');
-  assert.equal(c.ccGenSpeed(500, 999), null, 'too short to measure');
+  assert.equal(c.ccGenSpeed(500, 249), null, 'too short to measure');
+  assert.equal(c.ccGenSpeed(94, 860).text, '109 tok/s', 'a sub-second turn still has a speed');
+  assert.match(c.ccGenSpeed(94, 860).title, /^94 tokens generated in 0\.9s of generation/);
   assert.equal(c.ccGenSpeed(undefined, undefined), null, 'old replies have no measurement');
 });
 

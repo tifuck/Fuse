@@ -178,14 +178,16 @@ function ccTokens(n) {
 
 // tok/s: tokens generated over the time spent generating them, measured per
 // model call on the server (tool runs and waits for a first token are not in
-// it). Too little to measure is no number at all.
+// it). Too little to measure is no number at all: the floor matches the
+// server's per-call minimum (consume.GEN_MIN_S).
 function ccGenSpeed(out, ms, est) {
     out = Number(out);
     ms = Number(ms);
-    if (!(out >= 20 && ms >= 1000)) return null;
+    if (!(out >= 20 && ms >= 250)) return null;
     const rate = (out * 1000) / ms;
     const text = `${est ? "~" : ""}${rate < 10 ? rate.toFixed(1).replace(/\.0$/, "") : Math.round(rate)} tok/s`;
-    const title = `${Math.round(out).toLocaleString("en-US")} tokens generated in ${ccDuration(ms)} of generation; tool runs and waiting are not counted`
+    const took = ms < 60000 ? `${(ms / 1000).toFixed(1).replace(/\.0$/, "")}s` : ccDuration(ms);
+    const title = `${Math.round(out).toLocaleString("en-US")} tokens generated in ${took} of generation; tool runs and waiting are not counted`
       + (est ? ". Approximate: some calls hid their reasoning, so their time includes the wait for the first token" : "");
     return { text, title };
   }
