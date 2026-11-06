@@ -71,7 +71,8 @@ class Output:
         self._round_reasoning = len(msg.get("reasoning") or "")
         self._round_tool_chars = 0
         self._stream_out = 0
-        self._stream_first = self._stream_last = None
+        self._round_chars = 0
+        self._reset_live()
         self._draft = None
         # Thought timing, as Claude Code measures it: from the transcript's
         # previous event (a tool result, the round starting) to the thought's
@@ -214,7 +215,8 @@ class Output:
         self._round_reasoning = 0
         self._round_tool_chars = 0
         self._stream_out = 0
-        self._stream_first = self._stream_last = None
+        self._round_chars = 0
+        self._reset_live()
         self._draft = None
 
     def settle_tool_xml(self):
@@ -236,15 +238,28 @@ class Output:
         self._round_reasoning = len(self.message.get("reasoning") or "")
         self._round_tool_chars = 0
         self._stream_out = 0
-        self._stream_first = self._stream_last = None
+        self._round_chars = 0
+        self._reset_live()
         self._draft = None
 
-    def stream_ms(self) -> int:
-        """How long this round's output has been streaming: the live tok/s
-        estimate's clock until the round's own measurement lands in usage."""
-        if self._stream_first is None:
-            return 0
-        return int((self._stream_last - self._stream_first) * 1000)
+    def _reset_live(self):
+        self._live_from = self._live_chars = self._round_chars
+        self._live_burst = 0
+        self._live_first = self._live_last = None
+
+    def stream_gen(self) -> tuple[int, int]:
+        """The call still streaming, for the live tok/s: its tokens so far and
+        their time, measured like consume.GenClock (first frame to last, the
+        first burst left out). Characters become tokens at the ratio of the
+        turn's calibrated calls, chars/4 before there is one. Restarts when
+        the call's own measurement lands in usage, so it never counts twice."""
+        if self._live_first is None:
+            return 0, 0
+        usage = self.message.get("usage") if isinstance(self.message.get("usage"), dict) else {}
+        cal, chars = usage.get("gen_cal"), usage.get("gen_chars")
+        ratio = cal / chars if type(cal) is int and type(chars) is int and cal > 0 and chars > 0 else 0.25
+        measured = max(0, self._live_chars - self._live_from - self._live_burst)
+        return round(measured * ratio), int((self._live_last - self._live_first) * 1000)
 
     def drafting(self) -> dict | None:
         """The artifact write being streamed this round: name, title, size."""
@@ -307,13 +322,16 @@ class Output:
         if obj is not None:
             self._round_tool_chars += self._tool_call_delta_chars(obj)
         chars = visible + self._round_tool_chars
-        stream_out = (chars + 3) // 4 if chars else 0
-        if stream_out > self._stream_out:
+        self._round_chars = chars
+        if chars > self._live_chars:
             now = _now()
-            if self._stream_first is None:
-                self._stream_first = now
-            self._stream_last = now
-        self._stream_out = stream_out
+            if self._live_first is None:
+                self._live_first = now
+                self._live_burst = chars - self._live_chars
+            self._live_last = now
+        self._live_chars = chars
+        self._live_from = min(self._live_from, chars)
+        self._stream_out = (chars + 3) // 4 if chars else 0
 
     def apply(self, obj):
         msg = self.message
@@ -487,7 +505,10 @@ class Output:
             chats._validate_json_value(obj["usage"], "usage")
             if len(json.dumps(obj["usage"], ensure_ascii=True, separators=(",", ":"))) > chats.USAGE_MAX:
                 raise ValueError("Generation usage limit reached.")
+            before = msg["usage"].get("gen_ms") if isinstance(msg.get("usage"), dict) else None
             msg["usage"] = obj["usage"]
+            if obj["usage"].get("gen_ms") != before:
+                self._reset_live()
         self._refresh_stream_out(obj)
         self._last_event_at = _now()
 

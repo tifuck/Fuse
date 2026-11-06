@@ -100,6 +100,19 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, and no activity word: ${up}`);
     assert.doesNotMatch(up, /12k/, 'up arrow is this round of tool/prompt tokens, not the full context window');
     assert.doesNotMatch(up, /\b0 tokens\b/);
+    // The call still streaming joins the measured average live: (2150 + 850)
+    // tokens over (41.2 + 8.8) s. Marked ~ until a measured call has
+    // calibrated tokens per character; its share drops once it is measured.
+    const dockAfter = (patch) => page.evaluate((p) => {
+      fuseToolFixture.stream(0, p);
+      return document.querySelector('[data-live-dock-label]').textContent;
+    }, patch);
+    let rate = await dockAfter({ streamGen: 850, streamMs: 8800 });
+    assert.match(rate, /· ~60 tok\/s\)$/, `an uncalibrated live share is an estimate: ${rate}`);
+    rate = await dockAfter({ usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200, gen_cal: 2150, gen_chars: 8600 } });
+    assert.match(rate, /· 60 tok\/s\)$/, `a calibrated live share is not: ${rate}`);
+    rate = await dockAfter({ streamGen: 0, streamMs: 0 });
+    assert.match(rate, /· 52 tok\/s\)$/, `with no call streaming the measured average stands: ${rate}`);
     await page.evaluate(() => {
       fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] });
       fuseToolFixture.stream(0, {

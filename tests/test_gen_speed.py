@@ -26,14 +26,14 @@ class GenClockTest(unittest.TestCase):
             clock.frame(t, "abcd", "")
         # 4 of 16 bytes arrived with the first frame, generated in no measured
         # time: their share of the 100 tokens is left out with them.
-        self.assertEqual(clock.result(_usage(100)), {"gen_ms": 2000, "gen_out": 75})
+        self.assertEqual(clock.result(_usage(100)), {"gen_ms": 2000, "gen_out": 75, "gen_cal": 75, "gen_chars": 12})
 
     def test_frames_in_one_chunk_share_the_first_burst(self):
         clock = GenClock(opened=0.0)
         clock.frame(1.0, "ab", "")
         clock.frame(1.0, "", "cd")
         clock.frame(2.0, "abcd", "")
-        self.assertEqual(clock.result(_usage(80)), {"gen_ms": 1000, "gen_out": 40})
+        self.assertEqual(clock.result(_usage(80)), {"gen_ms": 1000, "gen_out": 40, "gen_cal": 40, "gen_chars": 4})
 
     def test_one_burst_or_a_tiny_window_is_not_a_speed(self):
         burst = GenClock(opened=0.0)
@@ -57,6 +57,7 @@ class GenClockTest(unittest.TestCase):
         clock.mark(1.0)
         clock.frame(3.0, "x" * 400, "")
         self.assertEqual(clock.result(_usage(500, reasoning=400)), {"gen_ms": 2000, "gen_out": 500})
+        # Their characters do not carry the thought's tokens: no calibration.
 
     def test_unstreamed_reasoning_is_timed_from_the_stream_opening(self):
         clock = GenClock(opened=0.5)
@@ -72,12 +73,13 @@ class GenClockTest(unittest.TestCase):
         got = clock.result(_usage(120, reasoning=110))
         self.assertNotIn("gen_est", got)
         self.assertEqual(got["gen_ms"], 2000)
+        self.assertEqual((got["gen_cal"], got["gen_chars"]), (got["gen_out"], 404))
 
     def test_server_timings_win(self):
         clock = GenClock(opened=0.0)
         clock.frame(1.0, "x", "")
         clock.timings = {"predicted_n": 120, "predicted_ms": 2400.4}
-        self.assertEqual(clock.result(_usage(999)), {"gen_ms": 2400, "gen_out": 120})
+        self.assertEqual(clock.result(_usage(999)), {"gen_ms": 2400, "gen_out": 120, "gen_cal": 120, "gen_chars": 1})
         clock.timings = {"predicted_n": 0, "predicted_ms": 0}
         self.assertIsNone(clock.result(_usage(5)))
 
@@ -120,7 +122,7 @@ class ConsumeRoundGenTest(unittest.IsolatedAsyncioTestCase):
         ], [0.0, 0.2, 1.0, 2.0, 3.0, 3.5, 9.0])
         # The opening envelope (0.2) and the usage/[DONE] frames are not output:
         # the window is 1.0..3.0 and the first 4 of 12 bytes are its burst.
-        self.assertEqual(done["gen"], {"gen_ms": 2000, "gen_out": 20})
+        self.assertEqual(done["gen"], {"gen_ms": 2000, "gen_out": 20, "gen_cal": 20, "gen_chars": 8})
         self.assertEqual(done["usage"]["output_tokens"], 30)
 
     async def test_llama_timings_and_errors(self):
@@ -130,7 +132,7 @@ class ConsumeRoundGenTest(unittest.IsolatedAsyncioTestCase):
                        "timings": {"predicted_n": 64, "predicted_ms": 812.5}}),
             b"data: [DONE]\n\n",
         ], [0.0, 1.0, 1.1, 1.2])
-        self.assertEqual(done["gen"], {"gen_ms": 812, "gen_out": 64})
+        self.assertEqual(done["gen"], {"gen_ms": 812, "gen_out": 64, "gen_cal": 64, "gen_chars": 2})
         failed = await self._consume([
             self._sse({"choices": [{"delta": {"content": "abcd"}}]}),
             self._sse({"choices": [{"delta": {"content": "abcd"}}], "usage": {"completion_tokens": 9}}),
@@ -179,18 +181,26 @@ class SourceTimingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(usage_frame["timings"], {"predicted_n": 42, "predicted_ms": 1500.0})
 
 
-class OutputStreamMsTest(unittest.TestCase):
-    def test_stream_ms_spans_the_rounds_output_and_resets(self):
+class OutputStreamGenTest(unittest.TestCase):
+    def test_live_window_calibrates_and_restarts_when_the_call_is_measured(self):
         from app import chat_output
 
-        times = iter([0.0, 1.0, 1.0, 2.5, 4.0, 10.0, 10.0, 10.0])
+        times = iter([0.0, 1.0, 1.0, 2.5, 4.0, 10.0, 11.0, 11.0, 13.0, 13.0, 20.0])
         with patch.object(chat_output, "_now", lambda: next(times)):
             out = chat_output.Output({"message": {}})
             out.apply({"choices": [{"delta": {"content": "abcdefgh"}}]})
             out.apply({"choices": [{"delta": {"content": "abcdefgh"}}]})
-            self.assertEqual(out.stream_ms(), 1500)
+            # 8 chars past the first burst, at chars/4 before any calibration.
+            self.assertEqual(out.stream_gen(), (2, 1500))
+            # The call's measurement lands: its live share drops at once.
+            out.apply({"usage": {"gen_ms": 1000, "gen_out": 50, "gen_cal": 40, "gen_chars": 80}, "choices": []})
+            self.assertEqual(out.stream_gen(), (0, 0))
+            out.apply({"choices": [{"delta": {"content": "x" * 20}}]})
+            out.apply({"choices": [{"delta": {"content": "x" * 20}}]})
+            # Now at the turn's own 40 tokens per 80 chars.
+            self.assertEqual(out.stream_gen(), (10, 2000))
             out.apply({"fuse": {"event": "activity", "phase": "model"}})
-            self.assertEqual(out.stream_ms(), 0)
+            self.assertEqual(out.stream_gen(), (0, 0))
 
 
 if __name__ == "__main__":

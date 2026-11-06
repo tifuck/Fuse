@@ -82,6 +82,11 @@ class GenClock:
     the first token, tool execution and a stream lingering after its last
     delta stay outside it. Server-measured decode timings (llama.cpp's
     `timings`, which the Ollama translation also emits) win when present.
+
+    gen_cal/gen_chars is the call's tokens over the characters it streamed:
+    the live dock's ratio for turning a streaming call's characters into
+    tokens. Only calls whose characters carry all their tokens count (none
+    of their reasoning ran unseen).
     """
 
     def __init__(self, opened: float):
@@ -89,6 +94,7 @@ class GenClock:
         self.first = self.last = None
         self.marked = False
         self.bytes = self.first_bytes = self.reasoning_bytes = 0
+        self.chars = self.first_chars = 0
         self.timings = None
 
     def mark(self, now: float) -> None:
@@ -101,23 +107,33 @@ class GenClock:
             return
         if self.first is None:
             self.first = now
+        chars = len(text) + len(reasoning)
         if now == self.first and not self.marked:
             # Generated before the first frame arrived, in no measured time.
             self.first_bytes += size + think
+            self.first_chars += chars
         self.last = now
         self.bytes += size + think
         self.reasoning_bytes += think
+        self.chars += chars
+
+    def _calibration(self, tokens: int, chars: int, unseen: bool) -> dict:
+        if self.marked or unseen or tokens <= 0 or chars <= 0:
+            return {}
+        return {"gen_cal": tokens, "gen_chars": chars}
 
     def result(self, usage: dict) -> dict | None:
+        usage = usage if isinstance(usage, dict) else {}
+        hidden = usage.get("reasoning_tokens")
+        unseen = type(hidden) is int and hidden > 0 and self.reasoning_bytes < 2 * hidden
         timings = self.timings if isinstance(self.timings, dict) else {}
         n, ms = timings.get("predicted_n"), timings.get("predicted_ms")
         if type(n) is int and n > 0 and isinstance(ms, (int, float)) and ms > 0:
-            return {"gen_ms": max(1, round(ms)), "gen_out": n}
-        out = usage.get("output_tokens") if isinstance(usage, dict) else None
+            return {"gen_ms": max(1, round(ms)), "gen_out": n, **self._calibration(n, self.chars, unseen)}
+        out = usage.get("output_tokens")
         if type(out) is not int or out <= 0 or self.last is None:
             return None
-        hidden = usage.get("reasoning_tokens")
-        if type(hidden) is int and hidden > 0 and not self.marked and self.reasoning_bytes < 2 * hidden:
+        if unseen and not self.marked:
             # Reasoning the stream did not carry (hidden, or only a summary)
             # ran before the first delta. Its start is unknown: time it from
             # the stream opening, which also holds the wait for the first token.
@@ -127,7 +143,8 @@ class GenClock:
         tokens = out - round(out * self.first_bytes / self.bytes)
         if span < GEN_MIN_S or tokens <= 0:
             return None
-        return {"gen_ms": round(span * 1000), "gen_out": tokens}
+        return {"gen_ms": round(span * 1000), "gen_out": tokens,
+                **self._calibration(tokens, self.chars - self.first_chars, unseen)}
 
 
 def _calling_name(calls: dict, hints) -> str:

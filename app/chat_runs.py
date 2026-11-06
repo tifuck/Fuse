@@ -883,7 +883,8 @@ async def _run(request, user, run):
             patch["error"] = stored.get("error", "")
             if output._stream_out:
                 patch["streamOut"] = int(output._stream_out)
-                patch["streamMs"] = output.stream_ms()
+            # Sent as zeros too: a measured call's live share must drop at once.
+            patch["streamGen"], patch["streamMs"] = output.stream_gen()
             drafting = output.drafting()
             if drafting:
                 patch["drafting"] = drafting

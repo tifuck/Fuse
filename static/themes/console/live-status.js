@@ -43,6 +43,7 @@ function ensureConsoleRound(msg, status, meter = deps.liveMeter) {
     const keepOrigin = prev && flow === "down" && String(prev.key).startsWith("up|");
     if (prev) {
       delete msg.streamOut;
+      delete msg.streamGen;
       delete msg.streamMs;
     }
     const meterUsed = meter && typeof meter.used === "number" ? Math.max(0, Math.round(Number(meter.used) || 0)) : 0;
@@ -106,11 +107,14 @@ function formatConsoleLiveStatus(msg, groups, opts) {
       const n = consoleUpTokens(msg, round, meter);
       if (n) tokenText = `↑ ${formatConsoleCount(n)} tokens`;
     }
-    // The turn's average over its finished calls; before the first one is
-    // measured, an estimate from the call still streaming.
+    // The turn's average, kept moving: its measured calls plus the call still
+    // streaming, which the server counts at the turn's own tokens per
+    // character (chars/4, marked ~, until a call has calibrated it).
     const usage = (msg && msg.usage) || {};
-    const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0)
-      || deps.ccGenSpeed(msg && msg.streamOut, msg && msg.streamMs, true);
+    const liveMs = Math.max(0, Number(msg && msg.streamMs) || 0);
+    const live = liveMs ? Math.max(0, Number(msg.streamGen) || 0) : 0;
+    const speed = deps.ccGenSpeed((Number(usage.gen_out) || 0) + live, (Number(usage.gen_ms) || 0) + liveMs,
+      usage.gen_est > 0 || (liveMs > 0 && !(Number(usage.gen_chars) > 0)));
     // Claude Code shows the clock once there is something else to show, or
     // after 16s. No activity word: the rows above already say what runs.
     const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";

@@ -369,6 +369,9 @@ export function createApply(ctx) {
       msg.error = event.error || "";
       if (Number.isFinite(Number(event.streamOut)) && Number(event.streamOut) >= 0) {
         msg.streamOut = Math.round(Number(event.streamOut));
+      }
+      if (event.streamGen != null) {
+        msg.streamGen = Math.max(0, Math.round(Number(event.streamGen) || 0));
         msg.streamMs = Math.max(0, Math.round(Number(event.streamMs) || 0));
       }
       if (!passive && !child && event.drafting && typeof event.drafting === "object") artifacts.noteDrafting(event.drafting);
