@@ -46,7 +46,8 @@ def test_foreign_request_write_refreshes_cache_and_is_not_clobbered():
         message, request, _ = _row(run["id"])
         assert message["content"] == "ab"
         assert request["foreign_marker"] == 7
-        assert request["agent"]["activity"]["phase"] == "model"
+        activity = db.fetchone("SELECT activity FROM chat_runs WHERE id=?", (run["id"],))["activity"]
+        assert json.loads(activity)["phase"] == "model"
 
 
 def test_stale_guard_skips_state_write_and_drops_cache():
