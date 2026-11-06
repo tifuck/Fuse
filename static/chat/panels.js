@@ -48,8 +48,52 @@ export function createPanels(ctx) {
     }
   }
 
+    // The AGENTS.md tab: shown for a reachable project, edits kept until
+  // saved or another chat opens.
+    function renderAgentsTab(data) {
+    if (!S.agentsTab) return;
+    const editable = Boolean(data && data.applicable && (data.state === "loaded" || data.state === "missing"));
+    if (S.agentsFor !== S.currentId) S.agentsDirty = false;
+    S.agentsFor = S.currentId;
+    S.agentsTab.hidden = !editable;
+    if (!editable) {
+      if (S.contextTab === "agents") setContextTab("instructions");
+      return;
+    }
+    S.agentsTab.textContent = data.name || "AGENTS.md";
+    if (!S.agentsDirty) S.agentsBody.value = data.body || "";
+    S.agentsBody.readOnly = Boolean(data.truncated);
+    S.agentsSave.disabled = Boolean(data.truncated);
+    S.agentsStatus.textContent = data.truncated ? "Too long to edit here; open the file on the host." : "";
+    S.agentsStatus.classList.remove("is-ok");
+  }
+
+    async function saveProjectAgents() {
+    const id = S.currentId;
+    if (!id || !S.agentsBody || !net.requireLive()) return;
+    S.agentsSave.disabled = true;
+    S.agentsStatus.textContent = "Saving…";
+    S.agentsStatus.classList.remove("is-ok");
+    try {
+      const data = await net.api("/chat/threads/" + id + "/project-agents", {
+        method: "PUT",
+        body: JSON.stringify({ content: S.agentsBody.value }),
+      });
+      if (id !== S.currentId) return;
+      S.agentsDirty = false;
+      renderProjectAgents(data);
+      S.agentsStatus.textContent = "Saved. Applies from the next message.";
+      S.agentsStatus.classList.add("is-ok");
+    } catch (error) {
+      if (id === S.currentId) S.agentsStatus.textContent = "Not saved: " + ((error && error.message) || "error");
+    } finally {
+      if (id === S.currentId) S.agentsSave.disabled = S.agentsBody.readOnly;
+    }
+  }
+
     function renderProjectAgents(data) {
     S.projectAgentsOk = Boolean(data && data.applicable && data.state === "loaded");
+    renderAgentsTab(data);
     if (!S.memoryProject) {
       syncMemoryUi();
       return;
@@ -341,6 +385,7 @@ export function createPanels(ctx) {
     queueMemorySave,
     refreshProjectAgents,
     renderProjectAgents,
+    saveProjectAgents,
     saveMemory,
     setContextTab,
     setMemoryOpen,

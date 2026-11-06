@@ -402,6 +402,8 @@ import { createDictation } from './chat/dictation.js';
     S.contextTabButtons.forEach((btn) => {
     btn.addEventListener("click", () => panels.setContextTab(btn.getAttribute("data-context-tab")));
   });
+  S.agentsBody?.addEventListener("input", () => { S.agentsDirty = true; });
+  S.agentsSave?.addEventListener("click", () => panels.saveProjectAgents());
 
     S.ACTIVITY_SPINNERS.push(...(window.FuseSpinnerNext || []));
 

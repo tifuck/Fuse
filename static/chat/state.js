@@ -83,6 +83,10 @@ function initState() {
   S.memoryProfile = S.root.querySelector("[data-memory-profile]");
   S.memoryThread = S.root.querySelector("[data-memory-thread]");
   S.memoryProject = S.root.querySelector("[data-memory-project]");
+  S.agentsTab = S.root.querySelector("[data-agents-tab]");
+  S.agentsBody = S.root.querySelector("[data-agents-body]");
+  S.agentsStatus = S.root.querySelector("[data-agents-status]");
+  S.agentsSave = S.root.querySelector("[data-agents-save]");
   S.contextTabButtons = Array.from(S.root.querySelectorAll("[data-context-tab]"));
   S.contextTab = "instructions";
   S.searchChip = S.root.querySelector("[data-tool-search]");

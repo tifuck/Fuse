@@ -624,6 +624,35 @@ def test_project_agents_is_not_applicable_to_a_plain_chat(client):
     assert got.status_code == 200
     assert got.json() == {"applicable": False}
     assert client.get("/chat/threads/missing/project-agents").status_code == 404
+    assert client.put(f"/chat/threads/{thread['id']}/project-agents", json={"content": "x"}).status_code == 400
+
+
+def test_project_agents_returns_body_and_saves_through_write_file(client):
+    _login(client)
+    thread, pk = _thread(client, "proj-agents-edit")
+    uid = _uid()
+    db.execute(
+        """INSERT INTO user_hosts(user_id,alias,label,hostname,port,username,auth_type,secret,default_cwd,created_at,updated_at)
+           VALUES(?,'box','','10.0.0.8',22,'root','agent','x','/work',?,?)""",
+        (uid, db.now(), db.now()),
+    )
+    host_id = db.fetchone("SELECT id FROM user_hosts WHERE user_id=?", (uid,))["id"]
+    db.execute("UPDATE chat_threads SET kind='project', host_id=? WHERE id=?", (host_id, pk))
+    load = AsyncMock(return_value=("CLAUDE.md", "# rules"))
+    write = AsyncMock(return_value=("ok", {"name": "write_file", "status": "done"}))
+    with patch("app.workspace.load_project_agents", load), patch("app.workspace.execute", write):
+        got = client.get(f"/chat/threads/{thread['id']}/project-agents").json()
+        assert got["state"] == "loaded" and got["body"] == "# rules" and got["truncated"] is False
+        saved = client.put(f"/chat/threads/{thread['id']}/project-agents", json={"content": "# new rules  \n\n"})
+    assert saved.status_code == 200, saved.text
+    name, arguments = write.await_args.args
+    assert name == "write_file"
+    assert json.loads(arguments) == {"path": "CLAUDE.md", "content": "# new rules\n"}
+    assert write.await_args.kwargs == {"user_id": uid, "bound_host_id": host_id, "bound_cwd": "/work"}
+    write.return_value = ("project is read-only", {"status": "error", "error": "project is read-only"})
+    with patch("app.workspace.load_project_agents", load), patch("app.workspace.execute", write):
+        refused = client.put(f"/chat/threads/{thread['id']}/project-agents", json={"content": "x"})
+    assert refused.status_code == 400 and "read-only" in refused.text
 
 
 # --- jobs + kill ----------------------------------------------------------

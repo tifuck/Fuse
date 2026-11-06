@@ -333,6 +333,7 @@
         <button type="button" class="chat-context-tab is-on" role="tab" aria-selected="true" aria-controls="context-panel-instructions" data-context-tab="instructions">Instructions</button>
         <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-profile" data-context-tab="profile">About you</button>
         <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-thread" data-context-tab="thread">This chat</button>
+        <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-agents" data-context-tab="agents" data-agents-tab hidden>AGENTS.md</button>
       </div>
       <div class="chat-context-panel" id="context-panel-instructions" data-context-panel="instructions" role="tabpanel">
         <p class="chat-context-desc">How Fuse answers, in every chat and project.<span class="chat-context-eg">e.g. Be brief. Show diffs, not prose.</span></p>
@@ -354,6 +355,14 @@
           <span class="visually-hidden">This conversation</span>
           <textarea data-memory-thread maxlength="4000" rows="8" placeholder="Notes for this thread only"></textarea>
         </label>
+      </div>
+      <div class="chat-context-panel" id="context-panel-agents" data-context-panel="agents" role="tabpanel" hidden>
+        <p class="chat-context-desc">The project's instruction file, loaded into every chat in this project. Saving writes it to the project folder.</p>
+        <label class="chat-memory-field">
+          <span class="visually-hidden">Project instructions</span>
+          <textarea data-agents-body rows="8" spellcheck="false" placeholder="No instruction file yet. Write one and save to create AGENTS.md."></textarea>
+        </label>
+        <div class="chat-agents-foot"><span class="chat-memory-project" data-agents-status></span><button type="button" class="btn sm" data-agents-save>Save</button></div>
       </div>
       <p class="chat-memory-project" data-memory-project hidden></p>
       <p class="chat-sheet-note">Empty instructions use Fuse's default style. Notes cannot add tools or change routing.</p>

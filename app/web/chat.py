@@ -615,11 +615,8 @@ def _thread_stream(public):
     return StreamingResponse(body(), media_type="application/x-ndjson", headers=headers)
 
 
-@router.get("/chat/threads/{thread_id}/project-agents")
-async def chat_project_agents(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
-    if err:
-        return err
+async def _project_binding(user, thread_id: str) -> tuple[int, str] | None:
+    """(host_id, cwd) of a project chat, or None for a plain chat."""
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
     # Only the binding columns matter here; a full thread view would parse the
     # whole transcript, which must stay off the event loop.
@@ -631,9 +628,7 @@ async def chat_project_agents(request: Request, thread_id: str):
     if thread is None:
         raise HTTPException(404, "Chat not found")
     if (thread["kind"] or "chat") != "project" or thread["host_id"] is None:
-        return JSONResponse({"applicable": False}, headers={"Cache-Control": "no-store"})
-    from .. import workspace
-
+        return None
     host_id = int(thread["host_id"])
     cwd = ""
     if thread["project_id"] is not None:
@@ -643,6 +638,53 @@ async def chat_project_agents(request: Request, thread_id: str):
     if not cwd:
         host_row = hosts.get_host(user["id"], host_id)
         cwd = (host_row or {}).get("default_cwd") or ""
+    return host_id, cwd
+
+
+@router.get("/chat/threads/{thread_id}/project-agents")
+async def chat_project_agents(request: Request, thread_id: str):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    binding = await _project_binding(user, thread_id)
+    if binding is None:
+        return JSONResponse({"applicable": False}, headers={"Cache-Control": "no-store"})
+    return await _project_agents_payload(user, *binding)
+
+
+@router.put("/chat/threads/{thread_id}/project-agents")
+async def chat_project_agents_put(request: Request, thread_id: str):
+    """Write the project's instruction file from the Context sheet. Goes
+    through write_file, so read-only projects, root confinement and the
+    instruction cache behave as they do for the agent."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    raw = await _json_object(request)
+    content = raw.get("content")
+    if not isinstance(content, str):
+        raise HTTPException(422, "content must be a string")
+    # The loader strips the body; keep the file newline-terminated.
+    content = content.rstrip() + "\n" if content.strip() else ""
+    binding = await _project_binding(user, thread_id)
+    if binding is None:
+        raise HTTPException(400, "Not a project chat")
+    host_id, cwd = binding
+    from .. import workspace
+
+    name, _body = await workspace.load_project_agents(user["id"], host_id, cwd)
+    text, rec = await workspace.execute(
+        "write_file", json.dumps({"path": name or "AGENTS.md", "content": content}),
+        user_id=user["id"], bound_host_id=host_id, bound_cwd=cwd,
+    )
+    if rec.get("status") == "error":
+        raise HTTPException(400, str(rec.get("error") or text or "write failed"))
+    return await _project_agents_payload(user, host_id, cwd)
+
+
+async def _project_agents_payload(user, host_id: int, cwd: str) -> JSONResponse:
+    from .. import workspace
+
     report: dict = {}
     try:
         name, body = await asyncio.wait_for(
@@ -660,6 +702,9 @@ async def chat_project_agents(request: Request, thread_id: str):
             "name": name or None,
             "reason": reason,
             "chars": len(body or ""),
+            "body": body or "",
+            # A cut body would overwrite the file's tail if saved back.
+            "truncated": "\n[Project instructions truncated: " in (body or ""),
         },
         headers={"Cache-Control": "no-store"},
     )

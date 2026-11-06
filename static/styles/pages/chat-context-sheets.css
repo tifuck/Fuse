@@ -414,6 +414,14 @@
   flex: 1;
   min-height: 7rem;
 }
+.chat-context-panel [data-agents-body] { font-family: var(--mono); font-size: 0.8rem; }
+.chat-agents-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
 @media (max-width: 800px) {
   .chat-sheet.chat-memory .chat-sheet-body {
     display: flex;
