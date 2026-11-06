@@ -131,9 +131,12 @@ export function createConsoleTheme(runtime) {
     get ccGenSpeed() { return theme.ccGenSpeed; },
     get currentActivity() { return theme.currentActivity; },
     get currentRunSpin() { return runtime.currentRunSpin; },
-    get executionState() { return runtime.executionState; },
-    get isSearchTool() { return theme.isSearchTool; },
+    get estimateChars() { return runtime.estimateChars; },
+    get estimateTrace() { return runtime.estimateTrace; },
     get liveElapsedSeconds() { return runtime.liveElapsedSeconds; },
+    get liveMeter() { return runtime.liveMeter; },
+    get toolPresentation() { return runtime.toolPresentation; },
+    get usageInOut() { return runtime.usageInOut; },
   }));
   Object.assign(theme, createThinkingDisclosure({
     get reduceMotion() { return runtime.reduceMotion; },

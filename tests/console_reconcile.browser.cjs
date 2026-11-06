@@ -85,10 +85,8 @@ function readDom() {
         check(seen.rows[id]?.state === 'running', `${tag} ${id} starts running, saw ${JSON.stringify(seen.rows[id])}`);
       }
       check(!/read \d+ files|searched for|ran \d+ shell/.test(seen.text), `${tag} nothing has folded while every call still runs: ${seen.text.slice(0, 240)}`);
-      // The status line counts every live execution, and says how many of them
-      // were handed off to the background.
-      // The counters live in the dock's meta, which is hidden at 390px.
-      check(width === 390 || /6 active \/ 1 background/.test(seen.dock), `${tag} the dock counts all six live calls: ${seen.dock}`);
+      // The status line names no activity and counts no calls: the rows do.
+      check(!/active|background|running/.test(seen.dock), `${tag} the dock names no calls: ${seen.dock}`);
 
       // They finish in a different order than they started.
       const finishes = [
@@ -105,9 +103,6 @@ function readDom() {
         seen = await dom();
         check(seen.rows[finish.id].state === 'done', `${tag} ${finish.id} settles to done, saw ${seen.rows[finish.id].state}`);
         check(seen.rows[finish.id].n === 1, `${tag} ${finish.id} stays one row after it finishes, saw ${seen.rows[finish.id].n}`);
-        const still = finishes.length - finishes.indexOf(finish) - 1;
-        const want = still > 1 ? new RegExp(`${still} active`) : null;
-        check(width === 390 || !want || want.test(seen.dock), `${tag} the dock drops to ${still} active after ${finish.id} finishes: ${seen.dock}`);
         for (const other of finishes) {
           if (other === finish) break;
           check(seen.rows[other.id].state === 'done', `${tag} ${other.id} stays done while ${finish.id} finishes, saw ${seen.rows[other.id].state}`);

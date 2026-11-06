@@ -307,7 +307,10 @@ export function createLive(ctx) {
       ui.setLivePhase(S.agentLiveDock, status.phase);
       // The subagent dock mirrors the main dock of the selected view.
       {
-        const line = ui.formatConsoleLiveStatus(msg, groups, { seconds: agentRunWorkSeconds(S.agentRun, msg) });
+        const line = ui.formatConsoleLiveStatus(msg, groups, {
+          meter: S.agentRun.compaction && S.agentRun.compaction.meter,
+          seconds: agentRunWorkSeconds(S.agentRun, msg),
+        });
         ui.setLiveLabelText(S.agentLiveLabel, line.verb, line.meta);
         if (S.agentLiveSpin) ui.setConsoleSpin(S.agentLiveSpin);
       }

@@ -143,7 +143,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       const cancelGate = new Promise(resolve => { releaseCancel = resolve; });
       await page.route('**/cancel', async route => { await cancelGate; await route.continue(); }, { times: 1 });
       await page.locator('[data-chat-send]').click();
-      await page.waitForFunction(() => /stopping/.test(document.querySelector('[data-live-dock-label]').textContent));
+      await page.waitForFunction(() => document.querySelector('[data-live-dock]').dataset.phase === 'stopping');
       await send('Message while cancellation is pending');
       assert.equal(await page.locator('.chat-queue-item').count(), 1);
       await watch();

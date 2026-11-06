@@ -21,18 +21,22 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.evaluate(t => fuseToolFixture.mount([{ tools: [t], segments: [{ type: 'tool', id: t.id }] }], true), base);
       assert.equal(await state.getAttribute('title'), 'Done', 'returned poll is a completed invocation');
       await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'model' } }));
-      assert.match(await page.locator('[data-live-dock-label]').textContent(), /waiting/i, 'durable model phase overrides old pending tool traces before fresh tokens');
+      assert.match(await page.locator('[data-live-dock]').getAttribute('data-phase'), /waiting|starting/, 'durable model phase overrides old pending tool traces before fresh tokens');
+      assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /waiting/i, 'the status line names no activity');
       assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /command/, 'the pending poll must not label the model phase');
       await page.evaluate(() => fuseToolFixture.stream(0, { tools: [{ id: 'contract', name: 'get_command_output', status: 'running', command_id: 'canonical-job' }], segments: [{ type: 'content', text: 'Old text' }, { type: 'tool', id: 'contract' }] }));
       await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'tools', tool_id: 'contract' } }));
-      assert.match(await page.locator('[data-live-dock-label]').textContent(), /waiting for command/);
+      // The status line names no activity; the dock's phase and owner still follow it.
+      const owner = () => page.evaluate(() => fuseToolFixture.activity(fuseToolFixture.snapshot()[0], null, true).current?.name || '');
+      assert.equal(await owner(), 'get_command_output', 'the running wait owns the dock');
+      assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /command/, 'the status line names no call');
       await page.evaluate(() => fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] }));
       await page.evaluate(() => fuseToolFixture.update('contract', {}, true));
-      assert.match(await page.locator('[data-live-dock-label]').textContent(), /waiting/i, 'streamed activity events update the durable phase projection');
+      assert.match(await page.locator('[data-live-dock]').getAttribute('data-phase'), /waiting|starting/, 'streamed activity events update the durable phase projection');
       assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /command/, 'the durable model phase drops the tool label');
       await page.evaluate(() => fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', thinking: true, run_id: 'fixture-run' } }] }));
       await page.evaluate(() => fuseToolFixture.update('contract', {}, true));
-      assert.match(await page.locator('[data-live-dock-label]').textContent(), /thinking/i, 'a marked think that streams no text says thinking, not waiting');
+      assert.equal(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'a marked think that streams no text is thinking, not waiting');
 
       const execution = { ...base, name: 'run_terminal_command' };
       await page.evaluate(t => fuseToolFixture.mount([{ tools: [{ ...t, state: 'cancelling', execution_status: 'cancelling', termination_confirmed: false }] }]), execution);
@@ -78,18 +82,24 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       fuseToolFixture.context.accept({ scope: 'prompt', used: 12000, limit: 200000, run_id: 'fixture-run' });
       fuseToolFixture.stream(0, { content: 'abcd'.repeat(40), reasoning: '', segments: [{ type: 'content', text: 'abcd'.repeat(40) }] });
     });
-    // The dock never counts tokens, streaming or running tools: it shows the
-    // turn's tok/s between the clock and what the run is doing.
-    const noTokens = (label, when) => assert.doesNotMatch(label, /tokens|↑|↓/, `no token count ${when}: ${label}`);
-    noTokens(await page.locator('[data-live-dock-label]').textContent(), 'while output streams');
+    const down = await page.locator('[data-live-dock-label]').textContent();
+    assert.match(down, /↓/, 'console dock counts streamed output with a down arrow');
+    assert.doesNotMatch(down, /\b0 tokens\b/);
+    const first = Number((down.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
+    await page.evaluate(() => fuseToolFixture.stream(0, { content: 'abcd'.repeat(80), reasoning: '', segments: [{ type: 'content', text: 'abcd'.repeat(80) }] }));
+    const more = await page.locator('[data-live-dock-label]').textContent();
+    const second = Number((more.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
+    assert.ok(second > first, 'down-arrow count ticks as tokens stream in');
     await page.evaluate(() => {
       fuseToolFixture.stream(0, { usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200 },
         tools: [{ id: 'bash', name: 'run_terminal_command', status: 'running', command: 'ls' }], segments: [{ type: 'content', text: 'abcd'.repeat(80) }, { type: 'tool', id: 'bash' }] });
       fuseToolFixture.run({ activity: { phase: 'tools', tool_id: 'bash' } });
     });
-    const tools = await page.locator('[data-live-dock-label]').textContent();
-    noTokens(tools, 'while a tool runs');
-    assert.match(tools, /\(\d+s · 52 tok\/s · running command\)/, `tok/s sits before the status: ${tools}`);
+    const up = await page.locator('[data-live-dock-label]').textContent();
+    assert.match(up, /↑/, 'tool execution switches the dock to an up arrow');
+    assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, and no activity word: ${up}`);
+    assert.doesNotMatch(up, /12k/, 'up arrow is this round of tool/prompt tokens, not the full context window');
+    assert.doesNotMatch(up, /\b0 tokens\b/);
     await page.evaluate(() => {
       fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] });
       fuseToolFixture.stream(0, {
@@ -105,9 +115,13 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       });
     });
     const next = await page.locator('[data-live-dock-label]').textContent();
-    noTokens(next, 'in the next model round');
-    assert.match(next, /52 tok\/s/, `the turn's tok/s carries across rounds: ${next}`);
-    console.log('PASS console live dock tok/s');
+    assert.match(next, /↓/, 'next model round switches back to a down arrow');
+    const third = Number((next.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
+    assert.ok(third < second, 'down-arrow count resets for the new thinking/output round');
+
+    await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'model' } }));
+    assert.match(await page.locator('[data-live-dock-label]').textContent(), /↓/, 'model phase keeps the output-token status after a run update');
+    console.log('PASS console live dock ↑↓');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

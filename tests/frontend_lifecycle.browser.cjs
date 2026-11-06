@@ -27,18 +27,19 @@ const out = process.env.FRONTEND_LIFECYCLE_ARTIFACTS || '/tmp/opencode/frontend-
         segments: [{ type: 'content', text: 'Earlier answer.' }, { type: 'tool', id: 'poll' }, { type: 'reasoning', text: 'Latest thinking.' }],
       }], true));
       const label = page.locator('[data-live-dock-label]');
-      assert.match(await label.textContent(), /thinking/, 'fresh reasoning outranks an older pending poll');
+      assert.equal(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'fresh reasoning outranks an older pending poll');
+      assert.doesNotMatch(await label.textContent(), /thinking|command/, 'the status line names no activity');
       assert.equal(await page.locator('[data-step="think-2"].is-running').count(), 1, 'latest thinking stays live after earlier answer text');
       assert.equal(await page.locator('[data-step="tool-poll"]').getAttribute('data-state'), 'running', 'background lifecycle remains independent of model activity');
       await page.evaluate(() => fuseToolFixture.stream(0, { segments: [{ type: 'reasoning', text: 'Plan' }, { type: 'tool', id: 'poll' }] }));
-      assert.doesNotMatch(await label.textContent(), /thinking/, 'new poll outranks earlier reasoning');
-      await page.waitForFunction(() => /waiting for command/.test(document.querySelector('[data-live-dock-label]').textContent));
+      assert.notEqual(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'new poll outranks earlier reasoning');
+      await page.waitForFunction(() => fuseToolFixture.activity(fuseToolFixture.snapshot()[0], null, true).current?.name === 'get_command_output');
       await page.evaluate(() => fuseToolFixture.update('poll', { status: 'done' }, true));
-      assert.doesNotMatch(await label.textContent(), /thinking/, 'a completed tool does not resurrect old reasoning');
+      assert.notEqual(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'a completed tool does not resurrect old reasoning');
       await page.evaluate(() => fuseToolFixture.stream(0, { segments: [{ type: 'tool', id: 'poll' }, { type: 'content', text: 'Fresh answer' }] }));
-      assert.doesNotMatch(await label.textContent(), /thinking/, 'writing outranks old reasoning');
+      assert.notEqual(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'writing outranks old reasoning');
       await page.evaluate(() => fuseToolFixture.run({ cancel_requested: true }));
-      await page.waitForFunction(() => /stopping/.test(document.querySelector('[data-live-dock-label]').textContent), null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelector('[data-live-dock]').dataset.phase === 'stopping', null, { timeout: 5000 });
       assert.equal(await page.evaluate(() => fuseToolFixture.activity({ id: 'independent-child', reasoning: 'Thinking independently', segments: [{ type: 'reasoning', text: 'Thinking independently' }] }, null, true).label), 'thinking', 'parent cancellation must not label an independent child as stopping');
       assert.equal(await page.locator('[data-live-dock]').getAttribute('aria-hidden'), 'false');
       // The dock ticks constantly, so it is not a live region; the page
@@ -60,7 +61,8 @@ const out = process.env.FRONTEND_LIFECYCLE_ARTIFACTS || '/tmp/opencode/frontend-
       await page.evaluate(() => fuseToolFixture.update('read', { status: 'interrupted' }));
       assert.equal(await page.locator('[data-step="tool-read"]').getAttribute('data-state'), 'interrupted', 'confirmed cancellation settles the tool');
       await page.evaluate(() => fuseToolFixture.run({ status: 'queued', cancel_requested: false }));
-      assert.match(await label.textContent(), /queued/);
+      assert.equal(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'queued', 'a requeued run shows the queued phase');
+      assert.doesNotMatch(await label.textContent(), /queued/, 'the status line names no activity');
 
       for (const reduced of ['no-preference', 'reduce']) {
         await page.emulateMedia({ reducedMotion: reduced });

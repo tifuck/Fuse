@@ -48,14 +48,14 @@ function scenarios() {
 
   // —— Call states the generator never pairs ——
   add('a queued command reads as queued, not as a running command', () => {
-    // Console prints no "Queued" word on the row (that word is the status
-    // line's). The row must not borrow the live "Running <command>" headline.
+    // The row must not borrow the live "Running <command>" headline, and the
+    // status line never says "queued".
     const cmd = sh('npm run build', { extra: { status: 'queued', state: 'queued', execution_status: 'queued', exit_code: null, execution_duration_ms: null } });
     return { rows: [user('Go.'), turn([T(cmd)], [cmd])], live: true, phase: 'tools',
       truth: { call: { [cmd.id]: 'running' }, exec: { [cmd.command_id]: 'queued' } },
       has: ['Queued'], lacks: ['Running npm run build', 'Running in the background'], status: 'queued' };
   });
-  add('a command being cancelled says Cancelling on the status line, with one clock', () => {
+  add('a command being cancelled says Cancelling on its row, not the status line, with one clock', () => {
     const cmd = sh('npm run e2e', { ms: 8000, extra: { status: 'running', state: 'cancelling', execution_status: 'cancelling', exit_code: null, execution_duration_ms: null } });
     return { rows: [user('Go.'), turn([T(cmd)], [cmd])], live: true, phase: 'tools',
       truth: { call: { [cmd.id]: 'running' }, exec: { [cmd.command_id]: 'cancelling' } },
@@ -445,7 +445,8 @@ function audit(truth, opts) {
   if (opts.live) {
     const dock = document.querySelector('[data-live-dock]');
     if (!dock || dock.hidden) add('dock-missing', null);
-    if (opts.status && !(document.querySelector('[data-live-dock-label]')?.textContent || '').toLowerCase().includes(opts.status)) {
+    // The status line names no activity (its row does): only time, tokens and tok/s.
+    if (opts.status && (document.querySelector('[data-live-dock-label]')?.textContent || '').toLowerCase().includes(opts.status)) {
       add('status-label', null, document.querySelector('[data-live-dock-label]')?.textContent || '');
     }
   }
