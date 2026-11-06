@@ -174,21 +174,28 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   display: none;
 }
 
-@media (max-width: 600px) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-meta { display: inline; }
+/* One row at every width: the status word gives way (ellipsis) and the
+   counts never wrap or clip. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) :is([data-live-dock-label], [data-agent-live-label]) {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-verb {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-meta {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 600px) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) :is([data-live-dock-label], [data-agent-live-label]) { display: block; }
-}
-
-@media (max-width: 600px) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-verb {
-    display: inline;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-unit { display: none; }
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md.is-writing::after {

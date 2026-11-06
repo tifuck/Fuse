@@ -204,6 +204,65 @@ test('row subjects name what each call worked on', () => {
   assert.equal(c.toolRowLabel({ name: 'scratch' }), 'Scratch');
 });
 
+test('spinner state names the call that is running', () => {
+  const c = vm.createContext({});
+  constant('CC_SPINNER_STATES', c);
+  for (const name of ['executionState', 'isSearchTool', 'ccSpinnerState']) load(name, c);
+  assert.equal(c.ccSpinnerState({ phase: 'queued', label: 'Queued' }), 'queued');
+  assert.equal(c.ccSpinnerState({ phase: 'stopping', label: 'Stopping' }), 'stopping');
+  assert.equal(c.ccSpinnerState({ phase: 'waiting', label: 'Waiting for model' }), 'waiting');
+  assert.equal(c.ccSpinnerState({ phase: 'starting', label: 'Working' }), 'waiting');
+  assert.equal(c.ccSpinnerState({ phase: 'working', label: 'Working' }), 'working');
+  const of = (name, extra = {}) => c.ccSpinnerState({ phase: 'working', label: 'Working', current: { name, ...extra } });
+  assert.equal(of('run_terminal_command'), 'running command');
+  assert.equal(of('get_command_output'), 'waiting for command');
+  assert.equal(of('kill_command'), 'stopping command');
+  assert.equal(of('read_file'), 'reading');
+  assert.equal(of('write_file'), 'writing file');
+  assert.equal(of('search_replace'), 'editing');
+  assert.equal(of('list_dir'), 'listing');
+  assert.equal(of('read_url'), 'fetching');
+  assert.equal(of('spawn_subagent'), 'running agent');
+  assert.equal(of('get_subagent_output'), 'waiting for agent');
+  assert.equal(of('kill_subagent'), 'stopping agent');
+  assert.equal(of('list_subagents'), 'listing agents');
+  assert.equal(of('monitor'), 'watching');
+  assert.equal(of('create_artifact'), 'building artifact');
+  assert.equal(of('update_artifact'), 'building artifact');
+  assert.equal(of('search_models'), 'finding models');
+  assert.equal(of('web_search'), 'searching the web', 'search tools name the web, not a file');
+  assert.equal(of('search'), 'searching the web');
+  // A tool with no spinner verb still gets a state, not silence.
+  assert.equal(of('todo_write'), 'running tool');
+  // The execution, not the call row, owns cancellation.
+  assert.equal(of('read_file', { state: 'cancelling' }), 'cancelling');
+  assert.equal(of('read_file', { execution_status: 'cancelling' }), 'cancelling');
+  // One row: counts appended to the activity label stay off the status line.
+  assert.equal(c.ccSpinnerState({ phase: 'working', label: 'Working · 2 active / 1 background' }), 'working');
+  assert.equal(c.ccSpinnerState({ phase: 'thinking', label: 'Thinking' }), '');
+});
+
+test('thinking status deepens with time and then flashes the thought', () => {
+  const c = vm.createContext({});
+  load('ccThinkingState', c);
+  const at = (ms) => ({ _spinThink: { since: Date.now() - ms, flash: null } });
+  assert.equal(c.ccThinkingState({}, true), 'thinking');
+  assert.equal(c.ccThinkingState(at(9000), true), 'thinking');
+  assert.equal(c.ccThinkingState(at(10000), true), 'still thinking');
+  assert.equal(c.ccThinkingState(at(25000), true), 'thinking more');
+  assert.equal(c.ccThinkingState(at(35000), true), 'thinking some more');
+  assert.equal(c.ccThinkingState(at(50000), true), 'deep in thought');
+  // Ending a thought flashes its length for two seconds, then clears.
+  const msg = at(4200);
+  assert.equal(c.ccThinkingState(msg, false), 'thought for 4s');
+  assert.equal(c.ccThinkingState(msg, false), 'thought for 4s', 'the flash holds while it is on screen');
+  msg._spinThink.flash.until = Date.now() - 1;
+  assert.equal(c.ccThinkingState(msg, false), '');
+  assert.equal(c.ccThinkingState({ _spinThink: { since: Date.now(), flash: null } }, false), 'thought for 1s',
+    'a sub-second thought still reads as one second');
+  assert.equal(c.ccThinkingState({}, false), '', 'no thought, no note');
+});
+
 test('agent done receipts count tool uses, tokens, and time', () => {
   const c = vm.createContext({});
   constant('CC_COMPACT', c);

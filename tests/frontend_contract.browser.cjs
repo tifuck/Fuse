@@ -22,14 +22,13 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       assert.equal(await state.getAttribute('title'), 'Done', 'returned poll is a completed invocation');
       await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'model' } }));
       assert.match(await page.locator('[data-live-dock]').getAttribute('data-phase'), /waiting|starting/, 'durable model phase overrides old pending tool traces before fresh tokens');
-      assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /waiting/i, 'the status line names no activity');
+      assert.match(await page.locator('[data-live-dock-label] .chat-status-verb').textContent(), /^Waiting…$/, 'the status is the line\'s word');
       assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /command/, 'the pending poll must not label the model phase');
       await page.evaluate(() => fuseToolFixture.stream(0, { tools: [{ id: 'contract', name: 'get_command_output', status: 'running', command_id: 'canonical-job' }], segments: [{ type: 'content', text: 'Old text' }, { type: 'tool', id: 'contract' }] }));
       await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'tools', tool_id: 'contract' } }));
-      // The status line names no activity; the dock's phase and owner still follow it.
       const owner = () => page.evaluate(() => fuseToolFixture.activity(fuseToolFixture.snapshot()[0], null, true).current?.name || '');
       assert.equal(await owner(), 'get_command_output', 'the running wait owns the dock');
-      assert.doesNotMatch(await page.locator('[data-live-dock-label]').textContent(), /command/, 'the status line names no call');
+      assert.equal(await page.locator('[data-live-dock-label] .chat-status-verb').textContent(), 'Waiting for command…', 'the status line names the running wait');
       await page.evaluate(() => fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] }));
       await page.evaluate(() => fuseToolFixture.update('contract', {}, true));
       assert.match(await page.locator('[data-live-dock]').getAttribute('data-phase'), /waiting|starting/, 'streamed activity events update the durable phase projection');
@@ -97,7 +96,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     });
     const up = await page.locator('[data-live-dock-label]').textContent();
     assert.match(up, /↑/, 'tool execution switches the dock to an up arrow');
-    assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, and no activity word: ${up}`);
+    assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, the status ahead of them: ${up}`);
     assert.doesNotMatch(up, /12k/, 'up arrow is this round of tool/prompt tokens, not the full context window');
     assert.doesNotMatch(up, /\b0 tokens\b/);
     // The call still streaming joins the measured average live: (2150 + 850)
@@ -113,6 +112,31 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.match(rate, /· 60 tok\/s\)$/, `a calibrated live share is not: ${rate}`);
     rate = await dockAfter({ streamGen: 0, streamMs: 0 });
     assert.match(rate, /· 52 tok\/s\)$/, `with no call streaming the measured average stands: ${rate}`);
+    // A phone: status, clock, tokens and tok/s on one row. The status gives
+    // way first; the counts are never clipped, only the word "tokens" goes.
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 800 });
+      const row = await page.evaluate(() => {
+        const label = document.querySelector('[data-live-dock-label]');
+        const verb = label.querySelector('.chat-status-verb');
+        const meta = label.querySelector('.chat-status-meta');
+        const unit = meta.querySelector('.chat-status-unit');
+        const box = (el) => el.getBoundingClientRect();
+        const dock = box(label.closest('[data-live-dock]'));
+        return {
+          text: label.textContent,
+          oneRow: Math.abs(box(verb).top - box(meta).top) < 4 && box(label).height < box(verb).height * 1.6,
+          metaWhole: meta.scrollWidth <= meta.clientWidth + 1 && box(meta).right <= dock.right + 1,
+          unit: unit ? getComputedStyle(unit).display : 'missing',
+        };
+      });
+      assert.ok(row.oneRow, `@${width} the dock is one row: ${JSON.stringify(row)}`);
+      assert.ok(row.metaWhole, `@${width} the counts are never clipped: ${JSON.stringify(row)}`);
+      assert.equal(row.unit, 'none', `@${width} a narrow dock drops the word "tokens": ${JSON.stringify(row)}`);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    assert.notEqual(await page.locator('[data-live-dock-label] .chat-status-unit').evaluate((el) => getComputedStyle(el).display), 'none',
+      'a wide dock keeps the word "tokens"');
     await page.evaluate(() => {
       fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] });
       fuseToolFixture.stream(0, {

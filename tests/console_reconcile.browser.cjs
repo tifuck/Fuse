@@ -85,8 +85,8 @@ function readDom() {
         check(seen.rows[id]?.state === 'running', `${tag} ${id} starts running, saw ${JSON.stringify(seen.rows[id])}`);
       }
       check(!/read \d+ files|searched for|ran \d+ shell/.test(seen.text), `${tag} nothing has folded while every call still runs: ${seen.text.slice(0, 240)}`);
-      // The status line names no activity and counts no calls: the rows do.
-      check(!/active|background|running/.test(seen.dock), `${tag} the dock names no calls: ${seen.dock}`);
+      // One row: the status line names the newest call but counts none (the rows do).
+      check(!/active|background/.test(seen.dock), `${tag} the dock counts no calls: ${seen.dock}`);
 
       // They finish in a different order than they started.
       const finishes = [

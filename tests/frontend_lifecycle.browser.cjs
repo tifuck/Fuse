@@ -28,7 +28,7 @@ const out = process.env.FRONTEND_LIFECYCLE_ARTIFACTS || '/tmp/opencode/frontend-
       }], true));
       const label = page.locator('[data-live-dock-label]');
       assert.equal(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'thinking', 'fresh reasoning outranks an older pending poll');
-      assert.doesNotMatch(await label.textContent(), /thinking|command/, 'the status line names no activity');
+      assert.match(await label.textContent(), /^Thinking…/, 'the status line says thinking');
       assert.equal(await page.locator('[data-step="think-2"].is-running').count(), 1, 'latest thinking stays live after earlier answer text');
       assert.equal(await page.locator('[data-step="tool-poll"]').getAttribute('data-state'), 'running', 'background lifecycle remains independent of model activity');
       await page.evaluate(() => fuseToolFixture.stream(0, { segments: [{ type: 'reasoning', text: 'Plan' }, { type: 'tool', id: 'poll' }] }));
@@ -62,7 +62,7 @@ const out = process.env.FRONTEND_LIFECYCLE_ARTIFACTS || '/tmp/opencode/frontend-
       assert.equal(await page.locator('[data-step="tool-read"]').getAttribute('data-state'), 'interrupted', 'confirmed cancellation settles the tool');
       await page.evaluate(() => fuseToolFixture.run({ status: 'queued', cancel_requested: false }));
       assert.equal(await page.locator('[data-live-dock]').getAttribute('data-phase'), 'queued', 'a requeued run shows the queued phase');
-      assert.doesNotMatch(await label.textContent(), /queued/, 'the status line names no activity');
+      assert.match(await label.textContent(), /^Queued…/, 'the status line says queued');
 
       for (const reduced of ['no-preference', 'reduce']) {
         await page.emulateMedia({ reducedMotion: reduced });

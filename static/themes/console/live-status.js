@@ -92,6 +92,45 @@ function ccSpinnerVerb(msg) {
     return CC_SPINNER_VERBS[(hash >>> 0) % CC_SPINNER_VERBS.length];
   }
 
+function ccThinkingState(msg, thinking) {
+    const now = Date.now();
+    const clock = (msg._spinThink ||= { since: 0, flash: null });
+    if (thinking) {
+      if (!clock.since) {
+        // The thought's own duration, streamed on its segment. Anchoring at
+        // page paint restarted "still thinking" on every reload.
+        const segs = Array.isArray(msg.segments) ? msg.segments : [];
+        const last = [...segs].reverse().find((seg) => seg && seg.type === "reasoning");
+        const ms = Number(last && last.ms);
+        clock.since = Number.isFinite(ms) && ms > 0 ? now - ms : now;
+      }
+      clock.flash = null;
+      const ms = now - clock.since;
+      return ms >= 45000 ? "deep in thought" : ms >= 30000 ? "thinking some more" : ms >= 20000 ? "thinking more"
+        : ms >= 10000 ? "still thinking" : "thinking";
+    }
+    if (clock.since) {
+      clock.flash = { ms: now - clock.since, until: now + 2000 };
+      clock.since = 0;
+    }
+    if (clock.flash && now < clock.flash.until) return `thought for ${Math.max(1, Math.round(clock.flash.ms / 1000))}s`;
+    clock.flash = null;
+    return "";
+  }
+
+function ccSpinnerState(status) {
+    let state = "";
+    if (status.phase === "queued") state = "queued";
+    else if (status.phase === "stopping") state = "stopping";
+    else if (status.current) state = deps.executionState(status.current) === "cancelling" ? "cancelling"
+      : deps.isSearchTool(status.current.name) ? "searching the web" : CC_SPINNER_STATES[status.current.name] || "running tool";
+    else if (status.phase === "calling") state = !status.tool ? "calling tool"
+      : deps.isSearchTool(status.tool) ? "searching the web" : CC_SPINNER_STATES[status.tool] || `calling ${status.tool}`;
+    else if (status.phase === "waiting" || status.phase === "starting") state = "waiting";
+    else if (status.phase === "working") state = "working";
+    return state;
+  }
+
 function formatConsoleLiveStatus(msg, groups, opts) {
     const status = deps.currentActivity(msg, groups, true);
     const meter = opts ? opts.meter : deps.liveMeter;
@@ -115,12 +154,20 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const live = liveMs ? Math.max(0, Number(msg.streamGen) || 0) : 0;
     const speed = deps.ccGenSpeed((Number(usage.gen_out) || 0) + live, (Number(usage.gen_ms) || 0) + liveMs,
       usage.gen_est > 0 || (liveMs > 0 && !(Number(usage.gen_chars) > 0)));
+    const thought = ccThinkingState(msg, status.phase === "thinking");
+    // A tool call being written or run, a stop request or a requeue replaces
+    // the "thought for Ns" flash at once: that is the newer activity.
+    const state = status.phase === "thinking" ? thought
+      : ["calling", "stopping", "queued"].includes(status.phase) || status.current ? ccSpinnerState(status) : thought || ccSpinnerState(status);
     // Claude Code shows the clock once there is something else to show, or
-    // after 16s. No activity word: the rows above already say what runs.
+    // after 16s.
     const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
     const parts = [clock, tokenText, speed && speed.text].filter(Boolean);
-    const verb = ccSpinnerVerb(msg);
-    return { verb: /(…|\.\.\.)$/.test(verb) ? verb : `${verb}…`, meta: parts.length ? `(${parts.join(" · ")})` : "" };
+    // One row: the status is the line's word (the turn's spinner verb while
+    // the model only writes), so it costs no width; the counts follow it.
+    const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : ccSpinnerVerb(msg);
+    const verb = /(…|\.\.\.)$/.test(word) || /^Thought for /.test(word) ? word : `${word}…`;
+    return { verb, meta: parts.length ? `(${parts.join(" · ")})` : "" };
   }
 
 function syncActivityElapsed(article, msg, live) {
@@ -183,5 +230,14 @@ const CC_SPINNER_VERBS = [
     "Wrangling", "Zesting", "Zigzagging",
   ];
 
-  return { formatActivityClock, formatActivityElapsed, consoleFlow, consoleRoundKey, ensureConsoleRound, formatConsoleCount, consoleDownTokens, consoleUpTokens, ccSpinnerVerb, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_VERBS };
+const CC_SPINNER_STATES = {
+    run_terminal_command: "running command", get_command_output: "waiting for command", kill_command: "stopping command",
+    read_file: "reading", grep: "searching", glob: "searching", list_dir: "listing", search_replace: "editing",
+    write_file: "writing file", read_url: "fetching", spawn_subagent: "running agent", get_subagent_output: "waiting for agent",
+    kill_subagent: "stopping agent", list_subagents: "listing agents", monitor: "watching",
+    create_artifact: "building artifact", update_artifact: "building artifact", edit_artifact: "editing artifact",
+    read_artifact: "reading artifact", search_models: "finding models",
+  };
+
+  return { formatActivityClock, formatActivityElapsed, consoleFlow, consoleRoundKey, ensureConsoleRound, formatConsoleCount, consoleDownTokens, consoleUpTokens, ccSpinnerVerb, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_VERBS, CC_SPINNER_STATES };
 }

@@ -33,7 +33,16 @@ function setLiveLabelText(el, text, meta) {
       el.replaceChildren(verb, tail);
     }
     const nextMeta = meta || "";
-    if (tail.textContent !== nextMeta) tail.textContent = nextMeta;
+    if (tail.textContent !== nextMeta) {
+      // " tokens" in its own span: a narrow dock drops the word, never a number.
+      tail.replaceChildren(...nextMeta.split(/( tokens)/).filter(Boolean).map((part) => {
+        if (part !== " tokens") return document.createTextNode(part);
+        const unit = document.createElement("span");
+        unit.className = "chat-status-unit";
+        unit.textContent = part;
+        return unit;
+      }));
+    }
     const hideTail = !nextMeta;
     // Toggling hidden on every tick reflows the in-flow dock and can flip the
     // transcript extent by a rounding pixel; only touch it on a real change.

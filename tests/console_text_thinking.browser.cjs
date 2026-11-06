@@ -115,10 +115,9 @@ function snap() {
     let s = await snapNow();
     check(s.dock && !s.dock.hidden, `dock shown while thinking: ${JSON.stringify(s.dock)}`);
     check(/^\S+…$/.test(s.dock.verb), `spinner verb carries the ellipsis: ${s.dock.verb}`);
-    check(s.dock.meta.includes('↓ ') && !/thinking/.test(s.dock.meta), `the dock counts down tokens and names no activity: ${s.dock.meta}`);
+    check(s.dock.verb === 'Thinking…' && s.dock.meta.includes('↓ ') && !/thinking/i.test(s.dock.meta), `the status is the line's word, the counts follow it: ${JSON.stringify(s.dock)}`);
     check(s.dock.glyph === '✻', `reduced-motion spin glyph is the still frame: ${s.dock.glyph}`);
     check(s.labels.join('|') === 'Thinking for 1s…', `a streaming thought is its own ticking line: ${s.labels}`);
-    const verb = s.dock.verb;
     await page.waitForFunction(() => window.__tt.snap().clocks.some((c) => /^think:[2-9]s$/.test(c)), null, { timeout: 4500 });
     s = await snapNow();
     check(Number((s.dock.meta.match(/\((\d+)s/) || [])[1]) >= 10, `the dock's elapsed clock ticks: ${s.dock.meta}`);
@@ -130,20 +129,20 @@ function snap() {
     check(s.clocks.length === 0, `the landed thought keeps no live clock: ${s.clocks}`);
     // The dock leaves "thinking" the moment a call starts streaming, and
     // names the tool once the stream has, before its arguments finish.
-    check(s.dock.phase === 'calling' && !/calling|thinking|thought for/.test(s.dock.meta),
-      `a call being written names nothing in the dock: ${JSON.stringify(s.dock)}`);
+    check(s.dock.phase === 'calling' && s.dock.verb === 'Calling tool…' && !/thinking|thought for/i.test(s.dock.verb + s.dock.meta),
+      `an unnamed call being written reads "Calling tool…": ${JSON.stringify(s.dock)}`);
     await drive({}, { phase: 'calling', tool: 'web_search' });
     s = await snapNow();
-    check(s.dock.meta.includes('↓ ') && !/searching/.test(s.dock.meta), `a search call being written keeps down tokens, no activity word: ${s.dock.meta}`);
+    check(s.dock.verb === 'Searching the web…' && s.dock.meta.includes('↓ '), `a search call being written reads "Searching the web…" with down tokens: ${JSON.stringify(s.dock)}`);
     await drive({}, { phase: 'calling', tool: 'read_file' });
     s = await snapNow();
-    check(!/reading/.test(s.dock.meta), `the dock never names the call: ${s.dock.meta}`);
+    check(s.dock.verb === 'Reading…', `the dock follows the newest call's name: ${s.dock.verb}`);
 
     // tools: the call stands alone, ticking; dock flips to up tokens.
     await drive({ tools: [read], segments: [think('Plan the retry audit.', 6505), T(read)] }, { phase: 'tools', tool_id: read.id });
     s = await snapNow();
     check(s.labels.length === 2 && /^Reading app\/config\.py(?: \S+)? · 3s/.test(s.labels[1]), `a running call is its own row with its clock: ${s.labels}`);
-    check(s.dock.phase === 'working' && s.dock.meta.includes('↑ ') && !/reading/.test(s.dock.meta), `tools phase flips the dock to up tokens, no activity word: ${s.dock.meta}`);
+    check(s.dock.phase === 'working' && s.dock.meta.includes('↑ ') && s.dock.verb === 'Reading…', `tools phase names the call and flips the dock to up tokens: ${JSON.stringify(s.dock)}`);
     await page.waitForFunction(() => /^Reading app\/config\.py(?: \S+)? · [4-9]s/.test(window.__tt.snap().labels[1] || ''), null, { timeout: 5000 });
 
     // model again: the call folds behind its thought, prose follows.
@@ -153,6 +152,11 @@ function snap() {
     check(s.prose.join('||') === 'Read it.', `prose between tool rows lands in its own block: ${s.prose}`);
     check(s.dock.phase === 'writing' && s.dock.meta.includes('↓ '), `writing phase shows down tokens: ${s.dock.meta}`);
     await page.waitForFunction(() => /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/.test(window.__tt.snap().dock.meta), null, { timeout: 5000 });
+    // Only writing, no status: once the "Thought for" flash ends, the line's
+    // word is the turn's spinner verb.
+    await page.waitForFunction(() => !/^Thought for/.test(window.__tt.snap().dock.verb), null, { timeout: 4000 });
+    const verb = (await snapNow()).dock.verb;
+    check(/^[A-Z][^ ]*…$/.test(verb) && !/^(Thinking|Thought|Calling|Reading|Waiting|Working)/.test(verb), `plain writing shows the turn's verb: ${verb}`);
 
     // a second thought between calls: the line above stays settled.
     await drive({ segments: [think('Plan the retry audit.', 6505), T(readDone), say('Read it.\n\n'), think('Now check the tests.')] });
@@ -168,6 +172,7 @@ function snap() {
     check(s.steps.filter((k) => k === `tool-${read.id}`).length === 1 && s.steps.filter((k) => k === `tool-${grep.id}`).length === 1, `each call renders exactly once: ${s.steps}`);
     await page.waitForFunction(() => window.__tt.snap().dock.phase === 'working', null, { timeout: 5000 });
     await drive({ content: 'Read it.\n\nRetries are now 5.', tools: [readDone, grepDone], segments: persisted.segments }, { phase: 'model' });
+    await page.waitForFunction((want) => window.__tt.snap().dock.verb === want, verb, { timeout: 4000 });
     const live = await snapNow();
     check(live.prose.join('||') === 'Read it.||Retries are now 5.', `both prose blocks stream in order: ${live.prose}`);
 
@@ -186,7 +191,6 @@ function snap() {
       return `${when.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}, ${time}`;
     });
     check(s.foot === `✻ ${turnVerb('tt-turn-a')} for 2m 13s · done ${doneAt}`, `the closing line reports the persisted duration and end time: ${s.foot}`);
-    check(s.dock.verb === verb, `the spinner's word holds for the whole turn: ${s.dock.verb} then ${verb}`);
     check(JSON.stringify(s.blocks) === JSON.stringify(live.blocks), `the reconcile keeps the live render's blocks exactly: ${JSON.stringify(s.blocks)} vs ${JSON.stringify(live.blocks)}`);
     check(JSON.stringify(s.steps) === JSON.stringify(live.steps), `the reconcile keeps every row in order: ${s.steps} vs ${live.steps}`);
     check(JSON.stringify(s.prose) === JSON.stringify(live.prose), `the reconcile keeps the prose text exactly: ${s.prose}`);
@@ -297,7 +301,7 @@ function snap() {
       const hidden = await snapNow();
       check(!hidden.labels.some((l) => /Thinking for|Thought for|Secret plan/.test(l)), `the switch hides the live thought line at once: ${hidden.labels}`);
       check(hidden.clocks.length === 0, `the hidden live thought keeps no ticking clock: ${hidden.clocks}`);
-      check(!hidden.dock.hidden && !/thinking/.test(hidden.dock.meta), `the dock stays up while the thought is hidden, naming no activity: ${hidden.dock.meta}`);
+      check(!hidden.dock.hidden && /^Thinking/.test(hidden.dock.verb), `the status line still says the model is thinking while hidden: ${JSON.stringify(hidden.dock)}`);
       await drive({ reasoning: 'Secret plan. More.', segments: [think('Secret plan. More.')] });
       const stillHidden = await snapNow();
       check(!stillHidden.labels.some((l) => /Thinking for|Secret plan/.test(l)), `streaming into a hidden thought still renders no row: ${stillHidden.labels}`);
@@ -326,8 +330,7 @@ function snap() {
       const stopVerb = s.dock.verb;
       await page.evaluate(() => fuseToolFixture.run({ cancel_requested: true }));
       s = await snapNow();
-      check(!s.dock.hidden && !/stopping/.test(s.dock.meta), `stopping keeps the dock, naming no activity: ${s.dock.meta}`);
-      check(s.dock.verb === stopVerb, `stopping keeps the turn's word: ${s.dock.verb} vs ${stopVerb}`);
+      check(!s.dock.hidden && s.dock.verb === 'Stopping…' && stopVerb === 'Running command…', `a stop request replaces the running call's status: ${stopVerb} then ${s.dock.verb}`);
       const stopMsg = { id: 'tt-stop', role: 'assistant', model: 'qa/model', elapsedMs: 24000, endedAt: '2026-10-05T09:44:10Z', stopped: true,
         content: 'Building.\n\n', tools: [{ ...cmd, status: 'interrupted', state: 'interrupted', execution_status: 'interrupted', error: 'the run ended before it finished', exit_code: null, elapsed_ms: undefined }],
         segments: [say('Building.\n\n'), T(cmd)] };
