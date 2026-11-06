@@ -109,13 +109,13 @@ function snap() {
       segments: [think('Plan the retry audit.', 6505), T(readDone), say('Read it.\n\n'), think('Now check the tests.', 4200), T(grepDone), say('Retries are now 5.')],
     };
 
-    // model, thinking: own ticking line; dock shows the elapsed clock, down
-    // tokens and "thinking"; the spin glyph is the still frame.
+    // model, thinking: own ticking line; dock shows the elapsed clock and
+    // "thinking", never a token count; the spin glyph is the still frame.
     await drive({ reasoning: 'Plan the retry audit.', segments: [think('Plan the retry audit.')] });
     let s = await snapNow();
     check(s.dock && !s.dock.hidden, `dock shown while thinking: ${JSON.stringify(s.dock)}`);
     check(/^\S+…$/.test(s.dock.verb), `spinner verb carries the ellipsis: ${s.dock.verb}`);
-    check(s.dock.meta.includes('· thinking') && s.dock.meta.includes('↓ '), `thinking status names thinking and down tokens: ${s.dock.meta}`);
+    check(s.dock.meta.endsWith('· thinking)') && !/tokens|↑|↓/.test(s.dock.meta), `thinking status names thinking, no token count: ${s.dock.meta}`);
     check(s.dock.glyph === '✻', `reduced-motion spin glyph is the still frame: ${s.dock.glyph}`);
     check(s.labels.join('|') === 'Thinking for 1s…', `a streaming thought is its own ticking line: ${s.labels}`);
     const verb = s.dock.verb;
@@ -134,16 +134,16 @@ function snap() {
       `an unnamed call being written reads "calling tool": ${JSON.stringify(s.dock)}`);
     await drive({}, { phase: 'calling', tool: 'web_search' });
     s = await snapNow();
-    check(s.dock.meta.includes('· searching the web') && s.dock.meta.includes('↓ '), `a search call being written reads "searching the web" with down tokens: ${s.dock.meta}`);
+    check(s.dock.meta.endsWith('· searching the web)') && !/tokens|↑|↓/.test(s.dock.meta), `a search call being written reads "searching the web", no token count: ${s.dock.meta}`);
     await drive({}, { phase: 'calling', tool: 'read_file' });
     s = await snapNow();
     check(s.dock.meta.endsWith('· reading)'), `the dock follows the newest call's name: ${s.dock.meta}`);
 
-    // tools: the call stands alone, ticking; dock flips to up tokens.
+    // tools: the call stands alone, ticking; the dock still counts no tokens.
     await drive({ tools: [read], segments: [think('Plan the retry audit.', 6505), T(read)] }, { phase: 'tools', tool_id: read.id });
     s = await snapNow();
     check(s.labels.length === 2 && /^Reading app\/config\.py(?: \S+)? · 3s/.test(s.labels[1]), `a running call is its own row with its clock: ${s.labels}`);
-    check(s.dock.phase === 'working' && s.dock.meta.includes('↑ '), `tools phase flips the dock to up tokens: ${s.dock.meta}`);
+    check(s.dock.phase === 'working' && !/tokens|↑|↓/.test(s.dock.meta), `tools phase shows no token count: ${s.dock.meta}`);
     await page.waitForFunction(() => /reading/.test(window.__tt.snap().dock.meta), null, { timeout: 5000 });
     await page.waitForFunction(() => /^Reading app\/config\.py(?: \S+)? · [4-9]s/.test(window.__tt.snap().labels[1] || ''), null, { timeout: 5000 });
 
@@ -152,8 +152,9 @@ function snap() {
     s = await snapNow();
     check(s.labels.join('|') === 'Thought for 6s, read 1 file', `the ended call folds into the thought's line: ${s.labels}`);
     check(s.prose.join('||') === 'Read it.', `prose between tool rows lands in its own block: ${s.prose}`);
-    check(s.dock.phase === 'writing' && s.dock.meta.includes('↓ '), `writing phase shows down tokens: ${s.dock.meta}`);
-    await page.waitForFunction(() => /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/.test(window.__tt.snap().dock.meta), null, { timeout: 5000 });
+    check(s.dock.phase === 'writing' && !/tokens|↑|↓/.test(s.dock.meta), `writing phase shows no token count: ${s.dock.meta}`);
+    // Once the "thought for" flash ends, plain writing names nothing: just the clock.
+    await page.waitForFunction(() => /^(?:\(\d+s\))?$/.test(window.__tt.snap().dock.meta), null, { timeout: 5000 });
 
     // a second thought between calls: the line above stays settled.
     await drive({ segments: [think('Plan the retry audit.', 6505), T(readDone), say('Read it.\n\n'), think('Now check the tests.')] });

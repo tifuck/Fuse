@@ -417,8 +417,8 @@ test('usage splits input and output tokens', () => {
 
 test('token counts abbreviate at thousand and million', () => {
   const c = vm.createContext({});
-  for (const name of ['formatTokens', 'formatConsoleCount']) load(name, c);
-  for (const fmt of [c.formatTokens, c.formatConsoleCount]) {
+  for (const name of ['formatTokens']) load(name, c);
+  for (const fmt of [c.formatTokens]) {
     assert.equal(fmt(0), '0');
     assert.equal(fmt(999), '999');
     assert.equal(fmt(1000), '1k');

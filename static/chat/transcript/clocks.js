@@ -47,8 +47,8 @@ export function createClocks(ctx) {
   // What the run is doing, in the spinner's parentheses. Claude Code names
   // only thinking there; Fuse also names the call that is running.
 
-  // Claude Code's status row: "✻ Cogitating… (1m 3s · ↓ 1.2k tokens · thinking)".
-  // Main run by default; the subagent dock passes its own meter and clock.
+  // Claude Code's status row: "✻ Cogitating… (1m 3s · 48 tok/s · thinking)".
+  // Main run by default; the subagent dock passes its own clock.
 
   function stopLiveClock() {
     if (S.liveClockTimer) {

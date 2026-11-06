@@ -78,22 +78,18 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       fuseToolFixture.context.accept({ scope: 'prompt', used: 12000, limit: 200000, run_id: 'fixture-run' });
       fuseToolFixture.stream(0, { content: 'abcd'.repeat(40), reasoning: '', segments: [{ type: 'content', text: 'abcd'.repeat(40) }] });
     });
-    const down = await page.locator('[data-live-dock-label]').textContent();
-    assert.match(down, /↓/, 'console dock counts streamed output with a down arrow');
-    assert.doesNotMatch(down, /\b0 tokens\b/);
-    const first = Number((down.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
-    await page.evaluate(() => fuseToolFixture.stream(0, { content: 'abcd'.repeat(80), reasoning: '', segments: [{ type: 'content', text: 'abcd'.repeat(80) }] }));
-    const more = await page.locator('[data-live-dock-label]').textContent();
-    const second = Number((more.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
-    assert.ok(second > first, 'down-arrow count ticks as tokens stream in');
+    // The dock never counts tokens, streaming or running tools: it shows the
+    // turn's tok/s between the clock and what the run is doing.
+    const noTokens = (label, when) => assert.doesNotMatch(label, /tokens|↑|↓/, `no token count ${when}: ${label}`);
+    noTokens(await page.locator('[data-live-dock-label]').textContent(), 'while output streams');
     await page.evaluate(() => {
-      fuseToolFixture.stream(0, { tools: [{ id: 'bash', name: 'run_terminal_command', status: 'running', command: 'ls' }], segments: [{ type: 'content', text: 'abcd'.repeat(80) }, { type: 'tool', id: 'bash' }] });
+      fuseToolFixture.stream(0, { usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200 },
+        tools: [{ id: 'bash', name: 'run_terminal_command', status: 'running', command: 'ls' }], segments: [{ type: 'content', text: 'abcd'.repeat(80) }, { type: 'tool', id: 'bash' }] });
       fuseToolFixture.run({ activity: { phase: 'tools', tool_id: 'bash' } });
     });
-    const up = await page.locator('[data-live-dock-label]').textContent();
-    assert.match(up, /↑/, 'tool execution switches the dock to an up arrow');
-    assert.doesNotMatch(up, /12k/, 'up arrow is this round of tool/prompt tokens, not the full context window');
-    assert.doesNotMatch(up, /\b0 tokens\b/);
+    const tools = await page.locator('[data-live-dock-label]').textContent();
+    noTokens(tools, 'while a tool runs');
+    assert.match(tools, /\(\d+s · 52 tok\/s · running command\)/, `tok/s sits before the status: ${tools}`);
     await page.evaluate(() => {
       fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] });
       fuseToolFixture.stream(0, {
@@ -109,13 +105,9 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       });
     });
     const next = await page.locator('[data-live-dock-label]').textContent();
-    assert.match(next, /↓/, 'next model round switches back to a down arrow');
-    const third = Number((next.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
-    assert.ok(third < second, 'down-arrow count resets for the new thinking/output round');
-
-    await page.evaluate(() => fuseToolFixture.run({ activity: { phase: 'model' } }));
-    assert.match(await page.locator('[data-live-dock-label]').textContent(), /↓/, 'model phase keeps the output-token status after a run update');
-    console.log('PASS console live dock ↑↓');
+    noTokens(next, 'in the next model round');
+    assert.match(next, /52 tok\/s/, `the turn's tok/s carries across rounds: ${next}`);
+    console.log('PASS console live dock tok/s');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
