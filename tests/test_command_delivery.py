@@ -243,10 +243,12 @@ class CommandDeliveryTest(unittest.IsolatedAsyncioTestCase):
         wake = store.get_run(1, started[0]["id"])
         seed = wake["request"]["messages"]
         self.assertTrue(any("ONLY ONCE" in str(m.get("content")) for m in seed))
-        # Still a candidate until the wake completes, but already in the seed.
         self.assertEqual(store.queue_stranded_reports(1, parent["thread_id"], wake["id"], seed), [])
-        # A plain next-message turn (report not in its messages) does get it.
-        self.assertEqual(len(store.queue_stranded_reports(1, parent["thread_id"], wake["id"], [])), 1)
+        # Acked as soon as the wake turn is committed with it in its seed: no
+        # longer stranded, so no later turn gets it injected a second time.
+        self.assertTrue(store.get_run(1, child["id"])["request"]["agent"].get("wake_sent"))
+        self.assertEqual(store.wake_candidates(1, parent["thread_id"]), [])
+        self.assertEqual(store.queue_stranded_reports(1, parent["thread_id"], wake["id"], []), [])
 
     async def test_user_resumed_child_wakes_stopped_main_agent(self):
         thread = chats.create_thread(1, model="offline")

@@ -629,6 +629,8 @@ def mark_wake_sent(run_ids, pending_guard_run: str | None = None):
             except (json.JSONDecodeError, TypeError):
                 continue
             agent = req.get("agent") if isinstance(req, dict) and isinstance(req.get("agent"), dict) else {}
+            if agent.get("wake_sent"):
+                continue
             generation = str(agent.get("delivery_generation") or "")
             if isinstance(receipts, dict):
                 receipt = receipts.get(run_id) or ""
@@ -705,17 +707,23 @@ def settle_wake_children(run_id, child_ids):
             if not isinstance(creq, dict):
                 continue
             cagent = creq.get("agent") if isinstance(creq.get("agent"), dict) else {}
+            if cagent.get("wake_sent"):
+                continue
             receipt = receipts.get(cid) or ""
             generation = str(cagent.get("delivery_generation") or "")
             if generation and f"<task_generation>{generation}</task_generation>" not in receipt:
                 continue
             needle = chat_tx._json_needle(receipt) if receipt else ""
-            if needle and any(needle in src for src in sources):
+            delivered = bool(needle and any(needle in src for src in sources))
+            if delivered:
                 cagent["wake_sent"] = True
             else:
                 cagent["wake_attempts"] = int(cagent.get("wake_attempts") or 0) + 1
             creq["agent"] = cagent
             conn.execute("UPDATE chat_runs SET request=? WHERE id=?", (chat_tx.dumps(creq), cid))
+            if delivered:
+                chat_tx.event(conn, row["user_id"], "agent.delivered", row["thread_id"],
+                              {"run_id": cid, "child_id": cid, "status": crow["status"], "wake_state": "delivered"})
 
 
 def automatic_stop_guard(conn, user_id, thread_id, *, parent_run_id=None, resumed_at=""):

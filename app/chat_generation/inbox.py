@@ -86,9 +86,9 @@ def drain(store, *, run_id: str, is_child: bool, user_id: int, thread_id, transc
         except Exception:
             logger.debug("thread command result inject skipped", exc_info=True)
         try:
-            # An automated wake turn already carries its reports in its seed;
-            # they stay candidates until that turn completes, so they must not
-            # be injected again.
+            # An automated wake turn already carries its reports in its seed
+            # (acked when it starts; the transcript check covers a failed ack),
+            # so they must not be injected again.
             results.extend(store.queue_stranded_reports(user_id, int(thread_id), run_id, transcript))
         except Exception:
             logger.debug("thread subagent result inject skipped", exc_info=True)

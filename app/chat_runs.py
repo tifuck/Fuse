@@ -715,6 +715,12 @@ async def _wake_parent(user_id: int, thread_id) -> None:
         if run is None:
             await durable_call(chat_store.bump_wake_attempts, ids)
             return
+        # The reports are in this turn's seed: the main agent has them now, so
+        # the agents pane drops "report pending" now, not when the turn ends.
+        try:
+            await durable_call(chat_store.mark_wake_sent, ids, pending_guard_run=run["id"])
+        except Exception:
+            logger.exception("Wake ack failed for thread %s; the turn's finalize acks it", thread_id)
         try:
             await start(internal_request(user_id), dict(owner), result["run"])
         except Exception:
@@ -1305,11 +1311,11 @@ async def _run(request, user, run):
                 else:
                     if child_agent.get("wake"):
                         if status == "completed":
-                            # The wake turn delivered its reports; only now mark
-                            # the children sent so a failed wake can retry. A
-                            # child re-spawned during this turn (new leg) or one
-                            # whose envelope is still queued unconsumed stays
-                            # unacknowledged so its own completion wakes again.
+                            # Normally acked when the wake started (_wake_parent);
+                            # this covers a failed early ack. A child re-spawned
+                            # during this turn (new leg) or one whose envelope is
+                            # still queued unconsumed stays unacknowledged so its
+                            # own completion wakes again.
                             await durable_call(
                                 chat_store.mark_wake_sent,
                                 child_agent.get("wake_ids") or [], pending_guard_run=ident

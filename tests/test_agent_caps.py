@@ -923,6 +923,29 @@ class AgentCapsTest(AgentCapsBase):
         store.save_turn_progress(parent["id"], [{"role": "user", "content": env2}])
         self.assertTrue(store.get_run(1, child["id"])["request"]["agent"].get("wake_sent"))
 
+    def test_wake_turn_acks_its_reports_when_it_starts(self):
+        from app import chat_runs as runs
+        from app import command_jobs
+
+        thread, parent = self._parent()
+        child = store.start_child_run(user_id=1, thread_id=thread["id"], parent_run_id=parent["id"],
+                                      prompt="bg", description="bg", background=True)
+        store.finish_run(child["id"], {"content": "report", "tools": []}, "completed")
+        store.finish_run(parent["id"], {"content": "ok", "tools": []}, "completed")
+        self.assertEqual(store.list_thread_agents(1, parent["thread_id"])[0]["wake_state"], "retrying")
+        with patch.object(runs, "start", new=AsyncMock(return_value=None)), \
+                patch.object(command_jobs, "pending_envelopes", return_value=[]):
+            asyncio.run(runs._wake_parent(1, parent["thread_id"]))
+        # The report is in the still-queued wake turn's seed: the pane must not
+        # say "report pending" until that whole turn ends.
+        self.assertEqual(store.list_thread_agents(1, parent["thread_id"])[0]["wake_state"], "delivered")
+        wake = store.thread_root_run(1, parent["thread_id"])
+        store.finish_run(wake["id"], {"content": "relayed", "tools": []}, "completed")
+        store.mark_wake_sent([child["id"]], pending_guard_run=wake["id"])
+        delivered = db.fetchall("SELECT id FROM chat_events WHERE type='agent.delivered' AND thread_id=?",
+                                (parent["thread_id"],))
+        self.assertEqual(len(delivered), 1)
+
     def test_user_stopped_root_blocks_wake_turns(self):
         from app import chat_runs as runs
         from app import command_jobs
