@@ -599,7 +599,9 @@ def user_sources(request: Request):
         nanogpt_pending=nanogpt_pending if (nanogpt_pending or {}).get("kind") == "device" else None,
         nanogpt_interval=(nanogpt_pending or {}).get("interval", 3),
         nanogpt_verify=safe_verify_url((nanogpt_pending or {}).get("verify") or ""),
-        nanogpt_oauth=bool(_nanogpt_redirect_uri(request)),
+        # The desktop app opens off-site pages in the system browser, whose
+        # session never sees NanoGPT's redirect back: offer the device code there.
+        nanogpt_oauth=bool(_nanogpt_redirect_uri(request)) and "FuseDesktop/" not in request.headers.get("user-agent", ""),
         nanogpt_owner=nanogpt_owner,
         nanogpt_models=_nanogpt_model_rows(user["id"]) if nanogpt_owner else [],
         nanogpt_prefs=nanogpt_mod.model_prefs(user["id"]),

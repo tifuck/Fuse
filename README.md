@@ -11,21 +11,21 @@ One Fuse instance serves many users. The first account registered becomes the ad
 
 **Routing and API**
 - OpenAI-compatible `/v1` endpoint with per-user API keys, usage tracking, and per-model pricing.
-- Model sources: a llama.cpp server, any OpenAI-compatible endpoint (with key rotation), Ollama Cloud, and per-user OpenRouter keys.
-- Shared subscription pools: users can link Grok, ChatGPT, Claude, Z.AI (GLM Coding Plan), Kimi Code, Devin and Xiaomi MiMo accounts. They choose whether each account is shared with everyone, with other contributors, or kept private. New upstream models appear automatically.
+- Model sources: a llama.cpp server, any OpenAI-compatible endpoint (with key rotation), Ollama Cloud, and per-user OpenRouter and Experiential Labs keys.
+- Shared subscription pools: users can link Grok, ChatGPT, Claude, Z.AI (GLM Coding Plan), Kimi Code, Devin, Xiaomi MiMo, Cursor and NanoGPT accounts, and Refuseless pay-as-you-go keys. They choose whether each account is shared with everyone, with other contributors, or kept private. New upstream models appear automatically.
 
 **Dashboard chat**
 - Streaming chat with tool calls, subagents, background commands and monitors, and live sync across tabs and devices.
 - Built-in web search and page reading, with no search API key needed (an optional Brave key adds a source).
 - Context meter with automatic compaction for long conversations.
-- Artifacts (live HTML or Markdown pages beside the chat, versioned, shared by link), skills (install from GitHub or skills.sh, or write your own), scheduled runs, and Web Push notifications when a reply finishes.
+- Artifacts (live HTML or Markdown pages beside the chat, versioned, shared by link), skills (install from GitHub or skills.sh, or write your own), scheduled runs, per-user auto-archive/delete of old chats, and Web Push notifications when a reply finishes or needs approval.
 
 **Coding agent on your machines**
 - Connect machines with the `fuse-agent` connector (Linux binary or Windows EXE; outbound HTTPS only) or over SSH.
 - Projects per machine, permission prompts for commands and files, and per-user encrypted host secrets.
 
 **Admin**
-- Users, invites, model sources, pools, pricing, and retention (auto-archive/delete).
+- Users, invites, model sources, pools, pricing, and which sites chat may read.
 - Optional desktop app (`fuse-desktop/`, Electron wrapper around the site).
 
 ## Setup
@@ -84,6 +84,7 @@ Without root, this is the only way to set up the database. The service is then i
 ### After installing
 
 - **The first account to register becomes the admin.** After that, registration is invite-only unless `ALLOW_REGISTER=true`.
+- Forgotten password (admin or not): `./venv/bin/python -m scripts.reset_password user@example.com` prints a new one (Docker: `docker compose exec fuse python -m scripts.reset_password user@example.com`). Saved SSH machine keys must then be entered again; connector machines keep working.
 - Add a model source under **Admin › Sources** (for example a llama.cpp or OpenAI-compatible URL and key), or link a subscription under **Sources**.
 - Connect machines from **Machines**: the install line there uses your domain (`PUBLIC_BASE_URL`). If you skipped the domain, re-run the installer with `--domain`.
 - Behind your own reverse proxy, have it reach Fuse from `127.0.0.1` or set `FORWARDED_ALLOW_IPS` to its address. Otherwise every user shares the proxy's IP for rate limits. Optionally set `TRUSTED_HOSTS` to your domain.

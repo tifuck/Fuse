@@ -51,5 +51,10 @@ linux:
 mac:
   icon: build/icon.png
   identity: null
+  # One build for Apple Silicon and Intel, as /download says. electron-updater
+  # installs macOS updates from the zip, never the dmg.
   target:
-    - dmg
+    - target: dmg
+      arch: universal
+    - target: zip
+      arch: universal

@@ -200,6 +200,23 @@
     );
   }
 
+  // A connector updates itself, but one that stays old (always busy, or auto
+  // update off) fails newer tools: say so where its version shows.
+  let latestAgent = "";
+  fetch("/agent/v1/manifest").then((res) => (res.ok ? res.json() : {})).then((data) => {
+    latestAgent = String((data && data.version) || "");
+    if (latestAgent) paint();
+  }).catch(() => {});
+
+  function olderThan(have, want) {
+    const a = String(have).split(".").map(Number);
+    const b = String(want).split(".").map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) < (b[i] || 0);
+    }
+    return false;
+  }
+
   function hostFacts(host) {
     const agent = isAgent(host);
     const facts = [];
@@ -215,7 +232,10 @@
       const osn = String(host.agent_os).toLowerCase().startsWith("win") ? "Windows" : host.agent_os;
       facts.push({ label: "OS", value: osn });
     }
-    if (agent && host.agent_version) facts.push({ label: "Agent", value: "v" + host.agent_version });
+    if (agent && host.agent_version) {
+      const stale = latestAgent && olderThan(host.agent_version, latestAgent);
+      facts.push({ label: "Agent", value: "v" + host.agent_version + (stale ? ` · update pending (v${latestAgent} available)` : "") });
+    }
     if (!agent && host.fingerprint) {
       facts.push({
         label: "Fingerprint",

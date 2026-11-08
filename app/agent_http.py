@@ -109,6 +109,10 @@ if [ -z "$CODE" ]; then
   exit 1
 fi
 command -v curl >/dev/null 2>&1 || {{ echo "fuse-agent: curl is required" >&2; exit 1; }}
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "fuse-agent: this installer is for Linux; connect this $(uname -s) machine with SSH instead" >&2
+  exit 1
+fi
 ARCH=$(uname -m)
 case "$ARCH" in
   x86_64|amd64) SKU=linux-amd64 ;;

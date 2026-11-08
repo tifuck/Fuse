@@ -604,6 +604,14 @@ class PoolPolicyHttpTest(unittest.TestCase):
         page = self.client.get("/sources")
         self.assertIn("Grok plan 1", page.text)
 
+    def test_desktop_app_gets_nanogpt_device_sign_in(self):
+        self._login("user@test.invalid")
+        browser = self.client.get("/sources").text
+        desktop = self.client.get("/sources", headers={"user-agent": "Mozilla/5.0 FuseDesktop/1.0.9"}).text
+        self.assertIn('href="/sources/nanogpt/start"', browser)
+        self.assertNotIn('href="/sources/nanogpt/start"', desktop)
+        self.assertIn('action="/sources/nanogpt/device"', desktop)
+
     def test_admin_guard_toggles_cover_every_guarded_pool(self):
         self._login("admin@test.invalid")
         page = self.client.get("/admin/pools")

@@ -280,7 +280,7 @@ _DESKTOP_BUILDS = (
     ("linux", "Linux AppImage", "x86_64, portable", ".AppImage",
      "chmod +x the file and run it. Updates itself."),
     ("deb", "Linux .deb", "Debian and Ubuntu", ".deb",
-     "Install with your package manager. Update by installing a newer one."),
+     "Install with your package manager. Updates itself (asks for your password to install)."),
 )
 
 
