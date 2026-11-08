@@ -180,9 +180,11 @@ SCHEMAS = {
             "name": "create_artifact",
             "description": (
                 "Publish a self-contained page as an artifact: a live page beside the chat the user can open, "
-                "come back to and share. Use it when the output is easier to see or use than to read: dashboards, "
-                "charts, diagrams, annotated diffs, options side by side, small interactive tools, a checklist kept "
-                "current while you work. Not for short answers or code the user only wants to copy. "
+                "come back to and share. Create one only when the user asks for an artifact or page, or when a "
+                "visual (chart, diagram, dashboard, interactive tool) would show the result clearly better than "
+                "text. Audits, reviews, reports, findings, plans and summaries go in the reply as markdown unless "
+                "the user asks for a page; when unsure, answer in the chat. Not for short answers or code the user "
+                "only wants to copy. "
                 "Send html (a complete HTML document) or markdown (a document; rendered with highlighted code). "
                 "One page, no backend: inline the CSS and JS; load libraries only from cdn.jsdelivr.net, "
                 "cdnjs.cloudflare.com, unpkg.com, cdn.tailwindcss.com or code.jquery.com and fonts from Google "

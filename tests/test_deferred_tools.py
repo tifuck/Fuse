@@ -400,6 +400,8 @@ class CodingPromptTest(unittest.TestCase):
         self.assertEqual(set(schemas), set(agent_catalog.ARTIFACT_NAMES))
         # Sharing is the user's action (Claude Code): no tool takes visibility.
         self.assertIn("only the user can share it", schemas["create_artifact"]["description"])
+        # Opt-in, not a default output format: an audit is a reply, not a page.
+        self.assertIn("Create one only when the user asks", schemas["create_artifact"]["description"])
         for name in agent_catalog.ARTIFACT_NAMES:
             self.assertNotIn("visibility", schemas[name]["parameters"]["properties"])
         self.assertIn("Never put secrets", schemas["create_artifact"]["description"])

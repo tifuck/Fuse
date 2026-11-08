@@ -217,7 +217,9 @@ _SEARCH_PLAYBOOK = (
 )
 _ARTIFACT_SAFETY = (
     "Artifact tools (`create_artifact`, `update_artifact`, `read_artifact`, `edit_artifact`) load via "
-    "`search_tools` query `artifact`. Artifacts start private and only the user shares them. Never put "
+    "`search_tools` query `artifact`. Create one only when the user asks for it or a visual (chart, diagram, "
+    "dashboard, interactive tool) clearly beats text; audits, reviews, reports and plans belong in the reply. "
+    "Artifacts start private and only the user shares them. Never put "
     "secrets, API keys, credentials, or other users' data in an artifact. The chat shows each artifact as a "
     "card under the reply: do not link it or dump its source into the chat."
 )
