@@ -87,6 +87,19 @@ func TestGrepAndRead(t *testing.T) {
 	}
 }
 
+func TestGrepReadsUTF16Logs(t *testing.T) {
+	dir := t.TempDir()
+	le := []byte{0xff, 0xfe}
+	for _, r := range "build ok\r\nerror: boom\r\n" {
+		le = append(le, byte(r), 0)
+	}
+	os.WriteFile(filepath.Join(dir, "test.log"), le, 0644)
+	out, err := grepDir(dir, "error: boom")
+	if err != nil || !strings.Contains(out, "test.log") {
+		t.Fatalf("grep %q %v", out, err)
+	}
+}
+
 func TestGrepSkipsVendorDirs(t *testing.T) {
 	dir := t.TempDir()
 	os.Mkdir(filepath.Join(dir, "node_modules"), 0755)

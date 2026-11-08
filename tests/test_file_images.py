@@ -164,6 +164,17 @@ def test_connector_text_and_extensionless():
         assert "image" in rec
 
 
+def test_connector_utf16_text_is_read_as_text():
+    # Windows PowerShell's > writes UTF-16LE with a BOM; the line read rejects it.
+    data = "\ufeffbuild ok\r\nsecond line\r\n".encode("utf-16-le")
+    with patch.object(workspace, "_is_agent", return_value=True), \
+            patch.object(workspace, "_agent_read_page", AsyncMock(side_effect=workspace.WorkspaceError("file is not UTF-8 text"))), \
+            patch.object(workspace, "_agent_call", AsyncMock(return_value=response(data))):
+        text, rec = asyncio.run(workspace._read(1, 2, "box", {"path": "test.log", "offset": 2}, "/work"))
+    assert text == "From host box:\n2: second line\n\n(End of file — 2 lines.)"
+    assert "image" not in rec
+
+
 def test_sftp_image():
     payload = raster()
     attrs = SimpleNamespace(size=len(payload), permissions=stat.S_IFREG | 0o644, mtime=1, mtime_ns=0)

@@ -62,6 +62,9 @@ func TestPSBootstrapIsOneLineAndCarriesCwdAndScript(t *testing.T) {
 	if script := dec(enc[1][1]); script != cmd+psGuard {
 		t.Fatalf("script round trip: %q", script)
 	}
+	if !strings.Contains(line, "$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'") {
+		t.Fatalf("redirection must write UTF-8: %q", line)
+	}
 }
 
 // Results are delivered by one writer goroutine, in order, after being

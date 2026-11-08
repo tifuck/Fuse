@@ -2032,6 +2032,33 @@ def _binary_chunk(version: str) -> int:
     return _BINARY_CHUNK if _parse_version(version) >= _BINARY_CHUNK_VERSION else 32768
 
 
+def _utf16_text(blob: bytes) -> str | None:
+    """UTF-16 text with a BOM (Windows PowerShell's > and Out-File default),
+    which line reads reject for its NUL bytes. None for anything else."""
+    if not blob.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return None
+    try:
+        return blob.decode("utf-16")
+    except UnicodeDecodeError:
+        return None
+
+
+def _text_read(alias, path, text: str, args):
+    offset = _int_arg(args, "offset", 1, 1, 10_000_000)
+    limit = _int_arg(args, "limit", _READ_DEFAULT_LIMIT, 1, _READ_MAX_LINES)
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    lines = [line.removesuffix("\r") for line in lines]
+    if offset > 1 and offset > len(lines):
+        raise WorkspaceError(f"offset {offset} is beyond the end of the file")
+    chunk = lines[offset - 1:offset - 1 + limit]
+    body = _read_render(chunk, offset, total=len(lines), more=offset - 1 + len(chunk) < len(lines),
+                        max_chars=_READ_MAX_CHARS)
+    return _label(alias, body), {"name": "read_file", "status": "done", "host": alias,
+                                 "path": path, "preview": "\n".join(chunk[:24])[:800]}
+
+
 async def _image_read(user_id, host_id, alias, path, args, *, probe=False):
     try:
         async with asyncio.timeout(120):
@@ -2125,6 +2152,9 @@ async def _image_read_bounded(user_id, host_id, alias, path, args, *, probe=Fals
     if not file_images.image_magic(blob):
         if probe:
             return None
+        text = _utf16_text(blob)
+        if text is not None:
+            return _text_read(alias, path, text, args)
         # Routed here by a NUL-byte read, not by an image extension: the file
         # is binary, not a broken image.
         raise WorkspaceError(

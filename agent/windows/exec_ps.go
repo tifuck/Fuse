@@ -69,12 +69,14 @@ const psGuard = "\nif (-not $?) { if ($LASTEXITCODE -is [int] -and $LASTEXITCODE
 // multi-line statement there needs an extra blank line to run; the script
 // itself is parsed whole by ScriptBlock::Create. cwd and script travel as
 // base64: PowerShell treats the curly quotes as quote characters too, so
-// escaping only ' would not be enough.
+// escaping only ' would not be enough. Windows PowerShell's > and Out-File
+// write UTF-16 by default, which read_file and grep cannot read back.
 func psBootstrap(cwd, cmd string) string {
 	b64 := func(s string) string {
 		return "([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + base64.StdEncoding.EncodeToString([]byte(s)) + "')))"
 	}
 	return "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; $OutputEncoding = [Console]::OutputEncoding; " +
+		"$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'; " +
 		"$ErrorActionPreference = 'Continue'; Set-Location -LiteralPath " + b64(cwd) + "; " +
 		"[Environment]::CurrentDirectory = (Get-Location -PSProvider FileSystem).ProviderPath; " +
 		". ([ScriptBlock]::Create(" + b64(cmd+psGuard) + "))\n"

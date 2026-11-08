@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -12,8 +13,28 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 )
+
+// decodeUTF16 returns UTF-16 text with a BOM (Windows PowerShell's > and
+// Out-File default) as UTF-8; anything else comes back unchanged.
+func decodeUTF16(data []byte) []byte {
+	var order binary.ByteOrder
+	switch {
+	case len(data) >= 2 && data[0] == 0xff && data[1] == 0xfe:
+		order = binary.LittleEndian
+	case len(data) >= 2 && data[0] == 0xfe && data[1] == 0xff:
+		order = binary.BigEndian
+	default:
+		return data
+	}
+	units := make([]uint16, (len(data)-2)/2)
+	for i := range units {
+		units[i] = order.Uint16(data[2+2*i:])
+	}
+	return []byte(string(utf16.Decode(units)))
+}
 
 // searchLimit bounds a native directory walk by Fuse's time budget for the
 // search and by the job's cancel channel. A walk that reaches either stops
@@ -432,7 +453,10 @@ func grepDirWalk(root, pattern, include string, maxMatches int, opt grepOpts) (s
 			return nil
 		}
 		data, err := os.ReadFile(p)
-		if err != nil || !utf8.Valid(data) {
+		if err != nil {
+			return nil
+		}
+		if data = decodeUTF16(data); !utf8.Valid(data) {
 			return nil
 		}
 		lines := strings.Split(string(data), "\n")
