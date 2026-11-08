@@ -21,7 +21,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
   --composer-row: 1.75rem;
   --composer-line: 1.25rem;
   display: grid;
-  grid-template-columns: var(--composer-row) auto minmax(10rem, 1fr) minmax(0, max-content) repeat(5, auto);
+  grid-template-columns: var(--composer-row) auto minmax(10rem, 1fr) minmax(0, max-content) repeat(6, auto);
   align-items: start;
   gap: 0;
   margin: 0;
@@ -67,21 +67,38 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-mod
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-search-btn { grid-area: 2 / 5; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-host { grid-area: 2 / 6; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-context-wrap { grid-area: 2 / 7; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-mic-btn { grid-area: 2 / 8; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send { grid-area: 2 / 9; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn { grid-area: 2 / 8; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-mic-btn { grid-area: 2 / 9; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send { grid-area: 2 / 10; }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { align-self: end; }
+/* Stash: on while the box has text (stash it) or the stash has prompts (list them). */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  line-height: 0;
+  cursor: pointer;
+  transition: color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn[hidden] { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn:hover { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn:active { scale: 0.92; }
 
-html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-box { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(5, auto); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { align-self: end; }
+
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-box { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(6, auto); }
 html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-compose { grid-column: 3 / -1; }
 html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
-html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) {
+html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) {
   grid-row: 3;
   margin-top: 0.15rem;
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { margin-left: 0.3rem; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.3rem; }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-mic-btn, .chat-send) {
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-stash-btn, .chat-mic-btn, .chat-send) {
   width: var(--composer-row);
   height: var(--composer-row);
   min-width: 0;
@@ -89,7 +106,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
 }
 
 /* One stroke for the whole tool row, and no glow on the on-states. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-mic-btn, .chat-send) svg :is(path, circle, ellipse, rect) { stroke-width: 1.4; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-stash-btn, .chat-mic-btn, .chat-send) svg :is(path, circle, ellipse, rect) { stroke-width: 1.4; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-btn, .chat-search-btn:hover, .chat-perm-btn:hover) { filter: none; }
 
 /* An empty meter reads as a closed ring, not a spinner's tick. */
@@ -201,7 +218,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
     --composer-row: 1.875rem;
     --composer-line: 1.4rem;
-    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(5, auto);
+    grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(6, auto);
   }
 
   /* A phone always keeps two rows: the text runs from the left edge and
@@ -209,14 +226,14 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
      column 1 empty, so it collapses and the > moves to the edge. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-column: 3 / -1; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) {
     grid-row: 3;
     margin-top: 0.15rem;
   }
 
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea { font-size: 16px; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { max-width: none; margin-left: 0.45rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-mic-btn, .chat-send) { margin-left: 0.15rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.15rem; }
 
   /* A phone always shows the provider mark, so the chip keeps one shape. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > :is(span, small) { display: none; }

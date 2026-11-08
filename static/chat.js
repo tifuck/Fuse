@@ -1252,6 +1252,14 @@ import { createDictation } from './chat/dictation.js';
     });
   }
 
+    if (S.stashBtn) {
+    S.stashBtn.addEventListener("mousedown", (event) => event.preventDefault());
+    S.stashBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      composer.stashPrompt();
+    });
+  }
+
     if (S.attachBtn && S.fileInput) {
     S.attachBtn.addEventListener("click", (event) => {
       event.preventDefault();
@@ -2009,7 +2017,7 @@ import { createDictation } from './chat/dictation.js';
 
     document.addEventListener("click", (event) => {
     const t = event.target;
-    if (t.closest && t.closest("[data-chat-send], .chat-send")) return;
+    if (t.closest && t.closest("[data-chat-send], .chat-send, [data-chat-stash]")) return;
     if (window.FuseComposerSpell && FuseComposerSpell.isOpen() &&
         S.spellPop && !S.spellPop.contains(t) && t !== S.input) {
       FuseComposerSpell.close();

@@ -2,7 +2,8 @@
 
 A key is a thread's public id, "" for the unsent new chat, or
 "p:<host>:<project>" for an unsent project session (static/chat/state.js
-draftKey). Attachments stay in the tab that picked them.
+draftKey). "stash:<id>" rows are stashed prompts (static/chat/composer/slash.js).
+Attachments stay in the tab that picked them.
 """
 from __future__ import annotations
 

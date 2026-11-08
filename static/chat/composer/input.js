@@ -247,6 +247,12 @@ export function createInput(ctx) {
     S.sendBtn.setAttribute("aria-label", stop ? "Stop" : "Send");
     S.sendBtn.title = stop ? "Stop (Esc twice)" : "";
     if (!stop) S.sendBtn.classList.remove("is-armed");
+    if (S.stashBtn) {
+      const label = hasText ? "Stash prompt" : "Stashed prompts";
+      S.stashBtn.hidden = !hasText && !S.stash.size;
+      S.stashBtn.setAttribute("aria-label", label);
+      S.stashBtn.title = label + " (Ctrl+S)";
+    }
     S.newBtns.forEach((btn) => {
       btn.disabled = S.sending;
     });

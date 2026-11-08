@@ -38,6 +38,7 @@ function initState() {
   S.newBtns = [...S.root.querySelectorAll("[data-chat-new]")];
   S.pickerHost = S.root.querySelector("[data-chat-picker]");
   S.attachBtn = S.root.querySelector("[data-chat-attach]");
+  S.stashBtn = S.root.querySelector("[data-chat-stash]");
   S.fileInput = S.root.querySelector("[data-chat-file]");
   S.attachList = S.root.querySelector("[data-chat-attach-list]");
   S.chatBox = S.root.querySelector(".chat-box");
@@ -284,6 +285,8 @@ function initState() {
   S.renameSaving = null;
   S.transcriptDirty = false;
   S.drafts = new DraftMap();
+  // Stashed prompts, synced like drafts: draft key "stash:<id>" -> text.
+  S.stash = new Map();
   S.draftFiles = new Map();
   S.stickToBottom = true;
   S.pickerOpen = false;

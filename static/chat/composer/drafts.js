@@ -3,6 +3,8 @@
 import { S, draftKey, newSession } from '../state.js';
 
 const SAVE_MS = 600;
+// Stashed prompts share the draft rows; composer/slash.js owns them.
+const STASH = "stash:";
 
 export function createDrafts(ctx) {
   const { input, net, sidebar, sync } = ctx;
@@ -63,6 +65,12 @@ export function createDrafts(ctx) {
 
   // Another device changed one draft. A local edit still being saved wins.
   function applyRemoteDraft(wire, text) {
+    if (wire.startsWith(STASH)) {
+      if (text) S.stash.set(wire, text);
+      else S.stash.delete(wire);
+      input.syncComposer();
+      return;
+    }
     if (pending.has(wire)) return;
     const key = wire === "" ? null : wire;
     S.drafts.remote(key, text || "");
@@ -73,8 +81,10 @@ export function createDrafts(ctx) {
   // Full snapshot (/chat/sync): the server's set replaces every saved draft.
   function acceptDrafts(map) {
     if (!map || typeof map !== "object") return;
+    S.stash = new Map(Object.entries(map).filter(([wire, text]) => wire.startsWith(STASH) && text));
+    input.syncComposer();
     const keys = new Set([...S.drafts.keys()].map((key) => key ?? ""));
-    Object.keys(map).forEach((wire) => keys.add(wire));
+    Object.keys(map).forEach((wire) => { if (!wire.startsWith(STASH)) keys.add(wire); });
     keys.forEach((wire) => {
       if (pending.has(wire)) return;
       const key = wire === "" ? null : wire;

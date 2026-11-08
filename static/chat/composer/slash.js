@@ -3,21 +3,11 @@ import { S, draftKey } from '../state.js';
 import { escapeHtml } from '../core.js';
 
 const SLASH_MAX = 24;
-const STASH_KEY = "fuse.chat.stash.v1";
 const STASH_MAX = 20;
 
+// [key, text] newest first: keys are "stash:<base36 time><random>".
 function readStash() {
-  try {
-    const items = JSON.parse(localStorage.getItem(STASH_KEY) || "[]");
-    return Array.isArray(items) ? items.filter((text) => typeof text === "string" && text.trim()) : [];
-  } catch (_) { return []; }
-}
-
-function writeStash(items) {
-  try {
-    localStorage.setItem(STASH_KEY, JSON.stringify(items.slice(0, STASH_MAX)));
-    return true;
-  } catch (_) { return false; }
+  return [...S.stash].sort((a, b) => (a[0] < b[0] ? 1 : -1));
 }
 
 function composerPrefs() {
@@ -192,7 +182,7 @@ export function createSlash(ctx) {
     if (!item || item.disabled) return;
     const start = S.paletteTrigger ? S.paletteTrigger.start : 0;
     const end = S.paletteTrigger ? S.paletteTrigger.end : (S.slashKind === "history" ? 0 : 0);
-    if (S.slashKind === "stash") writeStash(readStash().filter((text) => text !== item.insert));
+    if (S.slashKind === "stash") dropStash(item.key);
     S.input.setRangeText(item.insert, start, end, "end");
     closeSlash();
     S.drafts.set(draftKey(), S.input.value);
@@ -276,16 +266,40 @@ export function createSlash(ctx) {
     })), { start: 0, end: 0, kind: "history", query: "" });
   }
 
-    // Ctrl+S: a typed prompt goes onto the stash and the box clears; on an
-  // empty box it lists the stash, and restoring one takes it off.
-    function stashPrompt() {
+    // Stashed prompts are draft rows (app/chat_drafts.py), so every device
+  // shows the same stash and draft.updated keeps it live.
+  function putStash(key, text) {
+    return net.api("/chat/drafts", { method: "PUT", body: JSON.stringify({ key, text, origin: S.draftOrigin }) });
+  }
+
+    function dropStash(key) {
+    if (!S.stash.delete(key)) return;
+    putStash(key, "").catch(() => {});
+    input.syncComposer();
+  }
+
+    // Ctrl+S or the stash button: a typed prompt goes onto the stash and the
+  // box clears; on an empty box it lists the stash, and restoring one takes
+  // it off. The box clears only once the server has the prompt.
+  async function stashPrompt() {
     const text = S.input.value;
     if (!text.trim()) {
       openStash();
       return;
     }
-    if (!writeStash([text, ...readStash().filter((item) => item !== text)])) {
-      picker.setHint("Could not stash: browser storage is full or blocked.", true);
+    const key = "stash:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try {
+      await putStash(key, text);
+    } catch (error) {
+      picker.setHint("Could not stash: " + (error?.message || "offline") + ". It is still in the box.", true);
+      return;
+    }
+    readStash().filter(([, item]) => item === text).forEach(([old]) => dropStash(old));
+    S.stash.set(key, text);
+    readStash().slice(STASH_MAX).forEach(([old]) => dropStash(old));
+    picker.setHint("Prompt stashed.");
+    if (S.input.value !== text) {
+      input.syncComposer();
       return;
     }
     S.input.value = "";
@@ -298,7 +312,6 @@ export function createSlash(ctx) {
     input.resizeInput();
     input.syncComposer();
     input.syncEmptyComposer();
-    picker.setHint("Prompt stashed. Ctrl+S on an empty box lists the stash.");
   }
 
     function openStash() {
@@ -308,9 +321,9 @@ export function createSlash(ctx) {
       return;
     }
     S.slashIndex = 0;
-    renderPalette("stash", items.map((text) => {
+    renderPalette("stash", items.map(([key, text]) => {
       const line = text.trim().replace(/\s+/g, " ");
-      return { kind: "stash", text: line.length > 72 ? line.slice(0, 69) + "…" : line, insert: text, hint: "stashed" };
+      return { kind: "stash", key, text: line.length > 72 ? line.slice(0, 69) + "…" : line, insert: text, hint: "stashed" };
     }), { start: 0, end: 0, kind: "stash", query: "" });
   }
 
