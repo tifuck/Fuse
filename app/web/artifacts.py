@@ -133,7 +133,8 @@ async def artifact_content(request: Request, public_id: str):
         item = artifacts.client_payload(row, owner=owner, include_html=True, version=version if owner else None)
     except artifacts.ArtifactError as exc:
         raise _artifact_http_error(exc) from None
-    return artifacts.content_response(item["html"], item.get("format") or "html", item["title"])
+    theme = artifacts.theme_palette(request.query_params.get("theme"))
+    return artifacts.content_response(item["html"], item.get("format") or "html", item["title"], theme)
 
 
 @router.get("/a/{public_id}/source")

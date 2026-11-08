@@ -102,7 +102,8 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await page.waitForFunction(() => document.querySelectorAll('[data-artifact-version] option').length === 2, null, { timeout: 15000 });
     assert.match(await page.locator('[data-artifact-version]').innerText(), /v2 · Q2 numbers \(latest\)/);
     await page.locator('[data-artifact-version]').selectOption('1');
-    assert.match(await frameSrc(), /\?v=1$/);
+    // The pinned version, plus the viewer's theme for the page's --fuse-* variables.
+    assert.match(await frameSrc(), /\?v=1&theme=(dark|light)(%2C[0-9a-f]{6}){11}$/);
     await page.locator('[data-artifact-mode="source"]').click();
     await page.waitForFunction(() => document.querySelector('[data-artifact-source]').textContent.includes('first-v1'));
     assert.equal((await page.locator('[data-artifact-source]').textContent()).includes('fuseArtifact'), false, 'source is the stored page, not the served one');

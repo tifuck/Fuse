@@ -13,8 +13,12 @@ const POLL_MS = 8000;
 const GLYPH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.8" y="3.6" width="10.4" height="8.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 9.1l1.6-1.9 1.5 1.6 2.1-2.6 2.1 2.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 function artifactContentUrl(id, version) {
-  const path = "/a/" + encodeURIComponent(id) + "/content";
-  return version ? path + "?v=" + encodeURIComponent(version) : path;
+  const params = new URLSearchParams();
+  if (version) params.set("v", version);
+  const theme = window.FuseChatAppearance?.artifactTheme;
+  if (theme) params.set("theme", theme);
+  const query = params.toString();
+  return "/a/" + encodeURIComponent(id) + "/content" + (query ? "?" + query : "");
 }
 
 // An identifier, or the one in an /a/<id> link (models pass either).
@@ -971,6 +975,7 @@ export function createArtifacts(ctx) {
       }
     }, true);
     document.addEventListener("visibilitychange", syncPoll);
+    document.addEventListener("fuse-appearance", () => loadFrame(false));
     window.addEventListener("message", onFrameMessage);
     bindResize();
   }

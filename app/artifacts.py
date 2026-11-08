@@ -80,11 +80,9 @@ window.addEventListener("load",function(){send("ready",{})});
 })();</script>"""
 
 _MD_SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>{bridge}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/{hljs}.min.css">
 <style>
-:root{{color-scheme:light dark;--fg:#1f2328;--mute:#59636e;--line:#d1d9e0;--code:#f6f8fa;--link:#0969da;--bg:#fff}}
-@media (prefers-color-scheme: dark){{:root{{--fg:#e6edf3;--mute:#9198a1;--line:#3d444d;--code:#151b23;--link:#4493f8;--bg:#0d1117}}}}
+:root{{color-scheme:{scheme};--fg:var(--fuse-text);--mute:var(--fuse-muted);--line:var(--fuse-line);--code:var(--fuse-code);--link:var(--fuse-accent);--bg:var(--fuse-bg)}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}
 main{{max-width:46rem;margin:0 auto;padding:2.5rem 1.25rem 4rem}}
 h1,h2,h3,h4{{line-height:1.25;margin:1.6em 0 .6em}}h1{{font-size:2em;border-bottom:1px solid var(--line);padding-bottom:.3em}}h2{{font-size:1.45em;border-bottom:1px solid var(--line);padding-bottom:.3em}}
@@ -943,11 +941,39 @@ def _inject(page: str, snippet: str) -> str:
     return snippet + page
 
 
-def render_document(text: str, fmt: str = "html", title: str = "") -> str:
+# The viewer's Fuse theme as --fuse-* variables, so a page can match the chat.
+# ?theme= is the scheme then one 6-digit hex per name, comma separated
+# (static/chat-appearance.js artifactTheme); anything else gets the Fuse theme.
+THEME_NAMES = ("bg", "surface", "raise", "text", "muted", "line", "accent", "on-accent", "ok", "error", "code")
+DEFAULT_THEME = ("dark", "121212", "1a1a1a", "242424", "ececec", "9a9a9a", "2e2e2e", "c5df88", "121212", "aed397", "f29d8e", "0e0e0e")
+_HEX6 = re.compile(r"[0-9a-fA-F]{6}")
+
+
+def theme_palette(raw) -> tuple[str, ...]:
+    parts = str(raw or "").split(",")
+    if len(parts) == len(DEFAULT_THEME) and parts[0] in ("dark", "light") and all(_HEX6.fullmatch(p) for p in parts[1:]):
+        return tuple(p.lower() for p in parts)
+    return DEFAULT_THEME
+
+
+def _theme_style(palette: tuple[str, ...]) -> str:
+    scheme, *colors = palette
+    names = "".join(f";--fuse-{name}:#{color}" for name, color in zip(THEME_NAMES, colors))
+    return f"<style>:root{{--fuse-scheme:{scheme}{names}}}</style>"
+
+
+def render_document(text: str, fmt: str = "html", title: str = "", theme: tuple[str, ...] = DEFAULT_THEME) -> str:
+    snippet = _BRIDGE + _theme_style(theme)
     if fmt == "markdown":
         source = json.dumps(text).replace("<", "\\u003c")
-        return _MD_SHELL.format(title=html_lib.escape(title or "Artifact"), bridge=_BRIDGE, source=source)
-    return _inject(text, _BRIDGE)
+        return _MD_SHELL.format(
+            title=html_lib.escape(title or "Artifact"),
+            bridge=snippet,
+            scheme=theme[0],
+            hljs="github-dark" if theme[0] == "dark" else "github",
+            source=source,
+        )
+    return _inject(text, snippet)
 
 
 def content_headers(*, framable: bool) -> dict[str, str]:
@@ -968,8 +994,8 @@ def content_headers(*, framable: bool) -> dict[str, str]:
     return headers
 
 
-def content_response(html: str, fmt: str = "html", title: str = "") -> HTMLResponse:
-    return HTMLResponse(content=render_document(html, fmt, title), headers=content_headers(framable=True))
+def content_response(html: str, fmt: str = "html", title: str = "", theme: tuple[str, ...] = DEFAULT_THEME) -> HTMLResponse:
+    return HTMLResponse(content=render_document(html, fmt, title, theme), headers=content_headers(framable=True))
 
 
 def source_response(text: str) -> Response:

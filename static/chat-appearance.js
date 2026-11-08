@@ -323,9 +323,18 @@
     }
     if (typeof CustomEvent === "function" && document.dispatchEvent) {
       try { document.dispatchEvent(new CustomEvent("fuse-composer-metrics")); } catch (_) {}
+      try { document.dispatchEvent(new CustomEvent("fuse-appearance")); } catch (_) {}
     }
   }
   apply();
+
+  // Artifact pages get the theme as --fuse-* variables: ?theme=<scheme>,<hex>...
+  // in app/artifacts.py THEME_NAMES order.
+  const ARTIFACT_KEYS = ["ink", "panel", "raise", "mist", "mute", "line", "brass", "onBrass", "ok", "fault", "code"];
+  function artifactTheme() {
+    const spec = specFor(theme);
+    return [spec.scheme, ...ARTIFACT_KEYS.map((key) => String(spec[key] || "").slice(1))].join(",");
+  }
 
   function getComposerPrefs() {
     try {
@@ -527,6 +536,7 @@
 
   window.FuseChatAppearance = {
     syncUi,
+    get artifactTheme() { return artifactTheme(); },
     get size() { return textScale; },
     setSize(next) {
       const value = Math.round(Number(next));

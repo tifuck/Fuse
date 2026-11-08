@@ -403,6 +403,22 @@ class ArtifactAuthoringTest(unittest.TestCase):
             artifacts.check_decoded("a\nb\ufffd")
         self.assertIn("line 2, column 2", ctx.exception.detail)
 
+    def test_viewer_theme_becomes_fuse_variables(self):
+        paper = "light,ffffff,f3f1ec,e7e3da,1c1b18,6a655c,d5cfc4,b45c2e,ffffff,2f7a48,c24b40,f4f1ea"
+        palette = artifacts.theme_palette(paper)
+        page = artifacts.render_document("<!doctype html><html><head></head><body></body></html>", theme=palette)
+        self.assertTrue(page.startswith("<!doctype html><html><head><script>"))
+        self.assertIn("--fuse-bg:#ffffff", page)
+        self.assertIn("--fuse-accent:#b45c2e", page)
+        md = artifacts.render_document("# x", "markdown", "Doc", palette)
+        self.assertIn("color-scheme:light", md)
+        self.assertIn("styles/github.min.css", md)
+        self.assertIn("--fuse-bg:#121212", artifacts.render_document("<p>x</p>"))
+        # The param lands inside a <style>: anything but scheme + hex is dropped.
+        injected = "light,ffffff;}</style><script>alert(1)</script>," + ",".join(["ffffff"] * 10)
+        for bad in ("", "dark,121212", injected, paper.replace("light", "red", 1)):
+            self.assertEqual(artifacts.theme_palette(bad), artifacts.DEFAULT_THEME)
+
     def test_pinned_version_survives_pruning_and_revert_republishes(self):
         art = artifacts.create(self.uid, title="Pin", html="<p>v1</p>")
         ident = art["identifier"]

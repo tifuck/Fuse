@@ -14,7 +14,7 @@ _TMP = tempfile.mkdtemp(prefix="fuse-defer-")
 os.environ.setdefault("DATABASE_PATH", str(Path(_TMP) / "defer.db"))
 os.environ.setdefault("APP_SECRET", "x" * 32)
 
-from app import agent_catalog
+from app import agent_catalog, artifacts
 from app.chat_runtime import _session_tail_block, build_system_prompt
 from app.chat_tools import execute_tool, openai_tools
 
@@ -404,6 +404,9 @@ class CodingPromptTest(unittest.TestCase):
         self.assertIn("Create one only when the user asks", schemas["create_artifact"]["description"])
         # The chat pane is a tall, narrow viewport; desktop layouts clip there.
         self.assertIn("Design mobile-first", schemas["create_artifact"]["description"])
+        # Pages default to the viewer's theme (app/artifacts.py THEME_NAMES).
+        for name in artifacts.THEME_NAMES:
+            self.assertIn(f"--fuse-{name}", schemas["create_artifact"]["description"])
         for name in agent_catalog.ARTIFACT_NAMES:
             self.assertNotIn("visibility", schemas[name]["parameters"]["properties"])
         self.assertIn("Never put secrets", schemas["create_artifact"]["description"])
