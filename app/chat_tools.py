@@ -190,14 +190,24 @@ SCHEMAS = {
                 "widths (%, auto-fit/minmax grids) instead of fixed pixel widths or many side-by-side columns, "
                 "charts sized to their container, and wide tables inside their own overflow-x box; never make the "
                 "page scroll sideways. Cap the content width (about 960 px) so it still reads well when wide. "
+                "Design it like a careful designer, not a template: ground the look in the subject and open with "
+                "what the reader came for (the answer, the key number, the chart), not a generic hero. Plan a small "
+                "token set first: 4-6 colors with readable contrast, one or two typefaces with a clear type scale, "
+                "one spacing scale. Body text at least 16 px, lines under about 75 characters, tap targets at least "
+                "44 px. Build hierarchy from size, weight and space; borders, numbering and labels must carry "
+                "meaning, not decorate. Spend boldness on one element and keep the rest quiet. Avoid the tells of "
+                "a generated page: identical rounded cards for everything, all-caps labels over every heading, "
+                "gradient washes, one accented word in a headline, entrance animations on every section. Keep "
+                "motion for user actions, respect prefers-reduced-motion and keep keyboard focus visible. Write "
+                "short, plain, sentence-case copy from the reader's side. Before publishing, check the CSS at "
+                "360 px: nothing clipped, overlapping or scrolling sideways. "
                 "Send html (a complete HTML document) or markdown (a document; rendered with highlighted code). "
                 "One page, no backend: inline the CSS and JS; load libraries only from cdn.jsdelivr.net, "
                 "cdnjs.cloudflare.com, unpkg.com, cdn.tailwindcss.com or code.jquery.com and fonts from Google "
                 "Fonts. External images and other hosts are blocked: draw with inline SVG or CSS, or embed data: "
                 "URIs. Use #anchors for sections; relative links do not resolve. Storage lasts one page view. "
                 "window.fuse.sendToChat(text) puts text in the user's message box, for a 'send this back' button. "
-                "Give it a deliberate design (palette, type, spacing) that follows any design system in the "
-                "project instructions. It starts private and only the user can share it. Never put secrets, "
+                "A design system in the project instructions overrides these defaults. It starts private and only the user can share it. Never put secrets, "
                 "API keys, credentials, or other users' data in it. Encode content as a valid JSON string. "
                 "After this returns, say in a sentence or two what you made: the chat shows the artifact as a card "
                 "under your reply, so do not link it or paste its source. "
@@ -1114,7 +1124,6 @@ async def execute_tool(
                     "status": "error",
                     "kind": "refused",
                     "error": msg,
-                    "preview": "refused",
                 }
             from . import skill_proposals
             from .async_work import durable_call
@@ -1143,7 +1152,6 @@ async def execute_tool(
                     "status": "error",
                     "kind": "invalid",
                     "error": str(exc.detail)[:400],
-                    "preview": "invalid",
                 }
             slug = item.get("slug") or ""
             overwrite = bool(item.get("overwrite"))
