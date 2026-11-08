@@ -1268,7 +1268,17 @@ async def _run(request, user, run):
                                 user["id"],
                                 run["thread_id"],
                                 status,
-                                content=output.message.get("content") or "",
+                                # The final text block, not the whole turn: an
+                                # agent turn's content starts with its first
+                                # pre-tool remark.
+                                content=next(
+                                    (
+                                        part["text"]
+                                        for part in reversed(output.message.get("segments") or [])
+                                        if part.get("type") == "content" and (part.get("text") or "").strip()
+                                    ),
+                                    output.message.get("content") or "",
+                                ),
                                 error=output.message.get("error") or "",
                             )
                         )

@@ -97,7 +97,11 @@ export function createStatus(ctx) {
       const title = thread && thread.title ? `Fuse · ${thread.title}` : "Fuse";
       let body = "";
       const msg = payload && payload.message;
-      if (msg) body = String(msg.error || msg.content || "").trim().slice(0, 160);
+      if (msg) {
+        // The final text block, not the whole turn's joined content.
+        const last = (msg.segments || []).filter((part) => part.type === "content" && String(part.text || "").trim()).pop();
+        body = String(msg.error || (last && last.text) || msg.content || "").trim().slice(0, 160);
+      }
       window.fusePush.show(threadId, title, body || "Reply finished.", () =>
         sidebar.openThread(threadId).catch((error) => showFailure("Chat could not be opened", error)));
     } catch {}
