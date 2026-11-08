@@ -148,9 +148,11 @@ function consoleSameText(html, text) {
 
 function consoleFold(trace, presentation, verbose) {
     if (trace?.name === "read_file" && trace.image && !presentation.running && !presentation.failed) {
-      // An interrupted image read keeps its preview but says why, like every
-      // other family; a success still reads as the image preview.
-      return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : "Image preview", preview: deps.toolImageHtml(trace), full: "" };
+      // One line says what the image is (or why the run stopped), the image
+      // sits under it.
+      const info = deps.toolImageInfo(trace);
+      return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : info || "Image preview unavailable",
+        preview: info ? deps.toolImageHtml(trace) : "", full: "" };
     }
     {
       const own = deps.consoleOnlyFold(trace, presentation, verbose);

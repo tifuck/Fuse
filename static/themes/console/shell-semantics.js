@@ -121,9 +121,14 @@ function ccGitOps(command, output) {
     return Object.keys(ops).length ? ops : null;
   }
 
+// An image read: by its result once done, by its extension while it runs.
+function ccImageRead(trace) {
+    return trace?.name === "read_file" && Boolean(trace.image || (!trace.output && /\.(png|jpe?g|webp|gif|bmp|tiff?|ico|apng)$/i.test(String(trace.path || ""))));
+  }
+
 function ccToolClass(trace) {
     const name = trace && trace.name;
-    if (name === "read_file") return { kind: "read" };
+    if (name === "read_file") return ccImageRead(trace) ? { kind: "read", image: true } : { kind: "read" };
     if (name === "grep" || name === "glob") return { kind: "search" };
     if (name === "list_dir") return { kind: "list" };
     if (name === "search_tools") return { kind: "silent" };
@@ -267,5 +272,5 @@ const CC_EXIT_NOTES = {
     find: "Some directories were inaccessible", diff: "Files differ", test: "Condition is false", "[": "Condition is false",
   };
 
-  return { ccShellSegments, ccShellKind, ccGitRe, ccPrAction, ccRefAfter, ccGitOps, ccToolClass, ccExitMeaning, ccShellWords, ccSedEdit, CC_SEARCH_CMDS, CC_READ_CMDS, CC_LIST_CMDS, CC_NEUTRAL_CMDS, CC_FIRST_CMD, CC_GIT_COMMIT, CC_GIT_PUSH, CC_GIT_PICK, CC_GIT_MERGE, CC_GIT_REBASE, CC_QUOTED, CC_PR_URL, CC_GH_PR, CC_GLAB_MR, CC_EXIT_NOTES };
+  return { ccShellSegments, ccShellKind, ccGitRe, ccPrAction, ccRefAfter, ccGitOps, ccImageRead, ccToolClass, ccExitMeaning, ccShellWords, ccSedEdit, CC_SEARCH_CMDS, CC_READ_CMDS, CC_LIST_CMDS, CC_NEUTRAL_CMDS, CC_FIRST_CMD, CC_GIT_COMMIT, CC_GIT_PUSH, CC_GIT_PICK, CC_GIT_MERGE, CC_GIT_REBASE, CC_QUOTED, CC_PR_URL, CC_GH_PR, CC_GLAB_MR, CC_EXIT_NOTES };
 }

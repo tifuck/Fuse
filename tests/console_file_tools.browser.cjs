@@ -58,17 +58,20 @@ function scenarios() {
   });
 
   // —— read_file: an image, not a line count ——
+  // It reads as a view, not a file read: View(…), one info line over the
+  // image, and its own count on the summary line.
   add('image read: running, then an image preview with its metadata', () => {
     const r = tool('read_file', { path: '/srv/qa/shots/before.png', status: 'running', elapsed_ms: 900, call_duration_ms: null, duration_ms: null });
-    return { rows: [user('Go.'), turn([T(r)], [r])], live: true, phase: 'tools', steps: [
-      { name: 'running', has: ['Reading shots/before.png'], lacks: ['Image preview'], running: [r.id] },
+    const a = tool('read_file', { path: '/srv/qa/app/a.py', output: '1: x\n' });
+    return { rows: [user('Go.'), turn([T(a), T(r)], [a, r])], live: true, phase: 'tools', steps: [
+      { name: 'running', has: ['Viewing shots/before.png'], lacks: ['Reading shots/before.png'], running: [r.id] },
       { name: 'done', event: { event: 'tool', id: r.id, status: 'done',
           image: { format: 'PNG', mime: 'image/png', width: 640, height: 480, original_width: 1280, original_height: 960, frames: 3, frame: 1, data: PNG },
           call_duration_ms: 900 },
-        has: ['Read(shots/before.png)', 'Image preview', 'PNG · 640 × 480 · resized from 1280 × 960', 'frame 2 of 3'],
-        lacks: ['Read 1 line'], running: [], images: 1, states: { [r.id]: 'done' } },
-      { name: 'settled', remount: { live: false }, has: ['Read 1 file'], images: 1 },
-      { name: 'settled open', open: true, has: ['Image preview', 'PNG · 640 × 480'], images: 1 },
+        has: ['View(shots/before.png)', 'PNG · 640 × 480 · resized from 1280 × 960 · frame 2 of 3'],
+        lacks: ['Read(shots/before.png)', 'Read 1 line', 'Image preview', 'Preview only'], running: [], images: 1, states: { [r.id]: 'done' } },
+      { name: 'settled', remount: { live: false }, has: ['Read 1 file, viewed 1 image'], lacks: ['Read 2 files'], images: 1 },
+      { name: 'settled open', open: true, has: ['View(shots/before.png)', 'PNG · 640 × 480'], lacks: ['Image preview', 'Preview only'], images: 1 },
     ] };
   });
 

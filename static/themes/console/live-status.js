@@ -92,27 +92,38 @@ function ccSpinnerVerb(msg) {
     return CC_SPINNER_VERBS[(hash >>> 0) % CC_SPINNER_VERBS.length];
   }
 
-function ccThinkingState(msg, thinking) {
+function ccThinkingState(msg, phase) {
     const now = Date.now();
-    const clock = (msg._spinThink ||= { since: 0, flash: null });
-    if (thinking) {
-      if (!clock.since) {
-        // The thought's own duration, streamed on its segment. Anchoring at
-        // page paint restarted "still thinking" on every reload.
-        const segs = Array.isArray(msg.segments) ? msg.segments : [];
-        const last = [...segs].reverse().find((seg) => seg && seg.type === "reasoning");
-        const ms = Number(last && last.ms);
-        clock.since = Number.isFinite(ms) && ms > 0 ? now - ms : now;
+    const clock = (msg._spinThink ||= { since: 0, flash: null, end: -1 });
+    // The newest thought: its run of reasoning segments and the server's own
+    // clock for it (ms on each segment), the number its transcript line shows.
+    // It is live only while nothing (a call, text) has come after it.
+    const segs = Array.isArray(msg.segments) ? msg.segments : [];
+    let end = segs.length - 1;
+    while (end >= 0 && segs[end]?.type !== "reasoning") end -= 1;
+    let thoughtMs = 0;
+    for (let k = end; k >= 0 && segs[k]?.type === "reasoning"; k -= 1) thoughtMs += Number(segs[k].ms) || 0;
+    const live = end >= 0 && !segs.slice(end + 1).some((seg) => seg && (seg.type === "tool" || String(seg.text || "").trim()));
+    if (phase === "thinking") {
+      // Anchored on the live thought, never an older one before a call
+      // (that started the clock at the old thought's length).
+      const key = live ? end : -1;
+      if (!clock.since || clock.end !== key) {
+        clock.since = now - (live ? thoughtMs : 0);
+        clock.end = key;
       }
       clock.flash = null;
       const ms = now - clock.since;
       return ms >= 45000 ? "deep in thought" : ms >= 30000 ? "thinking some more" : ms >= 20000 ? "thinking more"
         : ms >= 10000 ? "still thinking" : "thinking";
     }
+    // Only an answer starting straight after the thought flashes its length;
+    // anything else (a call, a wait) is newer activity and drops it for good.
     if (clock.since) {
-      clock.flash = { ms: now - clock.since, until: now + 2000 };
+      clock.flash = phase === "writing" ? { ms: clock.end === end && thoughtMs > 0 ? thoughtMs : now - clock.since, until: now + 2000 } : null;
       clock.since = 0;
     }
+    if (phase !== "writing") clock.flash = null;
     if (clock.flash && now < clock.flash.until) return `thought for ${Math.max(1, Math.round(clock.flash.ms / 1000))}s`;
     clock.flash = null;
     return "";
@@ -154,11 +165,8 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const live = liveMs ? Math.max(0, Number(msg.streamGen) || 0) : 0;
     const speed = deps.ccGenSpeed((Number(usage.gen_out) || 0) + live, (Number(usage.gen_ms) || 0) + liveMs,
       usage.gen_est > 0 || (liveMs > 0 && !(Number(usage.gen_chars) > 0)));
-    const thought = ccThinkingState(msg, status.phase === "thinking");
-    // A tool call being written or run, a stop request or a requeue replaces
-    // the "thought for Ns" flash at once: that is the newer activity.
-    const state = status.phase === "thinking" ? thought
-      : ["calling", "stopping", "queued"].includes(status.phase) || status.current ? ccSpinnerState(status) : thought || ccSpinnerState(status);
+    // "thought for Ns" shows only as the answer starts (ccThinkingState).
+    const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
     // Claude Code shows the clock once there is something else to show, or
     // after 16s.
     const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";

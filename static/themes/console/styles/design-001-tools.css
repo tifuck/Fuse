@@ -18,15 +18,6 @@
   object-fit: contain;
 }
 
-:is( html[data-chat-console="true"] .chat[data-view="console"]) .chat-tool-image figcaption {
-  margin-top: 0.4rem;
-  color: var(--mute);
-  font-size: 0.85em;
-  overflow-wrap: anywhere;
-}
-
-:is( html[data-chat-console="true"] .chat[data-view="console"]) .chat-tool-image figcaption span { display: block; }
-
 /* The recap sits on the tool-row grid: an empty dot column, then the text
    where every call's text starts. */
 html[data-chat-console="true"] .chat[data-view="console"] .chat-recap {

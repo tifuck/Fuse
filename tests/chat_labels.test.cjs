@@ -245,22 +245,36 @@ test('spinner state names the call that is running', () => {
 test('thinking status deepens with time and then flashes the thought', () => {
   const c = vm.createContext({});
   load('ccThinkingState', c);
-  const at = (ms) => ({ _spinThink: { since: Date.now() - ms, flash: null } });
-  assert.equal(c.ccThinkingState({}, true), 'thinking');
-  assert.equal(c.ccThinkingState(at(9000), true), 'thinking');
-  assert.equal(c.ccThinkingState(at(10000), true), 'still thinking');
-  assert.equal(c.ccThinkingState(at(25000), true), 'thinking more');
-  assert.equal(c.ccThinkingState(at(35000), true), 'thinking some more');
-  assert.equal(c.ccThinkingState(at(50000), true), 'deep in thought');
-  // Ending a thought flashes its length for two seconds, then clears.
+  const at = (ms) => ({ _spinThink: { since: Date.now() - ms, flash: null, end: -1 } });
+  assert.equal(c.ccThinkingState({}, 'thinking'), 'thinking');
+  assert.equal(c.ccThinkingState(at(9000), 'thinking'), 'thinking');
+  assert.equal(c.ccThinkingState(at(10000), 'thinking'), 'still thinking');
+  assert.equal(c.ccThinkingState(at(25000), 'thinking'), 'thinking more');
+  assert.equal(c.ccThinkingState(at(35000), 'thinking'), 'thinking some more');
+  assert.equal(c.ccThinkingState(at(50000), 'thinking'), 'deep in thought');
+  // A thought running into the answer flashes its length for two seconds.
   const msg = at(4200);
-  assert.equal(c.ccThinkingState(msg, false), 'thought for 4s');
-  assert.equal(c.ccThinkingState(msg, false), 'thought for 4s', 'the flash holds while it is on screen');
+  assert.equal(c.ccThinkingState(msg, 'writing'), 'thought for 4s');
+  assert.equal(c.ccThinkingState(msg, 'writing'), 'thought for 4s', 'the flash holds while it is on screen');
   msg._spinThink.flash.until = Date.now() - 1;
-  assert.equal(c.ccThinkingState(msg, false), '');
-  assert.equal(c.ccThinkingState({ _spinThink: { since: Date.now(), flash: null } }, false), 'thought for 1s',
-    'a sub-second thought still reads as one second');
-  assert.equal(c.ccThinkingState({}, false), '', 'no thought, no note');
+  assert.equal(c.ccThinkingState(msg, 'writing'), '');
+  assert.equal(c.ccThinkingState(at(0), 'writing'), 'thought for 1s', 'a sub-second thought still reads as one second');
+  assert.equal(c.ccThinkingState({}, 'writing'), '', 'no thought, no note');
+  // A call after the thought is newer activity: a quick one ending in a
+  // wait (or the answer) never brings the flash back.
+  const called = at(4200);
+  assert.equal(c.ccThinkingState(called, 'calling'), '');
+  assert.equal(c.ccThinkingState(called, 'waiting'), '');
+  assert.equal(c.ccThinkingState(called, 'writing'), '');
+  // A think after a call starts at zero, not at the older thought's length.
+  const old = [{ type: 'reasoning', text: 'Old.', ms: 30000 }, { type: 'tool', id: 't' }];
+  assert.equal(c.ccThinkingState({ segments: old }, 'thinking'), 'thinking');
+  // The live thought's clock and flash are the server's own time for it.
+  const live = { segments: [...old, { type: 'reasoning', text: 'Plan.', ms: 12000 }] };
+  assert.equal(c.ccThinkingState(live, 'thinking'), 'still thinking');
+  live.segments[2].ms = 7400;
+  live.segments.push({ type: 'content', text: 'Answer.' });
+  assert.equal(c.ccThinkingState(live, 'writing'), 'thought for 7s');
 });
 
 test('agent done receipts count tool uses, tokens, and time', () => {

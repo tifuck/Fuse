@@ -9,7 +9,7 @@ function consoleVerb(name, trace) {
     }
     if (deps.isSearchTool(name)) return "Web Search";
     if (name === "read_url") return "Fetch";
-    if (name === "read_file") return "Read";
+    if (name === "read_file") return deps.ccImageRead(trace) ? "View" : "Read";
     if (name === "list_dir") return "List";
     if (name === "write_file") return "Write";
     if (name === "search_replace") return "Update";

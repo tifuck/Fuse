@@ -39,9 +39,11 @@ const message = { id: 'image-message', role: 'assistant', content: '', tools: [t
             }
           }
           assert.equal(await preview.isVisible(), true, `${width}`);
-          const figure = scope.locator('.chat-tool-image').first();
-          assert.match(await figure.innerText(), /resized from 2 × 2.*frame 1 of 3/);
-          assert.match(await figure.innerText(), /Preview only/);
+          // What the image is sits on the row's one result line, not under it.
+          const row = scope.locator('[data-tool="read_file"]').first();
+          assert.match(await row.locator('.chat-console-result-text').first().innerText(), /PNG · 1 × 1 · resized from 2 × 2 · frame 1 of 3/);
+          assert.equal(await scope.locator('.chat-tool-image figcaption').count(), 0);
+          assert.doesNotMatch(await scope.innerText(), /Preview only|Image preview\b/);
           assert.ok(!(await scope.innerText()).includes(image.data));
           await preview.locator('img').evaluate(img => img.decode());
           await preview.click();

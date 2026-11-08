@@ -42,7 +42,7 @@ function ccActivityText(trace, cap = 50) {
       const command = deps.displayCommand(trace);
       return command ? deps.ccFlat(`Running ${deps.ccClip(deps.ccFlat(command), cap)}`) : "Running command";
     }
-    if (name === "read_file") return trace.path ? `Reading ${ccPathHint(trace)}` : "Reading file";
+    if (name === "read_file") return trace.path ? `${deps.ccImageRead(trace) ? "Viewing" : "Reading"} ${ccPathHint(trace)}` : "Reading file";
     if (name === "grep") return trace.pattern ? deps.ccFlat(`Searching for ${deps.ccClip(trace.pattern, cap)}`) : "Searching";
     if (name === "glob") return trace.pattern ? deps.ccFlat(`Finding ${deps.ccClip(trace.pattern, cap)}`) : "Finding files";
     if (name === "list_dir") return trace.path ? `Listing ${ccPathHint(trace)}` : "Listing directory";
@@ -140,6 +140,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let runningSince = 0;
     let shell = null;
     const readPaths = new Set();
+    const imagePaths = new Set();
     const searchArgs = [];
     const commits = [];
     const pushes = [];
@@ -191,6 +192,9 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
           searchArgs.push(pattern);
           hint = `"${pattern}"`;
         }
+      } else if (cls.image) {
+        imagePaths.add(String(trace.path));
+        hint = ccPathHint(trace) || hint;
       } else if (!cls.shell && trace.path) {
         readPaths.add(String(trace.path));
         hint = ccPathHint(trace) || hint;
@@ -204,8 +208,9 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     // shell reads (cat, head, …) have no path to dedupe and count their calls.
     // Both sides always count: a path read plus a shell read is two files.
     const reads = readPaths.size + readOps;
+    const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !list && !shells && !gitOpBash && !todos) return "";
+    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos) return "";
 
     const parts = [];
     if (thought) {
@@ -229,6 +234,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     prs.forEach((pr) => add(CC_PR_VERBS[pr.action] || pr.action, bold(pr.url && pr.url.includes("/-/merge_requests/") ? `MR !${pr.number}` : `PR #${pr.number}`)));
     if (search) add(active ? "searching for" : "searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
     if (reads) add(active ? "reading" : "read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
+    if (images) add(active ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
     if (list) add(active ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
     if (shells) add(active ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
     if (todos) add(active ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);

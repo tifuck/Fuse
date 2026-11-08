@@ -201,6 +201,7 @@ export function createConsoleTheme(runtime) {
     get structuredToolHtml() { return theme.structuredToolHtml; },
     get toolBackground() { return runtime.toolBackground; },
     get toolImageHtml() { return theme.toolImageHtml; },
+    get toolImageInfo() { return theme.toolImageInfo; },
     get toolPresentation() { return runtime.toolPresentation; },
     get toolText() { return theme.toolText; },
     get transcriptRange() { return theme.transcriptRange; },
@@ -209,6 +210,7 @@ export function createConsoleTheme(runtime) {
   Object.assign(theme, createToolHeaders({
     get STEP_CHEVRON() { return theme.STEP_CHEVRON; },
     get ccAgentType() { return theme.ccAgentType; },
+    get ccImageRead() { return theme.ccImageRead; },
     get ccSedEdit() { return theme.ccSedEdit; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -362,6 +364,7 @@ export function createConsoleTheme(runtime) {
     get ccFlat() { return theme.ccFlat; },
     get ccGenSpeed() { return theme.ccGenSpeed; },
     get ccGitOps() { return theme.ccGitOps; },
+    get ccImageRead() { return theme.ccImageRead; },
     get ccRunningForm() { return theme.ccRunningForm; },
     get ccStillRunningText() { return theme.ccStillRunningText; },
     get ccToolClass() { return theme.ccToolClass; },

@@ -103,7 +103,7 @@ const TOOLS = [
   { name: 'fuse-steer', verb: 'Notice', subject: 'New instruction', clock: true, disclosure: false,
     trace: { status: 'done', summary: 'New instruction', call_duration_ms: DUR } },
   // read_file image read: same family, different fold (no disclosure, figure inline).
-  { name: 'read_file-image', verb: 'Read', subject: 'shots/before.png', clock: true, disclosure: false,
+  { name: 'read_file-image', verb: 'View', subject: 'shots/before.png', clock: true, disclosure: false,
     trace: { status: 'done', path: '/srv/qa/shots/before.png', call_duration_ms: DUR,
       image: { format: 'PNG', mime: 'image/png', width: 640, height: 480, data: PNG } } },
   // Row-free by design (its lifecycle is pinned by console_meta_tools.browser.cjs).

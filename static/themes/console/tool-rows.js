@@ -17,17 +17,23 @@ function toolImage(trace) {
     return safe;
   }
 
-function toolImageHtml(trace) {
+// One line for what the image is: "PNG · 640 × 480 · resized from … · frame 2 of 3".
+function toolImageInfo(trace) {
     const image = toolImage(trace);
-    if (!image) return '<span class="chat-tool-truncated">Image preview unavailable.</span>';
+    if (!image) return "";
     const info = [image.format || image.mime];
     if (image.width && image.height) info.push(`${image.width} × ${image.height}`);
     if (image.original_width && image.original_height && (image.original_width !== image.width || image.original_height !== image.height)) {
       info.push(`resized from ${image.original_width} × ${image.original_height}`);
     }
     if (image.frames > 1 && image.frame != null) info.push(`frame ${image.frame + 1} of ${image.frames}`);
-    return `<figure class="chat-tool-image">${deps.imagePreviewButton({ data: image.preview_url || `data:${image.mime};base64,${image.data}`, name: trace.path || "Image preview" })}` +
-      `<figcaption>${deps.escapeHtml(info.join(" · "))}<span>Preview only; model image support depends on the selected model.</span></figcaption></figure>`;
+    return info.join(" · ");
+  }
+
+function toolImageHtml(trace) {
+    const image = toolImage(trace);
+    if (!image) return '<span class="chat-tool-truncated">Image preview unavailable.</span>';
+    return `<figure class="chat-tool-image">${deps.imagePreviewButton({ data: image.preview_url || `data:${image.mime};base64,${image.data}`, name: trace.path || "Image preview" })}</figure>`;
   }
 
 function toolDetailHtml(trace, failed, running) {
@@ -226,5 +232,5 @@ const TOOL_KIND = {
     read_transcript: "read",
   };
 
-  return { toolImage, toolImageHtml, toolDetailHtml, detailSectionHtml, toolRowLabel, toolStepHtml, TOOL_KIND };
+  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, toolRowLabel, toolStepHtml, TOOL_KIND };
 }

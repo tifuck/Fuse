@@ -99,7 +99,6 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
         openArtifact: li.querySelector('[data-open-artifact]')?.getAttribute('data-open-artifact') || '',
         openAgent: li.querySelector('[data-open-agent]')?.getAttribute('data-open-agent') || '',
         images: li.querySelectorAll('.chat-tool-image').length,
-        fig: flat(li.querySelector('.chat-tool-image figcaption')),
         text: flat(li),
         dom: li.textContent || '',
       };
@@ -437,9 +436,9 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await frame();
       let row = await rowOf(anim.id);
       eq(row.images, 1, 'image read renders one preview');
-      check(row.fig.includes('640 × 480'), `image dimensions text: ${row.fig}`);
-      check(row.fig.includes('frame 1 of 5'), `animated image names its frame: ${row.fig}`);
-      check(!row.fig.includes('resized from'), `an unresized image claims no resize: ${row.fig}`);
+      check(row.result.includes('640 × 480'), `image dimensions text: ${row.result}`);
+      check(row.result.includes('frame 1 of 5'), `animated image names its frame: ${row.result}`);
+      check(!row.result.includes('resized from'), `an unresized image claims no resize: ${row.result}`);
 
       const still = tool('read_file', {
         path: 'shots/still.png', image: { mime: 'image/png', data: PNG, width: 640, height: 480, format: 'PNG', frames: 1, frame: 0 },
@@ -447,15 +446,15 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([still], [T(still)])]);
       await frame();
       row = await rowOf(still.id);
-      check(!row.fig.includes('frame'), `a still image prints no frame count: ${row.fig}`);
+      check(!row.result.includes('frame'), `a still image prints no frame count: ${row.result}`);
 
-      // Missing dimensions: the figure shows just the format.
+      // Missing dimensions: the info line shows just the format.
       const dimless = tool('read_file', { path: 'shots/mystery.png', image: { mime: 'image/png', data: PNG, format: 'PNG' } });
       await mount([turn([dimless], [T(dimless)])]);
       await frame();
       row = await rowOf(dimless.id);
-      check(row.fig.includes('PNG'), `image without dimensions keeps its format: ${row.fig}`);
-      check(!row.fig.includes('×'), `image without dimensions prints no size: ${row.fig}`);
+      check(row.result.includes('PNG'), `image without dimensions keeps its format: ${row.result}`);
+      check(!row.result.includes('×'), `image without dimensions prints no size: ${row.result}`);
 
       // A jpeg preview renders like any other.
       const jpeg = tool('read_file', { path: 'shots/pic.jpg', image: { mime: 'image/jpeg', data: PNG, width: 10, height: 10, format: 'JPEG' } });
