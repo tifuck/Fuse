@@ -28,6 +28,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
   min-width: 0;
   color: color-mix(in srgb, var(--mist) 58%, var(--ink));
   font: var(--console-type)/var(--console-leading) var(--mono);
+  /* Terminal-style wrap: a long unbroken argument fills the line after "$ "
+     instead of dropping below it and leaving the "$" alone. */
+  word-break: break-all;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-progress .chat-console-lines,

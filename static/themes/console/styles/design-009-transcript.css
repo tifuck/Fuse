@@ -189,7 +189,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group .chat-console-hint-line {
   display: block;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group .chat-console-thinkhint {
