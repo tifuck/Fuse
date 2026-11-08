@@ -159,6 +159,30 @@ test('run progress is applied to the live message', async () => {
   assert.equal(S.cursor, 11);
 });
 
+test('live run progress drives the artifact pane; a replayed backlog does not', async () => {
+  const live = { id: 'm', role: 'assistant', content: '', tools: [] };
+  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }, live], cursor: 10, viewCursor: 10,
+    activeRun: { id: 'r', message_id: 'm', status: 'running' } });
+  const built = [];
+  const apply = createApply({
+    traces: stub({ runIsActive, mergeToolEvent: (prior, event, status) => ({ ...prior, ...event, status }) }),
+    artifacts: stub({ startArtifactBuild: (event) => built.push(event.id) }),
+    agents: stub(), composer: stub(), context: stub(), net: stub(), panels: stub(), perms: stub(), persist: stub(),
+    picker: stub(), sidebar: stub(), status: stub(), transcript: stub(), turns: stub(), ui: stub(),
+  });
+  const stream = makeStream({}, { applyProgressPayload: apply.applyProgressPayload });
+  const progress = (id, tool) => ({ id, type: 'run.progress', thread_id: 't', payload: { run_id: 'r', message_id: 'm',
+    events: [{ fuse: { event: 'tool', id: tool, name: 'create_artifact', status: 'running' } }] } });
+  try {
+    S.syncState = 'connecting';
+    await stream.receiveEvent(progress(11, 'replayed'));
+    S.syncState = 'live';
+    await stream.receiveEvent(progress(12, 'live'));
+  } finally { S.syncState = undefined; }
+  assert.deepEqual(built, ['live']);
+  assert.deepEqual(live.tools.map((tool) => tool.id), ['replayed', 'live'], 'both still update the transcript');
+});
+
 test('a progress update that had to refetch keeps the snapshot\'s newer cursors', async () => {
   baseState({ messages: [{ id: 'm', role: 'assistant', content: '' }], cursor: 10, viewCursor: 10, threadWatermark: 10,
     activeRun: { id: 'r', message_id: 'm', status: 'running' } });

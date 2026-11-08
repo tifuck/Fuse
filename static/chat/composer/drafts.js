@@ -26,6 +26,10 @@ export function createDrafts(ctx) {
   const pending = new Map();
   const timers = new Map();
   const sends = new Map();
+  // Wire -> number of its save still on the way: until it lands, a snapshot
+  // or event can predate it.
+  const inflight = new Map();
+  const saving = (wire) => pending.has(wire) || inflight.has(wire);
 
   function flushDraft(wire, keepalive = false) {
     window.clearTimeout(timers.get(wire));
@@ -35,13 +39,14 @@ export function createDrafts(ctx) {
     pending.delete(wire);
     const send = (sends.get(wire) || 0) + 1;
     sends.set(wire, send);
+    inflight.set(wire, send);
     net.api("/chat/drafts", { method: "PUT", keepalive, body: JSON.stringify({ key: wire, text, origin }) }).catch(() => {
       // Offline or refused: retry unless newer text is queued or was sent
       // since; resending this older text would overwrite it.
       if (pending.has(wire) || sends.get(wire) !== send) return;
       pending.set(wire, text);
       timers.set(wire, window.setTimeout(() => flushDraft(wire), 5000));
-    });
+    }).finally(() => { if (inflight.get(wire) === send) inflight.delete(wire); });
   }
 
   if (S.drafts) {
@@ -71,7 +76,7 @@ export function createDrafts(ctx) {
       input.syncComposer();
       return;
     }
-    if (pending.has(wire)) return;
+    if (saving(wire)) return;
     const key = wire === "" ? null : wire;
     S.drafts.remote(key, text || "");
     showDraft(key);
@@ -86,7 +91,7 @@ export function createDrafts(ctx) {
     const keys = new Set([...S.drafts.keys()].map((key) => key ?? ""));
     Object.keys(map).forEach((wire) => { if (!wire.startsWith(STASH)) keys.add(wire); });
     keys.forEach((wire) => {
-      if (pending.has(wire)) return;
+      if (saving(wire)) return;
       const key = wire === "" ? null : wire;
       S.drafts.remote(key, String(map[wire] || ""));
       showDraft(key);

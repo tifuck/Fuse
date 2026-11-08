@@ -248,7 +248,9 @@ export function createApply(ctx) {
     if (!S.streaming) turns.drainQueue();
   }
 
-    function applyProgressPayload(msg, payload, child = false) {
+    // `passive` (replays, backlogs, subagents) applies state only; a live
+    // root-run event also drives the artifact pane.
+    function applyProgressPayload(msg, payload, child = false, passive = true) {
     if (!msg || !payload) return;
     if (Array.isArray(payload.tools)) {
       const prior = new Map((msg.tools || []).map((trace) => [trace.id, trace]));
@@ -278,7 +280,7 @@ export function createApply(ctx) {
       return;
     }
     for (const obj of payload.events || []) {
-      if (obj.fuse) applyFuseEvent(msg, obj.fuse, true, child);
+      if (obj.fuse) applyFuseEvent(msg, obj.fuse, passive, child);
       else {
         const part = deltaParts(obj);
         if (part.error) msg.error = part.error;

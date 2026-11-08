@@ -82,7 +82,9 @@ export function createThreads(ctx) {
       if (project) project.archived = false;
     }
     if (!thread.archived && prior?.archived && thread.id === S.currentId) S.showArchived = false;
-    if (thread.kind === "project" && thread.id === S.currentId && !S.historyQuery) {
+    // Only when the open chat becomes a project session: every later upsert
+    // must leave the tab the user picked alone.
+    if (thread.kind === "project" && prior?.kind !== "project" && thread.id === S.currentId && !S.historyQuery) {
       render.setHistoryTab("projects", { persist: true, silent: true });
     }
     syncTitle();
@@ -285,6 +287,9 @@ export function createThreads(ctx) {
     transcript.setPartialTranscript(Boolean(data.partial));
     S.drafts.set(draftKey(), S.input.value);
     S.draftFiles.set(draftKey(), S.pendingAttachments);
+    // acceptPermThread keeps subagent asks (a parent snapshot cannot settle
+    // them); another chat's must not stay answerable here.
+    if (S.currentId !== data.id) S.permCards.clear();
     S.currentId = data.id;
     S.sessionId = "thread-" + data.id;
     const listed = resolveListedModel(data.model);

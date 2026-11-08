@@ -648,10 +648,12 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await frame();
       let snap = await rowOf(counted.id);
       eq(snap.result, 'Monitor started · task m2', 'the settled monitor keeps its start receipt');
+      const showJob = (id, trace) => page.evaluate(({ id, trace }) => fuseToolFixture.work([{ ...trace, command_id: undefined, id, kind: 'monitor', state: 'running' }]), { id, trace });
+      const detailChips = () => page.locator('.chat-jobs-detail .chat-tool-context').innerText();
       const jobChips = async (id, trace) => {
-        await page.evaluate(({ id, trace }) => fuseToolFixture.work([{ ...trace, command_id: undefined, id, kind: 'monitor', state: 'running' }]), { id, trace });
+        await showJob(id, trace);
         await page.locator(`[data-show-job="${id}"]`).click();
-        return page.locator('.chat-jobs-detail .chat-tool-context').innerText();
+        return detailChips();
       };
       let chips = await jobChips('watch-m2', counted);
       check(/3 events?/.test(chips), `the count chip carries the delivered events: ${chips}`);
@@ -660,7 +662,10 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       snap = await rowOf(counted.id);
       eq(snap.result, 'Monitor started · task m2', 'the receipt survives a count update');
       const updated = await page.evaluate((id) => fuseToolFixture.snapshot()[0].tools.find((t) => t.id === id), counted.id);
-      chips = await jobChips('watch-m2', updated);
+      // The open detail stays open through the row update, rebuilt from the current job.
+      await showJob('watch-m2', updated);
+      check(await page.locator('.chat-jobs-detail.is-open').count() === 1, 'an open job detail survives a count update');
+      chips = await detailChips();
       check(/1 event/.test(chips), `the count chip tracks a single event: ${chips}`);
       check(!/3 events?/.test(chips), `the count chip drops stale counts: ${chips}`);
       const uncounted = tool('monitor', { description: 'idle log', command: 'tail -F idle.log' });

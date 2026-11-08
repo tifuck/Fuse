@@ -185,7 +185,7 @@ export function createStream(ctx) {
         const msg = S.messages.find((item) => item.id === payload.message_id);
         if (!msg) await apply.reconcileThread();
         else {
-          apply.applyProgressPayload(msg, payload);
+          apply.applyProgressPayload(msg, payload, false, S.syncState !== "live");
           // Trace reconciliation walks every message x tool x lifecycle row;
           // run.progress arrives ~5x/s while streaming, so match the agent.tick
           // path's 1s cadence. Settled agent events still reconcile at once,

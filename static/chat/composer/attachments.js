@@ -1,7 +1,7 @@
 // Attachments: pick, resize, render, drop.
 import { S } from '../state.js';
 import { escapeHtml } from '../core.js';
-import { newSession } from '../state.js';
+import { draftKey, newSession } from '../state.js';
 
 // Console prints an ended background command or monitor as Claude Code's
 // notice: 'Background command "<description>" completed · 12s'.
@@ -153,9 +153,10 @@ export function createAttachments(ctx) {
     if (!files.length) return;
     // Reading a file is async: the chat may change, and a second paste may
     // run concurrently. Resolve the target list and the limit after the await.
-    const origin = S.currentId;
+    // Keyed like every draft: an unsent project session is not the plain new chat.
+    const origin = draftKey();
     const target = () => {
-      if (origin === S.currentId) return S.pendingAttachments;
+      if (origin === draftKey()) return S.pendingAttachments;
       if (!S.draftFiles.has(origin)) S.draftFiles.set(origin, []);
       return S.draftFiles.get(origin);
     };

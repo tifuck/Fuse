@@ -341,9 +341,10 @@ export function createView(ctx) {
       S.agentsRows.forEach(row => {
         // (work_ms, _workAt) is one pair: shift the stamp by the base's jump
         // instead of re-stamping, so the dock clock never sawtooths back when
-        // work_ms accrues slower than wall time.
+        // work_ms accrues slower than wall time. Only within one live stretch:
+        // a stamp kept from an idle row would count the idle gap once it runs.
         const prior = priorWork.get(String(row.id));
-        row._workAt = prior && Number.isFinite(prior._workAt) && Number.isFinite(Number(prior.work_ms)) && Number.isFinite(Number(row.work_ms))
+        row._workAt = prior && prior.work_live && row.work_live && Number.isFinite(prior._workAt) && Number.isFinite(Number(prior.work_ms)) && Number.isFinite(Number(row.work_ms))
           ? prior._workAt + (Number(row.work_ms) - Number(prior.work_ms)) : receivedAt;
         S.agentLifecycle.set(String(row.id), row);
       });

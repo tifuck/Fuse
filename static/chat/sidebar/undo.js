@@ -1,6 +1,6 @@
 // Undo/redo stacks, rewind, message editing.
 import { S } from '../state.js';
-import { newSession } from '../state.js';
+import { draftKey, newSession } from '../state.js';
 
 function cloneTranscript(list) {
   try {
@@ -315,6 +315,7 @@ export function createUndo(ctx) {
       picker.setHint("Up to " + S.ATTACH_MAX + " attachments stay in the composer; some were left out.", "warn");
     }
     S.input.value = text;
+    S.drafts.set(draftKey(), text);
     composer.renderAttachList();
     composer.resizeInput();
     composer.syncComposer();

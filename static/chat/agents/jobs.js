@@ -17,6 +17,13 @@ function jobElapsedMs(job, nowMs) {
 
 export function createJobs(ctx) {
   const { live, net, sync, traces, transcript, ui } = ctx;
+    function jobDetail(job, open) {
+    const details = document.createElement("div");
+    details.className = "chat-jobs-detail chat-step-reveal" + (open ? " is-open" : "");
+    details.innerHTML = `<div class="chat-step-reveal-inner">${ui.toolDetailHtml({ ...job, name: job.name === "monitor" || job.kind === "monitor" ? "monitor" : "run_terminal_command", status: "running" }, false, true)}</div>`;
+    return details;
+  }
+
     async function onJobsClick(event) {
     const output = event.target.closest("[data-show-job]");
     if (output) {
@@ -37,11 +44,7 @@ export function createJobs(ctx) {
         const container = output.closest(".chat-jobs-row");
         if (job && container) {
           let details = container.querySelector(".chat-jobs-detail");
-          if (!details) {
-            details = document.createElement("div"); details.className = "chat-jobs-detail chat-step-reveal";
-            details.innerHTML = `<div class="chat-step-reveal-inner">${ui.toolDetailHtml({ ...job, name: job.name === "monitor" || job.kind === "monitor" ? "monitor" : "run_terminal_command", status: "running" }, false, true)}</div>`;
-            container.appendChild(details);
-          }
+          if (!details) container.appendChild(details = jobDetail(job, false));
           transcript.setToolReveal(details, !details.classList.contains("is-open"));
         }
       }
@@ -73,8 +76,16 @@ export function createJobs(ctx) {
     const sig = owner + "\u001e" + JSON.stringify(rows.map((job) => [job.id, job.command, job.description, job.host, job.state, job.event_count, job.kind]));
     if (sig !== jobsRendered) {
       jobsRendered = sig;
+      // A row change (a monitor's event count) must not close an open detail;
+      // it reopens built from the current job.
+      const open = new Set([...S.jobsListEl.querySelectorAll(".chat-jobs-detail.is-open")]
+        .map((el) => el.closest(".chat-jobs-row")?.querySelector("[data-show-job]")?.dataset.showJob));
       S.jobsListEl.hidden = !rows.length;
       S.jobsListEl.innerHTML = rows.map((job) => ui.jobRowHtml(job, Date.now())).join("");
+      rows.forEach((job) => {
+        const id = String(job.command_id || job.id);
+        if (open.has(id)) S.jobsListEl.querySelector(`[data-show-job="${CSS.escape(id)}"]`)?.closest(".chat-jobs-row")?.appendChild(jobDetail(job, true));
+      });
       live.syncWorkStrip();
     }
     tickJobTimes();
