@@ -27,6 +27,9 @@ the loss), "account" (another pool account served it), "provider" (Fuse
 resent the same prefix and the provider did not reuse it), or "" when there
 is no fingerprint to compare.
 
+A "settings" miss across a Fuse restart is not reported: the new code's
+prompt or tool text is expected to cost one cold turn per chat.
+
 A miss is reported once per run, also across a resume, as a `cache` fuse
 event; the chat shows it as a dismissible toast. Devin reports billing deltas
 instead of an inclusive prompt, so it is never judged.
@@ -68,6 +71,8 @@ MAX_PARTS = 5000
 # An attached image weighs about as much as this much JSON text, not its
 # base64 length (only used to estimate where a changed prefix ends).
 IMAGE_WEIGHT = 4000
+# When this process started; a probe older than this came from before a restart.
+BOOT = time.time()
 
 
 def ttl_for(source: str | None, model: str | None = None) -> int:
@@ -252,6 +257,8 @@ def miss(prior, current, *, settings_changed: bool = False) -> dict | None:
         reason = "provider"
     else:
         reason = ""
+    if reason == "settings" and prior["at"] < BOOT <= current["at"]:
+        return None
     explicit = current["source"] == "claude" or (current["source"] == "openrouter" and "anthropic/" in current["model"])
     if reason == "provider" and shared < PROVIDER_MIN_SHARED and not explicit:
         return None

@@ -167,6 +167,19 @@ class CacheWatchTest(unittest.TestCase):
             self.assertEqual(current["changed"], "settings")
             self.assertEqual(watch.miss(warm, current)["reason"], "settings")
 
+    def test_a_restart_that_changed_the_prompt_stays_quiet(self):
+        # A deploy that rewords a tool costs every chat one cold turn.
+        before, after = watch.BOOT - 60, watch.BOOT + 60
+        warm = probe(97_000, 96_000, at=before, source="claude", request=sent(user("q")))
+        changed = probe(97_466, 0, at=after, prior=warm, source="claude", request=sent(user("q"), tools=[]))
+        self.assertIsNone(watch.miss(warm, changed))
+        self.assertIsNone(watch.miss(warm, changed, settings_changed=True))
+        # Other causes across a restart are still named.
+        grown = sent(user("q"), {"role": "assistant", "content": "a"}, user("more"))
+        self.assertEqual(watch.miss(warm, probe(97_466, 0, at=after, prior=warm, source="claude", request=grown))["reason"], "provider")
+        effort = probe(97_466, 0, at=after, prior=warm, source="claude", request=sent(user("q"), effort="xhigh"))
+        self.assertEqual(watch.miss(warm, effort)["reason"], "effort")
+
     def test_an_effort_change_is_named(self):
         # Thread 472: a wake turn sent no effort (Claude's default, low), the
         # user's next turn sent xhigh, and only tools + system stayed cached.
