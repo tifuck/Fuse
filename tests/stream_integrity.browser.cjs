@@ -6,7 +6,10 @@
 //     spinner replaces the arrow.
 //  2. Follow forgiveness: a wheel inside a code pane, a ctrl-zoom and a sideways
 //     swipe keep following; scrolling up mid-stream pauses it and later output
-//     does not drag the reader back.
+//     does not drag the reader back. Idle Jump to latest follows again, output
+//     piling up below a paused reader brings up the pill, selecting text pauses
+//     (a click does not), a slow touch drag pauses, and the subagent log
+//     forgives ctrl-zoom and sideways swipes too.
 //  3. The live status line ends the transcript (after the log, not pinned over
 //     it) and scrolls away with the reply.
 //  4. A live thinking row keeps its earlier text while more streams into it.
@@ -163,6 +166,114 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       check(run.zoomAndSwipe, tag('ctrl-zoom and a sideways swipe keep following'));
       check(run.paused && run.held, tag('scrolling up mid-stream holds the reading position'));
       check(run.follows, tag(`the status line sits at the end of the log, so it scrolls with the reply (dock ${run.awayPlace.dock}, log ends ${run.awayPlace.logEnd})`));
+    }
+
+    // —— 2b. Follow edges driven by real input. ——
+    {
+      const mount = (target, live) => target.evaluate(async (live) => {
+        const f = fuseToolFixture;
+        await new Promise((r) => requestAnimationFrame(r));
+        const rows = [];
+        for (let i = 0; i < 16; i++) {
+          rows.push({ role: 'user', content: `Question ${i}` });
+          const text = `Settled answer ${i}. ` + 'A paragraph of earlier reading. '.repeat(24);
+          rows.push({ role: 'assistant', content: text, tools: [], segments: [{ type: 'content', text }] });
+        }
+        f.mountThread(rows, { live, phase: live ? 'model' : '' });
+        f.follow(true);
+        await new Promise((r) => setTimeout(r, 300));
+        if (!live) return;
+        const index = f.snapshot().length - 1;
+        let text = rows.at(-1).content;
+        window.streamTimer = setInterval(() => {
+          text += '\n\nAnother streamed line arrives below.';
+          f.stream(index, { content: text, segments: [{ type: 'content', text }] });
+        }, 50);
+      }, live);
+      const state = (target = page) => target.evaluate(() => ({ ...fuseToolFixture.scrollState(), pill: !document.querySelector('[data-chat-latest]').hidden }));
+      const grow = (px) => page.evaluate(async (px) => {
+        const filler = Object.assign(document.createElement('div'), { className: 'follow-filler' });
+        filler.style.height = px + 'px';
+        document.querySelector('[data-chat-log]').lastElementChild.append(filler);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }, px);
+
+      // Idle: Jump to latest glides to the end and follows from there.
+      await mount(page, false);
+      const box = await page.locator('[data-chat-thread]').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, -1500);
+      await page.waitForTimeout(500);
+      const away = await state();
+      await page.click('[data-chat-latest]');
+      await page.waitForTimeout(1500);
+      const jumped = await state();
+      await grow(300);
+      const grown = await state();
+      check(!away.following && away.pill, `idle: scrolling away pauses and shows the pill (${JSON.stringify(away)})`);
+      check(jumped.following && jumped.gap <= 1, `idle: Jump to latest follows again (following ${jumped.following}, gap ${Math.round(jumped.gap)})`);
+      check(grown.gap <= 1, `idle: output after Jump to latest stays in view (gap ${Math.round(grown.gap)})`);
+
+      // Growth with no scroll event still brings up the pill for a paused reader.
+      await page.evaluate(() => { fuseToolFixture.follow(true); fuseToolFixture.follow(false); });
+      const paused = await state();
+      await grow(600);
+      const piled = await state();
+      check(paused.pill === false && !piled.following && piled.pill, `output piling up below a paused reader brings up the pill (${JSON.stringify({ before: paused.pill, ...piled })})`);
+
+      // Selecting text mid-stream stops following; a plain click does not.
+      await mount(page, true);
+      const spot = () => page.evaluate(() => {
+        const r = [...document.querySelectorAll('[data-chat-log] .chat-md p')].at(-4).getBoundingClientRect();
+        return { x: r.left + 4, y: r.top + r.height / 2 };
+      });
+      let at = await spot();
+      await page.mouse.click(at.x, at.y);
+      await page.waitForTimeout(250);
+      const clicked = await state();
+      at = await spot();
+      await page.mouse.move(at.x, at.y);
+      await page.mouse.down();
+      await page.mouse.move(at.x + 160, at.y, { steps: 4 });
+      await page.waitForTimeout(100);
+      const selectTop = (await state()).top;
+      await page.waitForTimeout(500);
+      const selecting = await state();
+      await page.mouse.up();
+      await page.evaluate(() => { clearInterval(window.streamTimer); getSelection().removeAllRanges(); });
+      check(clicked.following, 'a click in the transcript keeps following');
+      check(!selecting.following && Math.abs(selecting.top - selectTop) <= 1, `selecting text mid-stream stops following (following ${selecting.following}, moved ${Math.round(selecting.top - selectTop)}px)`);
+
+      // A slow touch drag reports sub-pixel steps; they still add up to a pause.
+      const touchPage = await browser.newPage({ viewport: { width: 1280, height: 800 }, hasTouch: true });
+      touchPage.on('pageerror', (error) => errors.push(error.message));
+      await touchPage.route('**/*', (route) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+      await touchPage.goto(origin);
+      await touchPage.waitForFunction(() => window.fuseToolFixture);
+      await mount(touchPage, false);
+      const dragged = await touchPage.evaluate(() => {
+        const thread = document.querySelector('[data-chat-thread]');
+        const at = (y) => [new Touch({ identifier: 1, target: thread, clientX: 200, clientY: y })];
+        thread.dispatchEvent(new TouchEvent('touchstart', { touches: at(300), bubbles: true }));
+        for (let i = 1; i <= 8; i++) thread.dispatchEvent(new TouchEvent('touchmove', { touches: at(300 + i * 0.5), bubbles: true }));
+        return fuseToolFixture.scrollState().following;
+      });
+      await touchPage.close();
+      check(!dragged, 'a slow touch drag down pauses following');
+
+      // The subagent log forgives ctrl-zoom and sideways swipes like the main one.
+      const agentWheel = await page.evaluate(() => {
+        const log = document.querySelector('[data-agent-log]');
+        const wheel = (init) => log.dispatchEvent(new WheelEvent('wheel', { bubbles: true, ...init }));
+        const before = fuseToolFixture.scrollState().agentFollowing;
+        wheel({ deltaY: -40, ctrlKey: true });
+        wheel({ deltaY: -4, deltaX: 80 });
+        const forgiven = fuseToolFixture.scrollState().agentFollowing;
+        wheel({ deltaY: -80 });
+        return { before, forgiven, paused: !fuseToolFixture.scrollState().agentFollowing };
+      });
+      check(agentWheel.before && agentWheel.forgiven, 'the subagent log keeps following through ctrl-zoom and a sideways swipe');
+      check(agentWheel.paused, 'scrolling the subagent log up pauses it');
     }
 
     // —— 4. A live thinking row keeps receiving streamed additions. ——

@@ -816,12 +816,25 @@ import { createDictation } from './chat/dictation.js';
     else if (event.deltaY > 0) transcript.resumeFollowOnScroll = true;
   }, { passive: true });
 
+    let threadPressed = false;
+
     S.thread.addEventListener("pointerdown", event => {
+    threadPressed = true;
     if (event.target === S.thread && event.clientX >= S.thread.getBoundingClientRect().right - 18) {
       transcript.pauseThreadFollow();
       transcript.resumeFollowOnScroll = true;
     }
   }, { passive: true });
+
+    ["pointerup", "pointercancel"].forEach(type => document.addEventListener(type, () => { threadPressed = false; }, { passive: true }));
+
+    // Selecting text is reading: stop following so the words do not slide
+  // under the pointer. Only a press that began in the transcript counts, since
+  // streamed re-renders also nudge a selection left standing.
+  document.addEventListener("selectionchange", () => {
+    const selection = document.getSelection();
+    if (threadPressed && S.stickToBottom && selection && !selection.isCollapsed) transcript.pauseThreadFollow();
+  });
 
     let threadTouchY = null;
 
@@ -832,6 +845,9 @@ import { createDictation } from './chat/dictation.js';
     if (y != null && threadTouchY != null && picker.innerScrolls(event.target, threadTouchY - y)) { threadTouchY = y; return; }
     if (y != null && threadTouchY != null && y > threadTouchY + 1) transcript.pauseThreadFollow();
     else if (y != null && threadTouchY != null && y < threadTouchY - 1) transcript.resumeFollowOnScroll = true;
+    // Measure from the last decision, not the last event: a slow drag can
+    // report sub-pixel steps that never cross the threshold one by one.
+    else if (y != null && threadTouchY != null) return;
     threadTouchY = y ?? null;
   }, { passive: true });
 
@@ -859,7 +875,9 @@ import { createDictation } from './chat/dictation.js';
       return;
     }
     // Idle: glide the last stretch instead of teleporting. Far jumps first
-    // snap to a screen above the end so the glide stays short.
+    // snap to a screen above the end so the glide stays short. The glide's
+    // first frames are far from the end and drop the follow; arriving resumes it.
+    transcript.resumeFollowOnScroll = true;
     const target = transcript.threadFollowTarget();
     if (target - S.thread.scrollTop > S.thread.clientHeight * 3) S.thread.scrollTop = target - S.thread.clientHeight * 1.5;
     S.thread.scrollTo({ top: target, behavior: "smooth" });
@@ -1357,11 +1375,15 @@ import { createDictation } from './chat/dictation.js';
       if (S.agentFollowFrame) cancelAnimationFrame(S.agentFollowFrame);
       S.agentFollowFrame = 0;
     };
-    S.agentLogEl.addEventListener("wheel", event => { if (event.deltaY < 0) pause(); else if (event.deltaY > 0) S.agentResumeOnScroll = true; }, { passive: true });
+    S.agentLogEl.addEventListener("wheel", event => {
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) || picker.innerScrolls(event.target, event.deltaY, S.agentLogEl)) return;
+      if (event.deltaY < 0) pause(); else if (event.deltaY > 0) S.agentResumeOnScroll = true;
+    }, { passive: true });
     let y = null;
     S.agentLogEl.addEventListener("touchstart", event => { y = event.touches[0]?.clientY ?? null; }, { passive: true });
     S.agentLogEl.addEventListener("touchmove", event => {
       const next = event.touches[0]?.clientY;
+      if (next != null && y != null && picker.innerScrolls(event.target, y - next, S.agentLogEl)) { y = next; return; }
       if (next != null && y != null && next > y) pause();
       else if (next != null && y != null && next < y) S.agentResumeOnScroll = true;
       y = next ?? null;
@@ -2145,6 +2167,9 @@ import { createDictation } from './chat/dictation.js';
     if (S.thread) {
       const threadResizeObserver = new ResizeObserver(() => {
         if (S.stickToBottom && !transcript.threadFollowFrame) transcript.snapThread();
+        // Growth without a scroll event (an image, a late layout) still
+        // brings up Jump to latest for a reader who scrolled away.
+        else if (!S.stickToBottom) transcript.syncLatest();
       });
       threadResizeObserver.observe(S.thread);
       // Anything that makes the transcript taller (a streamed line, a tool row,

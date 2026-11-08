@@ -296,8 +296,8 @@ export function createSheet(ctx) {
     // A gesture over a nested scroller (code pane, thinking peek, table) that
   // can still move that way scrolls it, not the transcript, and must not
   // break the follow.
-  function innerScrolls(target, dy) {
-    for (let el = target instanceof Element ? target : null; el && el !== S.thread; el = el.parentElement) {
+  function innerScrolls(target, dy, root = S.thread) {
+    for (let el = target instanceof Element ? target : null; el && el !== root; el = el.parentElement) {
       if (el.scrollHeight <= el.clientHeight + 1) continue;
       const oy = getComputedStyle(el).overflowY;
       if (oy !== "auto" && oy !== "scroll") continue;

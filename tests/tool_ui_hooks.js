@@ -123,7 +123,7 @@ window.fuseToolFixture = {
     transcript.scrollThread();
   },
   follow(on = true) { if (on) { S.stickToBottom = true; transcript.scrollThread(); } else transcript.pauseThreadFollow(); },
-  scrollState: () => ({ following: S.stickToBottom, frame: S.threadFollowFrame, top: S.thread.scrollTop, gap: S.thread.scrollHeight - S.thread.clientHeight - S.thread.scrollTop, streaming: S.streaming, reduced: S.reduceMotion.matches }),
+  scrollState: () => ({ following: S.stickToBottom, frame: S.threadFollowFrame, top: S.thread.scrollTop, gap: S.thread.scrollHeight - S.thread.clientHeight - S.thread.scrollTop, streaming: S.streaming, reduced: S.reduceMotion.matches, agentFollowing: S.agentStick }),
   run(patch) { S.activeRun = { ...S.activeRun, ...patch }; sync.setRunning(); },
   snapshot: () => structuredClone(S.messages),
   dock: () => S.liveDockLabel && S.liveDockLabel.textContent,
