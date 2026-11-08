@@ -197,31 +197,6 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
   background: var(--call-fail);
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-line-mark {
-  display: grid;
-  place-items: center;
-  height: var(--console-row);
-}
-
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-line-mark::before {
-  content: "";
-  box-sizing: border-box;
-  width: var(--console-dot);
-  height: var(--console-dot);
-  border-radius: 50%;
-  background: var(--mute);
-}
-
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-line-mark::before { background: var(--call-done); }
-
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-line {
-  display: grid;
-  grid-template-columns: var(--console-col) minmax(0, 1fr);
-  column-gap: 0.45rem;
-  min-height: var(--console-row);
-  font: var(--console-type)/var(--console-leading) var(--mono);
-}
-
 /* The settled activity summary line: styled like a run head, but the
    transcript never shows it — the status row and turn line carry the state. */
 .chat[data-view="console"] .chat-cli-run {

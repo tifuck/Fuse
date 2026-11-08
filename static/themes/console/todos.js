@@ -1,9 +1,5 @@
 // todos presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-function todoLineHtml(text) {
-    return `<p class="chat-todo-line" data-todo-line><span class="chat-todo-line-mark" aria-hidden="true"></span><span class="chat-todo-line-text">${deps.escapeHtml(text)}</span></p>`;
-  }
-
 // The tray's frame is built once so the sheet can slide open and shut and the
 // head line can pulse; only the head's contents and the rows are repainted.
 // The header's todo button opens it.
@@ -25,5 +21,5 @@ function todoRowsHtml(items) {
       `<span class="chat-todo-text">${deps.escapeHtml(item.content)}</span></li>`).join("");
   }
 
-  return { todoLineHtml, todoTrayHtml, todoBarHtml, todoRowsHtml };
+  return { todoTrayHtml, todoBarHtml, todoRowsHtml };
 }

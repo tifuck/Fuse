@@ -425,8 +425,6 @@ export function createConsoleTheme(runtime) {
     get syncThinkingMode() { return theme.syncThinkingMode; },
     get tailConsoleOutput() { return theme.tailConsoleOutput; },
     get thinkingPosition() { return theme.thinkingPosition; },
-    get todoLineHtml() { return theme.todoLineHtml; },
-    get todoSettleLines() { return runtime.todoSettleLines; },
     get toolFailed() { return runtime.toolFailed; },
     get toolGestureOwner() { return runtime.toolGestureOwner; },
     get toolMotions() { return runtime.toolMotions; },

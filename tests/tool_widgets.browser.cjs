@@ -290,13 +290,13 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
             status: status && [status.top, status.bottom], todos: todos && [todos.top, todos.bottom],
             verb: document.querySelector('[data-live-dock-label]').textContent,
             spinning: Boolean(spin && !spin.hidden && spin.childElementCount),
-            row: Boolean(document.querySelector('[data-tool="todo_write"]')),
+            log: document.querySelector('.chat-log').textContent,
           };
         });
         check(dock.status && dock.todos && dock.todos[0] >= dock.status[1] - 1, tag(`todos sit under the status line (${JSON.stringify(dock)})`));
         check(!/Pin the tool rows/.test(dock.verb), tag(`the spinner keeps its own words: ${dock.verb}`));
         check(dock.spinning, tag('the run spinner is still spinning'));
-        check(dock.row === false, tag('todo_write still prints no transcript row'));
+        check(/Updated todos/.test(dock.log) && !/Pin the tool rows/.test(dock.log), tag('todo_write folds into the summary line, without its items'));
 
         // 10. Truncation: the indicator, the expand, and no mid-line cut.
         const whole = Array.from({ length: 6 }, (_, i) => `line ${i} ${'abcdef'.repeat(12)}`).join('\n');

@@ -1,6 +1,6 @@
-// Todo section suite: todo_write never prints as a transcript row. The list
-// lives in a tray pinned right above the composer, and it never touches the
-// spinner's words.
+// Todo section suite: todo_write prints a plain call row, never its items. The
+// list lives in a tray pinned right above the composer, and it never touches
+// the spinner's words.
 //
 //  1. Placement and the spinner: status line, then the tray, then the
 //     composer box; the spinner keeps its own verb and state. The tray stays
@@ -15,7 +15,8 @@
 //     finished one shows while the main run or any subagent is running, then
 //     goes after a short beat; an old finished list never returns under a later
 //     turn.
-//  4. The settled line: one line in the transcript, where a list finished.
+//  4. In the transcript: a finished call folds into the summary line like a
+//     read; its row says Update Todos and the count, never the items.
 //  5. Isolation: a subagent's list and the main chat's list never mix, whichever
 //     one changes, and tool ids that repeat across runs do not link them.
 const assert = require('node:assert/strict');
@@ -85,7 +86,7 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
       }
       check(!/Spawn reviewers/i.test(placed.status), tag(`the spinner never shows the todo: ${placed.status}`));
       check(!/updating todos/i.test(placed.status), tag('the spinner never says "updating todos"'));
-      check(placed.row === '' && !/Spawn reviewers/.test(placed.log), tag('todo_write prints no transcript row'));
+      check(placed.row === 'row' && /Updated todos/.test(placed.log) && !/Spawn reviewers/.test(placed.log), tag(`todo_write folds into the summary line, without its items: ${placed.log}`));
       const first = await section();
       check(first.rows.length === 3 && first.rows[1][0] === 'is-in-progress' && first.rows[0][0] === 'is-completed' && first.rows[2][0] === 'is-pending', tag(`rows carry their states ${JSON.stringify(first.rows)}`));
       check(/Todos\s*1\/3/.test(first.text), tag(`head counts finished items: ${first.text}`));
@@ -157,30 +158,25 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
       await mount([user, turn([todo('t1', DONE)], null, { id: 'old' }), { role: 'user', content: 'Again.' }, turn([running('r2')], null, { id: 'new' })], { live: true, phase: 'tools' });
       check(!(await section()).shown, tag('an old finished list does not show under a later turn'));
 
-      // 4. The settled line.
+      // 4. In the transcript.
       const settle = [user, turn(
         [todo('a', OPEN), todo('b', DONE), todo('c', DONE)],
-        [{ type: 'tool', id: 'a' }, { type: 'content', text: 'Working. ' }, { type: 'tool', id: 'b' }, { type: 'content', text: 'Done. ' }, { type: 'tool', id: 'c' }],
-        { content: 'Working. Done. ' },
+        [{ type: 'tool', id: 'a' }, { type: 'content', text: 'Working. ' }, { type: 'tool', id: 'b' }, { type: 'tool', id: 'c' }],
+        { content: 'Working. ' },
       )];
       await mount(settle, { live: false });
-      const lines = await page.evaluate(() => [...document.querySelectorAll('[data-todo-line]')].map((el) => el.textContent.trim()));
-      check(lines.length === 1 && lines[0] === 'Todos · 3/3 done', tag(`one settled line where the list finished: ${JSON.stringify(lines)}`));
-      // The mark is drawn (a typed glyph like ☒ prints as a broken box in many fonts).
-      await mount(settle, { live: false });
-      const mark = await page.evaluate(() => { const style = getComputedStyle(document.querySelector('.chat-todo-line-mark'), '::before'); return { content: style.content, radius: style.borderTopLeftRadius, width: parseFloat(style.width) }; });
-      check(mark.content === '""' && mark.radius === '50%' && mark.width > 2 && mark.width < 10, tag(`the settled line's mark is a drawn dot: ${JSON.stringify(mark)}`));
+      const folded = await page.evaluate(() => ({
+        lines: [...document.querySelectorAll('.chat-log .is-console-group > .chat-step-main > .chat-step-head .chat-step-label')].map((el) => el.textContent.trim()),
+        rows: [...document.querySelectorAll('.chat-log [data-tool="todo_write"]')].map((li) => [li.querySelector('.chat-console-call').textContent.trim(), li.querySelector('.chat-console-result-text').textContent.trim()]),
+      }));
+      check(JSON.stringify(folded.lines) === JSON.stringify(['Updated todos', 'Updated todos 2 times']), tag(`finished calls fold into summary lines: ${JSON.stringify(folded.lines)}`));
+      check(JSON.stringify(folded.rows) === JSON.stringify([['Update Todos', '3 todos · 1/3 done'], ['Update Todos', '3 todos · 3/3 done'], ['Update Todos', '3 todos · 3/3 done']]), tag(`each call is a two-line row: ${JSON.stringify(folded.rows)}`));
+      check(!/Read the layout code/.test(await logText()), tag('the items never print in the transcript'));
       {
         await mount([user, turn([todo('m', [['Done', 'completed'], ['Doing', 'in_progress'], ['Next', 'pending'], ['Dropped', 'cancelled']])])], { live: false });
         const glyphs = await page.evaluate(() => [...document.querySelectorAll('[data-live-todos] .chat-todo-box')].map((el) => getComputedStyle(el, '::before').content));
         check(glyphs.length === 4 && glyphs.every((content) => content === '""'), tag(`todo marks are drawn dots, not typed glyphs: ${JSON.stringify(glyphs)}`));
       }
-      await mount([user, turn([todo('a', OPEN)])], { live: false });
-      check((await page.locator('[data-todo-line]').count()) === 0, tag('an unfinished list leaves no line'));
-      await mount([user, turn([todo('a', [['One', 'completed'], ['Two', 'cancelled']])])], { live: false });
-      const cancelled = await page.evaluate(() => document.querySelector('[data-todo-line]')?.textContent.trim());
-      check(cancelled === 'Todos · 1/2 done · 1 cancelled', tag(`a cancelled item is counted: ${cancelled}`));
-
       // 1b. The drawer: the bar opens it, five rows tall, the item in
       // progress on top; the rest scrolls.
       const long = Array.from({ length: 12 }, (_, i) => [`Item ${i + 1}`, i < 4 ? 'completed' : i === 4 ? 'in_progress' : 'pending']);
@@ -266,5 +262,5 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
     await browser.close();
   }
   assert.equal(failures.length, 0, `${failures.length} todo section problems\n${failures.join('\n')}`);
-  console.log('PASS: todo section — placement, spinner, in-place updates, visibility, settled line, isolation in 4 views');
+  console.log('PASS: todo section — placement, spinner, in-place updates, visibility, transcript rows, isolation in 4 views');
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -246,6 +246,8 @@ function structuredToolHtml(trace, output) {
       if (!data || typeof data.slots !== "object" || !data.slots) return null;
       return kvListHtml(Object.entries(data.slots).map(([key, size]) => ({ title: key, detail: `${Number(size).toLocaleString()} chars` })));
     }
+    // The list lives in the todo section; the row is its two lines.
+    if (name === "todo_write") return "";
     if (name === "load_skill") {
       const start = text.search(/^#\s/m);
       if (start < 0) return null;

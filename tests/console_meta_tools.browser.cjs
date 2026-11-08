@@ -4,9 +4,8 @@
 // the row must show the latest header, values and dot after every step.
 // A tool event keeps the fields mergeToolEvent copies; results, output and a
 // fetch's byte count arrive with the persisted snapshot, so those are checked
-// on the remount. todo_write never prints a transcript row
-// (todo_section.browser.cjs owns the section); this only checks the transcript
-// stays row-free too.
+// on the remount. todo_write prints a two-line row like scratch; its list is
+// the todo section's (todo_section.browser.cjs).
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
@@ -259,21 +258,32 @@ const turn = (trace, live) => ({
         { event: { status: 'done', preview: 'odd' }, head: /Tool\(odd\)/, live: ['odd'], lacks: ['Running…', 'Unknown tool'], dot: 'done' },
       ]);
 
-      // todo_write updates the section, never the transcript, in every state.
+      // todo_write: Update Todos, then one line under it, in every state. Its
+      // items go to the section, never the transcript.
       await page.evaluate(() => fuseToolFixture.todo.reset());
       await mount({ id: 'm-todo', name: 'todo_write', status: 'running', todos: [{ id: '1', content: 'Pin the meta rows', status: 'in_progress' }] }, true);
-      assert.equal(await rowOf('m-todo').count(), 0, `${tag} a running todo_write printed a row`);
+      let todo = await read('m-todo');
+      assert.equal(todo.head, 'Update Todos', `${tag} running todo head: ${todo.head}`);
+      assert.match(todo.result, /Running…/, `${tag} running todo result: ${todo.result}`);
+      expectDot(todo.dot, 'running', `${tag} todo running`);
       await page.locator('[data-live-todos]').filter({ hasText: 'Pin the meta rows' }).waitFor({ state: 'attached' });
       // The tab shows the count; the item sits in the closed drawer, out of innerText.
       assert.match(await page.locator('[data-live-todos]').textContent(), /0\/1[\s\S]*Pin the meta rows/, `${tag} a running todo shows its item as unfinished`);
       await send({ event: 'tool', id: 'm-todo', name: 'todo_write', status: 'done', todos: [{ id: '1', content: 'Pin the meta rows', status: 'completed' }] });
       await paint();
-      assert.equal(await rowOf('m-todo').count(), 0, `${tag} a settled todo_write printed a row`);
+      todo = await read('m-todo');
+      assert.equal(todo.head, 'Update Todos', `${tag} settled todo head: ${todo.head}`);
+      assert.equal(todo.body, '1 todo · 1/1 done', `${tag} settled todo is two lines: ${JSON.stringify(todo.body)}`);
+      assert.equal(await rowOf('m-todo').locator('[data-step-toggle]').count(), 0, `${tag} a todo row has nothing to open`);
+      assert.equal(await rowOf('m-todo').evaluate((el) => el.textContent.includes('Pin the meta rows')), false, `${tag} the row printed a todo item`);
+      expectDot(todo.dot, 'done', `${tag} todo done`);
       let section = await page.locator('[data-live-todos]').textContent();
       assert.match(section, /Pin the meta rows/, `${tag} settled todo section: ${section}`);
       await send({ event: 'tool', id: 'm-todo', name: 'todo_write', status: 'error', error: 'todos[0].content is required' });
       await paint();
-      assert.equal(await rowOf('m-todo').count(), 0, `${tag} a failed todo_write printed a row`);
+      todo = await read('m-todo');
+      assert.equal(todo.body.includes('todos[0].content is required'), true, `${tag} todo failure: ${todo.body}`);
+      expectDot(todo.dot, 'error', `${tag} todo failed`);
 
       assert.equal(await page.evaluate(() => document.scrollingElement.scrollWidth <= window.innerWidth), true, `${tag} page wider than the viewport`);
       console.log(`PASS meta tools ${tag}`);

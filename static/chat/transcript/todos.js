@@ -17,8 +17,9 @@ function normalizeTodos(raw) {
 }
 
 // —— The todo list ——
-// todo_write never prints as a transcript row. The model re-sends the whole
-// list on every call, so a list is the newest successful call in ONE message:
+// todo_write prints a plain call row; the list itself lives in the section
+// above the composer. The model re-sends the whole list on every call, so a
+// list is the newest successful call in ONE message:
 // the main chat's section reads the thread's own messages, a subagent's reads
 // that child's message. Nothing is looked up by tool id across messages (ids
 // restart in every run: a parent and a child can both own "ts_0_0"), so one
@@ -41,27 +42,6 @@ function latestTodoState(msg) {
     return state;
   }
   return msg && msg.noActions && msg._todoLast || null;
-}
-
-function todoSettledText(items) {
-  const done = items.filter((item) => item.status === "completed").length;
-  const cancelled = items.length - done;
-  return `Todos · ${done}/${items.length} done${cancelled ? ` · ${cancelled} cancelled` : ""}`;
-}
-
-// The call that takes a list from open to settled leaves one line in the
-// transcript: tool id -> its text. Every other todo_write prints nothing.
-function todoSettleLines(msg) {
-  const lines = new Map();
-  let before = false;
-  (Array.isArray(msg && msg.tools) ? msg.tools : []).forEach((trace) => {
-    if (!todoLanded(trace)) return;
-    const items = normalizeTodos(trace.todos);
-    const settled = todoSettled(items);
-    if (settled && !before) lines.set(trace.id, todoSettledText(items));
-    before = settled;
-  });
-  return lines;
 }
 
 const TODO_LINGER_MS = 1500;
@@ -265,8 +245,7 @@ export function createTodos(ctx) {
     latestTodoState,
     normalizeTodos,
     todoClosed,
-    todoSettleLines,
   };
 }
 
-export { latestTodoState, normalizeTodos, todoClosed, todoSettleLines };
+export { latestTodoState, normalizeTodos, todoClosed };

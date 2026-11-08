@@ -303,14 +303,14 @@ function scenarios() {
     const cmd = sh('npm test', { extra: { status: 'running', state: 'running', execution_status: 'running', exit_code: null, execution_duration_ms: null, elapsed_ms: 3000 }, description: 'Run the tests' });
     return { rows: [user('Go.'), turn([T(todo), T(cmd)], [todo, cmd])], live: true, phase: 'tools', todos: true,
       truth: { call: { [cmd.id]: 'running' }, exec: { [cmd.command_id]: 'running' } },
-      has: ['Running the tests'], lacks: ['Fix the rows', 'Update Todos'] };
+      has: ['Running the tests', 'Updated todos'], lacks: ['Fix the rows', 'Update Todos'] };
   });
-  add('a finished list leaves one transcript line and no todo row', () => {
+  add('a finished todo call folds into the summary line and opens to its two-line row', () => {
     const items = [['Read the code', 'completed'], ['Fix the rows', 'completed']];
     const todo = tool('todo_write', { todos: items.map(([content, status], i) => ({ id: String(i + 1), content, status })) });
     return { rows: [user('Go.'), turn([say('Working.\n\n'), T(todo), say('Done.')], [todo], ended)],
-      truth: { call: { [todo.id]: 'done' } },
-      has: ['Todos · 2/2 done'], lacks: ['Update Todos', 'Read the code'] };
+      truth: { call: { [todo.id]: 'done' } }, open: true,
+      has: ['Updated todos', 'Update Todos', '2 todos · 2/2 done'], lacks: ['Read the code', 'Todos · 2/2 done'] };
   });
 
   // —— Compaction rows ——

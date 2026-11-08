@@ -191,7 +191,6 @@ function updateAssistant(article, msg, live) {
     }
     const toolById = new Map(traces.map((trace, index) => [trace.id, { trace, index }]));
     const permById = new Map((msg.permissions || []).map((perm) => [perm.id, perm]));
-    const settleLines = deps.todoSettleLines(msg);
     const normalized = segments.flatMap((part, segmentIndex) => {
       if (!part || !part.type) return [];
       if (isNotice(part)) return showNotices && segmentIndex >= noticeFrom && part.text ? [{ type: "notice", segmentIndex, text: part.text }] : [];
@@ -202,12 +201,6 @@ function updateAssistant(article, msg, live) {
       if (part.type === "tool") {
         const found = toolById.get(part.id);
         if (!found) return [];
-        // A todo list is not a row: it lives in the section under the status
-        // line. Only the call that finishes the list leaves a line behind.
-        if (found.trace.name === "todo_write") {
-          const text = settleLines.get(found.trace.id);
-          return text ? [{ type: "todo-line", segmentIndex, text }] : [];
-        }
         return [{ type: "tool", segmentIndex, ...found }];
       }
       if (part.type === "permission") {
@@ -228,10 +221,6 @@ function updateAssistant(article, msg, live) {
       }
       if (part.type === "marker") {
         blocks.push({ kind: "marker", markerKind: part.kind, text: part.text, summary: part.summary || "" });
-        return;
-      }
-      if (part.type === "todo-line") {
-        blocks.push({ kind: "todos", text: part.text });
         return;
       }
       if (part.type === "delivery") {
@@ -277,7 +266,6 @@ function updateAssistant(article, msg, live) {
         }).join("~") + (consoleLive && blockIndex === blocks.length - 1 ? `~ph:${phase}` : "");
       }
       if (block.kind === "marker") return `m:${block.markerKind}:${block.text}:${block.summary || ""}`;
-      if (block.kind === "todos") return `o:${block.text}`;
       if (block.kind === "delivery") return `d:${block.segmentIndex}:${block.text.length}`;
       if (block.kind === "notices") return `n:${Boolean(live)}:${block.lines.join("\n")}`;
       if (block.kind === "permission") return `p:${block.entries[0] && block.entries[0].perm && block.entries[0].perm.id}`;
@@ -285,7 +273,7 @@ function updateAssistant(article, msg, live) {
     };
     // showThinking changes which blocks exist without changing the segment
     // structure, so it belongs to the shape: a toggle must reach the rebuild.
-    const sig = `${Boolean(live)}|${"console"}|${deps.showThinking}|${liveKind}|${structure}|${permSig}|${[...settleLines.keys()].join(",")}|${runNotices.length}`;
+    const sig = `${Boolean(live)}|${"console"}|${deps.showThinking}|${liveKind}|${structure}|${permSig}|${runNotices.length}`;
     let reasoningPositions = null;
     const sameShape = flow._sig === sig && flow.childElementCount === blocks.length;
     if (sameShape) {
@@ -298,7 +286,6 @@ function updateAssistant(article, msg, live) {
         if (block.kind !== "activity") {
           const html = block.kind === "permission"
             ? deps.permissionCardHtml(block.entries[0].perm, msg)
-            : block.kind === "todos" ? deps.todoLineHtml(block.text)
             : block.kind === "delivery" ? deliveryBlockHtml(block, msg)
             : block.kind === "notices" ? noticeBlockHtml(block.lines, live) : markerBlockHtml(block);
           if (node.outerHTML === html) { node._blockSig = next; return; }
@@ -339,7 +326,6 @@ function updateAssistant(article, msg, live) {
         if (block.kind === "marker") {
           return markerBlockHtml(block);
         }
-        if (block.kind === "todos") return deps.todoLineHtml(block.text);
         if (block.kind === "delivery") return deliveryBlockHtml(block, msg);
         if (block.kind === "notices") return noticeBlockHtml(block.lines, live);
         if (block.kind === "content") {

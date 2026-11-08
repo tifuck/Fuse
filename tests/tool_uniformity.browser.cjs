@@ -93,6 +93,9 @@ const TOOLS = [
     trace: { status: 'done', title: 'Sales dashboard', identifier: 'art-1', version: 4, visibility: 'public', call_duration_ms: DUR } },
   { name: 'read_transcript', verb: 'Transcript', subject: '4 messages', clock: true, disclosure: true,
     trace: { status: 'done', preview: 'messages 1-4 of 4', output: '1. user: hi\n2. assistant: hello\n3. user: again\n4. assistant: (empty)', call_duration_ms: DUR } },
+  // Two lines: the bare verb, then the list's count. The items stay in the todo section.
+  { name: 'todo_write', verb: 'Update Todos', subject: '1 todo · 0/1 done', clock: true, disclosure: false, bare: true,
+    trace: { status: 'done', todos: [{ id: '1', content: 'Pin the rows', status: 'in_progress' }], call_duration_ms: DUR } },
   { name: 'scratch', verb: 'Scratch', subject: 'Write brief', clock: true, disclosure: true,
     trace: { status: 'done', description: 'Write brief', preview: '1 slots', output: SLOTS, call_duration_ms: DUR } },
   { name: 'frobnicate', verb: 'Tool', subject: 'odd', clock: true, disclosure: false,
@@ -103,13 +106,11 @@ const TOOLS = [
   { name: 'read_file-image', verb: 'Read', subject: 'shots/before.png', clock: true, disclosure: false,
     trace: { status: 'done', path: '/srv/qa/shots/before.png', call_duration_ms: DUR,
       image: { format: 'PNG', mime: 'image/png', width: 640, height: 480, data: PNG } } },
-  // Row-free by design (their lifecycle is pinned by console_meta_tools.browser.cjs).
-  { name: 'todo_write', verb: null, subject: null, clock: false, disclosure: false,
-    trace: { status: 'done', todos: [{ id: '1', content: 'Pin the rows', status: 'in_progress' }] } },
+  // Row-free by design (its lifecycle is pinned by console_meta_tools.browser.cjs).
   { name: 'search_tools', verb: null, subject: null, clock: false, disclosure: false,
     trace: { status: 'done', query: 'shell', preview: 'run_terminal_command, get_command_output' } },
 ];
-const ROW_FREE = new Set(['todo_write', 'search_tools']);
+const ROW_FREE = new Set(['search_tools']);
 // Duration tokens the no-clock families state in their result line instead.
 const RESULT_DUR = { web_search: '840ms', search: '840ms', spawn_subagent: '1m 5s', get_subagent_output: '41s' };
 
@@ -331,7 +332,7 @@ const COLLECT = () => {
       const flat = (el) => (el ? el.innerText.replace(/\s+/g, ' ').trim() : '');
       const out = [];
       for (const t of TOOLS) {
-        if (t.name === 'todo_write' || t.name === 'search_tools') continue;
+        if (t.name === 'search_tools') continue;
         for (const end of [
           // Outcomes come with a coherent execution state: for a child-backed
           // call the execution record governs the presentation (toolFailed
@@ -402,7 +403,7 @@ const COLLECT = () => {
       const flat = (el) => (el ? el.innerText.replace(/\s+/g, ' ').trim() : '');
       const out = [];
       for (const t of TOOLS) {
-        if (t.name === 'todo_write' || t.name === 'search_tools') continue;
+        if (t.name === 'search_tools') continue;
         const trace = { ...ROOT, ...t.trace, id: idOf(t), name: t.name === 'read_file-image' ? 'read_file' : t.name,
           status: 'running', state: 'running', execution_status: 'running', exit_code: undefined, call_duration_ms: undefined };
         fuseToolFixture.mountThread([
@@ -473,10 +474,11 @@ const COLLECT = () => {
       T('g-glob', { name: 'glob', status: 'done', pattern: '**/*.ts', path: '/srv/qa', output: 'src/a.ts\n' }),
       T('g-list', { name: 'list_dir', status: 'done', path: '/srv/qa/tests', output: 'a.py\nb.py\nc.py\n' }),
       T('g-shell', { name: 'run_terminal_command', status: 'done', state: 'completed', execution_status: 'completed', command: 'npm test', command_id: 'gj', child_id: 'gj', job_id: 'gj', exit_code: 0, output: 'ok\n', termination_confirmed: true }),
+      T('g-todo', { name: 'todo_write', status: 'done', todos: [{ id: '1', content: 'Pin the rows', status: 'in_progress' }] }),
     ]);
     await raf();
     let g = await groupRows();
-    ok(JSON.stringify(summaryLabels(g)) === JSON.stringify(['Searched for 2 patterns, read 2 files, listed 1 directory, ran 1 shell command']),
+    ok(JSON.stringify(summaryLabels(g)) === JSON.stringify(['Searched for 2 patterns, read 2 files, listed 1 directory, ran 1 shell command, updated todos']),
       `mixed summary counts: ${JSON.stringify(summaryLabels(g))}`);
     ok(g.filter((r) => r.step.startsWith('tool-')).length === 0, `foldable calls print their own rows before the summary opens: ${g.map((r) => r.step).join(', ')}`);
     // Open: every member prints once, in order, with its own label and state.
@@ -489,15 +491,15 @@ const COLLECT = () => {
     await raf();
     g = await groupRows();
     const members = g.filter((r) => r.inBundle);
-    ok(members.length === 6, `the opened summary prints each member once (${members.length})`);
-    ok(JSON.stringify(members.map((r) => r.tool)) === JSON.stringify(['read_file', 'read_file', 'grep', 'glob', 'list_dir', 'run_terminal_command']),
+    ok(members.length === 7, `the opened summary prints each member once (${members.length})`);
+    ok(JSON.stringify(members.map((r) => r.tool)) === JSON.stringify(['read_file', 'read_file', 'grep', 'glob', 'list_dir', 'run_terminal_command', 'todo_write']),
       `members keep their order and names: ${members.map((r) => r.tool).join(', ')}`);
     ok(members.every((r) => r.title === 'Done'), 'every member of a settled summary reads Done');
     ok(members.every((r) => r.toggles.length === 0), 'members of an opened summary print whole (no disclosure of their own)');
     ok(!members.some((r) => r.cls.includes('is-running')), 'a summary never folds a running call');
     // The group header counts and the members never duplicate each other.
     const groupHead = g.find((r) => r.cls.includes('is-console-group'));
-    ok(groupHead.headText === 'Searched for 2 patterns, read 2 files, listed 1 directory, ran 1 shell command', 'opening keeps the summary text');
+    ok(groupHead.headText === 'Searched for 2 patterns, read 2 files, listed 1 directory, ran 1 shell command, updated todos', 'opening keeps the summary text');
     ok(!groupHead.headText.includes('Read('), 'the summary header does not repeat member labels');
     // A click on any printed member folds the summary back — uniform for every
     // member family (read rows and shell rows alike).

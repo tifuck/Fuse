@@ -1,5 +1,5 @@
 /* —— Todo list ——
-   todo_write never prints as a transcript row. Its list hangs off the
+   todo_write prints a plain call row. Its list hangs off the
    composer's top edge, so it stays put while the transcript scrolls behind
    it. The header's todo button (its badge counts the open items) slides the
    list up over the transcript, five rows tall, scrolled so the item in
@@ -219,14 +219,3 @@
   .chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-rows { animation: none; }
   .chat .chat-todo-bar::after { transition: none; }
 }
-
-/* The one line left in the transcript when a list finishes. */
-.chat .chat-todo-line {
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  margin: 0;
-  color: var(--mute);
-  font: calc(0.78rem * var(--chat-text-scale, 1))/1.45 var(--mono);
-}
-.chat .chat-todo-line-mark::before { content: "✓"; color: var(--ok); }

@@ -130,6 +130,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let readOps = 0;
     let list = 0;
     let bash = 0;
+    let todos = 0;
     let gitOpBash = 0;
     let thoughtMs = 0;
     let thought = false;
@@ -165,6 +166,10 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       }
       const cls = item.cls;
       if (cls.kind === "silent") return;
+      if (cls.kind === "todo") {
+        todos += 1;
+        return;
+      }
       if (cls.kind === "bash") {
         bash += 1;
         hint = ccShellHint(trace) || hint;
@@ -200,7 +205,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     // Both sides always count: a path read plus a shell read is two files.
     const reads = readPaths.size + readOps;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !list && !shells && !gitOpBash) return "";
+    if (!thought && !search && !reads && !list && !shells && !gitOpBash && !todos) return "";
 
     const parts = [];
     if (thought) {
@@ -226,6 +231,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (reads) add(active ? "reading" : "read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
     if (list) add(active ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
     if (shells) add(active ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
+    if (todos) add(active ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
 
     const headline = active ? ccHeadline(group.items, msg) : "";
     const elapsed = active && runningSince

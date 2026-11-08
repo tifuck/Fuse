@@ -163,7 +163,6 @@ import { createDictation } from './chat/dictation.js';
     get syncLatest() { return transcript.syncLatest; },
     get thread() { return S.thread; },
     get todoClosed() { return transcript.todoClosed; },
-    get todoSettleLines() { return transcript.todoSettleLines; },
     get toolBackground() { return traces.toolBackground; },
     get toolCounts() { return traces.toolCounts; },
     get toolFailed() { return traces.toolFailed; },

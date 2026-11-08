@@ -208,7 +208,7 @@ function scenarios() {
             // The status line is a row like the call above it: its glyph sits on
             // the dot column and its text starts where the call's text starts, in
             // the same type, at every text size.
-            const row = document.querySelector('.chat-step.is-console-call');
+            const row = document.querySelector(`.chat-step.is-console-call[data-step="tool-${call.id}"]`);
             const dot = row && row.querySelector(':scope > .chat-step-node');
             const head = row && (row.querySelector('.chat-console-call') || row.querySelector('.chat-step-label'));
             const glyph = dock.querySelector('.chat-activity-spin');

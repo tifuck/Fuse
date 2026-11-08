@@ -1,7 +1,7 @@
 // Edge cases and update-time jitter for the tool
 // families the neighboring suites pin least — load_skill, web_search/read_url,
 // artifacts, image reads, spawn_subagent / list_subagents /
-// get_subagent_output, todo_write's row absence, and monitor rows — plus
+// get_subagent_output, todo_write's two-line row, and monitor rows — plus
 // expansion stability while a live turn streams: a settled row above must not
 // flash open or collapse when output lands on a row below.
 //
@@ -587,23 +587,27 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
     // ————————————————————————————————————————————————
-    // todo_write: it never prints a transcript row. The section is
-    // todo_section.browser.cjs's; this pins only the row absence plus the one
-    // state that suite misses (interrupted): no row, and its list stays in the
-    // section/line machinery exactly like the code treats a landed call.
+    // todo_write: Update Todos plus one line, like any call. The section is
+    // todo_section.browser.cjs's; this pins the state that suite misses
+    // (interrupted) and that finished calls fold into one summary line.
     // ————————————————————————————————————————————————
-    console.log('edge: todo row absence');
+    console.log('edge: todo rows');
     try {
       const tw = tool('todo_write', { status: 'interrupted', todos: [{ id: '1', content: 'Edge check', status: 'completed' }] });
-      await mount([turn([tw], [T(tw)])]);
+      await mount([turn([tw], [T(tw)])], true);
       await frame();
-      eq(await countSel(`[data-tool="todo_write"]`), 0, 'an interrupted todo_write prints no transcript row');
-      eq(await countSel('[data-todo-line]'), 1, 'the interrupted call still leaves its settle line (its list arrived)');
+      const row = await rowOf(tw.id);
+      eq(row && row.head, 'Update Todos', 'an interrupted todo_write prints its row');
+      check(row && /^Interrupted/.test(row.body), `an interrupted todo row says so on its one line: ${row && row.body}`);
+      eq(row && row.toggleAria.length, 0, 'a todo row opens nothing');
+      check(row && !row.dom.includes('Edge check'), 'a todo row never prints its items');
       const doneTw = tool('todo_write', { status: 'done', todos: [{ id: '1', content: 'Edge check', status: 'completed' }] });
       const errTw = tool('todo_write', { status: 'error', error: 'todos[0].content is required' });
       await mount([turn([doneTw, errTw], [T(doneTw), T(errTw)])]);
       await frame();
-      eq(await countSel(`[data-tool="todo_write"]`), 0, 'settled todo_write calls print no transcript rows');
+      const lines = await page.evaluate(() => [...document.querySelectorAll('.chat-log .is-console-group > .chat-step-main > .chat-step-head .chat-step-label')].map((el) => el.textContent.trim()));
+      eq(JSON.stringify(lines), JSON.stringify(['Updated todos 2 times']), 'settled todo_write calls fold into one summary line');
+      eq(await countSel('[data-todo-line]'), 0, 'no separate settle line');
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
     // ————————————————————————————————————————————————

@@ -127,6 +127,7 @@ function ccToolClass(trace) {
     if (name === "grep" || name === "glob") return { kind: "search" };
     if (name === "list_dir") return { kind: "list" };
     if (name === "search_tools") return { kind: "silent" };
+    if (name === "todo_write") return { kind: "todo" };
     if (name === "run_terminal_command") {
       if (trace.platform === "windows") return { kind: "bash" };
       const kind = ccShellKind(deps.displayCommand(trace));
