@@ -62,6 +62,9 @@ DISABLED_WEEKLY  = "weekly_quota"
 DISABLED_SESSION = "session_quota"
 DISABLED_UNAVAILABLE = "account_unavailable"
 _QUOTA_DISABLES = {DISABLED_WEEKLY, DISABLED_SESSION, DISABLED_UNAVAILABLE}
+# Cooldowns for a limit: the key is still asked once a request when no other
+# key answered, so the caller sees Ollama's live 429, never a kept one.
+_LIMIT_ERRORS = {"rate_limit", "hourly_quota"}
 
 
 class KeyState:
@@ -197,6 +200,7 @@ class KeyState:
         self.consecutive_auth_errors = 0
         self.last_backoff = 0.0
         self.last_status = 200
+        self.disabled_reason = None
         self.last_error_body = ""
         # Rest window: don't pick this key again for `rest_seconds` unless
         # it's the LRU fallback.
@@ -526,9 +530,10 @@ class KeyPool:
     def select_key(self, exclude: Optional[set[str]] = None) -> KeyState:
         """Select the best available key by strict priority.
 
-        Priority: ACTIVE (weighted random) -> RESTING (LRU) -> COOLING (soonest).
-        DISABLED keys are never returned. Raises NoAvailableKeyError if every
-        key is DISABLED.
+        Priority: ACTIVE (weighted random) -> RESTING (LRU) -> COOLING (soonest)
+        -> DISABLED for a spent weekly/session quota (soonest). Keys disabled
+        for auth or an unavailable account are never returned. Raises
+        NoAvailableKeyError when nothing is left.
         """
         if not self.states:
             raise ValueError("No keys loaded. Call load_keys() first.")
@@ -567,6 +572,14 @@ class KeyPool:
         ]
         if cooling:
             return min(cooling, key=lambda s: s.available_at)
+
+        # 4. Spent quotas — soonest back, so Ollama is asked, not memory.
+        spent = [
+            s for k, s in self.states.items()
+            if k not in exclude and s.state == DISABLED and s.disabled_reason in (DISABLED_WEEKLY, DISABLED_SESSION)
+        ]
+        if spent:
+            return min(spent, key=lambda s: s.available_at)
 
         raise NoAvailableKeyError("No untried keys are available")
 
@@ -624,12 +637,14 @@ class KeyPool:
             key = key_state.key
             tried.add(key)
 
-            # If the only key available is a not-yet-ready COOLING key (last-resort
-            # selection when every key is cooling/excluded), firing early just
-            # re-triggers its 429 and burns a retry slot. Wait while the wait is
-            # short; hand back the cooldown (NoAvailableKeyError) when it is not.
+            # A not-yet-ready key (last-resort selection when every key is out)
+            # waits while the wait is short and is skipped when it is not, so a
+            # blip does not burn a retry slot. A key out for a limit is asked
+            # anyway while no key has answered this request: the caller gets
+            # Ollama's live answer instead of a quota Fuse remembered.
+            limited = key_state.state == DISABLED or key_state.last_error_type in _LIMIT_ERRORS
             wait = key_state.available_at - time.time()
-            if key_state.state == COOLING and wait > 0:
+            if key_state.state in (COOLING, DISABLED) and wait > 0 and not (limited and last_response is None):
                 if wait > 5.0:
                     continue
                 await asyncio.sleep(wait)

@@ -684,18 +684,9 @@ class ZaiSource:
         primary_id = pool_policy.primary_account(user_id, "zai")
         failover = Failover()
         why: list = []
-        rechecked = False
         while True:
             picked = self._pick(exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
-                cooling = [c for c, reason in why if reason == "cooling"]
-                if not tried and cooling and not rechecked:
-                    # Ask Z.AI before replaying a kept limit: a reset plan
-                    # lifts its cooldown in _store_billing.
-                    rechecked = True
-                    await asyncio.gather(*(refresh_quota(c, force=True) for c in cooling), return_exceptions=True)
-                    why = []
-                    continue
                 if not tried:
                     last = explain_empty("zai", why)
                 # Parity with grok/chatgpt: the final failed attempt is
@@ -749,7 +740,7 @@ class ZaiSource:
                     # 1308/1310/1316-1321 name a 5-hour/weekly reset: hold the
                     # spent key out until then, not 60s.
                     info = provider_errors.classify("zai", status, obj, response_headers)
-                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60))
+                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60), limit=True)
                     last.response_headers = response_headers
                     # Quota may have been consumed even though the attempt
                     # failed; record whatever usage the attempt reported.

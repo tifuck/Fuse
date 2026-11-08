@@ -602,7 +602,7 @@ class RefuselessSource:
                 elif status == 402:
                     # Out of credits on this key; another key may still have some.
                     store_billing(cid, parse_credits({"available": 0}))
-                    note_failure(cid, cooldown_seconds=300)
+                    note_failure(cid, cooldown_seconds=300, limit=True)
                     retry = True
                 elif status >= 500:
                     retry = failover.server_error(cid, status, 15, phase=usage.get("failure_phase", ""))

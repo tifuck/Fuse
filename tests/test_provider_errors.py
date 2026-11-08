@@ -5,6 +5,8 @@ reference; the kinds drive the user message, pool cooldowns and whether the
 dashboard resumes a failed round.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from app import provider_errors as pe
@@ -231,18 +233,13 @@ def test_benched_pool_replays_the_error_that_benched_it():
 
     pool_pick.reset_health()
     try:
-        raw = {"code": "subscription:free-usage-exhausted",
-               "error": "You've used all the included free usage for model grok-4.6 for now."}
-        info = pe.classify("grok", 429, raw)
-        pool_pick.remember_error(7, 429, raw, {}, info)
-        pool_pick.note_failure(7, cooldown_seconds=5 * 3600)
+        raw = {"error": {"message": "Your account is not authorized for this model.", "type": "permission_error"}}
+        info = pe.classify("grok", 403, raw)
+        pool_pick.remember_error(7, 403, raw, {}, info)
+        pool_pick.note_failure(7, cooldown_seconds=600)
         status, message, info = _explained("grok", [({"id": 7}, "cooling")])
-        assert status == 429 and info["kind"] == "usage_exhausted"
-        # The wait is a hair under 5h (resets are whole seconds), so it may read 4h 59m or 5h.
-        assert message.startswith("Grok: plan usage limit reached; resets in ")
-        assert 5 * 3600 - 5 < info["retry_after"] <= 5 * 3600
-        assert "free usage for model grok-4.6" in message
-        assert not policy._should_resume(status, message, resumes_left=4, idle_stalls=0, kind=info["kind"])
+        assert status == 403 and info["kind"] == "permission"
+        assert "not authorized for this model" in message
         # Benched with no kept error: a short, retryable cooldown with its wait.
         pool_pick.note_failure(8, cooldown_seconds=30)
         status, message, info = _explained("grok", [({"id": 8}, "cooling"), ({"id": 7}, "cooling")])
@@ -253,9 +250,39 @@ def test_benched_pool_replays_the_error_that_benched_it():
         pool_pick.forget_error(7)
         assert _explained("grok", [({"id": 7}, "cooling")])[0] == 503
         # A live usage read with headroom lifts the bench before its named reset.
-        pool_pick.remember_error(7, 429, raw, {}, pe.classify("grok", 429, raw))
+        pool_pick.remember_error(7, 403, raw, {}, pe.classify("grok", 403, raw))
         pool_pick.lift_cooldown(7)
         assert not pool_pick.cooling_down(7) and 7 not in pool_pick._bench_errors
+    finally:
+        pool_pick.reset_health()
+
+
+def test_a_limit_is_never_replayed_from_memory():
+    # A spent plan used to sit out its reset while every request replayed the
+    # kept 429 without asking the provider, even after the plan was reset.
+    from app.sources import pool_pick
+
+    def creds(*ids):
+        return [{"id": i, "disabled": 0, "week_tokens": 0, "week_start": "", "extra": None} for i in ids]
+
+    pool_pick.reset_health()
+    try:
+        raw = {"code": "subscription:free-usage-exhausted",
+               "error": "You've used all the included free usage for model grok-4.6 for now."}
+        info = pe.classify("grok", 429, raw)
+        pool_pick.remember_error(7, 429, raw, {}, info)
+        assert 7 not in pool_pick._bench_errors
+        with patch.object(pool_pick.accounts, "cred_extra", return_value={}):
+            pool_pick.note_failure(7, cooldown_seconds=5 * 3600, limit=True)
+            pool_pick.note_failure(8, cooldown_seconds=2 * 3600, limit=True)
+            # Another account serves while one exists...
+            assert pool_pick.pick_account(creds(7, 9), kind="grok")[0]["id"] == 9
+            # ...and with none left the one due back first is asked live, once.
+            assert pool_pick.pick_account(creds(7, 8), kind="grok")[0]["id"] == 8
+            assert pool_pick.pick_account(creds(7, 8), kind="grok", exclude={8}) is None
+            # An auth cooldown on top keeps the account out entirely.
+            pool_pick.note_failure(8, cooldown_seconds=120)
+            assert pool_pick.pick_account(creds(8), kind="grok") is None
     finally:
         pool_pick.reset_health()
 
@@ -286,11 +313,14 @@ def test_every_ollama_key_out_names_the_soonest_reason():
     now = time.time()
     weekly = SimpleNamespace(available_at=now + 3 * 86400, last_error_type="weekly_quota")
     blip = SimpleNamespace(available_at=now + 20, last_error_type="server_503")
+    gone = SimpleNamespace(available_at=now + 86400, last_error_type="account_unavailable")
+    # A spent key is always asked again (KeyPool.send_request): no usage limit from memory.
     result = _no_key_result(SimpleNamespace(states={"a": weekly}), "m")
-    body, info = pe.annotate("ollama", result.status, result.body)
-    assert (result.status, info["kind"]) == (429, "usage_exhausted")
-    assert body["error"]["message"].startswith("Ollama Cloud: plan usage limit reached; resets in ")
-    assert 3 * 86400 - 5 < info["retry_after"] <= 3 * 86400
+    _, info = pe.annotate("ollama", result.status, result.body)
+    assert info["kind"] != "usage_exhausted"
+    result = _no_key_result(SimpleNamespace(states={"a": gone}), "m")
+    _, info = pe.annotate("ollama", result.status, result.body)
+    assert (result.status, info["kind"]) == (403, "permission")
     result = _no_key_result(SimpleNamespace(states={"a": weekly, "b": blip}), "m")
     _, info = pe.annotate("ollama", result.status, result.body)
     assert (result.status, info["kind"]) == (503, "overloaded") and 0 < info["retry_after"] <= 20

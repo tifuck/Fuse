@@ -122,11 +122,36 @@ class RotationTest(unittest.IsolatedAsyncioTestCase):
     async def test_all_keys_cooling_hands_back_retry_after(self):
         pool = make_pool(self.tmp.name, ["keyA", "keyB"])
         for state in pool.states.values():
-            state.mark_error("rate_limit", 100)
+            state.mark_error("server_503", 100)
         async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client:
             with self.assertRaises(NoAvailableKeyError) as caught:
                 await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
         self.assertGreater(caught.exception.retry_after, 90)
+
+    async def test_limited_keys_are_asked_once_not_reported_from_memory(self):
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.headers["Authorization"])
+            return httpx.Response(429, content=b'{"error":"you have reached your weekly usage limit"}')
+
+        pool = make_pool(self.tmp.name, ["keyA", "keyB"])
+        pool._handle_error_status(429, httpx.Headers(), "weekly usage limit reached", pool.states["keyA"])
+        pool.states["keyB"].mark_error("rate_limit", 100)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            response, _, _ = await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
+        # One live call, and its answer is what the caller gets.
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(len(seen), 1)
+
+        # A spent key whose quota came back serves and rejoins rotation.
+        pool = make_pool(tempfile.mkdtemp(dir=self.tmp.name), ["keyA"])
+        pool._handle_error_status(429, httpx.Headers(), "weekly usage limit reached", pool.states["keyA"])
+        ok = httpx.Response(200, content=b'{"message":{"role":"assistant","content":"ok"},"done":true}')
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: ok)) as client:
+            response, state, _ = await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((state.state, state.disabled_reason), (RESTING, None))
 
     def test_unavailable_reenables_after_cooldown(self):
         pool = make_pool(self.tmp.name, ["keyA"])

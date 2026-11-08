@@ -680,9 +680,9 @@ class DevinSource:
                 if result.status == 429:
                     if _quota_trailer(result.body):
                         # Same daily-window cooldown the stream path applies.
-                        note_failure(cred["id"], cooldown_seconds=900, affinity_safe=False)
+                        note_failure(cred["id"], cooldown_seconds=900, affinity_safe=False, limit=True)
                     else:
-                        note_failure(cred["id"], cooldown_seconds=60)
+                        note_failure(cred["id"], cooldown_seconds=60, limit=True)
                     attempts.append({"credential_id": cred["id"], "status": 429, "usage": result.usage or {}})
                     continue
                 if (result.usage or {}).get("failure_phase") == "response_received":
@@ -690,7 +690,7 @@ class DevinSource:
                     return last
                 if result.status == 502 and "quota" in _error_text(result.body).lower():
                     # Same daily-window cooldown the stream path applies.
-                    note_failure(cred["id"], cooldown_seconds=900, affinity_safe=False)
+                    note_failure(cred["id"], cooldown_seconds=900, affinity_safe=False, limit=True)
                     attempts.append({"credential_id": cred["id"], "status": 502, "usage": result.usage or {}})
                     continue
                 if result.status >= 500 and failover.server_error(cred["id"], result.status, 15):
@@ -829,6 +829,7 @@ class DevinSource:
                         cid,
                         cooldown_seconds=900 if quota_hit else 60 if limited else 5,
                         affinity_safe=not (quota_hit or limited),
+                        limit=quota_hit or limited,
                     )
 
         wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), hints=hints)

@@ -82,7 +82,8 @@ def test_cooling_key_is_still_handed_back():
         with tempfile.TemporaryDirectory() as tmp:
             pool = KeyPool(state_file=str(Path(tmp) / "state.json"))
             pool.load_from_list(["only"])
-            pool.states["only"].mark_error("rate_limit", 100)
+            # A blip; a limit cooldown is asked anyway (test_key_pool).
+            pool.states["only"].mark_error("server_503", 100)
             async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client:
                 await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
 

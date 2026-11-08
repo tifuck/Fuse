@@ -681,11 +681,11 @@ class GrokSource:
                 spent = status == 402 or (status == 403 and info and info["kind"] in ("insufficient_balance", "plan_required"))
                 if status == 429 or rejected:
                     # subscription:free-usage-exhausted is a rolling 24h window.
-                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 30))
+                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 30), limit=status == 429)
                 elif spent:
                     # Out of plan or credits: without a cooldown every request
                     # paid a round trip to this account before failing over.
-                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 300))
+                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 300), limit=True)
                 last.response_headers = response_headers
                 if (
                     status in (402, 429)

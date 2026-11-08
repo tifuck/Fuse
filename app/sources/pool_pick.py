@@ -25,32 +25,36 @@ USAGE_BUSY = 98.0
 MAX_IN_FLIGHT = 8
 
 _failure_lock = threading.Lock()
-# (until, affinity_safe): an affinity_safe cooldown (dead-stream blip,
+# (until, affinity_safe, limit): an affinity_safe cooldown (dead-stream blip,
 # provider outage) may be bypassed to keep a pinned conversation on the
 # account that holds its warm cache; a hard one (auth, quota, 429) must
-# never be bypassed by affinity.
-_cooldown_until: dict[int, tuple[float, bool]] = {}
+# never be bypassed by affinity. A limit cooldown (spent plan, credits, 429)
+# only steers picks elsewhere: when nothing else can serve, pick_account
+# still hands the account back, so a limit is always the provider's live
+# answer and never one Fuse kept.
+_cooldown_until: dict[int, tuple[float, bool, bool]] = {}
 _in_flight: dict[int, int] = {}
 # The classified upstream error that last failed each account: (status, body,
 # reset_at). A request that finds every account benched reports it instead of
-# "no accounts" (a spent plan sits out until its reset, hours away).
+# "no accounts" (a rejected sign-in or an outage; limits are not kept).
 _bench_errors: dict[int, tuple[int, dict, float | None]] = {}
 
 
-def note_failure(cred_id: int, *, cooldown_seconds: float = 30.0, affinity_safe: bool = False) -> None:
+def note_failure(cred_id: int, *, cooldown_seconds: float = 30.0, affinity_safe: bool = False, limit: bool = False) -> None:
     """Short-lived cooldown so a failing account isn't re-picked first.
 
     Hard (default) cooldowns also displace a session's pinned affinity;
     affinity_safe ones only deprioritize the account for unpinned picks.
+    limit marks a usage/rate/credit limit: the account stays a last resort.
     """
     if cooldown_seconds <= 0:
         return
     until = time.time() + cooldown_seconds
     with _failure_lock:
-        prev_until, prev_safe = _cooldown_until.get(int(cred_id), (0.0, True))
+        prev_until, prev_safe, prev_limit = _cooldown_until.get(int(cred_id), (0.0, True, True))
         if prev_until <= time.time():
-            prev_safe = True
-        _cooldown_until[int(cred_id)] = (max(prev_until, until), prev_safe and affinity_safe)
+            prev_safe = prev_limit = True
+        _cooldown_until[int(cred_id)] = (max(prev_until, until), prev_safe and affinity_safe, prev_limit and limit)
 
 
 # A 401 disables a credential only when it repeats within this window, after
@@ -132,20 +136,27 @@ def reset_health() -> None:
 
 def _cooling_down(cid: int) -> bool:
     with _failure_lock:
-        until = _cooldown_until.get(cid, (0.0, True))[0]
+        until = _cooldown_until.get(cid, (0.0, True, False))[0]
     return until > time.time()
 
 
 def _cooldown_end(cid: int) -> float:
     with _failure_lock:
-        return _cooldown_until.get(cid, (0.0, True))[0]
+        return _cooldown_until.get(cid, (0.0, True, False))[0]
+
+
+def _limit_cooldown(cid: int) -> bool:
+    with _failure_lock:
+        until, _safe, limit = _cooldown_until.get(cid, (0.0, True, False))
+    return until > time.time() and limit
 
 
 # Kinds that bench an account. Request-specific rejections (context, content,
 # malformed, unknown model) say nothing about the account and are not kept.
+# Limits (usage, rate, credits) are never kept: a later request asks the
+# provider again (pick_account) instead of replaying an old answer.
 _BENCH_KINDS = frozenset({
-    "usage_exhausted", "insufficient_balance", "plan_required", "credentials", "permission",
-    "rate_limit", "overloaded", "server_error", "timeout",
+    "plan_required", "credentials", "permission", "overloaded", "server_error", "timeout",
 })
 
 
@@ -182,7 +193,7 @@ def cooling_down(cid: int) -> bool:
 
 def _hard_cooldown(cid: int) -> bool:
     with _failure_lock:
-        until, safe = _cooldown_until.get(cid, (0.0, True))
+        until, safe, _limit = _cooldown_until.get(cid, (0.0, True, False))
     return until > time.time() and not safe
 
 
@@ -425,6 +436,12 @@ def pick_account(
     An account at the in-flight ceiling is skipped unless every candidate is
     saturated, so load spreads instead of dog-piling the freshest account.
 
+    An account benched by a limit (note_failure(limit=True)) is skipped
+    while anything else can serve. When nothing can and nothing was tried
+    yet (exclude is empty), the one due back first is returned anyway: the
+    request asks the provider once, and the caller sees its live answer, not
+    a limit Fuse remembered. A failed probe then ends the request.
+
     why, when given, collects (cred, reason) for every account skipped as
     cooling, held, unauthed, plan or unreadable: explain_empty turns it into
     the error a request with no pickable account reports.
@@ -443,6 +460,7 @@ def pick_account(
     primary = int(primary_id) if primary_id is not None else None
     ready = []
     pinned = []
+    spent = []
     for cred in creds:
         cid = int(cred["id"])
         if cid in exclude or cred["disabled"]:
@@ -452,7 +470,8 @@ def pick_account(
         # bypassable for the pin. A hard cooldown (auth, quota, 429) always
         # wins: affinity never overrides the pool's health signals.
         cooling = _cooling_down(cid)
-        if cooling and (cid != prefer_id or _hard_cooldown(cid)):
+        limited = cooling and _limit_cooldown(cid)
+        if cooling and not limited and (cid != prefer_id or _hard_cooldown(cid)):
             if why is not None:
                 why.append((cred, "cooling"))
             continue
@@ -503,7 +522,11 @@ def pick_account(
         week_tok = int(cred["week_tokens"] or 0) if cred["week_start"] == week else 0
         score = pct if pct is not None else 0.0
         row = (tier, 0 if cid == primary else 1 if mine else 2, rank, score, week_tok, cid, cred, extra)
-        if cooling:
+        if limited:
+            if why is not None:
+                why.append((cred, "cooling"))
+            spent.append(row)
+        elif cooling:
             pinned.append(row)
         else:
             ready.append(row)
@@ -514,6 +537,9 @@ def pick_account(
         if preferred:
             return preferred[0][6], preferred[0][7]
     if not ready:
+        if spent and not exclude:
+            row = min(spent, key=lambda row: _cooldown_end(row[5]))
+            return row[6], row[7]
         return None
     top = min(row[0] for row in ready)
     primary = [row for row in ready if row[0] == top]
@@ -556,10 +582,10 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
     accounts this caller can use are out, and when the first one is back.
 
     `why` is pick_account's skip list. A benched account reports the error
-    that benched it (a spent plan says so, with its reset, for as long as it
-    sits out), not a bare "no accounts" 503 that reads as a transient outage
-    and is retried. The body is raw: api.invoke_chat annotates it like any
-    provider error.
+    that benched it (auth, permission, outage; never a limit, which
+    pick_account sends back upstream), not a bare "no accounts" 503 that
+    reads as a transient outage and is retried. The body is raw:
+    api.invoke_chat annotates it like any provider error.
     """
     name = provider_errors.label(kind)
     if not why:

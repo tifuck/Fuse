@@ -862,7 +862,7 @@ class ClaudeSource:
                     ):
                         if status == 429:
                             info = provider_errors.classify("claude", status, last.body)
-                            note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60))
+                            note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60), limit=True)
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
                         last.attempts = attempts
                         continue

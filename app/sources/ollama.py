@@ -199,13 +199,10 @@ def to_openai_tools(calls: list, include_index=False, *, state: dict | None = No
 
 
 # key_pool's last error for a key -> (field, value, status, message) the
-# classifier reads. The key back soonest decides how "every key is out" reads:
-# a spent quota is not a blip, and a blip must not read as a spent quota.
+# classifier reads. The key back soonest decides how "every key is out" reads.
+# No quota or rate-limit entry: a limited key is always asked again
+# (KeyPool.send_request), so a limit never reads from memory.
 _KEY_OUT = {
-    "weekly_quota": ("code", "usage_limit_reached", 429, "Every Ollama key's usage quota is spent."),
-    "session_quota": ("code", "usage_limit_reached", 429, "Every Ollama key's session quota is spent."),
-    "hourly_quota": ("code", "usage_limit_reached", 429, "Every Ollama key's hourly quota is spent."),
-    "rate_limit": ("code", "rate_limit_exceeded", 429, "Every Ollama key is rate limited."),
     "account_unavailable": ("type", "permission_error", 403, "Ollama has made every key's account unavailable."),
 }
 

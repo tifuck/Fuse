@@ -710,7 +710,7 @@ class MimoSource:
                         await refresh_quota(cred, force=True)
                     except Exception:
                         pass
-                    note_failure(cred["id"], cooldown_seconds=_retry_after(response_headers))
+                    note_failure(cred["id"], cooldown_seconds=_retry_after(response_headers), limit=True)
                     last.response_headers = response_headers
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     last.attempts = attempts

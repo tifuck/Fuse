@@ -22,6 +22,7 @@ from app.sources import claude as claude_mod  # noqa: E402
 from app.sources import pick, pool_denial  # noqa: E402
 from app.sources.pool_pick import reset_health  # noqa: E402
 
+import httpx
 import pytest
 from fastapi import HTTPException
 
@@ -938,23 +939,41 @@ class ClaudePoolTest(unittest.IsolatedAsyncioTestCase):
     @patch("app.sources.claude.note_pool_invoke")
     @patch("app.sources.claude.refresh_pool_quota", new_callable=AsyncMock)
     @patch("app.sources.claude.refresh_due", new_callable=AsyncMock)
-    async def test_benched_pool_reports_the_usage_limit_not_no_accounts(self, _due, _quota, _invoke):
+    async def test_benched_pool_asks_claude_again_instead_of_replaying_the_limit(self, _due, _quota, _invoke):
         from app import provider_errors
         from app.sources import pool_pick
 
         cid = accounts.add_credential(self.sid, "mine", "tok", extra={"access_token": "tok", "refresh_token": "rt"},
                                       donated_by=self.alice["id"])
-        reset = int(datetime.now(timezone.utc).timestamp()) + 2 * 3600
-        raw = {"error": {"type": "rate_limit_error", "message": "This request would exceed your account's rate limit."},
-               "_fuse_headers": {"anthropic-ratelimit-unified-status": "rejected",
-                                 "anthropic-ratelimit-unified-representative-claim": "five_hour",
-                                 "anthropic-ratelimit-unified-reset": str(reset)}}
-        _body, info = provider_errors.annotate("claude", 429, raw)
-        pool_pick.remember_error(cid, 429, raw, {}, info)
-        pool_pick.note_failure(cid, cooldown_seconds=provider_errors.cooldown(info, 60))
+        now = int(datetime.now(timezone.utc).timestamp())
+        pool_pick.note_failure(cid, cooldown_seconds=2 * 3600, limit=True)
+        reset = now + 3 * 3600
+        headers = {"anthropic-ratelimit-unified-status": "rejected",
+                   "anthropic-ratelimit-unified-representative-claim": "five_hour",
+                   "anthropic-ratelimit-unified-reset": str(reset)}
+        sent = []
+
+        class Client:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def build_request(self, method, url, headers=None, json=None):
+                return url
+
+            async def send(self, req, stream=False):
+                sent.append(req)
+                return httpx.Response(429, headers=headers, json={"type": "error", "error": {
+                    "type": "rate_limit_error", "message": "This request would exceed your account's rate limit."}})
+
+            async def aclose(self):
+                return None
+
         src = claude_mod.ClaudeSource({"id": self.sid, "name": "Claude"}, {}, [])
-        result = await src.chat({"model": "claude/claude-opus-5-5", "messages": [{"role": "user", "content": "hi"}]},
-                                user_id=self.alice["id"])
+        with patch("app.sources.claude.httpx.AsyncClient", Client):
+            result = await src.chat({"model": "claude/claude-opus-5-5", "messages": [{"role": "user", "content": "hi"}]},
+                                    user_id=self.alice["id"])
+        # The benched account was asked once, and Claude's live answer is reported.
+        self.assertEqual(len(sent), 1)
         self.assertEqual(result.status, 429)
         body, info = provider_errors.annotate("claude", result.status, result.body)
         self.assertEqual(info["kind"], "usage_exhausted")

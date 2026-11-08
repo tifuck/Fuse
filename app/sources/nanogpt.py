@@ -960,10 +960,10 @@ class NanoGPTSource:
                 elif status in (402, 403) and not owner:
                     # A borrowed key that cannot spend balance refuses once its
                     # subscription is spent; the next account may still serve.
-                    note_failure(cid, cooldown_seconds=300)
+                    note_failure(cid, cooldown_seconds=300, limit=True)
                     retry = True
                 elif status == 429:
-                    note_failure(cid, cooldown_seconds=_retry_after(headers))
+                    note_failure(cid, cooldown_seconds=_retry_after(headers), limit=True)
                     retry = True
                 elif status >= 500:
                     retry = failover.server_error(cid, status, 15, phase=usage.get("failure_phase", ""))

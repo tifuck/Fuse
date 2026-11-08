@@ -1176,7 +1176,7 @@ class KimiSource:
                         pass
                     # 403 is both the 5-hour/weekly/monthly quota and the
                     # concurrency cap; only a spent quota earns a long hold.
-                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60))
+                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60), limit=True)
                     last.response_headers = response_headers
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     last.attempts = attempts

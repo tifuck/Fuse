@@ -981,7 +981,7 @@ class ChatGPTSource:
                         # usage_limit_reached carries resets_at: keep a spent
                         # plan out until then instead of re-trying it in 30s.
                         info = None if rejected else provider_errors.classify("chatgpt", status, obj)
-                        note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 30))
+                        note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 30), limit=not rejected)
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
                         continue
                     if status >= 500 and failover.server_error(cred["id"], status, 30):

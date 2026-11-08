@@ -1203,7 +1203,7 @@ class CursorSource:
                     # ERROR_*_USAGE_LIMIT holds the account out for longer
                     # than a short ERROR_*_RATE_LIMIT_EXCEEDED.
                     info = provider_errors.classify("cursor", exc.status, last.body)
-                    note_failure(cid, cooldown_seconds=provider_errors.cooldown(info, 60))
+                    note_failure(cid, cooldown_seconds=provider_errors.cooldown(info, 60), limit=True)
                     continue
                 if exc.status >= 500 and failover.server_error(cid, exc.status, 15):
                     continue
