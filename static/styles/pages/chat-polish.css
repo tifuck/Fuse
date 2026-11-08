@@ -339,6 +339,8 @@ body.is-keyboard .chat-log { padding-bottom: 0.65rem; }
 }
 .chat-code-head { min-height: calc(2.1rem * var(--chat-text-scale, 1)); }
 .chat-code-head .chat-icon-btn { color: var(--mute); }
+/* The code block clips its overflow; keep the ring inside the button. */
+.chat-code-head .chat-icon-btn:focus-visible { outline-offset: -2px; }
 
 @media (max-width: 800px) {
   .chat-icon-btn {

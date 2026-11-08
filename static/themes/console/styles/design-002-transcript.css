@@ -254,6 +254,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-step.is-running 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-step-open { grid-row: 1; border: 0; text-transform: none; font-size: calc(0.75rem * var(--chat-text-scale, 1)); color: var(--cli-secondary); }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-step-head:has(:focus-visible) { outline: 1px solid var(--brass); outline-offset: 3px; }
+html[data-chat-console="true"] .chat[data-view="console"] .chat-step-head :focus-visible { outline: none; }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-step :is(.chat-step-toggle, .chat-step-static) { background: none; }
 

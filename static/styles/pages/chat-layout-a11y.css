@@ -83,8 +83,12 @@
 .chat-memory { max-height: min(34rem, 55dvh, max(3rem, calc(var(--vv-height, 100dvh) - min(12rem, 28dvh) - 14rem))); }
 /* Keep these last so input resets and live-state animations cannot defeat accessibility. */
 .chat [hidden] { display: none !important; }
-.chat :is(button, summary, a, input, textarea, [tabindex]):focus-visible { outline: 2px solid var(--steel); outline-offset: 3px; }
-.chat textarea:focus-visible, .chat input:focus-visible { outline-offset: -2px; border-radius: 6px; }
+/* Low specificity on purpose: a component's own focus rule (inset ring,
+   thumb ring, wrapper border) must win over this fallback. A field marks
+   focus on its own border instead of drawing a second box around it. */
+:where(.chat) :where(button, summary, a, [tabindex]):focus-visible { outline: 2px solid var(--steel); outline-offset: 3px; }
+:where(.chat) :is(input[type="checkbox"], input[type="radio"]):focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+:where(.chat) :is(input, textarea, select):focus { border-color: var(--brass); }
 .chat-compose textarea:focus,
 .chat-compose textarea:focus-visible {
   outline: none;

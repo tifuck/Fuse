@@ -493,6 +493,7 @@ label.check.hosts-check,
   border-radius: 8px;
   padding: 0.45rem 0.65rem;
 }
+.hosts-field :is(input, textarea, select):focus { border-color: var(--brass); outline: none; }
 .hosts-field textarea { min-height: 8rem; }
 .hosts-field-wide { grid-column: 1 / -1; }
 .hosts-actions {
