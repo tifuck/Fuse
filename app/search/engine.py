@@ -6,6 +6,7 @@ import contextlib
 import sys
 from pathlib import Path
 import logging
+import math
 import re
 import time
 from collections.abc import Callable
@@ -418,6 +419,18 @@ def _allow(user_id: int, kind: str) -> bool:
     return limiter.allow(f"chat-{kind}:{user_id}", per_min, 60)
 
 
+def _limited(user_id: int, kind: str) -> str:
+    """The refusal, with the wait: "shortly" sent models straight back into it."""
+    per_min = {"fetch": FETCH_PER_MIN, "prefetch": PREFETCH_PER_MIN}.get(kind, SEARCH_PER_MIN)
+    wait = limiter.retry_after(f"chat-{kind}:{user_id}", per_min, 60)
+    if kind == "search":
+        wait = max(wait, limiter.retry_after(f"chat-{kind}-h:{user_id}", SEARCH_PER_HOUR, 3600))
+    secs = max(1, math.ceil(wait))
+    when = f"{secs} seconds" if secs < 120 else f"{math.ceil(secs / 60)} minutes"
+    what = "Search" if kind == "search" else "Page-read"
+    return f"{what} rate limit reached (shared by all your chats and agents). Try again in about {when}."
+
+
 def _cache_key(normalized: str, bucket: str | None, provider: str, recency: int | None = None) -> str:
     # Exact days too: HN filters by them, so 2 and 7 days share a bucket only.
     raw = f"{normalized}|{bucket or '-'}|{provider}|{recency if recency is not None else '-'}"
@@ -485,7 +498,7 @@ async def _one_query(
         ms = int((time.monotonic() - started) * 1000)
         _log(logging.WARNING, user_id=user_id, provider="", status=429, latency_ms=ms, cached=0, qlen=len(original), hits=0, error="rate_limit")
         return QueryResult(
-            query=original, hits=[], error="Search rate limit reached. Try again shortly.",
+            query=original, hits=[], error=_limited(user_id, "search"),
             kind="rate_limit", provider="", latency_ms=ms, cached=False, status=429,
         )
     client = get_client()
@@ -959,7 +972,7 @@ async def fetch_url(
         extract.bytes_in = base_extract.bytes_in
         return extract, pack_page(final_url, extract), ""
     if not _allow(user_id, rate_kind):
-        msg = "Page-read rate limit reached. Try again shortly."
+        msg = _limited(user_id, rate_kind)
         return None, msg, msg
     host = host_of(clean)
     try:

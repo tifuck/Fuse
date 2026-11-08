@@ -75,6 +75,15 @@ class RateLimiter:
                     self._expires.pop(k, None)
             return True
 
+    def retry_after(self, key: str, limit: int, window: float) -> float:
+        """Seconds until allow(key, limit, window) would admit one more."""
+        cutoff = time.monotonic() - window
+        with self._lock:
+            stamps = [t for t in self._hits.get(key, ()) if t > cutoff]
+        if len(stamps) < limit:
+            return 0.0
+        return max(0.0, stamps[len(stamps) - limit] - cutoff)
+
 
 limiter = RateLimiter()
 

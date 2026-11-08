@@ -1361,3 +1361,17 @@ class TtlLruBoundsTest(unittest.TestCase):
         from app.search import engine
 
         self.assertEqual(engine._page_cache.max_bytes, engine.PAGE_CACHE_BYTES)
+
+
+class RateLimitMessageTest(unittest.TestCase):
+    def test_refusal_says_how_long_to_wait(self):
+        from app.search import engine
+        from app.security import limiter
+
+        user = 987654
+        for _ in range(engine.SEARCH_PER_MIN):
+            self.assertTrue(engine._allow(user, "search"))
+        self.assertFalse(engine._allow(user, "search"))
+        msg = engine._limited(user, "search")
+        self.assertRegex(msg, r"^Search rate limit reached .*Try again in about ([1-9]|[1-5][0-9]|60) seconds\.$")
+        self.assertEqual(limiter.retry_after(f"chat-fetch:{user}", engine.FETCH_PER_MIN, 60), 0.0)

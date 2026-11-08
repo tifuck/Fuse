@@ -821,7 +821,7 @@ def _trace_from_results(queries: list[str], results: list[QueryResult], packed: 
     kind = ""
     if failed:
         if all(r.kind == "rate_limit" for r in results):
-            error = "Search rate limit reached. Try again shortly."
+            error = results[0].error or "Search rate limit reached. Try again shortly."
             kind = "rate_limited"
         else:
             error = "Search failed. Try again shortly."
