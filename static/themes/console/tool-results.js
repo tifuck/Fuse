@@ -240,7 +240,7 @@ function consoleFold(trace, presentation, verbose) {
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {
-      const body = String(trace.output || trace.preview || "").trim();
+      const body = String(trace.output ? deps.cleanToolOutput(trace, trace.output) : trace.preview || "").trim();
       // The server's empty results are parenthesised: "(no matches)"
       // (grep, glob), "(no matching files)" (grep files_with_matches).
       const none = !body || /^\(?no (matches|matching files?|files?|entries)( found)?\)?\.?$/i.test(body);
@@ -466,7 +466,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "grep" || name === "glob") {
       const n = deps.consoleMatchCount(trace);
-      const lines = String(trace.output || trace.preview || "").split("\n").map((line) => line.trim()).filter(Boolean);
+      const lines = String(trace.output ? deps.cleanToolOutput(trace, trace.output) : trace.preview || "").split("\n").map((line) => line.trim()).filter(Boolean);
       if (n <= 1 && lines[0] && lines[0].length <= 140) return lines[0];
       if (n) return `${n} ${n === 1 ? "match" : "matches"}`;
       return "";

@@ -371,15 +371,22 @@ function consoleOutputText(trace, failed, running) {
     return "";
   }
 
+// A result's own lines: no host label, and no closing server notes such as
+// "(showing the first 50 matches; …)" or "(End of file — 3 lines.)".
+function consoleResultRows(body) {
+    const rows = String(body || "").split("\n").map((line) => line.trim()).filter(Boolean);
+    while (rows.length && /^\(.*\)$/.test(rows[rows.length - 1])) rows.pop();
+    return rows;
+  }
+
 function consoleMatchCount(trace) {
     const n = Number(trace && (trace.match_count ?? trace.count ?? trace.n));
     if (Number.isFinite(n) && n > 0) return n;
-    const body = String((trace && (trace.output || trace.preview)) || "");
-    const lines = body.split("\n").map((line) => line.trim()).filter(Boolean);
-    if (lines.length > 1) return lines.length;
-    const hits = body.match(/:\d+:/g);
-    if (hits && hits.length) return hits.length;
-    return lines.length;
+    const body = typeof trace?.output === "string" && trace.output ? cleanToolOutput(trace, trace.output) : trace?.preview;
+    const rows = consoleResultRows(body).filter((line) => line !== "--");
+    // Content matches are path:N:; context lines (path-N-) ride along.
+    const hits = rows.filter((line) => /:\d+:/.test(line)).length;
+    return hits || rows.length;
   }
 
 function consoleLineCount(trace) {
@@ -390,8 +397,9 @@ function consoleLineCount(trace) {
       ? cleanToolOutput(trace, trace.output)
       : (deps.looksLikeDiff(preview) ? "" : preview);
     if (!body) return 0;
-    const text = String(body).replace(/\s+$/, "");
-    return text ? text.split("\n").length : 0;
+    const lines = String(body).replace(/\s+$/, "").split("\n");
+    while (lines.length && /^\(.*\)$/.test(lines[lines.length - 1].trim())) lines.pop();
+    return lines.length === 1 && !lines[0] ? 0 : lines.length;
   }
 
 function consoleLangForPath(path) {

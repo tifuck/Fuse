@@ -388,6 +388,26 @@ test('output cleanup only shortens leading paths, never matched text', () => {
   assert.equal(c.cleanToolOutput({ name: 'run_terminal_command', cwd: '/project' }, '/project/main.py'), '/project/main.py');
 });
 
+test('result counts skip the host label, server notes and context lines', () => {
+  const c = world();
+  c.escapeHtml = (v) => String(v ?? '');
+  c.renderAnsi = (v) => String(v ?? '');
+  c.highlightCode = (_lang, text) => String(text ?? '');
+  for (const name of ['toolText', 'displayCommand', 'relatedTrace', 'commandFor', 'commandOrigin', 'cleanToolOutput', 'consoleStdoutHtml', 'consoleResultLine', 'consoleDetailHtml', 'consoleSameText']) load(name, c);
+  load('consoleFold', c);
+  const status = (name, body) => c.consoleFold({ name, status: 'done', output: `From host box:\n${body}`, preview: body }, { running: false, failed: false }).status;
+  assert.equal(status('grep', 'a.js:4:x\na.js:157:y\na.js:159:z'), 'Found 3 lines across 1 file');
+  assert.equal(status('grep', 'a.js:1:x\na.js:2:y\n(showing the first 2 matches; pass max_matches up to 200 or narrow path/include)'), 'Found 2 lines across 1 file');
+  assert.equal(status('grep', 'a.js-1-ctx\na.js:2:hit\na.js-3-ctx\n--\na.js-9-ctx\na.js:10:hit'), 'Found 2 lines across 1 file');
+  assert.equal(status('grep', 'a.js\nb.js'), 'Found 2 files');
+  assert.equal(status('grep', '(no matches)'), 'Found 0 files');
+  assert.equal(status('glob', '(no matches)'), 'Found 0 files');
+  assert.equal(status('list_dir', 'src/\nREADME.md\n(showing 2 of 9 entries, alphabetically; use glob with a pattern to find specific files)'), 'Listed 2 entries');
+  assert.equal(status('list_dir', '(no entries)'), 'Listed 0 entries');
+  assert.equal(c.consoleResultLine({ name: 'read_file', status: 'done', output: 'From host box:\n1: a\n2: b\n3: c\n(End of file — 3 lines.)' }, { running: false, failed: false }), 'Read 3 lines');
+  assert.equal(c.consoleResultLine({ name: 'grep', status: 'done', output: 'From host box:\na.js:4:x' }, { running: false, failed: false }), 'a.js:4:x');
+});
+
 test('output caps cut on character boundaries and say which slice survived', () => {
   const c = vm.createContext({});
   c.escapeHtml = (v) => String(v ?? '');
