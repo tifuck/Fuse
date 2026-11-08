@@ -473,5 +473,11 @@ async def admin_users_delete(request: Request, user_id: int):
             error=_USER_DELETE_ERRORS.get(str(exc), "Could not delete that account."),
             status_code=400,
         )
+    try:
+        from .. import agent_hub
+
+        await agent_hub.close_user(user_id)
+    except Exception:
+        logger.exception("agent disconnect on account delete failed")
     _notices[user["id"]] = f"Deleted {email}."
     return RedirectResponse("/admin/users", status_code=303)

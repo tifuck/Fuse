@@ -174,13 +174,15 @@ async def hosts_delete(request: Request, host_id: int):
     user, err = _chat_auth(request)
     if err:
         return err
+    # Delete first: a connector reconnects at once after the disconnect's
+    # bye, and its token must already be dead when it does.
+    if not hosts.delete_host(user["id"], host_id):
+        raise HTTPException(404, "host not found")
     try:
         from .. import agent_hub
         await agent_hub.disconnect(user["id"], host_id, "disabled")
     except Exception:
         logger.exception("agent disconnect on host delete failed")
-    if not hosts.delete_host(user["id"], host_id):
-        raise HTTPException(404, "host not found")
     return JSONResponse({"ok": True})
 
 

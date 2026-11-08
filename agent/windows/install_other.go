@@ -17,7 +17,7 @@ func doInstall(cfg *agentConfig) int {
 	return 1
 }
 
-func doUninstall() int {
+func doUninstall(cfg *agentConfig) int {
 	logStderr("fuse-agent: uninstall is Windows-only")
 	return 1
 }

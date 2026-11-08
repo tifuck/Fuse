@@ -140,7 +140,7 @@ func runSwapHelper(target, staged, config string, asService bool) int {
 		return 1
 	}
 	if asService {
-		if out, err := exec.Command("net", "stop", serviceName).CombinedOutput(); err != nil {
+		if out, err := exec.Command(systemTool("net.exe"), "stop", serviceName).CombinedOutput(); err != nil {
 			log.Printf("fuse-agent: swap helper: net stop: %v: %s", err, out)
 		}
 	}
@@ -159,7 +159,7 @@ func runSwapHelper(target, staged, config string, asService bool) int {
 		var out []byte
 		var err error
 		for attempt := 0; attempt < 3; attempt++ {
-			if out, err = exec.Command("net", "start", serviceName).CombinedOutput(); err == nil {
+			if out, err = exec.Command(systemTool("net.exe"), "start", serviceName).CombinedOutput(); err == nil {
 				break
 			}
 			time.Sleep(3 * time.Second)

@@ -1468,7 +1468,7 @@ def touch_agent(
     with db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT * FROM user_hosts WHERE id=? AND user_id=? AND auth_type='agent'",
+            "SELECT * FROM user_hosts WHERE id=? AND user_id=? AND auth_type='agent' AND disabled=0",
             (host_id, user_id),
         ).fetchone()
         if row is None:

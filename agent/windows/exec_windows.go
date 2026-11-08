@@ -22,15 +22,19 @@ const (
 	createNewProcessGroup = 0x00000200
 )
 
+// systemTool is a System32 program by absolute path, never a PATH lookup: the
+// service runs as SYSTEM, and a user-writable PATH entry would let a local
+// user's same-named program run as SYSTEM.
+func systemTool(name string) string {
+	dir, err := windows.GetSystemDirectory()
+	if err != nil || dir == "" {
+		dir = `C:\Windows\System32`
+	}
+	return filepath.Join(dir, name)
+}
+
 func powershellPath() string {
-	if p, err := exec.LookPath("powershell.exe"); err == nil {
-		return p
-	}
-	sys := os.Getenv("SystemRoot")
-	if sys == "" {
-		sys = `C:\Windows`
-	}
-	return filepath.Join(sys, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	return systemTool(`WindowsPowerShell\v1.0\powershell.exe`)
 }
 
 // swapWriter lets a pre-started PowerShell be handed to a job after Start:

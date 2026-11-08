@@ -233,8 +233,10 @@ async def dist_file(name: str, request: Request):
 
 def _require_origin() -> str:
     origin = _origin()
-    if not origin:
-        raise HTTPException(503, "PUBLIC_BASE_URL is not configured")
+    # The installer downloads and runs the binary (and its checksum) from
+    # this origin: over plain HTTP anyone on the path could swap both.
+    if not origin.startswith("https://"):
+        raise HTTPException(503, "PUBLIC_BASE_URL must be an https:// URL")
     return origin
 
 

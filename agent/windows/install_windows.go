@@ -282,13 +282,18 @@ func doInstall(cfg *agentConfig) int {
 	return 0
 }
 
-func doUninstall() int {
+func doUninstall(cfg *agentConfig) int {
 	attachParentConsole()
 	deleteRunKey()
 	if isElevated() {
 		removeWindowsService()
 	}
-	fmt.Fprintln(os.Stderr, "fuse-agent: uninstalled autostart")
+	// The device token would otherwise outlive the connector on disk.
+	if err := os.Remove(cfg.Path); err != nil && !os.IsNotExist(err) {
+		log.Printf("fuse-agent: could not remove %s: %v", cfg.Path, err)
+	}
+	fmt.Fprintln(os.Stderr, "fuse-agent: uninstalled autostart and removed the device token\n"+
+		"fuse-agent: a running tray connector stays online until you quit it; also remove this machine in the Fuse dashboard to revoke its token")
 	return 0
 }
 

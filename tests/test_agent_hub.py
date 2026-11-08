@@ -169,6 +169,25 @@ class AgentHubTest(unittest.TestCase):
         asyncio.run(agent_hub.disconnect(1, self.hid))
         self.assertNotIn(key, agent_hub._dropped_at)
 
+    def test_host_disabled_after_the_token_check_is_disconnected(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.agent_http import router as agent_router
+
+        # The token lookup ran before the disable committed, so its own
+        # disconnect found no socket: the hello bookkeeping must close it.
+        row = hosts.host_by_device_token(self.token)
+        hosts.patch_host(1, self.hid, {"disabled": True})
+        app = FastAPI()
+        app.include_router(agent_router)
+        with patch.object(hosts, "host_by_device_token", return_value=row):
+            with TestClient(app).websocket_connect("/agent/v1/connect") as ws:
+                ws.send_json({"v": 1, "t": "hello", "token": self.token, "hostname": "hub"})
+                self.assertEqual(ws.receive_json()["t"], "hello_ok")
+                self.assertEqual(ws.receive_json(), {"v": 1, "t": "bye", "reason": "disabled"})
+        self.assertFalse(agent_hub.is_online(1, self.hid))
+
     def test_auth_failure_says_so_with_a_code(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

@@ -77,7 +77,7 @@ func main() {
 	case "install":
 		os.Exit(doInstall(cfg))
 	case "uninstall":
-		os.Exit(doUninstall())
+		os.Exit(doUninstall(cfg))
 	case "update":
 		os.Exit(doUpdate(cfg))
 	case "service":

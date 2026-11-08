@@ -549,6 +549,13 @@ async def _after_hello(user_id: int, host_id: int, msg: dict) -> None:
             os_name=str(msg.get("os") or ""),
             arch=str(msg.get("arch") or ""),
         )
+    except HostError as exc:
+        if exc.status_code == 404:
+            # Removed or disabled after the token check: that disconnect may
+            # have run before this socket registered, so close it here.
+            await disconnect(user_id, host_id, "disabled")
+            return
+        logger.exception("record agent hello failed")
     except Exception:
         logger.exception("record agent hello failed")
     try:

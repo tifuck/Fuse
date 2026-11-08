@@ -59,6 +59,14 @@ class AgentHttpTest(unittest.TestCase):
             res = self.client.get("/i/not-a-code.ps1")
         self.assertEqual(res.status_code, 404)
 
+    def test_installers_refuse_a_plain_http_origin(self):
+        # The script downloads and runs the binary from this origin.
+        with patch("app.agent_http._origin", return_value="http://example.test"), patch(
+            "app.agent_http.limiter.allow", return_value=True
+        ):
+            for path in ("/install.sh", "/install.ps1", "/i/fuse_abcDEF12", "/i/fuse_abcDEF12.ps1"):
+                self.assertEqual(self.client.get(path).status_code, 503, path)
+
     def test_trailing_newline_code_not_baked(self):
         # `$` alone would accept "fuse_abcdefgh\n" and bake a broken default.
         with patch("app.agent_http._origin", return_value="https://example.test"):
