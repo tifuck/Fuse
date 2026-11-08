@@ -57,32 +57,57 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-doc
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-dismiss { width: 1.7rem; height: 100%; }
 }
 
-/* Queue: flat console rows on the composer's surface, dots on the transcript's dot column. */
+/* Queue: waiting prompts at the top of the composer. One rule for both (the
+   count sits on it as a legend, not a header row), dim rows on the
+   transcript's dot column; the next message and held ones keep their
+   controls lit, the rest light up under the pointer. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue {
+  --queue-row: 1.4rem;
+  position: relative;
   margin: 0 calc(-1 * var(--console-gutter, 0px));
-  padding: 0.3rem calc(var(--console-gutter, 0px) + 0.15rem) 0.25rem;
-  border-top: 1px solid color-mix(in srgb, var(--mist) 12%, var(--ink));
+  padding: 0.4rem calc(var(--console-gutter, 0px) + 0.15rem) 0;
+  border-top: 1px solid color-mix(in srgb, var(--mist) 22%, var(--ink));
   background: color-mix(in srgb, var(--ink) 92%, var(--panel));
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-kicker {
-  margin: 0 0 0.1rem;
-  font: 500 calc(var(--console-type) * 0.92)/1.5 var(--mono);
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--mist);
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-dock:has(> .chat-queue:not([hidden])):not(:has(> :is(.chat-live-todos, .chat-agent-live-todos).is-open:not([hidden]))) > .chat-box:not(.is-drop) {
+  border-top-color: transparent;
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-kicker span { color: var(--brass); font-weight: 400; font-variant-numeric: tabular-nums; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-kicker {
+  position: absolute;
+  bottom: 100%;
+  left: calc(var(--console-gutter, 0px) + 0.15rem + var(--console-col) + 0.1rem);
+  z-index: 1;
+  margin: 0;
+  padding: 0.16rem 0.4rem 0.1rem;
+  border: 1px solid color-mix(in srgb, var(--mist) 22%, var(--ink));
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  pointer-events: none;
+  font: 0.62rem/1 var(--mono);
+  letter-spacing: 0;
+  text-transform: lowercase;
+  color: var(--mute);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-kicker span { color: var(--brass); font-variant-numeric: tabular-nums; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-list {
   gap: 0;
   padding: 0;
   border-radius: 0;
   background: none;
-  max-height: calc(4 * 1.6rem);
+  max-height: calc(4 * var(--queue-row));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item {
   grid-template-columns: var(--console-col) minmax(0, 1fr) auto auto;
   column-gap: 0.45rem;
-  min-height: 1.6rem;
+  min-height: var(--queue-row);
+  animation: console-queue-in var(--dur-2, 200ms) var(--ease-glide, ease-out) both;
+}
+@keyframes console-queue-in {
+  from { opacity: 0; transform: translateY(0.3rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item { animation: none; }
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item + .chat-queue-item { border-top: 0; padding-top: 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-dot {
@@ -92,13 +117,17 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
   height: var(--console-dot);
   border-radius: 50%;
   background: none;
-  border: 1px solid var(--mute);
+  border: 1px solid color-mix(in srgb, var(--mute) 70%, var(--ink));
 }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:first-child .chat-queue-dot { border-color: color-mix(in srgb, var(--mist) 62%, var(--ink)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:is(.is-immediate, .is-sending) .chat-queue-dot { border-color: var(--brass); background: var(--brass); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-text {
   font: var(--console-type)/1.5 var(--mono);
-  color: color-mix(in srgb, var(--mist) 86%, var(--ink));
+  color: color-mix(in srgb, var(--mute) 82%, var(--ink));
+  transition: color var(--dur-1, 120ms) ease;
 }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:first-child .chat-queue-text { color: color-mix(in srgb, var(--mist) 74%, var(--ink)); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:is(:hover, :focus-within) .chat-queue-text { color: var(--mist); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-state { font-size: 0.62rem; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-actions { gap: 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action {
@@ -111,10 +140,17 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
   color: var(--mist);
   background: color-mix(in srgb, var(--mist) 8%, transparent);
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action[data-queue-send] { color: var(--brass); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action[data-queue-send] { transition: color var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:is(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { color: var(--brass); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action[data-queue-send]:hover {
   color: var(--brass);
   background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+/* With a pointer, a later row's Send now waits under the pointer; its space
+   stays, so nothing shifts when it shows. */
+@media (hover: hover) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:not(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { opacity: 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item:not(:hover, :focus-within) .chat-queue-more:not(:disabled) { opacity: 0.6; }
 }
 /* One line per message at every width; the ⋮ menu opens beside its button so
    the scrolling list never clips it. */
@@ -157,8 +193,13 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu[hidden] { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu [data-queue-cancel]:hover { color: var(--fault); }
 @media (max-width: 600px) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item { grid-template-columns: var(--console-col) minmax(0, 1fr) auto auto; row-gap: 0; min-height: 2rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue { --queue-row: 1.9rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-item { grid-template-columns: var(--console-col) minmax(0, 1fr) auto auto; row-gap: 0; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action { min-height: 1.9rem; }
+  /* Phones: Send now is an arrow (its text stays the accessible name), so the
+     message keeps the width. */
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action[data-queue-send] { width: 1.9rem; padding: 0; font-size: 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-action[data-queue-send]::before { content: "\2191"; font-size: 0.9rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more { width: 1.9rem; height: 1.9rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu .chat-queue-action { min-height: 1.7rem; }
 }

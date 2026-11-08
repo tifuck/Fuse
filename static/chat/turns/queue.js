@@ -224,7 +224,7 @@ export function createQueue(ctx) {
           item.attachments?.length ? `${item.attachments.length} attached` : ""].filter(Boolean).join(" · ");
         const open = item.id === S.queueMenuId;
         const off = sending ? " disabled" : "";
-        return `<li class="chat-queue-item${item.immediate ? " is-immediate" : ""}${sending ? " is-sending" : ""}" data-queue-index="${index}" data-queue-id="${escapeHtml(item.id)}" aria-busy="${sending}">` +
+        return `<li class="chat-queue-item${item.immediate ? " is-immediate" : ""}${sending ? " is-sending" : ""}${held.has(item.id) ? " is-held" : ""}" data-queue-index="${index}" data-queue-id="${escapeHtml(item.id)}" aria-busy="${sending}">` +
           `<span class="chat-queue-dot" aria-hidden="true"></span>` +
           `<span class="chat-queue-text" title="${escapeHtml(item.text)}">${escapeHtml(item.text || "Attached files")}</span>` +
           `<span class="chat-queue-state" role="status">${state}</span>` +
