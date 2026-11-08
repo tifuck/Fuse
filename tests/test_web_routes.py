@@ -65,7 +65,7 @@ class WebPackageExportsTest(unittest.TestCase):
         client = TestClient(app, base_url="https://testserver")
         page = client.get("/artifacts", follow_redirects=False)
         self.assertEqual(page.status_code, 303)
-        self.assertEqual(page.headers.get("location"), "/login")
+        self.assertEqual(page.headers.get("location"), "/login?next=%2Fartifacts")
         # Signed-out writes are stopped by the CSRF guard before auth.
         archive = client.post("/a/abcd1234/archive")
         self.assertEqual(archive.status_code, 403)

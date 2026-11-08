@@ -19,29 +19,32 @@ from .deps import (
     logger,
     render,
     require_user,
+    safe_next,
 )
 
 router = APIRouter()
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
+    target = safe_next(request.query_params.get("next"))
     if current_user(request):
-        return RedirectResponse("/chat", status_code=303)
-    return render(request, "login.html", error=None)
+        return RedirectResponse(target, status_code=303)
+    return render(request, "login.html", error=None, next=target)
 
 
 @router.post("/login")
-async def login_post(request: Request, email: str = Form(), password: str = Form()):
+async def login_post(request: Request, email: str = Form(), password: str = Form(), next: str = Form("")):
+    target = safe_next(next)
     if _auth_limited(request):
-        return render(request, "login.html", error="Too many attempts. Try again in a minute.", status_code=429)
+        return render(request, "login.html", error="Too many attempts. Try again in a minute.", next=target, status_code=429)
     user = accounts.login(email, password)
     if not user:
-        return render(request, "login.html", error="Email or password is wrong.", status_code=401)
+        return render(request, "login.html", error="Email or password is wrong.", next=target, status_code=401)
     request.session["uid"] = user["id"]
     request.session["ph"] = accounts.password_fingerprint(user)
     request.session.pop("csrf", None)
     ensure_csrf(request)
-    resp = RedirectResponse("/chat", status_code=303)
+    resp = RedirectResponse(target, status_code=303)
     try:
         vault.unlock(user["id"], password)
         _set_vault_cookie(resp, user["id"])
@@ -138,7 +141,10 @@ async def account_password(request: Request):
         if code == "vault":
             raise HTTPException(500, "Password was not changed: your account vault could not be decrypted.") from None
         raise HTTPException(400, "Password could not be changed.") from None
-    from .. import host_events
+    from .. import host_events, push
+
+    keep = raw.get("keep_endpoint")
+    push.remove_others(user["id"], keep if isinstance(keep, str) and len(keep) <= 2048 else "")
 
     async def _reauth_sockets():
         # After the response, so this browser already holds its re-stamped

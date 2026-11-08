@@ -19,7 +19,7 @@
     <p>Who you are signed in as.</p>
   </header>
   <div class="set-row">
-    <div class="set-label"><strong>Email</strong><span>Only an admin can change it.</span></div>
+    <div class="set-label"><strong>Email</strong><span>The address you sign in with.</span></div>
     <div class="set-control">
       <p class="set-value">{{ user['email'] }} {% if user['is_admin'] %}<span class="badge admin">Admin</span>{% else %}<span class="badge">User</span>{% endif %}</p>
     </div>
@@ -93,7 +93,11 @@
 <section class="panel set" id="alerts" aria-labelledby="set-alerts-title">
   <header class="set-head">
     <h2 id="set-alerts-title">Alerts</h2>
-    <p>A notification when a chat finishes, even with Fuse closed. iPhone and iPad need Fuse on the Home Screen first.</p>
+    {% if 'FuseDesktop/' in request.headers.get('user-agent', '') %}
+    <p>A notification when a chat finishes or needs approval. The desktop app shows them only while one of its chats is open.</p>
+    {% else %}
+    <p>A notification when a chat finishes or needs approval, even with Fuse closed. iPhone and iPad need Fuse on the Home Screen first.</p>
+    {% endif %}
   </header>
   <div class="set-row">
     <div class="set-label"><strong>This device</strong><span>Each browser turns alerts on for itself; the bell in chat is the same switch.</span></div>

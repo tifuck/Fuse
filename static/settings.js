@@ -53,9 +53,13 @@
       return;
     }
     run(pw, out, async () => {
+      // Other devices' alerts end with their sessions; this one keeps its own.
+      const reg = await navigator.serviceWorker?.getRegistration("/").catch(() => null);
+      const sub = reg?.pushManager ? await reg.pushManager.getSubscription().catch(() => null) : null;
       await api("/account/password", "POST", {
         old_password: f.old_password.value,
         new_password: f.new_password.value,
+        keep_endpoint: sub ? sub.endpoint : "",
       });
       pw.reset();
       return "Password changed.";

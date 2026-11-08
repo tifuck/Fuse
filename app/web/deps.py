@@ -7,6 +7,7 @@ import math
 import re
 import secrets
 import time
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -108,10 +109,24 @@ def restore_vault_keep(request: Request, user_id: int) -> None:
         vault.restore_keep(user_id, token)
 
 
+def safe_next(raw) -> str:
+    """A same-site path to return to after sign-in; anything else is /chat."""
+    raw = str(raw or "")
+    parts = urlsplit(raw)
+    if (not raw.startswith("/") or raw.startswith("//") or "\\" in raw or parts.scheme or parts.netloc
+            or len(raw) > 2048 or any(ord(ch) < 32 for ch in raw)):
+        return "/chat"
+    return raw
+
+
 def require_user(request: Request):
     user = current_user(request)
     if not user:
-        return None, RedirectResponse("/login", status_code=303)
+        # A deep link (an alert, a shared page) must survive the sign-in.
+        target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        if request.method != "GET" or safe_next(target) in ("/", "/chat"):
+            return None, RedirectResponse("/login", status_code=303)
+        return None, RedirectResponse("/login?" + urlencode({"next": target}), status_code=303)
     restore_vault_keep(request, user["id"])
     return user, None
 

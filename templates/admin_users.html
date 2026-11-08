@@ -42,7 +42,7 @@
             </form>
             {% endif %}
             {% if not u['is_admin'] or admin_count > 1 %}
-            <form method="post" action="/admin/users/{{ u['id'] }}/delete" data-confirm="Delete {{ u['email'] }}? Their keys and usage history will be removed.">
+            <form method="post" action="/admin/users/{{ u['id'] }}/delete" data-confirm="Delete {{ u['email'] }}? Their chats, projects, machines, artifacts, tasks, skills, API keys and usage history will be removed.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="btn danger sm" type="submit">Delete</button>
             </form>

@@ -184,6 +184,29 @@ def change_password(user_id: int, old_password: str, new_password: str) -> None:
         raise ValueError(str(exc) or "password") from exc
 
 
+def reset_password(email: str, new_password: str) -> list[str]:
+    """Operator recovery for a forgotten password (scripts/reset_password.py).
+    The vault was wrapped with the lost password, so it is dropped and the
+    next sign-in makes a new one: SSH machine secrets must be entered again.
+    Every session ends (they are stamped with the password hash) and every
+    device's alerts stop. Returns the SSH machines that need their secret."""
+    if len(new_password) < 8 or len(new_password) > 256:
+        raise ValueError("password")
+    with db.tx() as conn:
+        row = conn.execute("SELECT id FROM users WHERE email=?", (normalize_email(email),)).fetchone()
+        if row is None:
+            raise ValueError("missing")
+        conn.execute(
+            "UPDATE users SET password_hash=?, vault_salt=NULL, wrapped_dek=NULL, vault_kdf=NULL WHERE id=?",
+            (hash_password(new_password), row["id"]),
+        )
+        conn.execute("DELETE FROM push_subscriptions WHERE user_id=?", (row["id"],))
+        hosts = conn.execute(
+            "SELECT alias FROM user_hosts WHERE user_id=? AND auth_type<>'agent' ORDER BY alias", (row["id"],)
+        ).fetchall()
+    return [host["alias"] for host in hosts]
+
+
 def unlock_vault(user_id: int, password: str) -> None:
     row = get_user(user_id)
     if row is None or not verify_password(password, row["password_hash"]):

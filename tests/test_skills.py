@@ -937,7 +937,7 @@ class SkillsHttpTest(unittest.TestCase):
     def test_signed_out_redirect(self):
         res = self.client.get("/skills", follow_redirects=False)
         self.assertEqual(res.status_code, 303)
-        self.assertEqual(res.headers.get("location"), "/login")
+        self.assertEqual(res.headers.get("location"), "/login?next=%2Fskills")
 
     def test_signed_in_page_and_api(self):
         csrf = self._login()

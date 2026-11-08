@@ -508,7 +508,7 @@ class HostsHttpTest(unittest.TestCase):
     def test_signed_out_hosts_and_projects_redirect(self):
         hosts_res = self.client.get("/hosts", follow_redirects=False)
         self.assertEqual(hosts_res.status_code, 303)
-        self.assertEqual(hosts_res.headers.get("location"), "/login")
+        self.assertEqual(hosts_res.headers.get("location"), "/login?next=%2Fhosts")
         projects_res = self.client.get("/projects", follow_redirects=False)
         self.assertEqual(projects_res.status_code, 303)
 

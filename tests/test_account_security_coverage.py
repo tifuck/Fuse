@@ -147,6 +147,51 @@ def test_password_change_invalidates_other_sessions_but_not_the_changer(app, cli
         assert refused.headers["location"] == "/login"
 
 
+def _add_device(endpoint):
+    from app import db
+
+    db.execute(
+        "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at) VALUES (?,?,?,?,?,?)",
+        (_uid(), endpoint, "k", "a", "", db.now()),
+    )
+
+
+def _devices():
+    from app import push
+
+    return sorted(row["endpoint"] for row in push.subscriptions_for(_uid()))
+
+
+def test_password_change_stops_other_devices_alerts(client):
+    _login(client)
+    _add_device("https://fcm.googleapis.com/fcm/send/this-browser")
+    _add_device("https://fcm.googleapis.com/fcm/send/lost-phone")
+    changed = client.post(
+        "/account/password",
+        json={"old_password": _PASSWORD, "new_password": _NEW_PASSWORD,
+              "keep_endpoint": "https://fcm.googleapis.com/fcm/send/this-browser"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert _devices() == ["https://fcm.googleapis.com/fcm/send/this-browser"]
+
+
+def test_reset_password_recovers_a_forgotten_password(app, client):
+    from scripts import reset_password
+
+    _login(client)
+    _add_device("https://fcm.googleapis.com/fcm/send/lost-phone")
+    assert accounts.reset_password("owner@account.invalid", _NEW_PASSWORD) == []
+    assert accounts.login("owner@account.invalid", _PASSWORD) is None
+    assert accounts.login("owner@account.invalid", _NEW_PASSWORD)["wrapped_dek"] is None
+    assert _devices() == []
+    kicked = client.get("/chat", follow_redirects=False)
+    assert kicked.status_code == 303
+    # A fresh vault is made at the next sign-in.
+    accounts.unlock_vault(_uid(), _NEW_PASSWORD)
+    assert accounts.get_user(_uid())["wrapped_dek"]
+    assert reset_password.main(["nobody@account.invalid"]) == 1
+
+
 def test_websocket_refuses_a_cookie_a_password_change_revoked(app, client):
     from app import chat_events
 
@@ -196,6 +241,21 @@ def test_a_second_sign_in_submit_goes_to_the_app(client):
     # Without a signed-in session a bad token is still refused.
     client.cookies.clear()
     assert client.post("/login", data=form, follow_redirects=False).status_code == 403
+
+
+def test_sign_in_returns_to_the_deep_link_and_only_on_this_site(client):
+    sent = client.get("/chat?t=abc123", follow_redirects=False)
+    assert sent.headers["location"] == "/login?next=%2Fchat%3Ft%3Dabc123"
+    limiter._hits.clear()
+    for target, landed in (("/chat?t=abc123", "/chat?t=abc123"), ("//evil.example", "/chat"),
+                           ("/\\evil.example", "/chat"), ("https://evil.example/", "/chat")):
+        client.cookies.clear()
+        page = client.get("/login", params={"next": target}).text
+        token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        posted = client.post("/login", data={"email": "owner@account.invalid", "password": _PASSWORD,
+                                             "csrf_token": token, "next": target}, follow_redirects=False)
+        assert posted.status_code == 303
+        assert posted.headers["location"] == landed
 
 
 def test_password_and_vault_unlock_share_the_login_rate_limit(client):
