@@ -546,7 +546,7 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
     if (savedWidth >= WIDTH.min && savedWidth <= WIDTH.max) applyWidth(savedWidth, false);
     let resizeRaf = 0;
     resizeHandle.addEventListener("pointerdown", (event) => {
-      if (window.innerWidth <= 800) return;
+      if (mobile.matches) return;
       event.preventDefault();
       try { resizeHandle.setPointerCapture(event.pointerId); } catch (_) {}
       resizeHandle.classList.add("is-dragging");

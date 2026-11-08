@@ -174,7 +174,7 @@ export function createInput(ctx) {
       const vvOffset = vv && !zoomed ? Math.max(0, vv.offsetTop) : 0;
       const composerFocus = S.form.contains(document.activeElement) &&
         document.activeElement.matches("textarea, input, [contenteditable='true']");
-      const mobile = window.innerWidth <= 800;
+      const mobile = window.matchMedia("(max-width: 800px)").matches;
       const sheetFocus = document.activeElement instanceof Element &&
         Boolean(document.activeElement.closest(".chat-sheet, .chat-view-menu"));
       const editing = composerFocus || sheetFocus;

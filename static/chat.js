@@ -1766,7 +1766,7 @@ import { createDictation } from './chat/dictation.js';
     }
     let resizeRaf = 0;
     resizeHandle.addEventListener("pointerdown", (event) => {
-      if (window.innerWidth <= 800) return;
+      if (S.historyMobile.matches) return;
       event.preventDefault();
       try { resizeHandle.setPointerCapture(event.pointerId); } catch (_) {}
       resizeHandle.classList.add("is-dragging");

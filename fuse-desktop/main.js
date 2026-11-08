@@ -203,7 +203,8 @@ function createWindow() {
   win = new BaseWindow({
     width: 1280,
     height: 820,
-    // The site switches to its phone layout at 800 CSS px and below.
+    // Room for the sidebar beside the chat. The site keeps its desktop layout
+    // here at any width, zoom included (static/desktop-layout.js).
     minWidth: 820,
     minHeight: 480,
     backgroundColor: background,

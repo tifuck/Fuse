@@ -4,7 +4,8 @@
 {% set is_artifact = path.startswith('/a/') %}
 {% set is_preview = path.startswith('/preview') %}
 {% set is_settings = user and not is_chat and not is_artifact and not is_preview %}
-<html lang="en"{% if is_chat %} class="is-chat-root"{% elif is_settings %} class="is-settings-root"{% endif %}{% if is_chat or is_settings %} data-chat-console="true" data-chat-view="console"{% endif %}{% if 'FuseDesktop/' in request.headers.get('user-agent', '') %} data-desktop-app="true"{% endif %}>
+{% set is_desktop_app = 'FuseDesktop/' in request.headers.get('user-agent', '') %}
+<html lang="en"{% if is_chat %} class="is-chat-root"{% elif is_settings %} class="is-settings-root"{% endif %}{% if is_chat or is_settings %} data-chat-console="true" data-chat-view="console"{% endif %}{% if is_desktop_app %} data-desktop-app="true"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -32,6 +33,10 @@
   <link rel="stylesheet" href="{{ asset('themes/console/styles/design.css') }}">
   {% endif %}
   {% block head_extra %}{% endblock %}
+  {#- After every stylesheet: it rewrites their phone breakpoints before first paint. -#}
+  {% if is_desktop_app %}
+  <script src="{{ asset('desktop-layout.js') }}"></script>
+  {% endif %}
   {% if user %}
   {#- Prefetch a settings page's HTML on hover (pointerdown on touch), so the
       click renders from memory; every asset it needs is already cached. -#}

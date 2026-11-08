@@ -22,12 +22,13 @@ const LONG_PROJECT = 'A very long project name '.repeat(10);
 const NOW = '2026-10-05T00:00:00Z';
 // The artifact viewer's menu is a hidden .chat-pop that is always in the page.
 const ROW_MENU = '.chat-pop:not([data-artifact-menu])';
+const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Electron/44.7.0 FuseDesktop/1.0.9';
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
   const errors = [];
-  const makePage = async (width = 1440) => {
-    const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 1000 }, isMobile: width === 390, reducedMotion: 'reduce' });
+  const makePage = async (width = 1440, userAgent = undefined) => {
+    const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 1000 }, isMobile: width === 390, reducedMotion: 'reduce', userAgent });
     await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(`${width}: ${error.message}`));
@@ -177,6 +178,31 @@ const ROW_MENU = '.chat-pop:not([data-artifact-menu])';
       assert.deepEqual(await state(), { collapsed: false, peek: false, inert: false }, 'the head toggle pins the peeked list');
       assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('fuse.chat.historyCollapsed.v1') || '{}'))).console, false, 'pinning is remembered');
       console.log('PASS desktop edge peek: overlay, hover hold, delayed close, menu hold, escape, phone, toggle hover, pin');
+      await page.context().close();
+    }
+
+    // Fuse Desktop zoomed in: its narrowest window is under the 800px phone
+    // breakpoint, and it still gets the desktop sidebar (beside the chat, no
+    // full-screen drawer or scrim, edge peek), with matchMedia agreeing.
+    {
+      const page = await makePage(700, DESKTOP_UA);
+      assert.equal(await page.evaluate(() => document.documentElement.dataset.desktopApp), 'true');
+      assert.equal(await page.evaluate(() => matchMedia('(max-width: 800px)').matches), false, 'matchMedia never reports the phone layout');
+      await openSidebar(page);
+      const layout = await page.evaluate(() => ({
+        history: document.querySelector('[data-history]').getBoundingClientRect().toJSON(),
+        stage: document.querySelector('.chat-stage').getBoundingClientRect().toJSON(),
+        scrim: document.querySelector('[data-history-backdrop]').hidden,
+        drawer: document.querySelector('[data-chat]').classList.contains('is-history'),
+      }));
+      assert.ok(layout.history.width < 400 && layout.stage.left >= layout.history.right - 1, `the sidebar sits beside the chat, not over it: ${JSON.stringify(layout)}`);
+      assert.deepEqual([layout.scrim, layout.drawer], [true, false], 'the toggle pins the sidebar instead of opening the phone drawer');
+      assert.equal(await noOverflow(page), true);
+      // The app's title bar replaces the history head; its toggle moves into the history bar.
+      await page.locator('.chat-history-dock-toggle').click();
+      await page.locator('[data-history-list]').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('[data-history-edge]').isVisible(), true, 'the desktop edge peek stays');
+      console.log('PASS Fuse Desktop keeps the desktop sidebar under the phone breakpoint');
       await page.context().close();
     }
 
