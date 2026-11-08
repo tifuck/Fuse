@@ -20,6 +20,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-sen
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send.is-stop:hover {
   color: var(--fault);
 }
+/* Armed by a first Esc: the next Esc stops. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-send.is-stop.is-armed {
+  color: var(--fault);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fault) 45%, transparent);
+}
 
 /* Todo list: the header's todo button opens it; its page starts with a thin
    head line (title, count, dismiss). */

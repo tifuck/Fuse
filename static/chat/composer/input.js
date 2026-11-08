@@ -245,6 +245,8 @@ export function createInput(ctx) {
     S.sendBtn.disabled = S.streaming ? false : S.sending || S.loading || !(hasText || hasAttach) || !S.modelId || !net.isLive();
     S.sendBtn.classList.toggle("is-stop", stop);
     S.sendBtn.setAttribute("aria-label", stop ? "Stop" : "Send");
+    S.sendBtn.title = stop ? "Stop (Esc twice)" : "";
+    if (!stop) S.sendBtn.classList.remove("is-armed");
     S.newBtns.forEach((btn) => {
       btn.disabled = S.sending;
     });

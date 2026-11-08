@@ -1210,6 +1210,12 @@ import { createDictation } from './chat/dictation.js';
       return;
     }
 
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      composer.stashPrompt();
+      return;
+    }
+
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !S.input.value) {
       event.preventDefault();
       if (event.shiftKey) sidebar.redoConversation();
@@ -1449,6 +1455,48 @@ import { createDictation } from './chat/dictation.js';
       if (document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
       if (event.target === S.input && S.input.value) return;
       agents.closeAgentView();
+    });
+
+    // Esc stops the running reply, but asks first: the first Esc arms Stop,
+    // a second within ESC_STOP_MS stops. Only while Stop shows and nothing else
+    // claims Esc; the capture pass reads that before other handlers close things.
+    const ESC_STOP_MS = 2500;
+    let escFree = false;
+    let escArmed = 0;
+    const escClaimed = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && target !== S.input && target.closest("input, textarea, select, [contenteditable='true'], dialog")) return true;
+      if (S.pickerOpen || S.permsOpen || S.memoryOpen || S.skillsOpen || S.artifactOpen || S.searchOpen || S.agentsOpen || S.queueMenuId || S.pop) return true;
+      if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
+      if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
+      if (window.FuseComposerSpell && FuseComposerSpell.isOpen()) return true;
+      return Boolean(document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
+    };
+    const disarmEscStop = () => {
+      if (!escArmed) return;
+      window.clearTimeout(escArmed);
+      escArmed = 0;
+      S.sendBtn.classList.remove("is-armed");
+      picker.releaseHint("esc-stop");
+    };
+    window.addEventListener("keydown", (event) => {
+      escFree = event.key === "Escape" && !event.isComposing && !event.repeat && S.sendBtn.classList.contains("is-stop") && !escClaimed(event);
+    }, true);
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (!escFree || event.defaultPrevented) {
+        disarmEscStop();
+        return;
+      }
+      event.preventDefault();
+      if (escArmed) {
+        disarmEscStop();
+        turns.requestStop().catch((error) => sync.showFailure("Could not stop", error));
+        return;
+      }
+      escArmed = window.setTimeout(disarmEscStop, ESC_STOP_MS);
+      S.sendBtn.classList.add("is-armed");
+      picker.holdHint("esc-stop", "Press Esc again to stop", false, ESC_STOP_MS);
     });
 
     agents.syncAgentsUi();

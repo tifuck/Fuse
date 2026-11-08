@@ -200,6 +200,10 @@
   color: var(--ink);
   cursor: pointer;
 }
+.chat-send.is-stop.is-armed {
+  color: var(--fault);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fault) 45%, transparent);
+}
 .chat-send.is-stop svg { display: none; }
 .chat-send.is-stop::before {
   content: "";

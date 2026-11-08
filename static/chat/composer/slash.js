@@ -3,6 +3,22 @@ import { S, draftKey } from '../state.js';
 import { escapeHtml } from '../core.js';
 
 const SLASH_MAX = 24;
+const STASH_KEY = "fuse.chat.stash.v1";
+const STASH_MAX = 20;
+
+function readStash() {
+  try {
+    const items = JSON.parse(localStorage.getItem(STASH_KEY) || "[]");
+    return Array.isArray(items) ? items.filter((text) => typeof text === "string" && text.trim()) : [];
+  } catch (_) { return []; }
+}
+
+function writeStash(items) {
+  try {
+    localStorage.setItem(STASH_KEY, JSON.stringify(items.slice(0, STASH_MAX)));
+    return true;
+  } catch (_) { return false; }
+}
 
 function composerPrefs() {
   if (window.FuseChatAppearance && typeof FuseChatAppearance.getComposerPrefs === "function") {
@@ -15,6 +31,7 @@ function paletteKicker(kind) {
   if (kind === "at") return ["Mentions", "Tab to insert"];
   if (kind === "path") return ["Paths", "Tab to insert"];
   if (kind === "history") return ["Earlier prompts", "Enter to insert"];
+  if (kind === "stash") return ["Stashed prompts", "Enter to restore"];
   return ["Commands", "Tab to complete · Enter to select"];
 }
 
@@ -175,6 +192,7 @@ export function createSlash(ctx) {
     if (!item || item.disabled) return;
     const start = S.paletteTrigger ? S.paletteTrigger.start : 0;
     const end = S.paletteTrigger ? S.paletteTrigger.end : (S.slashKind === "history" ? 0 : 0);
+    if (S.slashKind === "stash") writeStash(readStash().filter((text) => text !== item.insert));
     S.input.setRangeText(item.insert, start, end, "end");
     closeSlash();
     S.drafts.set(draftKey(), S.input.value);
@@ -256,6 +274,44 @@ export function createSlash(ctx) {
       insert: text,
       hint: "prompt",
     })), { start: 0, end: 0, kind: "history", query: "" });
+  }
+
+    // Ctrl+S: a typed prompt goes onto the stash and the box clears; on an
+  // empty box it lists the stash, and restoring one takes it off.
+    function stashPrompt() {
+    const text = S.input.value;
+    if (!text.trim()) {
+      openStash();
+      return;
+    }
+    if (!writeStash([text, ...readStash().filter((item) => item !== text)])) {
+      picker.setHint("Could not stash: browser storage is full or blocked.", true);
+      return;
+    }
+    S.input.value = "";
+    S.drafts.delete(draftKey());
+    closeSlash();
+    if (window.FuseComposerSpell) {
+      FuseComposerSpell.close();
+      FuseComposerSpell.refresh();
+    }
+    input.resizeInput();
+    input.syncComposer();
+    input.syncEmptyComposer();
+    picker.setHint("Prompt stashed. Ctrl+S on an empty box lists the stash.");
+  }
+
+    function openStash() {
+    const items = readStash();
+    if (!items.length) {
+      picker.setHint("Nothing stashed. Ctrl+S stashes the prompt you are typing.");
+      return;
+    }
+    S.slashIndex = 0;
+    renderPalette("stash", items.map((text) => {
+      const line = text.trim().replace(/\s+/g, " ");
+      return { kind: "stash", text: line.length > 72 ? line.slice(0, 69) + "…" : line, insert: text, hint: "stashed" };
+    }), { start: 0, end: 0, kind: "stash", query: "" });
   }
 
     function renderComposerSuggestions() {
@@ -419,6 +475,7 @@ export function createSlash(ctx) {
     runSlash,
     skillInvokeFromText,
     slashQuery,
+    stashPrompt,
     syncComposerAria,
     composerPrefs,
   };
