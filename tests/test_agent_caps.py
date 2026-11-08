@@ -287,6 +287,11 @@ class AgentCapsTest(AgentCapsBase):
         ))
         self.assertEqual(rec["status"], "done")
         self.assertEqual(json.loads(listed)["slots"]["review"], len("Inspect the auth module. Report findings only."))
+        _, rec = asyncio.run(execute_tool(
+            "scratch", json.dumps({"description": "Save notes", "name": "notes", "ops": [{"op": "put", "text": "hi"}]}),
+            user_id=1, allowed_urls=set(), coding=True, session={"run_id": parent["id"]},
+        ))
+        self.assertEqual(rec["preview"], "Wrote notes (2 chars)")
 
     def test_scratch_label_names_the_operation(self):
         from app.chat_tools import scratch_label
@@ -297,6 +302,7 @@ class AgentCapsTest(AgentCapsBase):
         self.assertEqual(scratch_label({"ops": json.dumps({"op": "delete", "name": "x"})}), "Clear x")
         ops = [{"op": op, "name": f"s{i}"} for i, op in enumerate(("append", "edit", "put", "clear"))]
         self.assertEqual(scratch_label({"ops": ops}), "Append to s0, Edit s1, +2 more")
+        self.assertEqual(scratch_label({"ops": ops}, done=True), "Appended to s0, Edited s1, +2 more")
 
     def test_scratch_slot_fits_one_read_and_ops_are_atomic(self):
         from app.chat_runtime import TOOL_RESULT_CHARS, _tool_result_clip

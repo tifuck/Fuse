@@ -826,11 +826,15 @@ def _trace_from_results(queries: list[str], results: list[QueryResult], packed: 
     return rec
 
 
-_SCRATCH_VERBS = {"put": "Write", "append": "Append to", "edit": "Edit", "clear": "Clear", "delete": "Clear"}
+_SCRATCH_VERBS = {
+    "put": ("Write", "Wrote"), "append": ("Append to", "Appended to"), "edit": ("Edit", "Edited"),
+    "clear": ("Clear", "Cleared"), "delete": ("Clear", "Cleared"),
+}
 
 
-def scratch_label(args: dict) -> str:
-    """What a scratch call does, for its row: "Write brief", "Read notes", "List slots"."""
+def scratch_label(args: dict, done: bool = False) -> str:
+    """What a scratch call does: "Write brief", "Read notes", "List slots"; done=True
+    gives a write's result line ("Wrote brief")."""
     ops = args.get("ops")
     if isinstance(ops, str) and ops.strip():
         try:
@@ -844,7 +848,7 @@ def scratch_label(args: dict) -> str:
         for op in ops:
             if not isinstance(op, dict):
                 continue
-            verb = _SCRATCH_VERBS.get(str(op.get("op") or "").strip().lower(), "Change")
+            verb = _SCRATCH_VERBS.get(str(op.get("op") or "").strip().lower(), ("Change", "Changed"))[done]
             parts.append(f"{verb} {str(op.get('name') or args.get('name') or '?').strip()[:64]}")
         if len(parts) > 2:
             parts = parts[:2] + [f"+{len(parts) - 2} more"]
@@ -1199,10 +1203,11 @@ async def execute_tool(
                     msg = str(exc)
                     return msg, {"name": "scratch", "status": "error", "kind": "invalid_arguments", "error": msg}
                 shown = {key: len(value) for key, value in pad.items()}
+                only = str(ops[0].get("name") or "").strip() if len(ops) == 1 and isinstance(ops[0], dict) else ""
                 return json.dumps({"slots": shown}, ensure_ascii=False), {
                     "name": "scratch",
                     "status": "done",
-                    "preview": f"{len(shown)} slots",
+                    "preview": scratch_label({"ops": ops}, done=True) + (f" ({len(pad[only]):,} chars)" if only in pad else ""),
                 }
             slot = args.get("name")
             if isinstance(slot, str) and slot.strip():

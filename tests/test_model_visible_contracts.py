@@ -109,6 +109,7 @@ class ModelVisibleContractsTest(unittest.TestCase):
         self.assertIn("not a name", spawn["parameters"]["properties"]["task_id"]["description"])
         scratch = agent_catalog.schema("scratch")["function"]
         self.assertIn("spawn_subagent", scratch["description"])
+        self.assertEqual(scratch["parameters"]["required"], ["description"])
         self.assertIn("scratch", spawn["parameters"]["properties"])
 
     def test_schema_bounds_stay_grammar_safe(self):

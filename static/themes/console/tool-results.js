@@ -408,8 +408,8 @@ function consoleResultLine(trace, presentation) {
       return already ? `Already ${already[1]} · nothing to stop` : "Subagent stopped";
     }
     if (name === "scratch") {
-      const read = preview.match(/^\S+ \((\d+) chars\)$/);
-      if (read) return `Read ${Number(read[1]).toLocaleString()} chars`;
+      const read = preview.match(/^(\S+) \((\d+) chars\)$/);
+      if (read) return `Read ${read[1]} (${Number(read[2]).toLocaleString()} chars)`;
       const slots = preview.match(/^(\d+) slots$/);
       if (slots) return `Pad holds ${slots[1]} ${slots[1] === "1" ? "slot" : "slots"}`;
       return preview || "done";

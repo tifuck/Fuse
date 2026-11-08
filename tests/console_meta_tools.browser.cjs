@@ -211,12 +211,13 @@ const turn = (trace, live) => ({
         { event: { status: 'interrupted', query: 'grok' }, head: /Models\(grok\)/, live: ['Interrupted · the run ended before it finished'], lacks: ['Running…', 'Grok 4'], dot: 'interrupted' },
       ]);
 
-      // The running event carries what the call does ("Write brief"); the
-      // header shows it and the result line says what came back.
+      // The header shows the model's description (why); the result line
+      // names the op and slot (what).
       for (const [op, description, preview, output, result] of [
-        ['put', 'Write brief', '1 slots', SLOTS, 'Pad holds 1 slot'],
-        ['read', 'Read brief', 'brief (1200 chars)', 'the brief', 'Read 1,200 chars'],
-        ['clear', 'Clear brief', '0 slots', JSON.stringify({ slots: {} }), 'Pad holds 0 slots'],
+        ['put', 'Save the review brief', 'Wrote brief (1,200 chars)', SLOTS, 'Wrote brief (1,200 chars)'],
+        ['read', 'Reload the review brief', 'brief (1200 chars)', 'the brief', 'Read brief (1,200 chars)'],
+        ['clear', 'Drop the stale brief', 'Cleared brief', JSON.stringify({ slots: {} }), 'Cleared brief'],
+        ['list', 'List slots', '1 slots', SLOTS, 'Pad holds 1 slot'],
       ]) {
         await mount({ id: 'm-scratch', name: 'scratch', status: 'running', description }, true);
         let seen = await read('m-scratch');
@@ -231,7 +232,7 @@ const turn = (trace, live) => ({
         await mount({ id: 'm-scratch', name: 'scratch', status: 'done', description, preview, output }, false);
         await open('m-scratch');
         seen = await read('m-scratch');
-        const shown = op === 'read' ? 'the brief' : op === 'put' ? 'brief' : 'Pad holds 0 slots';
+        const shown = op === 'read' ? 'the brief' : op === 'clear' ? 'Cleared brief' : 'brief';
         assert.equal(seen.body.includes(shown), true, `${tag} scratch ${op} snapshot: ${seen.body}`);
         assert.equal(seen.body.includes('Running…'), false, `${tag} scratch ${op} still running`);
         expectDot(seen.dot, 'done', `${tag} scratch ${op}`);

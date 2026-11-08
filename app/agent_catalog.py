@@ -255,7 +255,7 @@ SCHEMAS = {
                 "child (put it in the child's prompt), secrets or credentials, or dumping raw tool output. "
                 "Slots persist until you change them: clear slots you no longer need, and do not trust a "
                 "slot's contents over newer facts.\n"
-                "Call with no arguments to list slot names and sizes, with name to read one slot, or with "
+                "Call with only description to list slot names and sizes, add name to read one slot, or add "
                 "ops to change slots (each op names its slot; a top-level name fills ops that omit one). "
                 "All ops in one call apply together or not at all. Up to 32 slots, 20000 characters each. "
                 "Slot names: 1-64 characters, letters, digits, underscore and hyphen only, starting with a "
@@ -264,6 +264,14 @@ SCHEMAS = {
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": (
+                            "What this call is for, in 3-8 words; the user reads this instead of the call "
+                            "(\"Save wave-2 audit prompts\", \"Reload the review brief\"). Say why, not which "
+                            "op or slot: the row shows that already."
+                        ),
+                    },
                     "name": {
                         "type": "string",
                         "description": "Slot to read; with ops, the default slot for ops that omit name. Omit both to list slots.",
@@ -301,6 +309,7 @@ SCHEMAS = {
                         },
                     },
                 },
+                "required": ["description"],
                 "additionalProperties": False,
             },
         },
