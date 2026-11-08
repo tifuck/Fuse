@@ -1259,6 +1259,28 @@ class PendingAsksTest(PermSchemaTest):
         row = db.fetchone("SELECT status FROM chat_permission_asks WHERE run_id='run-z'")
         self.assertEqual(row["status"], "cancelled")
 
+    def test_a_raised_ask_pushes_to_every_device(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        with db.tx() as conn:
+            conn.execute("DELETE FROM chat_permission_asks")
+        gate = permissions.Gate(user_id=1, thread_id=1, run_id="run-p", requester=None, unattended=False,
+                                notify=lambda event: None, cancel=None)
+        payload = {"tool": "run_terminal_command", "command": "rm -rf build", "host": "prod"}
+        answered = {"status": "denied", "decision": "deny", "expires_at": ""}
+        notify = AsyncMock()
+
+        async def go():
+            with patch("app.push.notify_permission", new=notify), \
+                 patch.object(permissions, "_poll_ask", return_value=(False, False, answered)):
+                result = await permissions._ask_and_wait(gate, payload)
+                await asyncio.sleep(0)
+            return result
+
+        self.assertEqual(asyncio.run(go()), "denied")
+        notify.assert_awaited_once_with(1, 1, payload)
+
 
 if __name__ == "__main__":
     unittest.main()

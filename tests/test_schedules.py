@@ -294,6 +294,30 @@ class FireStatusPropagationTest(unittest.TestCase):
         self.assertTrue(row["enabled"])
         self.assertEqual(row["next_fire_at"], slot)
 
+    def test_a_fire_that_never_started_alerts_once_per_streak(self):
+        import asyncio
+
+        item = schedules.create_schedule(self.uid, {
+            "name": "nightly", "target": "chat", "prompt": "hi", "model": "offline",
+            "timezone": "UTC", "recur_kind": "every", "every_seconds": 3600,
+        })
+        notify = AsyncMock()
+
+        async def go():
+            with patch("app.push.notify_user", new=notify):
+                for slot in ("2026-10-20T05:00:00Z", "2026-10-20T06:00:00Z"):
+                    db.execute(
+                        """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+                           VALUES(?,?, 'scheduled', 'running', ?, ?, ?)""",
+                        (item["id"], self.uid, slot, "fire-" + slot, db.now()),
+                    )
+                    schedules._finish_fire(item, {"slot_key": slot}, "vault_locked", "Vault locked", None, None, consume=True)
+                await asyncio.sleep(0)
+
+        asyncio.run(go())
+        notify.assert_awaited_once()
+        self.assertEqual(notify.await_args.args[1]["url"], "/tasks")
+
     def test_finish_run_updates_fire_and_schedule(self):
         item = self._schedule()
         run = self._scheduled_run()

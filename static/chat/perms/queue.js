@@ -14,6 +14,10 @@ function speakPerm(rec) {
   const copy = permCardCopy(rec);
   const who = rec.requester && rec.requester !== "Main agent" ? ` from ${rec.requester}` : "";
   globalThis.fuseAnnounce?.(`Permission needed${who}: ${copy.action}${copy.path ? " " + copy.path : ""}. Allow or Deny.`, true);
+  // Without Web Push (desktop app) a card nobody is looking at times out unseen.
+  if (!(document.visibilityState === "visible" && document.hasFocus())) {
+    globalThis.fusePush?.show(S.currentId, "Fuse · Permission needed", `${copy.action}${copy.path ? " " + copy.path : ""}`, () => {});
+  }
 }
 
 const PERM_TOTAL_S = 60;

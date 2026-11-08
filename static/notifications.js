@@ -130,7 +130,7 @@
       btn.title =
         mode === "push"
           ? "Alerts are on for this device — click to turn off"
-          : "Alerts are on for this device while the app is open — click to turn off";
+          : "Alerts are on for this device while a Fuse chat is open — click to turn off";
     } else if (serverCount > 0) {
       btn.title = `Alerts are on for ${serverCount} device${serverCount === 1 ? "" : "s"} — click to add this device`;
     } else {
@@ -191,13 +191,13 @@
     }
     save();
     paint();
-    hint("ok", mode === "push" ? "On for this device." : "On for this device while Fuse is open.");
+    hint("ok", mode === "push" ? "On for this device." : "On for this device while a Fuse chat is open.");
     try {
       new Notification("Fuse", {
         body:
           mode === "push"
             ? "Alerts are on — you'll hear when a chat finishes."
-            : "Alerts are on for this device while the app is open.",
+            : "Alerts are on for this device while a Fuse chat is open.",
         icon: "/static/icon-192.png",
         tag: "fuse-alerts-on",
       });

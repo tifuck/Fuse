@@ -1,6 +1,7 @@
 """In-process scheduled chat fires. One worker, skip-on-overlap."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -1050,6 +1051,10 @@ def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: b
         row = conn.execute("SELECT * FROM chat_schedules WHERE id=?", (schedule["id"],)).fetchone()
         if row is None:
             return
+        # A fire that never started a run sends no run-done alert: say so,
+        # once per streak, or a task stays silently skipped.
+        alert = (status in ("failed", "vault_locked") and not run_id
+                 and (row["last_status"] or "") not in ("failed", "vault_locked"))
         # `schedule` is the config captured when the fire was claimed. A PATCH
         # committing mid-fire rewrites next_fire_at/enabled from the new config;
         # advancing the cadence from the stale snapshot would clobber it, so
@@ -1085,6 +1090,22 @@ def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: b
             (now, status, err, run_id or "", next_at, 1 if enabled else 0,
              None if not manual else row["firing_at"], thread_id, now, schedule["id"]),
         )
+    if alert:
+        _alert_skipped(schedule, status, err)
+
+
+def _alert_skipped(schedule, status, err) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    from . import push
+
+    body = ("Skipped: sign in to Fuse to unlock this machine's saved SSH key." if status == "vault_locked"
+            else f"Could not start: {err or 'error'}")
+    loop.create_task(push.notify_user(schedule["user_id"], {
+        "title": f"Fuse · {schedule.get('name') or 'Task'}"[:140], "body": body[:220], "url": "/tasks",
+    }))
 
 
 def _inflight_enter(schedule_id: int) -> None:

@@ -241,6 +241,12 @@ def remove_subscription(user_id: int, endpoint: str) -> None:
     )
 
 
+def remove_others(user_id: int, keep: str = "") -> None:
+    """A password change signs every other session out; their devices must
+    stop receiving chat titles and reply previews too."""
+    db.execute("DELETE FROM push_subscriptions WHERE user_id=? AND endpoint<>?", (user_id, keep or ""))
+
+
 def _send_one(row, payload: str) -> bool:
     try:
         webpush(
@@ -296,14 +302,14 @@ async def notify_user(user_id: int, payload: dict) -> int:
     return sum(1 for ok in results if ok)
 
 
-async def notify_run_done(user_id: int, thread_id, status: str, content: str = "", error: str = "") -> int:
-    thread = None
+async def _thread_ref(thread_id) -> tuple[str, str] | None:
+    """(redacted title, public id) of a thread, or None when it is gone."""
     try:
         thread = await asyncio.to_thread(db.fetchone, "SELECT title, public_id FROM chat_threads WHERE id=?", (thread_id,))
     except Exception:
         thread = None
     if thread is None:
-        return 0
+        return None
     public = thread["public_id"] or ""
     if not public:
         try:
@@ -312,7 +318,14 @@ async def notify_run_done(user_id: int, thread_id, status: str, content: str = "
             public = await asyncio.to_thread(chats.public_id_for, thread_id) or ""
         except Exception:
             public = ""
-    title = _redact_secrets((thread["title"] or "").strip())
+    return _redact_secrets((thread["title"] or "").strip()), public
+
+
+async def notify_run_done(user_id: int, thread_id, status: str, content: str = "", error: str = "") -> int:
+    ref = await _thread_ref(thread_id)
+    if ref is None:
+        return 0
+    title, public = ref
     if status == "failed":
         body = _redact_secrets(error or "Generation failed.")
     else:
@@ -325,5 +338,27 @@ async def notify_run_done(user_id: int, thread_id, status: str, content: str = "
             "url": "/chat" + (f"?t={public}" if public else ""),
             "threadId": public,
             "status": status,
+        },
+    )
+
+
+async def notify_permission(user_id: int, thread_id, ask: dict) -> int:
+    """A permission card waits for an answer it gets only while someone is
+    looking: tell every device, or the ask times out unseen."""
+    ref = await _thread_ref(thread_id)
+    if ref is None:
+        return 0
+    title, public = ref
+    what = " ".join(str(ask.get("description") or ask.get("command") or ask.get("path") or ask.get("tool") or "").split())
+    host = str(ask.get("host") or "").strip()
+    body = _redact_secrets(f"Needs approval: {what}" + (f" on {host}" if host else ""))
+    return await notify_user(
+        user_id,
+        {
+            "title": (f"Fuse · {title}" if title else "Fuse")[:140],
+            "body": body[:220],
+            "url": "/chat" + (f"?t={public}" if public else ""),
+            "threadId": public,
+            "status": "permission",
         },
     )

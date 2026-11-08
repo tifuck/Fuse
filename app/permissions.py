@@ -1092,6 +1092,10 @@ async def _ask_and_wait(gate: Gate, payload: dict, auto_judge=None) -> str:
             _ASK_DESCRIPTIONS.pop(next(iter(_ASK_DESCRIPTIONS)))
         _ASK_DESCRIPTIONS[ask_id] = payload["description"]
     gate._notify({"event": "permission", **payload, "id": ask_id, "status": "pending", "expires_at": expires_iso})
+    if gate.thread_id:
+        from . import push
+
+        asyncio.create_task(push.notify_permission(gate.user_id, gate.thread_id, payload))
     deadline = time.time() + ASK_TIMEOUT_S
     try:
         from . import chat_runs as chat_runs_mod
