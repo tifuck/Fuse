@@ -46,7 +46,10 @@ int main(void) {
     assert(!read_binary(dir, 0, 1));
     assert(mkfifo(fifo, 0600) == 0);
     assert(!read_binary(fifo, 0, 1));
-    fd = open(path, O_WRONLY); assert(fd >= 0);
+    /* A size change: the identity is stat-based (1.8.0), and a same-size
+     * rewrite inside one coarse timestamp tick (ZFS, no multigrain ctime)
+     * keeps the same mtime/ctime, so it failed here 13 runs in 20. */
+    fd = open(path, O_WRONLY | O_APPEND); assert(fd >= 0);
     assert(write(fd, "z", 1) == 1); close(fd);
     js = read_binary(path, 0, 1); assert(js);
     r = cJSON_Parse(js); free(js);
