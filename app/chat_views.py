@@ -1065,6 +1065,9 @@ def settle_kill_receipt(trace):
     if state:
         trace["status"] = "done"
         trace["error"] = ""
+        # What the stop found, for the receipt's line: "already completed" when
+        # the target had ended before the call.
+        trace["preview"] = "stop requested" if state in ("running", "cancelling") else f"already {state}"
     return trace
 
 

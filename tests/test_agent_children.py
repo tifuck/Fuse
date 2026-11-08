@@ -796,9 +796,10 @@ class AgentChildrenTest(AgentCapsBase):
         _, rec = asyncio.run(agents.kill(user_id=1, arguments=args, thread_id=thread["id"], scope_run_id=a["id"]))
         self.assertEqual(rec["status"], "error")
         self.assertIn(store.get_run(1, b["id"])["status"], store.ACTIVE)
-        text, _ = asyncio.run(agents.list_agents(user_id=1, thread_id=parent["thread_id"], scope_run_id=a["id"]))
+        text, rec = asyncio.run(agents.list_agents(user_id=1, thread_id=parent["thread_id"], scope_run_id=a["id"]))
         listed = [item["id"] for item in json.loads(text)["live"]]
         self.assertEqual(listed, [grandchild["id"]])
+        self.assertTrue(rec["preview"].startswith("1 running · "), rec["preview"])
         # Its own descendant stays reachable.
         _, rec = asyncio.run(agents.get_output(user_id=1, arguments=json.dumps({"id": grandchild["id"], "timeout_ms": 0}),
                                                thread_id=thread["id"], parent_run_id=a["id"], scope_run_id=a["id"]))

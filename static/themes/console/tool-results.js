@@ -398,10 +398,11 @@ function consoleResultLine(trace, presentation) {
       return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : (deps.displayCommand(trace) || "done");
     }
     if (name === "kill_command") {
-      const cmd = deps.commandFor(trace);
-      if (cmd) return `${cmd} · stopped`;
-      const id = trace.command_id || trace.child_id || trace.job_id;
-      return id ? `job ${id} · stopped` : "Stopped";
+      // The header names the target; this says what the stop found.
+      const already = preview.match(/^already (\w+)$/);
+      if (!already) return "Stopped";
+      if (already[1] === "completed") return Number.isInteger(trace.exit_code) ? `Already finished (exit ${trace.exit_code})` : "Already finished";
+      return already[1] === "failed" || already[1] === "timed_out" ? `Already ${already[1].replace("_", " ")}` : "Already stopped";
     }
     if (name === "kill_subagent") {
       const already = preview.match(/^already (\w+)/);
@@ -430,7 +431,7 @@ function consoleResultLine(trace, presentation) {
       const range = deps.transcriptRange(trace);
       return range ? `Read ${range}` : (preview || "Read transcript");
     }
-    if (name === "propose_skill") return preview ? `Proposed skill ${preview}` : "Proposed skill";
+    if (name === "propose_skill") return "Drafted for your review";
     if (name === "search_tools") {
       if (String(trace.query || "") === "hosts") return "Listed connected hosts";
       if (String(trace.query || "") === "skills") return "Listed installed skills";

@@ -963,10 +963,12 @@ async def list_agents(*, user_id: int, thread_id, scope_run_id: str | None = Non
     if len(finished) > len(shown):
         payload["omitted_finished"] = len(finished) - len(shown)
     text = _fit_list_json(payload)
+    failed = sum(1 for item in finished if item["status"] in ("failed", "interrupted", "cancelled"))
+    preview = f"{len(live)} running · {len(finished)} finished" + (f" ({failed} failed)" if failed else "")
     return text, {
         "name": "list_subagents",
         "status": "done",
-        "preview": f"{len(live)} live, {len(shown)} finished",
+        "preview": preview if rows else "No subagents",
     }
 
 

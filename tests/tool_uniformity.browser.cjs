@@ -62,7 +62,7 @@ const TOOLS = [
     trace: { status: 'done', command: 'npm run build', command_id: 'j2', child_id: 'j2', job_id: 'j2', output: 'one\ntwo\nthree\nfour\nfive\n', call_duration_ms: DUR } },
   // `bare` rows print just their verb (chat.js consoleCallHtml:8368); the
   // subject rides their result line, and the shared clock/host tail applies.
-  { name: 'kill_command', verb: 'Stop Task', subject: 'npm run watch', clock: true, disclosure: false, bare: true,
+  { name: 'kill_command', verb: 'Stop Task', subject: 'npm run watch', clock: true, disclosure: false,
     trace: { status: 'done', command_id: 'j3', child_id: 'j3', output: '', call_duration_ms: DUR },
     related: { id: 't-kill_command-src', name: 'run_terminal_command', status: 'done', background: true, command: 'npm run watch', command_id: 'j3', child_id: 'j3', ...ROOT } },
   { name: 'monitor', verb: 'Monitor', subject: 'errors in worker.log', clock: true, disclosure: true,

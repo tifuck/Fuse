@@ -187,9 +187,10 @@ const turn = (trace, live) => ({
         { event: { status: 'interrupted', preview: 'ponytail' }, head: /Skill\(ponytail\)/, live: ['Interrupted · the run ended before it finished', 'ponytail'], lacks: ['Running…', 'Loaded skill'], dot: 'interrupted' },
       ]);
 
-      await life('propose_skill', { head: /Draft\(ponytail\)/, preview: 'ponytail' }, [
-        { event: { status: 'done', preview: 'ponytail', output: 'Proposed skill `ponytail` (not saved).' }, head: /Draft\(ponytail\)/, live: ['Proposed skill ponytail'], kept: { output: 'Proposed skill `ponytail` (not saved).' }, keptHas: ['Proposed skill `ponytail` (not saved).'], lacks: ['Running…'], dot: 'done' },
-        { event: { status: 'error', preview: 'refused', error: 'Skill authoring is disabled in this turn.' }, head: /Draft\(refused\)/, live: ['Error: Skill authoring is disabled in this turn.'], lacks: ['not saved', 'Running…'], dot: 'error' },
+      // The header is the skill's name, never its (long) description.
+      await life('propose_skill', { head: /Draft\(ponytail\)/, preview: 'ponytail', description: 'Forces the laziest solution that actually works' }, [
+        { event: { status: 'done', preview: 'ponytail', output: 'Proposed skill `ponytail` (not saved).' }, head: /Draft\(ponytail\)/, live: ['Drafted for your review'], kept: { output: 'Proposed skill `ponytail` (not saved).' }, keptHas: ['Proposed skill `ponytail` (not saved).'], lacks: ['Running…'], dot: 'done' },
+        { event: { status: 'error', error: 'Skill authoring is disabled in this turn.' }, head: /Draft\(ponytail\)/, live: ['Error: Skill authoring is disabled in this turn.'], lacks: ['not saved', 'Running…', 'Drafted'], dot: 'error' },
         { event: { status: 'interrupted', preview: 'ponytail' }, head: /Draft\(ponytail\)/, live: ['Interrupted · the run ended before it finished', 'ponytail'], lacks: ['Running…'], dot: 'interrupted' },
       ]);
 

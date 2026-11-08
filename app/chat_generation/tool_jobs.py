@@ -460,7 +460,7 @@ def _running_event(job: ToolJob) -> dict:
             src = str(parsed.get("url") or parsed.get("command") or "")
             if src:
                 event["preview"] = src[:800]
-        if job.name == "load_skill":
+        if job.name in ("load_skill", "propose_skill"):
             skill_name = str(parsed.get("name") or "")
             if skill_name:
                 event["preview"] = skill_name[:80]

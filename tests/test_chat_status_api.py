@@ -518,6 +518,14 @@ def test_killed_command_keeps_partial_output_and_kill_receipt_settles(client):
     assert command["output_mode"] == "partial"
     assert receipt["status"] == "done" and receipt["error"] == ""
     assert "execution_status" not in receipt and "state" not in receipt  # no eternal "cancelling"
+    assert receipt["preview"] == "stop requested"
+
+
+def test_kill_receipt_says_when_the_target_had_already_ended():
+    assert chat_store.settle_kill_receipt({"state": "completed", "exit_code": 0})["preview"] == "already completed"
+    assert chat_store.settle_kill_receipt({"execution_status": "cancelled"})["preview"] == "already cancelled"
+    # A reload settles a stored receipt again; one already settled keeps its line.
+    assert chat_store.settle_kill_receipt({"preview": "already completed"})["preview"] == "already completed"
 
 
 def test_snapshot_spawn_traces_follow_child_status(client):

@@ -227,14 +227,21 @@ function scenarios() {
     return { rows: [user('Go.'), turn([say('Starting.\n\n'), T(kill), T(cmd)], [cmd, kill])], live: true, phase: 'model',
       patch: { index: 1, id: cmd.id, fields: { status: 'interrupted', state: 'interrupted', execution_status: 'interrupted', error: 'cancelled', exit_code: null, output: out } },
       truth: { call: { [cmd.id]: 'interrupted', [kill.id]: 'done' }, exec: { kill1: 'interrupted' } },
-      has: ['listening on :8080', 'Stop Task', 'npm start · stopped', 'Interrupted · stopped'], lacks: ['Running in the background'] };
+      has: ['listening on :8080', 'Stop Task(npm start)', 'Stopped', 'Interrupted · stopped'], lacks: ['Running in the background', 'npm start · stopped'] };
   });
   add('a killed command with no output still names what stopped', () => {
     const cmd = sh('sleep 30', { background: true, job: 'kill2', extra: { status: 'interrupted', state: 'interrupted', execution_status: 'interrupted', error: 'cancelled', exit_code: null } });
     const kill = tool('kill_command', { child_id: 'kill2', command_id: 'kill2' });
     return { rows: [user('Go.'), turn([say('Stopping.\n\n'), T(cmd), T(kill)], [cmd, kill], ended)],
       truth: { call: { [cmd.id]: 'interrupted', [kill.id]: 'done' }, exec: { kill2: 'interrupted' } },
-      has: ['Stop Task', 'sleep 30 · stopped', 'Interrupted · stopped'], open: true };
+      has: ['Stop Task(sleep 30)', 'Stopped', 'Interrupted · stopped'], open: true };
+  });
+  add('stopping a command that had already finished says so, under its description', () => {
+    const cmd = sh('npm run build', { background: true, job: 'kill3', description: 'Build the bundle' });
+    const kill = tool('kill_command', { child_id: 'kill3', command_id: 'kill3', preview: 'already completed', exit_code: 0 });
+    return { rows: [user('Go.'), turn([say('Stopping.\n\n'), T(cmd), T(kill)], [cmd, kill], ended)],
+      truth: { call: { [cmd.id]: 'done', [kill.id]: 'done' }, exec: { kill3: 'completed' } },
+      has: ['Stop Task(Build the bundle)', 'Already finished (exit 0)'], lacks: ['npm run build · stopped'] };
   });
 
   // —— search_replace locates the edit ——

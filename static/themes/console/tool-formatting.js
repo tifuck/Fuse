@@ -91,7 +91,7 @@ function toolSubject(trace) {
       return searchQueries(trace).length === 1 ? toolText(searchQueries(trace)[0], 100) : `${n} ${n === 1 ? "query" : "queries"}`;
     }
     if (["create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(name)) return trace.title || "artifact";
-    if (name === "load_skill") return [trace.preview || "skill", trace.path ? compactPath(trace.path, trace) : ""].filter(Boolean).join(" / ");
+    if (name === "load_skill" || name === "propose_skill") return [trace.preview || "skill", trace.path ? compactPath(trace.path, trace) : ""].filter(Boolean).join(" / ");
     if (name === "read_transcript") return transcriptRange(trace) || toolText(trace.preview || "", 90);
     if (name === "fuse-steer") return trace.summary || "New instruction";
     return toolText(trace.query || trace.description || trace.title || trace.preview || trace.path || "", 140);
@@ -294,7 +294,7 @@ function consoleCallHtml(trace, presentation, full = false) {
       return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;
     }
     const verb = deps.consoleVerb(name, trace);
-    if (["kill_command", "todo_write", "list_subagents"].includes(name) || (name === "scratch" && !scratchAction(trace))) {
+    if (["todo_write", "list_subagents"].includes(name) || (name === "scratch" && !scratchAction(trace))) {
       // A bare call keeps the shared tail too: one clock and one host badge
       // per call, like every other row.
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
@@ -308,11 +308,12 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(compactPath(deps.ccSedEdit(displayCommand(trace)).file, trace, 88), 88);
     } else if (name === "run_terminal_command") {
       inner = full ? displayCommand(trace) || "command" : consoleArgText(displayCommand(trace) || "command", 140);
-    } else if (name === "get_command_output") {
-      // Wait names what it waits on: the command's description, else the
-      // command itself (an interrupted Wait carries only the job id).
+    } else if (name === "get_command_output" || name === "kill_command") {
+      // Wait and Stop Task name their target: the command's description, else
+      // the command itself (an interrupted call carries only the job id).
       const id = trace.command_id || trace.child_id || trace.job_id;
-      inner = consoleArgText(commandOrigin(trace)?.description || commandFor(trace) || (id ? `job ${id}` : "command"), 140);
+      const described = name === "kill_command" ? deps.ccFlat(trace.description) : "";
+      inner = consoleArgText(described || commandOrigin(trace)?.description || commandFor(trace) || (id ? `job ${id}` : "command"), 140);
     } else if (name === "monitor") {
       inner = consoleArgText(trace.description || trace.url || displayCommand(trace) || "watch", 100);
     } else if ((name === "grep" || name === "glob")) {
