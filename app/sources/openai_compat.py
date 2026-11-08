@@ -141,22 +141,30 @@ class OpenAICompatSource:
         prefer_id = lookup(self.pin_kind, session_id) if session_id else None
         model = body.get("model", "")
         failover = Failover()
+        cache_key = bool(session_id)
         for cred in self._next_creds(tried, prefer_id=prefer_id):
             tried.add(cred["id"])
             key = accounts.cred_secret(cred)
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
-            if session_id:
-                # Always send the tenant-scoped id, never the raw client/thread
-                # key: two users picking the same string must not share an
-                # upstream cache-routing group on a shared credential.
-                body = {**body, "prompt_cache_key": str(session_id)[:256]}
-            status, obj, stream, usage, response_headers = await openai_chat(
-                client,
-                self._url() + "/chat/completions",
-                self._headers(key),
-                body,
-                close_client=True,
-            )
+            while True:
+                client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+                if cache_key:
+                    # Always send the tenant-scoped id, never the raw client/thread
+                    # key: two users picking the same string must not share an
+                    # upstream cache-routing group on a shared credential.
+                    body = {**body, "prompt_cache_key": str(session_id)[:256]}
+                status, obj, stream, usage, response_headers = await openai_chat(
+                    client,
+                    self._url() + "/chat/completions",
+                    self._headers(key),
+                    body,
+                    close_client=True,
+                )
+                if not (status == 400 and cache_key and "prompt_cache_key" in str(obj)):
+                    break
+                # A strict server rejects the unknown field: retry once without it.
+                attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
+                cache_key = False
+                body = {k: v for k, v in body.items() if k != "prompt_cache_key"}
             if stream is not None:
                 failover.served()
                 return self._stream_result(stream, usage, cred, session_id, model, attempts)

@@ -5,7 +5,8 @@ refusal-removed open weights. Every user links their own keys. Keys are
 private by default (pool_policy.DEFAULT_SHARE): another user is routed onto a
 key only after its owner turns Sharing on.
 
-The catalog needs a key, so one shared copy is read with any live key and
+One shared copy of the public catalog is read without a key (a key would add
+that account's private models and custom prices, which are not everyone's) and
 refreshed every CATALOG_TTL; new upstream models list on their own. Probes and
 the usage walk read the catalog and the free `GET /v1/credits`, never a
 completion.
@@ -157,10 +158,10 @@ def _live_rows() -> list:
     return out
 
 
-async def _fetch_catalog(key: str) -> tuple[dict | None, int]:
+async def _fetch_catalog() -> tuple[dict | None, int]:
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            r = await client.get(BASE_URL + "/models", headers=_headers(key))
+            r = await client.get(BASE_URL + "/models", headers={"Accept": "application/json"})
     except httpx.HTTPError:
         return None, 0
     if r.status_code != 200:
@@ -175,7 +176,7 @@ async def _fetch_catalog(key: str) -> tuple[dict | None, int]:
 
 
 async def fetch_catalog(*, force: bool = False) -> dict:
-    """The live lineup, read with any live key (the same for every key).
+    """The public lineup and list prices, read without a key.
     An empty live catalog is the catalog; a failed read keeps the last one."""
     global _catalog, _catalog_ok, _catalog_lock
     if not force and _catalog and time.time() - _catalog[0] < CATALOG_TTL:
@@ -185,17 +186,12 @@ async def fetch_catalog(*, force: bool = False) -> dict:
     async with _catalog_lock:
         if not force and _catalog and time.time() - _catalog[0] < CATALOG_TTL:
             return _catalog[1]
-        for row in _live_rows()[:3]:
-            try:
-                key = accounts.cred_secret(row)
-            except (DecryptionError, accounts.CredentialDataError):
-                continue
-            catalog, _status = await _fetch_catalog(key)
-            if catalog is not None:
-                _catalog = (time.time(), catalog)
-                _catalog_ok = True
-                _remember_windows(catalog)
-                return catalog
+        catalog, _status = await _fetch_catalog()
+        if catalog is not None:
+            _catalog = (time.time(), catalog)
+            _catalog_ok = True
+            _remember_windows(catalog)
+            return catalog
         _catalog_ok = False
         return _catalog[1] if _catalog else {"by_id": {}}
 
@@ -492,6 +488,22 @@ def chat_payload(body: dict, upstream: str, rec: dict) -> dict:
     return payload
 
 
+def _ran_out_of_credits(tail: bytes) -> bool:
+    """The stream ended on Refuseless's terminal `insufficient_credits` event."""
+    for line in tail.decode(errors="replace").splitlines():
+        line = line.strip()
+        if not line.startswith("data:") or "insufficient_credits" not in line:
+            continue
+        try:
+            obj = json.loads(line[5:].strip())
+        except ValueError:
+            continue
+        err = obj.get("error") if isinstance(obj, dict) else None
+        if isinstance(err, dict) and err.get("code") == "insufficient_credits":
+            return True
+    return False
+
+
 class RefuselessSource:
     type_id = "refuseless"
 
@@ -612,8 +624,10 @@ class RefuselessSource:
 
     def _stream_result(self, stream, collected: dict, cid: int, session_id: str | None, model: str, attempts: list[dict]) -> ChatResult:
         async def run():
+            tail = b""
             try:
                 async for chunk in stream:
+                    tail = (tail + chunk)[-8192:]
                     yield chunk
             finally:
                 close = getattr(stream, "aclose", None)
@@ -623,6 +637,8 @@ class RefuselessSource:
                 if status == "complete":
                     bind("refuseless", session_id, cid)
                 elif status == "failed":
+                    if _ran_out_of_credits(tail):
+                        store_billing(cid, parse_credits({"available": 0}))
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
         result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid)), credential_id=cid, model=model)

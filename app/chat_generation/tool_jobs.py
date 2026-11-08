@@ -344,14 +344,14 @@ def _command_result_ids(envelopes: list[str]) -> list[str]:
 
 
 def _provider_snapshot(messages: list[dict], jobs: list[ToolJob] | None = None, *, content="", reasoning="", model="",
-                       thinking=None) -> list[dict]:
+                       thinking=None, source_type=None) -> list[dict]:
     out = [m for m in messages if isinstance(m, dict) and m.get("role") != "system"]
     if not jobs:
         return out
     # The same assistant row the round appends once its tools finish: text
     # written before the calls stays ahead of them if the run resumes here.
     assistant = _tool_messages(jobs, content=content)[0]
-    assistant.update(_native_reasoning(reasoning, model, thinking))
+    assistant.update(_native_reasoning(reasoning, model, thinking, source_type=source_type))
     tools = [
         {"role": "tool", "tool_call_id": g[0].call_id, "content": _call_result(g)}
         for g in _by_call(jobs)

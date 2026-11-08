@@ -193,6 +193,8 @@ async def fetch_catalog(*, force: bool = False) -> dict:
             "author": mid.split("/", 1)[0],
             "pricing": item.get("pricing") if isinstance(item.get("pricing"), dict) else {},
             "context_length": _context_length(item.get("context_length")),
+            "reasoning": item.get("reasoning") if isinstance(item.get("reasoning"), dict) else None,
+            "reasoning_param": "reasoning" in (item.get("supported_parameters") or []),
         }
         if mid in by_id:
             (free_ids if by_id[mid]["free"] else paid_ids).remove(mid)
@@ -238,6 +240,31 @@ def model_is_free(model: str, catalog: dict | None = None) -> bool:
         if rec:
             return bool(rec.get("free"))
     return upstream.endswith(":free")
+
+
+_EFFORT_ORDER = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+
+def efforts_for(model: str | None) -> tuple[str, ...] | None:
+    """Picker efforts from the catalog's `reasoning` object; None when the
+    model is unknown. Per OpenRouter: a missing `supported_efforts` key means
+    no effort selection, null means every level, and a `mandatory` model
+    rejects `none`."""
+    rec = ((cached_catalog() or {}).get("by_id") or {}).get(upstream_id(model or ""))
+    if not rec or "reasoning" not in rec:
+        return None
+    reasoning = rec["reasoning"]
+    if reasoning is None:
+        return None if rec.get("reasoning_param") else ()
+    if "supported_efforts" not in reasoning:
+        # On/off only; `enabled: true` runs at medium.
+        levels = ("none", "medium")
+    else:
+        supported = reasoning["supported_efforts"]
+        levels = tuple(e for e in _EFFORT_ORDER if supported is None or e in supported)
+    if reasoning.get("mandatory"):
+        levels = tuple(e for e in levels if e != "none")
+    return levels
 
 
 def looks_like_openrouter_id(model: str) -> bool:
@@ -895,6 +922,11 @@ class OpenRouterSource:
         payload = _chat_payload(
             body, upstream, free=free, session_id=session_id, prefs=provider_prefs(user_id)
         )
+        reasoning = payload.get("reasoning")
+        if rec and (rec.get("reasoning") or {}).get("mandatory") and isinstance(reasoning, dict) and reasoning.get("effort") == "none":
+            # A mandatory-reasoning model rejects "none" (e.g. an effort saved
+            # before the catalog said so): leave the effort to its default.
+            payload["reasoning"] = {k: v for k, v in reasoning.items() if k != "effort"}
         client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
         status, obj, stream, usage, response_headers = await openai_chat(
             client,

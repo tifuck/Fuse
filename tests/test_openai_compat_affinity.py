@@ -179,6 +179,17 @@ def test_failed_response_does_not_bind_or_fail_over(upstream):
     assert len(seen) == 1
 
 
+def test_rejected_prompt_cache_key_retries_once_without_it(upstream):
+    source, _, seen, replies, _ = upstream
+    replies.append(httpx.Response(400, json={"error": {"message": "Unrecognized request argument supplied: prompt_cache_key"}}))
+
+    result = asyncio.run(source().chat({"model": "m"}, session_id="fx:session-a"))
+    assert result.status == 200
+    assert result.credential_id == 1
+    assert [body.get("prompt_cache_key") for _, body in seen] == ["fx:session-a", None]
+    assert seen[0][0] == seen[1][0]
+
+
 def test_server_errors_fail_over_to_at_most_two_keys(monkeypatch):
     seen = []
 

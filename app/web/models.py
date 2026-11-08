@@ -45,6 +45,10 @@ def _reasoning_default(type_id: str, model: str | None = None, user_id: int | No
     efforts = _reasoning_efforts(type_id, model, user_id)
     if not efforts:
         return ""
+    if type_id == "zai" and "max" in efforts:
+        # Z.AI's own default for GLM-5.3+; before levels existed every
+        # request ran at it.
+        return "max"
     for pref in ("medium", "high", "low"):
         if pref in efforts:
             return pref
@@ -161,8 +165,6 @@ _MODEL_NAMES = {
     "swe-2": "SWE-2",
     "mimo-v2.6-pro": "MiMo V2.6 Pro",
     "mimo-v2.6-flash": "MiMo V2.6 Flash",
-    "mimo-v2.5-pro": "MiMo V2.5 Pro",
-    "mimo-v2.5": "MiMo V2.5",
     "swe-1-6-fast": "SWE-1.6 Fast",
     "gpt-5-6-sol": "GPT 5.6 Sol",
     "gpt-5-6-terra": "GPT 5.6 Terra",

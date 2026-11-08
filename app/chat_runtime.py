@@ -811,7 +811,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 snapshot = _provider_snapshot(current_messages, jobs,
                     content=str((summary or {}).get("content") or "") if jobs else "",
                     reasoning=(summary or {}).get("reasoning") if jobs else "", model=model,
-                    thinking=(summary or {}).get("thinking") if jobs else None)
+                    thinking=(summary or {}).get("thinking") if jobs else None, source_type=src_type)
             except Exception:
                 logger.exception("Chat transcript checkpoint failed for %s", run_id)
                 raise
@@ -918,7 +918,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 assistant = {"role": "assistant", "content": response.get("content") or ""}
                 if response.get("calls"):
                     assistant["tool_calls"] = _tool_messages(jobs_from_calls(response["calls"], 0))[0]["tool_calls"]
-                assistant.update(_native_reasoning(response.get("reasoning"), model, response.get("thinking")))
+                assistant.update(_native_reasoning(response.get("reasoning"), model, response.get("thinking"), source_type=src_type or src_type_guess))
                 measured = [*current_messages, assistant]
             projected = chat_history.for_model(measured, model)
             added = _anchored(projected)
@@ -1593,7 +1593,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 extra_wrap = False
                 if run_id and not is_child and not store.close_steer_window(str(run_id)):
                     if summary.get("content"):
-                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"))})
+                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                     dropped_tools = True
                     extra_wrap = True
                     completion_i += 1
@@ -1608,7 +1608,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 length_salvages += 1
                 partial = str(summary.get("content") or "")
                 if partial:
-                    transcript.append({"role": "assistant", "content": partial, **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"))})
+                    transcript.append({"role": "assistant", "content": partial, **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                 if incomplete_calls:
                     # A response cut off mid-arguments must not be continued
                     # mid-string: the model would emit only the JSON tail and
@@ -1637,7 +1637,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 # forever (coding turns have no round cap), burning quota.
                 partial = str(summary.get("content") or "")
                 if partial:
-                    transcript.append({"role": "assistant", "content": partial, **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"))})
+                    transcript.append({"role": "assistant", "content": partial, **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                 await persist_jobs()
                 message = _TRUNCATED_CALL_FAILURE.format(n=length_salvages + 1)
                 if is_child:
@@ -1676,7 +1676,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     # A queued instruction may arrive during a text-only reply.
                     # Give it a real next round rather than finishing silently.
                     if summary.get("content"):
-                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"))})
+                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                     await persist_jobs()
                     completion_i += 1
                     extra_wrap = True
@@ -1695,7 +1695,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     )
                 if run_id and not is_child and not store.close_steer_window(str(run_id)):
                     if summary.get("content"):
-                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"))})
+                        transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                     dropped_tools = True
                     extra_wrap = True
                     completion_i += 1
@@ -1735,7 +1735,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     # large write gets its own salvage attempts.
                     length_salvages = 0
                 tool_msgs = _tool_messages(jobs, content=str(summary.get("content") or ""))
-                tool_msgs[0].update(_native_reasoning(summary.get("reasoning"), model, summary.get("thinking")))
+                tool_msgs[0].update(_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess))
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:
@@ -1909,7 +1909,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     transcript.append({"role": "user", "content": _STATIONARITY_NUDGE})
             completion_i += 1
         final_text = str((summary or {}).get("content") or "")
-        final_reasoning = _native_reasoning((summary or {}).get("reasoning"), model, (summary or {}).get("thinking"))
+        final_reasoning = _native_reasoning((summary or {}).get("reasoning"), model, (summary or {}).get("thinking"), source_type=src_type or src_type_guess)
         if not (summary or {}).get("calls") and (final_text or final_reasoning):
             last = transcript[-1] if transcript else None
             if not (

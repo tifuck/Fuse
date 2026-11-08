@@ -124,16 +124,22 @@ def usage_from_obj(obj: dict, *, reasoning_separate: bool = False) -> dict:
             details_p.get(key) is not None or u.get(key) is not None
             for key in ("cached_tokens", "cache_write_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
         ) else "unknown"
-    # Anthropic-style names are the fallback (NanoGPT sends them alongside or
-    # instead of the OpenAI fields); prompt_tokens still includes both.
-    cached = max(0, _int(
+    # Anthropic-style names are the fallback; prompt_tokens still includes both.
+    cached_raw = (
         details_p["cached_tokens"] if "cached_tokens" in details_p
         else u["cached_tokens"] if "cached_tokens" in u else u.get("cache_read_input_tokens")
-    ))
-    cache_write = max(0, _int(
+    )
+    write_raw = (
         details_p["cache_write_tokens"] if "cache_write_tokens" in details_p
         else u["cache_write_tokens"] if "cache_write_tokens" in u else u.get("cache_creation_input_tokens")
-    ))
+    )
+    # NanoGPT (its usage frame carries x_nanogpt_pricing) documents the
+    # Anthropic-style counts as the authoritative ones.
+    if isinstance(obj.get("x_nanogpt_pricing"), dict):
+        cached_raw = u["cache_read_input_tokens"] if "cache_read_input_tokens" in u else cached_raw
+        write_raw = u["cache_creation_input_tokens"] if "cache_creation_input_tokens" in u else write_raw
+    cached = max(0, _int(cached_raw))
+    cache_write = max(0, _int(write_raw))
     cached = min(cached, prompt)
     cache_write = min(cache_write, max(prompt - cached, 0))
     audio = min(

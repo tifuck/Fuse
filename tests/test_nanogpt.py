@@ -217,6 +217,54 @@ def test_owner_payload_caches_paid_claude_and_applies_pins():
     assert out["reasoning"] == {"exclude": True}
 
 
+def test_owner_payload_drops_cache_controls_only_when_the_subscription_covers_it():
+    rec = nanogpt.parse_catalog(CATALOG)["by_id"][SUB]
+    body = {
+        "model": SUB, "prompt_caching": {"enabled": True}, "cache_control": {"type": "ephemeral"},
+        "messages": [{"role": "system", "content": [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]}],
+    }
+    # Explicit cache controls (OpenCode adds inline markers) bill pay-as-you-go
+    # and bypass the subscription on the owner's own key.
+    covered = nanogpt.chat_payload(body, SUB, rec, owner=True, covered=True)
+    assert "prompt_caching" not in covered and "cache_control" not in covered
+    assert covered["messages"][0]["content"] == [{"type": "text", "text": "sys"}]
+    # No active plan: the request is pay-as-you-go anyway and the markers save money.
+    paygo = nanogpt.chat_payload(body, SUB, rec, owner=True, covered=False)
+    assert paygo["prompt_caching"] == {"enabled": True}
+    assert paygo["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_subscription_lane_comes_from_the_documented_list(backend, network):
+    sub_only = {"data": [{"id": PAID}]}
+    requests = network(lambda r: httpx.Response(200, json=sub_only if "/subscription/" in r.url.path else CATALOG))
+    by_id = asyncio.run(nanogpt.fetch_catalog(force=True))["by_id"]
+    assert by_id[PAID]["subscription"] is True and by_id[SUB]["subscription"] is False
+    assert {r.url.path for r in requests} == {"/api/v1/models", "/api/subscription/v1/models"}
+    # The list unreadable: the detailed catalog's own field decides.
+    network(lambda r: httpx.Response(503) if "/subscription/" in r.url.path else httpx.Response(200, json=CATALOG))
+    by_id = asyncio.run(nanogpt.fetch_catalog(force=True))["by_id"]
+    assert by_id[SUB]["subscription"] is True and by_id[PAID]["subscription"] is False
+
+
+def test_one_hour_claude_cache_writes_are_priced_at_twice_input(backend):
+    from app import pricing
+
+    assert pricing._pick_reference({}, "nanogpt", PAID)["cache_write_rate"] == 8_000_000
+    assert pricing._pick_reference({}, "nanogpt", SUB)["cache_write_rate"] is None
+
+
+def test_usage_prefers_anthropic_cache_counts_on_nanogpt():
+    obj = {
+        "usage": {"prompt_tokens": 100, "completion_tokens": 1, "prompt_tokens_details": {"cached_tokens": 90},
+                  "cache_read_input_tokens": 40, "cache_creation_input_tokens": 30},
+        "x_nanogpt_pricing": {"cost": 0.001},
+    }
+    usage = usage_from_obj(obj)
+    assert usage["cached_tokens"] == 40 and usage["cache_write_tokens"] == 30
+    # Other providers keep the OpenAI field first.
+    assert usage_from_obj({"usage": obj["usage"]})["cached_tokens"] == 90
+
+
 def test_usage_reads_nanogpt_cache_fields_and_cost():
     usage = usage_from_obj(completion())
     assert usage["cached_tokens"] == 40 and usage["cache_usage_status"] == "known"
@@ -314,6 +362,18 @@ def test_owner_runs_paid_models_on_their_own_key_first(backend, network):
     assert result.credential_id == ka
     assert json.loads(requests[-1].content)["prompt_caching"] == {"enabled": True, "ttl": "1h"}
     assert _chat(src, SUB, a).credential_id == ka
+
+
+def test_key_nanogpt_marks_unavailable_is_skipped(backend, network):
+    src, sid, (a, b, _c) = backend
+    ka = link(sid, a, "sk-nano-aaaaaaaaaaaa", allows_balance=False)
+    kb = link(sid, b, "sk-nano-bbbbbbbbbbbb", allows_balance=False)
+    unavailable = usage_payload(allows_balance=False)
+    unavailable["routing"]["recommendedMode"] = "unavailable"
+    nanogpt._store_billing(ka, nanogpt.parse_usage(unavailable))
+    network(lambda r: httpx.Response(200, json=completion()))
+    result = _chat(src, SUB, a)
+    assert result.status == 200 and result.credential_id == kb and not result.attempts
 
 
 def test_failures_move_to_the_next_safe_key(backend, network):

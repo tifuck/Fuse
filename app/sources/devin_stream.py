@@ -559,4 +559,10 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
             or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0),
         },
     }
+    if usage:
+        # Without a usage frame the cache split is unknown, not zero.
+        obj["usage"]["prompt_tokens_details"] = {
+            "cached_tokens": usage.get("cached_tokens") or 0,
+            "cache_write_tokens": usage.get("cache_write_tokens") or 0,
+        }
     return obj, usage or usage_from_obj(obj), trailer_error

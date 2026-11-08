@@ -62,7 +62,9 @@ class WindowTest(unittest.TestCase):
 
     def test_ollama_does_not_inherit_gpt_prefix(self):
         self.assertEqual(context_meter.window_for("gpt-oss:20b", "ollama"), 128_000)
-        self.assertEqual(context_meter.window_for("gpt-5.5", "chatgpt"), 1_050_000)
+        # ChatGPT windows are Codex's catalog context_window, not the API's 1.05M.
+        self.assertEqual(context_meter.window_for("gpt-5.5", "chatgpt"), 272_000)
+        self.assertEqual(context_meter.window_for("gpt-6.1-terra-fast", "chatgpt"), 500_000)
 
     def test_override(self):
         self.assertEqual(context_meter.window_for("grok-4.6", "grok", override=12_000), 12_000)

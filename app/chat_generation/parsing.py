@@ -387,6 +387,12 @@ def _take_calls(bucket: dict, raw) -> None:
             rec["function"]["arguments"] = _bounded_arguments(rec["function"]["arguments"] + args)
 
 
+def _claude_position(block: dict) -> dict:
+    """Where a Claude thinking block sat among the text and tool calls
+    (claude_stream), so the payload can replay the turn in received order."""
+    return {key: block[key] for key in ("tool_index", "after_text") if key in block}
+
+
 def _take_thinking(bucket: list, raw) -> None:
     if not isinstance(raw, list):
         return
@@ -395,7 +401,7 @@ def _take_thinking(bucket: list, raw) -> None:
             continue
         redacted = str(block.get("redacted_thinking") or "")
         if redacted:
-            bucket.append({"redacted_thinking": redacted})
+            bucket.append({"redacted_thinking": redacted, **_claude_position(block)})
             continue
         if block.get("devin_signature"):
             # Devin signs the turn's whole reasoning; the text streams apart.
@@ -410,10 +416,46 @@ def _take_thinking(bucket: list, raw) -> None:
         signature = str(block.get("signature") or "")
         # Signed-empty is a valid omitted-display block and must replay.
         if signature:
-            bucket.append({"thinking": text, "signature": signature})
+            bucket.append({"thinking": text, "signature": signature, **_claude_position(block)})
 
 
-def _native_reasoning(reasoning, model, thinking=None):
+def _take_reasoning_details(bucket: list, raw) -> None:
+    """OpenRouter reasoning_details, merged as its SDK merges stream deltas:
+    consecutive text (or summary) fragments of one block join; every other
+    item (encrypted data) is kept whole."""
+    if not isinstance(raw, list):
+        return
+    for detail in raw:
+        if not isinstance(detail, dict):
+            continue
+        field = {"reasoning.text": "text", "reasoning.summary": "summary"}.get(detail.get("type"))
+        last = bucket[-1] if bucket else None
+        if field and last and last.get("type") == detail.get("type") and last.get("index") == detail.get("index"):
+            last[field] = str(last.get(field) or "") + str(detail.get(field) or "")
+            for key in ("signature", "format"):
+                if not last.get(key) and detail.get(key):
+                    last[key] = detail[key]
+        else:
+            bucket.append(dict(detail))
+
+
+# Models whose chat API takes their reasoning back as reasoning_content: Kimi
+# K3.x, MiMo and DeepSeek thinking mode require it on tool-call turns, GLM
+# keeps preserved thinking. Aggregator routes count when they serve the same
+# model. Grok is absent: its Chat Completions reasoning_content is a summary
+# with no request field (the ciphertext exists only on the Responses API).
+_REPLAYS_REASONING = (
+    "glm-", "kimi-", "k3-", "k3.", "mimo-",
+    "openrouter/z-ai/", "openrouter/moonshotai/", "openrouter/xiaomi/",
+    "nanogpt/z-ai/", "nanogpt/moonshotai/", "nanogpt/xiaomi/", "nanogpt/deepseek/", "nanogpt/minimax/",
+    "refuseless/glm-", "refuseless/deepseek-", "refuseless/minimax-", "refuseless/kimi-", "refuseless/mimo-",
+)
+# Claude and Gemini text blocks cannot be replayed without their signature (a
+# stream cut before it arrived); OpenRouter's SDK drops them the same way.
+_SIGNED_FORMATS = ("anthropic-claude-v1", "google-gemini-v1")
+
+
+def _native_reasoning(reasoning, model, thinking=None, source_type=None):
     """Keep only the reasoning the serving provider will be sent again.
 
     Preserve native reasoning for backends whose message adapters replay it.
@@ -421,8 +463,21 @@ def _native_reasoning(reasoning, model, thinking=None):
     Grok do not replay their visible reasoning text as conversation messages.
     """
     out = {}
-    if (model.startswith(("glm-", "openrouter/z-ai/", "kimi-", "k3-", "mimo-", "openrouter/moonshotai/", "openrouter/xiaomi/"))
-            or model == "k3"):
+    details = next((block["reasoning_details"] for block in thinking or []
+                    if isinstance(block, dict) and isinstance(block.get("reasoning_details"), list)), None)
+    if details and model.startswith("openrouter/"):
+        # Replayed unmodified, with the plain text beside it as OpenRouter's SDK does.
+        details = [d for d in details if not (d.get("type") == "reasoning.text" and not d.get("signature")
+                                              and d.get("format") in _SIGNED_FORMATS)]
+        if details:
+            out["reasoning_details"] = details
+            if reasoning:
+                out["reasoning_content"] = str(reasoning)
+            out["_fuse_reasoning_model"] = model
+            return out
+    # Ollama ids are bare names; its /api/chat takes reasoning back as
+    # message.thinking (ollama.to_ollama).
+    if model == "k3" or model.startswith(_REPLAYS_REASONING) or source_type == "ollama":
         if reasoning:
             out["reasoning_content"] = str(reasoning)
             out["_fuse_reasoning_model"] = model
@@ -456,12 +511,12 @@ def _native_reasoning(reasoning, model, thinking=None):
             continue
         redacted = str(block.get("redacted_thinking") or "")
         if redacted:
-            blocks.append({"redacted_thinking": redacted})
+            blocks.append({"redacted_thinking": redacted, **_claude_position(block)})
             continue
         text = str(block.get("thinking") or block.get("text") or "")
         signature = str(block.get("signature") or "")
         if (text or signature) and (signature or keeps_text):
-            blocks.append({"thinking": text, "signature": signature})
+            blocks.append({"thinking": text, "signature": signature, **_claude_position(block)})
     if blocks:
         out["claude_thinking"] = blocks
         out["_fuse_reasoning_model"] = model

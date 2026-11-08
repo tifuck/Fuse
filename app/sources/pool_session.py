@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 RETENTION_DAYS = 7
 SESSION_ID_MAX = 256
 
-# Fields that belong to cache routing, not to Grok/Z.AI chat/completions JSON.
+# Cache-routing body fields Grok/Z.AI chat/completions do not take. xAI reads
+# prompt_cache_key on its Responses API only; on Chat Completions the session
+# id travels as the x-grok-conv-id header instead.
 CACHE_BODY_FIELDS = ("prompt_cache_key", "prompt_cache_retention", "prompt_cache_options")
 
 # Tests set this False so they do not write the live database.

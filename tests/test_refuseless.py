@@ -22,7 +22,12 @@ CATALOG = {
         {
             "id": GLM, "object": "model", "owned_by": "refuseless", "abliterated": True, "context_length": 1048576,
             "reasoning_efforts": ["off", "low", "high", "max"], "reasoning_default": "high", "max_output_tokens": 131072,
-            "input_modalities": ["text"], "pricing": {"prompt": "0.000001", "completion": "0.000004"},
+            "input_modalities": ["text"],
+            "pricing": {
+                "currency": "USD", "input_per_m": 0.3, "cached_input_per_m": 0.06, "output_per_m": 1.2,
+                "discounted": True, "regular": {"input_per_m": 0.4, "cached_input_per_m": 0.08, "output_per_m": 1.6},
+                "long_context": {"threshold": 200000, "input_per_m": 0.6, "cached_input_per_m": 0.12, "output_per_m": 2.4},
+            },
         },
         {"id": FLASH, "object": "model", "abliterated": True, "context_length": 1048576, "input_modalities": ["text", "image"]},
         {"id": "embed-1", "object": "model", "abliterated": False, "type": "embedding"},
@@ -103,7 +108,7 @@ def test_catalog_keeps_chat_models_with_efforts_windows_and_vision():
     assert by_id[FLASH]["reasoning_efforts"] == []
 
 
-def test_catalog_is_read_live_with_a_linked_key(backend, network):
+def test_catalog_is_read_live_without_a_key(backend, network):
     src, sid, (a, _b, _c) = backend
     link(sid, a, "abl_live_key_a")
     refuseless._catalog = None
@@ -112,7 +117,9 @@ def test_catalog_is_read_live_with_a_linked_key(backend, network):
     names = asyncio.run(src.models())
     assert "refuseless/qwen-4-abliterated" in names and f"refuseless/{GLM}" in names
     assert str(requests[-1].url) == "https://api.refuseless.com/v1/models"
-    assert requests[-1].headers["authorization"] == "Bearer abl_live_key_a"
+    # A key would add its account's private models and custom prices to the
+    # copy every user shares.
+    assert "authorization" not in requests[-1].headers
     # A failed refresh keeps the last lineup instead of emptying the picker.
     network(lambda r: httpx.Response(503, json={"error": {"code": "gateway_down"}}))
     assert asyncio.run(refuseless.fetch_catalog(force=True))["by_id"].keys() == refuseless.parse_catalog(newer)["by_id"].keys()
@@ -138,6 +145,30 @@ def test_payload_maps_effort_clamps_output_and_keeps_tools():
     # A model with no listed efforts gets no effort field (a guess is a 400).
     flash = refuseless.parse_catalog(CATALOG)["by_id"][FLASH]
     assert "reasoning_effort" not in refuseless.chat_payload(body, FLASH, flash)
+
+
+def test_catalog_prices_are_usd_per_million_with_a_long_context_tier(backend):
+    from app import pricing
+
+    values = pricing._pick_reference({}, "refuseless", GLM)
+    assert values["input_rate"] == 300_000 and values["cached_rate"] == 60_000 and values["output_rate"] == 1_200_000
+    assert values["tiers"] == [{
+        "min_prompt_tokens": 200_001, "input_rate": 600_000, "cached_rate": 120_000,
+        "cache_write_rate": None, "output_rate": 2_400_000,
+    }]
+    assert values["openrouter_id"] is None
+    # An unpriced model (no pricing object) stays unpriced, never a guess.
+    assert pricing._pick_reference({}, "refuseless", FLASH) is None
+    price = {"input_micros_per_million": 300_000, "cached_input_micros_per_million": 60_000, "cached_input_known": 1,
+             "output_micros_per_million": 1_200_000, "tiers_json": json.dumps(values["tiers"])}
+    # The docs' formula: uncached input, cached input and output at the flat
+    # rate, and the whole request at the long rate above the threshold.
+    def cost(prompt, cached, output):
+        return db._estimated_cost(price, prompt, output, output, 0, cached, 0)
+
+    assert cost(100_000, 10_000, 1_000) == 27_000 + 600 + 1_200
+    assert cost(200_000, 0, 0) == 60_000
+    assert cost(200_001, 0, 1_000) == 120_001 + 2_400
 
 
 def test_usage_reads_cached_tokens():
@@ -205,6 +236,27 @@ def test_out_of_credits_moves_to_the_next_key(backend, network):
     assert result.status == 200 and result.credential_id == kb
     assert [att["credential_id"] for att in result.attempts] == [ka]
     assert refuseless.out_of_credits(accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (ka,))))
+
+
+def test_credits_running_out_mid_stream_zero_the_key(backend, network):
+    src, sid, (a, _b, _c) = backend
+    ka = link(sid, a, "abl_key_aaaaaaaa")
+    sse = (
+        b'data: {"choices":[{"index":0,"delta":{"content":"insufficient_credits"}}]}\n\n'
+        b'data: {"error":{"code":"insufficient_credits","message":"Credits ran out. Generation stopped."}}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    network(lambda r: httpx.Response(200, content=sse, headers={"content-type": "text/event-stream"}))
+
+    async def drain():
+        result = await src.chat({"model": f"refuseless/{GLM}", "messages": [{"role": "user", "content": "hi"}], "stream": True}, user_id=a)
+        async for _chunk in result.stream:
+            pass
+
+    asyncio.run(drain())
+    assert refuseless.out_of_credits(accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (ka,))))
+    # A model merely writing the code in its answer is not the terminal event.
+    assert not refuseless._ran_out_of_credits(sse.split(b"\n\n")[0])
 
 
 def test_busy_model_is_not_blamed_on_the_key(backend, network):

@@ -33,6 +33,8 @@ DEFAULT_CHATGPT_PRICING: dict[str, tuple[tuple, tuple | None]] = {
     "gpt-6-astra": (("10", "1", "12.50", "50"), ("20", "2", "25", "75")),
     "gpt-6-sol": (("2", "0.20", "2.50", "10"), ("4", "0.40", "5", "15")),
     "gpt-6-luna": (("0.10", "0.01", "0.125", "0.50"), ("0.20", "0.02", "0.25", "0.75")),
+    "gpt-6.1-sol": (("2", "0.10", "2.50", "10"), ("4", "0.20", "5", "15")),
+    "gpt-6.1-terra": (("1", "0.05", "1.25", "5"), ("2", "0.10", "2.50", "7.50")),
     "gpt-5.5": (("5", "0.50", None, "30"), ("10", "1.00", None, "45")),
     "gpt-5.4": (("2.50", "0.25", None, "15"), ("5", "0.50", None, "22.50")),
     "gpt-5.4-mini": (("0.75", "0.075", None, "4.50"), None),
@@ -48,15 +50,15 @@ DEFAULT_GROK_PRICING: dict[str, tuple[tuple, tuple | None]] = {
     "grok-4.7": (("2", "0.50", None, "6"), ("4", "1.00", None, "12")),
     "grok-4.6": (("2", "0.50", None, "6"), ("4", "1.00", None, "12")),
     "grok-4.5": (("2", "0.30", None, "6"), ("4", "0.60", None, "12")),
+    "grok-build-0.1": (("1", "0.20", None, "2"), ("2", "0.40", None, "4")),
 }
 
 # Z.AI list prices (USD per million tokens) for Coding Plan models, used as
 # API-equivalent cost on the pool. The plan itself is a subscription.
-# glm-5.3-flash uses the promotional rates (through 2026-09-09).
 DEFAULT_ZAI_PRICING: dict[str, tuple[tuple, tuple | None]] = {
     "glm-5.3": (("1.40", "0.26", None, "4.40"), None),
     "glm-5.3-highspeed": (("1.40", "0.26", None, "4.40"), None),
-    "glm-5.3-flash": (("0.075", "0.015", None, "0.25"), None),
+    "glm-5.3-flash": (("0.15", "0.03", None, "0.50"), None),
     "glm-5.2": (("1.40", "0.26", None, "4.40"), None),
     "glm-5.2-highspeed": (("1.40", "0.26", None, "4.40"), None),
     "glm-5-turbo": (("1.40", "0.26", None, "4.40"), None),
@@ -97,6 +99,8 @@ DEFAULT_DEVIN_PRICING: dict[str, tuple[tuple, tuple | None]] = {
 # cost on the membership pool. The plan itself is a subscription.
 # Cache write uses the 5-minute TTL tier when Fuse reports cache writes.
 DEFAULT_KIMI_PRICING: dict[str, tuple[tuple, tuple | None]] = {
+    "k3.1-pro": (("2.00", "0.20", "2.00", "10.00"), None),
+    "k3.1-pro-highspeed": (("4.00", "0.20", "4.00", "20.00"), None),
     "k3": (("3.00", "0.30", "3.00", "15.00"), None),
     "k3-256k": (("3.00", "0.30", "3.00", "15.00"), None),
     "kimi-for-coding": (("0.95", "0.19", None, "4.00"), None),
@@ -109,25 +113,35 @@ DEFAULT_KIMI_PRICING: dict[str, tuple[tuple, tuple | None]] = {
 DEFAULT_MIMO_PRICING: dict[str, tuple[tuple, tuple | None]] = {
     "mimo-v2.6-pro": (("0.435", "0.0036", None, "0.87"), None),
     "mimo-v2.6-flash": (("0.14", "0.0028", None, "0.28"), None),
-    "mimo-v2.5-pro": (("0.435", "0.0036", None, "0.87"), None),
-    "mimo-v2.5": (("0.14", "0.0028", None, "0.28"), None),
 }
 
-# Anthropic list prices (USD per million) for the Claude subscription pool.
-# input, cache read, cache write (1.25x), output. The plan itself is a subscription.
+# Anthropic list prices (USD per million) for the Claude subscription pool:
+# input, cache read, cache write, output. Fuse marks every breakpoint with the
+# 1h TTL, whose writes cost 2x input. Haiku 5.5 prompts over 100K tokens pay
+# its long-context rates. The plan itself is a subscription.
+_CLAUDE_LIST_PRICES: dict[str, tuple[tuple, tuple | None]] = {
+    "claude-fable-5-1": (("10", "0.25", "20", "50"), None),
+    "claude-fable-5": (("10", "1", "20", "50"), None),
+    "claude-opus-5-5": (("4", "0.20", "8", "20"), None),
+    "claude-opus-5": (("5", "0.50", "10", "25"), None),
+    "claude-opus-4-8": (("5", "0.50", "10", "25"), None),
+    "claude-opus-4-7": (("5", "0.50", "10", "25"), None),
+    "claude-opus-4-6": (("5", "0.50", "10", "25"), None),
+    "claude-sonnet-5-5": (("2", "0.10", "4", "10"), None),
+    "claude-sonnet-5": (("2", "0.20", "4", "10"), None),
+    "claude-sonnet-4-6": (("3", "0.30", "6", "15"), None),
+    "claude-haiku-5-5": (("0.10", "0.01", "0.20", "0.50"), ("0.50", "0.05", "1", "2.50")),
+    "claude-haiku-4-5-20251001": (("1", "0.10", "2", "5"), None),
+}
 DEFAULT_CLAUDE_PRICING: dict[str, tuple[tuple, tuple | None]] = {
-    "claude/claude-opus-5-5": (("5", "0.50", "6.25", "25"), None),
-    "claude/claude-sonnet-5": (("3", "0.30", "3.75", "15"), None),
-    "claude/claude-fable-5-1": (("10", "1.00", "12.50", "50"), None),
-    "claude/claude-haiku-4-5-20251001": (("1", "0.10", "1.25", "5"), None),
-    "claude-opus-5-5": (("5", "0.50", "6.25", "25"), None),
-    "claude-sonnet-5": (("3", "0.30", "3.75", "15"), None),
-    "claude-fable-5-1": (("10", "1.00", "12.50", "50"), None),
-    "claude-haiku-4-5-20251001": (("1", "0.10", "1.25", "5"), None),
+    **_CLAUDE_LIST_PRICES,
+    **{"claude/" + model: rates for model, rates in _CLAUDE_LIST_PRICES.items()},
 }
 
 _LONG_CONTEXT_THRESHOLD = 272_000
 _GROK_LONG_THRESHOLD = 200_000
+# "Over 100,000 tokens": tiers are inclusive.
+_CLAUDE_LONG_THRESHOLD = 100_001
 
 
 def _usd_per_million(value: str) -> int:
@@ -205,6 +219,8 @@ def ensure_default_prices() -> list[str]:
         (CLAUDE_PROVIDER, DEFAULT_CLAUDE_PRICING),
     ):
         threshold = _GROK_LONG_THRESHOLD if provider == GROK_PROVIDER else _LONG_CONTEXT_THRESHOLD
+        if provider == CLAUDE_PROVIDER:
+            threshold = _CLAUDE_LONG_THRESHOLD
         for model, (base, long_rates) in defaults.items():
             inp, cached, write, out = base
             existing = db.fetchone(
@@ -493,18 +509,57 @@ def _nanogpt_values(model: str) -> dict | None:
     million tokens, cache read/write per thousand."""
     from .sources import nanogpt
 
-    pricing = (nanogpt.catalog_record(model) or {}).get("pricing") or {}
+    rec = nanogpt.catalog_record(model) or {}
+    pricing = rec.get("pricing") or {}
     input_rate = _nanogpt_rate(pricing.get("prompt"), 1_000_000)
     output_rate = _nanogpt_rate(pricing.get("completion"), 1_000_000)
     if input_rate is None or output_rate is None or (input_rate == 0 and output_rate == 0):
         return None
+    write_rate = _nanogpt_rate(pricing.get("cacheWriteInputPer1kTokens"), 1000)
+    if nanogpt.auto_caches(nanogpt.upstream_id(model), rec):
+        # The catalog lists the 5-minute write rate; Fuse's helper asks for
+        # one hour, which NanoGPT bills at 2x input.
+        write_rate = input_rate * 2
     return {
         "input_rate": input_rate,
         "cached_rate": _nanogpt_rate(pricing.get("cacheReadInputPer1kTokens"), 1000),
         "output_rate": output_rate,
         "reasoning_rate": None,
-        "cache_write_rate": _nanogpt_rate(pricing.get("cacheWriteInputPer1kTokens"), 1000),
+        "cache_write_rate": write_rate,
         "tiers": [],
+        "openrouter_id": None,
+    }
+
+
+def _refuseless_values(model: str) -> dict | None:
+    """Refuseless's own rate for one of its ids, in USD per million tokens.
+    `long_context` applies to the whole request once the prompt is above its
+    threshold, so it is a tier starting one token past it."""
+    from .sources import refuseless
+
+    pricing = (refuseless.catalog_record(model) or {}).get("pricing") or {}
+    input_rate = _nanogpt_rate(pricing.get("input_per_m"), 1_000_000)
+    output_rate = _nanogpt_rate(pricing.get("output_per_m"), 1_000_000)
+    if input_rate is None or output_rate is None or (input_rate == 0 and output_rate == 0):
+        return None
+    tiers = []
+    long = pricing.get("long_context") if isinstance(pricing.get("long_context"), dict) else {}
+    threshold = long.get("threshold")
+    if isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 0:
+        tiers.append({
+            "min_prompt_tokens": threshold + 1,
+            "input_rate": _nanogpt_rate(long.get("input_per_m"), 1_000_000),
+            "cached_rate": _nanogpt_rate(long.get("cached_input_per_m"), 1_000_000),
+            "cache_write_rate": None,
+            "output_rate": _nanogpt_rate(long.get("output_per_m"), 1_000_000),
+        })
+    return {
+        "input_rate": input_rate,
+        "cached_rate": _nanogpt_rate(pricing.get("cached_input_per_m"), 1_000_000),
+        "output_rate": output_rate,
+        "reasoning_rate": None,
+        "cache_write_rate": None,
+        "tiers": tiers,
         "openrouter_id": None,
     }
 
@@ -516,10 +571,7 @@ def _pick_reference(index: dict, provider: str, model: str) -> dict | None:
         return _nanogpt_values(model)
     if provider == REFUSELESS_PROVIDER:
         # Its own lineup and its own prices: never a same-named pool's.
-        from .sources import refuseless
-
-        values = _catalog_values(refuseless.catalog_record(model) or {})
-        return {**values, "openrouter_id": None} if values else None
+        return _refuseless_values(model)
     for key in price_keys(model, tiered=provider in _TIER_TAIL_PROVIDERS):
         refs = index.get(key)
         if not refs:

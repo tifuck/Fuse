@@ -64,7 +64,8 @@ def test_fast_picker_id_sends_base_slug_at_fast_tier():
 
     payload = build_responses_payload({"messages": [{"role": "user", "content": "hi"}]}, "gpt-6.1-sol-fast")
     assert payload["model"] == "gpt-6.1-sol"
-    assert payload["service_tier"] == "fast"
+    # Codex sends Fast as "priority"; the backend rejects "fast" (openai/codex#14204).
+    assert payload["service_tier"] == "priority"
     plain = build_responses_payload({"messages": [{"role": "user", "content": "hi"}]}, "gpt-6.1-sol")
     assert plain["model"] == "gpt-6.1-sol"
     assert "service_tier" not in plain
@@ -124,11 +125,23 @@ def test_codex_catalog_url_is_the_codex_backend():
 
 
 def test_new_codex_model_is_a_pool_model_once_listed(fresh_chatgpt_cache):
-    assert not chatgpt.is_chatgpt_model("gpt-6.1-sol")
-    chatgpt._remember_models(chatgpt.parse_catalog_payload(CODEX_CATALOG))
-    assert chatgpt.is_chatgpt_model("gpt-6.1-sol")
-    # Seeds stay listed even when the live catalog omits them.
+    assert not chatgpt.is_chatgpt_model("gpt-7-sol")
+    chatgpt._remember_models(["gpt-7-sol", "gpt-6.1-sol"])
+    assert chatgpt.is_chatgpt_model("gpt-7-sol")
+    # A partial read keeps seeds the live catalog omits.
+    assert chatgpt.is_chatgpt_model("gpt-5.5")
+
+
+def test_complete_codex_catalog_drops_retired_ids(fresh_chatgpt_cache):
+    chatgpt._remember_models(["gpt-5.4", "gpt-6.1-sol"])
     assert chatgpt.is_chatgpt_model("gpt-5.4")
+    # A short or failed read never drops anything...
+    chatgpt._remember_models([], complete=True)
+    assert chatgpt.is_chatgpt_model("gpt-5.4")
+    # ...but a complete one is the whole list.
+    assert chatgpt._remember_models(["gpt-6.1-sol", "gpt-6.1-sol-fast"], complete=True) == ["gpt-6.1-sol", "gpt-6.1-sol-fast"]
+    assert not chatgpt.is_chatgpt_model("gpt-5.4")
+    assert not chatgpt.is_chatgpt_model("gpt-5.5")
 
 
 def test_pick_keeps_new_codex_model_on_the_pool(fresh_chatgpt_cache):
@@ -148,7 +161,7 @@ def test_pick_keeps_new_codex_model_on_the_pool(fresh_chatgpt_cache):
     body = {"model": fast[1], "messages": [{"role": "user", "content": "hi"}]}
     payload = chatgpt.build_responses_payload(body, body["model"])
     assert payload["model"] == "gpt-6.1-sol"
-    assert payload["service_tier"] == "fast"
+    assert payload["service_tier"] == "priority"
     assert not chatgpt.chatgpt_allows_model("free", fast[1])
     assert chatgpt.chatgpt_allows_model("plus", fast[1])
     # A guessed suffix for a model that never advertised fast is not a pool model.
@@ -186,11 +199,11 @@ def test_auto_price_fills_gaps_and_reprices_history(fresh_chatgpt_cache):
         event = db.fetchone("SELECT * FROM usage_events WHERE model='gpt-5-6-sol-low'")
         assert event["pricing_known"] == 0
 
-        chatgpt._remember_models(["gpt-6.1-sol"])
+        chatgpt._remember_models(["gpt-7-sol"])
         catalog = {
             "by_id": {
-                "openai/gpt-6.1-sol": {
-                    "id": "openai/gpt-6.1-sol",
+                "openai/gpt-7-sol": {
+                    "id": "openai/gpt-7-sol",
                     "free": False,
                     "pricing": {"prompt": "0.000003", "completion": "0.000012"},
                 }
@@ -198,24 +211,27 @@ def test_auto_price_fills_gaps_and_reprices_history(fresh_chatgpt_cache):
         }
         priced = pricing.auto_price(catalog)
         assert "devin/gpt-5-6-sol-low" in priced
-        assert "chatgpt/gpt-6.1-sol" in priced
+        assert "chatgpt/gpt-7-sol" in priced
 
         # Devin's own gpt-5.6-sol default ($4/M input) wins over ChatGPT's row.
         event = db.fetchone("SELECT * FROM usage_events WHERE id=?", (event["id"],))
         assert event["pricing_known"] == 1
         assert event["estimated_cost_micros"] == 400_000
 
-        row = _price("chatgpt", "gpt-6.1-sol")
+        row = _price("chatgpt", "gpt-7-sol")
         assert row["origin"] == "auto"
         assert row["input_micros_per_million"] == 3_000_000
-        assert row["openrouter_id"] == "openai/gpt-6.1-sol"
+        assert row["openrouter_id"] == "openai/gpt-7-sol"
 
         # Idempotent: nothing changes on a second pass.
         assert pricing.auto_price(catalog) == []
         # A manual row is never touched, and a sync replaces an auto row.
-        db.save_model_price("chatgpt", "gpt-6.1-sol", 5_000_000, None, 6_000_000, None, origin="openrouter")
+        db.save_model_price("chatgpt", "gpt-7-sol", 5_000_000, None, 6_000_000, None, origin="openrouter")
         assert pricing.auto_price(catalog) == []
-        assert _price("chatgpt", "gpt-6.1-sol")["origin"] == "openrouter"
+        assert _price("chatgpt", "gpt-7-sol")["origin"] == "openrouter"
+        # GPT-6.1 has OpenAI list prices: a seeded default, not a stand-in.
+        sol = _price("chatgpt", "gpt-6.1-sol")
+        assert sol["origin"] == "default" and sol["cached_input_micros_per_million"] == 100_000
         assert _price("devin", "claude-opus-5")["input_micros_per_million"] == 1_000_000
 
 
@@ -242,8 +258,14 @@ def test_catalog_reads_paid_and_free_accounts(fresh_chatgpt_cache):
         chatgpt, "pick_account", side_effect=pick
     ), patch.object(chatgpt, "_fetch_slugs", side_effect=slugs):
         names = asyncio.run(src.models())
-    assert "gpt-6.1-sol" in names
-    assert chatgpt.is_chatgpt_model("gpt-6.1-sol")
+        assert "gpt-6.1-sol" in names
+        assert chatgpt.is_chatgpt_model("gpt-6.1-sol")
+        # Both tiers answered, so the seeds neither listed are gone.
+        assert "gpt-5.5" not in names
+        # A tier whose read failed keeps what was listed before.
+        listed["paid-token"] = []
+        chatgpt_catalog._models_cache = (0.0, names + ["gpt-5.5"])
+        assert "gpt-5.5" in asyncio.run(src.models())
 
 
 def _plan_rows(*plans):

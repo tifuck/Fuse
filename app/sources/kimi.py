@@ -32,6 +32,8 @@ _models_cache: tuple[float, list[str]] | None = None
 _refresh_locks: dict[int, asyncio.Lock] = {}
 
 KIMI_MODELS = [
+    "k3.1-pro",
+    "k3.1-pro-highspeed",
     "k3",
     "k3-256k",
     "kimi-for-coding",
@@ -39,6 +41,8 @@ KIMI_MODELS = [
 ]
 
 KIMI_MODEL_META = {
+    "k3.1-pro": {"name": "Kimi K3.1 Pro", "window": 262_144, "efforts": ("low", "high", "max"), "default_effort": "high"},
+    "k3.1-pro-highspeed": {"name": "Kimi K3.1 Pro Highspeed", "window": 262_144, "efforts": ("low", "high", "max"), "default_effort": "high"},
     "k3": {"name": "Kimi K3", "window": 262_144, "efforts": ("low", "high", "max"), "default_effort": "high"},
     "k3-256k": {"name": "Kimi K3 256K", "window": 262_144, "efforts": ("low", "high", "max"), "default_effort": "high"},
     "kimi-for-coding": {"name": "K2.8 Preview", "window": 1_048_576, "efforts": ("low", "high", "max"), "default_effort": "max"},
@@ -54,6 +58,7 @@ _EFFORT_MAP = {
     "high": "high",
     "medium": "high",
     "low": "low",
+    "minimal": "low",
     "minimum": "low",
     "light": "low",
     "min": "low",
@@ -93,7 +98,7 @@ def is_kimi_model(model: str) -> bool:
         return False
     if mid in KIMI_MODELS or mid in _catalog_meta or mid in KIMI_MODEL_META:
         return True
-    return mid.startswith("kimi-for-coding") or mid == "k3" or mid.startswith("k3-")
+    return mid.startswith("kimi-for-coding") or mid == "k3" or mid.startswith(("k3-", "k3."))
 
 
 def _meta_for(model: str) -> dict:
@@ -491,7 +496,7 @@ def _capability_denial(data) -> bool:
     # Live Code wording: "Your current subscription does not have access to
     # k3", "Your current plan supports only k3 up to 256K context".
     words = ("capability", "entitlement", "membership", "not included", "does not include", "plan does not",
-             "does not have access to", "supports only", "higher-tier")
+             "does not have access to", "doesn't have access to", "supports only", "higher-tier")
     if isinstance(err, dict):
         code = str(err.get("code") or err.get("type") or "").strip().lower()
         if code:
@@ -500,6 +505,12 @@ def _capability_denial(data) -> bool:
     else:
         text = str(err or "").lower()
     return any(word in text for word in words)
+
+
+def _access_terminated(data) -> bool:
+    """Kimi's 403 for a client outside its coding-agent allowlist."""
+    err = data.get("error") if isinstance(data, dict) else None
+    return isinstance(err, dict) and "access_terminated" in str(err.get("type") or err.get("code") or "")
 
 
 def _map_effort(value) -> str | None:
@@ -511,18 +522,33 @@ def _map_effort(value) -> str | None:
     return _EFFORT_MAP.get(key)
 
 
-def _chat_payload(body: dict) -> dict:
+def _chat_payload(body: dict, session_id: str | None = None) -> dict:
     payload = drop_cache_routing_fields(body)
+    if session_id:
+        # Kimi Code requires prompt_cache_key for cache hits. Always the
+        # tenant-scoped id, never the raw client key: two users picking the
+        # same string must not share a cache group on a pooled account.
+        payload["prompt_cache_key"] = str(session_id)[:256]
+    model = str(payload.get("model") or "")
     reasoning = payload.get("reasoning")
     effort = payload.get("reasoning_effort")
     if effort is None and isinstance(reasoning, dict):
         effort = reasoning.get("effort")
     mapped = _map_effort(effort) if isinstance(effort, str) else None
     payload.pop("reasoning", None)
+    # Kimi answers an unknown effort with 400: send only mapped levels.
+    payload.pop("reasoning_effort", None)
+    thinking = payload.get("thinking")
+    disabled = mapped == "none" or (isinstance(thinking, dict) and thinking.get("type") == "disabled")
+    if disabled and model.startswith("k3.1"):
+        # K3.1 Pro only runs with thinking on (disabled is a 400): the
+        # lightest level is the closest to "off".
+        payload.pop("thinking", None)
+        if mapped in (None, "none"):
+            mapped = "low"
     if mapped == "none":
-        payload.pop("reasoning_effort", None)
         payload["thinking"] = {"type": "disabled"}
-    elif mapped:
+    elif mapped and efforts_for(model):
         payload["reasoning_effort"] = mapped
     return payload
 
@@ -1045,7 +1071,7 @@ class KimiSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Kimi accounts in the pool"})
         model = body.get("model") or KIMI_MODELS[0]
-        payload = _chat_payload(body)
+        payload = _chat_payload(body, session_id)
         prefer_id = lookup("kimi", session_id)
         hint_id = lookup("kimi", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "kimi")
@@ -1127,13 +1153,29 @@ class KimiSource:
                     last.attempts = attempts
                     continue
                 if status in (403, 429):
+                    info = provider_errors.classify("kimi", status, obj, response_headers)
+                    if status == 403 and _access_terminated(obj):
+                        # The coding endpoint gates by client identity, not
+                        # account: every account fails the same way and none
+                        # is at fault, so neither fail over nor cool down.
+                        last.response_headers = response_headers
+                        last.attempts = attempts
+                        return last
+                    if status == 403 and info["kind"] in ("permission", "plan_required"):
+                        # Kimi Code now denies a model or 1M context beyond the
+                        # plan with 403: a tier shortfall, not a spent quota.
+                        # Fail over without a quota refresh.
+                        note_failure(cred["id"], cooldown_seconds=60)
+                        last.response_headers = response_headers
+                        attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
+                        last.attempts = attempts
+                        continue
                     try:
                         await refresh_quota(cred, force=True)
                     except Exception:
                         pass
                     # 403 is both the 5-hour/weekly/monthly quota and the
                     # concurrency cap; only a spent quota earns a long hold.
-                    info = provider_errors.classify("kimi", status, obj, response_headers)
                     note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 60))
                     last.response_headers = response_headers
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})

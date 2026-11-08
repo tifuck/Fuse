@@ -18,6 +18,7 @@ from ..sources.base import THINKING_MARK
 from .parsing import (
     _finalize_assistant_payload,
     _take_calls,
+    _take_reasoning_details,
     _take_thinking,
     tool_xml_name,
     tool_xml_start,
@@ -192,6 +193,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
     content = ""
     reasoning = ""
     thinking: list[dict] = []
+    details: list[dict] = []
     usage = {}
     error = None
     if result.stream is None:
@@ -216,6 +218,9 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
             _take_calls(calls, message.get("tool_calls"))
             _take_thinking(thinking, message.get("claude_thinking"))
             _take_thinking(thinking, [message])
+            _take_reasoning_details(details, message.get("reasoning_details"))
+            if details:
+                thinking.append({"reasoning_details": details})
         finish = choice.get("finish_reason") if isinstance(choice, dict) else None
         content, reasoning, native, finish = _finalize_assistant_payload(
             content, reasoning, [calls[i] for i in sorted(calls)], finish, coding=coding
@@ -321,6 +326,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                     _take_calls(calls, delta.get("tool_calls") or message.get("tool_calls"))
                     _take_thinking(thinking, delta.get("claude_thinking") or message.get("claude_thinking"))
                     _take_thinking(thinking, [delta if delta.get("devin_signature") else message])
+                    _take_reasoning_details(details, delta.get("reasoning_details") or message.get("reasoning_details"))
                     if choice.get("finish_reason"):
                         finish = choice.get("finish_reason")
                 safe = _client_obj(obj, hide_tool_calls=False)
@@ -376,6 +382,8 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
             usage = merge_usage(usage, extra)
     if not terminal and not finish and not error:
         error = _error_obj(502, {"error": {"message": "Upstream stream ended without a terminal frame.", "fuse_kind": "interrupted"}})
+    if details:
+        thinking.append({"reasoning_details": details})
     content, reasoning, native, finish = _finalize_assistant_payload(
         content, reasoning, [calls[i] for i in sorted(calls)], finish, coding=coding
     )

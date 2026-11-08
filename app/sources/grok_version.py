@@ -90,3 +90,15 @@ async def refresh_due() -> None:
                 if previous != version:
                     logger.info("Grok client version updated: %s -> %s", previous, version)
                 return
+
+
+async def force_refresh() -> bool:
+    """Check the stable channel now, after the proxy refused our version.
+    True when the version changed, so a retry can succeed."""
+    global _next_check
+    if not settings.grok_client_version_auto_refresh:
+        return False
+    before = current_version()
+    _next_check = 0.0
+    await refresh_due()
+    return current_version() != before

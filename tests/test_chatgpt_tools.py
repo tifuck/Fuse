@@ -341,5 +341,163 @@ class ChatgptReasoningReplayTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("claude_thinking", body["messages"][0], "the caller's body is not mutated")
 
 
+class ChatgptCatalogTraitsTest(unittest.TestCase):
+    """Per-model request shape and window from the Codex catalog row."""
+
+    def setUp(self):
+        from app.sources import chatgpt_catalog
+
+        self.catalog = chatgpt_catalog
+        self.saved = (dict(chatgpt_catalog._windows), set(chatgpt_catalog._all_turns), set(chatgpt_catalog._no_summary))
+
+    def tearDown(self):
+        windows, all_turns, no_summary = self.saved
+        for live, saved in ((self.catalog._windows, windows), (self.catalog._all_turns, all_turns),
+                            (self.catalog._no_summary, no_summary)):
+            live.clear()
+            live.update(saved)
+
+    def test_catalog_row_sets_reasoning_context_summary_and_window(self):
+        from app import context_meter
+
+        self.catalog.parse_catalog_payload({"models": [
+            {"slug": "gpt-test-lite", "visibility": "list", "use_responses_lite": True,
+             "context_window": 272000, "max_context_window": 872000},
+            {"slug": "gpt-test-plain", "visibility": "list", "use_responses_lite": False,
+             "supports_reasoning_summary_parameter": False, "max_context_window": 400000},
+        ]})
+        body = {"messages": [{"role": "user", "content": "hi"}], "reasoning_effort": "high"}
+        lite = build_responses_payload(body, "gpt-test-lite-fast")
+        self.assertEqual(lite["reasoning"], {"effort": "high", "summary": "auto", "context": "all_turns"})
+        plain = build_responses_payload({**body, "reasoning_summary": "detailed"}, "gpt-test-plain")
+        self.assertEqual(plain["reasoning"], {"effort": "high"}, "no summary for a row without the parameter")
+        self.assertNotIn("reasoning", build_responses_payload({"messages": body["messages"]}, "gpt-test-plain"))
+        self.assertEqual(context_meter.window_for("gpt-test-lite", "chatgpt"), 272_000)
+        self.assertEqual(context_meter.window_for("gpt-test-plain", "chatgpt"), 400_000)
+
+    def test_rejected_nested_parameter_is_dropped(self):
+        from app.sources.chatgpt import _drop_param, _unsupported_param
+
+        payload = {"reasoning": {"effort": "high", "context": "all_turns"}, "top_p": 1}
+        param = _unsupported_param({"detail": "Unsupported parameter: reasoning.context"})
+        self.assertTrue(_drop_param(payload, param))
+        self.assertEqual(payload["reasoning"], {"effort": "high"})
+        self.assertFalse(_drop_param(payload, param))
+        self.assertTrue(_drop_param(payload, "top_p"))
+        self.assertFalse(_drop_param(payload, "missing"))
+
+
+class ChatgptTurnKeyTest(unittest.TestCase):
+    def test_tool_image_items_do_not_start_a_turn(self):
+        from app.sources.chatgpt import _turn_key
+
+        human = {"role": "user", "content": [{"type": "input_text", "text": "look at it"}]}
+        image = {"role": "user", "content": [
+            {"type": "input_text", "text": "[Fuse: untrusted read_file image output, not a human message]\n{}"},
+            {"type": "input_image", "image_url": "data:image/png;base64,AA=="}]}
+        call = {"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{}"}
+        out = {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+        first = _turn_key("s", {"input": [human, call, out]})
+        self.assertEqual(_turn_key("s", {"input": [human, call, out, image]}), first)
+        self.assertNotEqual(_turn_key("s", {"input": [human, call, out, image, human]}), first)
+
+
+class ChatgptResponseShapeTest(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    async def _stream(frames, account=None):
+        collected = {}
+        chunks = [c async for c in _translated_stream(_StreamResp(frames), _FakeClient(), "gpt-5", collected, account=account)]
+        deltas, finish = [], None
+        for chunk in chunks:
+            for line in chunk.decode().split("\n"):
+                if not line.startswith("data: {"):
+                    continue
+                obj = json.loads(line[6:])
+                for choice in obj.get("choices") or []:
+                    deltas.append(choice.get("delta") or {})
+                    finish = choice.get("finish_reason") or finish
+                if obj.get("error"):
+                    deltas.append({"error": obj["error"]})
+        return deltas, finish, collected
+
+    async def test_phase_rides_the_reasoning_blocks_back_to_the_payload(self):
+        frames = [
+            _frame({"type": "response.created", "response": {"id": "r9"}}),
+            _frame({"type": "response.output_item.added", "item": {"type": "reasoning"}}),
+            _frame({"type": "response.output_item.done", "item": ENCRYPTED}),
+            _frame({"type": "response.output_item.added", "item": {"type": "message", "phase": "commentary"}}),
+            _frame({"type": "response.output_text.delta", "delta": "Searching."}),
+            _frame({"type": "response.output_item.added",
+                    "item": {"type": "function_call", "id": "fc", "call_id": "c1", "name": "web_search", "arguments": "{}"}}),
+            _frame({"type": "response.completed", "response": {"id": "r9", "usage": {}}}),
+        ]
+        deltas, finish, _ = await self._stream(frames, account=7)
+        blocks = [b for d in deltas for b in d.get("claude_thinking") or []]
+        self.assertEqual([b["openai_reasoning"].get("phase") for b in blocks], ["commentary"])
+        self.assertEqual(finish, "tool_calls")
+        body = await _aggregate(_StreamResp(frames), _FakeClient(), "gpt-5", account=7)
+        message = body["choices"][0]["message"]
+        self.assertEqual(message["claude_thinking"], blocks)
+        from app.chat_generation.parsing import _native_reasoning, _take_thinking
+
+        kept = []
+        _take_thinking(kept, blocks)
+        stored = _native_reasoning("", "gpt-5", kept)["claude_thinking"]
+
+        payload = build_responses_payload({"messages": [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": message["content"], "claude_thinking": stored,
+             "tool_calls": message["tool_calls"]},
+            {"role": "tool", "tool_call_id": "c1", "content": "hits"},
+        ]}, "gpt-5")
+        replayed = next(i for i in payload["input"] if i.get("role") == "assistant")
+        self.assertEqual(replayed["phase"], "commentary")
+        reasoning = next(i for i in payload["input"] if i.get("type") == "reasoning")
+        self.assertNotIn("phase", reasoning)
+
+    async def test_incomplete_at_the_output_limit_keeps_partial_output(self):
+        def frames(reason):
+            return [
+                _frame({"type": "response.created", "response": {"id": "r10"}}),
+                _frame({"type": "response.output_text.delta", "delta": "half an answ"}),
+                _frame({"type": "response.incomplete", "response": {
+                    "id": "r10", "incomplete_details": {"reason": reason},
+                    "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}}),
+            ]
+
+        for reason, want in (("max_output_tokens", "length"), ("content_filter", "content_filter")):
+            with self.subTest(reason=reason):
+                deltas, finish, collected = await self._stream(frames(reason))
+                self.assertEqual(finish, want)
+                self.assertEqual("".join(d.get("content") or "" for d in deltas), "half an answ")
+                self.assertFalse(any("error" in d for d in deltas))
+                self.assertEqual(collected["stream_status"], "complete")
+                body = await _aggregate(_StreamResp(frames(reason)), _FakeClient(), "gpt-5")
+                self.assertEqual(body["choices"][0]["finish_reason"], want)
+                self.assertEqual(body["choices"][0]["message"]["content"], "half an answ")
+                self.assertEqual(body["usage"]["prompt_tokens"], 10)
+        deltas, _, collected = await self._stream(frames("invalid_recipient"))
+        self.assertTrue(any("error" in d for d in deltas), "other incomplete reasons stay errors")
+        self.assertIn("error", await _aggregate(_StreamResp(frames("invalid_recipient")), _FakeClient(), "gpt-5"))
+
+    async def test_refusal_is_content_and_summary_parts_are_paragraphs(self):
+        frames = [
+            _frame({"type": "response.created", "response": {"id": "r11"}}),
+            _frame({"type": "response.reasoning_summary_part.added", "summary_index": 0}),
+            _frame({"type": "response.reasoning_summary_text.delta", "delta": "First."}),
+            _frame({"type": "response.reasoning_summary_part.added", "summary_index": 1}),
+            _frame({"type": "response.reasoning_summary_text.delta", "delta": "Second."}),
+            _frame({"type": "response.refusal.delta", "delta": "I can't help with that."}),
+            _frame({"type": "response.refusal.done", "refusal": "I can't help with that."}),
+            _frame({"type": "response.completed", "response": {"id": "r11", "usage": {}}}),
+        ]
+        deltas, _, _ = await self._stream(frames)
+        self.assertEqual("".join(d.get("reasoning_content") or "" for d in deltas), "First.\n\nSecond.")
+        self.assertEqual("".join(d.get("content") or "" for d in deltas), "I can't help with that.")
+        message = (await _aggregate(_StreamResp(frames), _FakeClient(), "gpt-5"))["choices"][0]["message"]
+        self.assertEqual(message["reasoning_content"], "First.\n\nSecond.")
+        self.assertEqual(message["content"], "I can't help with that.")
+
+
 if __name__ == "__main__":
     unittest.main()

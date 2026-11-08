@@ -50,7 +50,8 @@ export function createList(ctx) {
   }
 
     function effortLabel(effort, model = context.currentModel()) {
-    if (model && model.type === "zai") return effort === "none" ? "Off" : "On";
+    // Older GLM only switches thinking on or off; GLM-5.3+ has real levels.
+    if (model && model.type === "zai" && !(model.reasoning || []).includes("max")) return effort === "none" ? "Off" : "On";
     return EFFORT_LABELS[effort] || effort;
   }
 

@@ -1,7 +1,7 @@
 """ChatGPT/Codex model identity and catalog state.
 
 Picker ids are Codex slugs plus an optional `-fast` suffix for the Fast
-service tier (`gpt-6.1-sol-fast` → `gpt-6.1-sol` at tier `fast`). This module
+service tier (`gpt-6.1-sol-fast` → `gpt-6.1-sol` at tier `priority`). This module
 owns the slug/tier translation, the Codex catalog parsing, and the live
 catalog state (`_models_cache`).
 """
@@ -14,18 +14,21 @@ from .base import EFFORTS
 
 CHATGPT_MODELS = [
     "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
     "gpt-6-sol",
     "gpt-6-luna",
-    "gpt-5.5",
-    "gpt-5.4",
-    "gpt-5.4-mini",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
     "gpt-5.6-luna",
+    "gpt-5.5",
 ]
-# Codex Fast mode is a service tier on the base slug, not its own model.
-# The catalog advertises it as service_tiers id "fast" (older catalogs: "priority").
+# Codex Fast mode is a service tier on the base slug, not its own model. The
+# catalog advertises it as service_tiers id "priority" (named Fast) plus
+# additional_speed_tiers "fast". Requests send "priority", as Codex does: the
+# backend answers "Unsupported service_tier: fast".
 _FAST_TIER_IDS = frozenset({"fast", "priority"})
+FAST_SERVICE_TIER = "priority"
 # Picker levels for a slug whose catalog row has not been read: the ones every
 # current Codex row lists (none offers none or minimal; newer ones add xhigh, max).
 FALLBACK_EFFORTS = ("low", "medium", "high")
@@ -34,6 +37,15 @@ _models_cache: tuple[float, list[str]] | None = None
 # slug -> (supported_reasoning_levels, default_reasoning_level) in Fuse's level
 # names. Codex-only levels (ultra) are left out.
 _levels: dict[str, tuple[tuple[str, ...], str]] = {}
+# slug -> context window Codex uses (context_window, else max_context_window;
+# the larger max_context_window is only an opt-in ceiling). Seeded from Codex's
+# models.json until the live catalog is read.
+_windows: dict[str, int] = {**{slug: 272_000 for slug in CHATGPT_MODELS}, "gpt-6.1-terra": 500_000}
+# Responses Lite rows: Codex sends reasoning.context=all_turns so replayed
+# reasoning of earlier turns is rendered, not only the current turn's.
+_all_turns: set[str] = set()
+# Rows whose supports_reasoning_summary_parameter is false.
+_no_summary: set[str] = set()
 
 
 def fast_id(slug: str) -> str:
@@ -41,7 +53,7 @@ def fast_id(slug: str) -> str:
 
 
 def base_slug(model: str) -> str:
-    """Picker id → Codex slug. `gpt-6.1-sol-fast` is `gpt-6.1-sol` at the fast tier."""
+    """Picker id → Codex slug. `gpt-6.1-sol-fast` is `gpt-6.1-sol` at the Fast tier."""
     mid = (model or "").strip()
     if len(mid) > 5 and mid.endswith("-fast"):
         return mid[:-5]
@@ -88,6 +100,15 @@ def parse_catalog_payload(data) -> list[str]:
         inputs = row.get("input_modalities")
         if isinstance(inputs, list):
             model_caps.remember("chatgpt", slug, "image" in inputs)
+        window = row.get("context_window") or row.get("max_context_window")
+        if isinstance(window, int) and window > 0:
+            _windows[slug] = window
+        _all_turns.discard(slug)
+        _no_summary.discard(slug)
+        if row.get("use_responses_lite") is True:
+            _all_turns.add(slug)
+        if row.get("supports_reasoning_summary_parameter") is False:
+            _no_summary.add(slug)
         if _row_has_fast(row):
             fid = fast_id(slug)
             if fid not in names:
@@ -113,16 +134,29 @@ def default_effort(model: str | None) -> str:
     return default if default in efforts else ""
 
 
+def model_window(model: str | None) -> int | None:
+    """The catalog's context window for this model; None while its row is unread."""
+    return _windows.get(base_slug(model or ""))
+
+
+def reasoning_all_turns(model: str | None) -> bool:
+    return base_slug(model or "") in _all_turns
+
+
+def sends_summary(model: str | None) -> bool:
+    return base_slug(model or "") not in _no_summary
+
+
 def is_chatgpt_model(model: str) -> bool:
     """Seeded or live-listed Codex slug.
 
     `{slug}-fast` counts only when the catalog listed it: Fast mode is a
     service tier some models do not advertise, so a guessed suffix must not
-    route to the pool.
+    route to the pool. Once a catalog was read, a seed it dropped is gone.
     """
-    if model in CHATGPT_MODELS:
-        return True
-    return bool(_models_cache and model in _models_cache[1])
+    if _models_cache and _models_cache[1]:
+        return model in _models_cache[1]
+    return model in CHATGPT_MODELS
 
 
 def cached_models(ttl: float) -> list[str] | None:
@@ -132,14 +166,18 @@ def cached_models(ttl: float) -> list[str] | None:
     return None
 
 
-def _remember_models(names: list[str]) -> list[str]:
-    """Seed plus anything Codex lists. A later fetch only adds ids, so a short
-    or failed catalog cannot drop a model the picker already showed."""
+def _remember_models(names: list[str], complete: bool = False) -> list[str]:
+    """Seed plus anything Codex lists. A partial fetch only adds ids, so a
+    short or failed catalog cannot drop a model the picker already showed. A
+    complete read (every account tier answered) is the whole list: seeded or
+    earlier ids Codex no longer lists drop out."""
     global _models_cache
     fresh = [n for n in names if isinstance(n, str) and n.startswith("gpt-")]
     if not fresh and _models_cache and _models_cache[1]:
         return list(_models_cache[1])
     base = list(_models_cache[1]) if _models_cache and _models_cache[1] else list(CHATGPT_MODELS)
+    if complete and fresh:
+        base = []
     merged: list[str] = []
     # Upstream order first (new models sit where the provider puts them),
     # then ids an earlier catalog listed and this one omits.

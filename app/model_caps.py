@@ -32,17 +32,19 @@ _IMAGE_REFUSAL = re.compile(
 _seen: dict[tuple[str, str], bool] = {}
 
 # First match wins. Sources: Anthropic, xAI and Codex model docs; Z.AI marks
-# GLM text models text-only and ships vision as `glm-…v…`; Devin carries
+# GLM text models text-only and ships vision as `glm-…v…` (GLM-5.3-Flash is
+# natively multimodal); Devin carries
 # images natively to its Claude/GPT SKUs.
 _RULES = (
     ("claude", re.compile(r"^claude-"), True),
     ("grok", re.compile(r"^grok-4"), True),
     ("zai", re.compile(r"^glm-[\d.]+v"), True),
+    ("zai", re.compile(r"^glm-5\.3-flash"), True),
     ("zai", re.compile(r"^glm-"), False),
     ("chatgpt", re.compile(r"^gpt-"), True),
     ("devin", re.compile(r"^(claude|gpt)-"), True),
     ("kimi", re.compile(r"^k3"), True),
-    ("mimo", re.compile(r"^mimo-v2\.5$"), True),
+    ("mimo", re.compile(r"^mimo-v2\.6-"), True),
 )
 
 

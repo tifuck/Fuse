@@ -18,8 +18,9 @@ def test_known_capabilities_per_provider():
     assert model_caps.image_input("grok", "grok-4.7") is True
     assert model_caps.image_input("zai", "glm-5.3") is False
     assert model_caps.image_input("zai", "glm-5v-turbo") is True
-    assert model_caps.image_input("mimo", "mimo-v2.5") is True
-    assert model_caps.image_input("mimo", "mimo-v2.5-pro") is None
+    assert model_caps.image_input("mimo", "mimo-v2.6-pro") is True
+    assert model_caps.image_input("mimo", "mimo-v2.6-flash") is True
+    assert model_caps.image_input("mimo", "mimo-v3-text") is None
     assert model_caps.image_input("devin", "devin/claude-opus-5") is True
     assert model_caps.image_input("devin", "devin/swe-2") is None
     assert model_caps.image_input("openai", "anything") is None

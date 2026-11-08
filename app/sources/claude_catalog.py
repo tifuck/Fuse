@@ -11,16 +11,21 @@ import time
 
 CLAUDE_MODELS = [
     "claude/claude-opus-5-5",
-    "claude/claude-sonnet-5",
+    "claude/claude-sonnet-5-5",
     "claude/claude-fable-5-1",
+    "claude/claude-haiku-5-5",
+    "claude/claude-sonnet-5",
     "claude/claude-haiku-4-5-20251001",
 ]
 
+_ALL_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CLAUDE_MODEL_META = {
-    "claude-opus-5-5": {"name": "Opus 5.5", "window": 1_000_000, "max_output": 128_000, "efforts": ("low", "medium", "high", "xhigh", "max"), "default_effort": "medium"},
-    "claude-sonnet-5": {"name": "Sonnet 5", "window": 1_000_000, "max_output": 128_000, "efforts": ("low", "medium", "high", "xhigh", "max"), "default_effort": "high"},
-    "claude-fable-5-1": {"name": "Fable 5.1", "window": 1_000_000, "max_output": 128_000, "efforts": ("low", "medium", "high", "xhigh", "max"), "default_effort": "high"},
-    "claude-haiku-4-5-20251001": {"name": "Haiku 4.5", "window": 200_000, "max_output": 64_000, "efforts": (), "default_effort": ""},
+    "claude-opus-5-5": {"name": "Opus 5.5", "window": 1_000_000, "max_output": 128_000, "efforts": _ALL_EFFORTS, "default_effort": "medium", "thinking_type": "effort"},
+    "claude-sonnet-5-5": {"name": "Sonnet 5.5", "window": 1_000_000, "max_output": 128_000, "efforts": _ALL_EFFORTS, "default_effort": "medium", "thinking_type": "effort"},
+    "claude-fable-5-1": {"name": "Fable 5.1", "window": 1_000_000, "max_output": 128_000, "efforts": _ALL_EFFORTS, "default_effort": "high", "thinking_type": "effort"},
+    "claude-haiku-5-5": {"name": "Haiku 5.5", "window": 1_000_000, "max_output": 128_000, "efforts": _ALL_EFFORTS, "default_effort": "medium", "thinking_type": "effort"},
+    "claude-sonnet-5": {"name": "Sonnet 5", "window": 1_000_000, "max_output": 128_000, "efforts": _ALL_EFFORTS, "default_effort": "high", "thinking_type": "effort"},
+    "claude-haiku-4-5-20251001": {"name": "Haiku 4.5", "window": 200_000, "max_output": 64_000, "efforts": (), "default_effort": "", "thinking_type": "none"},
 }
 _catalog_meta: dict[str, dict] = {}
 _models_cache: tuple[float, list[str]] | None = None

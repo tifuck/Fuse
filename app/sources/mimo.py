@@ -43,8 +43,6 @@ _refresh_locks: dict[int, asyncio.Lock] = {}
 MIMO_MODELS = [
     "mimo-v2.6-pro",
     "mimo-v2.6-flash",
-    "mimo-v2.5-pro",
-    "mimo-v2.5",
 ]
 
 # USD per million, API-equivalent. Token Plan bills credits, not these rates.
@@ -52,8 +50,6 @@ MIMO_MODELS = [
 MIMO_PRICING = {
     "mimo-v2.6-pro": ("0.435", "0.0036", None, "0.87"),
     "mimo-v2.6-flash": ("0.14", "0.0028", None, "0.28"),
-    "mimo-v2.5-pro": ("0.435", "0.0036", None, "0.87"),
-    "mimo-v2.5": ("0.14", "0.0028", None, "0.28"),
 }
 
 CONTEXT_WINDOW = 1_048_576
@@ -563,18 +559,13 @@ def _remember_models(names: list[str]) -> list[str]:
         n for n in names
         if isinstance(n, str) and n and not n.startswith("mimo-v2.5-tts") and "asr" not in n
     ]
-    if not fresh and _models_cache and _models_cache[1]:
-        return list(_models_cache[1])
-    base = list(_models_cache[1]) if _models_cache and _models_cache[1] else list(MIMO_MODELS)
-    merged = []
-    # Upstream order first (new models sit where the provider puts them),
-    # then ids an earlier catalog listed and this one omits.
-    for name in fresh + base:
-        if name not in merged:
-            merged.append(name)
-    if merged:
-        _models_cache = (time.time(), merged)
-    return merged or list(MIMO_MODELS)
+    if not fresh:
+        return list(_models_cache[1]) if _models_cache and _models_cache[1] else list(MIMO_MODELS)
+    # A live listing is the lineup, in upstream order: an id it omits is
+    # retired (v2.5 and v2.5-pro were, on 2026-10-21) and would only 400.
+    merged = list(dict.fromkeys(fresh))
+    _models_cache = (time.time(), merged)
+    return merged
 
 
 async def fetch_catalog(key: str, region: str) -> list[str]:
@@ -596,7 +587,24 @@ def _chat_payload(body: dict) -> dict:
         payload["thinking"] = {"type": "disabled" if effort.strip().lower() in ("none", "off", "disabled") else "enabled"}
     payload.pop("reasoning_effort", None)
     payload.pop("reasoning", None)
+    thinking = payload.get("thinking")
+    if not (isinstance(thinking, dict) and thinking.get("type") == "disabled") and isinstance(payload.get("messages"), list):
+        # Thinking is on by default, and then every assistant turn with
+        # tool_calls must carry reasoning_content (empty is accepted) or MiMo
+        # answers 400. Turns from another model or a client that drops it lack it.
+        payload["messages"] = [
+            {**m, "reasoning_content": ""}
+            if isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls") and m.get("reasoning_content") is None
+            else m
+            for m in payload["messages"]
+        ]
     return payload
+
+
+def _retry_after(headers: dict | None) -> float:
+    """429 cooldown: the upstream's Retry-After when it sends one, else a minute."""
+    seconds = _as_float((headers or {}).get("Retry-After"))
+    return max(5.0, min(seconds, 86400.0)) if seconds is not None else 60.0
 
 
 class MimoSource:
@@ -702,7 +710,7 @@ class MimoSource:
                         await refresh_quota(cred, force=True)
                     except Exception:
                         pass
-                    note_failure(cred["id"], cooldown_seconds=60)
+                    note_failure(cred["id"], cooldown_seconds=_retry_after(response_headers))
                     last.response_headers = response_headers
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                     last.attempts = attempts

@@ -86,13 +86,24 @@ _refresh_locks: dict[int, asyncio.Lock] = {}
 # mid-turn request can land on a server that never saw the prefix.
 _turn_states: dict[tuple[int, str], tuple[float, str]] = {}
 TURN_STATE_TTL = 3600
+# tool_jobs._tool_images: read_file pixels ride in a user item mid-turn.
+_TOOL_IMAGE_MARK = "[Fuse: untrusted read_file image output,"
+
+
+def _human_item(item) -> bool:
+    if not isinstance(item, dict) or item.get("role") != "user":
+        return False
+    content = item.get("content")
+    first = content[0] if isinstance(content, list) and content else None
+    return not (isinstance(first, dict) and str(first.get("text") or "").startswith(_TOOL_IMAGE_MARK))
 
 
 def _turn_key(session_id: str | None, payload: dict) -> str | None:
-    """One turn = one session up to and including its latest user item."""
+    """One turn = one session up to and including its latest human user item
+    (tool-image items belong to the turn they arrive in)."""
     if not session_id:
         return None
-    users = [item for item in payload.get("input") or [] if isinstance(item, dict) and item.get("role") == "user"]
+    users = [item for item in payload.get("input") or [] if _human_item(item)]
     if not users:
         return None
     last = json.dumps(users[-1], sort_keys=True, separators=(",", ":"))
@@ -344,6 +355,17 @@ def chatgpt_access_state(user_id: int) -> dict:
 
 def user_has_chatgpt(user_id: int) -> bool:
     return chatgpt_access_state(user_id)["ok"]
+
+
+def _drop_param(payload: dict, param: str) -> bool:
+    """Remove a parameter Codex rejected, top-level or `reasoning.context`-style."""
+    head, _, tail = param.partition(".")
+    holder = payload.get(head) if tail else payload
+    key = tail or param
+    if not isinstance(holder, dict) or key not in holder:
+        return False
+    holder.pop(key)
+    return True
 
 
 def _note_invoke(cred_id: int) -> None:
@@ -793,6 +815,7 @@ class ChatGPTSource:
             [c for c in self.creds if chatgpt_plan_type(_safe_extra(c)) in CHATGPT_FREE_PLANS],
         )
         picks = []
+        asked = []
         for creds in tiers:
             picked = pick_account(creds, kind="chatgpt", is_authed=credential_is_authed) if creds else None
             if picked:
@@ -801,9 +824,12 @@ class ChatGPTSource:
                 picks.append(_fetch_slugs(token, extra.get("account_id") or None))
             else:
                 picks.append(asyncio.sleep(0, []))
+            asked.append(bool(picked))
         paid, free = await asyncio.gather(*picks)
         note_free_models(free)
-        return _remember_models(paid + [name for name in free if name not in paid])
+        # Every tier read answered: the list is whole and may drop retired ids.
+        complete = any(asked) and all(names for names, did in zip((paid, free), asked) if did)
+        return _remember_models(paid + [name for name in free if name not in paid], complete=complete)
 
     async def _post(self, token: str, account_id: str | None, payload: dict, client: httpx.AsyncClient, turn_state: str | None = None):
         # Streaming send: the body stays unread until the translator iterates
@@ -931,9 +957,8 @@ class ChatGPTSource:
                         else:
                             msg = str(obj.get("detail") or err or "")
                     param = _unsupported_param(obj)
-                    if status == 400 and param and param in payload:
+                    if status == 400 and param and _drop_param(payload, param):
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
-                        payload.pop(param, None)
                         tried.discard(int(cred["id"]))
                         continue
                     if status == 400 and "encrypted" in msg.lower() and drop_reasoning(payload):

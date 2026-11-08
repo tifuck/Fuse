@@ -12,7 +12,9 @@ from app.sources.base import ChatResult
 
 def test_metadata_effort_per_provider():
     assert metadata_effort("grok", "grok-4.7") == "low"
-    assert metadata_effort("zai", "glm-5.3") == "none"
+    # GLM-5.3 cannot turn thinking off: its lightest level is low.
+    assert metadata_effort("zai", "glm-5.3") == "low"
+    assert metadata_effort("zai", "glm-5-turbo") == "none"
     assert metadata_effort("mimo", "mimo-v2.6-flash") == "none"
     # Unknown levels (the generic picker list): send no effort at all.
     for type_id in ("openai", "openrouter", "llama"):

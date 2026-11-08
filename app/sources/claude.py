@@ -52,7 +52,6 @@ from .claude_catalog import (
 from .claude_payload import (
     _ANTHROPIC_VERSION,
     _BETA,
-    _EFFORTS,
     _THINKING_OFF,
     _chat_headers,
     _image_block,

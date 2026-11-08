@@ -43,6 +43,10 @@ HEARTBEAT_S = 5.0
 # Parallel tool calls arrive as one mcp_args each; after the first, wait this
 # long for the rest before handing the round back.
 TOOL_GRACE_S = 1.0
+# A round fails when Cursor queues nothing for this long. Server heartbeats
+# keep the stream itself alive, so a request Fuse never answered would
+# otherwise hold the turn and its account forever.
+IDLE_S = 300.0
 # A parked run waits this long for its tool results before it is closed.
 PARK_TTL_S = 900.0
 # A finished turn's checkpoint stays resumable this long.
@@ -341,6 +345,57 @@ def encode_mcp_result(exec_num: int, exec_id: str, text: str, images: list[tuple
     return _wrap(2, ex.finish())
 
 
+def encode_exec_throw(exec_num: int, error: str) -> tuple[bytes, bytes]:
+    """ExecClientControlMessage.throw, then stream_close (two messages): how
+    the CLI fails an exec it has no handler for, whatever its result type."""
+    throw = ProtoEncoder()
+    throw.uint32(1, exec_num)
+    throw.string(2, error)
+    close = ProtoEncoder()
+    close.uint32(1, exec_num)
+    return _wrap(5, _wrap(2, throw.finish())), _wrap(5, _wrap(1, close.finish()))
+
+
+# InteractionQuery variant -> the fields from its InteractionResponse member
+# down to the refusal's reason string (agent.v1 schema as mapped by
+# oakimov/cursor-opencode-provider). Fuse has no UI to approve any of them.
+_INTERACTION_REFUSALS = {
+    2: (2,),     # web_search_request_response.rejected
+    3: (1, 3),   # ask_question_interaction_response.result.rejected
+    4: (2,),     # switch_mode_request_response.rejected
+    7: (1, 2),   # create_plan_request_response.result.error
+    9: (2,),     # web_fetch_request_response.rejected
+    10: (3,),    # pr_management_result.rejected
+    11: (2,),    # mcp_auth_request_response.rejected
+    12: (2,),    # generate_image_request_response.rejected
+    13: (2,),    # replace_env_result.failure
+    14: (2,),    # connect_scm_request_response.rejected
+}
+# setup_vm_environment has no refusal: acknowledged as success, as there is
+# no Cursor VM to set up.
+_INTERACTION_ACK = 8
+INTERACTION_REASON = "This Cursor interaction needs a client UI and is not available through this API. Continue with the listed tools."
+
+
+def encode_interaction_response(query_id: int, variant: int) -> bytes | None:
+    """AgentClientMessage.interaction_response refusing one InteractionQuery,
+    or None for a variant Fuse cannot answer."""
+    if variant == _INTERACTION_ACK:
+        body = _wrap(1, b"")
+    elif variant in _INTERACTION_REFUSALS:
+        reason = ProtoEncoder()
+        reason.string(1, INTERACTION_REASON)
+        body = reason.finish()
+        for field in reversed(_INTERACTION_REFUSALS[variant]):
+            body = _wrap(field, body)
+    else:
+        return None
+    response = ProtoEncoder()
+    response.uint32(1, query_id)
+    response.blob(variant, body)
+    return _wrap(6, response.finish())
+
+
 def encode_heartbeat() -> bytes:
     return _wrap(7, b"")
 
@@ -461,7 +516,9 @@ def decode_server_message(data: bytes) -> tuple:
                 "tool_call_id": _str(mcp, 3),
                 "args": args,
             })
-        return ("other",)
+        # An exec Fuse has no handler for still needs an answer, or the
+        # server waits on it for good.
+        return ("exec_other", exec_num, exec_id)
     if 3 in top:
         raw = _one(top, 3)
         details = _fields(_one(_fields(raw), 5, b""))
@@ -474,6 +531,11 @@ def decode_server_message(data: bytes) -> tuple:
         if 3 in kv:
             blob = _fields(_one(kv, 3))
             return ("set_blob", kv_id, _one(blob, 1, b""), _one(blob, 2, b""))
+    if 7 in top:
+        # InteractionQuery: id (proto3, omitted when 0), then one variant.
+        query = _fields(_one(top, 7))
+        variant = next((f for f, values in sorted(query.items()) if f != 1 and isinstance(values[0], bytes)), 0)
+        return ("interaction", _int(query, 1), variant)
     return ("other",)
 
 
@@ -527,7 +589,7 @@ class CursorRun:
     drains one round of them. Between rounds the run stays open (parked)
     with heartbeats, waiting for the caller's tool results."""
 
-    def __init__(self, *, base: str, headers: dict, timeout: httpx.Timeout, blobs: dict, tools: list[dict]):
+    def __init__(self, *, base: str, headers: dict, timeout: httpx.Timeout, blobs: dict, tools: list[dict], sent_tokens: int = 0):
         self.base = base
         self.headers = headers
         self.blobs = blobs
@@ -544,6 +606,10 @@ class CursorRun:
         self.closed = False
         self.reported_prompt = 0
         self.reported_output = 0
+        self.reported_cached = 0
+        # Context size at the end of the previous round (or of the kept
+        # conversation this run continues).
+        self.sent_tokens = sent_tokens
         self._seq = 0
         self._lock = asyncio.Lock()
         self._resp = None
@@ -676,6 +742,14 @@ class CursorRun:
             await self.append(encode_request_context(event[1], event[2], self.tools))
         elif kind == "mcp_state":
             await self.append(encode_mcp_state(event[1], event[2], self.tools))
+        elif kind == "exec_other":
+            for message in encode_exec_throw(event[1], "This tool is not available through this API. Use the listed tools."):
+                await self.append(message)
+        elif kind == "interaction":
+            reply = encode_interaction_response(event[1], event[2])
+            if reply is None:
+                raise TurnError(502, f"Cursor asked for an interaction Fuse cannot answer (variant {event[2]})")
+            await self.append(reply)
         elif kind == "mcp":
             _, exec_num, exec_id, args = event
             call_id = safe_call_id(args["tool_call_id"])
@@ -703,9 +777,11 @@ class CursorRun:
         calls = output = 0
         while True:
             try:
-                event = await (asyncio.wait_for(self.queue.get(), TOOL_GRACE_S) if calls else self.queue.get())
+                event = await asyncio.wait_for(self.queue.get(), TOOL_GRACE_S if calls else IDLE_S)
             except asyncio.TimeoutError:
-                break
+                if calls:
+                    break
+                raise TurnError(504, f"Cursor sent nothing for {int(IDLE_S)}s") from None
             kind = event[0]
             if kind in ("text", "thinking"):
                 yield event
@@ -730,14 +806,22 @@ class CursorRun:
     def _round_usage(self, output: int) -> dict:
         """Per-call usage for one round. Rounds that end on a tool call only
         know the streamed output and the context size; the turn's end carries
-        exact totals (input includes cache reads and writes), and the last
-        round reports whatever earlier rounds have not."""
+        exact totals for the whole run (input includes cache reads and
+        writes), and the last round reports whatever earlier rounds have not,
+        so the rounds add up to the turn.
+
+        A tool round's prompt is provisionally a cache read up to the context
+        the conversation had already sent (the kept conversation a follow-up
+        continues, then each earlier round), which prompt caching serves back.
+        Without that, the turn's reads across every round would have to fit in
+        the settling round's prompt, and the excess was lost."""
         estimate = max(self.used_tokens - output, 0)
         totals = self.turn_usage if self.ended else {}
         if "input_tokens" in totals or "output_tokens" in totals:
             prompt = max(int(totals["input_tokens"]) - self.reported_prompt, 0) if "input_tokens" in totals else estimate
             completion = max(int(totals["output_tokens"]) - self.reported_output, 0) if "output_tokens" in totals else output
-            cached = min(max(int(totals.get("cache_read_tokens", 0)), 0), prompt)
+            # Reads before writes when the residual cannot hold both.
+            cached = min(max(int(totals.get("cache_read_tokens", 0)) - self.reported_cached, 0), prompt)
             written = min(max(int(totals.get("cache_write_tokens", 0)), 0), prompt - cached)
             usage = {
                 "prompt_tokens": prompt,
@@ -749,8 +833,14 @@ class CursorRun:
         else:
             prompt, completion = estimate, output
             usage = {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}
+            cached = 0
+            if not self.ended:
+                cached = min(self.sent_tokens, prompt)
+                usage["prompt_tokens_details"] = {"cached_tokens": cached}
         self.reported_prompt += prompt
         self.reported_output += completion
+        self.reported_cached += cached
+        self.sent_tokens = self.used_tokens
         return usage
 
     async def resume(self, results: list[tuple[str, str, list]]) -> None:
@@ -834,6 +924,8 @@ class Conversation:
         self.blobs: dict[bytes, bytes] = blobs if blobs is not None else {}
         self.transcript: list[tuple] = []
         self.checkpoint: bytes | None = None
+        # Context size at that checkpoint.
+        self.used_tokens = 0
         self.run: CursorRun | None = None
         # (model_id, params, max_mode) the conversation's run was opened with.
         self.selection: tuple | None = None
@@ -909,6 +1001,7 @@ def keep(conv: Conversation, messages, reply: dict, run: CursorRun) -> None:
     if run.ended or run.closed:
         conv.run = None
         conv.checkpoint = run.checkpoint if run.ended else None
+        conv.used_tokens = run.used_tokens
         asyncio.ensure_future(run.aclose())
     else:
         conv.run = run

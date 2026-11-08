@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import math
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from .. import accounts, db, provider_errors
+from .. import accounts, db, file_images, provider_errors
 from ..async_work import durable_call
 from ..config import settings
 from ..crypto import encrypt
@@ -18,7 +19,7 @@ from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
 from .pool_pick import Failover, explain_empty, note_failure, pick_account, release, reserve
 from . import pool_policy
-from .grok_version import current_version
+from .grok_version import current_version, force_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
 from .token_store import (
     dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh,
@@ -38,6 +39,50 @@ GROK_MODELS = [
     "grok-4.6",
     "grok-4.5",
 ]
+# Every pool model reasons, and xAI rejects these on reasoning models.
+_REASONING_REJECTS = ("stop", "presence_penalty", "frequency_penalty")
+# Grok takes low/medium/high/xhigh; reasoning cannot be turned off.
+_EFFORTS = {"none": "low", "minimal": "low", "max": "xhigh"}
+
+
+def chat_payload(body: dict) -> dict:
+    payload = drop_cache_routing_fields(body)
+    for key in _REASONING_REJECTS:
+        payload.pop(key, None)
+    effort = payload.get("reasoning_effort")
+    if isinstance(effort, str) and effort.lower() in _EFFORTS:
+        payload["reasoning_effort"] = _EFFORTS[effort.lower()]
+    if "max_tokens" in payload:
+        # Deprecated upstream in favour of max_completion_tokens.
+        max_tokens = payload.pop("max_tokens")
+        payload.setdefault("max_completion_tokens", max_tokens)
+    return payload
+
+
+async def jpeg_png_images(messages):
+    """Grok reads JPEG and PNG only: re-encode other data URL images."""
+    if not isinstance(messages, list):
+        return messages
+    out = []
+    for msg in messages:
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            out.append(msg)
+            continue
+        parts = []
+        for part in content:
+            image = part.get("image_url") if isinstance(part, dict) and part.get("type") == "image_url" else None
+            url = image.get("url") if isinstance(image, dict) else None
+            if (isinstance(url, str) and url.startswith("data:image/")
+                    and not url.startswith(("data:image/png;", "data:image/jpeg;", "data:image/jpg;"))):
+                try:
+                    decoded = await file_images.decode_image(base64.b64decode(url.split(",", 1)[1], validate=True))
+                    part = {**part, "image_url": {**image, "url": f"data:{decoded['mime']};base64,{decoded['data']}"}}
+                except (ValueError, binascii.Error, KeyError, OSError, IndexError):
+                    pass
+            parts.append(part)
+        out.append({**msg, "content": parts})
+    return out
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
@@ -548,7 +593,9 @@ class GrokSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Grok accounts in the pool"})
         model = body.get("model") or "grok-4.6"
-        payload = drop_cache_routing_fields(body)
+        payload = chat_payload(body)
+        if isinstance(payload.get("messages"), list):
+            payload["messages"] = await jpeg_png_images(payload["messages"])
         prefer_id = lookup("grok", session_id)
         hint_id = lookup("grok", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "grok")
@@ -594,6 +641,18 @@ class GrokSource:
                             close_client=True,
                             reasoning_separate=True,
                         )
+                if status == 426 and await force_refresh():
+                    # Upgrade Required: the proxy refused this client version.
+                    attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
+                    client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+                    status, obj, stream, usage, response_headers = await openai_chat(
+                        client,
+                        settings.grok_proxy + "/chat/completions",
+                        self._headers(token, model, session_id),
+                        payload,
+                        close_client=True,
+                        reasoning_separate=True,
+                    )
                 if stream is not None:
                     stream_reserved = True
                     failover.served()
@@ -626,7 +685,7 @@ class GrokSource:
                 elif spent:
                     # Out of plan or credits: without a cooldown every request
                     # paid a round trip to this account before failing over.
-                    note_failure(cred["id"], cooldown_seconds=300)
+                    note_failure(cred["id"], cooldown_seconds=provider_errors.cooldown(info, 300))
                 last.response_headers = response_headers
                 if (
                     status in (402, 429)

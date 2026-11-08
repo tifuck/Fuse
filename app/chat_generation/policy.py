@@ -138,7 +138,7 @@ def _model_type_guess(model: str) -> str | None:
         return "chatgpt"
     if mid.startswith("glm-"):
         return "zai"
-    if mid.startswith("kimi-") or mid == "k3" or mid.startswith("k3-"):
+    if mid.startswith("kimi-") or mid == "k3" or mid.startswith(("k3-", "k3.")):
         return "kimi"
     if mid.startswith("cursor/"):
         return "cursor"

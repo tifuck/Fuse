@@ -86,6 +86,7 @@ class _Translator:
         self.blocks: dict[int, dict] = {}
         self.tool_order: list[int] = []
         self.thinking: list[dict] = []
+        self.text_seen = False
         self.stop_reason = ""
         self.input_tokens = 0
         self.output_tokens = 0
@@ -200,6 +201,7 @@ class _Translator:
             kind = str(delta.get("type") or "")
             rec = self.blocks.get(index)
             if kind == "text_delta" and delta.get("text"):
+                self.text_seen = True
                 return self._chunk({"content": str(delta["text"])})
             if kind == "thinking_delta" and delta.get("thinking"):
                 if rec is not None:
@@ -227,12 +229,16 @@ class _Translator:
             except (TypeError, ValueError):
                 index = 0
             rec = self.blocks.get(index)
+            # Where the block sat among the text and tool calls: preserved
+            # thinking must go back in received order, and 5.x models put a
+            # signed block right before each tool_use.
+            position = {"tool_index": len(self.tool_order), **({"after_text": True} if self.text_seen else {})}
             if rec and rec.get("type") == "redacted_thinking" and rec.get("data"):
-                self.thinking.append({"redacted_thinking": rec["data"]})
+                self.thinking.append({"redacted_thinking": rec["data"], **position})
             if rec and rec.get("type") == "thinking" and rec.get("signature"):
                 # Empty thinking text with a signature is a valid
                 # omitted-display block and must replay like any other.
-                self.thinking.append({"thinking": rec.get("thinking") or "", "signature": rec["signature"]})
+                self.thinking.append({"thinking": rec.get("thinking") or "", "signature": rec["signature"], **position})
             if rec and rec.get("type") == "tool_use" and not rec.get("arguments"):
                 rec["arguments"] = "{}"
                 tool_index = self.tool_order.index(index) if index in self.tool_order else 0
@@ -261,9 +267,12 @@ class _Translator:
         return None
 
     def finish_reason(self) -> str:
-        # A call cut off by max_tokens has incomplete arguments: never runnable.
-        if self.stop_reason == "max_tokens":
+        # A call cut off by max_tokens (or by the context window) has
+        # incomplete arguments: never runnable.
+        if self.stop_reason in ("max_tokens", "model_context_window_exceeded"):
             return "length"
+        if self.stop_reason == "refusal":
+            return "content_filter"
         if self.tool_order or self.stop_reason == "tool_use":
             return "tool_calls"
         return "stop"

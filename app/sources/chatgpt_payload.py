@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 
 from .base import map_effort
-from .chatgpt_catalog import base_slug, catalog_efforts, is_fast
+from .chatgpt_catalog import FAST_SERVICE_TIER, base_slug, catalog_efforts, is_fast, reasoning_all_turns, sends_summary
+
+# Assistant message phases the Responses API takes back on input.
+_PHASES = ("commentary", "final_answer")
 
 
 def _text_of(content) -> str:
@@ -74,8 +77,13 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
         elif role == "assistant":
             # Reasoning comes first, as the model emitted it. Each item keeps
             # its producing account; ChatGPTSource drops it for any other.
+            # The blocks also carry the message's phase (chatgpt_stream), which
+            # the API asks to be resent on every assistant message.
+            phase = None
             for block in msg.get("claude_thinking") or []:
                 item = block.get("openai_reasoning") if isinstance(block, dict) else None
+                if isinstance(item, dict) and item.get("phase") in _PHASES:
+                    phase = item["phase"]
                 if isinstance(item, dict) and item.get("encrypted_content"):
                     input_items.append({
                         "type": "reasoning",
@@ -85,9 +93,10 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
                     })
             text = _text_of(content)
             if text:
-                input_items.append(
-                    {"role": "assistant", "content": [{"type": "output_text", "text": text}]}
-                )
+                message = {"role": "assistant", "content": [{"type": "output_text", "text": text}]}
+                if phase:
+                    message["phase"] = phase
+                input_items.append(message)
             for tc in msg.get("tool_calls") or []:
                 if not isinstance(tc, dict):
                     continue
@@ -121,7 +130,7 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
         "include": ["reasoning.encrypted_content"],
     }
     if is_fast(model):
-        payload["service_tier"] = "fast"
+        payload["service_tier"] = FAST_SERVICE_TIER
     # Always the scoped session id (hmac of user+model+client key), never the
     # raw prompt_cache_key. Two tenants sending the same client string must
     # not share an upstream routing group on a pooled account.
@@ -184,6 +193,10 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
         summary = body.get("reasoningSummary")
     if isinstance(summary, str):
         payload.setdefault("reasoning", {})["summary"] = summary
+    if not sends_summary(model) and "reasoning" in payload:
+        payload["reasoning"].pop("summary", None)
+    if reasoning_all_turns(model):
+        payload.setdefault("reasoning", {}).setdefault("context", "all_turns")
     return payload
 
 

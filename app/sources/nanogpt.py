@@ -147,6 +147,20 @@ def parse_catalog(payload) -> dict:
     return {"by_id": by_id}
 
 
+async def _subscription_ids(client: httpx.AsyncClient) -> set[str] | None:
+    """`GET /subscription/v1/models`, the documented list of subscription-
+    included models; None when it cannot be read."""
+    try:
+        r = await client.get(_api() + "/subscription/v1/models")
+        r.raise_for_status()
+        data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    items = data.get("data") if isinstance(data, dict) else None
+    ids = {m["id"] for m in items or [] if isinstance(m, dict) and isinstance(m.get("id"), str)}
+    return ids or None
+
+
 async def fetch_catalog(*, force: bool = False) -> dict:
     """The public text catalog. The same for every key, so one shared copy."""
     global _catalog, _catalog_ok
@@ -157,6 +171,11 @@ async def fetch_catalog(*, force: bool = False) -> dict:
             r = await client.get(_api() + "/v1/models", params={"detailed": "true"})
             r.raise_for_status()
             catalog = parse_catalog(r.json())
+            # The detailed catalog's `subscription.included` is undocumented;
+            # the subscription list is the documented source, the field the fallback.
+            subscription = await _subscription_ids(client) if catalog["by_id"] else None
+            for mid, rec in catalog["by_id"].items() if subscription else ():
+                rec["subscription"] = mid in subscription
     except (httpx.HTTPError, ValueError):
         catalog = {"by_id": {}}
     if not catalog["by_id"]:
@@ -730,11 +749,11 @@ async def fetch_model_providers(upstream: str) -> list[dict] | None:
 
 # --- Chat -------------------------------------------------------------------------
 
-def _clean_message(message, owner: bool):
+def _clean_message(message, keep_cache: bool):
     if not isinstance(message, dict):
         return message
     out = {k: v for k, v in message.items() if not k.startswith("_fuse") and k != "claude_thinking"}
-    if not owner and isinstance(out.get("content"), list):
+    if not keep_cache and isinstance(out.get("content"), list):
         out["content"] = [
             {k: v for k, v in part.items() if k != "cache_control"} if isinstance(part, dict) else part
             for part in out["content"]
@@ -742,13 +761,23 @@ def _clean_message(message, owner: bool):
     return out
 
 
-def chat_payload(body: dict, upstream: str, rec: dict, *, owner: bool, prefs: dict | None = None) -> dict:
+def auto_caches(upstream: str, rec: dict) -> bool:
+    """Paid Claude gets Fuse's one-hour cache helper, so its cache writes bill
+    at 2x input rather than the catalog's five-minute rate."""
+    return upstream.startswith("anthropic/") and not rec.get("subscription")
+
+
+def chat_payload(body: dict, upstream: str, rec: dict, *, owner: bool, prefs: dict | None = None, covered: bool = False) -> dict:
+    """`covered`: the model is subscription-included and the key's plan is
+    active. Explicit cache controls (the body helper or inline cache_control
+    markers, which clients like OpenCode add) bill such a request
+    pay-as-you-go, so they are dropped there as on a borrowed key."""
     payload = {
         k: v for k, v in drop_cache_routing_fields(body).items()
         if not k.startswith("_fuse") and k not in ("session_id", "models")
     }
     if isinstance(payload.get("messages"), list):
-        payload["messages"] = [_clean_message(m, owner) for m in payload["messages"]]
+        payload["messages"] = [_clean_message(m, owner and not covered) for m in payload["messages"]]
     payload["model"] = upstream
     effort = payload.pop("reasoning_effort", None)
     reasoning = payload.pop("reasoning", None)
@@ -768,14 +797,13 @@ def chat_payload(body: dict, upstream: str, rec: dict, *, owner: bool, prefs: di
             payload[field] = cap
     if not owner:
         return {k: v for k, v in payload.items() if k in _BORROWED_FIELDS}
+    if covered:
+        for field in ("prompt_caching", "promptCaching", "cache_control"):
+            payload.pop(field, None)
     rest = {k: v for k, v in reasoning.items() if k != "effort"} if isinstance(reasoning, dict) else {}
     if rest:
         payload["reasoning"] = rest
-    if (
-        upstream.startswith("anthropic/")
-        and not rec.get("subscription")
-        and not any(k in payload for k in ("prompt_caching", "promptCaching", "cache_control"))
-    ):
+    if auto_caches(upstream, rec) and not any(k in payload for k in ("prompt_caching", "promptCaching", "cache_control")):
         # Claude caches only with explicit markers. Explicit caching is
         # pay-as-you-go, which paid Claude models are anyway.
         payload["prompt_caching"] = {"enabled": True, "ttl": "1h"}
@@ -848,7 +876,8 @@ class NanoGPTSource:
         uid = int(user_id) if user_id is not None else None
 
         def usable(cred, extra) -> bool:
-            if not credential_is_authed(cred, extra):
+            # NanoGPT's own advice that this key can route nothing right now.
+            if not credential_is_authed(cred, extra) or _billing(extra).get("recommended") == "unavailable":
                 return False
             return pool_policy.donated_by(cred) == uid or (rec["subscription"] and shareable(extra))
 
@@ -890,12 +919,13 @@ class NanoGPTSource:
                     attempts.pop()
                 last.attempts = attempts
                 return last
-            cred, _extra = picked
+            cred, extra = picked
             cid = int(cred["id"])
             tried.add(cid)
             note_pool_invoke(cid)
             owner = pool_policy.donated_by(cred) == uid
-            payload = chat_payload(body, upstream, rec, owner=owner, prefs=prefs)
+            covered = rec["subscription"] and billing_has_subscription(_billing(extra))
+            payload = chat_payload(body, upstream, rec, owner=owner, prefs=prefs, covered=covered)
             request_ids: list[str] = []
 
             async def capture(response, request_ids=request_ids):

@@ -252,6 +252,19 @@ def test_minimal_chat_body_has_no_provider_defaults_or_internal_fields(backend, 
     assert all(client.is_closed for client in clients)
 
 
+def test_scoped_session_id_is_sent_as_prompt_cache_key(backend, network):
+    src, uid, _ = backend
+    requests, _ = network(lambda request: catalog_response(request) if request.method == "GET" else httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "hello"}}]}))
+
+    async def run():
+        await connect(src, uid)
+        body = {"model": "explabs/" + MODEL, "messages": [], "prompt_cache_key": "raw-client-key"}
+        assert (await src.chat(body, user_id=uid, session_id="fx:scoped")).status == 200
+
+    asyncio.run(run())
+    assert json.loads(requests[-1].content)["prompt_cache_key"] == "fx:scoped"
+
+
 @pytest.mark.parametrize("status", [401, 402, 429])
 @pytest.mark.parametrize("stream", [False, True])
 def test_chat_preserves_quota_errors_and_retry_after_not_invalid_auth(backend, network, status, stream):
@@ -624,6 +637,10 @@ def test_api_invoke_explicit_explabs_requires_key(backend, monkeypatch, has_key)
             assert invoked[-1] is result
             assert invoked[1] is src and invoked[2] == MODEL
             assert pick.await_args.kwargs["user_id"] == uid
-            src.chat.assert_awaited_once_with({**body, "model": MODEL}, user_id=uid, session_id=None)
+            src.chat.assert_awaited_once()
+            assert src.chat.await_args.args == ({**body, "model": MODEL},)
+            assert src.chat.await_args.kwargs["user_id"] == uid
+            # Tenant-scoped cache-routing id, never the raw client value.
+            assert src.chat.await_args.kwargs["session_id"].startswith("fx:")
 
     asyncio.run(run())

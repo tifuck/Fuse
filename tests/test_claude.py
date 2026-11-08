@@ -305,37 +305,94 @@ class ClaudeParseTest(unittest.TestCase):
     def test_thinking_off_keeps_sampling(self):
         payload = claude_mod.build_messages_payload(
             {"reasoning_effort": "none", "temperature": 0.2, "messages": [{"role": "user", "content": "hi"}]},
-            "claude-haiku-4-5",
+            "claude-haiku-4-5-20251001",
         )
         self.assertNotIn("thinking", payload)
         self.assertEqual(payload["temperature"], 0.2)
 
-    def test_forced_tool_choice_without_requested_effort_is_honored(self):
+    def test_effort_models_drop_sampling(self):
+        # 4.7+ and 5.x reject non-default temperature/top_p on every request.
         payload = claude_mod.build_messages_payload(
-            {
-                "messages": [{"role": "user", "content": "hi"}],
-                "tools": [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
-                "tool_choice": {"type": "function", "function": {"name": "lookup"}},
-            },
-            "claude-sonnet-4-6",
+            {"temperature": 0.2, "top_p": 0.9, "messages": [{"role": "user", "content": "hi"}]},
+            "claude-opus-5-5",
         )
-        # The client forced a tool and never asked for thinking: the default
-        # effort yields instead of silently downgrading the forced call.
-        self.assertEqual(payload["tool_choice"], {"type": "tool", "name": "lookup"})
-        self.assertNotIn("output_config", payload)
+        self.assertNotIn("temperature", payload)
+        self.assertNotIn("top_p", payload)
 
-    def test_forced_tool_choice_with_explicit_effort_is_demoted(self):
+    def test_catalog_effort_models_get_adaptive_thinking_and_catalog_default(self):
+        # The catalog's thinking.type is "effort": 5.x thinks but omits the
+        # text without display, and 4.6-4.8 do not think without the field.
+        payload = claude_mod.build_messages_payload({"messages": [{"role": "user", "content": "hi"}]}, "claude-opus-5-5")
+        self.assertEqual(payload["thinking"], {"type": "adaptive", "display": "summarized"})
+        self.assertEqual(payload["output_config"], {"effort": "medium"})
+        fable = claude_mod.build_messages_payload({"messages": [{"role": "user", "content": "hi"}]}, "claude-fable-5-1")
+        self.assertEqual(fable["output_config"], {"effort": "high"})
+
+    def test_model_without_effort_gets_no_effort_or_thinking(self):
+        # Haiku 4.5 rejects the effort parameter ("thinking": {"type": "none"}).
+        for effort in (None, "high", "none"):
+            body = {"messages": [{"role": "user", "content": "hi"}]}
+            if effort:
+                body["reasoning_effort"] = effort
+            payload = claude_mod.build_messages_payload(body, "claude-haiku-4-5-20251001")
+            self.assertNotIn("output_config", payload, effort)
+            self.assertNotIn("thinking", payload, effort)
+
+    def test_unlisted_effort_maps_to_nearest_level(self):
+        from unittest.mock import patch
+
+        from app.sources import claude_catalog
+
+        meta = {"claude-opus-4-6": {"efforts": ("low", "medium", "high", "max"), "thinking_type": "effort"}}
+        with patch.dict(claude_catalog._catalog_meta, meta):
+            payload = claude_mod.build_messages_payload(
+                {"reasoning_effort": "xhigh", "messages": [{"role": "user", "content": "hi"}]}, "claude-opus-4-6")
+        self.assertEqual(payload["output_config"], {"effort": "max"})
+
+    def test_thinking_off_maps_per_model(self):
+        from app.sources import claude_catalog
+
+        body = {"reasoning_effort": "none", "messages": [{"role": "user", "content": "hi"}]}
+        meta = {"efforts": ("low", "medium", "high"), "thinking_type": "effort"}
+        with patch.dict(claude_catalog.CLAUDE_MODEL_META, {"claude-opus-4-8": meta}):
+            opus48 = claude_mod.build_messages_payload(dict(body), "claude-opus-4-8")
+        self.assertEqual(opus48["thinking"], {"type": "disabled"})
+        self.assertEqual(opus48["output_config"], {"effort": "low"})
+        self.assertEqual(claude_mod.build_messages_payload(dict(body), "claude-sonnet-5")["thinking"], {"type": "disabled"})
+        self.assertEqual(claude_mod.build_messages_payload(dict(body), "claude-sonnet-5-5")["thinking"], {"type": "between_tools"})
+        # Opus 5.5 and Fable 5.1 reject disabled: lowest effort instead.
+        opus = claude_mod.build_messages_payload(dict(body), "claude-opus-5-5")
+        self.assertEqual(opus["thinking"], {"type": "adaptive", "display": "summarized"})
+        self.assertEqual(opus["output_config"], {"effort": "low"})
+
+    def test_forced_tool_choice_kept_where_adaptive_allows_it(self):
         payload = claude_mod.build_messages_payload(
             {
-                "reasoning_effort": "high",
                 "messages": [{"role": "user", "content": "hi"}],
                 "tools": [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
                 "tool_choice": {"type": "function", "function": {"name": "lookup"}},
+                "reasoning_effort": "high",
             },
-            "claude-sonnet-4-6",
+            "claude-sonnet-5",
         )
-        self.assertEqual(payload["tool_choice"], {"type": "auto"})
-        self.assertEqual(payload["output_config"], {"effort": "high"})
+        self.assertEqual(payload["tool_choice"], {"type": "tool", "name": "lookup"})
+        self.assertEqual(payload["thinking"]["type"], "adaptive")
+
+    def test_forced_tool_choice_demoted_where_rejected(self):
+        # Opus 5.5, Sonnet 5.5, Fable 5.1 and Mythos 5.1 reject forced tool
+        # use on every request, with or without a requested effort.
+        for choice in ({"type": "function", "function": {"name": "lookup"}}, "required"):
+            for model in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"):
+                payload = claude_mod.build_messages_payload(
+                    {
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "tools": [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}],
+                        "tool_choice": choice,
+                        "parallel_tool_calls": False,
+                    },
+                    model,
+                )
+                self.assertEqual(payload["tool_choice"], {"type": "auto", "disable_parallel_tool_use": True}, (model, choice))
 
     def test_small_max_tokens_drops_enabled_thinking(self):
         meta = {"thinking_type": "enabled"}
@@ -364,18 +421,93 @@ class ClaudeParseTest(unittest.TestCase):
         self.assertEqual(payload["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(payload["output_config"], {"effort": "xhigh"})
 
-    def test_required_tool_choice_never_ships_with_thinking(self):
-        # tool_choice "any" plus thinking is rejected upstream.
+    def test_required_tool_choice_never_ships_with_manual_thinking(self):
+        # Manual (budget) thinking rejects tool_choice "any": an explicit
+        # thinking request demotes the choice, otherwise thinking yields.
         base = {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 8000, "tool_choice": "required",
                 "tools": [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}]}
-        for meta in ({"thinking_type": "adaptive"}, {"thinking_type": "enabled"}):
-            with patch("app.sources.claude_payload._meta_for", return_value=meta):
-                default = claude_mod.build_messages_payload(dict(base), "claude-sonnet-4-6")
-                explicit = claude_mod.build_messages_payload({**base, "reasoning_effort": "high"}, "claude-sonnet-4-6")
-            self.assertEqual(default["tool_choice"]["type"], "any", meta)
-            self.assertNotIn("thinking", default, meta)
-            self.assertIn("thinking", explicit, meta)
-            self.assertEqual(explicit["tool_choice"]["type"], "auto", meta)
+        with patch("app.sources.claude_payload._meta_for", return_value={"thinking_type": "enabled"}):
+            default = claude_mod.build_messages_payload(dict(base), "claude-sonnet-4-6")
+            explicit = claude_mod.build_messages_payload({**base, "reasoning_effort": "high"}, "claude-sonnet-4-6")
+        self.assertEqual(default["tool_choice"]["type"], "any")
+        self.assertNotIn("thinking", default)
+        self.assertIn("thinking", explicit)
+        self.assertEqual(explicit["tool_choice"]["type"], "auto")
+
+    def test_assistant_turn_replays_in_received_order(self):
+        # 5.x models put a signed thinking block right before each tool_use;
+        # preserved thinking rejects the turn if the blocks are reordered.
+        calls = [{"id": f"toolu_{i}", "type": "function", "function": {"name": "lookup", "arguments": "{}"}} for i in range(2)]
+        assistant = {
+            "role": "assistant",
+            "content": "Checking.",
+            "tool_calls": calls,
+            "claude_thinking": [
+                {"thinking": "plan", "signature": "s0", "tool_index": 0},
+                {"thinking": "", "signature": "s1", "tool_index": 0, "after_text": True},
+                {"redacted_thinking": "r2", "tool_index": 1, "after_text": True},
+            ],
+        }
+        body = {"messages": [{"role": "user", "content": "go"}, assistant,
+                             *({"role": "tool", "tool_call_id": c["id"], "content": "r"} for c in calls)]}
+        blocks = claude_mod.build_messages_payload(body, "claude-opus-5-5")["messages"][1]["content"]
+        self.assertEqual(
+            [b.get("signature") or b.get("data") or b.get("text") or b.get("id") for b in blocks],
+            ["s0", "Checking.", "s1", "toolu_0", "r2", "toolu_1"],
+        )
+        # Rows stored before positions were recorded keep the old layout.
+        for block in assistant["claude_thinking"]:
+            block.pop("tool_index")
+        blocks = claude_mod.build_messages_payload(body, "claude-opus-5-5")["messages"][1]["content"]
+        self.assertEqual([b["type"] for b in blocks], ["thinking", "thinking", "redacted_thinking", "text", "tool_use", "tool_use"])
+
+    def test_chat_loop_keeps_thinking_positions(self):
+        from app.chat_generation.parsing import _native_reasoning, _take_thinking
+
+        bucket: list = []
+        _take_thinking(bucket, [{"thinking": "", "signature": "s", "tool_index": 1, "after_text": True},
+                                {"redacted_thinking": "r", "tool_index": 2}])
+        stored = _native_reasoning("", "claude/claude-opus-5-5", bucket)["claude_thinking"]
+        self.assertEqual(stored, [{"thinking": "", "signature": "s", "tool_index": 1, "after_text": True},
+                                  {"redacted_thinking": "r", "tool_index": 2}])
+
+    def test_default_prices_use_1h_writes_and_haiku_long_tier(self):
+        from app import pricing
+
+        pricing.ensure_default_prices()
+        opus = db.fetchone("SELECT * FROM model_prices WHERE provider='claude' AND model='claude-opus-5-5'")
+        self.assertEqual((opus["input_micros_per_million"], opus["cached_input_micros_per_million"],
+                          opus["cache_write_micros_per_million"], opus["output_micros_per_million"]),
+                         (4_000_000, 200_000, 8_000_000, 20_000_000))
+        haiku = db.fetchone("SELECT * FROM model_prices WHERE provider='claude' AND model='claude/claude-haiku-5-5'")
+        tier = json.loads(haiku["tiers_json"])[0]
+        self.assertEqual((tier["min_prompt_tokens"], tier["input_rate"], tier["cache_write_rate"]), (100_001, 500_000, 1_000_000))
+
+    def test_mid_conversation_system_message_stays_in_place(self):
+        body = {"messages": [
+            {"role": "system", "content": "base"},
+            {"role": "user", "content": "go"},
+            {"role": "system", "content": "now read-only"},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": "next"},
+        ]}
+        payload = claude_mod.build_messages_payload(body, "claude-opus-5-5")
+        self.assertEqual([b["text"] for b in payload["system"]][1:], ["base"])
+        self.assertEqual(payload["messages"][1], {"role": "system", "content": "now read-only"})
+        # Sonnet 5 has no mid-conversation system messages: it is hoisted.
+        hoisted = claude_mod.build_messages_payload(body, "claude-sonnet-5")
+        self.assertEqual([b["text"] for b in hoisted["system"]][1:], ["base", "now read-only"])
+        self.assertEqual([m["role"] for m in hoisted["messages"]], ["user", "assistant", "user"])
+        # Between a tool_use and its result is not a valid position either.
+        body = {"messages": [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "tool_calls": [{"id": "t1", "function": {"name": "x", "arguments": "{}"}}]},
+            {"role": "system", "content": "late"},
+            {"role": "tool", "tool_call_id": "t1", "content": "r"},
+        ]}
+        payload = claude_mod.build_messages_payload(body, "claude-opus-5-5")
+        self.assertEqual(payload["system"][-1]["text"], "late")
+        self.assertEqual([m["role"] for m in payload["messages"]], ["user", "assistant", "user"])
 
     def test_data_url_media_type_must_be_image(self):
         payload = claude_mod.build_messages_payload(
@@ -525,7 +657,7 @@ class ClaudeStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"cache_write_tokens":2', joined)
         self.assertTrue(joined.rstrip().endswith("data: [DONE]"))
         self.assertEqual(collected["stream_status"], "complete")
-        self.assertEqual(_final_thinking(chunks), [{"thinking": "plan", "signature": "SIG"}])
+        self.assertEqual(_final_thinking(chunks), [{"thinking": "plan", "signature": "SIG", "tool_index": 0}])
         # Thinking is not usage: it must stay out of the usage holder.
         self.assertNotIn("claude_thinking", collected)
         self.assertEqual(collected["prompt_tokens"], 16)
@@ -553,7 +685,7 @@ class ClaudeStreamTest(unittest.IsolatedAsyncioTestCase):
         # blob and the signed-empty (omitted-display) block.
         self.assertEqual(
             _final_thinking(chunks),
-            [{"redacted_thinking": "enc-blob"}, {"thinking": "", "signature": "SIG2"}],
+            [{"redacted_thinking": "enc-blob", "tool_index": 0}, {"thinking": "", "signature": "SIG2", "tool_index": 0}],
         )
         self.assertNotIn("claude_thinking", collected)
         self.assertIn("redacted_thinking", joined)
@@ -581,7 +713,7 @@ class ClaudeStreamTest(unittest.IsolatedAsyncioTestCase):
         chunks = []
         async for piece in claude_mod._translated_stream(_FakeResp(events), AsyncMock(), "claude-opus-4-6", collected):
             chunks.append(piece.decode())
-        self.assertEqual(_final_thinking(chunks), [{"thinking": "", "signature": signature}])
+        self.assertEqual(_final_thinking(chunks), [{"thinking": "", "signature": signature, "tool_index": 0}])
         self.assertEqual(collected["completion_tokens"], 15000)
         self.assertLess(len(json.dumps(collected, separators=(",", ":"))), USAGE_MAX)
         for piece in chunks:
@@ -641,6 +773,40 @@ class ClaudeStreamTest(unittest.IsolatedAsyncioTestCase):
         ]
         body = await claude_mod._aggregate(_FakeResp(events), AsyncMock(), "claude-opus-4-6")
         self.assertEqual(body["choices"][0]["finish_reason"], "length")
+
+    async def test_refusal_and_context_window_stop_reasons(self):
+        for stop, finish in (("refusal", "content_filter"), ("model_context_window_exceeded", "length")):
+            events = [
+                {"type": "message_start", "message": {"id": "msg_5", "usage": {"input_tokens": 1}}},
+                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "x"}},
+                {"type": "message_delta", "delta": {"stop_reason": stop}, "usage": {"output_tokens": 1}},
+                {"type": "message_stop"},
+            ]
+            body = await claude_mod._aggregate(_FakeResp(events), AsyncMock(), "claude-opus-5-5")
+            self.assertEqual(body["choices"][0]["finish_reason"], finish, stop)
+
+    async def test_thinking_records_its_position_among_text_and_tools(self):
+        events = [
+            {"type": "message_start", "message": {"id": "msg_6", "usage": {"input_tokens": 1}}},
+            {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}},
+            {"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "s0"}},
+            {"type": "content_block_stop", "index": 0},
+            {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "toolu_a", "name": "x"}},
+            {"type": "content_block_stop", "index": 1},
+            {"type": "content_block_delta", "index": 2, "delta": {"type": "text_delta", "text": "then"}},
+            {"type": "content_block_start", "index": 3, "content_block": {"type": "thinking", "thinking": ""}},
+            {"type": "content_block_delta", "index": 3, "delta": {"type": "signature_delta", "signature": "s1"}},
+            {"type": "content_block_stop", "index": 3},
+            {"type": "content_block_start", "index": 4, "content_block": {"type": "tool_use", "id": "toolu_b", "name": "x"}},
+            {"type": "content_block_stop", "index": 4},
+            {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 1}},
+            {"type": "message_stop"},
+        ]
+        body = await claude_mod._aggregate(_FakeResp(events), AsyncMock(), "claude-opus-5-5")
+        self.assertEqual(body["choices"][0]["message"]["claude_thinking"], [
+            {"thinking": "", "signature": "s0", "tool_index": 0},
+            {"thinking": "", "signature": "s1", "tool_index": 1, "after_text": True},
+        ])
 
 
 class _RevokeClient:

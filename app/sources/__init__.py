@@ -325,11 +325,14 @@ def reasoning_efforts(type_id: str, model: str | None = None, user_id: int | Non
     if type_id == "devin":
         return devin_mod.efforts_for(model) if model else devin_mod.SEEDED_EFFORTS
     if type_id == "grok":
-        return ("low", "medium", "high", "xhigh")
+        # Grok Build documents no reasoning_effort.
+        return () if model == "grok-build-0.1" else ("low", "medium", "high", "xhigh")
     if type_id == "chatgpt":
         return chatgpt_catalog.efforts_for(model)
     if type_id == "zai":
-        return ("none", "high")
+        from . import zai as zai_mod
+
+        return zai_mod.efforts_for(model)
     if type_id == "kimi":
         return kimi_mod.efforts_for(model)
     if type_id == "mimo":
@@ -349,7 +352,12 @@ def reasoning_efforts(type_id: str, model: str | None = None, user_id: int | Non
 
         return refuseless_mod.efforts_for(model)
     if type_id == "ollama":
-        return ("none", "low", "medium", "high", "max")
+        return ollama_mod.efforts_for(model)
+    if type_id == "openrouter":
+        from . import openrouter as openrouter_mod
+
+        efforts = openrouter_mod.efforts_for(model)
+        return GENERIC_EFFORTS if efforts is None else efforts
     return GENERIC_EFFORTS
 
 
@@ -409,7 +417,7 @@ def catalog_unavailable_for(model: str) -> bool:
         return "zai" in _unavailable_types
     if model.startswith("gpt-"):
         return "chatgpt" in _unavailable_types
-    if model in KIMI_MODELS or model.startswith("kimi-for-coding") or model == "k3" or model.startswith("k3-"):
+    if model in KIMI_MODELS or model.startswith("kimi-for-coding") or model == "k3" or model.startswith(("k3-", "k3.")):
         return "kimi" in _unavailable_types
     if model in MIMO_MODELS or model.startswith("mimo-"):
         return "mimo" in _unavailable_types

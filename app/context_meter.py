@@ -26,6 +26,7 @@ KNOWN_WINDOWS = {
     "grok-4.7": 500_000,
     "grok-4.6": 500_000,
     "grok-4.5": 500_000,
+    "grok-build-0.1": 256_000,
     "gpt-6-astra": 1_050_000,
     "gpt-6-sol": 1_050_000,
     "gpt-6-luna": 1_050_000,
@@ -45,14 +46,14 @@ KNOWN_WINDOWS = {
     "glm-5-2-1m": 1_000_000,
     "glm-5-turbo": 1_000_000,
     "glm-4.7": 200_000,
+    "k3.1-pro": 262_144,
+    "k3.1-pro-highspeed": 262_144,
     "k3": 262_144,
     "k3-256k": 262_144,
     "kimi-for-coding": 1_048_576,
     "kimi-for-coding-highspeed": 262_144,
     "mimo-v2.6-pro": 1_048_576,
     "mimo-v2.6-flash": 1_048_576,
-    "mimo-v2.5-pro": 1_048_576,
-    "mimo-v2.5": 1_048_576,
     "claude/claude-opus-5-5": 1_000_000,
     "claude/claude-sonnet-5": 1_000_000,
     "claude/claude-fable-5-1": 1_000_000,
@@ -87,6 +88,7 @@ PREFIX_WINDOWS = (
     ("glm-", 1_000_000),
     ("kimi-for-coding", 1_048_576),
     ("k3-", 262_144),
+    ("k3.", 262_144),
     ("mimo-", 1_048_576),
     ("claude/", 200_000),
     ("cursor/", 200_000),
@@ -226,7 +228,7 @@ def type_id_for_model(model: str) -> str | None:
         return "chatgpt"
     if mid.startswith("glm-"):
         return "zai"
-    if mid.startswith("kimi-") or mid == "k3" or mid.startswith("k3-"):
+    if mid.startswith("kimi-") or mid == "k3" or mid.startswith(("k3-", "k3.")):
         return "kimi"
     if mid.startswith("mimo-"):
         return "mimo"
@@ -314,6 +316,12 @@ def window_for(
                 return _clamp_window(got, cfg.default_window)
         except Exception:
             pass
+    if kind == "chatgpt":
+        from .sources.chatgpt_catalog import model_window as chatgpt_window
+
+        got = chatgpt_window(mid)
+        if got:
+            return _clamp_window(got, cfg.default_window)
     if kind == "claude":
         try:
             from .sources.claude import model_window as claude_window
@@ -536,7 +544,7 @@ def occupancy_parts(messages: list | None, *, tools=None) -> dict:
         reasoning = _reasoning_text(body)
         if reasoning:
             thinking += estimate_text(reasoning)
-            body = {**body, "reasoning": "", "reasoning_content": "", "claude_thinking": []}
+            body = {**body, "reasoning": "", "reasoning_content": "", "claude_thinking": [], "reasoning_details": []}
         messages_n += estimate_messages([body])
         for call in calls:
             if not isinstance(call, dict):

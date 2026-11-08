@@ -66,6 +66,54 @@ class MappingTest(unittest.TestCase):
         self.assertNotIn("reasoning_effort", payload)
         self.assertEqual(payload["reasoning"], {"exclude": False, "effort": "high"})
 
+    def test_assistant_reasoning_details_pass_through_untouched(self):
+        details = [{"type": "reasoning.encrypted", "data": "opaque", "id": "r1", "format": "openai-responses-v1", "index": 0}]
+        messages = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a", "reasoning_details": details}]
+        payload = or_mod._chat_payload({"messages": messages}, "openai/gpt-6", free=False)
+        self.assertEqual(payload["messages"][1]["reasoning_details"], details)
+
+    def test_efforts_follow_catalog_reasoning(self):
+        from app import sources
+
+        catalog = {"by_id": {
+            "z-ai/glm-5.3-flash": {"reasoning": {"mandatory": True, "supported_efforts": ["max", "high", "low"]}},
+            "tencent/hy4": {"reasoning": {"mandatory": False, "supported_efforts": ["high", "low", "none"]}},
+            "a/all": {"reasoning": {"mandatory": True, "supported_efforts": None}},
+            "xiaomi/mimo-v2.6-pro": {"reasoning": {"mandatory": False}},
+            "meta/plain": {"reasoning": None, "reasoning_param": False},
+        }}
+        with patch.object(or_mod, "cached_catalog", return_value=catalog):
+            self.assertEqual(or_mod.efforts_for("openrouter/z-ai/glm-5.3-flash"), ("low", "high", "max"))
+            self.assertEqual(or_mod.efforts_for("tencent/hy4"), ("none", "low", "high"))
+            self.assertEqual(or_mod.efforts_for("a/all"), ("minimal", "low", "medium", "high", "xhigh", "max"))
+            self.assertEqual(or_mod.efforts_for("xiaomi/mimo-v2.6-pro"), ("none", "medium"))
+            self.assertEqual(or_mod.efforts_for("meta/plain"), ())
+            self.assertIsNone(or_mod.efforts_for("unknown/model"))
+            self.assertEqual(sources.reasoning_efforts("openrouter", "unknown/model"), sources.GENERIC_EFFORTS)
+            self.assertEqual(sources.metadata_effort("openrouter", "openrouter/z-ai/glm-5.3-flash"), "low")
+
+    def test_mandatory_model_drops_a_stale_none_effort(self):
+        catalog = {"by_id": {"z-ai/glm-5.3-flash": {"id": "z-ai/glm-5.3-flash", "free": False, "reasoning": {"mandatory": True}}}}
+        sent = {}
+
+        async def fake_chat(client, url, headers, payload, close_client):
+            sent.update(payload)
+            await client.aclose()
+            return 200, {}, None, {}, {}
+
+        async def run():
+            with (
+                patch.object(or_mod, "fetch_catalog", return_value=catalog),
+                patch.object(or_mod, "pick_key_for", return_value=({"id": 1, "secret": "s"}, {}, "k", "user")),
+                patch.object(or_mod, "provider_prefs", return_value={}),
+                patch.object(or_mod, "openai_chat", fake_chat),
+            ):
+                src = or_mod.OpenRouterSource({"id": 1, "name": "OpenRouter"}, {}, [])
+                return await src.chat({"model": "openrouter/z-ai/glm-5.3-flash", "messages": [], "reasoning_effort": "none"}, user_id=7)
+
+        self.assertEqual(asyncio.run(run()).status, 200)
+        self.assertEqual(sent["reasoning"], {})
+
 
 class AccessTest(unittest.TestCase):
     def test_no_user_key_lists_nothing(self):

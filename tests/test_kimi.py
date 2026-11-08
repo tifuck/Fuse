@@ -53,6 +53,8 @@ class KimiParseTest(unittest.TestCase):
         self.assertTrue(kimi_mod.is_kimi_model("k3-256k"))
         self.assertTrue(kimi_mod.is_kimi_model("kimi-for-coding"))
         self.assertTrue(kimi_mod.is_kimi_model("kimi-for-coding-highspeed"))
+        self.assertTrue(kimi_mod.is_kimi_model("k3.1-pro"))
+        self.assertTrue(kimi_mod.is_kimi_model("k3.1-pro-highspeed"))
         self.assertFalse(kimi_mod.is_kimi_model("kimi-k3"))
         self.assertFalse(kimi_mod.is_kimi_model("gpt-5.4"))
         self.assertFalse(kimi_mod.is_kimi_model("glm-5.3"))
@@ -92,6 +94,25 @@ class KimiParseTest(unittest.TestCase):
         off = kimi_mod._chat_payload({"model": "k3", "reasoning_effort": "none", "messages": []})
         self.assertNotIn("reasoning_effort", off)
         self.assertEqual(off["thinking"], {"type": "disabled"})
+        minimal = kimi_mod._chat_payload({"model": "k3", "reasoning_effort": "minimal", "messages": []})
+        self.assertEqual(minimal["reasoning_effort"], "low")
+        # Kimi answers an unknown effort with 400: it is dropped, not forwarded.
+        unknown = kimi_mod._chat_payload({"model": "k3", "reasoning_effort": "turbo", "messages": []})
+        self.assertNotIn("reasoning_effort", unknown)
+        # K3.1 Pro rejects disabled thinking: "off" runs at the lightest level.
+        for body in ({"reasoning_effort": "none"}, {"thinking": {"type": "disabled"}}):
+            k31 = kimi_mod._chat_payload({"model": "k3.1-pro", "messages": [], **body})
+            self.assertEqual(k31["reasoning_effort"], "low")
+            self.assertNotIn("thinking", k31)
+        # K2.7 Code Highspeed has no adjustable effort.
+        fast = kimi_mod._chat_payload({"model": "kimi-for-coding-highspeed", "reasoning_effort": "high", "messages": []})
+        self.assertNotIn("reasoning_effort", fast)
+
+    def test_scoped_session_id_is_the_prompt_cache_key(self):
+        payload = kimi_mod._chat_payload({"model": "k3", "prompt_cache_key": "raw", "messages": []}, "scoped")
+        self.assertEqual(payload["prompt_cache_key"], "scoped")
+        bare = kimi_mod._chat_payload({"model": "k3", "prompt_cache_key": "raw", "messages": []})
+        self.assertNotIn("prompt_cache_key", bare)
 
     def test_usage_percent_from_windows(self):
         extra = {"billing": {"windows": [{"percent": 12}, {"percent": 40}], "credit_usage_percent": 5}}
@@ -277,6 +298,48 @@ class KimiPoolTest(unittest.IsolatedAsyncioTestCase):
             row = db.fetchone("SELECT disabled FROM credentials WHERE id=?", (cid,))
             self.assertEqual(row["disabled"], 0, cid)
         refresh.assert_not_awaited()
+
+    @patch("app.sources.kimi.note_pool_invoke")
+    @patch("app.sources.kimi.refresh_quota", new_callable=AsyncMock)
+    @patch("app.sources.kimi.openai_chat", new_callable=AsyncMock)
+    @patch("app.sources.kimi.refresh_pool_quota", new_callable=AsyncMock)
+    @patch("app.sources.kimi.refresh_due", new_callable=AsyncMock)
+    async def test_entitlement_403_fails_over_without_quota_refresh(self, _due, _quota, chat, quota, _invoke):
+        denial = (403, {"error": {"message": "Your account doesn't have access to the model or 1M context",
+                                  "type": "permission_denied_error"}}, None, {}, {})
+        ok = (200, {"id": "c"}, None, {"prompt_tokens": 1, "completion_tokens": 1}, {})
+        chat.side_effect = [denial, ok]
+        accounts.add_credential(self.sid, "a", "tok", extra=self._entitled_extra(), donated_by=self.alice["id"])
+        second = accounts.add_credential(self.sid, "b", "tok2", extra=self._entitled_extra(), donated_by=self.alice["id"])
+        src = kimi_mod.KimiSource({"id": self.sid, "name": "Kimi"}, {}, [])
+        result = await src.chat(
+            {"model": "k3.1-pro", "messages": [{"role": "user", "content": "hi"}]},
+            session_id="scoped",
+            user_id=self.alice["id"],
+        )
+        self.assertEqual(result.status, 200)
+        self.assertEqual(result.credential_id, second)
+        quota.assert_not_awaited()
+        self.assertEqual(chat.await_args.args[3]["prompt_cache_key"], "scoped")
+
+    @patch("app.sources.kimi.note_failure")
+    @patch("app.sources.kimi.note_pool_invoke")
+    @patch("app.sources.kimi.refresh_quota", new_callable=AsyncMock)
+    @patch("app.sources.kimi.openai_chat", new_callable=AsyncMock)
+    @patch("app.sources.kimi.refresh_pool_quota", new_callable=AsyncMock)
+    @patch("app.sources.kimi.refresh_due", new_callable=AsyncMock)
+    async def test_access_terminated_stops_without_failover_or_cooldown(self, _due, _quota, chat, quota, _invoke, cool):
+        chat.return_value = (403, {"error": {
+            "message": "Kimi For Coding is currently only available for Coding Agents such as Kimi CLI, Claude Code, Roo Code, Kilo Code, etc.",
+            "type": "access_terminated_error"}}, None, {}, {})
+        for label, tok in (("a", "tok"), ("b", "tok2")):
+            accounts.add_credential(self.sid, label, tok, extra=self._entitled_extra(), donated_by=self.alice["id"])
+        src = kimi_mod.KimiSource({"id": self.sid, "name": "Kimi"}, {}, [])
+        result = await src.chat({"model": "k3", "messages": [{"role": "user", "content": "hi"}]}, user_id=self.alice["id"])
+        self.assertEqual(result.status, 403)
+        self.assertEqual(chat.await_count, 1)
+        quota.assert_not_awaited()
+        cool.assert_not_called()
 
 
 class KimiPricingTest(unittest.TestCase):

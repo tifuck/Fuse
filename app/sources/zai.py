@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -24,17 +25,27 @@ HOLD_HOURS = 24
 _models_cache: tuple[float, list[str]] | None = None
 _refresh_locks: dict[int, asyncio.Lock] = {}
 
+# The Coding Plan serves GLM-5.3 and GLM-5.3-Flash; it routes GLM-5.2/5.1 to
+# GLM-5.3 and GLM-4.7 to GLM-5.3-Flash, so those are not listed.
 ZAI_MODELS = [
     "glm-5.3",
     "glm-5.3-flash",
-    "glm-5.3-highspeed",
-    "glm-5.2",
-    "glm-5.2-highspeed",
     "glm-5-turbo",
-    "glm-4.7",
 ]
 
 _REGIONS = ("global", "cn")
+# GLM-5.3 levels (default max); OpenAI names map to the nearest.
+_EFFORT_MAP = {"minimal": "low", "low": "low", "medium": "high", "high": "high", "xhigh": "max", "max": "max"}
+
+
+def _effort_levels(model) -> bool:
+    """GLM-5.3 and later always think, at reasoning_effort low/high/max."""
+    hit = re.match(r"glm-(\d+)\.(\d+)", str(model or "").strip())
+    return bool(hit) and (int(hit.group(1)), int(hit.group(2))) >= (5, 3)
+
+
+def efforts_for(model: str | None = None) -> tuple[str, ...]:
+    return ("low", "high", "max") if _effort_levels(model) else ("none", "high")
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
@@ -553,11 +564,11 @@ def _remember_models(names: list[str]) -> list[str]:
     fresh = [n for n in names if isinstance(n, str) and n]
     if not fresh and _models_cache and _models_cache[1]:
         return list(_models_cache[1])
-    base = list(_models_cache[1]) if _models_cache and _models_cache[1] else list(ZAI_MODELS)
     merged: list[str] = []
     # Upstream order first (new models sit where the provider puts them),
-    # then ids an earlier catalog listed and this one omits.
-    for name in fresh + base:
+    # then the seeded plan models. Ids an earlier catalog listed and this one
+    # omits are gone: the plan retires and reroutes models.
+    for name in fresh + list(ZAI_MODELS):
         if name not in merged:
             merged.append(name)
     if merged:
@@ -584,19 +595,34 @@ async def fetch_catalog(key: str, region: str) -> list[str]:
 
 def _chat_payload(body: dict) -> dict:
     payload = drop_cache_routing_fields(body)
-    # `reasoning_effort` is the OpenAI Chat Completions control. GLM exposes a
-    # per-turn enabled/disabled switch, not effort levels, so retain a native
-    # `thinking` object when supplied and otherwise map only its on/off intent.
     reasoning = payload.get("reasoning")
     effort = payload.get("reasoning_effort")
     if effort is None and isinstance(reasoning, dict):
         effort = reasoning.get("effort")
+    payload.pop("reasoning_effort", None)
+    payload.pop("reasoning", None)
+    if _effort_levels(payload.get("model")):
+        # GLM-5.3 cannot turn thinking off (a disabled request fails or is
+        # served at low), so "off" becomes the lightest level. An explicit
+        # effort wins over the thinking toggle; an unknown one is left to
+        # the default (max).
+        thinking = payload.get("thinking")
+        disabled = isinstance(thinking, dict) and thinking.get("type") == "disabled"
+        if disabled:
+            payload["thinking"] = {**thinking, "type": "enabled"}
+        level = _EFFORT_MAP.get(effort) if isinstance(effort, str) else None
+        if level is None and (disabled or effort == "none"):
+            level = "low"
+        if level:
+            payload["reasoning_effort"] = level
+        return payload
+    # Older GLM exposes a per-turn enabled/disabled switch, not effort levels,
+    # so retain a native `thinking` object when supplied and otherwise map
+    # only the effort's on/off intent.
     if "thinking" not in payload and isinstance(effort, str):
         payload["thinking"] = {
             "type": "disabled" if effort == "none" else "enabled"
         }
-    payload.pop("reasoning_effort", None)
-    payload.pop("reasoning", None)
     return payload
 
 

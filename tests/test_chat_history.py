@@ -687,19 +687,59 @@ class OutputAndModelTest(unittest.TestCase):
             "devin/glm-5-2": "claude_thinking",
             "kimi-for-coding": "reasoning_content",
             "k3": "reasoning_content",
+            "k3.1-pro": "reasoning_content",
+            "k3.1-pro-highspeed": "reasoning_content",
             "mimo-v2.6-pro": "reasoning_content",
+            "nanogpt/xiaomi/mimo-v2.5-pro": "reasoning_content",
+            "nanogpt/moonshotai/kimi-k3.1-pro": "reasoning_content",
+            "refuseless/deepseek-v4.1-flash-abliterated": "reasoning_content",
+            "refuseless/glm-5.3-abliterated": "reasoning_content",
         }
         for model, field in keeps.items():
             kept = chat_runtime._native_reasoning(text, model, blocks)
             self.assertIn(field, kept, model)
             projected = memory.for_model([{"role": "assistant", "content": "a", **kept}], model)
             self.assertEqual(context_meter.occupancy_parts(projected)["thinking"], 100, model)
-        for model in ("gpt-5.5", "grok-4.6", "qwen3:32b",
+        for model in ("gpt-5.5", "grok-4.6", "qwen3:32b", "k3x", "nanogpt/openai/gpt-5",
                       "openrouter/openai/gpt-5"):
             self.assertEqual(chat_runtime._native_reasoning(text, model, blocks), {}, model)
+        # Ollama ids are bare names: the serving source decides.
+        self.assertEqual(
+            chat_runtime._native_reasoning(text, "qwen3:32b", blocks, source_type="ollama"),
+            {"reasoning_content": text, "_fuse_reasoning_model": "qwen3:32b"})
         # Unsigned thinking cannot be replayed to Claude, so it is not stored.
         self.assertEqual(
             chat_runtime._native_reasoning(text, "claude-sonnet-4-6", [{"thinking": text}]), {})
+
+    def test_openrouter_reasoning_details_are_captured_and_replayed_unmodified(self):
+        from app.chat_generation.parsing import _native_reasoning, _take_reasoning_details
+
+        details = []
+        for chunk in (
+            [{"type": "reasoning.text", "text": "Let me ", "index": 0, "format": "anthropic-claude-v1"}],
+            [{"type": "reasoning.text", "text": "think.", "index": 0, "signature": "SIG"}],
+            [{"type": "reasoning.encrypted", "data": "BLOB", "index": 1}],
+        ):
+            _take_reasoning_details(details, chunk)
+        self.assertEqual(details, [
+            {"type": "reasoning.text", "text": "Let me think.", "index": 0, "format": "anthropic-claude-v1", "signature": "SIG"},
+            {"type": "reasoning.encrypted", "data": "BLOB", "index": 1},
+        ])
+        model = "openrouter/anthropic/claude-sonnet-5"
+        row = {"role": "assistant", "content": "a",
+               **_native_reasoning("Let me think.", model, [{"reasoning_details": details}])}
+        self.assertEqual(row["reasoning_details"], details)
+        sent = memory.for_model(memory._clean([row]), model)[0]
+        self.assertEqual((sent["reasoning_details"], sent["reasoning_content"]), (details, "Let me think."))
+        self.assertNotIn("_fuse_reasoning_model", sent)
+        other = memory.for_model([row], "openrouter/openai/gpt-5")[0]
+        self.assertNotIn("reasoning_details", other)
+        self.assertNotIn("reasoning_content", other)
+        # A Claude text block cut off before its signature cannot be replayed.
+        unsigned = [{"type": "reasoning.text", "text": "t", "format": "anthropic-claude-v1"}]
+        self.assertEqual(_native_reasoning("t", model, [{"reasoning_details": unsigned}]), {})
+        # Only OpenRouter takes them; other routes keep their existing rules.
+        self.assertNotIn("reasoning_details", _native_reasoning("t", "glm-5.3", [{"reasoning_details": details}]))
 
     def test_devin_replays_retained_thinking_blocks(self):
         from app.sources.devin import _messages_to_prompts

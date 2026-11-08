@@ -11,6 +11,9 @@ from ..config import ROOT
 logger = logging.getLogger(__name__)
 
 ACCESS_TTL = 12 * 3600
+# Live replies keep a free verdict current (a 200 refreshes it, a paywall 403
+# flips it to gated), so probes, which spend quota, rarely recheck one.
+FREE_TTL = 7 * 24 * 3600
 # A probe that only proved "could not tell" (429, 5xx, network) is retried soon.
 UNKNOWN_TTL = 15 * 60
 FREE = "free"
@@ -120,7 +123,7 @@ def note(source_id: int, model: str, access: str, *, status: int = 0, error: str
     if access == UNKNOWN and prior.get("access") in (FREE, GATED):
         # A transient probe failure must not hide (or unlock) a known model:
         # keep the verdict and look again after UNKNOWN_TTL.
-        data[model] = {**prior, "checked_at": _now() - ACCESS_TTL + UNKNOWN_TTL}
+        data[model] = {**prior, "checked_at": _now() - _ttl(prior.get("access")) + UNKNOWN_TTL}
         save(source_id)
         return
     data[model] = {
@@ -139,13 +142,16 @@ def of(source_id: int, model: str) -> str | None:
     return row.get("access")
 
 
+def _ttl(access) -> float:
+    return UNKNOWN_TTL if access == UNKNOWN else FREE_TTL if access == FREE else ACCESS_TTL
+
+
 def stale(source_id: int, model: str) -> bool:
     row = load(source_id).get((model or "").strip())
     if not row:
         return True
-    ttl = UNKNOWN_TTL if row.get("access") == UNKNOWN else ACCESS_TTL
     try:
-        return _now() - float(row.get("checked_at") or 0) > ttl
+        return _now() - float(row.get("checked_at") or 0) > _ttl(row.get("access"))
     except (TypeError, ValueError):
         return True
 

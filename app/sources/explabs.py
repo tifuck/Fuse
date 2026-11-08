@@ -302,6 +302,9 @@ class ExperientialLabsSource:
             return ChatResult(status=404, body={"error": {"message": "Model is not available to your Experiential Labs key."}}, model=model)
         payload = {k: v for k, v in body.items() if not k.startswith("_fuse") and k not in ("session_id", "models")}
         payload["model"] = model
+        if session_id:
+            # Cache-aware routing hint: the tenant-scoped id, never the raw client key.
+            payload["prompt_cache_key"] = session_id[:256]
         if isinstance(payload.get("messages"), list):
             payload["messages"] = [
                 {k: v for k, v in message.items() if not k.startswith("_fuse")}

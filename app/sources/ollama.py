@@ -31,6 +31,10 @@ def _plain_keys(source_id: int, creds: list) -> list[str]:
     return [fresh[c["secret"]] for c in creds]
 _tags_cache: dict[int, tuple[float, list[str]]] = {}
 _access_tasks: dict[int, asyncio.Task] = {}
+# Model -> the `think` values /api/show advertises ([] when it cannot think).
+# Absent: unknown, so every level is offered.
+_think_values: dict[str, list] = {}
+EFFORTS = ("none", "low", "medium", "high", "max")
 _TAGS_TTL = 300.0
 DEFAULT_BASE = "https://ollama.com/api"
 
@@ -71,6 +75,26 @@ def _flatten(content, images_out: list) -> str:
     return "\n".join(parts)
 
 
+def efforts_for(model: str | None) -> tuple[str, ...]:
+    values = _think_values.get(model or "")
+    if values is None:
+        return EFFORTS
+    levels = tuple(v for v in values if isinstance(v, str)) or (("high",) if True in values else ())
+    if not levels:
+        return ()
+    return ("none", *levels) if False in values else levels
+
+
+def _usage(frame: dict) -> dict:
+    # prompt_eval_count already includes the cached prompt tokens. The cached
+    # count is omitted when zero, so its absence stays an unknown split.
+    usage = {"prompt_tokens": frame.get("prompt_eval_count", 0), "completion_tokens": frame.get("eval_count", 0)}
+    cached = frame.get("prompt_eval_cached_count")
+    if type(cached) is int:
+        usage["prompt_tokens_details"] = {"cached_tokens": cached}
+    return usage
+
+
 def _tool_name(msg: dict, names: dict) -> str:
     own = msg.get("name")
     if isinstance(own, str) and own.strip():
@@ -86,6 +110,8 @@ def to_ollama(messages: list) -> list:
         images: list[str] = []
         content = _flatten(msg.get("content"), images)
         item = {"role": role, "content": content}
+        if role == "assistant" and isinstance(msg.get("reasoning_content"), str) and msg["reasoning_content"]:
+            item["thinking"] = msg["reasoning_content"]
         if role == "assistant" and msg.get("tool_calls"):
             calls = []
             for tc in msg["tool_calls"]:
@@ -310,6 +336,13 @@ class OllamaSource:
                         caps = data.get("capabilities")
                         if isinstance(caps, list):
                             model_caps.remember(self.type_id, name, "vision" in caps)
+                            thinking = data.get("thinking") if isinstance(data.get("thinking"), dict) else {}
+                            if "thinking" not in caps:
+                                _think_values[name] = []
+                            elif isinstance(thinking.get("values"), list):
+                                _think_values[name] = [v for v in thinking["values"] if isinstance(v, (bool, str))]
+                            else:
+                                _think_values.pop(name, None)
                         info = data.get("model_info") or {}
                         params = data.get("parameters") if isinstance(data.get("parameters"), dict) else {}
                         ctx = next((v for k, v in info.items() if k.endswith(".context_length")), 0) or params.get("num_ctx", 0)
@@ -355,6 +388,15 @@ class OllamaSource:
         # listed models only a paid key could call.
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
             for name in names:
+                probe = {
+                    "model": name,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "stream": False,
+                    "options": {"num_predict": 1},
+                }
+                # Only where /api/show lists false: a think-only model may refuse it.
+                if False in (_think_values.get(name) or []):
+                    probe["think"] = False
                 gated: tuple[int, str] | None = None
                 other: tuple[int, str] | None = None
                 try:
@@ -362,12 +404,7 @@ class OllamaSource:
                         r = await client.post(
                             self.base + "/chat",
                             headers={"Authorization": f"Bearer {key}"},
-                            json={
-                                "model": name,
-                                "messages": [{"role": "user", "content": "ping"}],
-                                "stream": False,
-                                "num_predict": 1,
-                            },
+                            json=probe,
                         )
                         body = r.text[:300]
                         if r.status_code == 200:
@@ -416,10 +453,17 @@ class OllamaSource:
             options["top_p"] = body["top_p"]
         if body.get("stop") is not None:
             options["stop"] = body["stop"] if isinstance(body["stop"], list) else [body["stop"]]
+        if body.get("seed") is not None:
+            options["seed"] = body["seed"]
         if options:
             payload["options"] = options
         if body.get("tools") is not None:
             payload["tools"] = body["tools"]
+        fmt = body.get("response_format") if isinstance(body.get("response_format"), dict) else {}
+        if fmt.get("type") == "json_object":
+            payload["format"] = "json"
+        elif fmt.get("type") == "json_schema" and isinstance((fmt.get("json_schema") or {}).get("schema"), dict):
+            payload["format"] = fmt["json_schema"]["schema"]
         if "think" in body:
             payload["think"] = body["think"]
         else:
@@ -439,6 +483,10 @@ class OllamaSource:
                 )
             elif isinstance(body.get("thinking"), dict):
                 payload["think"] = body["thinking"].get("type") != "disabled"
+        values = _think_values.get(payload["model"])
+        if isinstance(payload.get("think"), str) and values and not any(isinstance(v, str) for v in values):
+            # An on/off model takes no named level.
+            payload["think"] = True
         return payload
 
     async def chat(self, body: dict, *, session_id: str | None = None) -> ChatResult:
@@ -591,15 +639,9 @@ class OllamaSource:
                 "created": int(uuid.uuid4().int % 10**10),
                 "model": model,
                 "choices": [choice],
-                "usage": {
-                    "prompt_tokens": raw.get("prompt_eval_count", 0),
-                    "completion_tokens": raw.get("eval_count", 0),
-                },
+                "usage": _usage(raw),
             }
             usage = usage_from_obj(obj)
-            # Ollama's native API exposes no cached-token breakdown: the
-            # zeros are placeholders and cache_usage_status stays "unknown"
-            # rather than a reported zero.
             if sticky:
                 bind(self.pin_kind, session_id, cid)
             return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model)
@@ -655,10 +697,7 @@ async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | 
             if chunk.get("done"):
                 if delta.get("content") or delta.get("reasoning_content") or delta.get("tool_calls"):
                     yield f"data: {json.dumps(payload)}\n\n".encode()
-                usage = {
-                    "prompt_tokens": chunk.get("prompt_eval_count", 0),
-                    "completion_tokens": chunk.get("eval_count", 0),
-                }
+                usage = _usage(chunk)
                 finish = "length" if chunk.get("done_reason") == "length" else "tool_calls" if saw_tools else "stop"
                 final = {
                     "id": request_id,

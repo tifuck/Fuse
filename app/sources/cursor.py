@@ -19,7 +19,9 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import math
+import re
 import secrets
 import time
 import uuid
@@ -43,6 +45,8 @@ from . import pool_policy
 from .pool_session import bind, lookup
 from .token_store import log_refresh_failures, persist_rotated, shield_refresh
 
+logger = logging.getLogger(__name__)
+
 PREFIX = "cursor/"
 USAGE_TTL = 300
 # Cursor's Auto router: on every plan, so it is the one seed that is always real.
@@ -53,6 +57,14 @@ _models_cache: tuple[float, list[str]] | None = None
 _labels: dict[str, str] = {}
 _refresh_locks: dict[int, asyncio.Lock] = {}
 _CHAT_TIMEOUT = httpx.Timeout(300.0, connect=15.0, write=30.0, pool=15.0)
+# The official installer pins the current cursor-agent build; the CLI sends
+# it as cli-<build>. Checked weekly, hourly after a failure.
+INSTALL_URL = "https://cursor.com/install"
+_BUILD_RE = re.compile(r"downloads\.cursor\.com/lab/(\d{4}\.\d{2}\.\d{2}-[0-9a-f]{6,40})/")
+_VERSION_TTL = 7 * 24 * 3600
+_VERSION_RETRY = 3600
+_client_version: str | None = None
+_version_check = 0.0
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
@@ -126,12 +138,41 @@ def _base() -> str:
     return settings.cursor_api_base.rstrip("/")
 
 
+def client_version() -> str:
+    if settings.cursor_client_version_auto_refresh and _client_version:
+        return _client_version
+    return settings.cursor_client_version
+
+
+async def refresh_client_version() -> None:
+    global _client_version, _version_check
+    if not settings.cursor_client_version_auto_refresh or time.time() < _version_check:
+        return
+    _version_check = time.time() + _VERSION_RETRY
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            r = await client.get(INSTALL_URL)
+            r.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("Cursor version check failed: %s", type(exc).__name__)
+        return
+    found = _BUILD_RE.search(r.text)
+    if not found:
+        logger.warning("Cursor version check found no build in %s", INSTALL_URL)
+        return
+    version = "cli-" + found.group(1)
+    if version != client_version():
+        logger.info("Cursor client version updated: %s -> %s", client_version(), version)
+    _client_version = version
+    _version_check = time.time() + _VERSION_TTL
+
+
 def _headers(token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
         "Connect-Protocol-Version": "1",
         "x-cursor-client-type": "cli",
-        "x-cursor-client-version": settings.cursor_client_version,
+        "x-cursor-client-version": client_version(),
         # Privacy mode: Cursor does not store or train on these requests.
         "x-ghost-mode": "true",
         # Hide Cursor's native tools; the model sees only the caller's. Cursor
@@ -288,7 +329,7 @@ async def poll_login(login_id: str, verifier: str) -> dict:
         r = await client.get(
             _base() + "/auth/poll",
             params={"uuid": login_id, "verifier": verifier},
-            headers={"x-cursor-client-type": "cli", "x-cursor-client-version": settings.cursor_client_version},
+            headers={"x-cursor-client-type": "cli", "x-cursor-client-version": client_version()},
         )
     if r.status_code in (202, 404):
         return {"pending": True}
@@ -458,6 +499,7 @@ def _due(extra: dict, *, within: timedelta) -> bool:
 
 
 async def refresh_due() -> None:
+    await refresh_client_version()
     rows = db.fetchall(
         "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0"
     )
@@ -1064,7 +1106,8 @@ class CursorSource:
                     ids.append(digest)
                 state = agent.encode_state(ids)
             run = agent.CursorRun(base=_base(), headers=_headers(extra.get("access_token") or ""),
-                                  timeout=_CHAT_TIMEOUT, blobs=conv.blobs, tools=tools)
+                                  timeout=_CHAT_TIMEOUT, blobs=conv.blobs, tools=tools,
+                                  sent_tokens=conv.used_tokens if how == "followup" else 0)
             await run.start(agent.encode_run_request(
                 state=state, user_text=user_text, model_id=sel["model_id"], params=sel["params"],
                 max_mode=sel["max"], display_name=sel["name"], tools=tools, conversation_id=conv.conversation_id,

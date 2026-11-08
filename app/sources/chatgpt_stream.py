@@ -81,6 +81,28 @@ def _usage_from_response(u: dict) -> dict:
     return usage_from_obj({"usage": u}) if isinstance(u, dict) else {}
 
 
+# response.incomplete reasons that still end the turn with what was produced,
+# as Chat Completions finish reasons. Other reasons stay errors.
+_INCOMPLETE_FINISH = {"max_output_tokens": "length", "content_filter": "content_filter"}
+
+
+def _incomplete_finish(response: dict) -> str | None:
+    details = response.get("incomplete_details") if isinstance(response.get("incomplete_details"), dict) else {}
+    return _INCOMPLETE_FINISH.get(str(details.get("reason") or ""))
+
+
+def _set_phase(blocks: list[dict], phase) -> None:
+    """Record the assistant message's phase on the reasoning blocks before it.
+
+    Those blocks are what the transcript keeps of a ChatGPT turn, so they
+    carry the phase back to chatgpt_payload. A message without reasoning
+    before it loses its phase (sent back as unknown).
+    """
+    if isinstance(phase, str) and phase:
+        for block in blocks:
+            block["openai_reasoning"].setdefault("phase", phase)
+
+
 # One SSE line; the final response event carries the whole output.
 SSE_LINE_MAX = 32 * 1024 * 1024
 
@@ -214,6 +236,17 @@ class _Translator:
         self.usage: dict = {}
         self.error: str = ""
         self.error_code: str = ""
+        self.finish: str | None = None
+        # Reasoning blocks held until the next output item, which names the
+        # phase of the message they precede.
+        self.pending: list[dict] = []
+
+    def _flush(self, phase=None) -> bytes:
+        if not self.pending:
+            return b""
+        _set_phase(self.pending, phase)
+        blocks, self.pending = self.pending, []
+        return self._chunk({"claude_thinking": blocks})
 
     def _chunk(self, delta: dict | None = None, finish: str | None = None) -> bytes:
         obj = {
@@ -273,7 +306,7 @@ class _Translator:
             response = event.get("response") if isinstance(event.get("response"), dict) else {}
             self.completion_id = "chatcmpl-" + str(response.get("id") or "chatgpt")
             return self._chunk({"role": "assistant", "content": ""})
-        if etype == "response.output_text.delta":
+        if etype in ("response.output_text.delta", "response.refusal.delta"):
             delta = event.get("delta")
             if delta:
                 return self._chunk({"content": str(delta)})
@@ -283,9 +316,17 @@ class _Translator:
             if delta:
                 return self._chunk({"reasoning_content": str(delta)})
             return None
+        if etype == "response.reasoning_summary_part.added":
+            # Summary parts are separate paragraphs; their deltas do not say so.
+            if isinstance(event.get("summary_index"), int) and event["summary_index"] > 0:
+                return self._chunk({"reasoning_content": "\n\n"})
+            return None
         if etype == "response.output_item.added":
             item = event.get("item") if isinstance(event.get("item"), dict) else {}
+            if item.get("type") == "message":
+                return self._flush(item.get("phase")) or None
             if item.get("type") == "function_call":
+                held = self._flush()
                 item_id = str(item.get("id") or "")
                 rec = self.book.add(
                     item_id,
@@ -294,7 +335,7 @@ class _Translator:
                     str(item.get("arguments") or ""),
                     event.get("output_index"),
                 )
-                return self._chunk(
+                return held + self._chunk(
                     {
                         "tool_calls": [
                             {
@@ -317,7 +358,9 @@ class _Translator:
                 rec = self.book.find(event)
                 return self._settle(rec, item.get("arguments")) if rec else None
             block = reasoning_block(item, self.account)
-            return self._chunk({"claude_thinking": [block]}) if block else None
+            if block:
+                self.pending.append(block)
+            return None
         if etype == "response.function_call_arguments.delta":
             rec = self.book.find(event)
             if rec and event.get("delta"):
@@ -343,6 +386,11 @@ class _Translator:
             usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
             if usage:
                 self.usage = _usage_from_response(usage)
+            if etype == "response.incomplete" and _incomplete_finish(response):
+                # Cut at the output limit or by the filter: the partial output
+                # already streamed stands, like a Chat Completions length stop.
+                self.finish = _incomplete_finish(response)
+                return b"__FINAL__"
             err = response.get("error") if isinstance(response.get("error"), dict) else {}
             self.error = str(err.get("message") or ("upstream response incomplete" if etype == "response.incomplete" else "upstream response failed"))
             incomplete = response.get("incomplete_details") if isinstance(response.get("incomplete_details"), dict) else {}
@@ -356,8 +404,9 @@ class _Translator:
         return None
 
     def _final_chunks(self) -> list[bytes]:
-        finish = "tool_calls" if self.book.order else "stop"
-        out = [self._chunk({}, finish)]
+        finish = self.finish or ("tool_calls" if self.book.order else "stop")
+        held = self._flush()
+        out = ([held] if held else []) + [self._chunk({}, finish)]
         if self.usage:
             obj = {
                 "id": self.completion_id,
@@ -398,6 +447,9 @@ async def _translated_stream(
                     stream_status = "complete"
                     break
                 if out == b"__ERROR__":
+                    held = translator._flush()
+                    if held:
+                        yield held
                     yield translator._error_chunk(translator.error)
                     yield b"data: [DONE]\n\n"
                     return
@@ -410,6 +462,9 @@ async def _translated_stream(
             stream_status = "cancelled"
             raise
         if stream_status != "complete":
+            held = translator._flush()
+            if held:
+                yield held
             yield translator._error_chunk(translator.error or "upstream stream ended before a terminal response")
             yield b"data: [DONE]\n\n"
             return
@@ -446,14 +501,19 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
             if etype == "response.created":
                 response = event.get("response") if isinstance(event.get("response"), dict) else {}
                 translator.completion_id = "chatcmpl-" + str(response.get("id") or "chatgpt")
-            elif etype == "response.output_text.delta":
+            elif etype in ("response.output_text.delta", "response.refusal.delta"):
                 if event.get("delta"):
                     text_parts.append(str(event.get("delta")))
             elif etype in ("response.reasoning_summary_text.delta", "response.reasoning_text.delta"):
                 if event.get("delta"):
                     reasoning_parts.append(str(event.get("delta")))
+            elif etype == "response.reasoning_summary_part.added":
+                if isinstance(event.get("summary_index"), int) and event["summary_index"] > 0:
+                    reasoning_parts.append("\n\n")
             elif etype == "response.output_item.added":
                 item = event.get("item") if isinstance(event.get("item"), dict) else {}
+                if item.get("type") == "message":
+                    _set_phase(thinking, item.get("phase"))
                 if item.get("type") == "function_call":
                     translator.book.add(
                         str(item.get("id") or ""),
@@ -495,6 +555,10 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
                 usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
                 if usage:
                     translator.usage = _usage_from_response(usage)
+                if etype == "response.incomplete" and _incomplete_finish(response):
+                    translator.finish = _incomplete_finish(response)
+                    terminal = True
+                    break
                 err = response.get("error") if isinstance(response.get("error"), dict) else {}
                 translator.error = str(err.get("message") or ("upstream response incomplete" if etype == "response.incomplete" else "upstream response failed"))
                 request_fault = etype == "response.incomplete" or _request_caused(err)
@@ -527,7 +591,7 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
     calls = translator.book.tool_calls()
     if calls:
         message["tool_calls"] = calls
-    finish = "tool_calls" if calls else "stop"
+    finish = translator.finish or ("tool_calls" if calls else "stop")
     body = {
         "id": translator.completion_id,
         "object": "chat.completion",

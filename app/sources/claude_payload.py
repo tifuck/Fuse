@@ -10,10 +10,21 @@ import hashlib
 import json
 import re
 
-from .claude_catalog import _meta_for, efforts_for
+from .base import map_effort
+from .claude_catalog import _meta_for, default_effort, efforts_for
 
 _THINKING_OFF = frozenset({"none", "off", "disabled"})
-_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# Per-model rules the catalog does not carry (platform.claude.com thinking
+# page): these reject forced tool use on every request; these can never turn
+# thinking off; Sonnet 5.5's lowest setting is between_tools, not disabled.
+_NO_FORCED_TOOL = frozenset({"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"})
+_ALWAYS_THINKS = frozenset({"claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview"})
+_BETWEEN_TOOLS = frozenset({"claude-sonnet-5-5"})
+# Mid-conversation role:"system" messages are accepted only on these.
+_MID_SYSTEM = frozenset({
+    "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview",
+    "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-4-8",
+})
 # Claude Code's first-party allowlist for current models is claude-code plus
 # oauth-2025-04-20 when the token carries user:inference. The old adaptive
 # thinking beta is not on that list and these models reject it.
@@ -77,24 +88,25 @@ def _user_blocks(content) -> list[dict]:
     return blocks
 
 
+def _thinking_block(block) -> dict | None:
+    if not isinstance(block, dict):
+        return None
+    if block.get("redacted_thinking"):
+        return {"type": "redacted_thinking", "data": str(block["redacted_thinking"])}
+    text = str(block.get("thinking") or "")
+    signature = str(block.get("signature") or "")
+    # A signed block with empty text is a valid omitted-display block;
+    # unsigned text can never be replayed.
+    if signature:
+        return {"type": "thinking", "thinking": text, "signature": signature}
+    return None
+
+
 def _thinking_blocks(msg: dict) -> list[dict]:
     raw = msg.get("claude_thinking")
     if not isinstance(raw, list):
         return []
-    out = []
-    for block in raw:
-        if not isinstance(block, dict):
-            continue
-        if block.get("redacted_thinking"):
-            out.append({"type": "redacted_thinking", "data": str(block["redacted_thinking"])})
-            continue
-        text = str(block.get("thinking") or "")
-        signature = str(block.get("signature") or "")
-        # A signed block with empty text is a valid omitted-display block;
-        # unsigned text can never be replayed.
-        if signature:
-            out.append({"type": "thinking", "thinking": text, "signature": signature})
-    return out
+    return [out for out in map(_thinking_block, raw) if out]
 
 
 _TOOL_ID = re.compile(r"[A-Za-z0-9_-]+")
@@ -159,24 +171,56 @@ def _tool_choice(choice, parallel) -> dict | None:
     return mapped
 
 
-def _requested_effort(body: dict, model: str) -> str | None:
+def _assistant_blocks(msg: dict) -> list[dict]:
+    """The assistant turn as Anthropic sent it.
+
+    Preserved thinking needs the blocks back in received order (5.x models
+    put a signed progress-update block right before each tool_use). Each
+    stored thinking block records how many tool calls preceded it and whether
+    text did; rows without that keep the old thinking/text/tools layout.
+    """
+    stored = msg.get("claude_thinking") if isinstance(msg.get("claude_thinking"), list) else []
+    raw = [block for block in stored if _thinking_block(block)]
+    text = _text_of(msg.get("content"))
+    text_block = [{"type": "text", "text": text}] if text else []
+    tools = [block for block in map(_tool_use_block, msg.get("tool_calls") or []) if block]
+    if not raw or not all(isinstance(block.get("tool_index"), int) for block in raw):
+        return [*map(_thinking_block, raw), *text_block, *tools]
+    # ponytail: text is one merged string, so it goes back as one block at
+    # its first position (before that gap's tools); text split around
+    # thinking or after a tool_use in the same gap is not reproduced.
+    out: list[dict] = []
+    used = 0
+    for block in raw:
+        if block.get("after_text") and text_block:
+            out.extend(text_block)
+            text_block = []
+        out.extend(tools[used:block["tool_index"]])
+        used = max(used, block["tool_index"])
+        out.append(_thinking_block(block))
+    return [*out, *text_block, *tools[used:]]
+
+
+def _raw_effort(body: dict) -> str:
     effort = body.get("reasoning_effort")
     if effort is None and isinstance(body.get("reasoning"), dict):
         effort = body["reasoning"].get("effort")
-    if not isinstance(effort, str) or not effort.strip():
-        # The CLI's non-interactive default for Opus 5.5 is low, and that is
-        # the effort a subscription token accepts. The catalog default (medium)
-        # is for the interactive picker, not this request.
-        effort = "low"
-    key = str(effort or "").strip().lower()
-    if not key or key in _THINKING_OFF:
+    return effort.strip().lower() if isinstance(effort, str) else ""
+
+
+def _requested_effort(key: str, model: str) -> str | None:
+    """output_config.effort for the request, or None to send none."""
+    allowed = efforts_for(model)
+    if not allowed:
+        # Haiku 4.5 and older reject the effort parameter.
         return None
-    allowed = efforts_for(model) or _EFFORTS
-    if key not in allowed and key not in _EFFORTS:
-        return allowed[0] if allowed else "high"
-    if key not in allowed:
-        return allowed[0] if allowed else key
-    return key
+    if not key:
+        return default_effort(model) or None
+    if key in _THINKING_OFF:
+        # Thinking off still takes an effort; the lowest one is accepted
+        # wherever thinking can be turned off.
+        return allowed[0]
+    return map_effort(key, allowed) or allowed[0]
 
 
 def _mark_cache_breakpoint(block: dict) -> None:
@@ -215,14 +259,24 @@ def build_messages_payload(body: dict, model: str) -> dict:
             messages.append({"role": "user", "content": list(pending_results)})
             pending_results.clear()
 
-    for msg in body.get("messages") or []:
-        if not isinstance(msg, dict):
-            continue
+    rows = [msg for msg in body.get("messages") or [] if isinstance(msg, dict)]
+    for at, msg in enumerate(rows):
         role = msg.get("role")
         if role in ("system", "developer"):
             flush_results()
             text = _text_of(msg.get("content"))
-            if text:
+            if not text:
+                continue
+            # Left where the caller put it, a later instruction keeps the
+            # cached prefix and earlier thinking valid. Anthropic takes it only
+            # right after a user turn (tool results count) and before an
+            # assistant turn or the end; anywhere else it joins the top-level
+            # system prompt as before.
+            following = next((row.get("role") for row in rows[at + 1:] if row.get("role") not in ("system", "developer")), None)
+            if (model in _MID_SYSTEM and messages and messages[-1]["role"] in ("user", "system")
+                    and following in (None, "assistant")):
+                messages.append({"role": "system", "content": text})
+            else:
                 system.append({"type": "text", "text": text})
             continue
         if role == "user":
@@ -233,17 +287,7 @@ def build_messages_payload(body: dict, model: str) -> dict:
             continue
         if role == "assistant":
             flush_results()
-            blocks: list[dict] = []
-            blocks.extend(_thinking_blocks(msg))
-            text = _text_of(msg.get("content"))
-            if not text and isinstance(msg.get("reasoning_content"), str) and not blocks:
-                text = ""
-            if text:
-                blocks.append({"type": "text", "text": text})
-            for call in msg.get("tool_calls") or []:
-                block = _tool_use_block(call)
-                if block:
-                    blocks.append(block)
+            blocks = _assistant_blocks(msg)
             if blocks:
                 messages.append({"role": "assistant", "content": blocks})
             continue
@@ -326,65 +370,51 @@ def build_messages_payload(body: dict, model: str) -> dict:
     newest = _mark_newest_eligible(messages)
     # Fourth breakpoint: where the previous request ended, i.e. the message
     # before the newest assistant turn (the last tool results, or the user
-    # row that started this turn). Anthropic looks back only ~20 blocks from a
-    # breakpoint, and one parallel tool round (thinking, text, 12 calls, 12
-    # results) adds more than that; reading the previous entry here keeps the
-    # conversation cached instead of re-writing it. It is already cached, so
-    # marking it costs a read, never a second write.
+    # row that started this turn). Anthropic looks back only 20 positions
+    # from a breakpoint. A run of tool_use or tool_result blocks counts as
+    # one, but 5.x models put a thinking block before each call, so one
+    # parallel round can still push the previous entry out of reach; reading
+    # it here keeps the conversation cached instead of re-writing it. It is
+    # already cached, so marking it costs a read, never a second write.
     last_assistant = next((i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "assistant"), None)
     if newest is not None and last_assistant:
         _mark_newest_eligible(messages[:last_assistant], skip=newest)
-    choice = _tool_choice(body.get("tool_choice"), body.get("parallel_tool_calls"))
-    effort = _requested_effort(body, model)
-    # A forced tool choice is illegal while thinking is on. A client that
-    # forces a tool without asking for thinking keeps its forced call (the
-    # default effort yields); only an explicit thinking request demotes the
-    # choice, as Claude Code does.
-    raw_effort = body.get("reasoning_effort")
-    if raw_effort is None and isinstance(body.get("reasoning"), dict):
-        raw_effort = body["reasoning"].get("effort")
-    explicit_effort = (
-        isinstance(raw_effort, str)
-        and bool(raw_effort.strip())
-        and raw_effort.strip().lower() not in _THINKING_OFF
-    )
-    if choice and choice.get("type") == "tool" and effort and not explicit_effort:
-        effort = None
-    if choice and choice.get("type") == "tool" and effort:
-        choice = {"type": "auto"}
-    if choice and tools:
-        payload["tool_choice"] = choice
-    # Current Claude Code models take effort in output_config. thinking.type
-    # stays adaptive only when the published catalog says so; older models
-    # reject a thinking block they did not ask for.
-    meta = _meta_for(model)
-    thinking_type = str(meta.get("thinking_type") or "")
+    key = _raw_effort(body)
+    effort = _requested_effort(key, model)
     if effort:
         payload["output_config"] = {"effort": effort}
-        if thinking_type == "adaptive":
-            # Adaptive models default to omitted display: no thinking text
-            # until the block ends, so a long think looks like a dead
-            # stream. Summaries stream as it goes (Claude Code's
-            # showThinkingSummaries sends the same field).
+    parallel = body.get("parallel_tool_calls")
+    choice = _tool_choice(body.get("tool_choice"), parallel)
+    forced = bool(choice) and choice["type"] in ("any", "tool")
+    if forced and model in _NO_FORCED_TOOL:
+        choice, forced = _tool_choice("auto", parallel), False
+    thinking_type = str(_meta_for(model).get("thinking_type") or "")
+    if thinking_type in ("effort", "adaptive"):
+        # The catalog's "effort" models are adaptive-thinking models. 5.x
+        # models think by default but omit the text, so a long think looked
+        # like a dead stream; Opus 4.6-4.8 and Sonnet 4.6 do not think at
+        # all without this field. Summaries stream as they go (Claude Code's
+        # showThinkingSummaries sends the same field).
+        if key in _THINKING_OFF and model not in _ALWAYS_THINKS:
+            payload["thinking"] = {"type": "between_tools" if model in _BETWEEN_TOOLS else "disabled"}
+        else:
             payload["thinking"] = {"type": "adaptive", "display": "summarized"}
-        elif thinking_type == "enabled":
-            # Thinking must fit under max_tokens; below the 1024 floor there
-            # is no room, and clamping the budget up would make Anthropic
-            # reject the whole request.
-            budget = min(max_tokens - 1, 8192)
-            if budget >= 1024:
-                payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
-        # "any" (OpenAI "required") is a forced choice too, illegal with
-        # thinking on. Same rule as a named tool: an explicit thinking
-        # request demotes the choice; otherwise the default thinking yields.
-        forced_any = (payload.get("tool_choice") or {}).get("type") == "any"
-        if forced_any and "thinking" in payload:
-            if explicit_effort:
-                parallel_off = payload["tool_choice"].get("disable_parallel_tool_use")
-                payload["tool_choice"] = {"type": "auto", **({"disable_parallel_tool_use": True} if parallel_off else {})}
-            else:
-                payload.pop("thinking")
-    else:
+    elif thinking_type == "enabled" and key not in _THINKING_OFF:
+        # Thinking must fit under max_tokens; below the 1024 floor there
+        # is no room, and clamping the budget up would make Anthropic
+        # reject the whole request.
+        budget = min(max_tokens - 1, 8192)
+        # Manual thinking rejects a forced tool choice: an explicit thinking
+        # request demotes the choice, otherwise the default thinking yields.
+        if budget >= 1024 and (key or not forced):
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            if forced:
+                choice = _tool_choice("auto", parallel)
+    if choice and tools:
+        payload["tool_choice"] = choice
+    # Models that take effort reject non-default sampling (4.7 and later,
+    # 5.x on every request; 4.6 while thinking).
+    if not efforts_for(model):
         if isinstance(body.get("temperature"), (int, float)) and not isinstance(body.get("temperature"), bool):
             payload["temperature"] = body["temperature"]
         if isinstance(body.get("top_p"), (int, float)) and not isinstance(body.get("top_p"), bool):

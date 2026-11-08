@@ -145,9 +145,9 @@ class Settings(BaseSettings):
     devin_webapp_url: str = "https://app.devin.ai"
     devin_cli_token_url: str = "https://api.devin.ai/auth/cli/token"
     devin_ide_name: str = "devin"
-    devin_ide_version: str = "3000.10.21"
+    devin_ide_version: str = "3000.12.17"
     devin_extension_name: str = "cli"
-    devin_extension_version: str = "3000.10.21"
+    devin_extension_version: str = "3000.12.17"
     devin_catalog_ide_name: str = "windsurf"
     devin_catalog_ide_version: str = "3.2.23"
     devin_catalog_extension_name: str = "windsurf"
@@ -168,12 +168,14 @@ class Settings(BaseSettings):
     claude_api_base: str = "https://api.anthropic.com"
 
     # Cursor subscription. Sign-in is `cursor-agent login` (deep-link PKCE,
-    # polled); chat is the agent backend's RunSSE + BidiAppend. Bump the
-    # client version if Cursor starts refusing old CLI builds.
+    # polled); chat is the agent backend's RunSSE + BidiAppend. The client
+    # version follows the build cursor.com/install pins (checked weekly); the
+    # setting is the fallback, and the one sent when auto refresh is off.
     cursor_api_base: str = "https://api2.cursor.sh"
     cursor_login_url: str = "https://cursor.com/loginDeepControl"
     cursor_client_id: str = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
-    cursor_client_version: str = "cli-2026.10.16-e3cb207"
+    cursor_client_version: str = "cli-2026.11.05-86047df"
+    cursor_client_version_auto_refresh: bool = True
 
     # NanoGPT. Sign-in (OAuth PKCE key handoff, device login) is on the
     # website host; chat, catalog and quota use the direct API host, which

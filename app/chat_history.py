@@ -53,6 +53,7 @@ def for_model(messages, model):
         row = {k: v for k, v in original.items() if not k.startswith("_fuse_")}
         if original.get("_fuse_reasoning_model") != model:
             row.pop("reasoning_content", None)
+            row.pop("reasoning_details", None)
             row.pop("claude_thinking", None)
         if row.get("role") == "user" and isinstance(row.get("content"), str):
             row["content"] = scrub_retired_preamble(row["content"])
@@ -111,7 +112,8 @@ NO_RESULT = "No result was recorded for this tool call."
 
 def _clean(messages):
     """Keep provider fields, never historical system instructions or UI fields."""
-    fields = {"role", "content", "tool_calls", "tool_call_id", "name", "reasoning_content", "claude_thinking", "_fuse_reasoning_model"}
+    fields = {"role", "content", "tool_calls", "tool_call_id", "name", "reasoning_content", "reasoning_details",
+              "claude_thinking", "_fuse_reasoning_model"}
     return [{k: v for k, v in row.items() if k in fields} for row in messages
             if isinstance(row, dict) and row.get("role") in ("user", "assistant", "tool")]
 

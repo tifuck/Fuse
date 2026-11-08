@@ -68,6 +68,32 @@ class MimoParseTest(unittest.TestCase):
         off = mimo_mod._chat_payload({"model": "mimo-v2.6-pro", "reasoning_effort": "none", "messages": []})
         self.assertEqual(off["thinking"], {"type": "disabled"})
 
+    def test_thinking_mode_backfills_reasoning_on_tool_call_turns(self):
+        call = {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]}
+        kept = {**call, "reasoning_content": "thought"}
+        messages = [{"role": "user", "content": "hi"}, call, {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+                    kept, {"role": "assistant", "content": "done"}]
+        # Thinking is on by default: a tool-call turn without reasoning_content is a 400.
+        sent = mimo_mod._chat_payload({"model": "mimo-v2.6-pro", "messages": messages})["messages"]
+        self.assertEqual(sent[1]["reasoning_content"], "")
+        self.assertEqual(sent[3]["reasoning_content"], "thought")
+        self.assertNotIn("reasoning_content", sent[4])
+        self.assertNotIn("reasoning_content", call)
+        off = mimo_mod._chat_payload({"model": "mimo-v2.6-pro", "reasoning_effort": "none", "messages": messages})
+        self.assertNotIn("reasoning_content", off["messages"][1])
+
+    def test_live_listing_drops_retired_ids(self):
+        with patch.object(mimo_mod, "_models_cache", (0.0, ["mimo-v2.6-pro", "mimo-v2.5-pro", "mimo-v2.5"])):
+            names = mimo_mod._remember_models(["mimo-v2.6-pro-ultraspeed", "mimo-v2.6-pro", "mimo-v2.5-tts", "mimo-v2.5-asr"])
+            self.assertEqual(names, ["mimo-v2.6-pro-ultraspeed", "mimo-v2.6-pro"])
+            # A failed or empty listing keeps the last lineup.
+            self.assertEqual(mimo_mod._remember_models([]), names)
+
+    def test_rate_limit_cooldown_follows_retry_after(self):
+        self.assertEqual(mimo_mod._retry_after({"Retry-After": "120"}), 120.0)
+        self.assertEqual(mimo_mod._retry_after({}), 60.0)
+        self.assertEqual(mimo_mod._retry_after({"Retry-After": "99999999"}), 86400.0)
+
     def test_usage_percent(self):
         extra = {"billing": {"windows": [{"percent": 12}], "credit_usage_percent": 4}}
         self.assertEqual(mimo_usage_percent(extra), 12.0)

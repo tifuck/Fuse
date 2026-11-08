@@ -168,7 +168,7 @@ class CursorUnitTest(unittest.TestCase):
                 run.used_tokens = 107
                 run.ended = False
                 run.turn_usage = {}
-                run.reported_prompt = run.reported_output = 0
+                run.reported_prompt = run.reported_output = run.reported_cached = run.sent_tokens = 0
                 first = run._round_usage(7)
                 self.assertEqual((first["prompt_tokens"], first["completion_tokens"]), (100, 7))
                 run.ended = True
@@ -176,6 +176,52 @@ class CursorUnitTest(unittest.TestCase):
                 final = run._round_usage(output)
                 self.assertEqual((final["prompt_tokens"], final["completion_tokens"]), expected)
                 self.assertEqual(final["total_tokens"], sum(expected))
+
+    def test_tool_rounds_add_up_to_the_turn_totals(self):
+        # The turn end's cache reads cover every round of the run. Clamping
+        # them to the last round's residual prompt dropped 907 of them here.
+        run = object.__new__(agent.CursorRun)
+        run.ended = False
+        run.turn_usage = {}
+        run.reported_prompt = run.reported_output = run.reported_cached = run.sent_tokens = 0
+        rounds = []
+        for used, output in ((1007, 7), (1520, 20)):
+            run.used_tokens = used
+            rounds.append(run._round_usage(output))
+        self.assertEqual([r["prompt_tokens_details"]["cached_tokens"] for r in rounds], [0, 1007])
+        run.ended = True
+        run.turn_usage = {"input_tokens": 4120, "output_tokens": 60, "cache_read_tokens": 2527, "cache_write_tokens": 100}
+        rounds.append(run._round_usage(33))
+        self.assertEqual(rounds[-1]["prompt_tokens"], 1620)
+        self.assertEqual(rounds[-1]["prompt_tokens_details"], {"cached_tokens": 1520, "cache_write_tokens": 100})
+        self.assertEqual(sum(r["prompt_tokens"] for r in rounds), 4120)
+        self.assertEqual(sum(r["completion_tokens"] for r in rounds), 60)
+        self.assertEqual(sum(r["prompt_tokens_details"]["cached_tokens"] for r in rounds), 2527)
+        # A follow-up's first round re-reads the kept conversation.
+        run = object.__new__(agent.CursorRun)
+        run.ended = False
+        run.turn_usage = {}
+        run.reported_prompt = run.reported_output = run.reported_cached = 0
+        run.sent_tokens, run.used_tokens = 4000, 4310
+        self.assertEqual(run._round_usage(10)["prompt_tokens_details"], {"cached_tokens": 4000})
+
+    def test_interaction_queries_are_refused_by_variant(self):
+        def decoded(msg: bytes) -> dict:
+            return agent._fields(agent._one(agent._fields(msg), 6))
+
+        web = decoded(agent.encode_interaction_response(3, 2))
+        self.assertEqual(agent._int(web, 1), 3)
+        reason = agent._fields(agent._one(agent._fields(agent._one(web, 2)), 2))
+        self.assertEqual(agent._str(reason, 1), agent.INTERACTION_REASON)
+        ask = decoded(agent.encode_interaction_response(0, 3))
+        self.assertNotIn(1, ask)  # id 0 is omitted, as proto3 does
+        result = agent._fields(agent._one(agent._fields(agent._one(ask, 3)), 1))
+        self.assertEqual(agent._str(agent._fields(agent._one(result, 3)), 1), agent.INTERACTION_REASON)
+        self.assertEqual(agent._fields(agent._one(decoded(agent.encode_interaction_response(1, 8)), 8)), {1: [b""]})
+        self.assertIsNone(agent.encode_interaction_response(1, 99))
+        query = _wrap(7, _enc(lambda e: (e.uint32(1, 5), e.blob(9, _enc(lambda q: q.string(1, "https://x"))))))
+        self.assertEqual(agent.decode_server_message(query), ("interaction", 5, 9))
+        self.assertEqual(agent.decode_server_message(_wrap(7, _wrap(4, b""))), ("interaction", 0, 4))
 
     def test_first_turn_state_is_never_empty(self):
         state = agent.encode_state([])
@@ -285,7 +331,8 @@ class CursorRunTest(unittest.IsolatedAsyncioTestCase):
             kind, call = first[2]
             self.assertEqual((kind, call["id"], call["name"]), ("tool_call", "call-1_fc_2", "get_weather"))
             self.assertEqual(json.loads(call["arguments"]), {"city": "Osaka"})
-            self.assertEqual(first[3], ("usage", {"prompt_tokens": 100, "completion_tokens": 7, "total_tokens": 107}))
+            self.assertEqual(first[3], ("usage", {"prompt_tokens": 100, "completion_tokens": 7, "total_tokens": 107,
+                                                   "prompt_tokens_details": {"cached_tokens": 0}}))
             self.assertEqual(first[4], ("end", "tool_calls"))
             self.assertFalse(run.closed)
             await run.resume([("call-1_fc_2", "sunny", [])])
@@ -318,6 +365,75 @@ class CursorRunTest(unittest.IsolatedAsyncioTestCase):
                     pass
             await run.aclose()
         self.assertEqual(ctx.exception.status, 429)
+
+    async def test_unhandled_exec_and_interaction_query_are_answered(self):
+        # Left unanswered, the server waited on them with heartbeats forever.
+        appends: asyncio.Queue = asyncio.Queue()
+
+        async def server():
+            yield _frame(_wrap(7, _enc(lambda e: (e.uint32(1, 2), e.blob(2, _text(1, "news"))))))
+            reply = agent._fields(await appends.get())
+            self.assertEqual(agent._int(agent._fields(agent._one(reply, 6)), 1), 2)
+            yield _frame(_wrap(2, _enc(lambda e: (e.uint32(1, 4), e.string(15, "x4"), e.blob(20, _text(1, "https://x"))))))
+            throw = agent._fields(agent._one(agent._fields(await appends.get()), 5))
+            self.assertEqual(agent._int(agent._fields(agent._one(throw, 2)), 1), 4)
+            close = agent._fields(agent._one(agent._fields(await appends.get()), 5))
+            self.assertEqual(agent._int(agent._fields(agent._one(close, 1)), 1), 4)
+            yield _update(1, _text(1, "ok"))
+            yield _turn_end(input_tokens=5, output_tokens=1)
+            yield _frame(b"{}", 0x02)
+
+        def handler(request):
+            if request.url.path.endswith("/RunSSE"):
+                return httpx.Response(200, content=server())
+            data = base64.b64decode(json.loads(request.content)["dataBinary"])
+            if data != b"\x0a\x00":
+                appends.put_nowait(data)
+            return httpx.Response(200, json={})
+
+        with patch.object(agent.httpx, "AsyncClient", lambda **kw: _RealClient(transport=httpx.MockTransport(handler), **kw)), \
+                patch.object(agent, "HEARTBEAT_S", 60):
+            run = agent.CursorRun(base="https://x", headers={}, timeout=httpx.Timeout(5.0), blobs={}, tools=[])
+            await run.start(b"\x0a\x00")
+            events = await asyncio.wait_for(self._drain(run), 5)
+            await run.aclose()
+        self.assertEqual(events[0], ("text", "ok"))
+        self.assertEqual(events[-1], ("end", "stop"))
+
+    async def test_idle_round_fails_instead_of_hanging(self):
+        async def server():
+            yield _update(13, b"")  # a heartbeat-like update Fuse ignores
+            await asyncio.sleep(5)
+
+        def handler(request):
+            return httpx.Response(200, content=server()) if request.url.path.endswith("/RunSSE") else httpx.Response(200, json={})
+
+        with patch.object(agent.httpx, "AsyncClient", lambda **kw: _RealClient(transport=httpx.MockTransport(handler), **kw)), \
+                patch.object(agent, "IDLE_S", 0.1):
+            run = agent.CursorRun(base="https://x", headers={}, timeout=httpx.Timeout(5.0), blobs={}, tools=[])
+            await run.start(b"\x0a\x00")
+            with self.assertRaises(agent.TurnError) as ctx:
+                await asyncio.wait_for(run.round().__anext__(), 2)
+            await run.aclose()
+        self.assertEqual(ctx.exception.status, 504)
+
+    async def test_client_version_follows_the_installer(self):
+        script = 'DOWNLOAD_URL="https://downloads.cursor.com/lab/2026.12.01-abc1234/${OS}/${ARCH}/agent-cli-package.tar.gz"'
+        replies = [httpx.Response(200, text="no build here"), httpx.Response(200, text=script)]
+        with patch.object(cursor_mod.httpx, "AsyncClient", lambda **kw: _RealClient(transport=httpx.MockTransport(lambda r: replies.pop(0)), **kw)), \
+                patch.object(cursor_mod, "_client_version", None), patch.object(cursor_mod, "_version_check", 0.0):
+            await cursor_mod.refresh_client_version()
+            self.assertEqual(cursor_mod.client_version(), cursor_mod.settings.cursor_client_version)
+            await cursor_mod.refresh_client_version()  # retried only after an hour
+            self.assertEqual(len(replies), 1)
+            cursor_mod._version_check = 0.0
+            await cursor_mod.refresh_client_version()
+            self.assertEqual(cursor_mod.client_version(), "cli-2026.12.01-abc1234")
+            self.assertEqual(cursor_mod._headers("t")["x-cursor-client-version"], "cli-2026.12.01-abc1234")
+
+    @staticmethod
+    async def _drain(run):
+        return [e async for e in run.round()]
 
     async def test_undecodable_frame_fails_the_turn(self):
         # Skipping it ended the turn "stop" with its text or tool call gone.
@@ -381,6 +497,7 @@ class FakeRun:
         self.pending: dict = {}
         self.ended = self.closed = False
         self.checkpoint = None
+        self.used_tokens = 0
         self.started = None
         self.resumed = None
         FakeRun.instances.append(self)
@@ -404,6 +521,7 @@ class FakeRun:
             return
         self.ended = True
         self.checkpoint = b"CHECKPOINT"
+        self.used_tokens = 120
         yield ("text", "Done")
         yield ("usage", {"prompt_tokens": 20, "completion_tokens": 2, "total_tokens": 22})
         yield ("end", "stop")
@@ -497,6 +615,7 @@ class CursorPoolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(FakeRun.instances), 2)
         follow = FakeRun.instances[1].started
         self.assertIn(b"CHECKPOINT", follow)
+        self.assertEqual(FakeRun.instances[1].kw["sent_tokens"], 120)
         self.assertIn(list(agent._conversations)[0].encode(), follow)
         self.assertNotIn(b"Configuration for this session", follow)
 

@@ -89,6 +89,18 @@ def test_explicit_pin_skips_network_and_cache(state, monkeypatch):
     assert not calls
 
 
+def test_force_refresh_checks_now_and_reports_a_change(state):
+    clock, calls, responses = state
+    responses.append((200, "1.0.70"))
+    asyncio.run(version.refresh_due())
+    responses.append((200, "1.0.77"))
+    assert asyncio.run(version.force_refresh()) is True
+    assert version.current_version() == "1.0.77"
+    responses.append((200, "1.0.77"))
+    assert asyncio.run(version.force_refresh()) is False
+    assert len(calls) == 3
+
+
 @pytest.mark.parametrize("cache", ['broken', '[]', '{"version":"bad"}'])
 def test_corrupt_cache_recovers(state, cache):
     _, calls, responses = state

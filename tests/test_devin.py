@@ -934,6 +934,19 @@ class StreamUsageDetailsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(collected["cached_tokens"], 4)
         self.assertEqual(collected["cache_write_tokens"], 6)
 
+    async def test_non_stream_body_reports_cached_and_write_tokens(self):
+        usage_msg = proto.ProtoEncoder()
+        usage_msg.message(7, lambda e: (e.uint32(2, 10), e.uint32(3, 2), e.uint32(4, 6), e.uint32(5, 4)))
+        end = bytes([proto.CONNECT_END_STREAM]) + (2).to_bytes(4, "big") + b"{}"
+        obj, usage, _ = await devin_stream._collect_completion(_FrameResp([proto.connect_frame(usage_msg.finish()), end]), "swe-2")
+        self.assertEqual(obj["usage"]["prompt_tokens"], 20)
+        self.assertEqual(obj["usage"]["prompt_tokens_details"], {"cached_tokens": 4, "cache_write_tokens": 6})
+        self.assertEqual(usage["cached_tokens"], 4)
+        # No usage frame: the split stays unknown rather than a reported zero.
+        obj, usage, _ = await devin_stream._collect_completion(_FrameResp([end]), "swe-2")
+        self.assertNotIn("prompt_tokens_details", obj["usage"])
+        self.assertEqual(usage["cache_usage_status"], "unknown")
+
 
 class StreamTrailerFailoverTest(unittest.IsolatedAsyncioTestCase):
     async def _run(self, error: dict) -> tuple[str, dict]:

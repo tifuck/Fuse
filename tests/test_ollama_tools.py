@@ -185,6 +185,49 @@ class OllamaStreamToolIdentityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_deltas[0]["function"]["name"], "last")
 
 
+class OllamaMappingTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        ollama_mod._think_values.clear()
+        self.addCleanup(ollama_mod._think_values.clear)
+
+    def _payload(self, body):
+        src = object.__new__(ollama_mod.OllamaSource)
+        src.cfg = {}
+        return src._payload(body)
+
+    async def test_cached_prompt_tokens_are_reported(self):
+        done = {"done": True, "message": {}, "prompt_eval_count": 100, "prompt_eval_cached_count": 80, "eval_count": 2}
+        frames = [json.loads(c.decode()[len("data: "):]) async for c in ollama_mod._stream(_FakeResp([json.dumps(done)]), "m")
+                  if c.decode().strip() != "data: [DONE]"]
+        usage = [f["usage"] for f in frames if f.get("usage")][0]
+        self.assertEqual(usage["prompt_tokens"], 100)
+        self.assertEqual(usage["prompt_tokens_details"], {"cached_tokens": 80})
+        self.assertNotIn("prompt_tokens_details", ollama_mod._usage({"prompt_eval_count": 5}))
+
+    def test_assistant_reasoning_goes_back_as_thinking(self):
+        msgs = to_ollama([{"role": "assistant", "content": "hi", "reasoning_content": "pondering"}])
+        self.assertEqual(msgs[0]["thinking"], "pondering")
+
+    def test_response_format_and_seed(self):
+        schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+        payload = self._payload({"model": "m", "seed": 7, "response_format": {"type": "json_schema", "json_schema": {"name": "x", "schema": schema}}})
+        self.assertEqual(payload["format"], schema)
+        self.assertEqual(payload["options"]["seed"], 7)
+        self.assertEqual(self._payload({"model": "m", "response_format": {"type": "json_object"}})["format"], "json")
+        self.assertNotIn("format", self._payload({"model": "m", "response_format": {"type": "text"}}))
+
+    def test_efforts_follow_show_thinking_values(self):
+        self.assertEqual(ollama_mod.efforts_for("unseen"), ollama_mod.EFFORTS)
+        ollama_mod._think_values.update({"plain": [], "toggle": [False, True], "levels": ["low", "medium", "high"], "off-levels": [False, "low", "high"]})
+        self.assertEqual(ollama_mod.efforts_for("plain"), ())
+        self.assertEqual(ollama_mod.efforts_for("toggle"), ("none", "high"))
+        self.assertEqual(ollama_mod.efforts_for("levels"), ("low", "medium", "high"))
+        self.assertEqual(ollama_mod.efforts_for("off-levels"), ("none", "low", "high"))
+        # An on/off model gets a boolean, never a level name.
+        self.assertIs(self._payload({"model": "toggle", "reasoning_effort": "high"})["think"], True)
+        self.assertEqual(self._payload({"model": "levels", "reasoning_effort": "high"})["think"], "high")
+
+
 class OllamaAccessClassifyTest(unittest.TestCase):
     """A reworded 403 paywall must never strike auth on a valid key."""
 
@@ -268,6 +311,26 @@ class OllamaRefreshAccessTest(_OllamaSourceTestMixin, unittest.IsolatedAsyncioTe
         self.assertEqual(ollama_access.of(self.SOURCE_ID, "m-paid"), "free")
         self.assertEqual(ollama_access.of(self.SOURCE_ID, "m-broken"), "free")
         self.assertEqual(ollama_access.of(self.SOURCE_ID, "m-locked"), "gated")
+
+    async def test_probe_caps_output_in_options_and_skips_thinking(self):
+        sent = []
+
+        def handler(request):
+            sent.append(json.loads(request.content))
+            return httpx.Response(200, json={"message": {"role": "assistant", "content": ""}})
+
+        self._network(handler, keys={1: "kf"})
+        ollama_mod._think_values.update({"m-toggle": [False, True], "m-always": [True]})
+        self.addCleanup(ollama_mod._think_values.clear)
+        await self._source([{"id": 1}])._refresh_access(["m-toggle", "m-always"])
+        self.assertEqual([body["options"] for body in sent], [{"num_predict": 1}] * 2)
+        self.assertNotIn("num_predict", sent[0])
+        self.assertIs(sent[0]["think"], False)
+        self.assertNotIn("think", sent[1])
+        # Live replies keep a free verdict current, so probes recheck it rarely.
+        self.assertFalse(ollama_access.stale(self.SOURCE_ID, "m-toggle"))
+        with patch.object(ollama_access, "_now", return_value=ollama_access._now() + ollama_access.ACCESS_TTL + 1):
+            self.assertFalse(ollama_access.stale(self.SOURCE_ID, "m-toggle"))
 
     async def test_all_keys_gated_marks_gated(self):
         def handler(request):
