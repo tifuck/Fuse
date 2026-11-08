@@ -27,11 +27,11 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       if (!(await row.isVisible())) await page.locator('.chat-bar [data-history-toggle]').click();
       await row.hover();
       await row.locator('button.more').click();
-      const menu = await page.locator('.chat-pop').innerText();
+      const menu = await page.locator('.chat-pop:not([data-artifact-menu])').innerText();
       assert.equal(await page.evaluate(() => document.body.classList.contains('is-streaming')), true, `still streaming while the menu opens`);
       assert.match(menu, /Rename[\s\S]*Move to project[\s\S]*Delete/, `chat menu opens mid-turn: ${menu}`);
       await page.mouse.click(900, 500);
-      await page.locator('.chat-pop').waitFor({ state: 'detached' });
+      await page.locator('.chat-pop:not([data-artifact-menu])').waitFor({ state: 'detached' });
       await page.waitForFunction(() => !document.body.classList.contains('is-streaming'), null, { timeout: 30000 });
       // Let the closing thread.updated / run.completed events land.
       await page.waitForTimeout(1500);
