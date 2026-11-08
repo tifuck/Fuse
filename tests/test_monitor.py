@@ -165,6 +165,7 @@ class MonitorHelpers(unittest.TestCase):
         shell = agent_catalog.schema("run_terminal_command")["function"]["parameters"]
         self.assertIn("description", shell["properties"])
         self.assertNotIn("description", shell["required"])
+        self.assertIn("Always set this", shell["properties"]["description"]["description"])
         extra = list(agent_catalog.WORKSPACE_NAMES) + [*agent_catalog.ARTIFACT_NAMES, "propose_skill"]
         self.assertEqual(len(extra), agent_catalog.MAX_EXTRA)
         names = [s["function"]["name"] for s in openai_tools([], coding=True, extra=["monitor"], project_session=True)]

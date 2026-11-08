@@ -602,8 +602,9 @@ SCHEMAS = {
                         "type": "string",
                         "maxLength": 200,
                         "description": (
-                            "What the command does, in plain active voice; the user reads this instead of the "
-                            "command, so do not echo its text, flags, or paths. 5-10 words for simple commands "
+                            "Always set this, on every call: the transcript row shows it in place of the command, "
+                            "and a call without one shows only raw shell. What the command does, in plain active "
+                            "voice; do not echo its text, flags, or paths. 5-10 words for simple commands "
                             "(git status → \"Show working tree status\"); more context for pipelines or obscure "
                             "flags (find . -name \"*.tmp\" -exec rm {} \\; → \"Find and delete all .tmp files "
                             "recursively\"). Never words like \"complex\" or \"risk\"."
