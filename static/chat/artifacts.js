@@ -347,6 +347,9 @@ export function createArtifacts(ctx) {
       loadFrame(false);
     } else {
       closeMenu();
+      // The latest version's URL never changes, so a hidden frame keeping its
+      // page would come back stale when the pane reopens after an update.
+      S.artifactFrame?.removeAttribute("src");
       overlays.armOverlayGhost(S.root.querySelector("[data-artifact-close]"));
       overlays.overlayDrop("artifact");
       if (S.artifactMode === "list") S.artifactMode = "preview";

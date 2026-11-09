@@ -129,11 +129,15 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await page.waitForFunction((id) => (document.querySelector('[data-artifact-frame]').getAttribute('src') || '').includes(id), other.identifier);
     assert.equal(await page.locator('[data-artifact-title]').innerText(), 'Other page');
 
-    // Ctrl+] closes and reopens it.
+    // Ctrl+] closes and reopens it. A version published while it was closed
+    // shows on reopen, though the latest version's URL is unchanged.
     await page.keyboard.press('Control+]');
     assert.equal(await pane.isHidden(), true);
+    await make({ identifier: other.identifier, html: PAGE('other-v2') });
     await page.keyboard.press('Control+]');
     await pane.waitFor({ state: 'visible' });
+    const reopened = await (await page.locator('[data-artifact-frame]').elementHandle()).contentFrame();
+    await reopened.locator('#top', { hasText: 'other-v2' }).waitFor({ timeout: 8000 });
 
     // A deleted artifact says so instead of showing an error body.
     await page.evaluate(() => fuseToolFixture.artifacts.showArtifact('deadbeef-0000-4000-8000-000000000000', null, { explicit: true }));
