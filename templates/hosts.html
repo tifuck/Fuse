@@ -23,31 +23,31 @@
       <nav class="hosts-list" data-host-list aria-label="Machines"></nav>
       <div class="hosts-main">
 
-    <section class="panel hosts-connector" data-connector hidden>
-      <div class="section-heading"><h2>Run this on the machine</h2></div>
-      <p class="usage-sub">Paste the matching line on that computer. It installs the connector, signs in with a one-time code, and this page updates as soon as it is online.</p>
+    <section class="panel hosts-connector" data-connector hidden aria-labelledby="connector-title">
+      <header class="hosts-connector-head">
+        <h2 id="connector-title">Connect a machine</h2>
+        <p class="usage-sub">Paste one line into a terminal on that computer. It installs the connector and signs in with a one-time code. This page updates once the machine is online.</p>
+        <p class="hosts-wait" data-connector-wait role="status">Waiting for this machine…</p>
+      </header>
       <p class="callout fault" data-connector-error role="alert" hidden></p>
-      <div class="hosts-os-install">
-        <div>
-          <p class="hosts-os-label">Linux</p>
-          <pre class="hosts-install mono"><code data-install-line></code></pre>
-          <div class="hosts-actions">
-            <button type="button" class="btn sm ghost copy" data-copy-install>Copy</button>
-          </div>
+      <div class="hosts-term">
+        <div class="hosts-term-head">
+          <p class="hosts-os-label">Linux <span>bash</span></p>
+          <button type="button" class="btn sm ghost copy" data-copy-install>Copy</button>
         </div>
-        <div>
-          <p class="hosts-os-label">Windows</p>
-          <pre class="hosts-install mono"><code data-install-windows></code></pre>
-          <div class="hosts-actions">
-            <button type="button" class="btn sm ghost copy" data-copy-windows>Copy</button>
-            <a class="btn sm ghost" data-download-windows hidden>Download EXE</a>
-          </div>
-          <p class="usage-sub">Run in PowerShell. Use an Administrator terminal if this machine should connect before anyone logs in.</p>
+        <pre class="hosts-install mono"><code data-install-line></code></pre>
+      </div>
+      <div class="hosts-term">
+        <div class="hosts-term-head">
+          <p class="hosts-os-label">Windows <span>PowerShell</span></p>
+          <a class="btn sm ghost" data-download-windows hidden>Download EXE</a>
+          <button type="button" class="btn sm ghost copy" data-copy-windows>Copy</button>
         </div>
+        <pre class="hosts-install mono is-ps"><code data-install-windows></code></pre>
+        <p class="hosts-term-note">To connect before anyone signs in, run it in an Administrator terminal.</p>
       </div>
       <div class="hosts-connector-foot">
-        <p class="hosts-wait" data-connector-wait>Waiting for this machine…</p>
-        <span class="hosts-ssh-alt"><button type="button" class="btn sm ghost" data-ssh-instead>Connect with SSH instead</button></span>
+        <button type="button" class="btn sm ghost" data-ssh-instead>Connect with SSH instead</button>
         <button type="button" class="btn sm ghost" data-connector-cancel>Cancel</button>
       </div>
     </section>

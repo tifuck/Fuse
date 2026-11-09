@@ -7,43 +7,67 @@ body:has(.hosts-connector:not([hidden])) .page-actions { display: none; }
 .hosts-wizard[hidden] {
   display: none !important;
 }
-.hosts-connector:not([hidden]) { display: flex; flex-direction: column; gap: 0.85rem; }
-.hosts-install {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  background: var(--raise);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow-x: auto;
-  color: var(--brass);
-  font-size: 0.82rem;
-  line-height: 1.45;
-  user-select: all;
-}
-.hosts-install code { font-family: var(--mono); }
-.hosts-os-install {
+/* Connect a machine: the two install lines as full-width terminal blocks.
+   A line wraps instead of scrolling, so the whole command is always visible. */
+.hosts-connector:not([hidden]) {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  padding: 1.2rem 1.3rem 1.1rem;
+}
+.hosts-connector > .callout { margin: 0; }
+.hosts-connector-head { display: flex; flex-direction: column; gap: 0.5rem; }
+.hosts-connector-head h2 { margin: 0; font: 600 1.05rem/1.35 var(--mono); letter-spacing: -0.02em; }
+.hosts-connector-head .usage-sub { margin: 0; max-width: 64ch; }
+.hosts-term {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--ink);
+}
+.hosts-term-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.35rem 0.3rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--mist) 3%, var(--panel));
 }
 .hosts-os-label {
-  margin: 0 0 0.35rem;
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--steel);
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--mist);
+  font: 600 0.74rem/1.4 var(--mono);
 }
-.hosts-ssh-alt { margin: 0 0 0 auto; }
-.hosts-os-install > div { min-width: 0; }
-.hosts-os-install .hosts-actions { margin-top: 0.5rem; }
-.hosts-os-install .usage-sub { margin: 0.5rem 0 0; }
+.hosts-os-label span { margin-left: 0.45rem; color: var(--mute); font-weight: 400; }
+.hosts-install {
+  margin: 0;
+  padding: 0.85rem 1rem 0.9rem;
+  color: var(--mist);
+  font: 0.84rem/1.6 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hosts-install::before { content: "$ "; color: var(--mute); user-select: none; }
+.hosts-install.is-ps::before { content: "PS> "; }
+.hosts-install code { font-family: var(--mono); user-select: all; }
+.hosts-install code.is-plain { color: var(--mute); }
+.hosts-install .sh-cmd { color: var(--reason); font-weight: 600; }
+.hosts-install .sh-flag { color: var(--steel); }
+.hosts-install .sh-url { color: var(--brass); }
+.hosts-install .sh-op { color: var(--mute); }
+.hosts-term-note {
+  margin: 0;
+  padding: 0 1rem 0.8rem;
+  color: var(--mute);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
 .hosts-connector-foot {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin-top: 0.25rem;
-  padding-top: 0.85rem;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  padding-top: 0.9rem;
   border-top: 1px solid var(--line);
 }
 .hosts-wait {
@@ -56,6 +80,7 @@ body:has(.hosts-connector:not([hidden])) .page-actions { display: none; }
 }
 .hosts-wait::before {
   content: "";
+  flex-shrink: 0;
   width: 0.45rem;
   height: 0.45rem;
   background: var(--status-live);
@@ -63,13 +88,9 @@ body:has(.hosts-connector:not([hidden])) .page-actions { display: none; }
 }
 @keyframes hosts-wait { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .hosts-wait::before { animation: none; } }
-@media (min-width: 860px) {
-  .hosts-os-install {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 1rem;
-    align-items: start;
-  }
+@media (max-width: 720px) {
+  .hosts-connector:not([hidden]) { padding: 1rem 0.85rem; }
+  .hosts-connector-foot .btn { flex: 1 1 auto; }
 }
 
 .hosts-workspace {

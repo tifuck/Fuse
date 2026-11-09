@@ -124,7 +124,7 @@ html[data-chat-console="true"] body.is-settings .settings-shell .uz-card-head h2
   letter-spacing: -0.01em;
 }
 html[data-chat-console="true"] body.is-settings .settings-shell :is(.usage-sub, .uz-sub, .set-head p, .set-label span) { color: var(--mute); font-size: 0.75rem; line-height: 1.5; }
-html[data-chat-console="true"] body.is-settings .settings-shell :is(.metric-label, .eyebrow, .uz-label, .hosts-os-label) {
+html[data-chat-console="true"] body.is-settings .settings-shell :is(.metric-label, .eyebrow, .uz-label) {
   color: var(--mute);
   font: 0.62rem/1.3 var(--mono);
   letter-spacing: 0.08em;
@@ -232,7 +232,7 @@ html[data-chat-console="true"] body.is-settings .settings-shell .log th { font: 
 html[data-chat-console="true"] body.is-settings .settings-shell .log tbody tr:hover td { background: color-mix(in srgb, var(--mist) 4%, transparent); }
 
 /* —— Code, notes —— */
-html[data-chat-console="true"] body.is-settings .settings-shell :is(.code-chip, .code-block, .hosts-install, .hosts-fingerprint) { background: var(--ink); border: 1px solid var(--line); }
+html[data-chat-console="true"] body.is-settings .settings-shell :is(.code-chip, .code-block, .hosts-fingerprint) { background: var(--ink); border: 1px solid var(--line); }
 html[data-chat-console="true"] body.is-settings .settings-shell .callout { font-size: 0.8rem; }
 
 /* —— Dialogs = chat sheets (both pages) —— */

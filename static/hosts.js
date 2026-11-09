@@ -505,7 +505,7 @@
       detail.innerHTML = detail.hidden ? "" : hostPane(current);
     }
     if (connectorOpen && activePairing && installLine && activePairing.install) {
-      installLine.textContent = activePairing.install;
+      paintCommand(installLine, activePairing.install);
     }
   }
 
@@ -741,6 +741,24 @@
     return Boolean(pairing && (pairing.install || pairing.install_windows));
   }
 
+  // Shell colors for the two install lines (`curl -fsSL <url> | bash`,
+  // `irm <url> | iex`): commands, flags, the URL, the pipe. Anything else,
+  // such as the shown-once fallback, stays plain text.
+  function paintCommand(el, line) {
+    el.classList.toggle("is-plain", !/^(curl|irm) /.test(line));
+    if (el.classList.contains("is-plain")) {
+      el.textContent = line;
+      return;
+    }
+    let command = true;
+    el.innerHTML = line.split(/(\s+)/).map((word) => {
+      if (!word.trim()) return word;
+      const kind = word === "|" ? "op" : command ? "cmd" : word.startsWith("-") ? "flag" : /^https?:/.test(word) ? "url" : "arg";
+      command = word === "|";
+      return `<span class="sh-${kind}">${esc(word)}</span>`;
+    }).join("");
+  }
+
   function showConnector(pairing) {
     activePairing = pairing;
     if (wizard) wizard.hidden = true;
@@ -748,12 +766,10 @@
     if (connector) connector.hidden = false;
     showErr(connectorError, "");
     if (installLine) {
-      installLine.textContent =
-        pairing.install || "Install code is shown only once. Cancel and create a new code.";
+      paintCommand(installLine, pairing.install || "Install code is shown only once. Cancel and create a new code.");
     }
     if (installWindows) {
-      installWindows.textContent =
-        pairing.install_windows || "Install code is shown only once. Cancel and create a new code.";
+      paintCommand(installWindows, pairing.install_windows || "Install code is shown only once. Cancel and create a new code.");
     }
     if (downloadWindows) {
       if (pairing.download_windows) {
