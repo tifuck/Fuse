@@ -1,6 +1,6 @@
 /* OpenRouter models and providers (sources page) */
 .or-settings {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 0.25rem 1.5rem; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--line);
 }
 .or-group { border: 0; margin: 0; padding: 0; min-width: 0; }

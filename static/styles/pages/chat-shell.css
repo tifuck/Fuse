@@ -57,7 +57,8 @@ body.is-chat main {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--chat-history) minmax(0, 1fr);
+  /* A saved sidebar width can outgrow a narrower window: the sidebar gives way. */
+  grid-template-columns: clamp(14rem, var(--chat-history), 100% - 24rem) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 .chat-pop {

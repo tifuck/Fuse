@@ -300,8 +300,9 @@ body.is-chat.is-keyboard .chat-dock {
 .art-empty-filter[hidden], .art-row[hidden] { display: none; }
 .art-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6rem 8rem 32rem;
-  
+  /* Definite tracks keep every row's columns aligned; the actions wrap
+     before the name drops under 12rem. */
+  grid-template-columns: minmax(12rem, 1fr) 6rem 8rem minmax(0, 32rem);
   align-items: center;
   gap: 0.4rem 1rem;
   padding: 0.6rem 0.75rem 0.6rem 1rem;
@@ -350,7 +351,7 @@ body.is-chat.is-keyboard .chat-dock {
 }
 .art-archived > summary span { color: var(--mute); font-weight: 400; }
 .art-archived > summary small { color: var(--mute); font: 0.72rem/1.3 var(--mono); }
-@media (max-width: 900px) {
+@container page (max-width: 48rem) {
   .art-row { grid-template-columns: minmax(0, 1fr) auto; }
   .art-head { display: none; }
   .art-access { grid-column: 2; grid-row: 1; }

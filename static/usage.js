@@ -605,6 +605,11 @@
     const scale = [0.1, 0.3, 0.55, 0.8, 1].map((f) => `<i style="background:${shade(f * max)}"></i>`).join("");
     html += `<div class="uz-heat-foot"><span>Busiest <b>${DAYS[peakDay]}</b> · around <b>${esc(hourText)}</b></span><span class="uz-scale"><span>Less</span>${scale}<span>More</span></span></div>`;
     el.innerHTML = html;
+    // Touch has no title tooltip: a tapped cell reads out in the footer.
+    el.onclick = (ev) => {
+      const cell = ev.target.closest(".c");
+      if (cell) el.querySelector(".uz-heat-foot > span").textContent = cell.title;
+    };
     if (sub) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
       sub.textContent = `Tokens by weekday and hour · last ${data.activity_days} days · ${tz}`;

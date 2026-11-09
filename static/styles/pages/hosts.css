@@ -202,6 +202,9 @@ label.check.hosts-check,
 .hosts-list {
   position: sticky;
   top: 0;
+  max-height: calc(100dvh - var(--chat-bar-h, 3.2rem) - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-width: 0;
   border: 1px solid var(--line);
   background: var(--panel);
@@ -458,9 +461,9 @@ label.check.hosts-check,
   text-align: center;
 }
 
-@media (max-width: 900px) {
+@container page (max-width: 54rem) {
   .hosts-layout { grid-template-columns: minmax(0, 1fr); }
-  .hosts-list { position: static; }
+  .hosts-list { position: static; max-height: none; overflow: visible; }
 }
 @media (max-width: 720px) {
   .hosts-empty-steps { grid-template-columns: minmax(0, 1fr); }

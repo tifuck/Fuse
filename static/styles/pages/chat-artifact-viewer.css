@@ -14,11 +14,12 @@
   z-index: 1;
 }
 @media (min-width: 801px) {
+  /* The thread keeps 24rem; a pane width saved on a wider window gives way. */
   .chat.is-artifact {
-    grid-template-columns: var(--chat-history) minmax(0, 1fr) var(--chat-artifact);
+    grid-template-columns: clamp(14rem, var(--chat-history), 100% - 24rem) minmax(min(24rem, 100%), 1fr) minmax(0, var(--chat-artifact));
   }
   .chat.is-artifact.history-collapsed {
-    grid-template-columns: 0 minmax(0, 1fr) var(--chat-artifact);
+    grid-template-columns: 0 minmax(min(24rem, 100%), 1fr) minmax(0, var(--chat-artifact));
   }
 }
 /* The head is the chat bar's twin: same height, padding, ground, title type

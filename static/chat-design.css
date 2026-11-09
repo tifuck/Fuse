@@ -588,6 +588,10 @@ body.is-chat .chat-history-head {
     min-height: 2.25rem;
   }
 }
+/* A landscape phone or tablet is wider than 800px but still a finger. */
+@media (pointer: coarse) {
+  body.is-chat .chat { --chat-bar-btn: 2rem; }
+}
 @media (max-width: 800px) {
   body.is-chat .chat { --chat-bar-h: 3.6rem; --chat-bar-min-h: 3.6rem; }
   body.is-chat .chat.is-untitled { --chat-bar-h: 2rem; --chat-bar-min-h: 2rem; }
@@ -1109,6 +1113,7 @@ body.is-chat .chat-view-menu { border-color: var(--line); }
 }
 .ap-color input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 .ap-color input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.ap-color input[type="color"]::-moz-color-swatch { border: 0; border-radius: 4px; }
 .ap-note { grid-column: 1 / -1; margin: 0; color: var(--mute); font: 0.75rem/1.5 var(--ap-ui); }
 
 /* Backdrops reuse the preview art above. */

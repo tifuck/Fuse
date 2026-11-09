@@ -24,6 +24,7 @@ body:has(.usage-tabs) .page-head {
 
 .usage-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 1.15rem;
   margin: 0;
   border-bottom: 1px solid var(--line);

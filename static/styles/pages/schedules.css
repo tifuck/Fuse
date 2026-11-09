@@ -192,7 +192,7 @@ html[data-chat-console="true"] body.is-settings .settings-shell .panel.sched-tab
 [data-sched-detail] .sched-table th:first-child,
 [data-sched-detail] .sched-table td:first-child { padding-left: 0; }
 
-@media (max-width: 720px) {
+@container page (max-width: 40rem) {
   .sched-table-scroll { overflow: visible; }
   .sched-table[data-sched-table], .sched-table[data-sched-table] tbody { display: block; table-layout: auto; }
   .sched-table[data-sched-table] thead { display: none; }
@@ -225,12 +225,12 @@ html[data-chat-console="true"] body.is-settings .settings-shell .panel.sched-tab
 }
 [data-sched-detail] .sched-table td:first-child,
 [data-sched-detail] .sched-table th:first-child { padding-left: 0.65rem; }
-@media (max-width: 720px) {
+@container page (max-width: 40rem) {
   .sched-table:not([data-sched-table]) th:nth-child(1), .sched-table:not([data-sched-table]) td:nth-child(1) { width: 38%; }
   .sched-table:not([data-sched-table]) th:nth-child(2), .sched-table:not([data-sched-table]) td:nth-child(2) { width: 40%; }
   .sched-table:not([data-sched-table]) th:nth-child(3), .sched-table:not([data-sched-table]) td:nth-child(3) { width: 22%; }
   .sched-table:not([data-sched-table]) td:nth-child(1) { white-space: normal; }
 }
-@media (max-width: 720px) {
+@container page (max-width: 40rem) {
   .sched-table:not([data-sched-table]) td:nth-child(3) { white-space: normal; }
 }

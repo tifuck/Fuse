@@ -57,7 +57,8 @@ body.is-nav .nav-toggle-close { display: block; }
 }
 .mark:hover { color: var(--brass); }
 
-.stage { min-width: 0; }
+/* viewport-fit=cover: a landscape phone's notch sits over the left or right edge. */
+.stage { min-width: 0; padding-inline: var(--safe-left) var(--safe-right); }
 .stage-inner {
   max-width: var(--page);
   margin: 0 auto;
@@ -111,6 +112,7 @@ body.is-auth .stage-inner {
 }
 .auth-main {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 1.05fr 1fr;
 }

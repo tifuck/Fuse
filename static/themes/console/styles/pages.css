@@ -312,7 +312,7 @@ html[data-chat-console="true"] body.is-settings .catalog-grid:not(.is-platforms)
   margin: 0 0 1rem;
   break-inside: avoid;
 }
-html[data-chat-console="true"] body.is-settings .catalog-grid.is-platforms { display: grid; columns: auto; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+html[data-chat-console="true"] body.is-settings .catalog-grid.is-platforms { display: grid; columns: auto; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; }
 html[data-chat-console="true"] body.is-settings .catalog-grid.is-platforms > .catalog-family { margin: 0; }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) .user-dock-nav a.on {
   color: var(--mist);

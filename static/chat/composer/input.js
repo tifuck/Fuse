@@ -176,7 +176,7 @@ export function createInput(ctx) {
         document.activeElement.matches("textarea, input, [contenteditable='true']");
       const mobile = window.matchMedia("(max-width: 800px)").matches;
       const sheetFocus = document.activeElement instanceof Element &&
-        Boolean(document.activeElement.closest(".chat-sheet, .chat-view-menu"));
+        Boolean(document.activeElement.closest(".chat-sheet, .chat-view-menu, .fp-dialog"));
       const editing = composerFocus || sheetFocus;
       if (Math.abs(window.innerWidth - viewportWidth) > 1) {
         viewportWidth = window.innerWidth;
