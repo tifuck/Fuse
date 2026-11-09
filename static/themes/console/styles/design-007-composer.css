@@ -98,6 +98,20 @@ html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.3rem; }
 
+/* One row needs ~34rem (10rem of text, the model chip and six tools). A
+   column narrowed by the artifact pane on a wide window misses the 800px
+   phone query, so the dock's own width picks the two-row layout. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-dock { container: composer / inline-size; }
+@container composer (max-width: 34rem) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, max-content) repeat(6, auto); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-column: 3 / -1; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) {
+    grid-row: 3;
+    margin-top: 0.15rem;
+  }
+}
+
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-stash-btn, .chat-mic-btn, .chat-send) {
   width: var(--composer-row);
   height: var(--composer-row);
