@@ -380,10 +380,10 @@ class ClaudeParseTest(unittest.TestCase):
         self.assertEqual(payload["thinking"]["type"], "adaptive")
 
     def test_forced_tool_choice_demoted_where_rejected(self):
-        # Opus 5.5, Sonnet 5.5, Fable 5.1 and Mythos 5.1 reject forced tool
+        # Opus 5.5, Sonnet 5.5, Fable/Mythos 5.1 and 5.2 reject forced tool
         # use on every request, with or without a requested effort.
         for choice in ({"type": "function", "function": {"name": "lookup"}}, "required"):
-            for model in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"):
+            for model in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5-2"):
                 payload = claude_mod.build_messages_payload(
                     {
                         "messages": [{"role": "user", "content": "hi"}],

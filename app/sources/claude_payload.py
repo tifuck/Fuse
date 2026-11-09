@@ -17,12 +17,12 @@ _THINKING_OFF = frozenset({"none", "off", "disabled"})
 # Per-model rules the catalog does not carry (platform.claude.com thinking
 # page): these reject forced tool use on every request; these can never turn
 # thinking off; Sonnet 5.5's lowest setting is between_tools, not disabled.
-_NO_FORCED_TOOL = frozenset({"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"})
-_ALWAYS_THINKS = frozenset({"claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview"})
+_NO_FORCED_TOOL = frozenset({"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-mythos-5-2", "claude-fable-5-1", "claude-mythos-5-1"})
+_ALWAYS_THINKS = frozenset({"claude-opus-5-5", "claude-fable-5-2", "claude-mythos-5-2", "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview"})
 _BETWEEN_TOOLS = frozenset({"claude-sonnet-5-5"})
 # Mid-conversation role:"system" messages are accepted only on these.
 _MID_SYSTEM = frozenset({
-    "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview",
+    "claude-fable-5-2", "claude-mythos-5-2", "claude-fable-5-1", "claude-mythos-5-1", "claude-fable-5", "claude-mythos-5", "claude-mythos-preview",
     "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-4-8",
 })
 # Claude Code's first-party allowlist for current models is claude-code plus
