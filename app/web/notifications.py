@@ -23,6 +23,17 @@ async def service_worker():
     )
 
 
+# Browsers ask for this on every page that links no icon of its own
+# (artifacts, raw JSON), and Safari takes it over the SVG.
+@router.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(
+        ROOT / "static" / "favicon.ico",
+        media_type="image/x-icon",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.get("/notifications/status")
 async def notifications_status(request: Request):
     user, err = _chat_auth(request)
