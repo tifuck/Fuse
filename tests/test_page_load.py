@@ -123,6 +123,31 @@ class StaleModelCacheTest(unittest.IsolatedAsyncioTestCase):
         sources_mod._model_cache.pop(key, None)
         sources_mod._cache.pop(99, None)
 
+    async def test_stale_explabs_catalog_lists_without_waiting(self):
+        import asyncio
+        from types import SimpleNamespace
+
+        from app.sources import explabs
+
+        cred = {"id": 5, "secret": "enc"}
+        src = SimpleNamespace(type_id="explabs", name="Experiential Labs", source_id=96, models=AsyncMock())
+        explabs._catalogs[7] = ((5, "enc"), time.monotonic() - explabs.CATALOG_TTL - 1, {"by_id": {"m1": {}}})
+        refreshed = asyncio.Event()
+
+        async def fetch(user_id, **_):
+            refreshed.set()
+            return {"by_id": {}}
+
+        with (
+            patch.object(explabs, "user_credential", return_value=cred),
+            patch.object(explabs, "fetch_catalog", new=fetch),
+        ):
+            names = await sources_mod._source_models(src, 7)
+            self.assertEqual(names, ["explabs/m1"])
+            src.models.assert_not_awaited()
+            await asyncio.wait_for(refreshed.wait(), 1)
+        explabs._catalogs.pop(7, None)
+
     async def test_llama_miss_fetches_live_catalog(self):
         from types import SimpleNamespace
 

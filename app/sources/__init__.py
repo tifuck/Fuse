@@ -270,8 +270,11 @@ def _fallback_models(s: Source) -> list[str]:
 async def _source_models(s: Source, user_id: int | None) -> list[str]:
     if s.type_id == "explabs":
         # Private catalogs have credential revisions and never enter shared caches.
-        from .explabs import CatalogError
+        from .explabs import CatalogError, cached_models
 
+        names = cached_models(user_id)
+        if names is not None:
+            return names
         try:
             return await s.models(user_id=user_id)
         except CatalogError:

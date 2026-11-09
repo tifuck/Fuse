@@ -20,6 +20,7 @@ CATALOG_TTL = 300
 _catalogs: dict[int, tuple[tuple, float, dict]] = {}
 _locks: dict[int, asyncio.Lock] = {}
 _errors: dict[int, str] = {}
+_refreshing: dict[int, asyncio.Task] = {}
 
 
 class CatalogError(RuntimeError):
@@ -84,6 +85,20 @@ def cached_catalog(user_id: int | None) -> dict | None:
     if cred and hit and hit[0] == _revision(cred):
         return hit[2]
     return None
+
+
+def cached_models(user_id: int | None) -> list[str] | None:
+    """The current key's model ids without waiting on the network, or None
+    before the first fetch. A stale catalog refreshes in the background:
+    every page that lists models used to wait on two upstream round trips."""
+    catalog = cached_catalog(user_id)
+    if catalog is None:
+        return None
+    if time.monotonic() - _catalogs[user_id][1] >= CATALOG_TTL and user_id not in _refreshing:
+        task = asyncio.get_running_loop().create_task(fetch_catalog(user_id))
+        _refreshing[user_id] = task
+        task.add_done_callback(lambda done: (_refreshing.pop(user_id, None), done.cancelled() or done.exception()))
+    return [public_id(mid) for mid in catalog["by_id"]]
 
 
 def clear_catalog(user_id: int) -> None:
