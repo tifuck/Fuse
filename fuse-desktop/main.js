@@ -99,8 +99,6 @@ async function syncFrameTheme() {
         mist: read("--mist"),
         mute: read("--mute"),
         line: read("--line"),
-        brass: read("--brass"),
-        steel: read("--steel"),
         scheme: css.colorScheme === "light" ? "light" : "dark",
       };
     })()`);

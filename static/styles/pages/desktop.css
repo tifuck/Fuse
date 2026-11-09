@@ -11,7 +11,7 @@
   border: 1px solid var(--line);
   background: linear-gradient(90deg, var(--brass) 2px, var(--panel) 2px);
 }
-.dl-mark { width: 3rem; height: 3rem; color: var(--brass); }
+.dl-mark { width: 3rem; height: 3rem; color: var(--mist); }
 .dl-hero-copy h2 { margin: 0; font: 600 1.15rem/1.3 var(--mono); letter-spacing: -0.02em; }
 .dl-hero-copy h2 span { margin-left: 0.4rem; color: var(--mute); font-size: 0.75rem; font-weight: 400; letter-spacing: 0; }
 .dl-hero-copy p { margin: 0.3rem 0 0; color: var(--mute); font-size: 0.78rem; line-height: 1.5; }

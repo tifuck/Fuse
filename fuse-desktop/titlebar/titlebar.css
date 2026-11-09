@@ -7,8 +7,6 @@
   --press: color-mix(in srgb, var(--mist) 17%, transparent);
   --fill: color-mix(in srgb, var(--mist) 7%, transparent);
   --fault: #C9403A;
-  --logo: #B5E05A;
-  --logo-dot: #6EE7B7;
 }
 
 * { box-sizing: border-box; }
@@ -41,9 +39,7 @@ html, body {
   padding-left: 12px;
 }
 
-.mark { display: block; width: 17px; height: 17px; flex: none; }
-.mark-f { fill: var(--logo); }
-.mark-dot { fill: var(--logo-dot); }
+.mark { display: block; width: 17px; height: 17px; flex: none; fill: currentColor; stroke: none; }
 
 .word {
   font: 700 15px/1 "Bricolage Grotesque", system-ui, sans-serif;
@@ -98,4 +94,4 @@ html[data-platform="linux"] button { width: 24px; height: 24px; border-radius: 5
 html[data-platform="linux"] button:hover { background: var(--hover); }
 html[data-platform="linux"] button:active { background: var(--press); }
 html[data-platform="linux"] button.close:hover { background: var(--fault); }
-html[data-platform="linux"] svg { width: 8px; height: 8px; stroke-width: 1.2; }
+html[data-platform="linux"] .controls svg { width: 8px; height: 8px; stroke-width: 1.2; }

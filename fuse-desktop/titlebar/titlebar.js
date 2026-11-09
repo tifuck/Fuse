@@ -11,55 +11,23 @@ document.querySelector(".bar").addEventListener("dblclick", (event) => {
 const maximize = document.getElementById("maximize");
 const TOKENS = ["ink", "mist", "mute", "line"];
 
-// Any CSS colour -> [r, g, b] via the browser's own parser.
-const probe = document.createElement("i");
-function rgb(color) {
-  probe.style.color = "";
-  probe.style.color = color;
-  if (!probe.style.color) return null;
-  document.body.append(probe);
-  const value = getComputedStyle(probe).color;
-  probe.remove();
-  const parts = value.match(/[\d.]+/g);
-  if (!parts) return null;
-  const scale = value.startsWith("color(") ? 255 : 1;
-  return parts.slice(0, 3).map((n) => Number(n) * scale);
-}
-function luminance([r, g, b]) {
-  const lin = (c) => (c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-function contrast(a, b) {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
-// The logo takes the theme accent, unless that accent would vanish into the
-// bar (a pale accent on a light theme): then it falls back to the text colour.
-function legible(color, ink, fallback) {
-  const c = rgb(color);
-  const bg = rgb(ink);
-  return c && bg && contrast(c, bg) >= 2.6 ? color : fallback;
-}
-
+// The logo is monochrome: the theme's text colour on its background, never the accent.
 function applyTheme(theme) {
   const root = document.documentElement;
   for (const name of TOKENS) {
     if (theme[name]) root.style.setProperty(`--${name}`, theme[name]);
   }
-  const mist = getComputedStyle(root).getPropertyValue("--mist").trim();
-  const ink = getComputedStyle(root).getPropertyValue("--ink").trim();
-  if (theme.brass) root.style.setProperty("--logo", legible(theme.brass, ink, mist));
-  if (theme.steel) root.style.setProperty("--logo-dot", legible(theme.steel, ink, mist));
   root.style.colorScheme = theme.scheme === "light" ? "light" : "dark";
   root.dataset.scheme = theme.scheme === "light" ? "light" : "dark";
   const css = getComputedStyle(root);
-  sendIcon(ink, css.getPropertyValue("--logo").trim(), css.getPropertyValue("--logo-dot").trim());
+  sendIcon(css.getPropertyValue("--ink").trim(), css.getPropertyValue("--mist").trim());
 }
 
-// build/icon.png redrawn in the theme's colours (same 512-unit geometry).
+// build/icon.png redrawn in the theme's colours (same geometry as static/icon.svg).
+const MARK = new Path2D("M38.95 40.77A12 12 0 0 0 38.95 59.23A14 14 0 0 1 40.77 61.05A12 12 0 0 0 59.23 61.05A14 14 0 1 1 59.23 78.95A12 12 0 0 0 40.77 78.95A14 14 0 1 1 21.05 59.23A12 12 0 0 0 21.05 40.77A14 14 0 1 1 38.95 40.77ZM56 30a14 14 0 1 0 28 0a14 14 0 1 0 -28 0Z");
 let lastIcon = "";
-function sendIcon(ink, logo, dot) {
-  const key = [ink, logo, dot].join();
+function sendIcon(ink, mist) {
+  const key = [ink, mist].join();
   if (key === lastIcon) return;
   lastIcon = key;
   const canvas = document.createElement("canvas");
@@ -68,14 +36,10 @@ function sendIcon(ink, logo, dot) {
   ctx.scale(0.5, 0.5);
   ctx.fillStyle = ink;
   ctx.fillRect(0, 0, 512, 512);
-  ctx.fillStyle = logo;
-  ctx.beginPath();
-  for (const [x, y, w, h] of [[168, 136, 66, 240], [168, 136, 196, 66], [168, 252, 152, 58]]) ctx.roundRect(x, y, w, h, 16);
-  ctx.fill();
-  ctx.fillStyle = dot;
-  ctx.beginPath();
-  ctx.arc(398, 164, 22, 0, 2 * Math.PI);
-  ctx.fill();
+  ctx.fillStyle = mist;
+  ctx.translate(26, 26);
+  ctx.scale(4.6, 4.6);
+  ctx.fill(MARK);
   frame.icon(canvas.toDataURL("image/png"));
 }
 
