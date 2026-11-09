@@ -98,8 +98,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-history-item.is-
   background: linear-gradient(90deg, var(--brass) 2px, color-mix(in srgb, var(--brass) 9%, transparent) 2px);
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-brand-word { font: 600 1.05rem/1 var(--mono); letter-spacing: -0.04em; }
-
 html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab[aria-selected="true"] { box-shadow: none; }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-history { font-family: var(--mono); }

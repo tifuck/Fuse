@@ -41,11 +41,7 @@ html, body {
 
 .mark { display: block; width: 17px; height: 17px; flex: none; fill: currentColor; stroke: none; }
 
-.word {
-  font: 700 15px/1 "Bricolage Grotesque", system-ui, sans-serif;
-  letter-spacing: -0.05em;
-  white-space: nowrap;
-}
+.word { display: block; width: auto; height: 11.5px; flex: none; fill: currentColor; stroke: none; }
 
 body.is-blurred .brand,
 body.is-blurred .controls svg { opacity: 0.55; }

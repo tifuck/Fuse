@@ -91,10 +91,13 @@
   text-decoration: none;
 }
 .chat-brand-mark { display: block; width: 1.375rem; height: 1.375rem; flex-shrink: 0; }
+/* "Fuse" in Unbounded Medium, drawn as outlines so no font has to load. */
 .chat-brand-word {
+  display: block;
+  width: auto;
+  height: 0.95625rem;
+  flex-shrink: 0;
   color: var(--mist);
-  font: 700 1.25rem/1 var(--sans);
-  letter-spacing: -0.05em;
 }
 .chat-brand-caption {
   margin-left: 0.25rem;

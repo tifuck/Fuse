@@ -30,7 +30,6 @@ html[data-chat-console="true"] body.is-settings .settings-shell .app-rail {
   font-family: var(--mono);
 }
 html[data-chat-console="true"] body.is-settings .app-rail .chat-history-head { height: 2.25rem; min-height: 2.25rem; }
-html[data-chat-console="true"] body.is-settings .app-rail .chat-brand-word { font: 600 1.05rem/1 var(--mono); letter-spacing: -0.04em; }
 html[data-chat-console="true"] body.is-settings .settings-shell .app-rail-nav { gap: 0; padding: 0.35rem 0.5rem 0.85rem; }
 html[data-chat-console="true"] body.is-settings .settings-shell .app-rail-label {
   margin: 0.85rem 0.6rem 0.3rem;
