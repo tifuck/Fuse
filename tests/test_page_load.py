@@ -175,6 +175,29 @@ class StaleModelCacheTest(unittest.IsolatedAsyncioTestCase):
             sources_mod.warm_catalogs()
         self.assertEqual([call.args for call in schedule.call_args_list], [(pool, None), (local, None), (cloud, None)])
 
+    async def test_refresh_loop_refetches_stale_pool_catalogs(self):
+        # A /chat after a quiet spell got the hours-old list (no Fable 5.2)
+        # while it revalidated behind the page.
+        from types import SimpleNamespace
+
+        stale = SimpleNamespace(type_id="claude", source_id=21)
+        fresh = SimpleNamespace(type_id="grok", source_id=22)
+        missing = SimpleNamespace(type_id="cursor", source_id=23)
+        local = SimpleNamespace(type_id="llama", source_id=24)
+        sources_mod._model_cache[(21, None)] = (time.time() - sources_mod._MODEL_TTL - 1, ["old"])
+        sources_mod._model_cache[(22, None)] = (time.time(), ["new"])
+        sources_mod._model_cache.pop((23, None), None)
+        try:
+            with (
+                patch.object(sources_mod, "all_enabled", return_value=[stale, fresh, missing, local]),
+                patch.object(sources_mod, "_schedule_model_refresh", return_value=None) as schedule,
+            ):
+                await sources_mod.refresh_stale_catalogs()
+        finally:
+            sources_mod._model_cache.pop((21, None), None)
+            sources_mod._model_cache.pop((22, None), None)
+        self.assertEqual([call.args for call in schedule.call_args_list], [(stale, None), (missing, None)])
+
     async def test_fresh_hit_does_not_refresh(self):
         from types import SimpleNamespace
 

@@ -20,7 +20,7 @@ from . import accounts, db, chat_store, chat_runs, chat_events, chat_recaps, cha
 from .api import http_errors, router as api_router
 from .web import router as web_router
 from .agent_http import router as agent_http_router
-from .sources import bootstrap, start_pools, warm_catalogs
+from .sources import bootstrap, refresh_stale_catalogs, start_pools, warm_catalogs
 from .sources.chatgpt import refresh_due as chatgpt_refresh_due
 from .sources.grok import refresh_due
 from .sources.grok_version import refresh_due as grok_version_refresh_due
@@ -117,6 +117,7 @@ async def _refresh_loop(app: FastAPI):
         ("openrouter catalog", openrouter_refresh_due),
         ("nanogpt catalog", nanogpt_refresh_due),
         ("refuseless catalog", refuseless_refresh_due),
+        ("pool catalogs", refresh_stale_catalogs),
     )
     local_jobs = (
         ("model pricing", auto_price_due),

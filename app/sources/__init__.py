@@ -841,6 +841,26 @@ def warm_catalogs() -> None:
             _schedule_model_refresh(s, None)
 
 
+async def refresh_stale_catalogs() -> None:
+    """Refresh-loop job: refetch a shared pool catalog once it ages past
+    _MODEL_TTL. A page only revalidates behind itself, so after a quiet spell
+    the first /chat got the hours-old list and a new upstream model showed
+    only on the next load."""
+    now = time.time()
+    tasks = []
+    for s in all_enabled():
+        if s.type_id not in POOL_TYPES:
+            continue
+        hit = _model_cache.get(_cache_key(s, None))
+        if hit and now - hit[0] < _MODEL_TTL:
+            continue
+        task = _schedule_model_refresh(s, None)
+        if task is not None:
+            tasks.append(task)
+    if tasks:
+        await asyncio.gather(*(asyncio.shield(t) for t in tasks), return_exceptions=True)
+
+
 async def stop_pools() -> None:
     from .ollama import stop_pools as stop_ollama_pools
 
