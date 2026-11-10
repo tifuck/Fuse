@@ -7,11 +7,14 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work {
   --work-row: var(--console-row);
   --work-main: max(var(--work-row), 1.3rem);
-  padding: 0 0 0.25rem;
+  padding: 0;
   background: color-mix(in srgb, var(--ink) 92%, var(--panel));
   font: calc(var(--console-type) * 0.92)/var(--work-row) var(--mono);
   color: var(--mist);
 }
+/* Room under the last row, but not under a lone main row: its tint runs to
+   the border. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work:has(:is(.chat-agents-row:not(.is-main), .chat-jobs-row)) { padding-bottom: 0.25rem; }
 /* Both lists share their gutters and action column, so agent and command
    clocks and stop buttons line up. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-work-agents, .chat-work-jobs) {
