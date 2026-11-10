@@ -219,6 +219,9 @@ span.chat-agents-act { cursor: default; }
 .chat-agents-row:is(.is-failed, .is-stalled) .chat-agents-state,
 .chat-agents-sum { color: var(--status-fail); }
 .chat-agents-row.is-undelivered .chat-agents-sum { color: var(--brass); }
+/* Asked to stop and not there yet: amber like a stopped row, not running green. */
+.chat-agents-row.is-stopping .chat-agents-dot { color: var(--status-live); animation: none; }
+.chat-agents-row.is-stopping .chat-agents-state { color: var(--status-live); }
 @keyframes chat-agents-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   :is(.chat-agents-row, .chat-jobs-row) .chat-agents-dot { animation: none !important; }

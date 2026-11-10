@@ -226,7 +226,7 @@ export function createLive(ctx) {
     const expanded = agentsExpanded();
     let html = ui.agentMainRowHtml({
       state: mainBusy() ? "working" : "idle",
-      doing: liveCount ? `${liveCount} subagent${liveCount === 1 ? "" : "s"} running` : "",
+      live: liveCount,
       selected: !viewing,
       total: tree.length,
       expanded,

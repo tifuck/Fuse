@@ -7,12 +7,27 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work {
   --work-row: var(--console-row);
   --work-main: max(var(--work-row), 1.3rem);
-  padding: 0;
+  padding: 0 0 0.25rem;
   background: color-mix(in srgb, var(--ink) 92%, var(--panel));
   font: calc(var(--console-type) * 0.92)/var(--work-row) var(--mono);
   color: var(--mist);
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { --work-gap: 0.6rem; max-height: calc(var(--work-main) + 9 * var(--work-row)); }
+/* Both lists share their gutters and action column, so agent and command
+   clocks and stop buttons line up. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-work-agents, .chat-work-jobs) {
+  --work-gap: 0.6rem;
+  --work-act: 1.4rem;
+  --work-pad-l: 0.75rem;
+  --work-pad-r: 0.5rem;
+}
+/* A subgrid row hands its right padding to the last track's item as margin,
+   so that track carries it. The state column fits "wedged — force stop" and
+   the clock "59m 59s": a row changing state or a ticking clock moves no
+   other column. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents {
+  grid-template-columns: auto minmax(19ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
+  max-height: calc(var(--work-main) + 9 * var(--work-row));
+}
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
   margin-top: 0.15rem;
@@ -20,9 +35,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
   height: var(--work-row);
-  padding: 0 0.5rem 0 0.75rem;
-  column-gap: var(--work-gap, 0.6rem);
+  padding: 0 var(--work-pad-r) 0 var(--work-pad-l);
+  column-gap: var(--work-gap);
 }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(7ch, auto) var(--work-act); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main { height: var(--work-main); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row):hover {
   background: color-mix(in srgb, var(--mist) 5%, transparent);
@@ -74,44 +90,53 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-job
   content: "$ ";
   color: var(--mute);
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-meta { max-width: 40%; }
+/* The command gives way first; where and how it runs keeps its words. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-meta {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 40%;
+  text-overflow: ellipsis;
+}
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-act, .chat-jobs-kill) {
-  width: 1.2rem;
+  width: var(--work-act);
   height: var(--work-row);
   overflow: hidden; /* a glyph's text box is taller than the row: keep its hit area out of the rows around it */
   font-size: 0.95rem;
 }
 
 /* Phones: a taller main row to tap, the lists shorter so the transcript
-   keeps the screen. Clocks keep their column so they line up. */
+   keeps the screen. Clocks keep their column so they line up. A subagent
+   row drops what it is doing (its tooltip has the full line) so the task
+   keeps the room. */
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work {
     --work-main: max(var(--work-row), 1.6rem);
   }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-work-agents, .chat-work-jobs) {
     --work-gap: 0.4rem;
-    grid-template-columns: auto minmax(16ch, auto) minmax(0, 1fr) auto minmax(6ch, auto) 1.6rem;
+    --work-act: 1.6rem;
+    --work-pad-l: var(--console-gutter, 0.55rem);
+    --work-pad-r: 0.25rem;
+  }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents {
+    grid-template-columns: minmax(0, auto) minmax(16ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
     max-height: calc(var(--work-main) + 5 * var(--work-row));
   }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
-    padding: 0 0.1rem 0 var(--console-gutter, 0.55rem);
-    column-gap: var(--work-gap, 0.4rem);
-  }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(6ch, auto) 1.6rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-act, .chat-jobs-kill) { width: 1.6rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name { max-width: 24ch; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 16ch; margin-right: 0.3rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) :is(.chat-agents-doing, .chat-agents-sum) { display: none; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 16ch; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-provider { display: none; }
 }
 /* Narrow phones: a subagent row is its task and dot (the dot carries its
-   state, the full line is in its tooltip); a command row is its command. */
+   state, the full line is in its tooltip); a command row is its command.
+   Main says "2 running": the fold beside it counts agents. */
 @media (max-width: 520px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-meta,
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-meta { display: none; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(6ch, auto) 1.6rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 12ch; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-meta,
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-noun { display: none; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r)); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-model { max-width: 10ch; }
   /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main .chat-agents-state { display: none; }
 }

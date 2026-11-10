@@ -43,7 +43,7 @@ function agentRowHtml(row, opts = {}) {
           ? `<button type="button" class="chat-agents-act is-resume" data-agent-resume="${id}" aria-label="Resume ${who}" title="Resume from where it stopped">↻</button>`
           : '<span class="chat-agents-act" aria-hidden="true"></span>';
     return (
-      `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}" role="listitem"${opts.selected ? ' aria-current="true"' : ""}>` +
+      `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}${live && row.cancel_requested ? " is-stopping" : ""}" role="listitem"${opts.selected ? ' aria-current="true"' : ""}>` +
       `<button type="button" class="chat-agents-pick" data-agent-id="${id}" title="${deps.escapeHtml(title)}">` +
       '<span class="chat-agents-head">' +
       (opts.tree && opts.tree.length ? `<span class="chat-agents-tree" aria-hidden="true">${opts.tree.map((kind) => `<i class="is-${deps.escapeHtml(kind)}">${TREE_GLYPHS[kind] || ""}</i>`).join("")}</span>` : "") +
@@ -61,14 +61,15 @@ function agentRowHtml(row, opts = {}) {
   }
 
 // The root of the tree. Its trailing control folds the subagents away.
-function agentMainRowHtml({ state, doing, selected, total, expanded }) {
+function agentMainRowHtml({ state, live, selected, total, expanded }) {
     const fold = `${total} agent${total === 1 ? "" : "s"}`;
+    const doing = live ? `${live} <span class="chat-agents-noun">subagent${live === 1 ? "" : "s"} </span>running` : "";
     return (
       `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem"${selected ? ' aria-current="true"' : ""}>` +
       '<button type="button" class="chat-agents-pick" data-agent-main title="Main agent">' +
       '<span class="chat-agents-head"><span class="chat-agents-dot" aria-hidden="true"></span>' +
       '<span class="chat-agents-name">main</span></span>' +
-      `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(state)}</span>${doing ? `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>` : ""}</span>` +
+      `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(state)}</span>${doing ? `<span class="chat-agents-doing">${doing}</span>` : ""}</span>` +
       "</button>" +
       `<button type="button" class="chat-agents-fold" data-agents-fold aria-expanded="${expanded ? "true" : "false"}" title="${expanded ? "Hide" : "Show"} subagents">` +
       `<span>${fold}</span><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
