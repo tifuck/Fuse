@@ -102,5 +102,8 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab[aria
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-history { font-family: var(--mono); }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab { font: 0.75rem/1.3 var(--mono); }
+html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab { font: 0.8125rem/1.3 var(--mono); }
+@media (max-width: 800px) {
+  html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab { font-size: 0.875rem; }
+}
 

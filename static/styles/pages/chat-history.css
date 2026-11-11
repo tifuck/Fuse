@@ -233,7 +233,7 @@
 }
 .chat-history-search-close:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
 /* Sort and project filter: quiet text menus, sized to the chosen option. */
-.chat-history-filters { display: flex; gap: 1rem; min-width: 0; padding: 0 0.25rem; }
+.chat-history-filters { display: flex; gap: 1rem; min-width: 0; margin-block: -0.125rem -0.375rem; padding: 0 0.25rem; }
 .chat-history-filters[hidden] { display: none !important; }
 .chat-history-filters label { display: flex; min-width: 0; }
 .chat-history-filters select {
@@ -243,8 +243,11 @@
   padding: 0;
   border: 0;
   border-radius: 4px;
-  background-color: transparent;
-  color: var(--mute);
+  /* Opaque, in the sidebar's own color: the browser paints the open list
+     from it, and a see-through one lands on white, so light text on a dark
+     theme would vanish. */
+  background-color: var(--panel);
+  color: color-mix(in srgb, var(--mute) 80%, var(--mist));
   font-size: 0.6875rem;
   text-overflow: ellipsis;
   cursor: pointer;
@@ -253,9 +256,7 @@
 .chat-history-filters select:hover,
 .chat-history-filters select:has(option:not(:first-child):checked) { color: var(--mist); }
 .chat-history-filters select:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
-/* The browser paints the open list from the option colors; a see-through
-   one lands on white, so light text on a dark theme would vanish. */
-.chat-history-filters option { background-color: var(--panel); color: var(--mist); }
+.chat-history-filters option { color: var(--mist); }
 
 /* List. Rows are one line (title) or two (title + snippet/project meta). */
 .chat-history-list {
