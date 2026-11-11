@@ -218,6 +218,8 @@ function initState() {
   } catch (_) {}
   S.pendingCreate = null;
   S.pendingProject = null;
+  // The draft key the last chat created from this tab's composer came from.
+  S.createdFrom = null;
   S.viewCursor = 0;
   S.threadWatermark = 0;
   S.cursor = 0;

@@ -158,7 +158,8 @@ export function createQueue(ctx) {
     }
     syncPermChip();
     clearMainAgentPermCards();
-    const live = data && data.run && data.run.message;
+    // The public run carries no message; the live reply is in the snapshot.
+    const live = data?.run && (data.messages || []).find((msg) => msg.id === data.run.message_id);
     if (live) syncPermQueueFromMessage(live);
     renderPermQueue();
   }

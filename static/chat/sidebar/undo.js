@@ -239,21 +239,23 @@ export function createUndo(ctx) {
     async function redoConversation() {
     if (traces.runIsActive(S.activeRun) || S.sending || S.loading || S.partialTranscript) return;
     if (!net.requireLive()) return;
-    await sync.flushPending();
-    if (!S.redoStack.length) {
-      picker.setHint("Nothing to redo.");
-      return;
-    }
+    // Captured before the flush: a chat opened meanwhile has its own stack.
     const origin = S.currentId, gen = S.generation;
-    const current = snapshotMessages(), next = S.redoStack.at(-1);
-    if (!restorable(next, lineageIds(current))) {
-      S.redoStack.pop();
-      saveHistoryStacks();
-      picker.setHint("History changed elsewhere; that redo point is no longer valid.", "warn");
-      return;
-    }
     S.sending = true;
     try {
+      await sync.flushPending();
+      if (origin !== S.currentId || gen !== S.generation) return;
+      if (!S.redoStack.length) {
+        picker.setHint("Nothing to redo.");
+        return;
+      }
+      const current = snapshotMessages(), next = S.redoStack.at(-1);
+      if (!restorable(next, lineageIds(current))) {
+        S.redoStack.pop();
+        saveHistoryStacks();
+        picker.setHint("History changed elsewhere; that redo point is no longer valid.", "warn");
+        return;
+      }
       const updated = await net.api('/chat/threads/' + origin, { method: 'PATCH', body: JSON.stringify({
         messages: next, expected_revision: S.serverRevision, command_id: newSession(),
       }) });

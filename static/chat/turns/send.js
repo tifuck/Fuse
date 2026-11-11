@@ -262,6 +262,8 @@ export function createSend(ctx) {
         S.serverRevision = created.revision;
         S.pendingCreate = null;
         S.pendingProject = null;
+        // Files still being read for that unsent chat follow it here.
+        S.createdFrom = { key: originDraft, id: created.id };
         // The box's text belongs to the created chat now: no draft row.
         S.drafts.delete(originDraft);
         S.draftFiles.delete(originDraft);

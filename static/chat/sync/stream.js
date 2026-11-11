@@ -294,6 +294,7 @@ export function createStream(ctx) {
     };
     try {
       if (resync) {
+        const handled = S.cursor;
         const data = await net.api("/chat/sync");
         if (epoch !== S.syncEpoch) return;
         S.cursor = data.cursor;
@@ -320,7 +321,12 @@ export function createStream(ctx) {
         sidebar.renderHistory();
         // The socket must not start ahead of the thread snapshot's durable
         // cursor, or patches between the two would never be replayed.
-        if (Number.isSafeInteger(S.viewCursor) && S.viewCursor > 0) S.cursor = Math.min(S.cursor, S.viewCursor);
+        // Events this tab handled before the drop must not fire their side
+        // effects again (see replayGap).
+        if (Number.isSafeInteger(S.viewCursor) && S.viewCursor > 0 && S.viewCursor < S.cursor) {
+          S.replayedThrough = Math.max(S.replayedThrough, Math.min(handled, S.cursor));
+          S.cursor = S.viewCursor;
+        }
       }
       const url = new URL("/chat/events", location.href);
       url.protocol = location.protocol === "https:" ? "wss:" : "ws:";

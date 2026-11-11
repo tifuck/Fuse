@@ -12,6 +12,8 @@ const { createPanels } = require('../static/chat/panels.js');
 const { createSlash } = require('../static/chat/composer/slash.js');
 const { createPerms } = require('../static/chat/perms.js');
 const { createQueue: createPermQueue } = require('../static/chat/perms/queue.js');
+const { createUndo } = require('../static/chat/sidebar/undo.js');
+const { createAttachments } = require('../static/chat/composer/attachments.js');
 
 const noop = () => {};
 // Any collaborator method a test does not name is a no-op.
@@ -210,4 +212,46 @@ test('a permission read that lands after another chat opened is dropped', async 
   assert.equal(S.threadAuto, false, 'the other chat\'s mode is not applied');
   assert.equal(S.permCards.size, 0, 'its pending asks are not seeded here');
   assert.notEqual(perms.threadPermData?.auto, true);
+});
+
+test('a thread snapshot keeps the main agent\'s pending ask on screen', () => {
+  const expires_at = new Date(Date.now() + 60000).toISOString();
+  const ask = { id: 'ask', kind: 'tool_permission', status: 'pending', expires_at };
+  Object.assign(S, { root: { querySelector: () => null }, permChip: null, permCards: new Map([['ask', ask], ['done', { ...ask, id: 'done' }]]) });
+  const queue = createPermQueue({ menu: stub(), net: stub(), sync: stub(), ui: stub() });
+  // The public run has no message: the live reply is in the snapshot's messages.
+  queue.acceptPermThread({ run: { id: 'r', message_id: 'm', status: 'running' },
+    messages: [{ id: 'm', role: 'assistant', permissions: [ask, { ...ask, id: 'done', status: 'allowed' }] }] });
+  assert.deepEqual([...S.permCards.keys()], ['ask']);
+});
+
+test('a redo started before switching chats does not rewrite the chat opened meanwhile', async () => {
+  let patched = 0;
+  Object.assign(S, { currentId: 'a', generation: 1, sending: false, loading: false, partialTranscript: false, activeRun: null,
+    redoStack: [[{ id: 'u', role: 'user', content: 'b redo' }]] });
+  const undo = createUndo({
+    net: stub({ requireLive: () => true, api: async () => { patched += 1; return {}; } }),
+    sync: stub({ flushPending: async () => { S.currentId = 'b'; S.generation += 1; } }),
+    traces: stub({ runIsActive: () => false, serialMessages: () => [] }),
+    artifacts: stub(), composer: stub(), context: stub(), picker: stub(), transcript: stub(), turns: stub(),
+  });
+  await undo.redoConversation();
+  assert.equal(patched, 0);
+  assert.equal(S.sending, false);
+});
+
+test('a file read while the new chat\'s first send creates it stays in the composer', async () => {
+  Object.assign(S, { config: {}, ATTACH_MAX: 4, attachList: null, currentId: null, pendingProject: null, generation: 1,
+    createdFrom: null, pendingAttachments: [], draftFiles: new Map() });
+  const attachments = createAttachments({ context: stub(), input: stub(), net: stub(), picker: stub(), sidebar: stub(), sync: stub(), traces: stub(), ui: stub() });
+  const file = (during) => ({ name: 'a.txt', type: 'text/plain', text: async () => { during(); return 'x'; } });
+  // completeTurn creates the chat (turns/send.js) while the file is read.
+  await attachments.addFiles([file(() => { S.currentId = 't'; S.createdFrom = { key: null, id: 't' }; })]);
+  assert.equal(S.pendingAttachments.length, 1);
+  assert.equal(S.draftFiles.has(null), false, 'no phantom new-chat draft');
+  // Navigating away meanwhile still files it under the chat it was dropped in.
+  Object.assign(S, { currentId: null, createdFrom: null, pendingAttachments: [] });
+  await attachments.addFiles([file(() => { S.generation += 1; S.currentId = 't'; S.createdFrom = { key: null, id: 't' }; })]);
+  assert.equal(S.pendingAttachments.length, 0);
+  assert.equal(S.draftFiles.get(null).length, 1);
 });

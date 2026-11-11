@@ -155,8 +155,12 @@ export function createAttachments(ctx) {
     // run concurrently. Resolve the target list and the limit after the await.
     // Keyed like every draft: an unsent project session is not the plain new chat.
     const origin = draftKey();
+    const gen = S.generation;
     const target = () => {
-      if (origin === draftKey()) return S.pendingAttachments;
+      const key = draftKey();
+      // Same composer when the unsent chat became a thread without navigating.
+      const created = gen === S.generation && S.createdFrom?.key === origin && S.createdFrom.id === key;
+      if (origin === key || created) return S.pendingAttachments;
       if (!S.draftFiles.has(origin)) S.draftFiles.set(origin, []);
       return S.draftFiles.get(origin);
     };

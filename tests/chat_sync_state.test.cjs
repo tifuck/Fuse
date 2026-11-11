@@ -86,6 +86,29 @@ test('a snapshot older than the applied patches keeps the newer live reply', () 
   assert.equal(S.viewCursor, 60);
 });
 
+test('a reconcile issued before a send lands after its reply and is dropped', async () => {
+  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }], loadEpoch: 0 });
+  let reply;
+  const net = stub({ api: () => new Promise(resolve => { reply = resolve; }), unpackThread: data => data, queuedParam: () => '' });
+  const view = { dataset: {} };
+  const apply = createApply({
+    traces: stub({ runIsActive }), net,
+    transcript: stub({ captureThreadViewport: () => ({}), visibleRecaps: () => [], viewMessages: () => S.messages }),
+    ui: stub({ renderUser: () => ({ ...view }), renderAssistant: () => ({ ...view }) }),
+    agents: stub(), artifacts: stub(), composer: stub(), context: stub(), panels: stub(), perms: stub(),
+    persist: stub(), picker: stub(), sidebar: stub(), status: stub(), turns: stub(),
+  });
+  const reconciling = apply.reconcileThread();
+  // The send's reply: the accepted turn and its run.
+  apply.acceptThread({ id: 't', revision: 4, event_cursor: 20, run: { id: 'r', message_id: 'm', status: 'running' },
+    messages: [{ id: 'u', role: 'user', content: 'Hi' }, { id: 'u2', role: 'user', content: 'Next' }, { id: 'm', role: 'assistant', content: '' }] });
+  reply({ id: 't', revision: 3, event_cursor: 10, run: null, messages: [{ id: 'u', role: 'user', content: 'Hi' }] });
+  await reconciling;
+  assert.deepEqual(S.messages.map(msg => msg.id), ['u', 'u2', 'm']);
+  assert.equal(S.activeRun.id, 'r');
+  assert.equal(S.viewCursor, 20);
+});
+
 test('a snapshot clears fields the server left out instead of keeping the old ones', () => {
   const file = { id: 'f', name: 'a.txt', kind: 'text', data: 'x' };
   const user = { id: 'u', role: 'user', content: 'Hi', attachments: [file] };
@@ -251,6 +274,33 @@ test('a patch past a consumed gap reopens the socket at the snapshot cursor, onc
   } finally {
     console.warn = original;
   }
+});
+
+test('a resync that replays from a live run\'s cursor does not refire events already handled', async () => {
+  global.WebSocket = class { constructor(url) { this.url = String(url); } close() {} send() {} };
+  global.window = { setTimeout, clearTimeout };
+  global.location = { href: 'https://fuse.test/chat', protocol: 'https:' };
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true });
+  baseState({ cursor: 80, viewCursor: 80, socket: null, HEARTBEAT_MS: 35000, reconnectAttempt: 0, syncEpoch: 0, syncInitialized: true,
+    activeRun: { id: 'r', message_id: 'm', status: 'running' } });
+  const calls = {};
+  const routes = { '/chat/sync': { cursor: 100, threads: [], projects: [] }, '/chat/threads?archived=1': { archived: [] } };
+  const stream = createStream({
+    net: stub({ api: async path => routes[path], isLive: () => true }),
+    // The live run's snapshot is durable only up to its stamp.
+    apply: stub({ reconcileThread: async () => { S.viewCursor = 60; } }),
+    status: stub({ notifyTurnDone: () => { calls.notify = (calls.notify || 0) + 1; } }),
+    sidebar: stub({ threadById: () => null }),
+    agents: stub(), composer: stub(), context: stub(), perms: stub(), persist: stub(), picker: stub(), traces: stub({ runIsActive }),
+    transcript: stub(), turns: stub(), ui: stub(),
+  });
+  await stream.connectSync(true);
+  assert.equal(S.cursor, 60, 'the socket replays from the snapshot cursor');
+  assert.equal(S.replayedThrough, 80, 'what this tab handled before the drop is marked');
+  await stream.receiveEvent({ id: 70, type: 'run.completed', thread_id: 'other', payload: { run_id: 'x' } });
+  assert.equal(calls.notify, undefined, 'a completion already handled does not notify again');
+  await stream.receiveEvent({ id: 90, type: 'run.completed', thread_id: 'other', payload: { run_id: 'y' } });
+  assert.equal(calls.notify, 1, 'one missed while disconnected still does');
 });
 
 test('a queued item stays in flight when another tab reloads the queue', async () => {
