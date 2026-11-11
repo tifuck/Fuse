@@ -1133,6 +1133,20 @@ class CursorSource:
         sel = resolve(body.get("model") or "auto", body.get("reasoning_effort") or reasoning.get("effort"))
         model = PREFIX + upstream_id(body.get("model") or "auto")
         conv, how, tail = agent.match(user_id, body.get("messages"))
+        # Claimed before the first await: a duplicate of this request (a client
+        # retry) would otherwise match the same conversation while this one is
+        # still opening it, and both would answer one parked run.
+        claimed = conv
+        if claimed is not None:
+            claimed.claimed = True
+        try:
+            return await self._chat_matched(body, session_id, user_id, affinity_id, sel, model, conv, how, tail)
+        finally:
+            # By now a round owns it (busy) or it was dropped or left alone.
+            if claimed is not None:
+                claimed.claimed = False
+
+    async def _chat_matched(self, body: dict, session_id, user_id, affinity_id, sel: dict, model: str, conv, how: str, tail) -> ChatResult:
         if how == "resume" and conv.selection != (sel["model_id"], tuple(sel["params"]), sel["max"]):
             # A parked run cannot change model mid-turn; replay on the new one.
             agent.drop(conv)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import weakref
 
 import httpx
 
@@ -18,7 +19,9 @@ PUBLIC_PREFIX = "explabs/"
 CATALOG_TTL = 300
 
 _catalogs: dict[int, tuple[tuple, float, dict]] = {}
-_locks: dict[int, asyncio.Lock] = {}
+# Weak, like workspace._mutation_locks: pruning unlocked entries dropped a
+# lock between its release and the woken waiter taking it.
+_locks: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 _errors: dict[int, str] = {}
 _refreshing: dict[int, asyncio.Task] = {}
 
@@ -185,9 +188,6 @@ async def _fetch(key: str) -> dict:
 async def fetch_catalog(user_id: int | None, *, force: bool = False) -> dict:
     if not user_id:
         return {"by_id": {}}
-    if len(_locks) > 1024:
-        for k in [k for k, v in _locks.items() if not v.locked()]:
-            _locks.pop(k, None)
     if len(_catalogs) > 512:
         now = time.monotonic()
         for k in [k for k, v in _catalogs.items() if now - v[1] > CATALOG_TTL]:

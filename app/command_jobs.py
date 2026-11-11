@@ -1061,7 +1061,9 @@ def pending_envelopes(user_id: int, thread_id: int) -> list[dict]:
             monitors.append(item)
         else:
             commands.append(item)
-    for rec in _live.values():
+    # A copy: this runs in worker threads (wake, inbox drain) and reads the
+    # database per monitor, while the loop adds and prunes jobs.
+    for rec in list(_live.values()):
         if rec.get("user_id") != int(user_id) or rec.get("thread_id") != int(thread_id):
             continue
         if not _is_monitor(rec) or rec.get("status") in TERMINAL:
@@ -1386,6 +1388,33 @@ def job_status(user_id: int, job_id: str) -> str | None:
     return str(row["status"]) if row else None
 
 
+def _kill_logged(job_id: str, user_id: int) -> None:
+    try:
+        kill(job_id, user_id)
+    except Exception:
+        logger.exception("Failed to cancel command job %s", job_id)
+
+
+def _kill_from_anywhere(rec: dict) -> None:
+    """kill() for callers that may be on a worker thread (the reaper,
+    abort_active, a thread delete). The job's task is not thread-safe, and
+    kill's check-then-set on the status must not interleave with the job's own
+    finish, so the kill runs on the loop that owns the job."""
+    task = rec.get("task")
+    loop = task.get_loop() if task is not None else None
+    try:
+        here = asyncio.get_running_loop()
+    except RuntimeError:
+        here = None
+    if loop is None or here is loop:
+        _kill_logged(str(rec["id"]), int(rec["user_id"]))
+        return
+    try:
+        loop.call_soon_threadsafe(_kill_logged, str(rec["id"]), int(rec["user_id"]))
+    except RuntimeError:
+        pass  # loop closed: shutdown has already cancelled its jobs
+
+
 def cancel_run(run_id: str) -> None:
     """Stop/cancel path: cancel shell jobs owned by a chat run. Monitors stay."""
     if not run_id:
@@ -1397,10 +1426,7 @@ def cancel_run(run_id: str) -> None:
             continue
         if rec.get("status") in TERMINAL or rec.get("status") == "cancelling":
             continue
-        try:
-            kill(str(rec["id"]), int(rec["user_id"]))
-        except Exception:
-            logger.exception("Failed to cancel command job %s", rec["id"])
+        _kill_from_anywhere(rec)
 
 
 def cancel_thread(user_id: int, thread_id: int) -> None:
@@ -1412,10 +1438,7 @@ def cancel_thread(user_id: int, thread_id: int) -> None:
             continue
         if rec.get("status") in TERMINAL or rec.get("status") == "cancelling":
             continue
-        try:
-            kill(str(rec["id"]), int(rec["user_id"]))
-        except Exception:
-            logger.exception("Failed to cancel thread job %s", rec["id"])
+        _kill_from_anywhere(rec)
 
 
 # Rendering lives in command_render; imported last because it reads this

@@ -344,7 +344,7 @@ def _assert_interval(item: dict) -> None:
         raise ScheduleError("interval too frequent")
 
 
-def _normalize(user_id: int, raw: dict, *, existing: dict | None = None) -> dict:
+def _normalize(user_id: int, raw: dict, *, existing: dict | None = None, conn=None) -> dict:
     name = str(raw.get("name") or (existing or {}).get("name") or "").strip()[:NAME_MAX]
     if not name:
         raise ScheduleError("name is required")
@@ -357,7 +357,7 @@ def _normalize(user_id: int, raw: dict, *, existing: dict | None = None) -> dict
             project_id = int(project_id)
         except (TypeError, ValueError):
             raise ScheduleError("project_id is required")
-        proj = hosts.resolve_project_id(user_id, project_id)
+        proj = hosts.resolve_project_id(user_id, project_id, conn)
         if not proj:
             raise ScheduleError("project not found", 404)
     else:
@@ -531,7 +531,7 @@ def patch_schedule(user_id: int, token, raw: dict) -> dict:
             raise ScheduleError("schedule not found", 404)
         # _normalize falls back to existing per field. Pre-merging the stored
         # cron_expr made every PATCH look like a custom cron edit.
-        item = _normalize(user_id, raw, existing=existing)
+        item = _normalize(user_id, raw, existing=existing, conn=conn)
         if set(raw) & _PATCH_INTERVAL_KEYS:
             _assert_interval(item)
         timing = ("recur_kind", "cron_expr", "every_seconds", "timezone", "at_local", "weekdays", "once_at",

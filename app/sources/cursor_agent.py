@@ -930,6 +930,8 @@ class Conversation:
         # (model_id, params, max_mode) the conversation's run was opened with.
         self.selection: tuple | None = None
         self.busy = False
+        # A request matched it and is still opening its round (see match).
+        self.claimed = False
         self.touched = time.monotonic()
 
 
@@ -950,14 +952,14 @@ def drop(conv: Conversation) -> None:
 def _evict() -> None:
     now = time.monotonic()
     for conv in list(_conversations.values()):
-        if conv.busy:
+        if conv.busy or conv.claimed:
             continue
         if conv.run is not None:
             if conv.run.closed or now - conv.touched > PARK_TTL_S:
                 drop(conv)
         elif now - conv.touched > CONVERSATION_TTL_S:
             drop(conv)
-    idle = sorted((c for c in _conversations.values() if not c.busy), key=lambda c: c.touched)
+    idle = sorted((c for c in _conversations.values() if not (c.busy or c.claimed)), key=lambda c: c.touched)
     for conv in idle[: max(0, len(_conversations) - MAX_CONVERSATIONS)]:
         drop(conv)
 
@@ -965,14 +967,17 @@ def _evict() -> None:
 def match(user_id, messages) -> tuple[Conversation | None, str, list[dict]]:
     """The kept conversation this request continues, as (conversation, how,
     new messages). how is "resume" (tool results for a parked run) or
-    "followup" (new user messages after a finished turn)."""
+    "followup" (new user messages after a finished turn). The caller sets
+    `claimed` on it until its round is open: opening awaits, and a second
+    request must not match the same conversation meanwhile."""
     _evict()
     msgs = [m for m in (messages or []) if isinstance(m, dict)]
     request = [canon(m) for m in msgs]
     best = None
     for conv in _conversations.values():
         n = len(conv.transcript)
-        if conv.user_id != user_id or conv.busy or not n or n >= len(request) or request[:n] != conv.transcript:
+        if (conv.user_id != user_id or conv.busy or conv.claimed or not n or n >= len(request)
+                or request[:n] != conv.transcript):
             continue
         if best is None or n > len(best.transcript):
             best = conv

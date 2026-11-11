@@ -380,7 +380,9 @@ async def chat_run_resume(request: Request, run_id: str):
     if err:
         return err
     try:
-        run = chat_store.resume_run(user["id"], run_id)
+        # Off the loop: it waits for the admission lock a turn start or spawn
+        # holds across its whole transaction, and every stream would wait too.
+        run = await asyncio.to_thread(chat_store.resume_run, user["id"], run_id)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     if run and run["status"] == "queued":

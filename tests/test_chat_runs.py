@@ -1000,6 +1000,165 @@ class RunsTest(unittest.IsolatedAsyncioTestCase):
         await runs.cancel_wait(1, run["id"], tree=True)
         self.assertEqual(store.get_run(1, run["id"])["status"], "cancelled")
 
+    def two_legs(self, run, first_leg):
+        """stream_dashboard_chat mock: first_leg, then a leg that completes."""
+        calls = []
+
+        async def second_leg():
+            yield frame({"choices": [{"delta": {"content": "resumed"}}]})
+            yield b"data: [DONE]\n\n"
+
+        async def mocked(request, user, raw, *, frozen_context):
+            calls.append(raw)
+            return StreamingResponse(first_leg() if len(calls) == 1 else second_leg())
+
+        return calls, patch.object(runtime, "stream_dashboard_chat", side_effect=mocked)
+
+    async def wait_for_partial(self, run):
+        async with asyncio.timeout(2):
+            while store.get_run(1, run["id"])["message"]["content"] != "partial":
+                await asyncio.sleep(.01)
+
+    async def test_resume_after_force_stop_survives_the_old_worker(self):
+        # Force stop ends the row while its worker is still unwinding. A resume
+        # requeues the same id: the old worker's final flush and finish_run
+        # must not overwrite and end the new leg.
+        run = self.turn()
+        release = asyncio.Event()
+
+        async def wedged():
+            store.save_turn_progress(run["id"], [{"role": "user", "content": "Hello"},
+                                                 {"role": "assistant", "content": "partial"}])
+            yield frame({"choices": [{"delta": {"content": "partial"}}]})
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                while not release.is_set():  # slow to unwind, however often it is cancelled
+                    with suppress(asyncio.CancelledError):
+                        await release.wait()
+                raise
+
+        calls, legs = self.two_legs(run, wedged)
+        with legs, patch.object(runs, "schedule_wake"):
+            old = await runs.start(self.request, self.user, run)
+            await self.wait_for_partial(run)
+            await runs.cancel_wait(1, run["id"], force=True)
+            self.assertEqual(store.get_run(1, run["id"])["status"], "cancelled")
+            self.assertFalse(old.done())
+            resumed = store.resume_run(1, run["id"])
+            self.assertEqual(resumed["status"], "queued")
+            self.assertIs(await runs.start(self.request, self.user, resumed), old)
+            release.set()
+            with suppress(asyncio.CancelledError):
+                await asyncio.wait_for(old, 5)
+            new = runs._tasks.get(run["id"])
+            self.assertIsNotNone(new)
+            self.assertIsNot(new, old)
+            await asyncio.wait_for(new, 5)
+        result = store.get_run(1, run["id"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("resumed", result["message"]["content"])
+        self.assertEqual(result["resume_count"], 1)
+
+    async def test_resume_landing_in_the_finalizer_is_not_aborted(self):
+        # The worker has committed its terminal row and is still finishing up
+        # when a resume requeues the run: that is a new leg, not a leftover.
+        run = self.turn()
+        get_run = store.get_run
+        resumed = []
+
+        def read_then_resume(user_id, ident):
+            row = get_run(user_id, ident)
+            if row and row["status"] == "cancelled" and not resumed:
+                resumed.append(store.resume_run(user_id, ident))
+                row = get_run(user_id, ident)
+            return row
+
+        async def stopped():
+            store.save_turn_progress(run["id"], [{"role": "user", "content": "Hello"},
+                                                 {"role": "assistant", "content": "partial"}])
+            yield frame({"choices": [{"delta": {"content": "partial"}}]})
+            await asyncio.Future()
+
+        calls, legs = self.two_legs(run, stopped)
+        with legs, patch.object(runs, "schedule_wake"):
+            old = await runs.start(self.request, self.user, run)
+            await self.wait_for_partial(run)
+            with patch.object(store, "get_run", side_effect=read_then_resume):
+                store.request_cancel(1, run["id"])
+                runs.cancel(run["id"])
+                with suppress(asyncio.CancelledError):
+                    await asyncio.wait_for(old, 5)
+            new = runs._tasks.get(run["id"])
+            self.assertIsNotNone(new)
+            await asyncio.wait_for(new, 5)
+        self.assertTrue(resumed)
+        result = get_run(1, run["id"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["resume_count"], 1)
+
+    async def test_start_waits_out_a_worker_past_its_last_look_at_the_row(self):
+        run = self.turn()
+        leave = asyncio.Event()
+
+        async def leaving():
+            await leave.wait()
+            runs._tasks.pop(run["id"], None)
+
+        old = asyncio.create_task(leaving())
+        old._fuse_started = old._fuse_exiting = True
+        runs._tasks[run["id"]] = old
+
+        async def gen():
+            yield frame({"choices": [{"delta": {"content": "reply"}}]})
+            yield b"data: [DONE]\n\n"
+
+        with patch.object(runtime, "stream_dashboard_chat", new_callable=AsyncMock,
+                          return_value=StreamingResponse(gen())), \
+             patch.object(runs, "schedule_wake"):
+            starting = asyncio.create_task(runs.start(self.request, self.user, run))
+            await asyncio.sleep(.05)
+            self.assertFalse(starting.done())
+            leave.set()
+            task = await asyncio.wait_for(starting, 2)
+            self.assertIsNot(task, old)
+            await asyncio.wait_for(task, 5)
+        self.assertEqual(store.get_run(1, run["id"])["status"], "completed")
+
+    async def test_reaper_leaves_a_requeued_run_to_its_worker(self):
+        # Queued with a transcript and no worker yet: a resume or continuation
+        # between its commit and start(), not a crashed run to recover.
+        run = self.turn()
+        store.save_turn_progress(run["id"], [{"role": "user", "content": "Hello"},
+                                             {"role": "assistant", "content": "partial"}])
+        db.execute("UPDATE chat_runs SET status='queued' WHERE id=?", (run["id"],))
+        runs.reap_orphans(1)
+        row = store.get_run(1, run["id"])
+        self.assertEqual((row["status"], row["resume_count"]), ("queued", 0))
+        self.assertFalse((row["request"].get("agent") or {}).get("resumed"))
+        store.abort_active(run["id"], "cancelled")
+
+    async def test_reaper_rechecks_a_stale_stop_before_force_finishing(self):
+        # The scan row says "stopping for a minute", but the run has since
+        # stopped and been resumed under the same id.
+        run = self.turn()
+        stale = dict(db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run["id"],)))
+        stale.update(cancel_requested=1, cancel_requested_at="2000-01-01T00:00:00Z")
+        runs._reap_one(stale)
+        self.assertEqual(store.get_run(1, run["id"])["status"], "queued")
+        store.abort_active(run["id"], "cancelled")
+
+    async def test_wake_lock_lives_as_long_as_it_is_referenced(self):
+        import gc
+
+        lock = runs._thread_wake_lock(1, "weak-lock-thread")
+        self.assertIs(runs._thread_wake_lock(1, "weak-lock-thread"), lock)
+        del lock
+        gc.collect()
+        self.assertNotIn((1, "weak-lock-thread"), runs._wake_locks)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -82,6 +82,37 @@ def test_start_turn_off_loop_and_run_start_on_loop(monkeypatch, route_mocks):
     assert calls == ["resolve", "commit", "start", "notify"]
 
 
+def test_resume_run_off_loop_and_run_start_on_loop(monkeypatch, route_mocks):
+    # resume_run waits for the admission lock a turn start holds across its
+    # whole transaction; on the loop that wait would stall every stream.
+    run = {"id": "run", "thread_id": 11, "message_id": "message", "status": "queued",
+           "created_at": "now", "cancel_requested": False}
+    calls = []
+
+    def resume(uid, ident):
+        off_loop()
+        assert (uid, ident) == (7, "run")
+        calls.append("resume")
+        return run
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+
+        async def start(req, user, queued):
+            assert asyncio.get_running_loop() is loop
+            assert queued is run
+            calls.append("start")
+
+        monkeypatch.setattr(chat.chat_runs, "start", start)
+        response = await chat.chat_run_resume(request(), "run")
+        assert response.status_code == 200
+
+    monkeypatch.setattr(chat.chat_store, "resume_run", resume)
+    monkeypatch.setattr(chat.chat_store, "get_run", lambda uid, ident: run)
+    asyncio.run(exercise())
+    assert calls == ["resume", "start"]
+
+
 @pytest.mark.parametrize("messages", [[], [{"role": "user", "content": "edited"}],
                                     [{"role": "user", "content": "retry"},
                                      {"role": "assistant", "content": "previous"}]])

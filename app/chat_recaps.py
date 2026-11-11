@@ -77,14 +77,26 @@ def kick():
         _wake_loop.call_soon_threadsafe(_wake.set)
 
 
+def _ids(conn, where: str, args) -> list[int]:
+    """Recap rows a writer is about to change, read without locks.
+
+    Every writer updates recaps by primary key, re-checking its predicate:
+    row first, index entries second, lowest id first. One UPDATE over a range
+    could walk chat_recaps_pending(state,next_at) instead, which locks index
+    entries before rows, and deadlocked (1213) against claim and finish, the
+    run and command finalizers, and command launches."""
+    return sorted(row["id"] for row in conn.execute(f"SELECT id FROM chat_recaps WHERE {where}", args).fetchall())
+
+
 def activity(conn, user_id: int, thread_id: int):
     """Called in the same transaction as start/resume/edit, before publication."""
     conn.execute("UPDATE chat_threads SET recap_epoch=recap_epoch+1 WHERE id=? AND user_id=?", (thread_id, user_id))
     row = conn.execute("SELECT recap_epoch,recap_start_id FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone()
     if row is None:
         return
-    conn.execute("""UPDATE chat_recaps SET state='stale',lease_token='' WHERE thread_id=?
-                    AND state IN ('pending','generating','ready')""", (thread_id,))
+    live = "state IN ('pending','generating','ready')"
+    for recap_id in _ids(conn, f"thread_id=? AND {live}", (thread_id,)):
+        conn.execute(f"UPDATE chat_recaps SET state='stale',lease_token='' WHERE id=? AND {live}", (recap_id,))
     if not row["recap_start_id"]:
         return  # Legacy histories are never automatically backfilled.
     owner = conn.execute("SELECT chat_recaps FROM users WHERE id=?", (user_id,)).fetchone()
@@ -95,14 +107,16 @@ def activity(conn, user_id: int, thread_id: int):
 
 
 def disable(conn, user_id: int):
-    conn.execute("""UPDATE chat_recaps SET state='disabled',lease_token='',updated_at=?
-                    WHERE user_id=? AND state IN ('pending','generating')""", (db.now(), user_id))
+    live = "state IN ('pending','generating')"
+    for recap_id in _ids(conn, f"user_id=? AND {live}", (user_id,)):
+        conn.execute(f"UPDATE chat_recaps SET state='disabled',lease_token='',updated_at=? WHERE id=? AND {live}",
+                     (db.now(), recap_id))
 
 
 def terminal_activity(conn, user_id: int, thread_id: int):
     """Observe settlement anew after a root/child/command stops."""
-    conn.execute("UPDATE chat_recaps SET quiet_since='',next_at=? WHERE user_id=? AND thread_id=? AND state='pending'",
-                 (db.now(), user_id, thread_id))
+    for recap_id in _ids(conn, "user_id=? AND thread_id=? AND state='pending'", (user_id, thread_id)):
+        conn.execute("UPDATE chat_recaps SET quiet_since='',next_at=? WHERE id=? AND state='pending'", (db.now(), recap_id))
     kick()
 
 
@@ -362,10 +376,18 @@ async def _generate(job_id: int):
         _tasks.pop(job_id, None)
 
 
+def _expire_leases():
+    now = db.now()
+    spent = "state='generating' AND next_at<=? AND attempts>=?"
+    with db.tx() as conn:
+        ids = _ids(conn, spent, (now, MAX_ATTEMPTS))
+    for recap_id in ids:
+        db.execute(f"UPDATE chat_recaps SET state='failed',lease_token='',updated_at=? WHERE id=? AND {spent}",
+                   (now, recap_id, now, MAX_ATTEMPTS))
+
+
 async def sweep():
-    await asyncio.to_thread(db.execute, """UPDATE chat_recaps SET state='failed',lease_token='',updated_at=?
-                                         WHERE state='generating' AND next_at<=? AND attempts>=?""",
-                            (db.now(), db.now(), MAX_ATTEMPTS))
+    await asyncio.to_thread(_expire_leases)
     capacity = CONCURRENCY - len(_tasks)
     if capacity <= 0:
         return

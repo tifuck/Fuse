@@ -204,7 +204,8 @@ def learned_window(model: str) -> int | None:
     """
     now = time.time()
     best: tuple[float, int] | None = None
-    for (_ctype, cmodel), (seen, window) in _WINDOW_CACHE.items():
+    # A copy: turn starts measure in worker threads while the loop learns windows.
+    for (_ctype, cmodel), (seen, window) in list(_WINDOW_CACHE.items()):
         if cmodel == model and now - seen <= _WINDOW_TTL:
             if best is None or seen > best[0]:
                 best = (seen, window)

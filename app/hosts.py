@@ -1085,18 +1085,19 @@ def _resolved_project(row) -> dict:
     }
 
 
-def resolve_project_id(user_id: int, project_id: int) -> dict | None:
+def resolve_project_id(user_id: int, project_id: int, conn=None) -> dict | None:
+    """Inside a transaction pass its conn: a second pool checkout held under
+    the first can wait out a saturated pool with the transaction open."""
     try:
         pid = int(project_id)
     except (TypeError, ValueError):
         return None
-    row = db.fetchone(
-        """SELECT p.id AS project_id, p.name, p.remote_path, p.default_model, p.permission_mode,
+    sql = """SELECT p.id AS project_id, p.name, p.remote_path, p.default_model, p.permission_mode,
                   h.id AS host_id, h.alias
            FROM user_projects p JOIN user_hosts h ON h.id=p.host_id
-           WHERE p.id=? AND p.user_id=? AND h.user_id=? AND h.disabled=0""",
-        (pid, user_id, user_id),
-    )
+           WHERE p.id=? AND p.user_id=? AND h.user_id=? AND h.disabled=0"""
+    args = (pid, user_id, user_id)
+    row = conn.execute(sql, args).fetchone() if conn is not None else db.fetchone(sql, args)
     if row is None:
         return None
     return _resolved_project(row)

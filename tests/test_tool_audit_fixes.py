@@ -722,6 +722,29 @@ class SearchBudgetTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("2 query(s) were NOT run", text)
         self.assertIn("'beta two'", text)
 
+    async def test_parallel_reads_share_the_page_budget(self):
+        # Reads of one tool round all pass the budget check before any of
+        # them finishes: a read in flight has to hold its slot.
+        from app import chat_tools
+
+        async def fake_fetch(url, **kw):
+            await asyncio.sleep(0)
+            return SimpleNamespace(text="page", title="t", bytes_in=4), "PAGE", ""
+
+        budgets = {"fetches": 1}
+        with patch.object(chat_tools, "fetch_url", fake_fetch), \
+                patch.object(chat_tools, "is_fetch_cached", return_value=False), \
+                patch.object(chat_tools, "allowed_fetch_url", side_effect=lambda url: url), \
+                patch.object(chat_tools.settings, "web_read_successes_per_turn", 2), \
+                patch.object(chat_tools.settings, "web_read_attempts_per_turn", 9):
+            results = await asyncio.gather(*(
+                chat_tools.execute_tool("read_url", json.dumps({"url": f"https://example.com/{i}"}),
+                                        user_id=1, allowed_urls=set(), budgets=budgets)
+                for i in range(3)
+            ))
+        self.assertEqual([trace["status"] for _, trace in results], ["done", "error", "error"])
+        self.assertEqual((budgets["fetches"], budgets["fetches_in_flight"]), (2, 0))
+
 
 # --- permissions --------------------------------------------------------------------
 

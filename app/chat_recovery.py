@@ -31,10 +31,14 @@ def abort_active(run_id, status="cancelled", notice=None):
     """Force an active run into a terminal status. Never raises to the caller."""
     if status not in chat_tx.TERMINAL:
         status = "interrupted"
+    from . import chat_runs
+
     try:
         row = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run_id,))
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return False
+        # Before the row turns terminal: from then on a resume may requeue it.
+        chat_runs.disown(run_id)
         try:
             from . import workspace
 
@@ -46,10 +50,13 @@ def abort_active(run_id, status="cancelled", notice=None):
         return True
     except Exception:
         logger.exception("Failed to abort chat run %s", run_id)
+        chat_runs.disown(run_id)
         try:
             _force_terminal(run_id, status, None)
         except Exception:
             logger.exception("Failed to force-terminal chat run %s", run_id)
+            # Still active: its worker's own finish is the only one left.
+            chat_runs.disown(run_id, False)
         return False
 
 

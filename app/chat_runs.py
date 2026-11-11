@@ -11,6 +11,7 @@ import copy
 import json
 import logging
 import time
+import weakref
 from datetime import datetime, timezone
 
 from fastapi import Request
@@ -54,6 +55,19 @@ def _register_cancel_signal(ident: str):
     event = asyncio.Event()
     _cancel_signals[ident] = (event, asyncio.get_running_loop())
     return event
+
+
+def disown(run_id, lost: bool = True) -> None:
+    """The row is being finalized without its worker (abort_active). Thread-safe.
+
+    That worker may still be unwinding, and a resume can requeue the same id
+    before it is gone. Its final flush and finish_run check only that the row
+    is active, so they would overwrite the new leg and end it. Both are no-ops
+    on the row it lost, so the worker skips them from here on. lost=False
+    hands the row back when the abort itself could not commit."""
+    task = _tasks.get(run_id)
+    if task is not None and not task.done():
+        task._fuse_disowned = lost
 
 
 def _signal_cancel(ident: str):
@@ -170,6 +184,12 @@ async def start(request: Request, user, run, *, previous_task=None):
     global _worker_loop
     _worker_loop = asyncio.get_running_loop()
     existing = _tasks.get(run["id"])
+    if (existing is not None and existing is not previous_task and not existing.done()
+            and getattr(existing, "_fuse_exiting", False)):
+        # That worker has taken its last look at the row and will not start a
+        # leg requeued since. Let it leave, then start this one here.
+        await asyncio.wait({existing}, timeout=CANCEL_GRACE_SECONDS)
+        existing = _tasks.get(run["id"])
     if existing is not None and existing is not previous_task:
         if not existing.done():
             return existing
@@ -415,7 +435,8 @@ def reap_orphans(user_id=None):
     if user_id is None:
         # A parked finish whose row was settled elsewhere (Stop, abort) is done.
         active = {row["id"] for row in rows}
-        for ident in [key for key in _unsettled if key not in active]:
+        # A copy: this runs in a worker thread while the loop parks finishes.
+        for ident in [key for key in list(_unsettled) if key not in active]:
             _unsettled.pop(ident, None)
     for row in rows:
         try:
@@ -441,11 +462,9 @@ def _reap_one(row):
         # by streaming checkpoints (unlike updated_at), so a worker that keeps
         # generating past a Stop cannot pin itself in "stopping" forever.
         stamp = (row["cancel_requested_at"] if "cancel_requested_at" in row.keys() else "") or row["updated_at"]
-        if _iso_age(stamp) >= FORCE_CANCEL_SECONDS:
-            chat_store.abort_active(ident, "cancelled")
-        elif live:
+        if live and _iso_age(stamp) < FORCE_CANCEL_SECONDS:
             cancel(ident)
-        else:
+        elif _still_stopping(ident):
             chat_store.abort_active(ident, "cancelled")
         return
     if live:
@@ -458,11 +477,26 @@ def _reap_one(row):
             chat_store.abort_active(ident, "interrupted", chat_store.STALL_NOTICE)
             _wake_stalled_child(row)
         return
+    if row["status"] == "queued":
+        # Start-ready: a new turn, or a resume or continuation that requeued
+        # the row and is about to hand it to a worker. resume_queued (next in
+        # the maintenance tick) launches it. Recovering it here treated a run
+        # that was only waiting for its worker as a crashed one: a second
+        # resume note and a spent resume attempt.
+        return
     # No local worker: recover from the durable row, which needs the heavy
     # blobs the scan no longer ships.
     full = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (ident,))
     if full is not None:
         chat_store.recover_one(full)
+
+
+def _still_stopping(ident) -> bool:
+    """The reaper's scan is a snapshot taken before the rows ahead of this
+    one were reaped: a run that stopped and was resumed since is active again
+    under the same id, without the flag, and must not be force-finished."""
+    row = db.fetchone("SELECT cancel_requested FROM chat_runs WHERE id=? AND status IN ('queued','running')", (ident,))
+    return bool(row and row["cancel_requested"])
 
 
 def _wake_stalled_child(row) -> None:
@@ -475,7 +509,11 @@ def _wake_stalled_child(row) -> None:
         logger.exception("Failed to schedule wake for stalled child %s", row["id"])
 
 
-_wake_locks: dict[tuple[int, object], asyncio.Lock] = {}
+# Weak: a lock lives exactly as long as a holder or waiter references it.
+# Pruning by locked() could not tell: it is False between a release and the
+# woken waiter running, so a lock was dropped under a waiter about to take it
+# and the next caller entered under a fresh one.
+_wake_locks: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 _wake_tasks: dict[tuple[int, object], asyncio.Task] = {}
 _wake_again: set[tuple[int, object]] = set()
 
@@ -488,15 +526,6 @@ def _thread_wake_lock(user_id: int, thread_id) -> asyncio.Lock:
     if lock is None:
         lock = _wake_locks[key] = asyncio.Lock()
     return lock
-
-
-def _prune_wake_locks() -> None:
-    if len(_wake_locks) <= 1024:
-        return
-    busy = set(_wake_tasks)
-    for key, lock in list(_wake_locks.items()):
-        if key not in busy and not lock.locked():
-            _wake_locks.pop(key, None)
 
 
 def schedule_wake(user_id: int, thread_id) -> None:
@@ -525,7 +554,6 @@ def schedule_wake(user_id: int, thread_id) -> None:
         finally:
             _wake_tasks.pop(key, None)
             _wake_again.discard(key)
-            _prune_wake_locks()
 
     _wake_tasks[key] = loop.create_task(_run(), name=f"chat-wake-{thread_id}")
 
@@ -804,6 +832,10 @@ async def _run(request, user, run):
 
     flush_lock = asyncio.Lock()
     cancel_signal = _register_cancel_signal(ident)
+    settled = False
+
+    def disowned() -> bool:
+        return getattr(task, "_fuse_disowned", False)
 
     async def persist_checkpoint(stored, events, durable=True, state_only=False):
         # Cancelling an asyncio waiter does not cancel a running thread. Drain
@@ -1117,7 +1149,8 @@ async def _run(request, user, run):
                     logger.info("Leaving run %s active for restart resume", ident)
                     return
             try:
-                await flush()
+                if not disowned():
+                    await flush()
             except Exception:
                 logger.exception("Chat final flush failed for %s", ident)
             row = await asyncio.to_thread(chat_store.get_run, user["id"], ident)
@@ -1222,16 +1255,17 @@ async def _run(request, user, run):
 
             permissions_mod.cancel_run_asks(ident)
             chat_store.end_leg(ident, leg)
-            if not await _finish_durably(ident, output.stored(), status):
+            if not disowned() and not await _finish_durably(ident, output.stored(), status):
                 # The terminal row never committed. Leave it ACTIVE and parked
                 # in _unsettled: the reaper retries this finish rather than
                 # resuming a turn that already ended, and no push or wake
                 # announces a state that is not durable.
                 return
+            settled = True
             current = await asyncio.to_thread(chat_store.get_run, user["id"], ident)
             if current and current["status"] in chat_store.TERMINAL:
                 status = current["status"]
-            if not parent and status in chat_store.TERMINAL and current is not None:
+            if not parent and current is not None and current["status"] in chat_store.TERMINAL:
                 # Follow-ups that raced the finish line were never consumed.
                 # A completed child simply continues (same run id, seamless
                 # from the parent's perspective); anything else is surfaced
@@ -1247,10 +1281,11 @@ async def _run(request, user, run):
                     if not continued:
                         await durable_call(chat_store.flag_unconsumed_followups, ident, leftover)
                     current = await asyncio.to_thread(chat_store.get_run, user["id"], ident) or current
-            continuing = False
-            if current and current["status"] == "queued":
-                _agent = (current.get("request") or {}).get("agent") or {}
-                continuing = bool(_agent.get("pending_steers") or _agent.get("followup_continuation"))
+            # Queued again after this leg ended: a steer or follow-up
+            # continuation, or a resume that requeued the row while this
+            # worker was still finishing. Either way it is a new leg, not
+            # this one's leftover; the handoff below starts it.
+            continuing = bool(current and current["status"] == "queued")
             if current and current["status"] in chat_store.ACTIVE and not continuing:
                 await durable_call(chat_store.abort_active, ident, status if status in chat_store.TERMINAL else "interrupted")
             if status in chat_store.TERMINAL and not continuing:
@@ -1343,7 +1378,10 @@ async def _run(request, user, run):
             # row ACTIVE, so the next boot resumed and re-ran a finished turn.
             if not isinstance(exc, asyncio.CancelledError):
                 logger.exception("Chat run finalization failed for %s", ident)
-            await durable_call(chat_store.abort_active, ident, status if status in chat_store.TERMINAL else "interrupted")
+            if not settled:
+                # Once this leg's terminal row is durable, an active row is a
+                # newer leg (continuation or resume) and is not ours to end.
+                await durable_call(chat_store.abort_active, ident, status if status in chat_store.TERMINAL else "interrupted")
             if isinstance(exc, asyncio.CancelledError):
                 raise
         finally:
@@ -1358,6 +1396,9 @@ async def _run(request, user, run):
             _cancelled.discard(ident)
             _cancel_signals.pop(ident, None)
             try:
+                # start() waits out a worker past this point instead of
+                # trusting it with a row requeued after the read below.
+                task._fuse_exiting = True
                 current = await asyncio.to_thread(chat_store.get_run, user["id"], ident)
                 if current and current["status"] == "queued" and not _stopping:
                     await start(request, user, current, previous_task=task)

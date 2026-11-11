@@ -383,6 +383,69 @@ class MonitorJobs(unittest.IsolatedAsyncioTestCase):
             await rec["task"]
         self.assertEqual(rec["status"], "cancelled")
 
+    async def test_pending_envelopes_tolerates_a_job_added_meanwhile(self):
+        # Wakes read this in a worker thread, with a database read per live
+        # monitor, while the loop launches other commands.
+        gate = asyncio.Event()
+
+        async def runner(sink):
+            sink("hit-one\n")
+            await gate.wait()
+            return SimpleNamespace(exit_status=0)
+
+        def launch_meanwhile(run_id):
+            command_jobs._live.setdefault("other", {"id": "other", "user_id": 9, "thread_id": 9, "status": "completed"})
+            return None
+
+        with patch.object(command_jobs, "_deliver"):
+            rec = command_jobs.launch(
+                user_id=1, host_id=2, host="box", thread_id=3, run_id=None,
+                command="watch", cwd="", background=True, timeout_ms=10_000,
+                runner=runner, kind="monitor", max_events=8,
+            )
+            await asyncio.sleep(0.35)
+            with patch.object(command_jobs, "_child_run_state", side_effect=launch_meanwhile):
+                items = command_jobs.pending_envelopes(1, 3)
+            self.assertTrue(items)
+            self.assertIn("other", command_jobs._live)
+            gate.set()
+            await rec["task"]
+
+    async def test_cancel_run_from_a_worker_thread_kills_on_the_loop(self):
+        # abort_active (reaper, force stop) and thread deletes run in worker
+        # threads; the job's asyncio task may only be touched on its loop.
+        gate = asyncio.Event()
+
+        async def runner(sink):
+            await gate.wait()
+            return SimpleNamespace(exit_status=0)
+
+        rec = command_jobs.launch(
+            user_id=1, host_id=2, host="box", thread_id=3, run_id="run-off-loop",
+            command="sleep 60", cwd="", background=True, timeout_ms=10_000, runner=runner,
+        )
+        loop = asyncio.get_running_loop()
+        task = rec["task"]
+        cancelled_on_loop = []
+
+        class Guarded:
+            def done(self):
+                return task.done()
+
+            def get_loop(self):
+                return loop
+
+            def cancel(self):
+                cancelled_on_loop.append(asyncio.get_running_loop() is loop)  # raises off the loop
+                return task.cancel()
+
+        rec["task"] = Guarded()
+        await asyncio.to_thread(command_jobs.cancel_run, "run-off-loop")
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait_for(task, 2)
+        self.assertEqual(cancelled_on_loop, [True])
+        self.assertEqual(rec["status"], "cancelled")
+
     async def test_strict_checkpoint_keeps_monitor_fields(self):
         async def runner(sink):
             sink("ok\n")

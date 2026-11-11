@@ -621,6 +621,34 @@ class CursorPoolTest(unittest.IsolatedAsyncioTestCase):
 
     @patch("app.sources.cursor.refresh_pool_quota", new_callable=AsyncMock)
     @patch("app.sources.cursor.refresh_due", new_callable=AsyncMock)
+    async def test_duplicate_request_cannot_resume_the_same_parked_run(self, _due, _quota):
+        # A client retry arrives while the first copy is still handing its
+        # tool results to the parked run (opening a round awaits).
+        cursor_mod.store_tokens(self.sid, _jwt(), "refresh-token-1234", self.alice["id"])
+        call = {"id": "c1", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}
+        turn1 = [{"role": "user", "content": "hi"}]
+        round2 = turn1 + [{"role": "assistant", "content": "Hi", "tool_calls": [call]},
+                          {"role": "tool", "tool_call_id": "c1", "content": "file data"}]
+
+        class SlowResume(FakeRun):
+            resumes = 0
+
+            async def resume(self, results):
+                SlowResume.resumes += 1
+                await asyncio.sleep(0)
+                await super().resume(results)
+
+        with patch.object(agent, "CursorRun", SlowResume), patch.object(cursor_mod, "note_pool_invoke"):
+            await self._chat(turn1)
+            parked = FakeRun.instances[0]
+            await asyncio.gather(self._chat(round2), self._chat(round2))
+        self.assertEqual(SlowResume.resumes, 1)
+        self.assertEqual(parked.resumed, [("c1", "file data", [])])
+        self.assertEqual(len(FakeRun.instances), 2)  # the duplicate replayed on a run of its own
+        self.assertFalse(any(conv.claimed for conv in agent._conversations.values()))
+
+    @patch("app.sources.cursor.refresh_pool_quota", new_callable=AsyncMock)
+    @patch("app.sources.cursor.refresh_due", new_callable=AsyncMock)
     async def test_diverged_history_replays_and_401_refreshes_once(self, _due, _quota):
         cursor_mod.store_tokens(self.sid, _jwt(), "refresh-token-1234", self.alice["id"])
         FakeRun.fail = [401]

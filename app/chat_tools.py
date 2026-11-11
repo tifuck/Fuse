@@ -1450,9 +1450,12 @@ async def execute_tool(
     except (TypeError, ValueError, OverflowError):
         offset = 0
     cached = is_fetch_cached(url, allowed_urls)
+    counted = budgets is not None and not cached
     if budgets is not None:
         attempts = budgets.get("fetch_attempts", 0)
-        successes = budgets.get("fetches", 0)
+        # Reads still in flight hold their slot: parallel reads in one tool
+        # round all pass this check before any of them finishes.
+        successes = budgets.get("fetches", 0) + budgets.get("fetches_in_flight", 0)
         if not cached and attempts >= _web_budget(settings.web_read_attempts_per_turn, coding):
             msg = "Page-read attempt budget for this turn is exhausted."
             return msg, {"name": "read_url", "status": "error", "kind": "budget_exhausted", "url": url[:2000], "error": msg}
@@ -1461,9 +1464,14 @@ async def execute_tool(
             return msg, {"name": "read_url", "status": "error", "kind": "budget_exhausted", "url": url[:2000], "error": msg}
         if not cached:
             budgets["fetch_attempts"] = attempts + 1
-    extract, wrapped, error = await fetch_url(
-        url, user_id=user_id, allowed=allowed_urls, find=find, query=query, cancel=cancel, offset=offset
-    )
+            budgets["fetches_in_flight"] = budgets.get("fetches_in_flight", 0) + 1
+    try:
+        extract, wrapped, error = await fetch_url(
+            url, user_id=user_id, allowed=allowed_urls, find=find, query=query, cancel=cancel, offset=offset
+        )
+    finally:
+        if counted:
+            budgets["fetches_in_flight"] -= 1
     clean = allowed_fetch_url(url)
     if extract is None:
         low = (error or "").lower()
@@ -1480,7 +1488,7 @@ async def execute_tool(
             "url": clean or url[:2000],
             "error": error or wrapped,
         }
-    if budgets is not None and not cached:
+    if counted:
         budgets["fetches"] = budgets.get("fetches", 0) + 1
     snippet = (extract.text or "")[:280]
     return wrapped, {

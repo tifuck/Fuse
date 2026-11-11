@@ -164,6 +164,51 @@ class RecapTest(unittest.IsolatedAsyncioTestCase):
         recaps.finish(retry, "Late output must not publish.")
         self.assertEqual(chats.get_thread(1, self.pk)["recaps"], [])
 
+    def test_every_recap_write_goes_by_primary_key(self):
+        # A range UPDATE could walk chat_recaps_pending(state,next_at), locking
+        # index entries before rows, and deadlocked (1213 in production)
+        # against the writers that lock a row first.
+        class Recorder:
+            def __init__(self, conn, seen):
+                self.conn, self.seen = conn, seen
+
+            def execute(self, sql, args=()):
+                self.seen.append(" ".join(sql.split()))
+                return self.conn.execute(sql, args)
+
+        self.complete()
+        other = chats.create_thread(1, model="offline")
+        other_pk = chats.resolve_thread_pk(1, other["id"])
+        store.start_turn(1, other_pk, "Unrelated work", other["revision"], "second")
+        db.execute("UPDATE chat_recaps SET quiet_since='kept' WHERE thread_id=?", (other_pk,))
+        seen = []
+        with db.tx() as conn:
+            recorder = Recorder(conn, seen)
+            recaps.terminal_activity(recorder, 1, self.pk)
+            recaps.activity(recorder, 1, self.pk)
+        untouched = dict(db.fetchone("SELECT state,quiet_since FROM chat_recaps WHERE thread_id=?", (other_pk,)))
+        self.assertEqual(untouched, {"state": "pending", "quiet_since": "kept"})
+        self.assertEqual(self.job()["state"], "pending")  # the new epoch; the old one went stale
+        self.assertEqual(db.fetchone("SELECT COUNT(*) AS n FROM chat_recaps WHERE thread_id=? AND state='stale'",
+                                     (self.pk,))["n"], 1)
+        with db.tx() as conn:
+            recaps.disable(Recorder(conn, seen), 1)
+        self.assertEqual(self.job()["state"], "disabled")
+        db.execute("UPDATE chat_recaps SET state='generating',attempts=?,next_at='' WHERE id=?",
+                   (recaps.MAX_ATTEMPTS, self.job()["id"]))
+        execute = db.execute
+
+        def recording(sql, args=()):
+            seen.append(" ".join(sql.split()))
+            return execute(sql, args)
+
+        with patch.object(db, "execute", side_effect=recording):
+            recaps._expire_leases()
+        self.assertEqual(self.job()["state"], "failed")
+        writes = [sql for sql in seen if sql.startswith("UPDATE chat_recaps")]
+        self.assertEqual(len(writes), 5)
+        self.assertTrue(all(" WHERE id=? " in sql for sql in writes), writes)
+
     def test_toggle_disables_generation_but_manual_still_runs(self):
         self.complete()
         job = self.claim(self.job()["id"])
