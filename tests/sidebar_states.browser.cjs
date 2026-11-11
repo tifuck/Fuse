@@ -68,7 +68,9 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     assert.equal(await page.locator('[data-chat-title]').innerText(), PREVIEW, 'the bar shows that one title, not a second rewrite');
     assert.equal(await row(id).getAttribute('aria-busy'), 'true');
     let spin = await spins();
-    assert.ok(spin.visible.includes('chats') && spin.visible.some(name => name.startsWith('h-')), `row and tab spin on send: ${JSON.stringify(spin)}`);
+    // The open tab's rows carry the spinner; its tab only reports busy.
+    assert.ok(!spin.visible.includes('chats') && spin.visible.some(name => name.startsWith('h-')), `the row spins, the open tab does not: ${JSON.stringify(spin)}`);
+    assert.equal(spin.tabs[0], 'true', 'the open chats tab is still aria-busy');
 
     // A subagent that outlives the root turn keeps the spinner. Settling it
     // clears every spinner, because the server then reports running=false.
@@ -78,8 +80,10 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     truth = await threads();
     assert.equal(truth.threads.find(item => item.id === id).running, true, 'server: a live subagent keeps the thread running');
     assert.match(await row(id).getAttribute('class'), /is-running/);
+    await page.locator('[data-history-tab="projects"]').click();
     spin = await spins();
-    assert.ok(spin.visible.includes('chats'), `tab spinner survives the turn: ${JSON.stringify(spin)}`);
+    assert.ok(spin.visible.includes('chats'), `the other tab's spinner survives the turn: ${JSON.stringify(spin)}`);
+    await page.locator('[data-history-tab="chats"]').click();
     await api('/__fixture/sidebar/child/' + child.child_id, { method: 'DELETE' });
     await page.waitForFunction(thread => {
       const item = document.querySelector(`[data-thread="${thread}"]`);

@@ -232,21 +232,30 @@
   color: var(--mute);
 }
 .chat-history-search-close:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
-.chat-history-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; }
+/* Sort and project filter: quiet text menus, sized to the chosen option. */
+.chat-history-filters { display: flex; gap: 1rem; min-width: 0; padding: 0 0.25rem; }
 .chat-history-filters[hidden] { display: none !important; }
 .chat-history-filters label { display: flex; min-width: 0; }
 .chat-history-filters select {
-  width: 100%;
-  height: 1.75rem;
-  padding: 0 0.45rem;
+  field-sizing: content;
+  max-width: 100%;
+  height: 1.25rem;
+  padding: 0;
   border: 0;
-  border-radius: 6px;
-  /* Opaque: the browser paints the dropdown list from this color, and a
-     see-through one lands on white, so light text on a dark theme vanishes. */
-  background-color: color-mix(in srgb, var(--mist) 5%, var(--ink));
-  color: var(--mist);
-  font-size: 0.75rem;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--mute);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color var(--dur-1) ease;
 }
+.chat-history-filters select:hover,
+.chat-history-filters select:has(option:not(:first-child):checked) { color: var(--mist); }
+.chat-history-filters select:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+/* The browser paints the open list from the option colors; a see-through
+   one lands on white, so light text on a dark theme would vanish. */
+.chat-history-filters option { background-color: var(--panel); color: var(--mist); }
 
 /* List. Rows are one line (title) or two (title + snippet/project meta). */
 .chat-history-list {
@@ -293,11 +302,6 @@
   transition: background-color var(--dur-1) ease;
 }
 .chat-history-item + .chat-history-item { margin-top: 1px; }
-.chat-history-item.is-running:not(.is-on) { animation: chat-history-running 2.8s ease-in-out infinite; }
-@keyframes chat-history-running {
-  0%, 100% { background-color: color-mix(in srgb, var(--brass) 3%, transparent); }
-  50% { background-color: color-mix(in srgb, var(--brass) 8%, transparent); }
-}
 .chat-history-item:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }
 .chat-history-item:has(> button.open:active) { background: color-mix(in srgb, var(--mist) 11%, transparent); transition-duration: 0ms; }
 .chat-history-item.is-on { background: color-mix(in srgb, var(--mist) 9%, transparent); }
@@ -320,8 +324,7 @@
 }
 .chat-history-item:hover > button.open { color: var(--mist); }
 .chat-history-item.has-snip > button.open { min-height: 2.5rem; }
-.chat-history-item.is-on > button.open,
-.chat-history-item.is-running .chat-history-name { color: var(--mist); }
+.chat-history-item.is-on > button.open { color: var(--mist); }
 .chat-history-title { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-width: 0; overflow: hidden; }
 .chat-history-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.08rem; min-width: 0; overflow: hidden; }
 .chat-history-name,
@@ -389,14 +392,13 @@
 }
 .chat-history-item.is-project .chat-history-indicator.is-folder { margin-top: 0.2rem; }
 .chat-history-unread-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 5px;
-  height: 5px;
+  display: block;
+  width: 6px;
+  height: 6px;
+  /* Centred in the run spinner's 0.82rem box. */
+  margin: 0.125rem 0 0 calc((0.82rem - 6px) / 2);
   border-radius: 50% !important;
   background: var(--ok);
-  pointer-events: none;
 }
 .chat-history-item.is-unread .chat-history-name { color: var(--mist); }
 .chat-history-sep {
@@ -404,13 +406,11 @@
   margin: 0.35rem 0.625rem 0.25rem;
   background: var(--line);
 }
+/* The other tab's status: spinner and unread count in one cluster after
+   the label. */
 .chat-history-tab-unread {
-  min-width: 1rem;
-  padding: 0 0.28rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ok) 22%, var(--panel));
   color: var(--ok);
-  font: 0.6rem/1rem var(--mono);
-  text-align: center;
+  font: 0.625rem/1 var(--mono);
 }
+.chat-history-tab .chat-run-spin:not([hidden]) + .chat-history-tab-unread { margin-left: -0.2rem; }
 .chat-history-tab-unread[hidden] { display: none; }

@@ -66,6 +66,7 @@ export function createRender(ctx) {
       btn.classList.toggle("is-on", on);
     });
     syncHistoryUnread();
+    spinners.syncRunSpinners();
     const heading = S.root.querySelector("[data-history-heading]");
     if (heading) heading.textContent = S.historyTab === "projects" ? "Projects" : "Chats";
     const newLabel = S.root.querySelector("[data-chat-new-label]");
@@ -137,11 +138,10 @@ export function createRender(ctx) {
     const chip = searchingChip(item);
     const meta =
       project && !grouped ? projects.projectMeta(item.project_name || "Project", item.host_alias) : "";
-    const dot = unread ? '<span class="chat-history-unread-dot" role="img" aria-label="Unread activity"></span>' : "";
-    const age = running ? spinners.runSpinMarkup("h-" + item.id) : spinners.ageChip(item);
+    const age = running ? spinners.runSpinMarkup("h-" + item.id) : spinners.ageChip(item, unread);
     const lead = project
-      ? age + `<span class="chat-history-indicator is-folder">${projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url })}${dot}</span>`
-      : `<span class="chat-history-indicator">${age}${dot}</span>`;
+      ? age + `<span class="chat-history-indicator is-folder">${projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url })}</span>`
+      : `<span class="chat-history-indicator">${age}</span>`;
     const groupedClass = project && grouped ? " is-grouped" : "";
     const runningClass = running ? " is-running" : "";
     const busy = running ? ' aria-busy="true"' : "";

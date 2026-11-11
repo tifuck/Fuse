@@ -29,12 +29,15 @@ function ageStamp(iso) {
   return Math.floor(days / 365.25) + "y";
 }
 
-function ageChip(item) {
+// An unread row shows a dot in the age slot instead of the stamp; the time
+// stays in the tooltip.
+function ageChip(item, unread = false) {
   if (!item || !item.updated_at) return "";
   const stamp = ageStamp(item.updated_at);
   if (!stamp) return "";
   const when = new Date(item.updated_at);
   const title = Number.isFinite(when.getTime()) ? ` title="${escapeHtml(when.toLocaleString())}"` : "";
+  if (unread) return `<span class="chat-history-age"${title}><span class="chat-history-unread-dot" role="img" aria-label="Unread"></span></span>`;
   return `<span class="chat-history-age" data-age-stamp="${escapeHtml(String(item.updated_at))}"${title}>${escapeHtml(stamp)}</span>`;
 }
 
@@ -165,8 +168,9 @@ export function createSpinners(ctx) {
     const projectBusy = anyRunningOfKind("project");
     const headingBusy = S.historyTab === "projects" ? projectBusy : chatBusy;
     setSpinVisible(S.root.querySelector("[data-run-spin='heading']"), headingBusy, "heading");
-    setSpinVisible(S.root.querySelector("[data-run-spin='chats']"), chatBusy, "chats");
-    setSpinVisible(S.root.querySelector("[data-run-spin='projects']"), projectBusy, "projects");
+    // The open tab's rows already spin; only the other tab carries a mark.
+    setSpinVisible(S.root.querySelector("[data-run-spin='chats']"), chatBusy && S.historyTab !== "chats", "chats");
+    setSpinVisible(S.root.querySelector("[data-run-spin='projects']"), projectBusy && S.historyTab !== "projects", "projects");
     S.root.querySelectorAll("[data-history-tab]").forEach((btn) => {
       const tab = btn.getAttribute("data-history-tab");
       const busy = tab === "projects" ? projectBusy : chatBusy;

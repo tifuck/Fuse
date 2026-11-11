@@ -39,6 +39,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-per
 /* —— Sidebar —— */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-brand-caption { display: none; }
 
+/* A row's spinner keeps the dot's box at the slot's left edge, so running
+   and unread marks share one centre. In a tab it sits on the label's line. */
+html body.is-chat .chat:is([data-view="console"]) .chat-history-item .chat-run-spin[data-run-spin] > .chat-console-spin { width: 0.82rem; }
+html body.is-chat .chat:is([data-view="console"]) .chat-history-tab .chat-run-spin[data-run-spin] { translate: 0 -0.1rem; }
+
 /* Kickers inside the list line up with the one above it. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-list > .chat-history-kicker { padding-inline: 0.625rem; }
 
@@ -46,11 +51,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-his
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-filters select {
   -webkit-appearance: none;
   appearance: none;
-  padding-right: 1.5rem;
+  padding-right: 0.95rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.2 6.2L8 10l3.8-3.8' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.45rem center;
-  background-size: 0.75rem;
+  background-position: right center;
+  background-size: 0.7rem;
 }
 
 /* The search field has its own close button; drop the browser's clear. */
@@ -70,10 +75,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-his
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-foot[aria-pressed="true"] .chat-history-foot-back { display: block; }
 
 @media (min-width: 801px) {
-  /* Tabs, new, search and the filters share one 28px control height. */
+  /* Tabs, new and search share one 28px control height. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-tab { height: 1.5rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-bar :is(.chat-new, .chat-history-iconbtn) { width: 1.75rem; height: 1.75rem; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-history-search, .chat-history-filters select) { height: 1.75rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-search { height: 1.75rem; }
 
   /* The account menu fits a laptop screen without hiding Settings. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .user-dock-menu { bottom: 100%; max-height: calc(100dvh - 4.5rem); }
