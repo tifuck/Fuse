@@ -301,7 +301,16 @@
           {% endif %}
         </td>
         <td class="source-usage" title="{{ source_usage_title(a) }}">
-          {% if a.billing and a.billing.available %}
+          {% if a.billing and a.billing.available and a.billing.limits|length > 1 %}
+          <details class="source-limits">
+            <summary aria-label="{{ a.billing.percent_label }} used, show each limit"><span class="source-usage-pct">{{ a.billing.percent_label }}</span><span class="usage-meter" aria-hidden="true"><span style="--pct: {{ a.billing.meter }}%"></span></span></summary>
+            <ul>
+              {% for l in a.billing.limits %}
+              <li title="{{ l.name }} {{ l.percent_label }}{% if l.resets %} · resets {{ l.resets }}{% endif %}"><span>{{ l.name }}</span><b>{{ l.percent_label }}</b><span class="usage-meter" aria-hidden="true"><span style="--pct: {{ l.meter }}%"></span></span></li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% elif a.billing and a.billing.available %}
           <span class="source-usage-pct">{{ a.billing.percent_label }}</span>
           <span class="usage-meter" aria-hidden="true"><span style="--pct: {{ a.billing.meter }}%"></span></span>
           {% else %}

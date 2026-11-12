@@ -343,8 +343,19 @@ def parse_usage_payload(data: dict) -> dict:
             reset = str(raw.get("resets_at") or raw.get("resetsAt") or "")
         windows.append({"id": key, "label": label, "percent": pct, "resets_at": reset})
     peak = max((row["percent"] for row in windows), default=None)
+    # Per-model weekly caps (seven_day_fable, _opus, _sonnet) stop only that
+    # model, so they are shown but kept out of the routing peak.
+    model_windows = []
+    for key, raw in data.items():
+        pct = _window_percent(raw)
+        if not key.startswith("seven_day_") or key == "seven_day_overage_included" or pct is None:
+            continue
+        name = key[len("seven_day_"):].replace("_", " ").capitalize()
+        reset = str(raw.get("resets_at") or raw.get("resetsAt") or "")
+        model_windows.append({"id": key, "label": f"{name} weekly", "percent": pct, "resets_at": reset})
     return {
         "windows": windows,
+        "model_windows": model_windows,
         "credit_usage_percent": peak,
         "five_hour_percent": next((row["percent"] for row in windows if row["id"] == "five_hour"), None),
         "weekly_percent": next((row["percent"] for row in windows if row["id"] == "seven_day"), None),

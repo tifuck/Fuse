@@ -247,6 +247,18 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   margin: 0 0 0 0.5rem;
   vertical-align: middle;
 }
+/* Usage cell disclosure: the headline percent opens every limit the
+   provider reports (5-hour, weekly, per-model weekly). */
+.source-limits > summary { display: flex; align-items: center; cursor: pointer; list-style: none; }
+.source-limits > summary::-webkit-details-marker { display: none; }
+.source-limits > summary::after { content: "▾"; margin-left: 0.3rem; color: var(--mute); }
+.source-limits[open] > summary::after { content: "▴"; }
+.source-table .source-limits > summary .usage-meter { width: 3.6rem; }
+.source-limits ul { display: grid; gap: 0.3rem; margin: 0.35rem 0 0.1rem; padding: 0; list-style: none; }
+.source-limits li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.4rem; font-size: 0.7rem; }
+.source-limits li > span:first-child { overflow: hidden; color: var(--mute); text-overflow: ellipsis; }
+.source-limits li > b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.source-table .source-limits li .usage-meter { grid-column: 1 / -1; width: 100%; height: 3px; margin: 0.15rem 0 0; }
 .source-tokens,
 .source-linked { font-size: 0.78rem; }
 .source-act {

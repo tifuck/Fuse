@@ -301,6 +301,23 @@ class BillingViewOverrideTest(unittest.TestCase):
         self.assertEqual(view["percent_label"], "100%")
         self.assertEqual(view["products"][0]["percent"], 100.0)
 
+    def test_limits_list_every_window_then_products(self):
+        view = stats.billing_view(
+            {
+                "credit_usage_percent": 40.0,
+                "windows": [
+                    {"id": "five_hour", "label": "5-hour", "percent": 12.0, "resets_at": "2026-09-26T00:00:00Z"},
+                    {"kind": "7d", "percent": 40.0},
+                ],
+                "model_windows": [{"name": "Fable weekly", "percent": 90.0}],
+            }
+        )
+        self.assertEqual([(l["name"], l["percent_label"]) for l in view["limits"]],
+                         [("5-hour", "12%"), ("Weekly", "40%"), ("Fable weekly", "90%")])
+        self.assertTrue(view["limits"][0]["resets"])
+        grok = stats.billing_view({"credit_usage_percent": 5.0, "products": [{"product": "GrokBuild", "usage_percent": 5.0}]})
+        self.assertEqual([(l["name"], l["meter"]) for l in grok["limits"]], [("Build", 5)])
+
     def test_fresh_snapshot_without_percent_is_unavailable(self):
         view = stats.billing_view(
             {"fetched_at": "2026-09-01T00:00:00Z", "period_type": "WEEKLY"},

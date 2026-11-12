@@ -924,6 +924,9 @@ def hold_view(held_until: str | None, guard: dict | None, last_percent) -> dict 
     }
 
 
+_WINDOW_KINDS = {"5h": "5-hour", "7d": "Weekly", "month": "Monthly"}
+
+
 def billing_view(billing: dict | None, last_percent=None, percent=None) -> dict:
     billing = billing if isinstance(billing, dict) else {}
     pct_v = _as_float(percent)
@@ -941,6 +944,24 @@ def billing_view(billing: dict | None, last_percent=None, percent=None) -> dict:
         if pp_v is None:
             continue
         products.append({"name": label, "percent": pp_v, "percent_label": format_pct(pp_v)})
+    # Every limit the provider reports (5-hour, weekly, per-model weekly…);
+    # providers without windows (Grok, Cursor) list per-product meters.
+    limits = []
+    for w in [*(billing.get("windows") or []), *(billing.get("model_windows") or [])]:
+        w_pct = _as_float(w.get("percent", w.get("usage_percent"))) if isinstance(w, dict) else None
+        if w_pct is None:
+            continue
+        limits.append({
+            "name": str(w.get("label") or w.get("name") or _WINDOW_KINDS.get(w.get("kind"), "Usage")),
+            "percent_label": format_pct(w_pct),
+            "meter": max(0, min(100, int(round(w_pct)))),
+            "resets": format_when(w.get("resets_at") or w.get("reset_at")),
+        })
+    if not limits:
+        limits = [
+            {"name": p["name"], "percent_label": p["percent_label"], "meter": max(0, min(100, int(round(p["percent"])))), "resets": ""}
+            for p in products
+        ]
     money = []
     prepaid = int(billing.get("prepaid_cents") or 0)
     od_used = int(billing.get("on_demand_used_cents") or 0)
@@ -967,6 +988,7 @@ def billing_view(billing: dict | None, last_percent=None, percent=None) -> dict:
         "period_start": format_when(billing.get("period_start")),
         "period_end": format_when(billing.get("period_end")),
         "products": products,
+        "limits": limits,
         "money": money,
         "plan_label": plan_type_label(billing.get("plan_type")),
         "unified": bool(billing.get("unified")),

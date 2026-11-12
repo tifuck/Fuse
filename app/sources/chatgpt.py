@@ -657,8 +657,7 @@ def _usage_fresh(billing: dict) -> bool:
     return datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL)
 
 
-def parse_usage_payload(data: dict) -> dict:
-    rate = data.get("rate_limit") if isinstance(data.get("rate_limit"), dict) else {}
+def _rate_windows(rate: dict) -> list[dict]:
     windows = []
     for key in ("primary_window", "secondary_window"):
         win = rate.get(key)
@@ -684,6 +683,23 @@ def parse_usage_payload(data: dict) -> dict:
                 "reset_at": _unix_iso(win.get("reset_at")),
             }
         )
+    return windows
+
+
+def parse_usage_payload(data: dict) -> dict:
+    rate = data.get("rate_limit") if isinstance(data.get("rate_limit"), dict) else {}
+    windows = _rate_windows(rate)
+    # Per-model caps (Codex Spark and the like) stop only that model: shown,
+    # but kept out of the windows routing reads.
+    model_windows = []
+    for item in data.get("additional_rate_limits") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("limit_name") or item.get("id") or "Model")[:40]
+        inner = item.get("rate_limit") if isinstance(item.get("rate_limit"), dict) else item
+        for w in _rate_windows(inner):
+            if w["percent"] is not None:
+                model_windows.append({"name": f"{name} {w['product']}", "percent": w["percent"], "seconds": w["seconds"], "reset_at": w["reset_at"]})
     hero = max(windows, key=lambda w: w["window_seconds"]) if windows else None
     period = (hero["product"] if hero else "") or "Usage"
     return {
@@ -702,9 +718,11 @@ def parse_usage_payload(data: dict) -> dict:
                 "name": w["product"],
                 "percent": w["percent"],
                 "seconds": w["seconds"],
+                "reset_at": w["reset_at"],
             }
             for w in windows
         ],
+        "model_windows": model_windows,
         "plan_type": str(data.get("plan_type") or "")[:32],
     }
 

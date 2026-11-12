@@ -544,12 +544,19 @@ class ClaudeParseTest(unittest.TestCase):
             {
                 "five_hour": {"utilization": 0.2, "resets_at": "2026-09-26T00:00:00Z"},
                 "seven_day": {"utilization": 55},
+                "seven_day_fable": {"utilization": 90, "resets_at": "2026-09-30T00:00:00Z"},
+                "seven_day_opus": None,
             }
         )
         self.assertEqual(parsed["five_hour_percent"], 20.0)
         self.assertEqual(parsed["weekly_percent"], 55.0)
+        # A per-model cap is shown but never raises the routing peak.
         self.assertEqual(parsed["credit_usage_percent"], 55.0)
         self.assertEqual(len(parsed["windows"]), 2)
+        self.assertEqual(
+            parsed["model_windows"],
+            [{"id": "seven_day_fable", "label": "Fable weekly", "percent": 90.0, "resets_at": "2026-09-30T00:00:00Z"}],
+        )
 
     def test_catalog_keeps_first_party_models(self):
         rows = claude_mod.parse_catalog_payload(
