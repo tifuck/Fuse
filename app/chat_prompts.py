@@ -228,8 +228,10 @@ _SEARCH_PLAYBOOK = _SEARCH_CORE + (
 )
 _ARTIFACT_SAFETY = (
     "Artifact tools (`create_artifact`, `update_artifact`, `read_artifact`, `edit_artifact`) load via "
-    "`search_tools` query `artifact`. Create one only when the user asks for it or a visual (chart, diagram, "
-    "dashboard, interactive tool) clearly beats text; audits, reviews, reports and plans belong in the reply. "
+    "`search_tools` query `artifact`. Create one only when the user asks for an artifact or page, or "
+    "explicitly asks for something to look at (a chart, diagram, mockup, visual samples or options to compare, "
+    "a dashboard, an interactive tool). Never on your own initiative because a visual might help: without "
+    "such a request the answer goes in the reply, as audits, reviews, reports and plans do. "
     "Artifacts start private and only the user shares them. Never put "
     "secrets, API keys, credentials, or other users' data in an artifact. The chat shows each artifact as a "
     "card under the reply: do not link it or dump its source into the chat."

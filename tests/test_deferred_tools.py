@@ -403,6 +403,9 @@ class CodingPromptTest(unittest.TestCase):
         self.assertIn("only the user can share it", schemas["create_artifact"]["description"])
         # Opt-in, not a default output format: an audit is a reply, not a page.
         self.assertIn("Create one only when the user asks", schemas["create_artifact"]["description"])
+        # Never the model's own call that a visual would be better.
+        self.assertIn("Do not create one on your own initiative", schemas["create_artifact"]["description"])
+        self.assertNotIn("clearly better than text", schemas["create_artifact"]["description"])
         # The chat pane is a tall, narrow viewport; desktop layouts clip there.
         self.assertIn("Design mobile-first", schemas["create_artifact"]["description"])
         # Pages default to the viewer's theme (app/artifacts.py THEME_NAMES).

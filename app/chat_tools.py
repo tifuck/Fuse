@@ -189,11 +189,13 @@ SCHEMAS = {
             "name": "create_artifact",
             "description": (
                 "Publish a self-contained page as an artifact: a live page beside the chat the user can open, "
-                "come back to and share. Create one only when the user asks for an artifact or page, or when a "
-                "visual (chart, diagram, dashboard, interactive tool) would show the result clearly better than "
-                "text. Audits, reviews, reports, findings, plans and summaries go in the reply as markdown unless "
-                "the user asks for a page; when unsure, answer in the chat. Not for short answers or code the user "
-                "only wants to copy. "
+                "come back to and share. Create one only when the user asks for an artifact or page, or "
+                "explicitly asks for something to look at: a chart, a diagram, a mockup, visual samples or "
+                "options to compare, a dashboard, an interactive tool. Do not create one on your own initiative "
+                "because a visual might be nicer or the answer is long: without such a request the answer goes "
+                "in the reply as markdown, and so do audits, reviews, reports, findings, plans and summaries "
+                "unless the user asks for a page. When unsure, answer in the chat. Not for short answers or code "
+                "the user only wants to copy. "
                 "Design mobile-first: the chat pane is a tall, narrow viewport (about 360-600 px wide, full window "
                 "height), and the same page also opens wide and full-window. Use one column that stacks, fluid "
                 "widths (%, auto-fit/minmax grids) instead of fixed pixel widths or many side-by-side columns, "

@@ -289,7 +289,8 @@ export function createThreads(ctx) {
     S.draftFiles.set(draftKey(), S.pendingAttachments);
     // acceptPermThread keeps subagent asks (a parent snapshot cannot settle
     // them); another chat's must not stay answerable here.
-    if (S.currentId !== data.id) S.permCards.clear();
+    const switched = S.currentId !== data.id;
+    if (switched) S.permCards.clear();
     S.currentId = data.id;
     S.sessionId = "thread-" + data.id;
     const listed = resolveListedModel(data.model);
@@ -355,6 +356,8 @@ export function createThreads(ctx) {
       render.resetSearchLists();
     }
     const openedEmpty = S.root.classList.contains("is-empty");
+    // Before the paint, which is laid out beside the pane.
+    if (switched) artifacts.followThread();
     transcript.paint();
     if (!openedEmpty && S.messages.length > 0) transcript.playTranscriptFx();
     render.renderHistory();

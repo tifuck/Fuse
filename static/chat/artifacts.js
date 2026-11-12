@@ -73,6 +73,10 @@ export function createArtifacts(ctx) {
   let freshTimer = 0;
   let listItems = null;
   const scrolls = new Map();
+  // Chats whose pane is open, so coming back to one opens it again.
+  const openIn = new Set();
+  // A chat was just opened and the pane is to show its latest artifact.
+  let follow = false;
 
   function showFailure(title, error) {
     if (ctx.sync && ctx.sync.showFailure) ctx.sync.showFailure(title, error);
@@ -86,7 +90,9 @@ export function createArtifacts(ctx) {
     const out = [];
     (S.messages || []).forEach((msg) => {
       (msg.tools || []).forEach((trace) => {
-        if (NAMES.has(trace.name) && normalizeId(trace.identifier) && trace.status !== "error") out.push(trace);
+        // A deleted or archived artifact is a record in the transcript, not
+        // one the pane can show, count or restore.
+        if (NAMES.has(trace.name) && normalizeId(trace.identifier) && trace.status !== "error" && !trace.artifact_gone) out.push(trace);
       });
     });
     return out;
@@ -154,10 +160,42 @@ export function createArtifacts(ctx) {
     }
   }
 
+  // The reader opened another chat: the pane follows it. Open on that chat's
+  // latest artifact when it is open now or was when they left that chat;
+  // closed when the chat has none.
+  function followThread() {
+    follow = !overlays.overlayIsMobile() && (S.artifactOpen || openIn.has(S.currentId));
+    activity = null;
+    clearTimeout(activityTimer);
+    S.currentArtifact = null;
+    if (S.artifactOpen && !follow) setArtifactOpen(false);
+    if (S.artifactOpen) {
+      // The chat they left takes its page with it at once.
+      S.artifactMode = "preview";
+      S.artifactFrame?.removeAttribute("src");
+      hideAlert();
+    }
+    rememberLatestArtifact();
+  }
+
   function rememberLatestArtifact() {
     settleActivity();
     const all = artifactsInThread();
     const last = all.length ? all[all.length - 1] : null;
+    if (follow) {
+      if (last) {
+        follow = false;
+        showArtifact(last.identifier, last).catch(() => {});
+        return;
+      }
+      // A long chat paints its newest messages first: its artifacts may
+      // arrive with the rest, so the pane waits for them, empty.
+      if (S.partialTranscript) {
+        syncArtifactUi();
+        return;
+      }
+      follow = false;
+    }
     if (!last) {
       // Nothing in this transcript: keep only what the reader opened on
       // purpose (from /artifacts or a link) or a page still being built.
@@ -278,6 +316,7 @@ export function createArtifacts(ctx) {
 
   function syncArtifactUi() {
     const cur = S.currentArtifact;
+    if (S.currentId) openIn[S.artifactOpen ? "add" : "delete"](S.currentId);
     if (S.artifactPanel) S.artifactPanel.hidden = !S.artifactOpen;
     if (S.artifactBackdrop) S.artifactBackdrop.hidden = !(S.artifactOpen && window.matchMedia("(max-width: 800px)").matches);
     S.root.classList.toggle("is-artifact", S.artifactOpen);
@@ -1028,6 +1067,7 @@ export function createArtifacts(ctx) {
     artifactsInThread,
     bind,
     distinctArtifacts,
+    followThread,
     latestArtifact,
     loadArtifactSource,
     noteArtifactResult,
