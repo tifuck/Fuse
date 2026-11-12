@@ -354,6 +354,18 @@ class SkillsDbTest(unittest.TestCase):
         self.assertTrue(restored["enabled"])
         self.assertIn("Orchestrator Dispatch", skills.load(1, slug))
 
+    def test_youtube_transcript_default_on(self):
+        slug = "youtube-transcript"
+        bundled = skills.read_bundled(slug)
+        self.assertIsNotNone(bundled)
+        self.assertTrue(bundled["enabled"])
+        self.assertLessEqual(len(bundled["description"]), skills.INDEX_DESC)
+        self.assertIn("YouTube link", bundled["description"])
+        self.assertIn(f"`{slug}`", skills.catalog_for_prompt(1))
+        self.assertTrue(any(s["slug"] == slug for s in skills.index_for_chat(1)))
+        script = skills.load(1, slug).split("```python\n", 1)[1].split("```", 1)[0]
+        compile(script, slug, "exec")
+
     def test_reserved_patch(self):
         skills.install_files(1, {"SKILL.md": _md(name="compact", body="nope\n").encode()}, origin="upload", slug="compact")
         row = skills.patch_skill(1, "compact", {"user_invocable": True, "enabled": True})

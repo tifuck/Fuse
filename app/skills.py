@@ -32,7 +32,7 @@ SKILL_BODY_CHARS = 24_000
 INDEX_CHAT_CAP = 80
 ORIGINS = frozenset({"bundled", "upload", "github", "skills_sh", "chat"})
 RESERVED = frozenset({"undo", "retry", "redo", "rewind", "init", "compact", "help", "title"})
-DEFAULT_ON = frozenset({"orchestrator-dispatch"})
+DEFAULT_ON = frozenset({"orchestrator-dispatch", "youtube-transcript"})
 
 
 def _row(row) -> dict:
