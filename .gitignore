@@ -19,6 +19,7 @@ id_rsa*
 id_ed25519*
 backups/
 screenshots/
+!/docs/screenshots/
 *.tar.gz
 *.log
 
