@@ -12,7 +12,12 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#141615">
   <meta name="csrf-token" content="{{ csrf_token }}">
+  {#- Lets an open page notice a newer UI and reload itself (app.js
+      buildWatch). Not on a POST result, which a reload would resubmit, nor
+      on a shared artifact page, whose visitors have no stake in Fuse's UI. -#}
+  {% if request.method == 'GET' and not is_artifact %}
   <meta name="fuse-build" content="{{ build_id() }}">
+  {% endif %}
   <title>{% block title %}Fuse{% endblock %}</title>
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" href="/favicon.ico" sizes="32x32">

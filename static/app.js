@@ -1365,58 +1365,102 @@ document.querySelectorAll(".probe").forEach((btn) => {
 
 // A promote restarts Fuse, but a page left open for days (the desktop app,
 // an installed phone app) keeps running the old UI against the new server.
-// The page carries the build it was rendered from. The chat socket's ready
-// names the server's at once (the restart drops the socket); other pages poll
-// /build, and every page checks on resume. A stale page reloads when nobody is
-// looking: hidden, just resumed, or idle. Never over an open dialog or text the
-// user typed (the chat composer is exempt: its draft syncs to the server and
-// flushes on pagehide); it waits with a Reload toast instead.
+// Each page carries the build it was rendered from (static_assets.build_id).
+// The chat socket names the server's on every (re)connect, and a restart
+// drops the socket; a page without it asks /build every POLL_MS, and every
+// page asks when it is brought back.
+// A stale page shows a Reload toast and reloads itself once nobody is
+// mid-task: hidden, just brought back and not touched yet, or idle for
+// IDLE_MS. It never reloads over work that only this page holds. A page
+// declares that with [data-no-reload] (content shown once) or
+// window.fuseUnsaved(); any other typed field counts until its form submits,
+// unless it is inside [data-reload-safe] (the page saves it itself, like the
+// composer's synced draft).
 (function buildWatch() {
   const page = document.querySelector('meta[name="fuse-build"]')?.content;
   if (!page) return;
   const POLL_MS = 2 * 60 * 1000;
   const IDLE_MS = 2 * 60 * 1000;
-  let stale = false;
+  const FRESH_MS = 5000;
+  const RELOADED = "fuse.build.reloaded";
+  let stale = "";
+  let notice = null;
+  let pushed = false;
   let polled = 0;
+  let heard = 0;
   let lastInput = Date.now();
-  // ponytail: a typed field stays "unsaved" until its form submits; a field
-  // saved by fetch only costs that page its auto-reload (the toast remains).
+  // ponytail: a typed field that no form submits stays "unsaved" for the life
+  // of the page, which then keeps its toast but never reloads itself. Mark it
+  // [data-reload-safe] and report it through fuseUnsaved if that bites.
   const typed = new Set();
   const TEXT = /^(textarea|text|email|url|password|number|tel)$/;
 
   document.addEventListener("input", (event) => {
     const el = event.target;
-    if (!(el instanceof Element) || el.matches("[data-chat-input]")) return;
+    if (!(el instanceof Element) || el.closest("[data-reload-safe]")) return;
     if (el.isContentEditable || TEXT.test(el.type)) typed.add(el);
   }, true);
   document.addEventListener("submit", (event) => {
     for (const el of typed) if (event.target.contains(el)) typed.delete(el);
   }, true);
-  const dirty = () => Boolean(document.querySelector("dialog[open]")) || [...typed].some((el) => el.isConnected);
-  const reload = () => location.reload();
-  const tryReload = () => {
-    if (!dirty()) reload();
-  };
+  // A focused frame is an artifact in use: its state lives inside the frame,
+  // and none of its input reaches this page.
+  const held = () =>
+    Boolean(document.querySelector("dialog[open], [data-no-reload]")) ||
+    document.activeElement?.tagName === "IFRAME" ||
+    Boolean(window.fuseUnsaved?.()) ||
+    [...typed].some((el) => el.isConnected);
 
-  function check(build, resumed) {
-    if (!build || build === page) return;
-    if (!stale) {
-      stale = true;
-      window.fuseUI?.toast({ key: "fuse-build", title: "Fuse was updated", msg: "Reload to get the new version.", actionLabel: "Reload", onAction: reload });
+  function tryReload() {
+    if (held()) return;
+    // Only into a server that answered moments ago: a reload that cannot load
+    // leaves an error page, a blank window in the desktop app.
+    if (Date.now() - heard > FRESH_MS) {
+      poll(true);
+      return;
     }
-    if (resumed || document.hidden) tryReload();
+    // One automatic reload per build. If what comes back still differs (a
+    // cache in between, two servers on different builds), the toast is all
+    // that is left, never a reload loop.
+    try {
+      if (sessionStorage.getItem(RELOADED) === stale) return;
+      sessionStorage.setItem(RELOADED, stale);
+    } catch (_) {
+      return;
+    }
+    location.reload();
+  }
+
+  // The server just named its build. since: when the page was brought back.
+  function check(build, since) {
+    if (!build) return;
+    heard = Date.now();
+    if (build === page) {
+      // Rolled back to this page's build before the page reloaded.
+      if (stale) notice?.close();
+      stale = "";
+      return;
+    }
+    if (!stale) {
+      notice = window.fuseUI?.toast({ key: "fuse-build", title: "Fuse was updated", msg: "Reload to get the new version.", actionLabel: "Reload", onAction: () => location.reload() });
+    }
+    stale = build;
+    if (document.hidden || (since && lastInput <= since)) tryReload();
   }
 
   async function poll(resumed) {
-    if (stale || Date.now() - polled < 5000) return;
-    polled = Date.now();
+    const asked = Date.now();
+    if (asked - polled < FRESH_MS) return;
+    polled = asked;
     try {
       const res = await fetch("/build", { cache: "no-store", credentials: "omit" });
-      if (res.ok) check((await res.text()).trim(), resumed);
+      if (res.ok) check((await res.text()).trim(), resumed ? asked : 0);
     } catch (_) {}
   }
 
-  for (const name of ["pointerdown", "keydown", "wheel"]) {
+  // scroll includes a streaming reply following its tail: a page someone is
+  // watching work is not idle.
+  for (const name of ["pointerdown", "pointermove", "keydown", "wheel", "scroll"]) {
     window.addEventListener(name, () => { lastInput = Date.now(); }, { capture: true, passive: true });
   }
   document.addEventListener("visibilitychange", () => {
@@ -1428,11 +1472,15 @@ document.querySelectorAll(".probe").forEach((btn) => {
   window.setInterval(() => {
     if (stale) {
       if (document.hidden || Date.now() - lastInput > IDLE_MS) tryReload();
-    } else if (!document.hidden && Date.now() - polled >= POLL_MS) {
+    } else if (!pushed && !document.hidden && Date.now() - polled >= POLL_MS) {
       poll(false);
     }
   }, 30 * 1000);
-  window.fuseBuild = (build) => check(build, false);
+  // static/chat/sync/stream.js, on the socket's ready.
+  window.fuseBuild = (build) => {
+    pushed = pushed || Boolean(build);
+    check(build, 0);
+  };
 })();
 
 (function sourceMineFilter() {

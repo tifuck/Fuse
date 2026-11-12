@@ -198,7 +198,7 @@
       <label class="visually-hidden" for="chat-input">Message</label>
       <div class="chat-compose" data-chat-compose>
         <div class="chat-compose-mirror" data-chat-compose-mirror aria-hidden="true"></div>
-        <textarea id="chat-input" data-chat-input rows="1" placeholder="Ask anything or type /" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Message"></textarea>
+        <textarea id="chat-input" data-chat-input data-reload-safe rows="1" placeholder="Ask anything or type /" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Message"></textarea>
       </div>
       <div class="chat-box-bar">
         <div class="chat-box-left">
@@ -331,7 +331,8 @@
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </button>
     </div>
-    <div class="chat-sheet-body chat-context-body">
+    {#- Saved by chat.js, which reports unsaved edits through fuseUnsaved. -#}
+    <div class="chat-sheet-body chat-context-body" data-reload-safe>
       <div class="chat-context-tabs" role="tablist" aria-label="Context sections">
         <button type="button" class="chat-context-tab is-on" role="tab" aria-selected="true" aria-controls="context-panel-instructions" data-context-tab="instructions">Instructions</button>
         <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-profile" data-context-tab="profile">About you</button>

@@ -485,9 +485,16 @@ import { createDictation } from './chat/dictation.js';
 
     document.addEventListener("visibilitychange", () => { if (!document.hidden && !net.isLive()) sync.connectSync(); });
 
+    const unsaved = () => !S.signingIn && Boolean(S.dirty || S.memoryDirty || S.pendingTurns.size || S.pendingCreate);
+
     window.addEventListener("beforeunload", (event) => {
-    if (!S.signingIn && (S.dirty || S.memoryDirty || S.pendingTurns.size || S.pendingCreate)) { event.preventDefault(); event.returnValue = ""; }
+    if (unsaved()) { event.preventDefault(); event.returnValue = ""; }
   });
+
+    // An automatic reload (app.js buildWatch) also spares what a manual one
+    // may drop: attached files and an unsaved AGENTS.md live only in this page.
+    window.fuseUnsaved = () => unsaved() || Boolean(S.agentsDirty) || S.pendingAttachments.length > 0 ||
+      [...S.draftFiles.values()].some((files) => files.length > 0);
 
     window.fuseSpinDebug = {
     state: () => ({ current: S.currentSpin && S.currentSpin.id, recent: [...S.recentSpinIds], window: S.spinWindow }),

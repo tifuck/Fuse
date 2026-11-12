@@ -59,6 +59,11 @@ change: each pool merges its live catalog into its seed list.
 - Static URLs are content-versioned by `app/static_assets.py`: templates use
   `{{ asset('file.js') }}` and imports are plain relative URLs. Never add
   `?v=` by hand.
+- Open pages reload themselves after a deploy changes the UI (`buildWatch`
+  in `static/app.js`, build id from `static_assets.build_id()`), but never
+  over unsaved work. A page that keeps such work outside a form declares it:
+  `data-no-reload` on content shown once, `window.fuseUnsaved()` for state
+  in JS, `data-reload-safe` around a field the page saves itself.
 - `static/app.css` is an ordered import list; keep its order (cascade).
   Design tokens live in `static/styles/tokens/root.css`.
 
