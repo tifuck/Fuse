@@ -861,20 +861,18 @@ html[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .ch
 .chat .chat-compact-banner[open] > summary::before { content: "▾"; }
 .chat .chat-compact-banner > summary strong { color: var(--brass); font-weight: 560; letter-spacing: 0.04em; text-transform: uppercase; }
 .chat .chat-compact-handoff { margin: 0 0 0.6rem; }
-/* A row the work strip jumped to: one accent sweep across its call line. */
-.chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call { position: relative; }
-.chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--brass) 38%, transparent) 50%, transparent 65%) no-repeat;
+/* A row the work strip jumped to: one accent sweep across its call text. */
+.chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call {
+  background: linear-gradient(100deg, currentColor 35%, var(--brass) 50%, currentColor 65%) no-repeat;
   background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   animation: chat-work-gleam 1.2s cubic-bezier(0.45, 0, 0.2, 1) both;
 }
 @keyframes chat-work-gleam { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call::after { animation: none; background: color-mix(in srgb, var(--brass) 14%, transparent); }
+  .chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call { animation: none; background: none; -webkit-text-fill-color: var(--brass); }
 }
 
 @media (max-width: 600px) {
