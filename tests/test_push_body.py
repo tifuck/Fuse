@@ -57,3 +57,28 @@ def test_push_body_is_last_text_block():
     content = notify.call_args.kwargs["content"]
     assert "Final answer here." in content
     assert "Let me search first." not in content
+
+
+def test_no_push_while_background_work_is_outstanding():
+    """A turn that leaves subagents running (or a wake turn delivering one of
+    several) is not the end of the work; only the settling turn pushes."""
+    db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(2,'push2@test.invalid','unused',?)", (db.now(),))
+    thread_id = chats.create_thread(2, model="offline")["id"]
+    run = store.start_turn(2, thread_id, "go", chats.get_thread(2, thread_id)["revision"], "cmd-go2")["run"]
+
+    async def invoke(request, user, payload, **_kw):
+        return user, SimpleNamespace(type_id="llama", source_id=1), "offline", "offline", result({"content": "Spawned."})
+
+    notify = AsyncMock()
+
+    async def go():
+        with patch.object(runtime.api, "invoke_chat", invoke), patch.object(runtime.api, "_safe_record_usage"), \
+             patch.object(runs, "start", AsyncMock()), patch.object(runs, "schedule_wake"), \
+             patch("app.chat_recaps._settled", return_value=False), \
+             patch("app.push.notify_run_done", new=notify):
+            await runs._run(runs.internal_request(2), {"id": 2}, run)
+            await asyncio.sleep(0)
+
+    asyncio.run(go())
+    assert store.get_run(2, run["id"])["status"] == "completed"
+    notify.assert_not_called()

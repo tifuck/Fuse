@@ -91,6 +91,9 @@ export function createStatus(ctx) {
     try {
       if (type !== "run.completed" && type !== "run.failed") return;
       if (!window.fusePush || !window.fusePush.local) return;
+      // Subagents or background commands still owe a report: the wake turn
+      // that delivers the last of them is the one that alerts.
+      if (payload && payload.settled === false) return;
       // A visible but unfocused window is not being read (another app is in front).
       if (threadId === S.currentId && document.visibilityState === "visible" && document.hasFocus()) return;
       const thread = sidebar.threadById(threadId);

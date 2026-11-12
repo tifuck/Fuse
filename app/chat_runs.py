@@ -499,6 +499,13 @@ def _still_stopping(ident) -> bool:
     return bool(row and row["cancel_requested"])
 
 
+def _thread_settled(user_id: int, thread_id) -> bool:
+    from . import chat_recaps
+
+    with db.tx() as conn:
+        return chat_recaps._settled(conn, user_id, thread_id)
+
+
 def _wake_stalled_child(row) -> None:
     parent = row["parent_run_id"] if "parent_run_id" in row.keys() else None
     if not parent:
@@ -1294,29 +1301,33 @@ async def _run(request, user, run):
                     child_agent = current["request"].get("agent") if isinstance(current["request"].get("agent"), dict) else {}
                 if status in ("completed", "failed") and parent and not _stopping:
                     # Server-owned runs outlive the browser that sent them;
-                    # every subscribed device learns the turn is done.
+                    # every subscribed device learns the turn is done. Like the
+                    # done chime, a turn that leaves subagents or background
+                    # commands working (or their reports undelivered) is not
+                    # done: the wake turn that delivers the last of them is.
                     try:
                         from . import push
 
-                        asyncio.create_task(
-                            push.notify_run_done(
-                                user["id"],
-                                run["thread_id"],
-                                status,
-                                # The final text block, not the whole turn: an
-                                # agent turn's content starts with its first
-                                # pre-tool remark.
-                                content=next(
-                                    (
-                                        part["text"]
-                                        for part in reversed(output.message.get("segments") or [])
-                                        if part.get("type") == "content" and (part.get("text") or "").strip()
+                        if status == "failed" or await asyncio.to_thread(_thread_settled, user["id"], run["thread_id"]):
+                            asyncio.create_task(
+                                push.notify_run_done(
+                                    user["id"],
+                                    run["thread_id"],
+                                    status,
+                                    # The final text block, not the whole turn: an
+                                    # agent turn's content starts with its first
+                                    # pre-tool remark.
+                                    content=next(
+                                        (
+                                            part["text"]
+                                            for part in reversed(output.message.get("segments") or [])
+                                            if part.get("type") == "content" and (part.get("text") or "").strip()
+                                        ),
+                                        output.message.get("content") or "",
                                     ),
-                                    output.message.get("content") or "",
-                                ),
-                                error=output.message.get("error") or "",
+                                    error=output.message.get("error") or "",
+                                )
                             )
-                        )
                     except Exception:
                         logger.exception("Chat push failed to schedule for %s", ident)
                 if current and current.get("parent_run_id"):
