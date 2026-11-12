@@ -437,10 +437,11 @@ def pick_account(
     saturated, so load spreads instead of dog-piling the freshest account.
 
     An account benched by a limit (note_failure(limit=True)) is skipped
-    while anything else can serve. When nothing can and nothing was tried
-    yet (exclude is empty), the one due back first is returned anyway: the
-    request asks the provider once, and the caller sees its live answer, not
-    a limit Fuse remembered. A failed probe then ends the request.
+    while anything else can serve. When nothing can, the benched accounts
+    not yet tried (exclude) are returned anyway, healthiest usage read and
+    own accounts first, so each is asked once per request: the caller sees
+    the provider's live answer, never a limit Fuse remembered, and an
+    account whose plan was reset is used even before its cooldown ends.
 
     why, when given, collects (cred, reason) for every account skipped as
     cooling, held, unauthed, plan or unreadable: explain_empty turns it into
@@ -537,8 +538,11 @@ def pick_account(
         if preferred:
             return preferred[0][6], preferred[0][7]
     if not ready:
-        if spent and not exclude:
-            row = min(spent, key=lambda row: _cooldown_end(row[5]))
+        if spent:
+            # Every benched account is asked once per request: a plan reset
+            # early (on the provider's side) is only seen by asking. Fresh
+            # usage reads (tier) and the caller's own accounts go first.
+            row = min(spent, key=lambda row: (row[0], row[1], _cooldown_end(row[5])))
             return row[6], row[7]
         return None
     top = min(row[0] for row in ready)

@@ -128,21 +128,35 @@ class RotationTest(unittest.IsolatedAsyncioTestCase):
                 await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
         self.assertGreater(caught.exception.retry_after, 90)
 
-    async def test_limited_keys_are_asked_once_not_reported_from_memory(self):
+    async def test_limited_keys_are_each_asked_once_not_reported_from_memory(self):
         seen = []
+        reset = set()
 
         def handler(request: httpx.Request) -> httpx.Response:
-            seen.append(request.headers["Authorization"])
+            key = request.headers["Authorization"].split()[-1]
+            seen.append(key)
+            if key in reset:
+                return httpx.Response(200, content=b'{"message":{"role":"assistant","content":"ok"},"done":true}')
             return httpx.Response(429, content=b'{"error":"you have reached your weekly usage limit"}')
 
-        pool = make_pool(self.tmp.name, ["keyA", "keyB"])
-        pool._handle_error_status(429, httpx.Headers(), "weekly usage limit reached", pool.states["keyA"])
-        pool.states["keyB"].mark_error("rate_limit", 100)
+        def benched():
+            pool = make_pool(tempfile.mkdtemp(dir=self.tmp.name), ["keyA", "keyB"])
+            pool._handle_error_status(429, httpx.Headers(), "weekly usage limit reached", pool.states["keyA"])
+            pool.states["keyB"].mark_error("rate_limit", 100)
+            return pool
+
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            response, _, _ = await pool.send_request(client, "https://ollama.com/api/chat", {"model": "m"})
-        # One live call, and its answer is what the caller gets.
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(len(seen), 1)
+            response, _, _ = await benched().send_request(client, "https://ollama.com/api/chat", {"model": "m"})
+            # Every key is asked live once, and the last answer is what the caller gets.
+            self.assertEqual(response.status_code, 429)
+            self.assertEqual(sorted(seen), ["keyA", "keyB"])
+            # A key whose quota was reset upstream serves even though another
+            # benched key was asked first and is still limited.
+            seen.clear()
+            reset.add("keyA")
+            response, state, _ = await benched().send_request(client, "https://ollama.com/api/chat", {"model": "m"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((state.key, seen), ("keyA", ["keyB", "keyA"]))
 
         # A spent key whose quota came back serves and rejoins rotation.
         pool = make_pool(tempfile.mkdtemp(dir=self.tmp.name), ["keyA"])

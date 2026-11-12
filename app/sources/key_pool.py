@@ -640,11 +640,11 @@ class KeyPool:
             # A not-yet-ready key (last-resort selection when every key is out)
             # waits while the wait is short and is skipped when it is not, so a
             # blip does not burn a retry slot. A key out for a limit is asked
-            # anyway while no key has answered this request: the caller gets
-            # Ollama's live answer instead of a quota Fuse remembered.
+            # anyway (once per request, via tried): the caller gets Ollama's
+            # live answer, and a reset quota is used before its cooldown ends.
             limited = key_state.state == DISABLED or key_state.last_error_type in _LIMIT_ERRORS
             wait = key_state.available_at - time.time()
-            if key_state.state in (COOLING, DISABLED) and wait > 0 and not (limited and last_response is None):
+            if key_state.state in (COOLING, DISABLED) and wait > 0 and not limited:
                 if wait > 5.0:
                     continue
                 await asyncio.sleep(wait)

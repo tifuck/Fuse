@@ -277,9 +277,17 @@ def test_a_limit_is_never_replayed_from_memory():
             pool_pick.note_failure(8, cooldown_seconds=2 * 3600, limit=True)
             # Another account serves while one exists...
             assert pool_pick.pick_account(creds(7, 9), kind="grok")[0]["id"] == 9
-            # ...and with none left the one due back first is asked live, once.
+            # ...and with none left each is asked live, once, the one due back
+            # first leading: a plan reset upstream is found by asking.
             assert pool_pick.pick_account(creds(7, 8), kind="grok")[0]["id"] == 8
-            assert pool_pick.pick_account(creds(7, 8), kind="grok", exclude={8}) is None
+            assert pool_pick.pick_account(creds(7, 8), kind="grok", exclude={8})[0]["id"] == 7
+            assert pool_pick.pick_account(creds(7, 8), kind="grok", exclude={7, 8}) is None
+        # The caller's own benched account leads another donor's that is due back sooner.
+        mine = creds(7, 8)
+        mine[0]["donated_by"] = 42
+        with patch.object(pool_pick.accounts, "cred_extra", return_value={}), \
+             patch.object(pool_pick, "_donor", side_effect=lambda c: c.get("donated_by")):
+            assert pool_pick.pick_account(mine, kind="grok", owner_id=42)[0]["id"] == 7
             # An auth cooldown on top keeps the account out entirely.
             pool_pick.note_failure(8, cooldown_seconds=120)
             assert pool_pick.pick_account(creds(8), kind="grok") is None
