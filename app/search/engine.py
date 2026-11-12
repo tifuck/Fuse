@@ -141,6 +141,9 @@ _ENTITY_START = (
 )
 _ENTITY_TOKENS = {"today", "latest", "news", "vs", "versus"}
 _RECENCY_WORDS = re.compile(r"\b(today|latest|news|now)\b", re.I)
+# Engine operators (site:, -exclusion, filetype:, ...). The scraped engines
+# honour them; HN and the coverage score would read them as search words.
+_OPERATOR = re.compile(r"(?:^|(?<=\s))(?:-(?!-)\S+|(?:site|filetype|inurl|intitle|intext):\S+)", re.I)
 
 _cache = TtlLru(512)
 # Pages hold their whole extracted text (up to ~6 MB of HTML/text, more for
@@ -292,7 +295,7 @@ def _merge_hits(groups: list[list[SearchHit]], query: str) -> list[SearchHit]:
                     published=current.published or hit.published,
                 )
 
-    qterms = set(terms(query))
+    qterms = set(terms(plain_query(query)))
     scored = len(qterms) >= 2
     for entry in fused.values():
         base = sum(entry["scores"].values())
@@ -357,6 +360,11 @@ def sanitize_query(raw: str) -> str:
     if len(stripped) >= 2:
         text = stripped
     return text[:MAX_QUERY]
+
+
+def plain_query(q: str) -> str:
+    """The query's search words, without engine operators or quote marks."""
+    return re.sub(r"\s+", " ", _OPERATOR.sub(" ", q or "").replace('"', " ")).strip()
 
 
 def normalize_query(raw: str) -> str:
@@ -548,13 +556,15 @@ async def _one_query(
 
             live = is_live_query(query)
             entity = is_entity_query(query)
+            plain = plain_query(query)
             jobs = [
                 ("ddg", _ddg.search(client, query, recency_days=recency, timeout=TIMEOUT_DDG)),
                 ("bing", _bing.search(client, query, recency_days=recency, timeout=_bing.timeout)),
                 ("yahoo", _yahoo.search(client, query, recency_days=recency, timeout=_yahoo.timeout)),
             ]
-            if not live and not entity:
-                jobs.append(("hn", _hn.search(client, query, recency_days=recency, timeout=_hn.timeout)))
+            # HN and Wikipedia cannot honour site:, so their hits would be off-domain.
+            if not live and not entity and plain and "site:" not in query.lower():
+                jobs.append(("hn", _hn.search(client, plain, recency_days=recency, timeout=_hn.timeout)))
                 jobs.append(("wikipedia", _wiki.search(client, query, recency_days=None, timeout=TIMEOUT_WIKI)))
             if use_brave:
                 jobs.append(

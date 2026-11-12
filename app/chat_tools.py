@@ -92,11 +92,15 @@ SCHEMAS = {
         "function": {
             "name": "web_search",
             "description": (
-                "Search the public web. Do not send secrets or private workspace content in queries. "
-                "Batch this step's independent lookups in queries (1–8 strings) so they run in parallel "
-                "in one call; batch follow-ups the same way rather than one-by-one. Use for current facts, "
-                "news, docs, or anything after your knowledge cutoff. Live facts (prices, quotes): set "
-                "recency_days 1. Returns ranked titles, URLs, and snippets; the top result pages are also "
+                "Search the public web. Use for current facts, news, docs, niche details, or anything after "
+                "your knowledge cutoff; not for stable facts you already know well. Write each query the way "
+                "a person types into a search engine: 2–8 distinctive keywords on one topic (names, versions, "
+                "an exact error message in quotes). Do not pack several questions, long identifier lists, or "
+                "your guessed answer into one query: give each lookup its own entry in queries (1–8) so they "
+                "run in parallel in one call, and batch follow-ups the same way. For freshness use "
+                "recency_days, not a year in the query; live facts (prices, quotes): recency_days 1. "
+                "Do not send secrets or private workspace content in queries. "
+                "Returns ranked titles, URLs, and snippets; the top result pages are also "
                 "read during the search and carry a [page excerpt] with their passage most relevant to the "
                 "query (read_url on those pages is cached and instant). Cite as markdown [title](url) "
                 "using URLs you received. Do not search private, local, or file URLs. "
@@ -109,9 +113,11 @@ SCHEMAS = {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": (
-                            "Independent search queries. One query for a simple question; several "
-                            "for comparisons or multi-hop that does not depend on earlier results. "
-                            "Prefer this over query."
+                            "Independent search queries, 2–8 keywords each, one topic per query. One "
+                            "query for a simple question; several for comparisons or multi-hop that does "
+                            "not depend on earlier results. Good: [\"jellyfin NVENC hardware acceleration\", "
+                            "\"emby HLS segment length\"]. Bad: [\"Emby Jellyfin Plex transcoder HLS DASH "
+                            "NVENC QSV architecture 2025\"]. Prefer this over query."
                         ),
                     },
                     "query": {
@@ -120,7 +126,10 @@ SCHEMAS = {
                     },
                     "recency_days": {
                         "type": "integer",
-                        "description": "Optional. Prefer results from the last N days (1–365).",
+                        "description": (
+                            "Optional. Prefer results from the last N days (1–365): 1 for prices and live "
+                            "data, 7–30 for news and recent releases."
+                        ),
                     },
                 },
                 "additionalProperties": False,

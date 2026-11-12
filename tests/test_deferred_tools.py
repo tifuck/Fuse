@@ -332,6 +332,7 @@ class CodingPromptTest(unittest.TestCase):
         self.assertNotIn("cdn.jsdelivr.net", text)
         self.assertNotIn("LIVE QUOTE", text)
         self.assertIn("Web search is on", text)
+        self.assertIn("2–8 distinctive keywords", text)
         self.assertIn("No skills enabled", text)
         self.assertIn("skill bodies and supporting files from `load_skill`", text)
 

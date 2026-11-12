@@ -7,6 +7,10 @@ from .providers.base import QueryResult, SearchHit, canonical_url, source_id
 
 USER_SEARCH_FAILED = "Search failed. Try again shortly."
 MODEL_SEARCH_FAILED = "Search failed. Do not invent sources."
+MODEL_NO_RESULTS = (
+    "No results. Retry with fewer, more general words: drop quotes, site:, exclusions and guessed "
+    "details, or try a synonym or the official name."
+)
 
 RESULT_CHARS = 24_000
 SNIPPET_CHARS = 300
@@ -92,7 +96,7 @@ def pack_search(results: list[QueryResult]) -> str:
             block.append(extra)
         elif not item.hits:
             empty.append(item.query)
-            block.append("No results.")
+            block.append(MODEL_NO_RESULTS)
         else:
             live_hits = [h for h in item.hits if h.provider == "quotes"]
             if live_hits:

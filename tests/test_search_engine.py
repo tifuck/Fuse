@@ -883,6 +883,36 @@ class EngineAsyncTest(unittest.IsolatedAsyncioTestCase):
             out = await search_bulk(["btc price"], user_id=78)
         self.assertEqual(out[0].kind, "provider_error")
 
+    async def test_operators_reach_web_engines_but_not_hn_or_wikipedia(self):
+        from app.search import engine
+
+        seen: dict[str, list[str]] = {}
+
+        def recorder(name):
+            async def search(_client, query, **_kwargs):
+                seen.setdefault(name, []).append(query)
+                return ProviderResponse(hits=[], status=200, error="empty")
+            return search
+
+        with (
+            patch("app.search.engine._brave_key", return_value=""),
+            patch("app.search.engine._allow", return_value=True),
+            patch.object(engine._ddg, "search", side_effect=recorder("ddg")),
+            patch.object(engine._bing, "search", side_effect=recorder("bing")),
+            patch.object(engine._yahoo, "search", side_effect=recorder("yahoo")),
+            patch.object(engine._hn, "search", side_effect=recorder("hn")),
+            patch.object(engine._wiki, "search", side_effect=recorder("wiki")),
+        ):
+            engine._cache.clear()
+            await search_bulk(
+                ['how to configure "max_form_parts" werkzeug -flask', "how site:github.com solaar reprog controls"],
+                user_id=79,
+            )
+        self.assertIn('how to configure "max_form_parts" werkzeug -flask', seen["ddg"])
+        self.assertIn("how site:github.com solaar reprog controls", seen["bing"])
+        self.assertEqual(seen["hn"], ["how to configure max_form_parts werkzeug"])
+        self.assertEqual(len(seen["wiki"]), 1)
+
 
 
 # Bing's current markup: the real target is base64 in an HTML-escaped
@@ -920,6 +950,27 @@ class SearchQualityTest(unittest.TestCase):
         self.assertNotIn("https://wiki.example/won", urls)
         self.assertEqual(len(urls), 5)
 
+    def test_plain_query_drops_operators_but_keeps_cli_flags(self):
+        from app.search.engine import plain_query
+
+        self.assertEqual(
+            plain_query('"UD10-XA" -poolwarehouse site:manualslib.com filetype:pdf manual'),
+            "UD10-XA manual",
+        )
+        self.assertEqual(plain_query("git push --no-verify e-mail"), "git push --no-verify e-mail")
+
+    def test_operators_do_not_count_as_terms_in_coverage(self):
+        from app.search.engine import _merge_hits
+
+        off = [SearchHit("WON Definition & Meaning", "https://dict.example/won", "The meaning of won", provider="bing", rank=0)]
+        hits = [
+            SearchHit(f"Solaar reprog controls {i}", f"https://h{i}.example/solaar", "Solaar divert buttons", provider="yahoo", rank=i)
+            for i in range(5)
+        ]
+        out = _merge_hits([off, hits], "site:github.com/pwr-Solaar/Solaar solaar reprog controls -forum")
+        self.assertNotIn("https://dict.example/won", [h.url for h in out])
+        self.assertEqual(len(out), 5)
+
     def test_coverage_only_reorders_when_too_few_hits_are_on_topic(self):
         from app.search.engine import _merge_hits
 
@@ -953,6 +1004,8 @@ class SearchQualityTest(unittest.TestCase):
             QueryResult(f"query {i}", [SearchHit(f"T{i}-{r}", f"https://e{r}.example/{i}", "s" * 290, provider="yahoo", excerpt="E" * 3000) for r in range(4)], None, "ok", "yahoo", 1, False, 200)
             for i in range(6)
         ]
+        packed = pack_search([QueryResult("q", [], "No results.", "empty", "mix", 1, False, 200)])
+        self.assertIn("No results. Retry with fewer, more general words", packed)
         packed = pack_search(huge)
         self.assertLessEqual(len(packed), RESULT_CHARS)
         for i in range(6):
