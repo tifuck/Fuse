@@ -265,11 +265,26 @@ html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal .mod
 html[data-chat-console="true"] body.is-settings .user-dock-menu { background: var(--ink); border: 1px solid var(--line); box-shadow: none; }
 
 /* Inputs that sit inside their own framed control keep a bare field. */
-html[data-chat-console="true"] body.is-settings .settings-shell :is(.proj-search, .skills-find) input[type="search"] {
+html[data-chat-console="true"] body.is-settings .settings-shell :is(.proj-search, .skills-find) input[type="search"],
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search input {
   min-height: 0;
   padding: 0;
   border: 0;
   background-color: transparent;
+}
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search { height: 1.9rem; background: var(--raise); }
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search:focus-within { border-color: var(--brass); }
+
+/* Project chooser rows: the current one carries the accent bar, and the
+   "Open" hint only shows on the row under the pointer. */
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--brass) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--brass);
+}
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current .fp-row-go { color: var(--brass); }
+@media (hover: hover) {
+  html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row:not(.is-current, :hover, :focus-visible) .fp-row-go { visibility: hidden; }
 }
 
 /* Page-head action groups (Sources): a quiet label, then the choices. */

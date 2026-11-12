@@ -81,9 +81,14 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-too
 html:is( [data-chat-console="true"]) .chat-view-menu { --ap-ui: var(--mono); }
 
 /* Appearance is a Console sheet like Context and Skills: hard corners on the
-   sheet and on every card, swatch, switch and slider inside it. */
+   sheet and on every card, swatch, switch and slider inside it. Pseudo-
+   elements cannot sit inside :is(), and an unknown vendor one drops its
+   whole rule, so each family gets its own. */
 html:is( [data-chat-console="true"]) :is(.chat-view-menu, .chat-view-menu *),
-html:is( [data-chat-console="true"]) .chat-view-menu :is(.ap-switch input[type="checkbox"]::after, .ap-color input[type="color"]::-webkit-color-swatch, .ap-range::-webkit-slider-runnable-track, .ap-range::-webkit-slider-thumb) { border-radius: 0; }
+html:is( [data-chat-console="true"]) .chat-view-menu .ap-switch input[type="checkbox"]::after { border-radius: 0; }
+html:is( [data-chat-console="true"]) .chat-view-menu .ap-color input[type="color"]::-webkit-color-swatch,
+html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-webkit-slider-runnable-track,
+html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-webkit-slider-thumb { border-radius: 0; }
 html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-track,
 html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-progress,
 html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-thumb { border-radius: 0; }

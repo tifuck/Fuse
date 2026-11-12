@@ -251,7 +251,13 @@ body.is-settings .page-head { display: none; }
 .set-appearance-body { padding: 0 1.1rem 0.4rem; }
 .set-appearance-body .ap-section:first-child { border-top: 0; }
 .set-appearance :is(button, input, label) { font-family: inherit; }
-html[data-chat-console="true"] body.is-settings .set-appearance :is(.ap-switch input[type="checkbox"]::after, .ap-color input[type="color"]::-webkit-color-swatch, .ap-range::-webkit-slider-runnable-track, .ap-range::-webkit-slider-thumb) { border-radius: 0; }
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-switch input[type="checkbox"]::after { border-radius: 0; }
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-color input[type="color"]::-webkit-color-swatch,
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-webkit-slider-runnable-track,
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-webkit-slider-thumb { border-radius: 0; }
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-moz-range-track,
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-moz-range-progress,
+html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-moz-range-thumb { border-radius: 0; }
 @media (max-width: 720px) {
   .set-appearance-body { padding: 0 0.9rem 0.3rem; }
 }

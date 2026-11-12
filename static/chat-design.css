@@ -1123,6 +1123,7 @@ body.is-chat .chat-view-menu { border-color: var(--line); }
 
 /* Sliders: label · track · value on one line. */
 .ap-slider {
+  --ap-step: 1.75rem;
   display: grid;
   grid-template-columns: 6rem minmax(0, 1fr) 3rem;
   align-items: center;
@@ -1131,13 +1132,15 @@ body.is-chat .chat-view-menu { border-color: var(--line); }
 .ap-slider[hidden] { display: none; }
 .ap-slider > label { display: block; color: var(--mist); font: 0.8125rem/1.3 var(--ap-ui); }
 .ap-slider output { color: var(--brass); font: 0.75rem/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+/* A bare track (Intensity) lines up with the stepped one (Text size). */
+.ap-slider > .ap-range { width: auto; margin-inline: calc(var(--ap-step) + 0.5rem); }
 .ap-stepper { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .ap-step {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: var(--ap-step);
+  height: var(--ap-step);
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--ap-card);
@@ -1222,17 +1225,7 @@ body.is-chat .chat-view-menu { border-color: var(--line); }
   white-space: nowrap;
 }
 .ap-font small { color: var(--mute); font: 0.6875rem/1.3 var(--ap-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-font[data-font-kind="default"] { border-style: dashed; }
-.ap-font[aria-checked="true"]::after {
-  content: "";
-  position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  background: var(--brass);
-}
+.ap-font[data-font-kind="default"]:not([aria-checked="true"]) { border-style: dashed; }
 
 /* Composer switches. */
 .ap-switches { gap: 0.25rem; }
@@ -1289,7 +1282,7 @@ body.is-chat .chat-view-menu { border-color: var(--line); }
   .ap-slider > :is(.ap-range, .ap-stepper) { grid-column: 1 / -1; grid-row: 2; }
   .ap-custom { grid-template-columns: minmax(0, 1fr); }
   :is( .ap-theme, .ap-backdrop, .ap-font, .ap-filters button) { min-height: 44px; }
-  .ap-step { width: 2.5rem; height: 2.5rem; }
+  .ap-slider { --ap-step: 2.5rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-view-menu * { transition: none !important; }

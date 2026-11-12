@@ -174,25 +174,41 @@ export function scanPreviews(root = document) {
   }
 }
 
-// Only a theme change alters a preview; Intensity and the choice itself
-// leave them as they are.
-let previewInk = "";
-function repaintPreviews() {
+// Only a theme change alters the scene's colors; Intensity, text size and
+// the choice itself leave them as they are.
+let ink = "";
+function themeInk() {
   const style = getComputedStyle(html);
-  const ink = ["--ink", "--mist", "--mute", "--brass", "--steel"].map((p) => style.getPropertyValue(p).trim()).join();
-  if (ink === previewInk) return;
-  previewInk = ink;
+  return ["--ink", "--mist", "--mute", "--brass", "--steel"].map((p) => style.getPropertyValue(p).trim()).join();
+}
+
+function repaintPreviews() {
   for (const el of previews.keys()) {
     if (!el.isConnected) previews.delete(el);
     else paintPreview(el);
   }
 }
 
-// chat-appearance.js calls this whenever the backdrop or theme changes.
+// A custom color picker fires on every pointer move; repainting the scene
+// and every preview card per tick made dragging it crawl. Recolor once the
+// colors stop changing.
+const SETTLE_MS = 150;
+let settle = 0;
+
+// chat-appearance.js calls this on every appearance change.
 export function sync(scene, kind) {
-  repaintPreviews();
+  const next = themeInk();
+  if (ink && next !== ink) {
+    clearTimeout(settle);
+    settle = setTimeout(() => {
+      repaintPreviews();
+      if (run.state) start();
+    }, SETTLE_MS);
+  }
+  ink = next;
   const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
   const animated = Boolean(canvas && !scene.hidden && SCENES[kind]);
+  const same = animated && run.state && run.kind === kind && run.canvas === canvas;
   if (!animated) {
     stop();
     run.kind = kind || "";
@@ -205,5 +221,5 @@ export function sync(scene, kind) {
   run.canvas = canvas;
   run.ctx = canvas.getContext("2d");
   run.kind = kind;
-  start();
+  if (!same) start();
 }

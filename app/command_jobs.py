@@ -109,6 +109,9 @@ def ensure_schema() -> None:
         ):
             if name not in columns:
                 conn.execute(f"ALTER TABLE command_jobs ADD COLUMN {name} {declaration}")
+        # Every thread list row checks its live background jobs; without this
+        # each row scanned the whole table (seconds for a few hundred threads).
+        conn.execute("CREATE INDEX IF NOT EXISTS command_jobs_thread ON command_jobs (thread_id)")
     _schema_ready = True
 
 

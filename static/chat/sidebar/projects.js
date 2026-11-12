@@ -151,7 +151,7 @@ export function createProjects(ctx) {
       current: bound ? { host_id: bound.host_id, project_id: bound.project_id } : null,
     });
     if (!picked) return;
-    if (picked.created || picked.archived === false) await render.refreshThreads().catch(() => {});
+    if (picked.created || picked.restored) await render.refreshThreads().catch(() => {});
     if (!net.requireLive()) return;
     if (S.historyMobile.matches) drawer.setHistoryOpen(false);
     await threads.startProjectThread(picked.host_id, picked.id, picked);

@@ -43,8 +43,6 @@ logger = logging.getLogger(__name__)
 # child can outlive the root turn that spawned it and the sidebar must keep
 # its spinner until the last one settles. So does a live background command
 # (the rows command_jobs.list_thread_jobs shows), which outlives every run.
-# ponytail: command_jobs has no thread_id index; add one if the table stops
-# being a few hundred rows (retention prunes finished jobs).
 _THREAD_RUNNING_SQL = (
     "(EXISTS (SELECT 1 FROM chat_runs r "
     "WHERE r.thread_id=t.id AND r.status IN ('queued','running')) "

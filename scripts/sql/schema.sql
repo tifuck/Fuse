@@ -407,7 +407,8 @@ CREATE TABLE `command_jobs` (
   `max_events` bigint(20) NOT NULL DEFAULT 1,
   `delivered_event_seq` bigint(20) NOT NULL DEFAULT 0,
   `description` text NOT NULL DEFAULT '',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `command_jobs_thread` (`thread_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

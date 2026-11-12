@@ -229,7 +229,8 @@
         const host = s.hosts.find((h) => String(h.id) === hid);
         let project = host && (host.projects || []).find((p) => String(p.id) === pid);
         if (!project) return;
-        if (project.archived) {
+        const restored = Boolean(project.archived);
+        if (restored) {
           btn.disabled = true;
           try {
             project = await api(`/hosts/${hid}/projects/${pid}`, { method: "PATCH", body: JSON.stringify({ archived: false }) });
@@ -238,7 +239,7 @@
             return toastError(err);
           }
         }
-        close({ ...project, host_id: Number(hid), host_alias: host.alias || "" });
+        close({ ...project, host_id: Number(hid), host_alias: host.alias || "", restored });
       })
     );
     if (!matchMedia("(max-width: 800px)").matches) search.focus();
