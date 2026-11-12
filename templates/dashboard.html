@@ -3,10 +3,10 @@
 {% block page_title %}Usage{% endblock %}
 {% block head_extra %}<link rel="stylesheet" href="{{ asset('usage.css') }}">{% endblock %}
 {% block body %}
-<div class="uz" data-usage-dashboard data-admin="{{ 1 if user['is_admin'] else 0 }}">
+<div class="uz uz-dash" data-usage-dashboard data-admin="{{ 1 if user['is_admin'] else 0 }}">
 
-  <header class="uz-head">
-    <p class="uz-caption" data-usage-caption>Token activity, cost and reliability</p>
+  <header class="uz-bar">
+    <p class="uz-caption" data-usage-caption>Loading usage…</p>
     <div class="uz-controls">
       <label class="uz-select">
         <span class="visually-hidden">Provider</span>
@@ -14,8 +14,8 @@
       </label>
       {% if user['is_admin'] %}
       <label class="uz-select">
-        <span class="visually-hidden">User</span>
-        <select data-usage-user aria-label="User"><option value="account">Mine</option><option value="all">All users</option></select>
+        <span class="visually-hidden">Account</span>
+        <select data-usage-user aria-label="Account"><option value="account">My account</option><option value="all">All accounts</option></select>
       </label>
       {% endif %}
       <div class="uz-seg uz-range" role="group" aria-label="Time range" data-usage-range>
@@ -30,138 +30,92 @@
     </div>
   </header>
 
-  <section class="uz-kpis" aria-label="Summary" aria-live="polite">
-    {% for id, label in [("tokens", "Tokens"), ("requests", "Requests"), ("cost", "Est. cost"), ("cache", "Cache hit"), ("success", "Success"), ("per_request", "Avg / request")] %}
-    <div class="uz-kpi" data-kpi="{{ id }}">
-      <p class="uz-kpi-top"><span class="uz-label">{{ label }}</span><span class="uz-kpi-note" data-kpi-note></span></p>
-      <p class="uz-value" data-kpi-value>—</p>
-      <p class="uz-delta" data-kpi-delta>&nbsp;</p>
-      <div class="uz-spark" data-kpi-spark aria-hidden="true"></div>
+  <section class="uz-stats" aria-label="Summary" aria-live="polite">
+    {% for id, label in [("tokens", "Tokens"), ("requests", "Requests"), ("cost", "Estimated cost"), ("cache", "Cache hit rate")] %}
+    <div class="uz-stat" data-kpi="{{ id }}">
+      <p class="uz-stat-top"><span>{{ label }}</span><span class="uz-badge" data-kpi-delta></span></p>
+      <p class="uz-stat-value" data-kpi-value>—</p>
+      <p class="uz-stat-sub" data-kpi-sub>&nbsp;</p>
     </div>
     {% endfor %}
   </section>
 
-  <div class="uz-row uz-row-activity">
-    <section class="uz-card uz-chart-card" aria-labelledby="uz-activity-title">
-      <header class="uz-card-head">
-        <div>
-          <h2 id="uz-activity-title" data-chart-title>Tokens by model</h2>
-          <p class="uz-sub" data-chart-sub>Loading…</p>
-        </div>
+  <section class="uz-panel uz-chart-card" aria-labelledby="uz-chart-title">
+    <header class="uz-panel-head">
+      <div>
+        <h2 id="uz-chart-title" data-chart-title>Tokens</h2>
+        <p class="uz-sub" data-chart-sub>&nbsp;</p>
+      </div>
+      <div class="uz-panel-tools">
         <div class="uz-seg uz-seg-sm" role="group" aria-label="Chart metric" data-chart-mode>
           <button type="button" class="on" data-mode="tokens" aria-pressed="true">Tokens</button>
-          <button type="button" data-mode="cost" aria-pressed="false">Cost</button>
           <button type="button" data-mode="requests" aria-pressed="false">Requests</button>
+          <button type="button" data-mode="cost" aria-pressed="false">Cost</button>
         </div>
-      </header>
-      <div class="uz-plot-wrap">
-        <div class="uz-plot" data-plot aria-busy="true"></div>
-        <div class="uz-tip" data-tip hidden></div>
+        <div class="uz-seg uz-seg-sm" role="group" aria-label="Split chart by" data-chart-group>
+          <button type="button" class="on" data-group="provider" aria-pressed="true">Provider</button>
+          <button type="button" data-group="model" aria-pressed="false">Model</button>
+        </div>
       </div>
-      <div class="uz-legend" data-legend></div>
-    </section>
-
-    <section class="uz-card uz-anatomy" aria-labelledby="uz-anatomy-title">
-      <header class="uz-card-head">
-        <div>
-          <h2 id="uz-anatomy-title">Token anatomy</h2>
-          <p class="uz-sub">Where this range's tokens went</p>
-        </div>
-      </header>
-      <div class="uz-mixbar" data-mix-bar></div>
-      <dl class="uz-mix" data-mix></dl>
-      <dl class="uz-facts" data-facts></dl>
-    </section>
-  </div>
-
-  {% if user['is_admin'] %}
-  <section class="uz-card" data-user-comparison hidden aria-labelledby="uz-users-title">
-    <header class="uz-card-head">
-      <div><h2 id="uz-users-title">Accounts</h2><p class="uz-sub" data-users-sub>Tokens by user, split by provider</p></div>
     </header>
-    <div class="uz-users" data-users></div>
-  </section>
-  {% endif %}
-
-  <section class="uz-card" aria-labelledby="uz-providers-title">
-    <header class="uz-card-head">
-      <div><h2 id="uz-providers-title">Providers</h2><p class="uz-sub" data-providers-sub>Tokens by provider</p></div>
-    </header>
-    <div class="uz-table-wrap">
-      <table class="uz-table uz-providers">
-        <thead>
-          <tr>
-            <th scope="col" class="uz-col-name">Provider</th>
-            <th scope="col" class="num">Tokens</th>
-            <th scope="col" class="num">Input</th>
-            <th scope="col" class="num">Output</th>
-            <th scope="col" class="num">Cache hit</th>
-            <th scope="col" class="num">Requests</th>
-            <th scope="col" class="num">Cost</th>
-            <th scope="col" class="num">Change</th>
-          </tr>
-        </thead>
-        <tbody data-providers><tr><td colspan="8" class="uz-empty">Loading…</td></tr></tbody>
-      </table>
+    <div class="uz-plot-wrap">
+      <div class="uz-plot" data-plot aria-busy="true"></div>
+      <div class="uz-tip" data-tip hidden></div>
     </div>
+    <div class="uz-legend" data-legend></div>
+    <details class="uz-facts-box" data-facts-box>
+      <summary>Token breakdown and rates</summary>
+      <div class="uz-facts-body">
+        <div>
+          <div class="uz-mixbar" data-mix-bar></div>
+          <dl class="uz-mix" data-mix></dl>
+        </div>
+        <dl class="uz-facts" data-facts></dl>
+      </div>
+    </details>
   </section>
 
-  <section class="uz-card" aria-labelledby="uz-models-title">
-    <header class="uz-card-head">
-      <div>
-        <h2 id="uz-models-title">Models</h2>
-        <p class="uz-sub" data-models-sub>Ranked by tokens</p>
-      </div>
-    </header>
-    <div class="uz-table-wrap">
-      <table class="uz-table uz-models">
+  <section class="uz-panel uz-breakdown" aria-label="Breakdown">
+    <div class="uz-tabs" role="tablist" aria-label="Break down by" data-tabs>
+      <button type="button" role="tab" data-tab="providers" aria-selected="true" class="on">Providers <span data-tab-count></span></button>
+      <button type="button" role="tab" data-tab="models" aria-selected="false">Models <span data-tab-count></span></button>
+      <button type="button" role="tab" data-tab="keys" aria-selected="false">API keys <span data-tab-count></span></button>
+      {% if user['is_admin'] %}<button type="button" role="tab" data-tab="accounts" aria-selected="false" hidden>Accounts <span data-tab-count></span></button>{% endif %}
+    </div>
+    <div class="uz-table-wrap" role="tabpanel">
+      <table class="uz-table uz-rows">
         <thead>
           <tr>
-            <th scope="col" class="uz-col-name">Model</th>
+            <th scope="col" class="uz-col-name" data-name-head>Provider</th>
             <th scope="col" class="num"><button type="button" data-sort="tokens" aria-sort="descending">Tokens</button></th>
             <th scope="col" class="num"><button type="button" data-sort="requests">Requests</button></th>
-            <th scope="col" class="num uz-hide-md" title="Input / output tokens">In / out</th>
             <th scope="col" class="num"><button type="button" data-sort="cache_hit">Cache hit</button></th>
-            <th scope="col" class="num"><button type="button" data-sort="error_rate">Errors</button></th>
             <th scope="col" class="num"><button type="button" data-sort="cost">Cost</button></th>
-            <th scope="col" class="num uz-hide-md"><button type="button" data-sort="per_million">$ / 1M</button></th>
-            <th scope="col" class="uz-col-trend">Trend</th>
           </tr>
         </thead>
-        <tbody data-models><tr><td colspan="9" class="uz-empty">Loading models…</td></tr></tbody>
+        <tbody data-rows><tr><td colspan="5" class="uz-empty">Loading…</td></tr></tbody>
       </table>
     </div>
+    <button type="button" class="uz-more" data-rows-more hidden></button>
   </section>
 
-  <div class="uz-cols">
-    <div class="uz-col">
-      <section class="uz-card" aria-labelledby="uz-when-title">
-        <header class="uz-card-head">
-          <div><h2 id="uz-when-title">When you use it</h2><p class="uz-sub" data-heat-sub>Tokens by weekday and hour, your local time</p></div>
-        </header>
-        <div class="uz-heat" data-heat></div>
-      </section>
-    </div>
-    <div class="uz-col">
-      <section class="uz-card" aria-labelledby="uz-sources-title">
-        <header class="uz-card-head">
-          <div><h2 id="uz-sources-title">Sources</h2><p class="uz-sub">API keys and Fuse's own chat</p></div>
-        </header>
-        <div class="uz-bars" data-sources><p class="uz-empty">Loading…</p></div>
-      </section>
-      <section class="uz-card" aria-labelledby="uz-rel-title">
-        <header class="uz-card-head">
-          <div><h2 id="uz-rel-title">Reliability</h2><p class="uz-sub">Request outcomes in this range</p></div>
-        </header>
-        <div data-reliability></div>
-      </section>
-    </div>
+  <div class="uz-pair">
+    <section class="uz-panel" aria-labelledby="uz-when-title">
+      <header class="uz-panel-head">
+        <div><h2 id="uz-when-title">When you use it</h2><p class="uz-sub" data-heat-sub>Tokens by weekday and hour</p></div>
+      </header>
+      <div class="uz-heat" data-heat></div>
+    </section>
+    <section class="uz-panel" aria-labelledby="uz-errors-title">
+      <header class="uz-panel-head">
+        <div><h2 id="uz-errors-title">Errors</h2><p class="uz-sub" data-errors-sub>&nbsp;</p></div>
+      </header>
+      <div data-reliability></div>
+    </section>
   </div>
 
-  <section class="uz-card" aria-labelledby="uz-recent-title">
-    <header class="uz-card-head">
-      <div><h2 id="uz-recent-title">Recent requests</h2><p class="uz-sub" data-recent-sub>Latest in this range</p></div>
-    </header>
+  <details class="uz-panel uz-log" data-log>
+    <summary><span>Request log</span><span class="uz-sub" data-recent-sub></span></summary>
     <div class="uz-table-wrap">
       <table class="uz-table uz-recent">
         <thead>
@@ -178,8 +132,7 @@
         <tbody data-recent><tr><td colspan="7" class="uz-empty">Loading…</td></tr></tbody>
       </table>
     </div>
-    <button type="button" class="uz-more" data-recent-more hidden></button>
-  </section>
+  </details>
 </div>
 {% endblock %}
 {% block scripts %}<script src="{{ asset('usage.js') }}"></script>{% endblock %}

@@ -46,7 +46,9 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
       segments: { [model]: point(tokens), other: 0 },
       cost_segments: { [model]: point(cost), other: 0 },
       request_segments: { [model]: point(requests), other: 0 },
+      providers: empty ? {} : { zai: [tokens, requests, cost] },
     }],
+    series_providers: empty ? [] : [{ id: 'zai', name: 'Z.ai' }],
     series_models: empty ? [] : [{ id: model, name: model, provider: 'zai', provider_label: 'Z.ai' }],
     models: empty ? [] : [{
       id: model, name: model, provider: 'zai', provider_label: 'Z.ai',
@@ -110,6 +112,8 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(String(error)));
     const kpi = (id) => page.locator(`[data-kpi="${id}"] [data-kpi-value]`);
+    const sub = (id) => page.locator(`[data-kpi="${id}"] [data-kpi-sub]`);
+    const tab = (id) => page.locator(`[data-tab="${id}"]`).click();
     const settled = () => page.waitForFunction(() => {
       const plot = document.querySelector('[data-plot]');
       return plot && !plot.hasAttribute('aria-busy') && plot.textContent.trim().length > 0;
@@ -128,10 +132,10 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     assert.match(await page.locator('[data-usage-caption]').innerText(), /Last 30 minutes/, 'caption follows the range');
     assert.match(await kpi('tokens').innerText(), /^0$/, `empty tokens, got ${await kpi('tokens').innerText()}`);
     assert.match(await kpi('requests').innerText(), /^0$/, `empty requests, got ${await kpi('requests').innerText()}`);
-    assert.match(await kpi('success').innerText(), /—/, `empty success, got ${await kpi('success').innerText()}`);
+    assert.match(await sub('requests').innerText(), /No requests/, `empty success, got ${await sub('requests').innerText()}`);
+    assert.equal(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').isHidden(), true, 'an empty range shows no change badge');
     assert.match(await page.locator('[data-plot]').innerText(), /No recorded requests/, 'empty chart says so');
-    assert.match(await page.locator('[data-models]').innerText(), /No model usage/, 'empty models table says so');
-    assert.match(await page.locator('[data-providers]').innerText(), /No provider usage/, 'empty providers says so');
+    assert.match(await page.locator('[data-rows]').innerText(), /No provider usage/, 'empty providers says so');
     assert.match(await page.locator('[data-reliability]').innerText(), /No requests in this range/, 'empty reliability says so');
     assert.doesNotMatch(await page.locator('[data-usage-dashboard]').innerText(), /Loading/, 'nothing still says Loading');
     assert.equal(await page.locator('[data-usage-user]').count(), 0, 'a non-admin never sees the user filter');
@@ -155,10 +159,17 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     assert.match(await kpi('tokens').innerText(), /1\.8K|1,800/, `24h tokens, got ${await kpi('tokens').innerText()}`);
     assert.match(await kpi('requests').innerText(), /^3$/, `24h requests, got ${await kpi('requests').innerText()}`);
     assert.match(await page.locator('[data-chart-sub]').innerText(), /1,800 total/, `chart subtotal, got ${await page.locator('[data-chart-sub]').innerText()}`);
-    assert.match(await page.locator('[data-models] tr').first().innerText(), /glm-5\.3/, 'model row names the model');
-    assert.match(await page.locator('[data-recent] tr').first().innerText(), /failed/, 'the newest recent row keeps its status');
+    assert.match(await sub('tokens').innerText(), /1\.8K in · 0 out/, `tokens in and out, got ${await sub('tokens').innerText()}`);
+    assert.match(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').innerText(), /↑ 100%/, 'tokens carry a change badge');
+    await tab('models');
+    assert.match(await page.locator('[data-rows] tr').first().innerText(), /glm-5\.3/, 'model row names the model');
+    await tab('providers');
+    assert.match(await page.locator('[data-legend]').innerText(), /Z\.ai/, 'the chart splits by provider by default');
     await page.locator('[data-mode="requests"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-chart-title]')?.textContent === 'Requests by provider');
+    await page.locator('[data-group="model"]').click();
     await page.waitForFunction(() => document.querySelector('[data-chart-title]')?.textContent === 'Requests by model');
+    assert.match(await page.locator('[data-legend]').innerText(), /glm-5\.3/, 'the model split lists models');
     assert.equal(fetches, afterRange, 'a chart-metric switch repaints without another fetch');
     assert.equal(await page.locator('[data-mode="requests"]').getAttribute('aria-pressed'), 'true');
 
@@ -177,21 +188,28 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     await page.keyboard.press('Home');
     assert.equal((await bars()).focus, 0, 'Home jumps to the first bar');
 
-    // Twelve recent rows stay collapsed at ten until asked.
-    assert.equal(await page.locator('[data-recent] tr').count(), 10, 'recent preview is ten rows');
-    const more = page.locator('[data-recent-more]');
-    assert.match(await more.innerText(), /Show all 12/);
-    await more.click();
-    assert.equal(await page.locator('[data-recent] tr').count(), 12, 'show all reveals every row');
+    // The request log stays folded until asked, then lists every row.
+    assert.equal(await page.locator('[data-recent]').isVisible(), false, 'the request log starts folded');
+    await page.locator('[data-log] summary').click();
+    assert.equal(await page.locator('[data-recent] tr').count(), 12, 'the open log lists every row');
+    assert.match(await page.locator('[data-recent] tr').first().innerText(), /failed/, 'the newest recent row keeps its status');
+    // Rates and the token breakdown fold under the chart.
+    assert.equal(await page.locator('[data-facts]').isVisible(), false, 'rates start folded');
+    await page.locator('[data-facts-box] summary').click();
+    assert.match(await page.locator('[data-mix]').innerText(), /Uncached input/, 'the token breakdown opens under the chart');
     assert.equal(await overflow(), true, '1440: page does not scroll sideways');
 
     await page.locator('[data-range="3d"]').click();
     await settled();
-    assert.match(await kpi('success').innerText(), /66\.7%/);
-    assert.equal(await page.locator('[data-kpi="success"] path.line').getAttribute('d'), 'M0.0 2.0 L120.0 27.0', 'cancelled requests lower the success spark from 100% to 50%');
+    assert.match(await sub('requests').innerText(), /66\.7% succeeded/);
+    assert.match(await page.locator('[data-reliability]').innerText(), /Cancelled\s*1/, 'errors count cancelled requests');
 
-    // Providers get their own table; a provider name filters the page to it.
-    assert.match(await page.locator('[data-providers] tr').first().innerText(), /Z\.ai[\s\S]*1 model/, 'provider row names the provider');
+    // A provider row opens its details; its action filters the page to it.
+    assert.match(await page.locator('[data-rows] tr').first().innerText(), /Z\.ai[\s\S]*1 model/, 'provider row names the provider');
+    const toggle = page.locator('[data-rows] [data-row]').first();
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'the row toggle reports it is open');
+    assert.match(await page.locator('[data-rows] .uz-detail').first().innerText(), /Input[\s\S]*Failed/, 'details list the tokens and failures');
     const picked = page.waitForRequest(req => req.url().includes('/usage.json') && new URL(req.url()).searchParams.get('provider') === 'zai');
     await page.locator('[data-pick-provider="zai"]').click();
     await picked;
@@ -201,15 +219,14 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     await page.locator('[data-usage-provider]').selectOption('');
     await settled();
 
-    // Lifetime: no previous period, so the deltas name the start and daily averages.
+    // Lifetime: no previous period, so no change badges; cost reads per day.
     await page.locator('[data-range="all"]').click();
     await settled();
     assert.equal(await page.locator('[data-range="all"]').getAttribute('aria-pressed'), 'true');
     assert.match(await page.locator('[data-usage-caption]').innerText(), /All time .* since /, 'lifetime caption names its start');
     assert.doesNotMatch(await page.locator('[data-usage-caption]').innerText(), /compared with/, 'lifetime has nothing to compare');
-    assert.match(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').innerText(), /^Since /);
-    assert.match(await page.locator('[data-kpi="requests"] [data-kpi-delta]').innerText(), /a day$/);
-    assert.match(await page.locator('[data-providers] tr').first().innerText(), /—\s*$/, 'lifetime provider change is a dash');
+    assert.equal(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').isHidden(), true, 'lifetime has no change badge');
+    assert.match(await sub('cost').innerText(), /a day$/);
     assert.match(page.url(), /range=all/, 'lifetime is kept in the URL');
 
     // A revisited view paints from memory before its refetch answers.
@@ -230,7 +247,8 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     const shown = await kpi('tokens').innerText();
     assert.match(shown, /B|12,500,000,000/, `huge tokens compact or group, got ${shown}`);
     assert.ok(shown.length < 16, `huge token text overflows its cell: ${shown}`);
-    const name = page.locator('[data-models] .uz-name strong');
+    await tab('models');
+    const name = page.locator('[data-rows] .uz-name strong');
     assert.equal(await name.getAttribute('title'), LONG, 'truncated model id keeps a title');
     const clip = await name.evaluate(el => {
       const s = getComputedStyle(el);
@@ -255,7 +273,7 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     await settled();
     assert.match(await page.locator('[data-plot]').innerText(), /could not be loaded/, 'a 500 says the data failed');
     assert.match(await kpi('tokens').innerText(), /—/, `a 500 clears the token total, got ${await kpi('tokens').innerText()}`);
-    assert.match(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').innerText(), /Load failed/);
+    assert.match(await sub('tokens').innerText(), /Load failed/);
     assert.equal(await page.locator('[data-plot]').getAttribute('aria-busy'), null, 'a 500 clears the busy flag');
     await page.locator('[data-mode="tokens"]').click();
     assert.match(await page.locator('[data-plot]').innerText(), /could not be loaded/, 'changing mode after a failure cannot redraw the previous range');
@@ -268,10 +286,10 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     assert.equal(await overflow(), true, '390: usage page does not scroll sideways');
     const range = await page.locator('[data-usage-range]').boundingBox();
     assert.ok(range && range.x >= 0 && range.x + range.width <= 390, `390: range control off-screen ${JSON.stringify(range)}`);
-    const card = page.locator('[data-models] tr').first();
+    const card = page.locator('[data-rows] tr').first();
     const box = await card.boundingBox();
-    assert.ok(box && box.width <= 390, `390: model card wider than the viewport ${JSON.stringify(box)}`);
-    assert.equal(await page.locator('.uz-models thead').evaluate(el => getComputedStyle(el).display), 'none', '390: the models header is hidden for stacked cards');
+    assert.ok(box && box.width <= 390, `390: breakdown row wider than the viewport ${JSON.stringify(box)}`);
+    assert.equal(await page.locator('.uz-rows thead').evaluate(el => getComputedStyle(el).display), 'none', '390: the breakdown header is hidden for two-line rows');
 
     // Keys: an empty list, then create reveals the secret once and lists the name.
     await page.goto(origin + '/keys');

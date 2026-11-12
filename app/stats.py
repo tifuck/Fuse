@@ -460,6 +460,11 @@ def _cost_known(item: dict) -> bool:
     return item["priced"] >= item["requests"] and item["requests"] > 0 and not item["unpriced_events"]
 
 
+# Sums kept per API key and per account (cache hit needs prompt and cached).
+_ROW_SUMS = ("tokens", "requests", "failed", "cost", "prompt", "cached")
+_MODEL_ROWS = 100
+
+
 def _bucket_of(epoch: int, size: int) -> int:
     offset = _MONDAY if size == _WEEK else 0
     return ((epoch - offset) // size) * size + offset
@@ -598,25 +603,27 @@ def usage_analytics(
         provider_item["models"].add(item["model"])
         if all_users:
             uid = int(item["user_id"])
-            user_item = user_totals.setdefault(uid, {"id": uid, "tokens": 0, "requests": 0, "cost": 0, "failed": 0, "providers": {}})
+            user_item = user_totals.setdefault(uid, {"id": uid, "providers": {}, **dict.fromkeys(_ROW_SUMS, 0)})
             per = user_item["providers"].setdefault(pid, {"id": pid, "name": PROVIDER_LABELS.get(pid, pid), "tokens": 0, "requests": 0, "cost": 0})
             for metric in ("tokens", "requests", "cost"):
-                user_item[metric] += item[metric]
                 per[metric] += item[metric]
-            user_item["failed"] += item["failed"]
+            for metric in _ROW_SUMS:
+                user_item[metric] += item[metric]
         # NULL api_key_id is traffic from Fuse itself (dashboard chat, agents, tasks).
-        key_item = key_totals.setdefault(item["api_key_id"], {"tokens": 0, "requests": 0, "failed": 0, "cost": 0, "last_at": ""})
-        for metric in ("tokens", "requests", "failed", "cost"):
+        key_item = key_totals.setdefault(item["api_key_id"], {"last_at": "", **dict.fromkeys(_ROW_SUMS, 0)})
+        for metric in _ROW_SUMS:
             key_item[metric] += item[metric]
         key_item["last_at"] = max(key_item["last_at"], item["last_at"] or "")
 
     ranked_models = sorted(model_totals.values(), key=lambda item: item["tokens"], reverse=True)
     top_model_keys = [item["id"] for item in ranked_models[:6]]
-    table_models = ranked_models[:15]
+    top_provider_ids = [pid for pid, _ in sorted(provider_totals.items(), key=lambda kv: kv[1]["tokens"], reverse=True)[:6]]
+    table_models = ranked_models[:_MODEL_ROWS]
+    spark_models = ranked_models[:15]
     first_bucket = _bucket_of(int(start_dt.timestamp()), bucket_seconds)
     last_bucket = _bucket_of(int(end_dt.timestamp()), bucket_seconds)
     points = []
-    model_sparks: dict[str, list[int]] = {item["id"]: [] for item in table_models}
+    model_sparks: dict[str, list[int]] = {item["id"]: [] for item in spark_models}
     bucket = first_bucket
     while bucket <= last_bucket:
         segments = {key: 0 for key in top_model_keys}
@@ -627,12 +634,18 @@ def usage_analytics(
             "at": _iso(datetime.fromtimestamp(bucket, timezone.utc)),
             "tokens": 0, "requests": 0, "failed": 0, "cancelled": 0, "cost": 0, "prompt": 0, "cached": 0,
             "segments": segments, "cost_segments": cost_segments, "request_segments": request_segments,
+            # Top six providers plus "other": [tokens, requests, cost].
+            "providers": {},
         }
         bucket_models: dict[str, int] = {}
         for item in by_bucket.get(bucket, ()):
             key = f"{item['provider']}\x1f{item['model']}"
             for metric in ("tokens", "requests", "failed", "cancelled", "cost", "prompt", "cached"):
                 point[metric] += item[metric]
+            part = point["providers"].setdefault(item["provider"] if item["provider"] in top_provider_ids else "other", [0, 0, 0])
+            part[0] += item["tokens"]
+            part[1] += item["requests"]
+            part[2] += item["cost"]
             bucket_models[key] = bucket_models.get(key, 0) + item["tokens"]
             if key in segments:
                 segments[key] += item["tokens"]
@@ -667,8 +680,8 @@ def usage_analytics(
         model["error_rate"] = _rate(model["failed"], model["requests"])
         model["per_million"] = (model["cost"] * 1_000_000 // model["tokens"]) if model["tokens"] and model["cost_known"] else None
         model["per_request"] = model["tokens"] // model["requests"] if model["requests"] else None
-    for model in table_models:
-        model["spark"] = model_sparks.get(model["id"], [])
+    for model in spark_models:
+        model["spark"] = model_sparks[model["id"]]
     providers = sorted(provider_totals.values(), key=lambda item: item["tokens"], reverse=True)
     for row in providers:
         prev_tokens = prev_provider_tokens.get(row["id"], 0)
@@ -800,6 +813,7 @@ def usage_analytics(
         "previous": {key: previous[key] for key in ("tokens", "requests", "cost")},
         "mix": _token_mix(summary),
         "series": points,
+        "series_providers": [{"id": pid, "name": PROVIDER_LABELS.get(pid, pid)} for pid in top_provider_ids],
         "series_models": [
             {
                 "id": key,

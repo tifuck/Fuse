@@ -214,6 +214,16 @@ def test_all_users_split_each_account_by_provider():
         assert data["users"][0]["email"] == "usage@test.invalid"
         zai = next(p for p in data["providers"] if p["id"] == "zai")
         assert (zai["tokens"], zai["models"], zai["cost_tracked"]) == (1500, 1, True)
+        # The chart splits each bucket by provider: [tokens, requests, cost].
+        assert [p["id"] for p in data["series_providers"]] == ["zai", "grok"]
+        split = {}
+        for point in data["series"]:
+            for pid, (tokens, requests, _) in point["providers"].items():
+                split[pid] = (split.get(pid, (0, 0))[0] + tokens, split.get(pid, (0, 0))[1] + requests)
+        assert split == {"zai": (1500, 2), "grok": (300, 1)}
+        # Sources and accounts carry what a cache hit rate needs.
+        assert (data["keys"][0]["prompt"], data["keys"][0]["cached"]) == (1800, 0)
+        assert users["usage@test.invalid"]["prompt"] == 1300
 
 
 def test_subject_filter_counts_only_that_user():
