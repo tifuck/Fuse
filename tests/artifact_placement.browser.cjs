@@ -114,7 +114,8 @@ const shots = process.env.LOG_DIR || '/tmp/fuse-browser-tests';
       // The card opens the pane on that artifact.
       await article.locator('[data-artifact-cards] [data-open-artifact]').click();
       await page.locator('[data-chat-artifact]').waitFor({ state: 'visible' });
-      assert.match(await page.locator('[data-artifact-frame]').getAttribute('src'), new RegExp(`/a/${first.id}/content`));
+      // The frame loads once the pane knows which version is the latest.
+      await page.waitForFunction((id) => (document.querySelector('[data-artifact-frame]').getAttribute('src') || '').includes(`/a/${id}/content?v=2`), first.id);
 
       // Deleted or archived later: the card stays as a record but says so and
       // no longer opens a pane that cannot load it.
@@ -135,6 +136,25 @@ const shots = process.env.LOG_DIR || '/tmp/fuse-browser-tests';
       assert.deepEqual(gone.map((card) => card.opens), [true, false, false, true], `${width}: only live artifacts open: ${JSON.stringify(gone)}`);
       assert.match(gone[1].text, /Deleted$/, `${width}: deleted card says so`);
       assert.match(gone[2].text, /Archived$/, `${width}: archived card says so`);
+
+      // Iterating with the pane left open: every turn's version is the one on
+      // screen, and so is one published where this page got no live event.
+      if (width > 800) {
+        const shows = async (marker) => {
+          const frame = await (await page.locator('[data-artifact-frame]').elementHandle()).contentFrame();
+          await frame.locator('h1', { hasText: marker }).waitFor({ timeout: 12000 });
+        };
+        await articles.last().locator('[data-artifact-cards] [data-open-artifact]').click();
+        await page.locator('[data-chat-artifact]').waitFor({ state: 'visible' });
+        for (const marker of ['Turn five', 'Turn six', 'Turn seven']) {
+          await turn(`Artifact fixture rewrite ${marker}`, 'Ask if you want churn added');
+          await shows(marker);
+        }
+        await page.evaluate((id) => fetch('/__fixture/artifact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: id, html: '<!doctype html><html><body><h1>Elsewhere</h1></body></html>' }) }), first.id);
+        await articles.last().locator('[data-artifact-cards] [data-open-artifact]').click();
+        await shows('Elsewhere');
+      }
       await page.close();
     }
     assert.deepEqual(errors, []);

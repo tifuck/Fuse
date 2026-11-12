@@ -65,6 +65,16 @@ async def scripted_invoke(request, user, payload, **_kwargs):
             reply = f"I built **{title}**: one card per region, North ahead of South. Ask if you want churn added."
         message = {"role": "assistant", "content": reply}
         finish = "stop"
+    elif "rewrite" in prompt:
+        # A whole-page update of the chat's most recently changed artifact (the
+        # session tail lists newest first), with the marker the test picks:
+        # "... rewrite <marker>".
+        tail = _text_of(messages[-1].get("content")).split("Artifacts attached to this chat", 1)[-1]
+        ident = [line[2:].split(":", 1)[0].strip() for line in tail.splitlines() if line.startswith("- ")][0]
+        marker = prompt.rsplit("rewrite", 1)[1].strip()
+        message = {"role": "assistant", "content": "Rewriting the board.", "tool_calls": [{"id": "call_rewrite", "type": "function", "function": {
+            "name": "update_artifact", "arguments": json.dumps({"identifier": ident, "html": ARTIFACT_PAGE.replace("Q3 revenue", marker), "note": marker})}}]}
+        finish = "tool_calls"
     elif "update" in prompt:
         # The session tail lists this chat's artifacts newest first: take the oldest.
         tail = _text_of(messages[-1].get("content")).split("Artifacts attached to this chat", 1)[-1]

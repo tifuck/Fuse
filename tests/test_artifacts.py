@@ -452,6 +452,13 @@ class ArtifactGateTest(unittest.IsolatedAsyncioTestCase):
         text, trace = await execute_tool("update_artifact", args, user_id=self.uid, allowed_urls=set(), gate=gate)
         self.assertEqual(trace["kind"], "permission_denied", text)
         self.assertEqual(artifacts.get_owned(self.uid, art["identifier"])["current_version"], 1)
+        # create_artifact naming an existing artifact is an update, under either
+        # spelling the store accepts for the identifier.
+        for key in ("identifier", "id"):
+            args = json.dumps({"title": "Shared", key: art["identifier"], "html": "<p>c</p>"})
+            text, trace = await execute_tool("create_artifact", args, user_id=self.uid, allowed_urls=set(), gate=gate)
+            self.assertEqual(trace.get("kind"), "permission_denied", f"{key}: {text}")
+        self.assertEqual(artifacts.get_owned(self.uid, art["identifier"])["current_version"], 1)
         # A private one needs no ask, and reading never does.
         mine = artifacts.create(self.uid, title="Mine", html="<p>a</p>")
         _, done = await execute_tool("update_artifact", json.dumps({"identifier": mine["identifier"], "html": "<p>b</p>"}),

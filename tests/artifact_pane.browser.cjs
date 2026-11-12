@@ -2,8 +2,9 @@
 // drafting, running and publishing; a failed or stopped call never leaves the
 // pane on "Building…"; an update keeps the page on screen; the page bridge
 // (errors with Fix, send to chat); versions and source; live updates;
-// /artifacts and attaching; sharing; a deleted artifact; and the standalone
-// /a/ page, which document navigation to /content lands on.
+// /artifacts and attaching; sharing; every new version reaching an open pane
+// however it arrives; a deleted artifact; and the standalone /a/ page, which
+// document navigation to /content lands on.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
@@ -43,6 +44,11 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     const toggleText = () => page.locator('[data-artifact-toggle] span').innerText();
     const frameSrc = () => page.locator('[data-artifact-frame]').getAttribute('src');
     const alertText = () => page.locator('[data-artifact-alert-text]').innerText();
+    // The page in the pane is the one carrying `marker`.
+    const frameShows = async (marker) => {
+      const frame = await (await page.locator('[data-artifact-frame]').elementHandle()).contentFrame();
+      await frame.locator('#top', { hasText: marker }).waitFor({ timeout: 12000 });
+    };
 
     const first = await make({ title: 'Sales board', html: PAGE('first-v1'), icon: '📊' });
     const other = await make({ title: 'Other page', html: PAGE('other-v1') });
@@ -100,6 +106,7 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await page.evaluate((id) => fuseToolFixture.artifacts.showArtifact(id, null, { explicit: true }), first.identifier);
     await make({ identifier: first.identifier, html: PAGE('first-v2'), note: 'Q2 numbers' });
     await page.waitForFunction(() => document.querySelectorAll('[data-artifact-version] option').length === 2, null, { timeout: 15000 });
+    await frameShows('first-v2');
     assert.match(await page.locator('[data-artifact-version]').innerText(), /v2 · Q2 numbers \(latest\)/);
     await page.locator('[data-artifact-version]').selectOption('1');
     // The pinned version, plus the viewer's theme for the page's --fuse-* variables.
@@ -136,8 +143,54 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await make({ identifier: other.identifier, html: PAGE('other-v2') });
     await page.keyboard.press('Control+]');
     await pane.waitFor({ state: 'visible' });
-    const reopened = await (await page.locator('[data-artifact-frame]').elementHandle()).contentFrame();
-    await reopened.locator('#top', { hasText: 'other-v2' }).waitFor({ timeout: 8000 });
+    await frameShows('other-v2');
+
+    // A write in this chat puts the new page on screen at once, in one load.
+    let loads = 0;
+    page.on('request', (request) => { if (request.url().includes(`/a/${other.identifier}/content`)) loads += 1; });
+    const otherTraces = (version, status = 'done') => [
+      { id: 'o1', name: 'create_artifact', status: 'done', title: 'Other page', identifier: other.identifier, version: 1 },
+      { id: 'o2', name: 'edit_artifact', status, title: 'Other page', identifier: other.identifier, ...(status === 'done' ? { version } : {}) }];
+    await mount(otherTraces(0, 'running'), true);
+    await make({ identifier: other.identifier, html: PAGE('other-v3') });
+    loads = 0;
+    await send({ id: 'o2', name: 'edit_artifact', status: 'done', title: 'Other page', identifier: other.identifier, version: 3 });
+    await frameShows('other-v3');
+    await page.waitForTimeout(500);
+    assert.equal(loads, 1, 'a published version loads once');
+
+    // One that reaches the transcript without its live event (a snapshot, a
+    // replay, a steered reply) shows as soon as the transcript has it. The
+    // poll is cut off here, so only the transcript can have said so.
+    await page.route(`**/a/${other.identifier}/meta`, (route) => route.abort());
+    await make({ identifier: other.identifier, html: PAGE('other-v4') });
+    await mount(otherTraces(4), false);
+    await frameShows('other-v4');
+    await page.unroute(`**/a/${other.identifier}/meta`);
+
+    // One the transcript never shows (another chat, a subagent) is not hidden
+    // by opening the reply's card before the next poll: the pane used to take
+    // the new version number and keep the old page for good.
+    await make({ identifier: other.identifier, html: PAGE('other-v5') });
+    await page.locator('[data-artifact-cards] [data-open-artifact]').last().click();
+    await frameShows('other-v5');
+    assert.match(await frameSrc(), /\?v=5&theme=/, 'the frame names the version it shows');
+
+    // A page acting by itself reaches neither the message box nor the
+    // clipboard; the same call from a click in the page does.
+    const pushy = await make({ title: 'Pushy', html: `<!doctype html><html><body><h1 id="top">pushy</h1><button id="b">send</button><script>
+      setTimeout(function () { window.fuse.sendToChat("sent by itself"); window.fuse.copy("copied by itself"); }, 6500);
+      document.getElementById("b").addEventListener("click", function () { window.fuse.sendToChat("sent by a click"); });
+    </script></body></html>` });
+    await page.evaluate((id) => fuseToolFixture.artifacts.showArtifact(id, null, { explicit: true }), pushy.identifier);
+    await frameShows('pushy');
+    await page.evaluate(() => navigator.clipboard.writeText('the reader\'s clipboard'));
+    await page.waitForTimeout(8000); // the timer fires after this page's own activation has lapsed
+    assert.equal((await page.locator('#chat-input').inputValue()).includes('sent by itself'), false, 'a page cannot write the message box by itself');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'the reader\'s clipboard', 'a page cannot write the clipboard by itself');
+    const pushyFrame = await (await page.locator('[data-artifact-frame]').elementHandle()).contentFrame();
+    await pushyFrame.locator('#b').click();
+    await page.waitForFunction(() => document.querySelector('#chat-input').value.includes('sent by a click'));
 
     // A deleted artifact says so instead of showing an error body.
     await page.evaluate(() => fuseToolFixture.artifacts.showArtifact('deadbeef-0000-4000-8000-000000000000', null, { explicit: true }));

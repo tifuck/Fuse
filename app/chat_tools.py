@@ -736,7 +736,9 @@ async def _artifact_tool(name: str, args: dict, *, user_id: int, thread_id, codi
         args.pop("html", None)
         args.pop("markdown", None)
         args[fmt] = text
-    if name in ("update_artifact", "edit_artifact") or (name == "create_artifact" and args.get("identifier")):
+    if name != "read_artifact":
+        # Every write: the gate resolves the identifier as the store does (a
+        # create naming an existing artifact, by either key, is an update).
         denied = await _artifact_public_gate(name, args, user_id=user_id, gate=gate)
         if denied:
             return denied

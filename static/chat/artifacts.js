@@ -68,6 +68,8 @@ export function createArtifacts(ctx) {
   let fixError = null;
   let pollTimer = 0;
   let metaTag = "";
+  // The artifact whose latest version is being asked for.
+  let resolving = "";
   let freshTimer = 0;
   let listItems = null;
   const scrolls = new Map();
@@ -172,7 +174,16 @@ export function createArtifacts(ctx) {
     }
     // An open pane keeps what the reader picked (an older artifact, a version,
     // one opened from /artifacts, a page being rebuilt).
-    if (S.currentArtifact && (S.currentArtifact.building || (S.artifactOpen && S.currentArtifact.identifier))) {
+    const cur = S.currentArtifact;
+    if (cur && (cur.building || (S.artifactOpen && cur.identifier))) {
+      // A version this chat published can reach the transcript without its
+      // live event (a snapshot, a replay, a steered reply): show it now.
+      const mark = cur.current ? versionMarks().get(cur.identifier) : null;
+      if (mark && mark.version > cur.current) {
+        cur.current = mark.version;
+        if (!cur.version) showLatest();
+        refreshMeta(S.generation, false);
+      }
       syncArtifactUi();
       return;
     }
@@ -347,8 +358,7 @@ export function createArtifacts(ctx) {
       loadFrame(false);
     } else {
       closeMenu();
-      // The latest version's URL never changes, so a hidden frame keeping its
-      // page would come back stale when the pane reopens after an update.
+      // A hidden page must not keep running; reopening asks for the latest.
       S.artifactFrame?.removeAttribute("src");
       overlays.armOverlayGhost(S.root.querySelector("[data-artifact-close]"));
       overlays.overlayDrop("artifact");
@@ -361,9 +371,14 @@ export function createArtifacts(ctx) {
     if (ctx.composer && ctx.composer.scheduleFitChatBar) ctx.composer.scheduleFitChatBar();
   }
 
+  // The URL names the version on screen, so the frame can never show one the
+  // pane does not know about: a newer version is a different URL and loads,
+  // the same one does not. "" until the latest version is known.
   function frameUrl() {
     const cur = S.currentArtifact;
-    return cur && cur.identifier && !cur.building && !cur.missing ? artifactContentUrl(cur.identifier, cur.version) : "";
+    if (!cur || !cur.identifier || cur.building || cur.missing) return "";
+    const version = cur.version || cur.current;
+    return version || cur.unresolved ? artifactContentUrl(cur.identifier, version) : "";
   }
 
   function loadFrame(force) {
@@ -371,6 +386,9 @@ export function createArtifacts(ctx) {
     const url = frameUrl();
     if (!url) {
       S.artifactFrame.removeAttribute("src");
+      // Nothing to name yet: ask which version is the latest, then load it.
+      const cur = S.currentArtifact;
+      if (cur && cur.identifier && !cur.building && !cur.missing && resolving !== cur.identifier) refreshMeta(S.generation, false);
       return;
     }
     if (force || S.artifactFrame.getAttribute("src") !== url) {
@@ -378,6 +396,13 @@ export function createArtifacts(ctx) {
       // Setting src navigates even when it is unchanged: a reload.
       S.artifactFrame.src = url;
     }
+  }
+
+  // The latest version changed under a view that follows it.
+  function showLatest() {
+    S.artifactSourceLoaded = "";
+    if (S.artifactMode === "source") loadArtifactSource().catch(() => {});
+    loadFrame(false);
   }
 
   function pulse() {
@@ -452,13 +477,14 @@ export function createArtifacts(ctx) {
     finishActivity(rec);
     if (rec.name === "create_artifact" && S.syncState === "live") window.fuseSound?.play("artifact", { event: true });
     const cur = S.currentArtifact;
+    const current = Number(rec.version) || null;
     if (S.artifactOpen && (!cur || !cur.identifier || cur.building || cur.identifier === id)) {
-      showArtifact(id, rec, { keepMode: true, force: true }).catch(() => {});
+      showArtifact(id, rec, { keepMode: true, current }).catch(() => {});
       return;
     }
     const first = distinctArtifacts().filter((trace) => normalizeId(trace.identifier) !== id).length === 0;
     if (!S.artifactOpen && rec.name === "create_artifact" && first && autoOpenOn() && !overlays.overlayIsMobile()) {
-      showArtifact(id, rec).catch(() => {});
+      showArtifact(id, rec, { current }).catch(() => {});
       return;
     }
     if (!S.artifactOpen) S.currentArtifact = seedFrom(rec);
@@ -477,7 +503,8 @@ export function createArtifacts(ctx) {
       icon: (seed && seed.icon) || prior.icon || "",
       visibility: (seed && seed.visibility) || prior.visibility || "",
       version: opts.version || null,
-      current: prior.current || null,
+      // A closed pane was not polling: what it knew as the latest may be old.
+      current: opts.current || (S.artifactOpen && prior.current) || null,
       versions: prior.versions || [],
       history: prior.history || [],
       shared_version: prior.shared_version ?? null,
@@ -490,10 +517,11 @@ export function createArtifacts(ctx) {
     if (!opts.keepMode || S.artifactMode === "list") S.artifactMode = "preview";
     S.artifactSourceLoaded = "";
     if (S.artifactSource && S.artifactMode !== "source") S.artifactSource.textContent = "";
+    const meta = refreshMeta(gen, false);
     if (!S.artifactOpen) setArtifactOpen(true);
-    loadFrame(Boolean(opts.force));
+    loadFrame(false);
     syncArtifactUi();
-    await refreshMeta(gen, false);
+    await meta;
     if (S.artifactMode === "source") await loadArtifactSource().catch((error) => showFailure("Could not load source", error));
   }
 
@@ -516,24 +544,34 @@ export function createArtifacts(ctx) {
     if (!cur || !cur.identifier) return;
     const id = cur.identifier;
     const stale = () => gen !== S.generation || !S.currentArtifact || S.currentArtifact.identifier !== id;
+    if (!poll) resolving = id;
     let got;
     try {
       got = await fetchMeta(id, poll ? metaTag : "");
     } catch (error) {
+      if (!poll && resolving === id) resolving = "";
       if (stale()) return;
       if (error.status === 404) {
         S.currentArtifact.missing = true;
         showAlert(error.message);
         if (S.artifactFrame) S.artifactFrame.removeAttribute("src");
         syncArtifactUi();
+      } else if (!S.currentArtifact.current) {
+        // Which version is the latest stays unknown: show whatever it is.
+        S.currentArtifact.unresolved = true;
+        loadFrame(false);
       }
       return;
     }
+    if (!poll && resolving === id) resolving = "";
     if (!got || stale()) return;
-    metaTag = got.tag;
     const meta = got.meta;
     const live = S.currentArtifact;
     const before = live.current;
+    // Asked before a live event showed a newer version: the next poll's
+    // answer is current, this one would put the old page back.
+    if (meta.owner && before > meta.version) return;
+    metaTag = got.tag;
     // Opened by its share link: the owner works on it by its identifier.
     if (meta.owner && meta.identifier && meta.identifier !== live.identifier) {
       live.identifier = meta.identifier;
@@ -550,14 +588,13 @@ export function createArtifacts(ctx) {
       shared_version: meta.shared_version ?? null,
       share_url: meta.share_url || "",
     });
-    if (poll && before && meta.version !== before && !live.version) {
-      // A newer version landed elsewhere (another chat, tab or the gallery):
-      // show it in place, as an open Claude Code artifact does.
-      S.artifactSourceLoaded = "";
-      loadFrame(true);
-      if (S.artifactMode === "source") loadArtifactSource().catch(() => {});
-      hint(`“${live.title}” updated to v${meta.version}.`);
-    }
+    if (before && meta.version !== before && !live.version) {
+      // A newer version landed without this pane being told (another chat,
+      // tab or the gallery, a subagent): show it in place, as an open Claude
+      // Code artifact does.
+      showLatest();
+      if (poll) hint(`“${live.title}” updated to v${meta.version}.`);
+    } else loadFrame(false);
     syncArtifactUi();
   }
 
@@ -649,15 +686,18 @@ export function createArtifacts(ctx) {
     if (!data || data.fuseArtifact !== 1 || typeof data.type !== "string") return;
     const cur = S.currentArtifact;
     const key = cur ? `${cur.identifier}:${cur.version || ""}` : "";
+    // Only a click in the page may reach the clipboard or the message box (a
+    // click there activates this page too); a page acting by itself may not.
+    const clicked = !navigator.userActivation || navigator.userActivation.isActive;
     if (data.type === "error") {
       const message = String(data.message || "Error").slice(0, 600);
       const where = String(data.where || "").slice(0, 200);
       showAlert(`Page error: ${message.slice(0, 240)}${where ? ` (${where.slice(0, 60)})` : ""}`, { message, where });
     } else if (data.type === "open") {
       openExternal(String(data.url || ""));
-    } else if (data.type === "copy") {
+    } else if (data.type === "copy" && clicked) {
       copyText(String(data.text || "").slice(0, 200000), "Copied from the artifact.");
-    } else if (data.type === "compose") {
+    } else if (data.type === "compose" && clicked) {
       compose(String(data.text || "").slice(0, 20000));
       hint("Added from the artifact to your message.");
     } else if (data.type === "scroll" && key) {
@@ -722,9 +762,9 @@ export function createArtifacts(ctx) {
         const at = viewing(cur);
         const data = await post("/revert", { version: at });
         cur.version = null;
+        cur.current = data.version;
         hint(`Restored v${at} as v${data.version}.`);
-        S.artifactSourceLoaded = "";
-        loadFrame(true);
+        showLatest();
       }
       metaTag = "";
       await refreshMeta(S.generation, false);
@@ -833,8 +873,9 @@ export function createArtifacts(ctx) {
             hint(`Restored v${now.version} of “${now.title}” as v${data.version}.`);
             if (S.artifactOpen && S.currentArtifact && S.currentArtifact.identifier === id) {
               S.currentArtifact.version = null;
+              S.currentArtifact.current = data.version;
               metaTag = "";
-              loadFrame(true);
+              showLatest();
               refreshMeta(S.generation, false);
             }
           } catch (error) {

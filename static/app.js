@@ -841,6 +841,9 @@ if (artifactPage) {
       fuseConfirm(`Open this link from the page in a new tab?\n\n${url.href}`, { confirmLabel: "Open" })
         .then((ok) => ok && window.open(url.href, "_blank", "noopener,noreferrer"));
     } else if (data.type === "copy" || data.type === "compose") {
+      // Only after a click in the page (which activates this one too): a
+      // shared page must not rewrite a visitor's clipboard by itself.
+      if (navigator.userActivation && !navigator.userActivation.isActive) return;
       navigator.clipboard?.writeText(String(data.text || "").slice(0, 200000)).catch(() => {});
     } else if (data.type === "error" && errorBox) {
       errorBox.hidden = false;
