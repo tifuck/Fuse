@@ -33,6 +33,13 @@ export function createPanels(ctx) {
     if (S.memoryInstructions) S.memoryInstructions.value = S.instructions;
     if (S.memoryProfile) S.memoryProfile.value = S.profile;
     if (S.memoryThread) S.memoryThread.value = S.threadContext;
+    if (S.chatMemoryToggle) {
+      S.chatMemoryToggle.checked = S.memoryEnabled && !S.threadMemoryOff;
+      S.chatMemoryToggle.disabled = !S.memoryEnabled;
+      S.chatMemoryNote.textContent = S.memoryEnabled
+        ? "Saves and recalls notes across chats. Changes apply from the next message."
+        : "Off for your account. Turn it on in Settings › Chat defaults.";
+    }
     if (S.memoryPanel) S.memoryPanel.hidden = !S.memoryOpen;
     if (S.memoryBackdrop) S.memoryBackdrop.hidden = !S.memoryOpen;
     S.root.classList.toggle("is-memory", S.memoryOpen);
@@ -198,6 +205,33 @@ export function createPanels(ctx) {
       sync.syncStatus();
       throw error;
     } finally { S.contextSaving = null; }
+  }
+
+    // This chat's memory switch: saved like the permission mode, one write
+    // at a time behind any chat save. An unsent chat sends it on create.
+    async function setThreadMemory(on) {
+    const off = !on;
+    S.threadMemoryOff = off;
+    syncMemoryUi();
+    const id = S.currentId;
+    if (!id) return;
+    const task = S.saveChain.then(async () => {
+      const data = await net.api(`/chat/threads/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ memory_off: off, expected_revision: S.serverRevision }),
+      });
+      if (id === S.currentId && data && data.revision != null) S.serverRevision = data.revision;
+      return data;
+    });
+    S.saveChain = task.catch(() => {});
+    try {
+      const data = await task;
+      if (id === S.currentId && data) S.threadMemoryOff = Boolean(data.memory_off);
+    } catch (error) {
+      if (id === S.currentId) S.threadMemoryOff = !off;
+      sync.showFailure("Could not change memory for this chat", error);
+    }
+    syncMemoryUi();
   }
 
     function openLightbox(src, name) {
@@ -391,6 +425,7 @@ export function createPanels(ctx) {
     setMemoryOpen,
     setShowThinking,
     setSkillsOpen,
+    setThreadMemory,
     setViewMenuOpen,
     syncMemoryUi,
   };

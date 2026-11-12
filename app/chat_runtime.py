@@ -579,6 +579,18 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                                         *(["propose_skill"] if not is_child and not agent.get("auto") and not agent.get("scheduled") else [])])
     if not artifacts_on:
         loaded_tools[:] = [n for n in loaded_tools if n not in ARTIFACT_NAMES]
+    # Memory is opt-in: the turn's mode comes from the run request (account
+    # switch, this chat's switch, unattended runs read only). Subagents get
+    # none; a parent passes what a child needs in its prompt.
+    memory_mode = prefs.get("memory_mode") if settings.memory_enabled and not is_child else None
+    if memory_mode not in ("read", "full"):
+        memory_mode = "off"
+    memory_project = thread.get("project_id") if thread else None
+    memory_index = ""
+    if memory_mode != "off":
+        from . import memory as memory_mod
+
+        memory_index = memory_mod.index(user["id"], memory_project)
     if kind == "explore":
         from .agent_catalog import EXPLORE_TOOLS
 
@@ -606,6 +618,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         ),
         "unattended": bool(agent.get("auto") or agent.get("scheduled")),
         "artifacts": artifacts_on,
+        "memory": "read" if memory_mode == "full" and prefs.get("memory_readonly") else memory_mode,
+        "project_id": memory_project,
         "allow_skill_author": bool(
             coding
             and not is_child
@@ -660,6 +674,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         subagent=is_child,
         subagent_type=kind,
         artifacts=artifacts_on,
+        memory=memory_mode,
+        memory_index=memory_index,
+        memory_project=bool(memory_project),
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
     prompt_snapshot = copy.deepcopy(snapshot) if isinstance(snapshot, dict) and isinstance(snapshot.get("system"), str) else {}
@@ -719,6 +736,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         allow_spawn=allow_spawn,
         project_session=project_session,
         artifacts=artifacts_on,
+        memory=memory_mode,
     )
     prompt_context = {"instructions": prefs["instructions"], "profile": prefs["profile"],
                       "thread_context": thread_context}

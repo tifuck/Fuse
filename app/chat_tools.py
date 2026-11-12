@@ -71,6 +71,7 @@ def _remember_project_session(session: dict | None, promoted, user_id: int) -> N
 
 TOOL_IDS = ("web_search", "read_url")
 ARTIFACT_TOOL_IDS = ("create_artifact", "update_artifact", "read_artifact", "edit_artifact")
+MEMORY_TOOL_IDS = ("remember", "recall", "forget")
 DEFAULT_TOOLS = ["web_search"]
 MAX_RESULTS = 6
 MAX_TOOL_ROUNDS = 4
@@ -394,7 +395,21 @@ def openai_tools(
     allow_spawn: bool = False,
     project_session: bool = False,
     artifacts: bool = True,
+    memory: str = "off",
 ) -> list[dict]:
+    schemas = _openai_tools(names, coding=coding, extra=extra, allow_spawn=allow_spawn,
+                            project_session=project_session, artifacts=artifacts)
+    if memory != "off":
+        from . import memory as memory_mod
+
+        # Last, so turning memory on or off leaves every other tool's bytes
+        # where a provider's prefix cache already has them.
+        schemas.extend(memory_mod.tool_schemas(memory))
+    return schemas
+
+
+def _openai_tools(names: list[str], *, coding: bool, extra: list[str] | None, allow_spawn: bool,
+                  project_session: bool, artifacts: bool) -> list[dict]:
     schemas = []
     if "web_search" in names:
         schemas.append(SCHEMAS["web_search"])
@@ -947,6 +962,11 @@ async def execute_tool(
     if enabled is not None and name in TOOL_IDS and name not in enabled and not (name == "read_url" and "web_search" in enabled):
         msg = "Search is off for this turn."
         return msg, {"name": name, "status": "error", "kind": "disabled", "error": msg}
+    if name in MEMORY_TOOL_IDS:
+        from . import memory as memory_mod
+        from .async_work import durable_call
+
+        return await durable_call(memory_mod.run_tool, name, args, user_id=user_id, session=session or {}, thread_id=thread_id)
     # Artifacts are core chat tools: they are advertised unconditionally and
     # are not part of the per-turn enabled_tools toggle (parse_tool_names only
     # admits search ids), so they must not be gated on it.

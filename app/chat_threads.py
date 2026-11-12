@@ -159,7 +159,7 @@ def _session_root(cwd: str = "", path: str = "", *, tool: str = "") -> str:
         return (text.rsplit("/", 1)[0] or "/") if "/" in text else "."
     return text
 def get_user_context(user_id: int) -> dict:
-    row = db.fetchone("SELECT chat_instructions,chat_profile,chat_context_revision,chat_recaps,chat_artifacts FROM users WHERE id=?", (user_id,))
+    row = db.fetchone("SELECT chat_instructions,chat_profile,chat_context_revision,chat_recaps,chat_artifacts,chat_memory FROM users WHERE id=?", (user_id,))
     return _context_view(row)
 def _context_view(row):
     stored = (row["chat_instructions"] or "") if row else ""
@@ -171,14 +171,16 @@ def _context_view(row):
         "revision": row["chat_context_revision"] if row else 0,
         "recaps": bool(row["chat_recaps"]) if row and "chat_recaps" in row.keys() else True,
         "artifacts": bool(row["chat_artifacts"]) if row and "chat_artifacts" in row.keys() else True,
+        # Opt-in: off until the account turns it on (app/memory.py).
+        "memory": bool(row["chat_memory"]) if row and "chat_memory" in row.keys() else False,
     }
-def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=None, artifacts=None, strict: bool = False,
-                     expected_revision=None, command_id=None) -> dict:
+def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=None, artifacts=None, memory=None,
+                     strict: bool = False, expected_revision=None, command_id=None) -> dict:
     from . import chat_store as store
 
     with store.transaction() as conn:
         fingerprint, previous = store.command(conn, user_id, command_id,
-            ["context", instructions, profile, recaps, artifacts, expected_revision])
+            ["context", instructions, profile, recaps, artifacts, expected_revision, *([memory] if memory is not None else [])])
         if previous is not None:
             return previous
         row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
@@ -204,11 +206,15 @@ def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=No
             if not isinstance(artifacts, bool):
                 raise ChatValidationError("artifacts must be true or false")
             stored_artifacts = 1 if artifacts else 0
+        if memory is not None and not isinstance(memory, bool):
+            raise ChatValidationError("memory must be true or false")
         conn.execute(
             """UPDATE users SET chat_instructions=?,chat_profile=?,chat_recaps=?,chat_artifacts=?,
                chat_context_revision=chat_context_revision+1 WHERE id=?""",
             (stored_instructions, stored_profile, stored_recaps, stored_artifacts, user_id),
         )
+        if memory is not None:
+            conn.execute("UPDATE users SET chat_memory=? WHERE id=?", (1 if memory else 0, user_id))
         if not stored_recaps:
             from . import chat_recaps
             chat_recaps.disable(conn, user_id)
@@ -290,6 +296,7 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
         "schedule_name": _legacy_text(row["schedule_name"], TITLE_MAX) if "schedule_name" in keys and row["schedule_name"] else "",
         "bypass_permissions": bool(row["bypass_permissions"]) if "bypass_permissions" in keys else False,
         "auto_permissions": bool(row["auto_permissions"]) if "auto_permissions" in keys else False,
+        "memory_off": bool(row["memory_off"]) if "memory_off" in keys else False,
         "pinned": bool(row["pinned"]) if "pinned" in keys else False,
         "pin_order": int(row["pin_order"]) if "pin_order" in keys and row["pin_order"] is not None else 0,
         "unread": bool(row["unread"]) if "unread" in keys else False,
@@ -511,12 +518,13 @@ def create_thread(
     schedule_id=None,
     bypass_permissions: bool | None = None,
     auto_permissions: bool | None = None,
+    memory_off: bool | None = None,
 ) -> dict:
     from . import chat_store as store
     from . import hosts
 
     request = ["create", model, messages, title, context, tools, expected_revision, kind, host_id, project_id, schedule_id,
-               bypass_permissions, auto_permissions]
+               bypass_permissions, auto_permissions, *([memory_off] if memory_off is not None else [])]
     msgs = parse_messages(messages or [], strict=True)
     title = _clean_title(_text(title, "title", TITLE_MAX), strict=True)
     model = _text(model, "model", 200)
@@ -588,6 +596,8 @@ def create_thread(
             (tid, user_id, title, model, 0, payload, context, tool_json, ts, ts, ts, thread_kind, hid, pid, public, sid,
              int(perms == "bypass"), int(perms == "auto")),
         )
+        if memory_off:
+            conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
         if proj is not None and int(proj["archived"] or 0):
             hosts.projects_changed(conn, user_id)
         store.thread_event(conn, user_id, tid)
@@ -610,6 +620,7 @@ def update_thread(
     bypass_permissions: bool | None = None,
     auto_permissions: bool | None = None,
     reasoning_effort: str | None = None,
+    memory_off: bool | None = None,
 ) -> dict | None:
     from . import chat_store as store
 
@@ -623,6 +634,8 @@ def update_thread(
         request = ["update", thread_id, title, model, archived, pinned, messages, context, tools, expected_revision, bypass_permissions, auto_permissions]
         if reasoning_effort is not None:
             request.append(reasoning_effort)
+        if memory_off is not None:
+            request.append(["memory_off", memory_off])
         fingerprint, previous = store.command(conn, user_id, command_id, request)
         if previous is not None:
             return previous
@@ -639,6 +652,8 @@ def update_thread(
         _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
         _update_thread(conn, row, title=title, model=model, archived=archived, pinned=pinned, messages=messages, context=context, tools=tools,
                        reasoning_effort=reasoning_effort)
+        if memory_off is not None:
+            conn.execute("UPDATE chat_threads SET memory_off=? WHERE id=?", (1 if memory_off else 0, pk))
         if bypass_permissions is not None and bool(bypass_permissions) != bool(row["bypass_permissions"] if "bypass_permissions" in row.keys() else 0):
             from . import permissions as permissions_mod
 
@@ -1133,6 +1148,8 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
                 int(col("recap_epoch", 0) or 0), rewrite(col("recap_start_id", "")),
             ),
         )
+        if col("memory_off"):
+            conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
         mapped = {"id", "thread_id", "parent_run_id", "root_run_id", "message_id", "request", "message", "provider_messages"}
         run_columns = _copyable_columns(conn, "chat_runs", runs[0].keys()) if runs else []
         if runs and "provider_messages" in runs[0].keys() and "provider_messages" not in run_columns:

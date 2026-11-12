@@ -79,6 +79,7 @@
           profile: ctx.elements.profile.value,
           recaps: ctx.elements.recaps.checked,
           ...(ctx.elements.artifacts ? { artifacts: ctx.elements.artifacts.checked } : {}),
+          ...(ctx.elements.memory ? { memory: ctx.elements.memory.checked } : {}),
           expected_revision: revision,
           command_id: `settings-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         });
@@ -89,6 +90,31 @@
       } catch (err) {
         if (err.status === 409) throw new Error("Changed in another window. Reload to see the latest before saving.");
         throw err;
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-memory-form]").forEach((form) => {
+    const id = form.closest("[data-memory-id]").getAttribute("data-memory-id");
+    const out = form.querySelector(".set-status");
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      run(form, out, async () => {
+        await api(`/settings/memories/${id}`, "PUT", {
+          type: form.elements.type.value,
+          description: form.elements.description.value,
+          body: form.elements.body.value,
+        });
+        return "Saved.";
+      });
+    });
+    form.querySelector("[data-memory-delete]").addEventListener("click", async () => {
+      if (!window.confirm("Delete this memory? Chats will no longer see it.")) return;
+      try {
+        await api(`/settings/memories/${id}`, "DELETE");
+        form.closest("[data-memory-id]").remove();
+      } catch (err) {
+        status(out, err.message, "fault");
       }
     });
   });

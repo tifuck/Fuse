@@ -63,6 +63,7 @@ export function createApply(ctx) {
     S.contextRevision = Number(data.revision || 0);
     S.recapsEnabled = data.recaps !== false;
     if (recapsToggle) recapsToggle.checked = S.recapsEnabled;
+    S.memoryEnabled = data.memory === true;
     S.instructions = data.instructions || "";
     S.profile = data.profile || "";
     panels.syncMemoryUi();
@@ -171,6 +172,7 @@ export function createApply(ctx) {
     // snapshot: it predates them. Keep them and re-save against the new
     // revision instead of silently reverting what the user just changed.
     const keepLocalSettings = S.dirty;
+    if (Object.prototype.hasOwnProperty.call(data, "memory_off")) S.threadMemoryOff = Boolean(data.memory_off);
     if (!keepLocalSettings) {
       S.threadContext = data.context || "";
       S.searchOn = data.tools?.includes("web_search") ?? true;

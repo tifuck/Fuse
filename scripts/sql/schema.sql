@@ -360,6 +360,7 @@ CREATE TABLE `chat_threads` (
   `pinned` bigint(20) NOT NULL DEFAULT 0,
   `pin_order` bigint(20) NOT NULL DEFAULT 0,
   `unread` bigint(20) NOT NULL DEFAULT 0,
+  `memory_off` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
   KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),
@@ -461,6 +462,29 @@ CREATE TABLE `host_pairings` (
   KEY `host_pairings_user` (`user_id`,`expires_at`(191)),
   CONSTRAINT `fk_host_pairings_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `memories` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `project_id` bigint(20) DEFAULT NULL,
+  `scope_key` bigint(20) NOT NULL DEFAULT 0,
+  `name` varchar(64) NOT NULL,
+  `type` varchar(16) NOT NULL,
+  `description` varchar(200) NOT NULL DEFAULT '',
+  `body` text NOT NULL,
+  `thread_id` bigint(20) DEFAULT NULL,
+  `created_at` varchar(32) NOT NULL,
+  `updated_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `memories_name` (`user_id`,`scope_key`,`name`),
+  KEY `memories_project` (`project_id`),
+  KEY `memories_thread` (`thread_id`),
+  CONSTRAINT `memories_project` FOREIGN KEY (`project_id`) REFERENCES `user_projects` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `memories_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `memories_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
@@ -850,6 +874,7 @@ CREATE TABLE `users` (
   `retention_archive_projects` bigint(20) NOT NULL DEFAULT 1,
   `retention_delete_days` bigint(20) NOT NULL DEFAULT 0,
   `chat_artifacts` bigint(20) NOT NULL DEFAULT 1,
+  `chat_memory` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_users_1` (`email`) USING HASH
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;

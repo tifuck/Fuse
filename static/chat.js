@@ -994,6 +994,7 @@ import { createDictation } from './chat/dictation.js';
     S.contextWarned = false;
     S.contextAlertHidden = false;
     S.threadContext = "";
+    S.threadMemoryOff = false;
     S.searchOn = true;
     S.pendingAttachments = S.draftFiles.get(null) || [];
     composer.renderAttachList();
@@ -1656,6 +1657,8 @@ import { createDictation } from './chat/dictation.js';
   }
 
     artifacts.bind();
+
+    S.chatMemoryToggle?.addEventListener("change", () => panels.setThreadMemory(S.chatMemoryToggle.checked));
 
     [S.memoryInstructions, S.memoryProfile, S.memoryThread].forEach((area) => {
     if (!area) return;

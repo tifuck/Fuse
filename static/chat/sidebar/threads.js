@@ -191,6 +191,7 @@ export function createThreads(ctx) {
     function bindCreatePayload(payload) {
     payload.bypass_permissions = Boolean(S.threadBypass);
     payload.auto_permissions = Boolean(S.threadAuto);
+    if (S.threadMemoryOff) payload.memory_off = true;
     if (!S.pendingProject) return payload;
     payload.kind = "project";
     payload.host_id = S.pendingProject.host_id;
@@ -333,6 +334,7 @@ export function createThreads(ctx) {
     composer.renderAttachList();
     composer.resizeInput();
     S.threadContext = data.context || "";
+    S.threadMemoryOff = Boolean(data.memory_off);
     S.searchOn = Array.isArray(data.tools) ? data.tools.includes("web_search") : true;
     panels.syncMemoryUi();
     if (data.kind === "project") panels.refreshProjectAgents();

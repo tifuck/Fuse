@@ -468,7 +468,8 @@ async def run_tools(
             return "fetch"
         if name in ARTIFACT_TOOL_IDS:
             return "artifact"
-        if name in ("search_tools", "load_skill", "todo_write", "scratch", "propose_skill", "search_models", "read_transcript"):
+        if name in ("search_tools", "load_skill", "todo_write", "scratch", "propose_skill", "search_models", "read_transcript",
+                    "remember", "recall", "forget"):
             return "meta"
         if name == "spawn_subagent":
             return "spawn"

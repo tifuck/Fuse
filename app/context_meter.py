@@ -494,6 +494,9 @@ _TOOL_FAMILY = {
     "todo_write": "todos",
     "scratch": "scratch",
     "read_transcript": "transcript",
+    "remember": "memory",
+    "recall": "memory",
+    "forget": "memory",
 }
 
 

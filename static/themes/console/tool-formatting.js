@@ -93,6 +93,7 @@ function toolSubject(trace) {
     if (["create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(name)) return trace.title || "artifact";
     if (name === "load_skill" || name === "propose_skill") return [trace.preview || "skill", trace.path ? compactPath(trace.path, trace) : ""].filter(Boolean).join(" / ");
     if (name === "read_transcript") return transcriptRange(trace) || toolText(trace.preview || "", 90);
+    if (["remember", "recall", "forget"].includes(name)) return toolText(trace.title || "memory", 90);
     if (name === "fuse-steer") return trace.summary || "New instruction";
     return toolText(trace.query || trace.description || trace.title || trace.preview || trace.path || "", 140);
   }
@@ -101,7 +102,7 @@ function toolAction(trace) {
     const labels = { read_file: "Read", list_dir: "List", grep: "Grep", glob: "Glob", write_file: "Write", search_replace: "Edit",
       run_terminal_command: "Shell", get_command_output: "Output", kill_command: "Stop", monitor: "Watch", spawn_subagent: "Agent",
       get_subagent_output: "Result", kill_subagent: "Stop", list_subagents: "Agents", search_models: "Models", search_tools: "Tools",
-      load_skill: "Skill", propose_skill: "Draft", todo_write: "Tasks", scratch: "Scratch", read_transcript: "Transcript", read_url: "Page", web_search: "Search", search: "Search",
+      load_skill: "Skill", propose_skill: "Draft", todo_write: "Tasks", scratch: "Scratch", remember: "Remember", recall: "Recall", forget: "Forget", read_transcript: "Transcript", read_url: "Page", web_search: "Search", search: "Search",
       create_artifact: "Create", update_artifact: "Update", edit_artifact: "Edit", read_artifact: "Read", "fuse-steer": "Notice" };
     return labels[trace.name] || String(trace.name || "Tool").replaceAll("_", " ");
   }
@@ -338,6 +339,8 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(trace.title || "artifact", 80);
     } else if (name === "read_transcript") {
       inner = consoleArgText(transcriptRange(trace), 90);
+    } else if (["remember", "recall", "forget"].includes(name)) {
+      inner = consoleArgText(trace.title || "memory", 90);
     } else if (name === "load_skill") {
       // Skill(name), or Skill(name / file) for a supporting file; the line
       // under it says what the skill is for.
@@ -441,6 +444,7 @@ const STEP_ICONS = {
     tool: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2.6l5.4 5.4L8 13.4 2.6 8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/></svg>',
     model: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2.4l5 2.8v5.6l-5 2.8-5-2.8V5.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.2 5.3L8 8l4.8-2.7M8 8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
     todo: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.6 4.4l1.1 1.1 1.9-2.1M2.6 10.4l1.1 1.1 1.9-2.1M7.8 4.6h5.6M7.8 10.6h5.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    memory: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4.2 2.6h7.6v11l-3.8-2.6-3.8 2.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
     scratch: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="2.8" width="9.6" height="10.8" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.6 2v1.6M8 2v1.6M10.4 2v1.6M5.6 7h4.8M5.6 9.8h3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
     steer: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 12.6V8.2c0-1.7 1.3-3 3-3h7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.4 2.6L13 5.2l-2.6 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     error: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2.8l5.1 8.9H2.9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v2.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11" r="0.55" fill="currentColor"/></svg>',
@@ -477,6 +481,9 @@ const TOOL_ICON = {
     propose_skill: "skill",
     todo_write: "todo",
     scratch: "scratch",
+    remember: "memory",
+    recall: "memory",
+    forget: "memory",
     read_transcript: "read",
     spawn_subagent: "agent",
     get_subagent_output: "await",

@@ -7,6 +7,7 @@
 <nav class="settings-jump" aria-label="Settings sections">
   <a href="#account">Account</a>
   <a href="#chat">Chat defaults</a>
+  <a href="#memory">Memory</a>
   <a href="#alerts">Alerts</a>
   <a href="#agents">Coding agents</a>
   <a href="#cleanup">Cleanup</a>
@@ -77,6 +78,12 @@
     </div>
   </div>
   <div class="set-row">
+    <div class="set-label"><strong>Memory</strong><span>Let models save short notes about you and your projects, and recall them in later chats. Off removes the tools and hides saved memories from every chat; they stay listed below.</span></div>
+    <div class="set-control">
+      <label class="check"><input type="checkbox" name="memory"{% if context.memory %} checked{% endif %}> Models can save and recall memories</label>
+    </div>
+  </div>
+  <div class="set-row">
     <div class="set-label"><strong>About you</strong><span>For example: Berlin, CET. Solo dev on a Rails app.</span></div>
     <div class="set-control">
       <label><span class="visually-hidden">About you</span>
@@ -89,6 +96,33 @@
     <span class="set-status" data-context-status role="status"></span>
   </div>
 </form>
+
+<section class="panel set" id="memory" aria-labelledby="set-memory-title" data-memory-list>
+  <header class="set-head">
+    <h2 id="set-memory-title">Memory</h2>
+    <p>What chats have saved. Global memories reach every chat; project memories reach that project's chats. A chat can turn memory off for itself in its Context sheet.</p>
+  </header>
+  {% if memories %}
+  {% for m in memories %}
+  <details class="set-row set-mem" data-memory-id="{{ m.id }}">
+    <summary class="set-label"><strong>{{ m.name }}</strong><span>{{ m.type }} · {{ m.project or "global" }} · {{ m.description }}</span></summary>
+    <form class="set-control" data-memory-form>
+      <label><span>Type</span> <select name="type">{% for t in memory_types %}<option value="{{ t }}"{% if t == m.type %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+      <label><span>Description</span> <input name="description" maxlength="150" value="{{ m.description }}"></label>
+      <label><span>Memory</span> <textarea name="body" rows="5">{{ m.body }}</textarea></label>
+      <p class="set-inline">Updated {{ m.updated_at[:10] }}{% if m.thread %} · <a href="/chat?t={{ m.thread }}">saved in this chat</a>{% endif %}</p>
+      <div class="set-inline">
+        <button type="submit" class="btn sm">Save</button>
+        <button type="button" class="btn ghost sm" data-memory-delete>Delete</button>
+        <span class="set-status" role="status"></span>
+      </div>
+    </form>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p class="set-row set-note">No memories saved yet.{% if not context.memory %} Turn on Memory in Chat defaults first.{% endif %}</p>
+  {% endif %}
+</section>
 
 <section class="panel set" id="alerts" aria-labelledby="set-alerts-title">
   <header class="set-head">

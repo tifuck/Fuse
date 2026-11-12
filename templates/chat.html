@@ -359,6 +359,10 @@
           <span class="visually-hidden">This conversation</span>
           <textarea data-memory-thread maxlength="4000" rows="8" placeholder="Notes for this thread only"></textarea>
         </label>
+        <label class="ap-switch chat-memory-switch">
+          <input type="checkbox" role="switch" data-chat-memory-toggle>
+          <span class="ap-switch-copy"><span>Memory in this chat</span><small data-chat-memory-note></small></span>
+        </label>
       </div>
       <div class="chat-context-panel" id="context-panel-agents" data-context-panel="agents" role="tabpanel" hidden>
         <p class="chat-context-desc">The project's instruction file, loaded into every chat in this project. Saving writes it to the project folder.</p>

@@ -9,7 +9,7 @@ import json
 import time
 from uuid import uuid4
 
-from . import db, chat_images, chat_schema, chat_tx, chat_views, chat_checkpoint, chat_scratch, run_inbox
+from . import db, chat_images, chat_schema, chat_tx, chat_views, chat_checkpoint, chat_scratch, memory, run_inbox
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +336,14 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
             # The account's switches as of this turn: the runtime reads its
             # context from this request, never from the users row.
             "artifacts": bool(account["chat_artifacts"]) if "chat_artifacts" in account.keys() else True,
+            "memory_mode": memory.mode(
+                enabled=bool(account["chat_memory"]) if "chat_memory" in account.keys() else False,
+                chat_off=bool(row["memory_off"]) if "memory_off" in row.keys() else False,
+                unattended=bool(scheduled),
+            ),
+            # A wake keeps the chat's tool list (a different one would miss the
+            # prompt cache) but may only read memory: nobody is watching it.
+            "memory_readonly": bool(auto),
             "history_replay": True,
             "history_info": history_info,
             "history_input_hashes": chat_history.input_hashes(request_messages),

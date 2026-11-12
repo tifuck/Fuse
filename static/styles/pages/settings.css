@@ -198,6 +198,13 @@ body.is-settings .panel.set { padding: 0; }
 .set-status.is-ok { color: var(--ok); }
 .set-status.is-fault { color: var(--fault); }
 .set-link { display: inline-flex; align-items: center; gap: 0.35rem; }
+.set-mem > summary { cursor: pointer; list-style: none; grid-column: 1 / -1; min-height: 44px; }
+.set-mem > summary::-webkit-details-marker { display: none; }
+.set-mem > summary span { overflow-wrap: anywhere; }
+.set-mem[open] > summary strong { color: var(--brass); }
+.set-mem > .set-control { grid-column: 1 / -1; }
+.set-mem .set-control > label { display: grid; gap: 0.25rem; width: 100%; color: var(--mute); font-size: 0.8rem; }
+.set-mem .set-control select { width: auto; justify-self: start; }
 .set .table-wrap { margin: 0 1.1rem 1rem; }
 .set-state {
   display: inline-flex;

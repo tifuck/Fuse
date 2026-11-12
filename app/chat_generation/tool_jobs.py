@@ -474,6 +474,12 @@ def _running_event(job: ToolJob) -> dict:
             desc = scratch_label(parsed)
         if desc:
             event["description"] = desc[:200]
+        if job.name in ("remember", "forget", "recall"):
+            # The row names the memory, never its description or body.
+            event.pop("description", None)
+            names = parsed.get("names") if isinstance(parsed.get("names"), list) else [parsed.get("name")]
+            label = ", ".join(str(n) for n in names if isinstance(n, str) and n.strip())
+            event["title"] = (label or ("index" if job.name == "recall" else "memory"))[:80]
         if job.name == "spawn_subagent":
             model = str(parsed.get("model") or "")
             if model:

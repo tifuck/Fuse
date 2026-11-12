@@ -1038,6 +1038,9 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             "search_models",
             "propose_skill",
             "read_transcript",
+            "remember",
+            "recall",
+            "forget",
         ):
             # Unknown calls are still real failed steps, and must survive replay.
             if (not isinstance(name, str) or not name.strip() or len(name) > 64 or _has_surrogate(name)

@@ -415,6 +415,8 @@
   min-height: 7rem;
 }
 .chat-context-panel [data-agents-body] { font-family: var(--mono); font-size: 0.8rem; }
+.chat-context-panel .chat-memory-switch { flex-shrink: 0; }
+.chat-context-panel .chat-memory-switch:has(input:disabled) { opacity: 0.7; }
 .chat-agents-foot {
   display: flex;
   align-items: center;

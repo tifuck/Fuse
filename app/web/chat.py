@@ -499,10 +499,10 @@ async def chat_thread_create(request: Request):
         return err
     raw = await _json_object(request)
     unknown = set(raw) - {"model", "messages", "title", "context", "tools", "command_id", "kind", "host_id", "project_id",
-                          "bypass_permissions", "auto_permissions"}
+                          "bypass_permissions", "auto_permissions", "memory_off"}
     if unknown:
         raise HTTPException(422, "Unsupported chat fields")
-    for key in ("bypass_permissions", "auto_permissions"):
+    for key in ("bypass_permissions", "auto_permissions", "memory_off"):
         if key in raw and not isinstance(raw[key], bool):
             raise HTTPException(422, f"{key} must be true or false")
     if "messages" in raw and not isinstance(raw["messages"], list):
@@ -526,6 +526,7 @@ async def chat_thread_create(request: Request):
             project_id=raw.get("project_id"),
             bypass_permissions=raw.get("bypass_permissions"),
             auto_permissions=raw.get("auto_permissions"),
+            memory_off=raw.get("memory_off"),
         )
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
@@ -824,9 +825,13 @@ async def chat_thread_patch(request: Request, thread_id: str):
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"title", "model", "archived", "pinned", "messages", "context", "tools", "expected_revision", "command_id", "bypass_permissions", "auto_permissions", "reasoning_effort"}:
+    if set(raw) - {"title", "model", "archived", "pinned", "messages", "context", "tools", "expected_revision", "command_id", "bypass_permissions", "auto_permissions", "reasoning_effort", "memory_off"}:
         raise HTTPException(422, "Unsupported chat fields")
     kwargs = {"expected_revision": _chat_revision(raw), "command_id": raw.get("command_id")}
+    if "memory_off" in raw:
+        if not isinstance(raw["memory_off"], bool):
+            raise HTTPException(422, "memory_off must be true or false")
+        kwargs["memory_off"] = raw["memory_off"]
     if "bypass_permissions" in raw:
         if not isinstance(raw["bypass_permissions"], bool):
             raise HTTPException(422, "bypass_permissions must be true or false")
@@ -1134,7 +1139,7 @@ async def chat_context_put(request: Request):
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "expected_revision", "command_id"}:
+    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "expected_revision", "command_id"}:
         raise HTTPException(422, "Unsupported context fields")
     kwargs = {"expected_revision": _chat_revision(raw), "command_id": raw.get("command_id")}
     if "instructions" in raw:
@@ -1153,6 +1158,10 @@ async def chat_context_put(request: Request):
         if not isinstance(raw["artifacts"], bool):
             raise HTTPException(400, "Invalid artifacts")
         kwargs["artifacts"] = raw["artifacts"]
+    if "memory" in raw:
+        if not isinstance(raw["memory"], bool):
+            raise HTTPException(400, "Invalid memory")
+        kwargs["memory"] = raw["memory"]
     try:
         data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
     except chats.ChatValidationError as exc:
