@@ -1,7 +1,8 @@
 /* Fuse service worker: Web Push for finished chats.
    A notification is suppressed when a focused window is already showing the
    finished thread (the user is watching it on this device). */
-const ICON = "/static/icon-192.png";
+const ICON = "/static/icon-maskable-192.png";
+const BADGE = "/static/icon-192.png";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -49,7 +50,7 @@ self.addEventListener("push", (event) => {
       await self.registration.showNotification(title, {
         body,
         icon: ICON,
-        badge: ICON,
+        badge: BADGE,
         tag: threadId ? `fuse-chat-${threadId}` : "fuse-chat",
         renotify: true,
         data: { url },

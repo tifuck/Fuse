@@ -63,7 +63,7 @@
   function show(threadId, title, body, open) {
     if (mode !== "local" || Notification.permission !== "granted") return;
     if (shown.has(threadId)) shown.get(threadId).close();
-    const note = new Notification(title, { body, icon: "/static/icon-192.png", tag: tagFor(threadId) });
+    const note = new Notification(title, { body, icon: "/static/icon-maskable-192.png", tag: tagFor(threadId) });
     shown.set(threadId, note);
     note.onclose = () => {
       if (shown.get(threadId) === note) shown.delete(threadId);
@@ -198,7 +198,7 @@
           mode === "push"
             ? "Alerts are on — you'll hear when a chat finishes."
             : "Alerts are on for this device while a Fuse chat is open.",
-        icon: "/static/icon-192.png",
+        icon: "/static/icon-maskable-192.png",
         tag: "fuse-alerts-on",
       });
     } catch {}
