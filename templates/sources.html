@@ -203,6 +203,16 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# One provider limit per row (5-hour, weekly, per-model caps): name,
+   percent and a fixed-width meter, always visible. #}
+{% macro limit_row(l) %}
+<div class="limit-row" title="{{ l.name }} {{ l.percent_label }}{% if l.resets %} · resets {{ l.resets }}{% endif %}">
+  <span class="limit-name">{{ l.name }}</span>
+  <b class="limit-pct">{{ l.percent_label }}</b>
+  <span class="usage-meter" aria-hidden="true"><span style="--pct: {{ l.meter }}%"></span></span>
+</div>
+{% endmacro %}
+
 {% macro source_stats(a) %}
   {% set fuse = a.fuse %}
   {% set plan = a.billing %}
@@ -301,18 +311,12 @@
           {% endif %}
         </td>
         <td class="source-usage" title="{{ source_usage_title(a) }}">
-          {% if a.billing and a.billing.available and a.billing.limits|length > 1 %}
-          <details class="source-limits">
-            <summary aria-label="{{ a.billing.percent_label }} used, show each limit"><span class="source-usage-pct">{{ a.billing.percent_label }}</span><span class="usage-meter" aria-hidden="true"><span style="--pct: {{ a.billing.meter }}%"></span></span></summary>
-            <ul>
-              {% for l in a.billing.limits %}
-              <li title="{{ l.name }} {{ l.percent_label }}{% if l.resets %} · resets {{ l.resets }}{% endif %}"><span>{{ l.name }}</span><b>{{ l.percent_label }}</b><span class="usage-meter" aria-hidden="true"><span style="--pct: {{ l.meter }}%"></span></span></li>
-              {% endfor %}
-            </ul>
-          </details>
-          {% elif a.billing and a.billing.available %}
-          <span class="source-usage-pct">{{ a.billing.percent_label }}</span>
-          <span class="usage-meter" aria-hidden="true"><span style="--pct: {{ a.billing.meter }}%"></span></span>
+          {% set plan = a.billing %}
+          {% set rows = plan.limits if plan and plan.limits else ([{'name': plan.period, 'percent_label': plan.percent_label, 'meter': plan.meter, 'resets': plan.period_end}] if plan and plan.available else []) %}
+          {% if rows %}
+          <div class="limit-rows">
+            {% for l in rows %}{{ limit_row(l) }}{% endfor %}
+          </div>
           {% else %}
           <span class="dim">—</span>
           {% endif %}
