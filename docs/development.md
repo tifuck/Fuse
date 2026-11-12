@@ -60,10 +60,15 @@ change: each pool merges its live catalog into its seed list.
   `{{ asset('file.js') }}` and imports are plain relative URLs. Never add
   `?v=` by hand.
 - Open pages reload themselves after a deploy changes the UI (`buildWatch`
-  in `static/app.js`, build id from `static_assets.build_id()`), but never
-  over unsaved work. A page that keeps such work outside a form declares it:
+  in `static/app.js`, build id from `static_assets.build_id()`): unprompted,
+  once the page is hidden, just brought back, or idle. Never over unsaved
+  work: a page that keeps such work outside a form declares it with
   `data-no-reload` on content shown once, `window.fuseUnsaved()` for state
   in JS, `data-reload-safe` around a field the page saves itself.
+- A reload must come back to what was on screen. Chat saves its view on
+  `pagehide` and restores it on a reload of the same address
+  (`static/chat/boot.js`); view state added later belongs in that snapshot,
+  the URL, or storage.
 - `static/app.css` is an ordered import list; keep its order (cascade).
   Design tokens live in `static/styles/tokens/root.css`.
 

@@ -386,13 +386,15 @@ import { createDictation } from './chat/dictation.js';
   });
 
   const boot = createBoot({
+    agents,
     artifacts,
     composer,
     sidebar,
     sync,
+    transcript,
   });
 
-  if (S.config.speech) createDictation({ picker });
+  const dictation = S.config.speech ? createDictation({ picker }) : null;
 
     if (S.viewMenu && S.viewMenu.parentElement !== document.body) document.body.append(S.viewMenu);
 
@@ -492,8 +494,9 @@ import { createDictation } from './chat/dictation.js';
   });
 
     // An automatic reload (app.js buildWatch) also spares what a manual one
-    // may drop: attached files and an unsaved AGENTS.md live only in this page.
-    window.fuseUnsaved = () => unsaved() || Boolean(S.agentsDirty) || S.pendingAttachments.length > 0 ||
+    // may drop: attached files, an unsaved AGENTS.md and a recording in
+    // progress live only in this page.
+    window.fuseUnsaved = () => unsaved() || Boolean(S.agentsDirty || dictation?.active) || S.pendingAttachments.length > 0 ||
       [...S.draftFiles.values()].some((files) => files.length > 0);
 
     window.fuseSpinDebug = {

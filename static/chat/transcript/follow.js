@@ -31,8 +31,10 @@ export function createFollow(ctx) {
     return gap < 96;
   }
 
-    function captureThreadViewport() {
-    const threadId = S.log._threadId === undefined ? S.currentId : S.log._threadId;
+    // threadId: whose transcript the log shows. A chat created in this page
+    // keeps the unsent chat's log id until its next full paint; a caller that
+    // knows the log is the current chat's (boot.js, leaving the page) says so.
+    function captureThreadViewport(threadId = S.log._threadId === undefined ? S.currentId : S.log._threadId) {
     // Another thread's reading position is never restored (see
     // restoreThreadViewport), so do not force a layout to measure it.
     if (threadId !== S.currentId) return { threadId, top: S.lastThreadScrollTop || 0, following: S.stickToBottom };

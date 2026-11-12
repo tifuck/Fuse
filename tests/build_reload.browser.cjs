@@ -1,7 +1,8 @@
 // Build watcher (static/app.js buildWatch) against the isolated server only:
-// a page that learns the server runs a newer UI shows a Reload toast and
-// reloads itself when nobody is mid-task, never over work only the page holds,
-// never into a server that does not answer, and at most once per build.
+// a page that learns the server runs a newer UI reloads itself, unprompted,
+// once nobody is using it (hidden, just brought back, or idle), never over
+// work only the page holds, never into a server that does not answer, and at
+// most once per build.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
@@ -18,11 +19,11 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
     // What /build answers: null is the real server, 'down' no answer at all.
     let server = null;
-    await page.route(origin + '/build', route => (
+    await context.route(origin + '/build', route => (
       server === null ? route.fallback() : server === 'down' ? route.abort() : route.fulfill({ status: 200, contentType: 'text/plain', body: server })
     ).catch(() => {}));
 
-    const TOAST = '.fuse-toast[data-toast-key="fuse-build"]';
+    const TOAST = '.fuse-toast';
     const META = 'meta[name="fuse-build"]';
     const live = () => page.locator('[data-sync-label]').filter({ hasText: 'Live sync' }).waitFor({ state: 'attached' });
     const visibility = hidden => page.evaluate(hidden => {
@@ -56,9 +57,9 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     server = 'b1';
     await mark();
     await socketSays('b1');
-    await page.locator(TOAST).waitFor();
     await kept('a visible page in use is not reloaded');
-    console.log('PASS a stale page in use gets the Reload toast, not a reload');
+    assert.equal(await page.locator(TOAST).count(), 0, 'and is not asked to reload');
+    console.log('PASS a stale page in use is neither reloaded nor prompted');
 
     // Work only this page holds. Each hold is set before the last is lifted,
     // so the hidden page is never free to reload in between.
@@ -122,7 +123,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await mark();
     await hide();
     await show();
-    await page.locator(TOAST).waitFor();
+    await kept('one automatic reload per build');
     await hide();
     await kept('one automatic reload per build');
     console.log('PASS a build that survives the reload is not reloaded for again');
@@ -136,11 +137,14 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     console.log('PASS a page brought back stale reloads before it is used');
 
     server = null;
+    await mark();
     await socketSays('b4');
-    await page.locator(TOAST).waitFor();
     await socketSays(real);
-    await page.locator(TOAST).waitFor({ state: 'detached' });
-    console.log('PASS a rollback to the page\'s build withdraws the toast');
+    await hide();
+    await kept('a page whose build is current again is not reloaded');
+    await show();
+    await page.waitForTimeout(500);  // the check that coming back starts
+    console.log('PASS a rollback to the page\'s build calls the reload off');
 
     // Stale, but the last word from the server is old and it no longer answers.
     server = 'down';
@@ -150,10 +154,33 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await hide();
     await kept('no reload into a server that does not answer', 1000);
     console.log('PASS a page does not reload into an unreachable server');
+    // The hidden page asks again on its own, within a tick of the watcher.
+    const back = page.waitForEvent('load', { timeout: 20000 }).catch(() => { throw new Error('the reload happens once the server answers again'); });
     server = 'b5';
-    await page.waitForTimeout(5200);
-    await reloads(hide, 'the reload happens once the server answers again');
+    await back;
+    await live();
     console.log('PASS it reloads once the server answers again');
+
+    // Visible and left alone, on a page with no chat socket: it learns of the
+    // build from its own timer and reloads once IDLE_MS passes without input,
+    // with no prompt. Its own page, so only this part runs on a fake clock.
+    // (A chat page here would hear the fixture's real build on its socket.)
+    const idle = await context.newPage();
+    idle.on('pageerror', error => errors.push(error.message));
+    await idle.clock.install();
+    server = null;
+    await idle.goto(origin + '/keys');
+    assert.equal(await idle.getAttribute(META, 'content'), real);
+    server = 'b6';
+    await idle.evaluate(() => { window.__sameView = true; });
+    await idle.clock.fastForward('01:30');
+    await idle.waitForTimeout(700);
+    assert.equal(await idle.evaluate(() => window.__sameView === true), true, 'not before the idle time is up');
+    const again = idle.waitForEvent('load', { timeout: 5000 }).catch(() => { throw new Error('an idle stale page reloads'); });
+    await idle.clock.fastForward('01:00');
+    await again;
+    assert.equal(await idle.locator(TOAST).count(), 0);
+    console.log('PASS a visible page left idle learns of the build and reloads on its own');
 
     assert.deepEqual(errors, []);
   } finally {
