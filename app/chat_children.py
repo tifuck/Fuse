@@ -1267,6 +1267,7 @@ def _start_child_run(
                 "thread_context": req.get("thread_context") or "",
                 "instructions": req.get("instructions") or "",
                 "profile": req.get("profile") or "",
+                "artifacts": req.get("artifacts", True),
                 "prompt_snapshot": src_req.get("prompt_snapshot") if not retype else None,
                 "agent": {
                     "coding": True,
@@ -1357,6 +1358,7 @@ def _start_child_run(
             "thread_context": req.get("thread_context") or "",
             "instructions": req.get("instructions") or "",
             "profile": req.get("profile") or "",
+            "artifacts": req.get("artifacts", True),
             "agent": {
                 "coding": True,
                 "project_session": True,

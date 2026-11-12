@@ -433,6 +433,28 @@ class ArtifactAuthoringTest(unittest.TestCase):
         self.assertEqual(back["history"][-1]["note"], "Restored v1")
 
 
+class ArtifactAccountSwitchTest(unittest.TestCase):
+    """Settings › Chat defaults › Artifacts reaches the run. The runtime reads
+    its context from the run request; before the switch was frozen into it,
+    the request had no artifacts key and every run read the switch as on."""
+
+    @classmethod
+    def setUpClass(cls):
+        db.connect()
+        accounts.create_user("switch-art@example.test", "password12", admin=False, require_invite=False)
+        cls.uid = int(accounts.user_by_email("switch-art@example.test")["id"])
+
+    def test_switched_off_account_freezes_into_the_run(self):
+        from app import chat_store
+
+        for on in (False, True):
+            chats.set_user_context(self.uid, artifacts=on)
+            made = chats.create_thread(self.uid, model="offline", tools=[])
+            run = chat_store.start_turn(self.uid, made["id"], "Hi", made["revision"], None)["run"]
+            self.assertIs(run["request"]["artifacts"], on)
+            chat_store.finish_run(run["id"], {"content": "x"}, "completed")
+
+
 class ArtifactGateTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         limiter._hits.clear()

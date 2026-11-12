@@ -333,6 +333,9 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
             "thread_context": context if context is not None else row["context"],
             "instructions": chats.effective_instructions(account["chat_instructions"]),
             "profile": account["chat_profile"] or "",
+            # The account's switches as of this turn: the runtime reads its
+            # context from this request, never from the users row.
+            "artifacts": bool(account["chat_artifacts"]) if "chat_artifacts" in account.keys() else True,
             "history_replay": True,
             "history_info": history_info,
             "history_input_hashes": chat_history.input_hashes(request_messages),
