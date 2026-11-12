@@ -11,7 +11,7 @@
   const intFmt = new Intl.NumberFormat();
   const SERIES = ["--uz-s1", "--uz-s2", "--uz-s3", "--uz-s4", "--uz-s5", "--uz-s6"];
   const MIX = { uncached: "--uz-s1", cached: "--uz-s3", write: "--uz-s6", visible: "--uz-s4", reasoning: "--uz-s5" };
-  const RANGE_TEXT = { "30m": "Last 30 minutes", "6h": "Last 6 hours", "24h": "Last 24 hours", "3d": "Last 3 days", "7d": "Last 7 days", "30d": "Last 30 days" };
+  const RANGE_TEXT = { "30m": "Last 30 minutes", "6h": "Last 6 hours", "24h": "Last 24 hours", "3d": "Last 3 days", "7d": "Last 7 days", "30d": "Last 30 days", all: "All time" };
   const RANGES = Object.keys(RANGE_TEXT);
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -28,6 +28,8 @@
   let recentAll = false;
   let data = null;
   let controller = null;
+  // Responses by query: a revisited view paints at once, then refreshes.
+  const cache = new Map();
   // Colour follows the model, not its rank: slots are handed out in first-seen
   // order and kept for the session, so filters never repaint survivors.
   const slots = new Map();
@@ -79,6 +81,7 @@
     const end = new Date(start.getTime() + (data.range.bucket_seconds || 3600) * 1000);
     const day = { weekday: "short", month: "short", day: "numeric" };
     const time = { hour: "numeric", minute: "2-digit" };
+    if ((data.range.bucket_seconds || 0) >= 604800) return "Week of " + start.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
     if ((data.range.bucket_seconds || 0) >= 86400) return start.toLocaleDateString([], day);
     return `${start.toLocaleDateString([], day)}, ${start.toLocaleTimeString([], time)} – ${end.toLocaleTimeString([], time)}`;
   }
@@ -158,7 +161,16 @@
     const provider = state.provider ? (data.provider_options || []).find((p) => p.id === state.provider)?.name || state.provider : "";
     const picked = (data.account_options || []).find((u) => "user:" + u.id === state.scope);
     const who = data.scope === "all" ? "all accounts" : picked ? picked.email : "your account";
-    el.innerHTML = `<b>${esc(RANGE_TEXT[data.range.id] || "")}</b> · ${esc(who)}${provider ? " · " + esc(provider) : ""} · compared with the previous ${esc((RANGE_TEXT[data.range.id] || "").replace("Last ", ""))}`;
+    const tail = lifetime()
+      ? data.range.first_at ? `since ${esc(sinceText())}` : "no usage recorded yet"
+      : `compared with the previous ${esc((RANGE_TEXT[data.range.id] || "").replace("Last ", ""))}`;
+    el.innerHTML = `<b>${esc(RANGE_TEXT[data.range.id] || "")}</b> · ${esc(who)}${provider ? " · " + esc(provider) : ""} · ${tail}`;
+  }
+  function lifetime() {
+    return data.range.id === "all";
+  }
+  function sinceText() {
+    return when(data.range.first_at, { month: "short", day: "numeric", year: "numeric" });
   }
   function renderProviderOptions() {
     const sel = $("[data-usage-provider]");
@@ -221,6 +233,7 @@
     dl.innerHTML = d.html;
     dl.className = "uz-delta " + (d.cls || "");
     el.querySelector("[data-kpi-spark]").innerHTML = sparkValues && !data.summary.empty ? spark(sparkValues, floor) : "";
+    el.querySelector("[data-kpi-delta]").title = lifetime() && data.range.first_at ? `First request ${when(data.range.first_at)}` : "";
   }
   function renderKpis() {
     const s = data.summary;
@@ -228,8 +241,13 @@
     const noRates = !s.pricing_coverage && !s.cost;
     const empty = s.empty;
     const none = { html: "<span>No traffic in range</span>", cls: "" };
-    setKpi("tokens", compact(s.tokens), empty ? none : delta(s.token_change), series.map((p) => p.tokens));
-    setKpi("requests", intFmt.format(s.requests), empty ? none : delta(s.request_change), series.map((p) => p.requests));
+    // Lifetime has no previous period: the delta slots carry its start and daily averages.
+    const life = lifetime() && !empty;
+    const days = Math.max(1, data.activity_days || 1);
+    const plain = (text) => ({ html: `<span>${esc(text)}</span>`, cls: "" });
+    const vs = (value, opts) => (empty ? none : life ? plain("All time") : delta(value, opts));
+    setKpi("tokens", compact(s.tokens), life ? plain(`Since ${sinceText()}`) : vs(s.token_change), series.map((p) => p.tokens));
+    setKpi("requests", intFmt.format(s.requests), life ? plain(`${compact(s.requests / days)} a day`) : vs(s.request_change), series.map((p) => p.requests));
     setKpi(
       "cost",
       noRates ? "—" : esc(s.cost_label),
@@ -237,28 +255,28 @@
         ? none
         : noRates
           ? { html: `<span>${s.untracked >= s.requests ? "Billed to your OpenRouter key" : "No rates for these models"}</span>` }
-          : delta(s.cost_change),
+          : life ? plain(`${money(s.cost / days)} a day`) : delta(s.cost_change),
       series.map((p) => p.cost),
       { note: !noRates && s.pricing_coverage < 100 && s.requests ? `${s.pricing_coverage}% priced` : "" }
     );
     setKpi(
       "cache",
       pct(s.cache_hit),
-      empty ? none : s.cache_hit === null ? { html: "<span>No prompt tokens</span>" } : delta(s.cache_hit_change, { unit: " pts", good: "up" }),
+      empty ? none : s.cache_hit === null ? { html: "<span>No prompt tokens</span>" } : vs(s.cache_hit_change, { unit: " pts", good: "up" }),
       series.map((p) => (p.prompt ? p.cached / p.prompt : null)),
       { floor: "min" }
     );
     setKpi(
       "success",
       s.success_rate === null ? "—" : pct(s.success_rate),
-      empty ? none : delta(s.success_change, { unit: " pts", good: "up" }),
+      vs(s.success_change, { unit: " pts", good: "up" }),
       series.map((p) => (p.requests ? (p.requests - p.failed - (p.cancelled || 0)) / p.requests : null)),
       { floor: "min", note: s.failed ? `${intFmt.format(s.failed)} failed` : "" }
     );
     setKpi(
       "per_request",
       s.per_request === null ? "—" : compact(s.per_request) + "<small>tok</small>",
-      empty ? none : delta(s.per_request_change),
+      vs(s.per_request_change),
       series.map((p) => (p.requests ? p.tokens / p.requests : null)),
       { floor: "min" }
     );
@@ -374,14 +392,15 @@
         return;
       }
       const narrow = w < 560;
-      const minStep = narrow ? 7 : 9;
-      const width = Math.max(w, points.length * minStep + 60);
+      const minStep = narrow ? 3 : 5;
       const top = 10;
       const bottom = 26;
       const top_ = niceMax(max);
       const labels = [0, 1, 2, 3, 4].map((i) => m.axis((top_ * i) / 4));
       const left = Math.max(...labels.map((l) => l.length)) * 6.4 + 12;
       const right = 6;
+      // Scroll only when the bars cannot fit beside the axis gutter, or the gutter scrolls out of view.
+      const width = Math.max(w, Math.ceil(points.length * minStep + left + right));
       const plotW = width - left - right;
       const plotH = h - top - bottom;
       const step = plotW / points.length;
@@ -527,6 +546,39 @@
   }
 
   /* —— Providers + sources —— */
+  function costCell(it) {
+    if (!it.cost_tracked) return '<span class="uz-rate-needed" title="Billed to your own OpenRouter key; Fuse does not cost it">own key</span>';
+    if (it.cost_known || it.cost) return money(it.cost);
+    return '<span class="uz-rate-needed" title="No price configured for these models">no rate</span>';
+  }
+  function renderProviders() {
+    const body = $("[data-providers]");
+    const sub = $("[data-providers-sub]");
+    const rows = data.providers || [];
+    if (sub) sub.textContent = rows.length ? `${rows.length} provider${rows.length === 1 ? "" : "s"} · ranked by tokens` : "Nothing recorded yet";
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="8" class="uz-empty">No provider usage in this range.</td></tr>';
+      return;
+    }
+    const total = data.summary.tokens || rows.reduce((a, p) => a + p.tokens, 0);
+    body.innerHTML = rows
+      .map((p) => {
+        const share = total ? (p.tokens * 100) / total : 0;
+        const change = lifetime() ? '<span class="mute">—</span>' : changeCell(p);
+        const pick = state.provider === p.id ? "" : ` data-pick-provider="${esc(p.id)}"`;
+        return `<tr>
+          <td class="uz-cell-name"><div class="uz-name"><i class="uz-dot" style="background:${providerColor(p.id)}"></i><div><strong>${pick ? `<button type="button" class="uz-link"${pick} title="Show only ${esc(p.name)}">${esc(p.name)}</button>` : esc(p.name)}</strong><small>${p.models} model${p.models === 1 ? "" : "s"}${p.failed ? ` · <span class="${p.error_rate >= 5 ? "uz-warn" : ""}">${intFmt.format(p.failed)} failed</span>` : ""}</small></div></div></td>
+          <td class="num" data-label="Tokens"><div class="uz-share"><i><b style="width:${share.toFixed(1)}%"></b></i><span>${compact(p.tokens)}</span></div><span class="uz-cell-sub">${pct(share, share >= 10 ? 0 : 1)}</span></td>
+          <td class="num uz-hide-sm" data-label="Input">${compact(p.prompt)}</td>
+          <td class="num uz-hide-sm" data-label="Output">${compact(p.output || p.completion)}<span class="uz-cell-sub">${p.reasoning ? compact(p.reasoning) + " reasoning" : ""}</span></td>
+          <td class="num" data-label="Cache hit">${pct(p.cache_hit, 0)}</td>
+          <td class="num" data-label="Requests">${intFmt.format(p.requests)}</td>
+          <td class="num" data-label="Cost">${costCell(p)}</td>
+          <td class="num uz-hide-sm" data-label="Change">${change}</td>
+        </tr>`;
+      })
+      .join("");
+  }
   function barRows(items, { total, name, meta, extraClass }) {
     return items
       .map((it) => {
@@ -539,23 +591,8 @@
       })
       .join("");
   }
-  function renderBreakdowns() {
+  function renderSources() {
     const total = data.summary.tokens;
-    const prov = $("[data-providers]");
-    prov.innerHTML = data.providers.length
-      ? barRows(data.providers, {
-          total,
-          name: (p) => esc(p.name),
-          meta: (p) => {
-            const bits = [];
-            if (p.cache_hit !== null) bits.push(`${pct(p.cache_hit, 0)} cache hit`);
-            if (p.failed) bits.push(`${p.failed} failed`);
-            if (p.is_new) bits.push("new this period");
-            else if (p.token_change !== null) bits.push(`${p.token_change > 0 ? "↑" : "↓"}${Math.abs(p.token_change).toFixed(0)}% vs prev.`);
-            return bits.join(" · ");
-          },
-        })
-      : '<p class="uz-empty">No provider usage in this range.</p>';
     const src = $("[data-sources]");
     src.innerHTML = (data.keys || []).length
       ? barRows(data.keys, {
@@ -693,40 +730,46 @@
       el.innerHTML = '<p class="uz-empty">No account usage in this range.</p>';
       return;
     }
-    const ids = data.providers.map((p) => p.id);
-    // Providers past the six series slots share the "Other" swatch.
-    const colorOf = (id) => providerColor(id);
-    ids.forEach(colorOf);
-    const named = data.providers.filter((p) => providerSlots.get(p.id));
-    const hasOther = named.length < data.providers.length;
+    const sub = $("[data-users-sub]");
+    if (sub) sub.textContent = `${data.users.length} account${data.users.length === 1 ? "" : "s"} · tokens split by provider · select one to drill in`;
     const top = data.users[0].tokens || 1;
-    el.innerHTML =
-      data.users
-        .map((u) => {
-          const segs = ids
-            .map((id) => {
-              const v = u.providers[id] || 0;
-              return v ? `<span style="flex:${v} 1 0;background:${providerColor(id)}" title="${esc(id)} ${intFmt.format(v)} tokens"></span>` : "";
-            })
-            .join("");
-          return `<div class="uz-user"><div class="uz-name"><div><strong title="${esc(u.email)}">${esc(u.email)}</strong><small>${intFmt.format(u.requests)} requests</small></div></div><div class="uz-stack" style="width:${Math.max(2, (u.tokens * 100) / top).toFixed(1)}%">${segs}</div><div class="uz-bar-vals">${compact(u.tokens)}<small>${money(u.cost)}</small></div></div>`;
-        })
-        .join("") +
-      `<div class="uz-users-legend">${named.map((p) => `<span><i class="uz-dot" style="background:${colorOf(p.id)}"></i>${esc(p.name)}</span>`).join("")}${hasOther ? `<span><i class="uz-dot" style="background:${cssVar("--uz-other")}"></i>Other</span>` : ""}</div>`;
+    const total = data.summary.tokens || 1;
+    el.innerHTML = data.users
+      .map((u) => {
+        const segs = u.providers
+          .map((p) => (p.tokens ? `<span style="flex:${p.tokens} 1 0;background:${providerColor(p.id)}" title="${esc(p.name)} ${intFmt.format(p.tokens)} tokens"></span>` : ""))
+          .join("");
+        const chips = u.providers
+          .filter((p) => p.tokens || p.requests)
+          .map(
+            (p) =>
+              `<span class="uz-chip" title="${esc(p.name)}: ${intFmt.format(p.tokens)} tokens · ${intFmt.format(p.requests)} requests${p.cost ? " · " + money(p.cost) : ""}"><i class="uz-dot" style="background:${providerColor(p.id)}"></i>${esc(p.name)} <b>${compact(p.tokens)}</b>${p.cost ? `<em>${money(p.cost)}</em>` : ""}</span>`
+          )
+          .join("");
+        return `<div class="uz-user">
+          <div class="uz-name"><div><strong><button type="button" class="uz-link" data-pick-user="${u.id}" title="Show only ${esc(u.email)}">${esc(u.email)}</button></strong><small>${intFmt.format(u.requests)} requests${u.failed ? ` · ${intFmt.format(u.failed)} failed` : ""}</small></div></div>
+          <div class="uz-stack" style="width:${Math.max(2, (u.tokens * 100) / top).toFixed(1)}%">${segs}</div>
+          <div class="uz-bar-vals">${compact(u.tokens)} · ${pct((u.tokens * 100) / total, 0)}<small>${money(u.cost)}</small></div>
+          <div class="uz-chips">${chips}</div>
+        </div>`;
+      })
+      .join("");
   }
 
   function paint() {
     // Seed colour slots in chart order so the top model always gets slot 1
     // the first time it appears.
     data.series_models.forEach((s) => modelColor(s.id));
+    data.providers.forEach((p) => providerColor(p.id));
     renderCaption();
     renderProviderOptions();
     renderUserOptions();
     renderKpis();
     plot.render(true);
     renderAnatomy();
+    renderProviders();
     renderModels();
-    renderBreakdowns();
+    renderSources();
     renderHeat();
     renderReliability();
     renderRecent();
@@ -739,8 +782,11 @@
     $("[data-plot]").innerHTML = `<p class="uz-empty">${msg}</p>`;
     root.querySelectorAll("[data-kpi-value]").forEach((el) => (el.textContent = "—"));
     root.querySelectorAll("[data-kpi-delta]").forEach((el) => (el.textContent = "Load failed"));
-    ["[data-providers]", "[data-sources]", "[data-heat]", "[data-reliability]"].forEach((s) => ($(s).innerHTML = `<p class="uz-empty">${msg}</p>`));
+    ["[data-sources]", "[data-heat]", "[data-reliability]"].forEach((s) => ($(s).innerHTML = `<p class="uz-empty">${msg}</p>`));
+    $("[data-providers]").innerHTML = `<tr><td colspan="8" class="uz-empty">${msg}</td></tr>`;
     $("[data-models]").innerHTML = `<tr><td colspan="9" class="uz-empty">${msg}</td></tr>`;
+    const users = $("[data-user-comparison]");
+    if (users) users.hidden = true;
     $("[data-recent]").innerHTML = `<tr><td colspan="7" class="uz-empty">${msg}</td></tr>`;
   }
 
@@ -753,7 +799,14 @@
     if (state.provider) q.set("provider", state.provider);
     if (state.scope !== "account") q.set("scope", state.scope);
     const plotEl = $("[data-plot]");
+    const key = q.toString();
+    const cached = cache.get(key);
+    if (cached) {
+      data = cached;
+      paint();
+    }
     plotEl.setAttribute("aria-busy", "true");
+    root.classList.toggle("is-loading", !cached);
     try {
       const r = await fetch("/usage.json?" + q, { signal: controller.signal });
       if (r.status === 401) {
@@ -761,18 +814,38 @@
         return;
       }
       if (!r.ok) throw new Error("usage");
-      data = await r.json();
+      const fresh = await r.json();
+      if (own !== controller) return;
+      cache.set(key, fresh);
+      data = fresh;
       paint();
     } catch (err) {
-      if (err.name !== "AbortError") fail();
+      if (err.name !== "AbortError") {
+        cache.delete(key);
+        fail();
+      }
     } finally {
-      if (own === controller) plotEl.removeAttribute("aria-busy");
+      if (own === controller) {
+        plotEl.removeAttribute("aria-busy");
+        root.classList.remove("is-loading");
+      }
     }
   }
 
   root.querySelectorAll("time[data-ago]").forEach((el) => {
     const text = ago(el.getAttribute("datetime"));
     if (text) el.textContent = "used " + text;
+  });
+
+  // Drill-down: a provider name filters to it; an account name scopes to it.
+  root.addEventListener("click", (e) => {
+    const p = e.target.closest("[data-pick-provider]");
+    const u = e.target.closest("[data-pick-user]");
+    if (p) state.provider = p.dataset.pickProvider;
+    else if (u) state.scope = "user:" + u.dataset.pickUser;
+    else return;
+    load();
+    root.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   });
 
   $("[data-recent-more]")?.addEventListener("click", () => {

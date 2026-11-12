@@ -25,6 +25,7 @@
         <button type="button" data-range="3d" aria-pressed="false">3d</button>
         <button type="button" data-range="7d" aria-pressed="false">7d</button>
         <button type="button" data-range="30d" aria-pressed="false">30d</button>
+        <button type="button" data-range="all" aria-pressed="false" title="Lifetime">All</button>
       </div>
     </div>
   </header>
@@ -73,6 +74,38 @@
     </section>
   </div>
 
+  {% if user['is_admin'] %}
+  <section class="uz-card" data-user-comparison hidden aria-labelledby="uz-users-title">
+    <header class="uz-card-head">
+      <div><h2 id="uz-users-title">Accounts</h2><p class="uz-sub" data-users-sub>Tokens by user, split by provider</p></div>
+    </header>
+    <div class="uz-users" data-users></div>
+  </section>
+  {% endif %}
+
+  <section class="uz-card" aria-labelledby="uz-providers-title">
+    <header class="uz-card-head">
+      <div><h2 id="uz-providers-title">Providers</h2><p class="uz-sub" data-providers-sub>Tokens by provider</p></div>
+    </header>
+    <div class="uz-table-wrap">
+      <table class="uz-table uz-providers">
+        <thead>
+          <tr>
+            <th scope="col" class="uz-col-name">Provider</th>
+            <th scope="col" class="num">Tokens</th>
+            <th scope="col" class="num">Input</th>
+            <th scope="col" class="num">Output</th>
+            <th scope="col" class="num">Cache hit</th>
+            <th scope="col" class="num">Requests</th>
+            <th scope="col" class="num">Cost</th>
+            <th scope="col" class="num">Change</th>
+          </tr>
+        </thead>
+        <tbody data-providers><tr><td colspan="8" class="uz-empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="uz-card" aria-labelledby="uz-models-title">
     <header class="uz-card-head">
       <div>
@@ -102,12 +135,6 @@
 
   <div class="uz-cols">
     <div class="uz-col">
-      <section class="uz-card" aria-labelledby="uz-providers-title">
-        <header class="uz-card-head">
-          <div><h2 id="uz-providers-title">Providers</h2><p class="uz-sub">Share of tokens</p></div>
-        </header>
-        <div class="uz-bars" data-providers><p class="uz-empty">Loading…</p></div>
-      </section>
       <section class="uz-card" aria-labelledby="uz-when-title">
         <header class="uz-card-head">
           <div><h2 id="uz-when-title">When you use it</h2><p class="uz-sub" data-heat-sub>Tokens by weekday and hour, your local time</p></div>
@@ -131,16 +158,6 @@
     </div>
   </div>
 
-
-  {% if user['is_admin'] %}
-  <section class="uz-card" data-user-comparison hidden aria-labelledby="uz-users-title">
-    <header class="uz-card-head">
-      <div><h2 id="uz-users-title">Accounts</h2><p class="uz-sub">Pool consumption by user, stacked by provider</p></div>
-    </header>
-    <div class="uz-users" data-users></div>
-  </section>
-  {% endif %}
-
   <section class="uz-card" aria-labelledby="uz-recent-title">
     <header class="uz-card-head">
       <div><h2 id="uz-recent-title">Recent requests</h2><p class="uz-sub" data-recent-sub>Latest in this range</p></div>
@@ -162,18 +179,6 @@
       </table>
     </div>
     <button type="button" class="uz-more" data-recent-more hidden></button>
-  </section>
-
-  <section class="uz-card uz-lifetime" aria-labelledby="uz-life-title">
-    <header class="uz-card-head">
-      <div><h2 id="uz-life-title">Lifetime</h2><p class="uz-sub">This account, all time{% if usage.totals.last_model %} · last model <span class="mono">{{ usage.totals.last_model }}</span>{% endif %}</p></div>
-      <a class="btn ghost sm" href="/keys">Per-key totals</a>
-    </header>
-    <dl class="uz-life-stats">
-      <div><dt>Tokens</dt><dd>{{ '{:,}'.format(usage.totals.total_tokens) }}</dd></div>
-      <div><dt>Requests</dt><dd>{{ '{:,}'.format(usage.totals.requests) }}</dd></div>
-      <div><dt>Cost</dt><dd>{{ usage.totals.cost_label or '—' }}</dd></div>
-    </dl>
   </section>
 </div>
 {% endblock %}

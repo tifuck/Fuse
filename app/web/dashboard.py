@@ -85,7 +85,7 @@ async def dashboard(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    return render(request, "dashboard.html", user, usage=stats.current_usage(user["id"]))
+    return render(request, "dashboard.html", user)
 
 
 @router.get("/keys", response_class=HTMLResponse)

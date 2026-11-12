@@ -171,6 +171,51 @@ def test_events_without_a_user_row_stay_in_series_and_summary():
         assert everyone["users"][0]["email"] == "user 1"
 
 
+def test_lifetime_spans_every_event_without_a_previous_window():
+    with isolated_database():
+        _seed()
+        _event(_ago(days=90), key=7)
+        _event(_ago(days=40), model="grok-4.5", provider="grok", status="failed")
+        _event(_ago(hours=1))
+        data = stats.usage_analytics(1, range_id="all")
+        s = data["summary"]
+        assert (s["requests"], s["failed"], s["ok_requests"]) == (3, 1, 2)
+        assert data["range"]["bucket"] == "daily" and data["range"]["first_at"] == data["range"]["from"]
+        assert sum(point["requests"] for point in data["series"]) == 3
+        assert 90 <= len(data["series"]) <= 92
+        assert s["token_change"] is None and not any(m["is_new"] for m in data["models"])
+        assert {p["id"]: p["requests"] for p in data["providers"]} == {"zai": 2, "grok": 1}
+        assert {k["kind"]: k["requests"] for k in data["keys"]} == {"key": 1, "chat": 2}
+        # Over a month of history folds the heatmap into one week of hours.
+        assert data["activity_days"] >= 90 and len(data["activity"]) <= 168
+        assert sum(requests for _, _, requests in data["activity"]) == 3
+        _event(_ago(days=200))
+        weekly = stats.usage_analytics(1, range_id="all")
+        assert weekly["range"]["bucket_seconds"] == 7 * 86400
+        assert sum(point["requests"] for point in weekly["series"]) == 4
+        # Weekly buckets start on Monday 00:00 UTC.
+        assert all(datetime.fromisoformat(p["at"].replace("Z", "+00:00")).weekday() == 0 for p in weekly["series"])
+        assert stats.usage_analytics(2, range_id="all")["summary"]["empty"]
+
+
+def test_all_users_split_each_account_by_provider():
+    with isolated_database():
+        _seed()
+        db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(2,'other@test.invalid','unused',?)", (db.now(),))
+        _event(_ago(hours=1), prompt=1000, output=0, cached=0)
+        _event(_ago(hours=2), model="grok-4.5", provider="grok", prompt=300, output=0, cached=0)
+        _event(_ago(hours=1), prompt=500, output=0, cached=0)
+        db.execute("UPDATE usage_events SET user_id=2 WHERE id=(SELECT id FROM (SELECT MAX(id) AS id FROM usage_events) AS last)")
+        data = stats.usage_analytics(1, range_id="30d", all_users=True)
+        users = {u["email"]: u for u in data["users"]}
+        assert [p["id"] for p in users["usage@test.invalid"]["providers"]] == ["zai", "grok"]
+        assert [(p["tokens"], p["requests"]) for p in users["usage@test.invalid"]["providers"]] == [(1000, 1), (300, 1)]
+        assert users["other@test.invalid"]["providers"] == [{"id": "zai", "name": users["other@test.invalid"]["providers"][0]["name"], "tokens": 500, "requests": 1, "cost": 50}]
+        assert data["users"][0]["email"] == "usage@test.invalid"
+        zai = next(p for p in data["providers"] if p["id"] == "zai")
+        assert (zai["tokens"], zai["models"], zai["cost_tracked"]) == (1500, 1, True)
+
+
 def test_subject_filter_counts_only_that_user():
     with isolated_database():
         _seed()

@@ -21,7 +21,7 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
   const at = '2026-10-05T12:00:00Z';
   const point = (n) => (empty ? 0 : n);
   return {
-    range: { id: range, from: at, to: at, bucket: 'hour', bucket_seconds: 3600 },
+    range: { id: range, from: at, to: at, bucket: 'hour', bucket_seconds: range === 'all' ? 86400 : 3600, first_at: empty ? '' : at },
     scope: 'account',
     provider: '',
     provider_options: empty ? [] : [{ id: 'zai', name: 'Z.ai' }],
@@ -56,7 +56,8 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
       per_million: null, token_change: null, is_new: true, spark: [0, tokens],
     }],
     providers: empty ? [] : [{
-      id: 'zai', name: 'Z.ai', tokens, requests, cost, failed: 1, cache_hit: 0,
+      id: 'zai', name: 'Z.ai', models: 1, tokens, requests, cost, prompt: tokens, output: 0, completion: 0,
+      reasoning: 0, cached: 0, failed: 1, error_rate: 33.3, cache_hit: 0, cost_known: true, cost_tracked: true,
       token_change: null, is_new: true,
     }],
     keys: empty ? [] : [{ name: 'Laptop', prefix: 'sk-fuse-ab', kind: 'key', tokens, requests, cost, failed: 0, last_at: at }],
@@ -66,7 +67,7 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
       status: i === 0 ? 'failed' : 'success',
     })),
     activity: empty ? [] : [[Date.parse(at) / 1000, tokens, requests]],
-    activity_days: 7,
+    activity_days: range === 'all' ? 40 : 7,
     users: [],
     _slow: slow,
   };
@@ -75,6 +76,8 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
   const errors = [];
+  // Set to a promise to hold the next lifetime response until it resolves.
+  let hold = null;
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
     await context.route('**/*', route => {
@@ -97,6 +100,11 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
       delete body._slow;
       const send = () => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
       if (slow) return setTimeout(send, 700);
+      if (hold && body.range.id === 'all') {
+        const held = hold;
+        hold = null;
+        return held.then(send);
+      }
       return send();
     });
     const page = await context.newPage();
@@ -181,6 +189,40 @@ function payload(range, { empty = false, huge = false, slow = false } = {}) {
     await settled();
     assert.match(await kpi('success').innerText(), /66\.7%/);
     assert.equal(await page.locator('[data-kpi="success"] path.line').getAttribute('d'), 'M0.0 2.0 L120.0 27.0', 'cancelled requests lower the success spark from 100% to 50%');
+
+    // Providers get their own table; a provider name filters the page to it.
+    assert.match(await page.locator('[data-providers] tr').first().innerText(), /Z\.ai[\s\S]*1 model/, 'provider row names the provider');
+    const picked = page.waitForRequest(req => req.url().includes('/usage.json') && new URL(req.url()).searchParams.get('provider') === 'zai');
+    await page.locator('[data-pick-provider="zai"]').click();
+    await picked;
+    await settled();
+    assert.equal(await page.locator('[data-usage-provider]').inputValue(), 'zai', 'the provider filter follows the picked row');
+    assert.equal(await page.locator('[data-pick-provider]').count(), 0, 'the picked provider is no longer a link');
+    await page.locator('[data-usage-provider]').selectOption('');
+    await settled();
+
+    // Lifetime: no previous period, so the deltas name the start and daily averages.
+    await page.locator('[data-range="all"]').click();
+    await settled();
+    assert.equal(await page.locator('[data-range="all"]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.locator('[data-usage-caption]').innerText(), /All time .* since /, 'lifetime caption names its start');
+    assert.doesNotMatch(await page.locator('[data-usage-caption]').innerText(), /compared with/, 'lifetime has nothing to compare');
+    assert.match(await page.locator('[data-kpi="tokens"] [data-kpi-delta]').innerText(), /^Since /);
+    assert.match(await page.locator('[data-kpi="requests"] [data-kpi-delta]').innerText(), /a day$/);
+    assert.match(await page.locator('[data-providers] tr').first().innerText(), /—\s*$/, 'lifetime provider change is a dash');
+    assert.match(page.url(), /range=all/, 'lifetime is kept in the URL');
+
+    // A revisited view paints from memory before its refetch answers.
+    await page.locator('[data-range="3d"]').click();
+    await settled();
+    let releaseAll;
+    hold = new Promise(resolve => { releaseAll = resolve; });
+    await page.locator('[data-range="all"]').click();
+    await page.waitForFunction(() => /All time/.test(document.querySelector('[data-usage-caption]').textContent));
+    assert.equal(await page.locator('[data-plot]').getAttribute('aria-busy'), 'true', 'the cached view still refreshes');
+    await page.waitForFunction(() => !document.querySelector('[data-usage-dashboard]').classList.contains('is-loading'));
+    releaseAll();
+    await settled();
 
     // Huge counts compact, and a long model id truncates with its full name as a title.
     await page.locator('[data-range="30d"]').click();

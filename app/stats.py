@@ -286,7 +286,14 @@ _RANGES = {
     "3d": (timedelta(days=3), 10800, "3-hour"),
     "7d": (timedelta(days=7), 21600, "6-hour"),
     "30d": (timedelta(days=30), 86400, "daily"),
+    # Lifetime: span and bucket size follow the first recorded event.
+    "all": (None, 86400, "daily"),
 }
+_DAY = 86400
+_WEEK = 7 * _DAY
+# 1970-01-01 was a Thursday: weekly buckets start on Monday 00:00 UTC.
+_MONDAY = 4 * _DAY
+_LIFETIME_DAILY_MAX = 120 * _DAY
 
 
 def _change(current, previous) -> float | None:
@@ -303,15 +310,47 @@ def _change(current, previous) -> float | None:
 def _window_filters(
     user_id: int, start: str, end: str, provider: str, all_users: bool, *, subject_id: int | None = None
 ) -> tuple[str, list]:
-    clauses = ["e.created_at>=?", "e.created_at<?"]
-    args: list = [start, end]
+    clauses = ["e.created_at<?"]
+    args: list = [end]
+    if start:
+        clauses.insert(0, "e.created_at>=?")
+        args.insert(0, start)
     if not all_users:
         clauses.append("e.user_id=?")
         args.append(subject_id if subject_id is not None else user_id)
     if provider:
-        clauses.append("COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')=?")
+        clauses.append(f"{_PROVIDER_SQL}=?")
         args.append(provider)
     return " AND ".join(clauses), args
+
+
+_PROVIDER_SQL = "COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')"
+_TOKENS_SQL = "CASE WHEN e.total_tokens>0 THEN e.total_tokens ELSE e.prompt_tokens+e.output_tokens END"
+_PRICED_SQL = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known=1)"
+_EVENT_SUMS = f"""COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
+                   COALESCE(SUM(e.count_request), 0) AS requests,
+                   COALESCE(SUM(e.prompt_tokens), 0) AS prompt,
+                   COALESCE(SUM(e.completion_tokens), 0) AS completion,
+                   COALESCE(SUM(e.output_tokens), 0) AS output,
+                   COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning,
+                   COALESCE(SUM(e.cached_tokens), 0) AS cached,
+                   COALESCE(SUM(e.cache_write_tokens), 0) AS cache_write,
+                   COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='success' THEN 1 ELSE 0 END), 0) AS ok_requests,
+                   COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='failed' THEN 1 ELSE 0 END), 0) AS failed,
+                   COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+                   COALESCE(SUM(COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0)), 0) AS cost,
+                   COALESCE(SUM(e.estimated_cost_micros), 0) AS estimated_cost,
+                   COALESCE(SUM(CASE WHEN e.count_request=1 AND {_PRICED_SQL} THEN 1 ELSE 0 END), 0) AS priced,
+                   COALESCE(SUM(CASE WHEN {_PRICED_SQL} THEN {_TOKENS_SQL} ELSE 0 END), 0) AS priced_tokens,
+                   COALESCE(SUM(CASE WHEN e.count_request=1 AND {_PROVIDER_SQL}='openrouter'
+                                     THEN 1 ELSE 0 END), 0) AS untracked,
+                   COALESCE(SUM(CASE WHEN (e.total_tokens>0 OR e.prompt_tokens+e.output_tokens>0)
+                                          AND e.reported_cost_micros IS NULL AND e.pricing_known=0
+                                     THEN 1 ELSE 0 END), 0) AS unpriced_events"""
+_SUMMARY_KEYS = ("tokens", "requests", "prompt", "completion", "output", "reasoning", "cached", "cache_write",
+                 "ok_requests", "failed", "cancelled", "cost", "estimated_cost", "priced", "priced_tokens",
+                 "untracked")
+_METRICS = _SUMMARY_KEYS + ("unpriced_events",)
 
 
 def _event_summary(
@@ -322,33 +361,9 @@ def _event_summary(
     tokens per provider and model (one pass instead of two)."""
     where, args = _window_filters(user_id, start, end, provider, all_users, subject_id=subject_id)
     by_model = model_tokens is not None
-    group_cols = ("""COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown') AS provider,
-                    COALESCE(NULLIF(e.model, ''), 'Unknown') AS model, """ if by_model else "")
+    group_cols = f"{_PROVIDER_SQL} AS provider, COALESCE(NULLIF(e.model, ''), 'Unknown') AS model, " if by_model else ""
     rows = db.fetchall(
-        f"""SELECT {group_cols}COALESCE(SUM(CASE WHEN e.total_tokens>0 THEN e.total_tokens
-                                      ELSE e.prompt_tokens+e.output_tokens END), 0) AS tokens,
-                    COALESCE(SUM(e.count_request), 0) AS requests,
-                    COALESCE(SUM(e.prompt_tokens), 0) AS prompt,
-                    COALESCE(SUM(e.completion_tokens), 0) AS completion,
-                    COALESCE(SUM(e.output_tokens), 0) AS output,
-                    COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning,
-                    COALESCE(SUM(e.cached_tokens), 0) AS cached,
-                    COALESCE(SUM(e.cache_write_tokens), 0) AS cache_write,
-                    COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='success' THEN 1 ELSE 0 END), 0) AS ok_requests,
-                    COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='failed' THEN 1 ELSE 0 END), 0) AS failed,
-                    COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
-                    COALESCE(SUM(COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0)), 0) AS cost,
-                    COALESCE(SUM(e.estimated_cost_micros), 0) AS estimated_cost,
-                    COALESCE(SUM(CASE WHEN e.count_request=1 AND
-                                           (e.reported_cost_micros IS NOT NULL OR e.pricing_known=1)
-                                      THEN 1 ELSE 0 END), 0) AS priced,
-                    COALESCE(SUM(CASE WHEN e.reported_cost_micros IS NOT NULL OR e.pricing_known=1
-                                      THEN CASE WHEN e.total_tokens>0 THEN e.total_tokens
-                                                ELSE e.prompt_tokens+e.output_tokens END
-                                      ELSE 0 END), 0) AS priced_tokens,
-                    COALESCE(SUM(CASE WHEN e.count_request=1 AND
-                                           COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')='openrouter'
-                                      THEN 1 ELSE 0 END), 0) AS untracked
+        f"""SELECT {group_cols}{_EVENT_SUMS}
              FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id
              WHERE {where}{" GROUP BY provider, model" if by_model else ""}""",
         tuple(args),
@@ -360,11 +375,6 @@ def _event_summary(
         if by_model:
             model_tokens[f"{row['provider']}\x1f{row['model']}"] = int(row["tokens"] or 0)
     return totals
-
-
-_SUMMARY_KEYS = ("tokens", "requests", "prompt", "completion", "output", "reasoning", "cached", "cache_write",
-                 "ok_requests", "failed", "cancelled", "cost", "estimated_cost", "priced", "priced_tokens",
-                 "untracked")
 
 
 def _hit_rate(cached: int, prompt: int) -> float | None:
@@ -436,28 +446,23 @@ def _cache_savings(models: list[dict]) -> tuple[int, bool]:
     return saved, known
 
 
-_METRICS = ("tokens", "requests", "prompt", "completion", "output", "reasoning", "cached", "cache_write",
-            "failed", "cancelled", "cost", "estimated_cost", "priced", "unpriced_events")
-_EVENT_SUMS = """COALESCE(SUM(CASE WHEN e.total_tokens>0 THEN e.total_tokens
-                                     ELSE e.prompt_tokens+e.output_tokens END), 0) AS tokens,
-                   COALESCE(SUM(e.count_request), 0) AS requests,
-                   COALESCE(SUM(e.prompt_tokens), 0) AS prompt,
-                   COALESCE(SUM(e.completion_tokens), 0) AS completion,
-                   COALESCE(SUM(e.output_tokens), 0) AS output,
-                   COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning,
-                   COALESCE(SUM(e.cached_tokens), 0) AS cached,
-                   COALESCE(SUM(e.cache_write_tokens), 0) AS cache_write,
-                   COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='failed' THEN 1 ELSE 0 END), 0) AS failed,
-                   COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
-                   COALESCE(SUM(COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0)), 0) AS cost,
-                   COALESCE(SUM(e.estimated_cost_micros), 0) AS estimated_cost,
-                   COALESCE(SUM(CASE WHEN e.count_request=1 AND
-                                          (e.reported_cost_micros IS NOT NULL OR e.pricing_known=1)
-                                     THEN 1 ELSE 0 END), 0) AS priced,
-                   COALESCE(SUM(CASE WHEN (e.total_tokens>0 OR e.prompt_tokens+e.output_tokens>0)
-                                           AND e.reported_cost_micros IS NULL AND e.pricing_known=0
-                                     THEN 1 ELSE 0 END), 0) AS unpriced_events"""
 _HEATMAP_MIN = timedelta(days=7)
+# Past a month, hourly heatmap cells fold into one week (168 cells) so a
+# lifetime payload stays small; DST shifts can move a cell by an hour.
+_HEATMAP_FOLD = 31 * _DAY
+
+
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _cost_known(item: dict) -> bool:
+    return item["priced"] >= item["requests"] and item["requests"] > 0 and not item["unpriced_events"]
+
+
+def _bucket_of(epoch: int, size: int) -> int:
+    offset = _MONDAY if size == _WEEK else 0
+    return ((epoch - offset) // size) * size + offset
 
 
 def usage_analytics(
@@ -471,158 +476,160 @@ def usage_analytics(
 ) -> dict:
     range_id = range_id if range_id in _RANGES else "24h"
     duration, bucket_seconds, bucket_label = _RANGES[range_id]
+    lifetime = duration is None
     # Stored timestamps have second precision; include events written in the current second.
     end_dt = datetime.now(timezone.utc) + timedelta(seconds=1)
-    start_dt = end_dt - duration
-    previous_start = start_dt - duration
-    start = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    prev_start = previous_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = _iso(end_dt)
+    start = "" if lifetime else _iso(end_dt - duration)
+    # The one scan of the window, at hour (or finer) grain: series, models,
+    # providers, users, sources and the heatmap all fold out of these rows.
+    granule = min(bucket_seconds, 3600)
     where, args = _window_filters(user_id, start, end, provider, all_users, subject_id=subject_id)
     # A weekday x hour pattern needs a week of history even when the chosen
-    # range is shorter, so the heatmap window is never under seven days.
-    heat_start_dt = min(start_dt, end_dt - _HEATMAP_MIN)
-    heat_where, heat_args = _window_filters(
-        user_id, heat_start_dt.strftime("%Y-%m-%dT%H:%M:%SZ"), end, provider, all_users, subject_id=subject_id,
-    )
+    # range is shorter, so short ranges scan seven days for the heatmap.
+    short = not lifetime and duration < _HEATMAP_MIN
     prev_model_tokens: dict[str, int] = {}
-    # Five independent scans of usage_events. Each takes its own pool
-    # connection, so the request waits for the slowest instead of their sum.
-    with ThreadPoolExecutor(max_workers=5) as scans:
-        # users is a LEFT JOIN: usage_events can outlive their user row, and
-        # _event_summary counts those rows, so the series and tables must not
-        # drop them (an INNER JOIN made the charts disagree with the summary).
+    # ponytail: lifetime is a full scan of the scope's usage_events (~0.7 s per
+    # 180k rows); a day-grain rollup table is the upgrade once that hurts.
+    with ThreadPoolExecutor(max_workers=4) as scans:
         rows_job = scans.submit(
             db.fetchall,
             f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / ?) * ? AS bucket,
-                       e.user_id, u.email,
-                       COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown') AS provider,
+                       e.user_id, e.api_key_id,
+                       {_PROVIDER_SQL} AS provider,
                        COALESCE(NULLIF(e.model, ''), 'Unknown') AS model,
-                       {_EVENT_SUMS}
-                FROM usage_events e
-                LEFT JOIN sources s ON s.id=e.source_id
-                LEFT JOIN users u ON u.id=e.user_id
-                WHERE {where}
-                GROUP BY bucket, e.user_id, provider, model
-                ORDER BY bucket""",
-            (bucket_seconds, bucket_seconds, *args),
-        )
-        summary_job = scans.submit(_event_summary, user_id, start, end, provider, all_users, subject_id=subject_id)
-        previous_job = scans.submit(
-            _event_summary, user_id, prev_start, start, provider, all_users,
-            subject_id=subject_id, model_tokens=prev_model_tokens,
-        )
-        # NULL api_key_id is traffic from Fuse itself (dashboard chat, agents, tasks).
-        keys_job = scans.submit(
-            db.fetchall,
-            f"""SELECT e.api_key_id AS id,
-                       MAX(k.name) AS name,
-                       MAX(k.prefix) AS prefix,
-                       COALESCE(SUM(CASE WHEN e.total_tokens>0 THEN e.total_tokens
-                                         ELSE e.prompt_tokens+e.output_tokens END), 0) AS tokens,
-                       COALESCE(SUM(e.count_request), 0) AS requests,
-                       COALESCE(SUM(CASE WHEN e.count_request=1 AND e.request_status='failed' THEN 1 ELSE 0 END), 0) AS failed,
-                       COALESCE(SUM(COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0)), 0) AS cost,
+                       {_EVENT_SUMS},
+                       MIN(e.created_at) AS first_at,
                        MAX(e.created_at) AS last_at
                 FROM usage_events e
-                LEFT JOIN api_keys k ON k.id=e.api_key_id
                 LEFT JOIN sources s ON s.id=e.source_id
                 WHERE {where}
-                GROUP BY e.api_key_id
-                ORDER BY tokens DESC
-                LIMIT 10""",
+                GROUP BY bucket, e.user_id, e.api_key_id, provider, model""",
+            (granule, granule, *args),
+        )
+        previous_job = None if lifetime else scans.submit(
+            _event_summary, user_id, _iso(end_dt - 2 * duration), start, provider, all_users,
+            subject_id=subject_id, model_tokens=prev_model_tokens,
+        )
+        heat_job = None
+        if short:
+            heat_where, heat_args = _window_filters(
+                user_id, _iso(end_dt - _HEATMAP_MIN), end, provider, all_users, subject_id=subject_id,
+            )
+            heat_job = scans.submit(
+                db.fetchall,
+                f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / 3600) * 3600 AS hour,
+                           COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
+                           COALESCE(SUM(e.count_request), 0) AS requests
+                    FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id
+                    WHERE {heat_where}
+                    GROUP BY hour""",
+                tuple(heat_args),
+            )
+        recent_job = scans.submit(
+            db.fetchall,
+            f"""SELECT e.created_at, e.model, e.api_key_id,
+                       {_PROVIDER_SQL} AS provider,
+                       k.name AS key_name,
+                       e.prompt_tokens, e.cached_tokens, e.output_tokens, e.reasoning_tokens, e.total_tokens,
+                       COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0) AS cost,
+                       e.pricing_known, e.reported_cost_micros,
+                       e.request_status
+                FROM usage_events e
+                LEFT JOIN sources s ON s.id=e.source_id
+                LEFT JOIN api_keys k ON k.id=e.api_key_id
+                WHERE {where}
+                ORDER BY e.created_at DESC
+                LIMIT 25""",
             tuple(args),
         )
-        heat_job = scans.submit(
-            db.fetchall,
-            f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / 3600) * 3600 AS hour,
-                       COALESCE(SUM(CASE WHEN e.total_tokens>0 THEN e.total_tokens
-                                         ELSE e.prompt_tokens+e.output_tokens END), 0) AS tokens,
-                       COALESCE(SUM(e.count_request), 0) AS requests
-                FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id
-                WHERE {heat_where}
-                GROUP BY hour""",
-            tuple(heat_args),
-        )
-    rows = rows_job.result()
-    summary = summary_job.result()
-    previous = previous_job.result()
+    rows = [{**{key: row[key] for key in row.keys()}, **{key: int(row[key] or 0) for key in _METRICS}}
+            for row in rows_job.result()]
+    previous = previous_job.result() if previous_job else dict.fromkeys(_SUMMARY_KEYS, 0)
+
+    first_at = min((row["first_at"] for row in rows if row["first_at"]), default="")
+    if lifetime:
+        first_epoch = min((int(row["bucket"]) for row in rows), default=int(end_dt.timestamp()) - _DAY)
+        if int(end_dt.timestamp()) - first_epoch > _LIFETIME_DAILY_MAX:
+            bucket_seconds, bucket_label = _WEEK, "weekly"
+        start_dt = datetime.fromtimestamp(first_epoch, timezone.utc)
+        start = first_at or _iso(start_dt)
+    else:
+        start_dt = end_dt - duration
+    span = end_dt - start_dt
+
+    summary = dict.fromkeys(_SUMMARY_KEYS, 0)
     model_totals: dict[str, dict] = {}
     provider_totals: dict[str, dict] = {}
     user_totals: dict[int, dict] = {}
+    key_totals: dict = {}
     by_bucket: dict[int, list] = {}
-    for row in rows:
-        item = {key: row[key] for key in row.keys()}
-        item.update({key: int(item[key] or 0) for key in _METRICS})
-        by_bucket.setdefault(int(item["bucket"]), []).append(item)
-        model_key = f"{item['provider']}\x1f{item['model']}"
+    by_hour: dict[int, list[int]] = {}
+    for item in rows:
+        for key in _SUMMARY_KEYS:
+            summary[key] += item[key]
+        granule_at = int(item["bucket"])
+        by_bucket.setdefault(_bucket_of(granule_at, bucket_seconds), []).append(item)
+        if not short:
+            hour = by_hour.setdefault(granule_at, [0, 0])
+            hour[0] += item["tokens"]
+            hour[1] += item["requests"]
+        pid = item["provider"]
+        model_key = f"{pid}\x1f{item['model']}"
         model_item = model_totals.setdefault(
             model_key,
             {
                 "id": model_key,
                 "name": item["model"],
-                "provider": item["provider"],
-                "provider_label": PROVIDER_LABELS.get(item["provider"], item["provider"]),
+                "provider": pid,
+                "provider_label": PROVIDER_LABELS.get(pid, pid),
                 **{metric: 0 for metric in _METRICS if metric != "estimated_cost"},
             },
         )
         provider_item = provider_totals.setdefault(
-            item["provider"],
-            {
-                "id": item["provider"],
-                "name": PROVIDER_LABELS.get(item["provider"], item["provider"]),
-                "tokens": 0,
-                "requests": 0,
-                "cost": 0,
-                "prompt": 0,
-                "cached": 0,
-                "failed": 0,
-                "priced": 0,
-                "unpriced_events": 0,
-            },
+            pid,
+            {"id": pid, "name": PROVIDER_LABELS.get(pid, pid), "models": set(),
+             **{metric: 0 for metric in _METRICS if metric != "estimated_cost"}},
         )
-        user_item = user_totals.setdefault(
-            int(item["user_id"]),
-            {"id": int(item["user_id"]), "email": item["email"] or f"user {int(item['user_id'])}", "tokens": 0, "requests": 0, "cost": 0, "providers": {}},
-        )
-        for target in (model_item, provider_item, user_item):
+        for metric in _METRICS:
+            if metric != "estimated_cost":
+                model_item[metric] += item[metric]
+                provider_item[metric] += item[metric]
+        provider_item["models"].add(item["model"])
+        if all_users:
+            uid = int(item["user_id"])
+            user_item = user_totals.setdefault(uid, {"id": uid, "tokens": 0, "requests": 0, "cost": 0, "failed": 0, "providers": {}})
+            per = user_item["providers"].setdefault(pid, {"id": pid, "name": PROVIDER_LABELS.get(pid, pid), "tokens": 0, "requests": 0, "cost": 0})
             for metric in ("tokens", "requests", "cost"):
-                target[metric] += item[metric]
-        for metric in ("prompt", "completion", "output", "reasoning", "cached", "cache_write", "failed", "cancelled", "priced", "unpriced_events"):
-            model_item[metric] += item[metric]
-        for metric in ("prompt", "cached", "failed", "priced", "unpriced_events"):
-            provider_item[metric] += item[metric]
-        user_item["providers"][item["provider"]] = user_item["providers"].get(item["provider"], 0) + item["tokens"]
+                user_item[metric] += item[metric]
+                per[metric] += item[metric]
+            user_item["failed"] += item["failed"]
+        # NULL api_key_id is traffic from Fuse itself (dashboard chat, agents, tasks).
+        key_item = key_totals.setdefault(item["api_key_id"], {"tokens": 0, "requests": 0, "failed": 0, "cost": 0, "last_at": ""})
+        for metric in ("tokens", "requests", "failed", "cost"):
+            key_item[metric] += item[metric]
+        key_item["last_at"] = max(key_item["last_at"], item["last_at"] or "")
 
     ranked_models = sorted(model_totals.values(), key=lambda item: item["tokens"], reverse=True)
     top_model_keys = [item["id"] for item in ranked_models[:6]]
     table_models = ranked_models[:15]
-    first_bucket = (int(start_dt.timestamp()) // bucket_seconds) * bucket_seconds
-    last_bucket = (int(end_dt.timestamp()) // bucket_seconds) * bucket_seconds
+    first_bucket = _bucket_of(int(start_dt.timestamp()), bucket_seconds)
+    last_bucket = _bucket_of(int(end_dt.timestamp()), bucket_seconds)
     points = []
     model_sparks: dict[str, list[int]] = {item["id"]: [] for item in table_models}
     bucket = first_bucket
     while bucket <= last_bucket:
-        bucket_rows = by_bucket.get(bucket, [])
         segments = {key: 0 for key in top_model_keys}
         cost_segments = {key: 0 for key in top_model_keys}
         request_segments = {key: 0 for key in top_model_keys}
         other = other_cost = other_requests = 0
         point = {
-            "at": datetime.fromtimestamp(bucket, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "tokens": 0,
-            "requests": 0,
-            "failed": 0,
-            "cancelled": 0,
-            "cost": 0,
-            "prompt": 0,
-            "cached": 0,
-            "segments": segments,
-            "cost_segments": cost_segments,
-            "request_segments": request_segments,
+            "at": _iso(datetime.fromtimestamp(bucket, timezone.utc)),
+            "tokens": 0, "requests": 0, "failed": 0, "cancelled": 0, "cost": 0, "prompt": 0, "cached": 0,
+            "segments": segments, "cost_segments": cost_segments, "request_segments": request_segments,
         }
         bucket_models: dict[str, int] = {}
-        for item in bucket_rows:
+        for item in by_bucket.get(bucket, ()):
             key = f"{item['provider']}\x1f{item['model']}"
             for metric in ("tokens", "requests", "failed", "cancelled", "cost", "prompt", "cached"):
                 point[metric] += item[metric]
@@ -646,36 +653,45 @@ def usage_analytics(
         points.append(point)
         bucket += bucket_seconds
 
-    providers = sorted(provider_totals.values(), key=lambda item: item["tokens"], reverse=True)
-    users = sorted(user_totals.values(), key=lambda item: item["tokens"], reverse=True) if all_users else []
-    account_options = (
-        [{"id": int(row["id"]), "email": row["email"] or f"user {int(row['id'])}"} for row in db.fetchall("SELECT id, email FROM users ORDER BY email")]
-        if include_accounts
-        else []
-    )
     prev_provider_tokens: dict[str, int] = {}
     for key, tokens in prev_model_tokens.items():
         pid = key.split("\x1f", 1)[0]
         prev_provider_tokens[pid] = prev_provider_tokens.get(pid, 0) + tokens
     for model in ranked_models:
-        model["cost_known"] = model["priced"] >= model["requests"] and model["requests"] > 0 and not model["unpriced_events"]
+        model["cost_known"] = _cost_known(model)
         model["cost_tracked"] = model["provider"] != "openrouter"
         prev_tokens = prev_model_tokens.get(model["id"], 0)
         model["token_change"] = _change(model["tokens"], prev_tokens)
-        model["is_new"] = bool(model["tokens"] and not prev_tokens)
+        model["is_new"] = bool(not lifetime and model["tokens"] and not prev_tokens)
         model["cache_hit"] = _hit_rate(model["cached"], model["prompt"])
         model["error_rate"] = _rate(model["failed"], model["requests"])
         model["per_million"] = (model["cost"] * 1_000_000 // model["tokens"]) if model["tokens"] and model["cost_known"] else None
         model["per_request"] = model["tokens"] // model["requests"] if model["requests"] else None
     for model in table_models:
         model["spark"] = model_sparks.get(model["id"], [])
+    providers = sorted(provider_totals.values(), key=lambda item: item["tokens"], reverse=True)
     for row in providers:
         prev_tokens = prev_provider_tokens.get(row["id"], 0)
+        row["models"] = len(row["models"])
         row["token_change"] = _change(row["tokens"], prev_tokens)
-        row["is_new"] = bool(row["tokens"] and not prev_tokens)
+        row["is_new"] = bool(not lifetime and row["tokens"] and not prev_tokens)
         row["cache_hit"] = _hit_rate(row["cached"], row["prompt"])
         row["error_rate"] = _rate(row["failed"], row["requests"])
-        row["cost_known"] = row["priced"] >= row["requests"] and row["requests"] > 0 and not row["unpriced_events"]
+        row["cost_known"] = _cost_known(row)
+        row["cost_tracked"] = row["id"] != "openrouter"
+
+    emails = (
+        {int(row["id"]): row["email"] for row in db.fetchall("SELECT id, email FROM users ORDER BY email")}
+        if all_users or include_accounts
+        else {}
+    )
+    users = []
+    if all_users:
+        for item in sorted(user_totals.values(), key=lambda item: item["tokens"], reverse=True)[:100]:
+            item["email"] = emails.get(item["id"]) or f"user {item['id']}"
+            item["providers"] = sorted(item["providers"].values(), key=lambda p: p["tokens"], reverse=True)
+            users.append(item)
+    account_options = [{"id": uid, "email": email or f"user {uid}"} for uid, email in emails.items()] if include_accounts else []
     # provider_usage gains a row for every provider an event records, so it
     # lists the same providers as usage_events without scanning the events.
     available = db.fetchall(
@@ -684,37 +700,24 @@ def usage_analytics(
                UNION SELECT provider FROM provider_usage
            ) AS available_providers WHERE provider<>'' ORDER BY provider"""
     )
-    key_rows = keys_job.result()
-    keys = [
-        {
-            "id": int(row["id"] or 0),
-            "kind": "chat" if row["id"] is None else "key",
-            "name": "Fuse chat & agents" if row["id"] is None else (row["name"] or "Deleted key"),
-            "prefix": row["prefix"] or "",
-            "tokens": int(row["tokens"] or 0),
-            "requests": int(row["requests"] or 0),
-            "failed": int(row["failed"] or 0),
-            "cost": int(row["cost"] or 0),
-            "last_at": row["last_at"] or "",
-        }
-        for row in key_rows
-    ]
-    recent_rows = db.fetchall(
-        f"""SELECT e.created_at, e.model, e.api_key_id,
-                   COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown') AS provider,
-                   k.name AS key_name,
-                   e.prompt_tokens, e.cached_tokens, e.output_tokens, e.reasoning_tokens, e.total_tokens,
-                   COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0) AS cost,
-                   e.pricing_known, e.reported_cost_micros,
-                   e.request_status
-            FROM usage_events e
-            LEFT JOIN sources s ON s.id=e.source_id
-            LEFT JOIN api_keys k ON k.id=e.api_key_id
-            WHERE {where}
-            ORDER BY e.created_at DESC
-            LIMIT 25""",
-        tuple(args),
+    top_keys = sorted(key_totals.items(), key=lambda kv: kv[1]["tokens"], reverse=True)[:10]
+    key_ids = [kid for kid, _ in top_keys if kid is not None]
+    key_rows = (
+        {int(row["id"]): row for row in db.fetchall(
+            f"SELECT id, name, prefix FROM api_keys WHERE id IN ({','.join('?' * len(key_ids))})", tuple(key_ids))}
+        if key_ids
+        else {}
     )
+    keys = []
+    for kid, item in top_keys:
+        meta = key_rows.get(int(kid)) if kid is not None else None
+        keys.append({
+            "id": int(kid or 0),
+            "kind": "chat" if kid is None else "key",
+            "name": "Fuse chat & agents" if kid is None else (meta["name"] if meta else "Deleted key"),
+            "prefix": (meta["prefix"] if meta else "") or "",
+            **item,
+        })
     recent = [
         {
             "at": row["created_at"] or "",
@@ -732,12 +735,19 @@ def usage_analytics(
             "cost_known": bool(row["pricing_known"]) or row["reported_cost_micros"] is not None,
             "status": row["request_status"] or "success",
         }
-        for row in recent_rows
+        for row in recent_job.result()
     ]
-    activity = [
-        [int(row["hour"]), int(row["tokens"] or 0), int(row["requests"] or 0)]
-        for row in heat_job.result()
-    ]
+    if heat_job:
+        by_hour = {int(row["hour"]): [int(row["tokens"] or 0), int(row["requests"] or 0)] for row in heat_job.result()}
+    if span.total_seconds() > _HEATMAP_FOLD:
+        week = _bucket_of(int(end_dt.timestamp()), _WEEK)
+        folded: dict[int, list[int]] = {}
+        for hour, (tokens, requests) in by_hour.items():
+            cell = folded.setdefault(week + (hour - _MONDAY) % _WEEK, [0, 0])
+            cell[0] += tokens
+            cell[1] += requests
+        by_hour = folded
+    activity = [[hour, tokens, requests] for hour, (tokens, requests) in sorted(by_hour.items())]
     cache_hit = _hit_rate(summary["cached"], summary["prompt"])
     prev_hit = _hit_rate(previous["cached"], previous["prompt"])
     # Rates only describe priced traffic: dividing by unpriced tokens or
@@ -752,7 +762,8 @@ def usage_analytics(
     saved, saved_known = _cache_savings(ranked_models)
     peak = max(points, key=lambda point: point["tokens"], default=None)
     return {
-        "range": {"id": range_id, "from": start, "to": end, "bucket": bucket_label, "bucket_seconds": bucket_seconds},
+        "range": {"id": range_id, "from": start, "to": end, "bucket": bucket_label, "bucket_seconds": bucket_seconds,
+                  "first_at": first_at},
         "scope": "all" if all_users else "account",
         "subject_id": subject_id,
         "provider": provider,
@@ -803,8 +814,8 @@ def usage_analytics(
         "keys": keys,
         "recent": recent,
         "activity": activity,
-        "activity_days": max(duration, _HEATMAP_MIN).days,
-        "users": users[:20],
+        "activity_days": max(1, round(span.total_seconds() / _DAY)) if lifetime else max(duration, _HEATMAP_MIN).days,
+        "users": users,
         "account_options": account_options,
     }
 
