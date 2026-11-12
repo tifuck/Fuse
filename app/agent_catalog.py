@@ -586,9 +586,9 @@ SCHEMAS = {
                 "Run a shell command on the bound host, or on every host in `host` at once. A denylist is applied, not a safety sandbox. "
                 "Linux hosts run bash (SSH: bash -lc; connectors: bash --noprofile --norc -c); Windows connectors use "
                 "PowerShell -NoProfile — match the host OS. Output keeps its first ~4 KB and last ~12 KB, cut on "
-                "line boundaries with the exact count omitted between; for long output, write it to a log under "
-                "/tmp/fuse and tail or grep the log. A non-zero exit is the command's own status, not a tool "
-                "failure. Prefer the file tools over shell for listing, searching, and reading files. "
+                "line boundaries with the exact count omitted between; for long output, write it to a log in "
+                "your temp dir (named in the system prompt) and tail or grep the log. A non-zero exit is the "
+                "command's own status, not a tool failure. Prefer the file tools over shell for listing, searching, and reading files. "
                 "A foreground command still running at its timeout moves to the background instead of being "
                 "killed (a command that is only `sleep` is killed); it also moves as soon as background results or "
                 "a user message arrive for you, so you see them at once. Its <command_result> arrives when it finishes. "
@@ -612,7 +612,7 @@ SCHEMAS = {
                     },
                     "cwd": {
                         "type": "string",
-                        "description": "Optional working directory override for this command only. Omit to use the host's listed working directory (bound project path, else default directory, else home). Set to /tmp/fuse (Windows: %TEMP%\\fuse) for throwaway one-offs with no named path. Set to ~ for that host's home. Prefer this over a cd prefix when running elsewhere.",
+                        "description": "Optional working directory override for this command only. Omit to use the host's listed working directory (bound project path, else default directory, else home). Set to your temp dir (named in the system prompt; created on use) for throwaway one-offs with no named path. Set to ~ for that host's home. Prefer this over a cd prefix when running elsewhere.",
                     },
                     "timeout": {
                         "type": "integer",

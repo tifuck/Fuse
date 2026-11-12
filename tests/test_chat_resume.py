@@ -524,9 +524,11 @@ class ResumeTest(unittest.IsolatedAsyncioTestCase):
             sent.append(json.loads(json.dumps(body)))
             return user, src(), "offline", "offline", ok_result()
 
-        # Every real coding prompt states the session framing; a frozen prompt
-        # without the current one is rebuilt, so the stand-ins carry it too.
-        frame = runtime.session_frame(project_session=False)
+        # Every real coding prompt states the session framing and this chat's
+        # temp dir; a frozen prompt without the current ones is rebuilt, so
+        # the stand-ins carry them too.
+        temp = runtime.chat_temp_dir(chats.resolve_thread_pk(1, thread["id"]), thread["created_at"])
+        frame = runtime.session_frame(project_session=False) + "\n\n" + runtime.temp_frame(temp)
         system = iter([f"{label} system\n\n{frame}" for label in ("first", "wake", "third")])
         for auto in (False, True, False):
             view = chats.get_thread(1, thread["id"])
@@ -547,6 +549,52 @@ class ResumeTest(unittest.IsolatedAsyncioTestCase):
         for earlier, later in zip(sent, sent[1:]):
             self.assertEqual(later["messages"][:len(earlier["messages"])], earlier["messages"])
         self.assertEqual(sent[2]["messages"][0]["content"], f"first system\n\n{frame}")
+
+    async def test_prompt_frozen_before_the_temp_dir_is_rebuilt_once(self):
+        # Chats frozen while the prompt still named the shared /tmp/fuse get
+        # their own folder on the next turn, then keep that prefix.
+        db.execute("INSERT OR REPLACE INTO user_agent_settings(user_id, agent_coding) VALUES(1, 1)")
+        thread = chats.create_thread(1, model="offline", tools=["web_search"])
+        sent = []
+
+        async def invoke(request, user, body, **_kwargs):
+            sent.append(json.loads(json.dumps(body)))
+            return user, src(), "offline", "offline", ok_result()
+
+        temp = runtime.chat_temp_dir(chats.resolve_thread_pk(1, thread["id"]), thread["created_at"])
+        self.assertRegex(temp, r"^c-[0-9a-f]{8}$")
+        frame = runtime.session_frame(project_session=False)
+        with_temp = runtime.temp_frame(temp)
+        prompts = [f"old system\n\n{frame}", f"new system\n\n{frame}\n\n{with_temp}",
+                   f"later system\n\n{frame}\n\n{with_temp}"]
+        for prompt in prompts:
+            view = chats.get_thread(1, thread["id"])
+            run = store.start_turn(1, thread["id"], "go", view["revision"], None)["run"]
+            with patch.object(runtime, "build_system_prompt", return_value=prompt):
+                await self.stream_turn(invoke, run["request"], frozen_context=chats.get_user_context(1))
+            store.finish_run(run["id"], {"content": "final answer", "reasoning": ""}, "completed")
+        systems = [body["messages"][0]["content"] for body in sent]
+        self.assertEqual(systems, [prompts[0], prompts[1], prompts[1]])
+        self.assertIn(f"`/tmp/fuse/{temp}`", systems[2])
+
+    async def test_subagent_prompt_names_its_own_folder_inside_the_chats(self):
+        thread = chats.create_thread(1, model="offline", tools=[])
+        pk = chats.resolve_thread_pk(1, thread["id"])
+        child_run = "0f9e8d7c-6b5a-4321-8765-0123456789ab"
+        sent = []
+
+        async def invoke(request, user, body, **_kwargs):
+            sent.append(json.loads(json.dumps(body)))
+            return user, src(), "offline", "offline", ok_result()
+
+        raw = {"model": "offline", "messages": [{"role": "user", "content": "task"}], "tools": [], "thread_id": pk,
+               "agent": {"coding": True, "project_session": True, "depth": 1, "parent_run_id": "root-run",
+                         "run_id": child_run, "subagent_type": "explore"}}
+        await self.stream_turn(invoke, raw)
+        system = sent[0]["messages"][0]["content"]
+        chat = runtime.chat_temp_dir(pk, thread["created_at"])
+        self.assertTrue(system.endswith(runtime.temp_frame(f"{chat}/s-0f9e8d7c", subagent=True)), system[-600:])
+        self.assertIn(f"The chat's folder `/tmp/fuse/{chat}`", system)
 
     def test_wake_turn_takes_the_effort_only_for_the_same_model(self):
         thread = chats.create_thread(1, model="offline", tools=["web_search"])

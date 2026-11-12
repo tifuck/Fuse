@@ -25,7 +25,9 @@ from .chat_prompts import (
     RECAP_SYSTEM,
     TITLE_SYSTEM,
     build_system_prompt,
+    chat_temp_dir,
     session_frame,
+    temp_frame,
     expand_slash_messages,
     sanitize_messages,
     _clip,
@@ -657,6 +659,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             (h.get("auth_type") or "") != "agent" and not h.get("disabled")
             for h in hosts_mod.list_bundle(user["id"])["hosts"]
         )
+    temp_dir = chat_temp_dir(
+        thread_id if thread else None,
+        str((thread or {}).get("created_at") or ""),
+        str(agent.get("run_id") or "") if is_child else "",
+    ) if coding else ""
     candidate_system = build_system_prompt(
         instructions=prefs["instructions"],
         profile=prefs["profile"],
@@ -677,6 +684,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory=memory_mode,
         memory_index=memory_index,
         memory_project=bool(memory_project),
+        temp_dir=temp_dir,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
     prompt_snapshot = copy.deepcopy(snapshot) if isinstance(snapshot, dict) and isinstance(snapshot.get("system"), str) else {}
@@ -746,9 +754,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     # deleting its machine changes where the session works without changing
     # the tool list; a frozen prompt must not keep stating the old place.
     frame = session_frame(project_session=project_session, bound_label=bound_label) if coding else ""
+    # Chats frozen before the per-chat temp dir existed still name /tmp/fuse.
+    temp_line = temp_frame(temp_dir, subagent=is_child) if coding else ""
     if not (agent.get("resumed") or agent.get("followup_continuation")) and (
         schemas != candidate_schemas or prompt_snapshot.get("context") != prompt_context
-        or (frame and frame not in system)
+        or (frame and frame not in system) or (temp_line and temp_line not in system)
     ):
         prompt_refreshed = "system" in prompt_snapshot
         # Explicit settings changes take effect on the next turn. Resumes keep

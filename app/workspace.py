@@ -1172,6 +1172,28 @@ def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
     return runner
 
 
+async def _ensure_fuse_temp(user_id, host_id, cwd: str, *, windows: bool) -> None:
+    """Create a command's cwd when it is in the Fuse temp dir, where the prompt
+    sends scratch work (connectors fail a missing cwd before the command runs).
+
+    Checked on every command, never remembered: a reboot or a temp cleaner
+    empties it under a live chat. Best effort: if this fails, the command's
+    own cwd error says why.
+    """
+    from .permissions import in_fuse_temp
+
+    if not in_fuse_temp(cwd, windows):
+        return
+    if windows:
+        cmd = f"New-Item -ItemType Directory -Force -Path ({_ps_path_expr(cwd)}) | Out-Null"
+    else:
+        cmd = f"mkdir -p -- {_quote_host_path(cwd)}"
+    try:
+        await _tool_exec(user_id, host_id, cmd, "~", 8)
+    except Exception:
+        logger.debug("could not create temp cwd %s on host %s", cwd, host_id, exc_info=True)
+
+
 async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None):
     from . import command_jobs
 
@@ -1181,6 +1203,7 @@ async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, 
     if _command_too_long(command):
         raise WorkspaceError(_command_too_long(command))
     cwd = _shell_cwd(args, root, windows=windows)
+    await _ensure_fuse_temp(user_id, host_id, cwd, windows=windows)
     background = _as_bool(args.get("background"))
     timeout_ms, wait_ms = _command_timeouts(args, background)
     if _is_agent(user_id, host_id):
@@ -1468,6 +1491,8 @@ async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False
     except ValueError as exc:
         raise WorkspaceError(str(exc)) from exc
     cwd = _shell_cwd(args, root, windows=windows) if command else ""
+    if cwd:
+        await _ensure_fuse_temp(user_id, host_id, cwd, windows=windows)
     timeout_ms = monitor_mod.deadline_ms(args.get("timeout"))
     max_events = monitor_mod.max_events(args.get("max_events"))
     if url:

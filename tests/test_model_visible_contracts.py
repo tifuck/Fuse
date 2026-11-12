@@ -1,4 +1,5 @@
 """Prompt contracts exercised without databases, providers, or remote hosts."""
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -95,9 +96,12 @@ class ModelVisibleContractsTest(unittest.TestCase):
         self.assertNotIn("run_terminal_command", agent_catalog.PLAN_TOOLS)
         self.assertIn("not a safety sandbox", agent_catalog.schema("run_terminal_command")["function"]["description"])
         self.assertIn("file tools", agent_catalog.schema("run_terminal_command")["function"]["description"])
-        self.assertIn("/tmp/fuse", agent_catalog.schema("run_terminal_command")["function"]["description"])
+        # Tool schemas lead every chat's cached prefix: they name the temp dir
+        # generically, never one chat's folder (the system prompt's last line does).
+        self.assertIn("your temp dir", agent_catalog.schema("run_terminal_command")["function"]["description"])
         cwd = agent_catalog.schema("run_terminal_command")["function"]["parameters"]["properties"]["cwd"]["description"]
-        self.assertIn("/tmp/fuse", cwd)
+        self.assertIn("your temp dir", cwd)
+        self.assertNotIn("/tmp/fuse", json.dumps(agent_catalog.SCHEMAS))
         self.assertIn("Prefer this over shell", agent_catalog.schema("grep")["function"]["description"])
         grep_pattern = agent_catalog.schema("grep")["function"]["parameters"]["properties"]["pattern"]
         self.assertEqual(grep_pattern["maxLength"], 2000)

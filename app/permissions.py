@@ -249,6 +249,27 @@ def is_temp_path(path: str, windows: bool) -> bool:
     return n == "/tmp" or n.startswith("/tmp/")
 
 
+def in_fuse_temp(path: str, windows: bool) -> bool:
+    """True for the Fuse temp dir (/tmp/fuse, %TEMP%\\fuse) or anything inside it."""
+    raw = str(path or "")
+    if not raw:
+        return False
+    if windows:
+        low = ntpath.normpath(expand_temp(raw, True).replace("/", "\\")).lower()
+        home_tmp = WIN_TEMP_HOME.lower()
+        if low == home_tmp or low.startswith(home_tmp + "\\"):
+            rest = low[len(home_tmp):]
+        else:
+            match = _WIN_TEMP_ABS.match(low)
+            if not match:
+                return False
+            rest = low[match.end():]
+        rest = rest.lstrip("\\")
+        return rest == "fuse" or rest.startswith("fuse\\")
+    n = posixpath.normpath(raw)
+    return n == "/tmp/fuse" or n.startswith("/tmp/fuse/")
+
+
 def compute_roots(root: str, windows: bool) -> list[str]:
     """Allowed roots for a host given the workspace-computed working root."""
     roots: list[str] = []

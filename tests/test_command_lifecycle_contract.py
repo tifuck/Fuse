@@ -115,6 +115,35 @@ class LifecycleContract(unittest.IsolatedAsyncioTestCase):
                             on_started=events.append)
         self.assertEqual(events[0]["description"], "Show working tree status")
 
+    async def test_shell_and_monitor_create_a_temp_cwd_before_the_command_runs(self):
+        # Connectors chdir() before exec and fail a missing cwd, and a reboot
+        # can empty /tmp under a live chat: every such command creates it first.
+        order = []
+
+        async def tool_exec(user_id, host_id, cmd, cwd, seconds):
+            order.append(("mkdir", cmd))
+            return {"exit": 0}
+
+        def make_runner(user_id, host_id, command, cwd, timeout_ms):
+            async def runner(sink):
+                order.append(("run", cwd))
+                return SimpleNamespace(exit_status=0)
+            return runner
+
+        with patch.object(ws, "_is_agent", return_value=True), patch.object(ws, "_tool_exec", tool_exec), \
+                patch.object(ws, "_make_agent_runner", side_effect=make_runner), \
+                patch.object(ws, "_make_monitor_agent_runner", side_effect=make_runner):
+            # The permission gate relaxes the root ("") for a cwd in temp.
+            await ws._shell(1, 2, "host", {"command": "mock", "cwd": "/tmp/fuse/c-1a2b3c4d"}, "")
+            self.assertEqual(order, [("mkdir", "mkdir -p -- /tmp/fuse/c-1a2b3c4d"), ("run", "/tmp/fuse/c-1a2b3c4d")])
+            order.clear()
+            await ws._shell(1, 2, "host", {"command": "mock"}, "/repo")
+            self.assertEqual(order, [("run", "/repo")])
+            order.clear()
+            await ws._monitor(1, 2, "host", {"command": "tail -F x.log", "description": "watch log",
+                                             "cwd": "/tmp/fuse/c-1a2b3c4d/s-0f9e8d7c"}, "")
+            self.assertEqual(order[0], ("mkdir", "mkdir -p -- /tmp/fuse/c-1a2b3c4d/s-0f9e8d7c"))
+
     async def test_shell_announces_execution_identity_before_foreground_finishes(self):
         gate = asyncio.Event()
         async def runner(sink):

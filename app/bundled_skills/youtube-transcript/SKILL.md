@@ -15,8 +15,8 @@ The script needs a connected machine with Python 3 and outbound HTTPS. Use the b
 ## Steps
 
 1. Take the 11-character video ID from the URL (`watch?v=<id>`, `youtu.be/<id>`, `/shorts/<id>`, `/embed/<id>`, `/live/<id>`). Pass only that ID to the shell, never the pasted URL.
-2. Write the script below to the temp directory as `yt_transcript.py` (`/tmp/fuse`, Windows `%TEMP%\fuse`).
-3. Run it with the output in a file, since a long transcript exceeds the command output cap: `python3 yt_transcript.py <id> > yt-<id>.txt; echo "exit=$?"` (Windows: `python`). Then read `yt-<id>.txt` with `read_file`.
+2. Write the script below to your temp dir (named in the system prompt) as `yt_transcript.py`.
+3. Run it with cwd set to that temp dir and the output in a file, since a long transcript exceeds the command output cap: `python3 yt_transcript.py <id> > yt-<id>.txt; echo "exit=$?"` (Windows: `python`). Then read `yt-<id>.txt` with `read_file`.
 4. Answer what the user asked (summary, quotes, a specific moment) from the transcript, citing `[m:ss]` timestamps where useful.
 
 ```python

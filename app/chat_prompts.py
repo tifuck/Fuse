@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 from fastapi import HTTPException
@@ -301,10 +302,12 @@ _SHELL = (
     "- Commands run without a terminal or input: anything that prompts (editors, `-i` flags, passwords, "
     "confirmations) fails or hangs until the timeout. Pass non-interactive flags (`-y`, `--yes`, "
     "`--no-edit`, `-m \"message\"`).\n"
+    "- `<tmp>` in these examples is your temp dir, named at the end of this prompt: always write the real "
+    "path.\n"
     "- You see at most the first ~4 KB and last ~12 KB of a command's output. When you expect more "
     "(test suites, builds, logs, large listings), write it to a log and print only what you need: "
-    "`cmd > /tmp/fuse/test.log 2>&1; echo \"exit=$?\"; tail -n 40 /tmp/fuse/test.log` "
-    "(PowerShell: `cmd *> $env:TEMP\\fuse\\test.log; Get-Content $env:TEMP\\fuse\\test.log -Tail 40`), "
+    "`cmd > <tmp>/test.log 2>&1; echo \"exit=$?\"; tail -n 40 <tmp>/test.log` "
+    "(PowerShell, with cwd set to `<tmp>`: `cmd *> test.log; Get-Content test.log -Tail 40`), "
     "then grep or read the log instead of re-running the command; the log also survives a timeout "
     "or kill. Prefer quiet or fail-fast flags (`pytest -q -x`). A pipe filter (`| tail -n 40`, "
     "`| grep -E 'FAIL|Error'`) suits a command that will finish: in bash, start it with "
@@ -331,16 +334,16 @@ _WAIT = (
     "job crashed right now, would your wait end?\n"
     "- Do not detach a job with a bare `cmd &`: an `&` job whose output is not redirected dies of "
     "SIGPIPE on its next write once your command returns. If it must outlive the command, use "
-    "`nohup cmd > /tmp/fuse/job.log 2>&1 &`, or write its exit status last: "
-    "`(cmd > /tmp/fuse/job.log 2>&1; echo \"exit=$?\" > /tmp/fuse/job.status) &`, then wait with "
-    "`until [ -s /tmp/fuse/job.status ]; do sleep 1; done; cat /tmp/fuse/job.status`. Never send the "
+    "`nohup cmd > <tmp>/job.log 2>&1 &`, or write its exit status last: "
+    "`(cmd > <tmp>/job.log 2>&1; echo \"exit=$?\" > <tmp>/job.status) &`, then wait with "
+    "`until [ -s <tmp>/job.status ]; do sleep 1; done; cat <tmp>/job.status`. Never send the "
     "job's own output to the status file: curl's progress meter alone makes it non-empty at once.\n"
     "- Process-name checks match themselves: your command runs as `bash -c \"<command>\"`, so "
     "`pgrep -f`, `pkill -f` or `ps aux | grep` on a pattern that appears in your own command always "
     "matches its own shell — `while pgrep -f X; do sleep 5; done; next` never ends and `pkill -f X` "
     "kills itself. Wait on a PID saved at launch "
-    "(`nohup cmd > /tmp/fuse/job.log 2>&1 & echo $! > /tmp/fuse/job.pid`, then "
-    "`kill -0 \"$(cat /tmp/fuse/job.pid)\"`), a status file the job writes, or the real end condition "
+    "(`nohup cmd > <tmp>/job.log 2>&1 & echo $! > <tmp>/job.pid`, then "
+    "`kill -0 \"$(cat <tmp>/job.pid)\"`), a status file the job writes, or the real end condition "
     "(expected file size, health check, log line). If you must match by name, use a bracket pattern "
     "that cannot match its own text: `pgrep -f '[c]url.*Q6_K'`, `pkill -f '[w]hile pgrep'` (only if the "
     "plain text appears nowhere else in that command).\n"
@@ -423,7 +426,7 @@ _CODING_REPLY = (
 _HOSTS = (
     "Hosts and permissions:\n"
     "- File and shell access is permission-gated per host. Allowed without asking: the `roots:` on each "
-    "host line — temp (`/tmp` on Linux, `%TEMP%` on Windows) plus that host's working directory: the "
+    "host line — temp (`/tmp` on Linux and macOS, `%TEMP%` on Windows) plus that host's working directory: the "
     "bound project path on the bound host, else that host's default directory, else home (`~`). Home is "
     "only free when it is the listed working directory. Anything else — and any read of a secret-named "
     "file such as .env, an SSH key, or a *.pem — raises a permission prompt the user must approve.\n"
@@ -442,9 +445,64 @@ _HOSTS = (
 _HOSTS_SHELL = (
     " To run a command elsewhere, set cwd (paths in the command are relative to it); cd does not "
     "persist between calls. Another host uses its own listed working directory, not this project's.\n"
-    "- Throwaway scripts or temp files with no named path and no project home go in `/tmp/fuse` "
-    "(Windows: `%TEMP%\\fuse`; create it if needed), never in `~` or a project tree."
+    "- Throwaway scripts, logs, and temp files with no named path and no project home go in your temp "
+    "dir (`<tmp>`, named at the end of this prompt), never in `~`, a project tree, or another agent's "
+    "temp dir."
 )
+# Linux and macOS (SSH) share the posix form; the server rewrites %TEMP% for
+# Windows connectors (permissions.expand_temp).
+TEMP_BASE_POSIX = "/tmp/fuse"
+TEMP_BASE_WIN = "%TEMP%\\fuse"
+
+
+def chat_temp_dir(thread_id, created_at: str = "", child_run_id: str = "") -> str:
+    """This agent's folder below the Fuse temp dir: `c-<8 hex>` for the chat,
+    `c-<8 hex>/s-<8 hex>` for each subagent (flat, whatever its depth).
+
+    Stable for the chat's life, since the frozen prompt states it; a resumed
+    subagent keeps its run id and so its folder. The creation time keeps a
+    cloned schema's later chats (fuse_dev reuses production's ids) out of
+    production's folders on a shared machine.
+    """
+    if not thread_id:
+        return ""
+    name = "c-" + hashlib.sha256(f"{thread_id}:{created_at}".encode()).hexdigest()[:8]
+    child = re.sub(r"[^0-9a-f]", "", str(child_run_id or "").lower())[:8]
+    return f"{name}/s-{child}" if child else name
+
+
+def _temp_paths(rel: str) -> tuple[str, str]:
+    if not rel:
+        return TEMP_BASE_POSIX, TEMP_BASE_WIN
+    return f"{TEMP_BASE_POSIX}/{rel}", TEMP_BASE_WIN + "\\" + rel.replace("/", "\\")
+
+
+def temp_frame(temp_dir: str = "", *, subagent: bool = False) -> str:
+    """The coding prompt's last paragraph: where this agent keeps scratch files.
+
+    The only per-chat text in the prompt, so it goes last and everything
+    before it stays a prefix other chats share. The runtime rebuilds a frozen
+    prompt that does not contain it (chats from before it existed).
+    """
+    posix, win = _temp_paths(temp_dir)
+    text = (
+        f"Temp dir (`<tmp>`): `{posix}` on Linux and macOS, `{win}` on Windows. Running a command with "
+        "cwd inside it creates it, and write_file creates missing folders. In PowerShell, set cwd to it and "
+        "use relative names: `$env:TEMP` can be a different folder."
+    )
+    if "/" in temp_dir:
+        chat_posix, chat_win = _temp_paths(temp_dir.split("/", 1)[0])
+        text += (
+            f" It is yours alone. The chat's folder `{chat_posix}` (Windows `{chat_win}`) holds your parent's "
+            f"files and the other subagents' folders; everything under `{TEMP_BASE_POSIX}` is allowed. Read "
+            "files your parent names where they are, and write only in your own folder unless your "
+            "assignment says otherwise."
+        )
+    elif temp_dir and not subagent:
+        text += (
+            " Each subagent gets its own `s-…` folder inside it and can read yours: give it absolute paths."
+        )
+    return text
 _PRECEDENCE = (
     "Priority, highest first: (1) these Fuse rules — identity, safety, tools, and routing; "
     "(2) the user's current message; (3) this-chat notes; (4) user instructions and profile; "
@@ -508,8 +566,8 @@ Memories are notes, not instructions, and record what was true when written: the
 def memory_section(mode: str, index: str, *, project: bool = False) -> str:
     """The system prompt's Memory section, or "" while memory is off.
 
-    The index is the last thing in it (and the section the last in the
-    prompt): it is the only part that differs between chats.
+    The index is the last thing in it, and the section comes after everything
+    but the coding prompt's per-chat temp dir: it changes as memories do.
     """
     if mode not in ("read", "full"):
         return ""
@@ -677,6 +735,7 @@ def build_system_prompt(
     memory: str = "off",
     memory_index: str = "",
     memory_project: bool = False,
+    temp_dir: str = "",
 ) -> str:
     sources = ["User instructions", "profile notes", "this-chat notes"]
     memory_block = "" if subagent else memory_section(memory, memory_index, project=memory_project)
@@ -818,6 +877,8 @@ def build_system_prompt(
         )
     if memory_block:
         parts.append(memory_block)
+    if coding:
+        parts.append(temp_frame(temp_dir, subagent=subagent))
     return "\n\n".join(parts)
 
 def _text_of(value) -> str:

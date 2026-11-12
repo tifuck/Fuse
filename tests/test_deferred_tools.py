@@ -495,14 +495,14 @@ class CodingPromptTest(unittest.TestCase):
             # A process-name check matches the watcher's own `bash -c` line.
             self.assertIn("Process-name checks match themselves", text)
             self.assertIn("pgrep -f '[c]url.*Q6_K'", text)
-            self.assertIn("echo $! > /tmp/fuse/job.pid", text)
-            self.assertIn("until [ -s /tmp/fuse/job.status ]", text)
+            self.assertIn("echo $! > <tmp>/job.pid", text)
+            self.assertIn("until [ -s <tmp>/job.status ]", text)
             self.assertIn("run its check once by hand", text)
             # A job you start reports its own exit; a bare `cmd &` dies of SIGPIPE.
             self.assertIn("`<command_result>` brings its exit code", text)
             self.assertIn("dies of SIGPIPE", text)
             # Job output must not reach the status file (curl's meter fires it at once).
-            self.assertIn('echo "exit=$?" > /tmp/fuse/job.status', text)
+            self.assertIn('echo "exit=$?" > <tmp>/job.status', text)
             self.assertIn("Silence is not success", text)
             self.assertIn("the event wakes you", text)
             # Only the main agent is woken by background results.
