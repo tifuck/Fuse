@@ -1363,6 +1363,78 @@ document.querySelectorAll(".probe").forEach((btn) => {
   };
 })();
 
+// A promote restarts Fuse, but a page left open for days (the desktop app,
+// an installed phone app) keeps running the old UI against the new server.
+// The page carries the build it was rendered from. The chat socket's ready
+// names the server's at once (the restart drops the socket); other pages poll
+// /build, and every page checks on resume. A stale page reloads when nobody is
+// looking: hidden, just resumed, or idle. Never over an open dialog or text the
+// user typed (the chat composer is exempt: its draft syncs to the server and
+// flushes on pagehide); it waits with a Reload toast instead.
+(function buildWatch() {
+  const page = document.querySelector('meta[name="fuse-build"]')?.content;
+  if (!page) return;
+  const POLL_MS = 2 * 60 * 1000;
+  const IDLE_MS = 2 * 60 * 1000;
+  let stale = false;
+  let polled = 0;
+  let lastInput = Date.now();
+  // ponytail: a typed field stays "unsaved" until its form submits; a field
+  // saved by fetch only costs that page its auto-reload (the toast remains).
+  const typed = new Set();
+  const TEXT = /^(textarea|text|email|url|password|number|tel)$/;
+
+  document.addEventListener("input", (event) => {
+    const el = event.target;
+    if (!(el instanceof Element) || el.matches("[data-chat-input]")) return;
+    if (el.isContentEditable || TEXT.test(el.type)) typed.add(el);
+  }, true);
+  document.addEventListener("submit", (event) => {
+    for (const el of typed) if (event.target.contains(el)) typed.delete(el);
+  }, true);
+  const dirty = () => Boolean(document.querySelector("dialog[open]")) || [...typed].some((el) => el.isConnected);
+  const reload = () => location.reload();
+  const tryReload = () => {
+    if (!dirty()) reload();
+  };
+
+  function check(build, resumed) {
+    if (!build || build === page) return;
+    if (!stale) {
+      stale = true;
+      window.fuseUI?.toast({ key: "fuse-build", title: "Fuse was updated", msg: "Reload to get the new version.", actionLabel: "Reload", onAction: reload });
+    }
+    if (resumed || document.hidden) tryReload();
+  }
+
+  async function poll(resumed) {
+    if (stale || Date.now() - polled < 5000) return;
+    polled = Date.now();
+    try {
+      const res = await fetch("/build", { cache: "no-store", credentials: "omit" });
+      if (res.ok) check((await res.text()).trim(), resumed);
+    } catch (_) {}
+  }
+
+  for (const name of ["pointerdown", "keydown", "wheel"]) {
+    window.addEventListener(name, () => { lastInput = Date.now(); }, { capture: true, passive: true });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) poll(true);
+    else if (stale) tryReload();
+  });
+  window.addEventListener("pageshow", (event) => { if (event.persisted) poll(true); });
+  window.addEventListener("online", () => poll(false));
+  window.setInterval(() => {
+    if (stale) {
+      if (document.hidden || Date.now() - lastInput > IDLE_MS) tryReload();
+    } else if (!document.hidden && Date.now() - polled >= POLL_MS) {
+      poll(false);
+    }
+  }, 30 * 1000);
+  window.fuseBuild = (build) => check(build, false);
+})();
+
 (function sourceMineFilter() {
   function byGroup(attr, group) {
     return Array.from(document.querySelectorAll(`[${attr}]`)).filter((el) => el.getAttribute("data-mine-group") === group);

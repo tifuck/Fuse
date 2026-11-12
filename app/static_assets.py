@@ -12,6 +12,7 @@ versions through ``asset_url`` and the preload lists through
 """
 from __future__ import annotations
 
+import functools
 import gzip
 import hashlib
 import posixpath
@@ -282,6 +283,20 @@ def preloads(entry: str) -> list[str]:
     if _frozen:
         _preload_lists[entry] = urls
     return list(urls)
+
+
+@functools.cache
+def build_id() -> str:
+    """One hash over every script, stylesheet and template this process
+    serves. A page stamped with another build is running stale UI and
+    static/app.js reloads it. Computed once: a deploy restarts the process."""
+    digest = hashlib.sha256()
+    for root in (ROOT, ROOT.parent / "templates"):
+        for path in sorted(root.rglob("*")):
+            if path.suffix in (*_TEXT, ".html") and path.is_file():
+                digest.update(path.relative_to(root.parent).as_posix().encode())
+                digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
 
 
 def warm(*, compress: bool = False) -> None:

@@ -179,6 +179,22 @@ def test_a_frozen_tree_is_not_rechecked(tree, monkeypatch):
     assert static_assets.version("main.js") != before
 
 
+def test_build_id_follows_scripts_and_templates(tree, tmp_path):
+    # Open pages reload when it changes (static/app.js), so it must move with
+    # any UI edit, including a template-only one.
+    build = static_assets.build_id.__wrapped__
+    tree("app.js", "1;\n")
+    (tmp_path / "templates").mkdir()
+    (tmp_path / "templates" / "base.html").write_text("<p>a</p>")
+    first = build()
+    assert build() == first
+    (tmp_path / "templates" / "base.html").write_text("<p>b</p>")
+    second = build()
+    assert second != first
+    tree("app.js", "2;\n")
+    assert build() not in (first, second)
+
+
 def test_templates_use_content_versions():
     # Hand-numbered ?v= on a template entry would be served immutable while
     # the modules it imports moved on; asset() derives it from content.

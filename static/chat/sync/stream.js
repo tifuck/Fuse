@@ -372,6 +372,7 @@ export function createStream(ctx) {
             }
           }
           if (data.type === "ready") {
+            window.fuseBuild?.(data.build);
             S.cursor = Math.max(S.cursor, data.cursor);
             await apply.reconcileThread();
             if (epoch !== S.syncEpoch) return;

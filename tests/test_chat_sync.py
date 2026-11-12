@@ -16,7 +16,7 @@ from itsdangerous import TimestampSigner
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.websockets import WebSocketDisconnect
 
-from app import chat_events, chat_runs, chat_runtime, chat_store, chats, db, web
+from app import chat_events, chat_runs, chat_runtime, chat_store, chats, db, static_assets, web
 
 
 SECRET = "offline-sync-tests-only"
@@ -173,7 +173,7 @@ class ChatSyncTest(unittest.TestCase):
             with self.client.websocket_connect("wss://testserver/chat/events", headers={"origin": "https://testserver", "cookie": "session=invalid"}):
                 pass
         with self.socket(uid=2) as other:
-            self.assertEqual(other.receive_json(), {"type": "ready", "cursor": 0})
+            self.assertEqual(other.receive_json(), {"type": "ready", "cursor": 0, "build": static_assets.build_id()})
         self.login(2)
         self.assertEqual(self.client.get(f"/chat/threads/{thread['id']}").status_code, 404)
         self.assertEqual(self.client.get("/chat/sync").json()["threads"], [])

@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
-from .. import push
+from .. import push, static_assets
 from ..config import ROOT
 from ..security import limiter
 from .deps import _chat_auth, _json_object
@@ -21,6 +21,13 @@ async def service_worker():
         media_type="text/javascript",
         headers={"Cache-Control": "no-store"},
     )
+
+
+# The UI build this process serves; static/app.js reloads a page stamped
+# with another one.
+@router.get("/build", include_in_schema=False)
+async def build():
+    return PlainTextResponse(static_assets.build_id(), headers={"Cache-Control": "no-store"})
 
 
 # Browsers ask for this on every page that links no icon of its own

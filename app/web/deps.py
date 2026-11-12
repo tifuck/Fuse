@@ -45,6 +45,7 @@ templates.env.globals["provider_logo_url"] = provider_logo_url
 # Content-versioned /static URLs (immutable caching); see app/static_assets.py.
 templates.env.globals["asset"] = static_assets.asset_url
 templates.env.globals["asset_preloads"] = static_assets.preloads
+templates.env.globals["build_id"] = static_assets.build_id
 logger = logging.getLogger("app.web")
 _pending: dict[int, dict] = {}
 _chatgpt_pending: dict[int, dict] = {}

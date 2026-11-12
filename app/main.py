@@ -190,6 +190,7 @@ async def lifespan(app: FastAPI):
     # immutable URLs the tree is the one this process ships (a deploy
     # restarts it), so nothing needs re-checking per render.
     await asyncio.to_thread(static_assets.warm, compress=settings.static_immutable)
+    await asyncio.to_thread(static_assets.build_id)
     if settings.static_immutable:
         static_assets.freeze()
     try:

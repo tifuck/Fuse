@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from . import accounts, chat_store, db
+from . import accounts, chat_store, db, static_assets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -207,7 +207,9 @@ async def events(ws: WebSocket):
                 cursor = rows[-1]["id"]
                 continue
             if not ready:
-                await send({"type": "ready", "cursor": cursor})
+                # A deploy restarts Fuse and drops every socket, so the build
+                # on the reconnect's ready tells an open page it is stale.
+                await send({"type": "ready", "cursor": cursor, "build": static_assets.build_id()})
                 ready = True
             now = time.monotonic()
             if now - last_ping >= 15:
