@@ -20,7 +20,7 @@ body:has(.usage-tabs) .page-head {
   align-items: flex-end;
   padding-bottom: 0.35rem;
 }
-.usage-dashboard { --series-1: #C5E85A; --series-2: #6EE7B7; --series-3: #E2C36B; --series-4: #7EB6D6; --series-5: #D4A0B8; --series-6: #8FCF8A; --series-other: #8A9188; }
+.usage-dashboard { --series-1: #A5D8FF; --series-2: #6EE7B7; --series-3: #E2C36B; --series-4: #C5E85A; --series-5: #D4A0B8; --series-6: #8FCF8A; --series-other: #8A9188; }
 
 .usage-tabs {
   display: flex;

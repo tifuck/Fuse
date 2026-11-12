@@ -29,8 +29,8 @@ html[data-chat-theme="ivory"] {
 }
 html[data-chat-theme="fuse"] {
   color-scheme: dark;
-  --ink: #121212; --panel: #1a1a1a; --raise: #242424; --mist: #ececec; --mute: #9a9a9a; --line: #2e2e2e;
-  --brass: #c5df88; --steel: #a6c9af; --reason: #aebcc5; --fault: #f29d8e; --ok: #aed397; --chat-code-bg: #0e0e0e;
+  --ink: #000000; --panel: #0e0e0e; --raise: #181818; --mist: #ececec; --mute: #9a9a9a; --line: #262626;
+  --brass: #a5d8ff; --steel: #a6c0d0; --reason: #aebcc5; --fault: #f29d8e; --ok: #aed397; --chat-code-bg: #070707;
 }
 html[data-chat-theme="paper"] {
   color-scheme: light;

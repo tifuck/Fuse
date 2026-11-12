@@ -260,7 +260,7 @@ export function createQueue(ctx) {
     }
     const m = text.match(/rgba?\(\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*[, ]\s*([0-9.]+)/);
     if (m) return [Number(m[1]), Number(m[2]), Number(m[3])];
-    return parseCssRgb(fallback, "#B5E05A");
+    return parseCssRgb(fallback, "#A5D8FF");
   }
 
     function permThemeColors(el) {
@@ -272,7 +272,7 @@ export function createQueue(ctx) {
     const theme = getComputedStyle(el);
     _permThemeCache = {
       key,
-      brass: parseCssRgb(theme.getPropertyValue("--brass"), "#B5E05A"),
+      brass: parseCssRgb(theme.getPropertyValue("--brass"), "#A5D8FF"),
       yellow: parseCssRgb(theme.getPropertyValue("--status-live"), "#FBBF24"),
       red: parseCssRgb(theme.getPropertyValue("--fault"), "#F87171"),
     };

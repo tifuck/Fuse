@@ -1,7 +1,7 @@
 /* Apply before paint; view rendering and navigation remain owned by chat.js. */
 (() => {
   const themes = {
-    fuse: { label: "Fuse", scheme: "dark", ink: "#121212", panel: "#1a1a1a", raise: "#242424", mist: "#ececec", mute: "#9a9a9a", line: "#2e2e2e", brass: "#c5df88", steel: "#a6c9af", reason: "#aebcc5", fault: "#f29d8e", ok: "#aed397", onBrass: "#121212", code: "#0e0e0e" },
+    fuse: { label: "Fuse", scheme: "dark", ink: "#000000", panel: "#0e0e0e", raise: "#181818", mist: "#ececec", mute: "#9a9a9a", line: "#262626", brass: "#a5d8ff", steel: "#a6c0d0", reason: "#aebcc5", fault: "#f29d8e", ok: "#aed397", onBrass: "#000000", code: "#070707" },
     paper: { label: "Paper", scheme: "light", ink: "#ffffff", panel: "#f3f1ec", raise: "#e7e3da", mist: "#1c1b18", mute: "#6a655c", line: "#d5cfc4", brass: "#b45c2e", steel: "#2f6a4a", reason: "#4e5a66", fault: "#c24b40", ok: "#2f7a48", onBrass: "#ffffff", code: "#f4f1ea" },
     midnight: { label: "Midnight", scheme: "dark", ink: "#0a1018", panel: "#121a28", raise: "#1b2638", mist: "#e8eef6", mute: "#8b97a8", line: "#243044", brass: "#e3bc81", steel: "#7ec8e8", reason: "#a8b4c8", fault: "#f0a49b", ok: "#8fcdb0", onBrass: "#0a1018", code: "#070c12" },
     void: { label: "Void", scheme: "dark", ink: "#000000", panel: "#0c0c0c", raise: "#161616", mist: "#f2f2f2", mute: "#8c8c8c", line: "#222222", brass: "#5ef2c0", steel: "#8ad4c4", reason: "#9aa4b0", fault: "#ff8b7e", ok: "#7ee0a8", onBrass: "#000000", code: "#000000" },
@@ -154,7 +154,7 @@
   let theme = "fuse";
   let textScale = SIZE_DEFAULT;
   let selectedFont = "";
-  let custom = { ink: "#121212", brass: "#c5df88" };
+  let custom = { ink: "#000000", brass: "#a5d8ff" };
   let backdrop = "none";
   let strength = STRENGTH_DEFAULT;
   let fontFilter = "all";

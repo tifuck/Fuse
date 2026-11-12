@@ -10,7 +10,7 @@ A self-hosted LLM router and workspace for you and your team.<br>
 One OpenAI-compatible endpoint, a chat that searches the web and writes code on your servers.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-1E293B)](LICENSE)
-![Self-hosted](https://img.shields.io/badge/self--hosted-yes-C8E27A)
+![Self-hosted](https://img.shields.io/badge/self--hosted-yes-A5D8FF)
 ![Python](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)
 ![MariaDB](https://img.shields.io/badge/MariaDB-10.11+-003545?logo=mariadb&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
@@ -111,23 +111,40 @@ Installable web app, a desktop app, and live sync across tabs and devices.
 
 ## Features
 
-### A coding agent where your code lives
+### Edits your code, shows every diff
 
-<img src="docs/screenshots/machines.png" alt="Machines page with a connected machine and its four projects" width="100%">
+<img src="docs/screenshots/edits.png" alt="Agent transcript: an Update with a numbered red and green diff, then a Write creating a new file on the connected machine" width="100%">
 
-- **Connect any machine** with the `fuse-agent` connector (Linux binary or
-  Windows EXE). It only makes outbound HTTPS calls, so no ports to open. SSH
-  works too.
-- **Projects per machine**: open a folder from chat and the agent reads,
-  edits and runs commands there, with diffs inline in the transcript.
-- **Permission prompts** for commands and files, so nothing runs without
-  your say.
-- **Subagents, background commands and monitors**, with results delivered
-  back into the chat as they land.
+Open a project from chat and the agent reads, edits and runs commands in it.
+Every change lands in the transcript as a real diff, tagged with the machine
+it ran on, and nothing runs without a permission prompt.
+
+### One prompt, many machines
+
+<img src="docs/screenshots/hosts.png" alt="One shell command fanned out to web06 through web10 and a Windows build box, each with its own output row; web09 fails with an I/O error" width="100%">
+
+Connect Linux and Windows machines with the `fuse-agent` connector (outbound
+HTTPS only, no ports to open) or over SSH. One command runs on a whole list of
+hosts at once, with a row per host so a failing box stands out.
+
+### Subagents that fan out
+
+<img src="docs/screenshots/subagents.png" alt="Three Explore subagents finished, each with tool uses, tokens, time and speed, then a fourth agent" width="640">
+
+Hand work to parallel subagents and get their reports back in the chat.
+Background commands and log monitors report in the same way, even while the
+main reply is still going.
+
+### Projects on every machine
+
+<img src="docs/screenshots/machines.png" alt="A connector machine with four project folders, one read-only and one archived" width="760">
+
+Each machine keeps its own projects. Mark one read-only, archive it, or start
+a new chat in it with one click.
 
 ### Every model in one place
 
-<img src="docs/screenshots/models.png" alt="Models page listing available models grouped by provider" width="100%">
+<img src="docs/screenshots/models.png" alt="Models page: available models grouped by provider, Local inference, Ollama Cloud and Devin" width="100%">
 
 - **Model sources**: a llama.cpp server, any OpenAI-compatible endpoint (with
   key rotation), Ollama Cloud, and per-user OpenRouter and Experiential Labs
@@ -136,28 +153,47 @@ Installable web app, a desktop app, and live sync across tabs and devices.
   Kimi Code, Devin, Xiaomi MiMo, Cursor and NanoGPT accounts, or Refuseless
   pay-as-you-go keys. Share each one with everyone, with other contributors,
   or keep it private.
-- **New upstream models appear on their own**, and the same ids work in
-  chat and through `/v1`.
+- **The same ids work in chat and through `/v1`**, and new upstream models
+  appear on their own.
 
-### Skills, artifacts and tasks
+### Artifacts beside the chat
 
-<img src="docs/screenshots/skills.png" alt="Skills page with installed skills and a skills.sh search" width="100%">
+<img src="docs/screenshots/artifacts.png" alt="A reply publishing four artifacts as cards with version numbers and Open links" width="100%">
 
-- **Skills** are procedures the agent follows, run with `/name`. Install from
-  GitHub or skills.sh, upload a zip, or have the agent write one.
-- **Artifacts** turn a reply into a live page beside the chat: dashboards,
-  docs, tools. Every edit is a new version; share one by link.
-- **Tasks** run a prompt on a schedule in a chat or project.
-- **Memory** (opt-in) lets chats save notes and recall them later.
+Replies can publish live HTML or Markdown pages: dashboards, docs, small
+tools. Every edit is a new version, and any one can be shared by link.
+
+### Memory you control
+
+<img src="docs/screenshots/memory.png" alt="Recall, Remember and Forget calls; a memory holding an API key is refused" width="720">
+
+Opt-in notes that chats save and recall later, per project or global. Fuse
+refuses to remember anything that looks like a secret.
+
+### Skills
+
+<img src="docs/screenshots/skills.png" alt="Installed skills with on/off switches, a skills.sh catalog search and a zip upload" width="100%">
+
+Procedures the agent follows, run with `/name`. Install from GitHub or
+skills.sh, upload a zip, or have the agent write one. Skills that are off cost
+no tokens.
+
+### Make it yours
+
+<img src="docs/screenshots/themes.png" alt="Theme picker: Fuse (black and ice blue) selected, plus 15 other themes and Custom" width="760">
+
+Sixteen themes plus your own colors, animated backdrops and a choice of
+reading fonts. The default is black with an ice-blue accent.
 
 ### Take it with you
 
-<img src="docs/screenshots/phone.png" alt="Fuse chat on a phone, showing a diff and the composer" width="280" align="right">
+<img src="docs/screenshots/mobile.png" alt="Fuse chat on a phone with the subagent tree and composer" width="280" align="right">
 
 - **Installable web app** on phones and tablets, with Web Push when a reply
   finishes or needs your approval.
 - **Live sync**: the same chat streams in every tab and device at once.
 - **Desktop app** for Windows and Linux (`fuse-desktop/`).
+- **Scheduled tasks** run a prompt on a clock in a chat or project.
 - **Context meter** with automatic compaction, so long sessions keep going.
 
 ### Built to be trusted

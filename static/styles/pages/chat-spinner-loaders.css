@@ -335,6 +335,6 @@
 }
 .cas-eclipse::after {
   inset: 12%;
-  background: var(--ink, #141615);
+  background: var(--ink, #000000);
   transform: translateX(22%);
 }

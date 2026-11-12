@@ -413,7 +413,7 @@ class ArtifactAuthoringTest(unittest.TestCase):
         md = artifacts.render_document("# x", "markdown", "Doc", palette)
         self.assertIn("color-scheme:light", md)
         self.assertIn("styles/github.min.css", md)
-        self.assertIn("--fuse-bg:#121212", artifacts.render_document("<p>x</p>"))
+        self.assertIn("--fuse-bg:#000000", artifacts.render_document("<p>x</p>"))
         # The param lands inside a <style>: anything but scheme + hex is dropped.
         injected = "light,ffffff;}</style><script>alert(1)</script>," + ",".join(["ffffff"] * 10)
         for bad in ("", "dark,121212", injected, paper.replace("light", "red", 1)):

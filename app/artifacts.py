@@ -945,7 +945,7 @@ def _inject(page: str, snippet: str) -> str:
 # ?theme= is the scheme then one 6-digit hex per name, comma separated
 # (static/chat-appearance.js artifactTheme); anything else gets the Fuse theme.
 THEME_NAMES = ("bg", "surface", "raise", "text", "muted", "line", "accent", "on-accent", "ok", "error", "code")
-DEFAULT_THEME = ("dark", "121212", "1a1a1a", "242424", "ececec", "9a9a9a", "2e2e2e", "c5df88", "121212", "aed397", "f29d8e", "0e0e0e")
+DEFAULT_THEME = ("dark", "000000", "0e0e0e", "181818", "ececec", "9a9a9a", "262626", "a5d8ff", "000000", "aed397", "f29d8e", "070707")
 _HEX6 = re.compile(r"[0-9a-fA-F]{6}")
 
 

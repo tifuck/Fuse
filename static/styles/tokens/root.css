@@ -1,10 +1,10 @@
 :root {
-  --ink: #141615;
-  --panel: #1C1F1E;
+  --ink: #000000;
+  --panel: #0E0E0E;
   --mist: #E8EBE8;
   --steel: #6EE7B7;
-  --brass: #B5E05A;
-  --raise: #2A2E2C;
+  --brass: #A5D8FF;
+  --raise: #181818;
   --mute: #8F978F;
   --line: rgba(232, 235, 232, 0.14);
   --fault: #F87171;

@@ -43,11 +43,11 @@ export function fromHsl(h, s, l) {
 
 export function palette() {
   const pal = {
-    ink: rgb("--ink", [18, 18, 18]),
+    ink: rgb("--ink", [0, 0, 0]),
     mist: rgb("--mist", [236, 236, 236]),
     mute: rgb("--mute", [154, 154, 154]),
-    brass: rgb("--brass", [197, 223, 136]),
-    steel: rgb("--steel", [166, 201, 175]),
+    brass: rgb("--brass", [165, 216, 255]),
+    steel: rgb("--steel", [166, 192, 208]),
     ok: rgb("--ok", [174, 211, 151]),
     fault: rgb("--fault", [242, 157, 142]),
   };
