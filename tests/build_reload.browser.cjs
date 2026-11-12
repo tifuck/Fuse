@@ -119,6 +119,14 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await page.waitForFunction(() => document.querySelector('[data-chat-input]').value === 'half a thought');
     console.log('PASS a hidden stale page reloads and keeps the composer draft');
 
+    // It says so once someone is back, and the account menu keeps the time.
+    assert.equal(await page.locator(TOAST).count(), 0, 'nothing is shown to an empty room');
+    await page.mouse.move(200, 200);
+    await page.mouse.move(220, 220);
+    await page.locator(TOAST).filter({ hasText: 'Fuse updated' }).waitFor();
+    assert.equal(await page.locator('[data-build-note]').textContent(), 'Auto-updated just now');
+    console.log('PASS the reloaded page says it updated, on the first input');
+
     // The server still answers b2: the page that came back must not loop.
     await mark();
     await hide();
@@ -130,7 +138,10 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
     await page.reload();
     await live();
+    await page.mouse.move(240, 240);
     await page.waitForTimeout(500);
+    assert.equal(await page.locator(TOAST).count(), 0, 'a manual reload is not announced');
+    assert.equal(await page.locator('[data-build-note]').textContent(), 'Auto-updated just now', 'the menu still says when');
     server = 'b3';
     await hide();
     await reloads(show, 'a stale page reloads when it is brought back');

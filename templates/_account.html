@@ -21,6 +21,8 @@
     <form method="post" action="/logout" class="user-dock-out">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit">Sign out</button>
+      {#- When this browser got the UI build it runs (app.js buildWatch). -#}
+      <span class="user-dock-build" data-build-note hidden></span>
     </form>
   </div>
   <button type="button" class="user-dock-btn" data-account-toggle aria-expanded="false" aria-controls="account-menu" title="{{ email }}">

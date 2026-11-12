@@ -1388,6 +1388,8 @@ document.querySelectorAll(".probe").forEach((btn) => {
   const IDLE_MS = 2 * 60 * 1000;
   const FRESH_MS = 5000;
   const RELOADED = "fuse.build.reloaded";
+  const AUTO = "fuse.build.auto";
+  const SEEN = "fuse.build.seen";
   let stale = "";
   let pushed = false;
   let polling = false;
@@ -1434,6 +1436,7 @@ document.querySelectorAll(".probe").forEach((btn) => {
     }
     try {
       sessionStorage.setItem(RELOADED, stale);
+      sessionStorage.setItem(AUTO, "1");
     } catch (_) {
       return;
     }
@@ -1481,6 +1484,39 @@ document.querySelectorAll(".probe").forEach((btn) => {
       poll(false);
     }
   }, 10 * 1000);
+  // The page an automatic reload comes back as says so, once: on the first
+  // input, because the reload only happens while nobody is looking. The
+  // account menu keeps when this browser got the build it runs.
+  let auto = false;
+  let seen = null;
+  try {
+    auto = Boolean(sessionStorage.getItem(AUTO));
+    sessionStorage.removeItem(AUTO);
+    seen = JSON.parse(localStorage.getItem(SEEN));
+  } catch (_) {}
+  if (auto || !seen || seen.build !== page) {
+    seen = { build: page, at: Date.now(), auto };
+    try { localStorage.setItem(SEEN, JSON.stringify(seen)); } catch (_) {}
+  }
+  for (const name of ["pointermove", "pointerdown", "keydown"]) {
+    window.addEventListener(name, () => {
+      if (auto) window.fuseUI.toast({ key: "fuse-build", title: "Fuse updated", msg: "This page refreshed itself to the latest version." });
+      auto = false;
+    }, { capture: true, passive: true });
+  }
+  const note = document.querySelector("[data-build-note]");
+  const paintNote = () => {
+    const m = Math.floor((Date.now() - seen.at) / 60000);
+    const ago = m < 1 ? "just now" : m < 60 ? m + "m ago" : m < 1440 ? Math.floor(m / 60) + "h ago" : Math.floor(m / 1440) + "d ago";
+    note.textContent = (seen.auto ? "Auto-updated " : "Updated ") + ago;
+    note.title = "Build " + page + ", " + new Date(seen.at).toLocaleString();
+    note.hidden = false;
+  };
+  if (note) {
+    paintNote();
+    document.querySelector("[data-account-toggle]")?.addEventListener("click", paintNote);
+  }
+
   // static/chat/sync/stream.js, on the socket's ready.
   window.fuseBuild = (build) => {
     pushed = pushed || Boolean(build);

@@ -227,6 +227,8 @@ body.is-pin-dragging .chat-history-item:hover { background: none; }
   padding: 0.25rem 0.375rem 0.375rem;
 }
 .user-dock-out {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
   margin: 0;
   padding: 0.375rem;
@@ -253,6 +255,7 @@ body.is-pin-dragging .chat-history-item:hover { background: none; }
   font-size: 0.8125rem;
   text-decoration: none;
 }
+.user-dock-build { flex-shrink: 0; padding: 0 0.625rem; color: var(--mute); font: 0.625rem/1.4 var(--mono); white-space: nowrap; }
 .user-dock-out button { width: 100%; border: 0; background: none; color: var(--fault); cursor: pointer; text-align: left; }
 :is(.app-rail-nav a, .user-dock-nav a, .user-dock-out button):hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 6%, transparent); }
 :is(.app-rail-nav a, .user-dock-nav a).on { color: var(--mist); background: color-mix(in srgb, var(--mist) 9%, transparent); }
