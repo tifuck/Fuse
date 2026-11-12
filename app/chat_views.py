@@ -931,10 +931,10 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
         (thread_id, user_id),
     ).fetchone())
     result["run"] = run
-    # "running" means any active run, subagents included (same as the list);
-    # "run" stays the root turn the composer streams.
+    # "running" means any active run or background command, subagents included
+    # (same as the list); "run" stays the root turn the composer streams.
     result["running"] = bool(run) or conn.execute(
-        "SELECT 1 FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')",
+        f"SELECT 1 FROM chat_threads t WHERE t.id=? AND t.user_id=? AND {chats._THREAD_RUNNING_SQL}",
         (thread_id, user_id),
     ).fetchone() is not None
     if run:

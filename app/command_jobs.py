@@ -768,10 +768,20 @@ def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str
             if rec.get("thread_id"):
                 from . import chat_recaps
                 chat_recaps.terminal_activity(conn, int(rec["user_id"]), int(rec["thread_id"]))
-        return True
     except Exception:
         logger.exception("Failed to persist command job %s", rec["id"])
         return False
+    if rec.get("thread_id") and rec.get("background"):
+        # A live job keeps its thread "running" in every sidebar: say it ended.
+        # Its own transaction: start_turn locks the event cursor before
+        # command_jobs rows, the reverse of doing this above.
+        try:
+            from . import chat_tx
+            with chat_tx.transaction() as conn:
+                chat_tx.thread_event(conn, int(rec["user_id"]), int(rec["thread_id"]))
+        except Exception:
+            logger.exception("Thread event failed for command job %s", rec["id"])
+    return True
 
 
 # A lost terminal write leaves the row 'running'; the next restart's recover()

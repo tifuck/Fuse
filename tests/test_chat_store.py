@@ -34,6 +34,10 @@ class ChatStoreTest(unittest.TestCase):
             db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(?,?,?,?)",
                        (uid, f"{uid}@test.invalid", "unused", db.now()))
         store.init_schema()
+        from app import command_jobs
+        command_jobs._schema_ready = False
+        self.addCleanup(setattr, command_jobs, "_schema_ready", False)
+        command_jobs.ensure_schema()
 
     def turn(self, thread=None, command="turn", user=1, auto_title=False):
         thread = thread or chats.create_thread(user, model="offline")
@@ -494,6 +498,30 @@ class ChatStoreTest(unittest.TestCase):
         self.assertTrue(last["payload"]["running"])
         store.finish_run(child["id"], {"content": "report"}, "completed")
         self.assertFalse(chats.list_threads(1)[0]["running"])
+        last = [e for e in store.events_after(1, 0) if e["type"] == "thread.updated"][-1]
+        self.assertFalse(last["payload"]["running"])
+
+    def test_background_command_keeps_thread_running_after_root_finishes(self):
+        from app import command_jobs
+
+        thread = chats.create_thread(1, title="job chat")
+        started = self.turn(thread)
+        pk = db.fetchone("SELECT id FROM chat_threads WHERE public_id=?", (thread["id"],))["id"]
+        command_jobs._insert_job_row(
+            job_id="job-bg-1", user_id=1, host_id=1, host="box", thread_id=pk, run_id=started["run"]["id"],
+            command="sleep 600", cwd="", background=True, timeout_ms=1000, now=db.now(),
+            kind="command", source="", url="", pattern="", max_events=1,
+        )
+        store.finish_run(started["run"]["id"], {"content": "done"}, "completed")
+        self.assertTrue(chats.list_threads(1)[0]["running"])
+        self.assertTrue(chats.get_thread(1, thread["id"])["running"])
+        self.assertTrue(chats.search_threads(1, "job chat")[0]["running"])
+        last = [e for e in store.events_after(1, 0) if e["type"] == "thread.updated"][-1]
+        self.assertTrue(last["payload"]["running"])
+        rec = {"id": "job-bg-1", "user_id": 1, "thread_id": pk, "background": True, "out": ""}
+        self.assertTrue(command_jobs._persist_finish(rec, status="completed", exit_code=0, error="", duration=1))
+        self.assertFalse(chats.list_threads(1)[0]["running"])
+        self.assertFalse(chats.get_thread(1, thread["id"])["running"])
         last = [e for e in store.events_after(1, 0) if e["type"] == "thread.updated"][-1]
         self.assertFalse(last["payload"]["running"])
 
@@ -1047,6 +1075,10 @@ class SidebarPinsUnreadTest(unittest.TestCase):
         self.addCleanup(self.connection_patch.stop)
         db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(1,'1@test.invalid','unused',?)", (db.now(),))
         store.init_schema()
+        from app import command_jobs
+        command_jobs._schema_ready = False
+        self.addCleanup(setattr, command_jobs, "_schema_ready", False)
+        command_jobs.ensure_schema()
 
     def _row(self, user, public_id):
         return next(row for row in chats.list_threads(user) if row["id"] == public_id)

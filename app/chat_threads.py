@@ -41,10 +41,15 @@ logger = logging.getLogger(__name__)
 
 # Any active run keeps a thread "running", subagents included: a background
 # child can outlive the root turn that spawned it and the sidebar must keep
-# its spinner until the last one settles.
+# its spinner until the last one settles. So does a live background command
+# (the rows command_jobs.list_thread_jobs shows), which outlives every run.
+# ponytail: command_jobs has no thread_id index; add one if the table stops
+# being a few hundred rows (retention prunes finished jobs).
 _THREAD_RUNNING_SQL = (
-    "EXISTS (SELECT 1 FROM chat_runs r "
-    "WHERE r.thread_id=t.id AND r.status IN ('queued','running'))"
+    "(EXISTS (SELECT 1 FROM chat_runs r "
+    "WHERE r.thread_id=t.id AND r.status IN ('queued','running')) "
+    "OR EXISTS (SELECT 1 FROM command_jobs j "
+    "WHERE j.thread_id=t.id AND j.background=1 AND j.status IN ('running','cancelling')))"
 )
 _THREAD_LIST_COLS = (
     "t.id, t.public_id, t.title, t.model, t.archived, t.created_at, t.updated_at, t.revision, "
@@ -1246,7 +1251,7 @@ def _project_sidebar_view(row) -> dict:
         "sessions": int(row["sessions"] or 0) if "sessions" in row.keys() else 0,
         "last_active_at": (row["last_active_at"] or "") if "last_active_at" in row.keys() else "",
     }
-_PROJECT_SIDEBAR_SQL = """
+_PROJECT_SIDEBAR_SQL = f"""
     SELECT p.id, p.host_id, p.name, p.remote_path, p.default_model, p.permission_mode, p.default_permissions,
            p.color, p.logo_rev, p.archived, p.archived_at,
            (SELECT COUNT(*) FROM chat_threads c
@@ -1259,10 +1264,9 @@ _PROJECT_SIDEBAR_SQL = """
             WHERE t.user_id=p.user_id AND t.host_id=p.host_id AND t.project_id=p.id AND t.archived=0
             ORDER BY t.updated_at DESC, t.id DESC LIMIT 1) AS thread_id,
            EXISTS (
-             SELECT 1 FROM chat_threads ct
-             JOIN chat_runs r ON r.thread_id=ct.id
-             WHERE ct.user_id=p.user_id AND ct.host_id=p.host_id AND ct.project_id=p.id
-               AND ct.archived=0 AND r.status IN ('queued','running')
+             SELECT 1 FROM chat_threads t
+             WHERE t.user_id=p.user_id AND t.host_id=p.host_id AND t.project_id=p.id
+               AND t.archived=0 AND {_THREAD_RUNNING_SQL}
            ) AS running
     FROM user_projects p
     JOIN user_hosts h ON h.id=p.host_id AND h.user_id=p.user_id
