@@ -8,6 +8,8 @@ argument-hint: skill topic or draft
 
 Draft a skill, then call `propose_skill`. The user confirms a card in this chat. Do not claim the skill is saved until that card says Saved.
 
+A saved skill is per-user: it lands in this user's own library only. It is never global, and other users never see it. A skill for every user is a built-in skill, which ships with Fuse itself, not through `propose_skill`.
+
 If `propose_skill` is not loaded, call `search_tools` with query `skills-author` first.
 
 ## Frontmatter (Fuse reconstructs this)

@@ -5,22 +5,24 @@ function permissionCardHtml(perm, msg) {
     if (perm.kind === "tool_permission") return "";
     const status = perm.status || "pending";
     const pending = status === "pending";
-    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" · ");
+    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" · ") || "SKILL.md";
     const replace = perm.overwrite
-      ? `<label class="hosts-field"><span><input type="checkbox" data-perm-replace> Replace existing \`${deps.escapeHtml(perm.slug || "")}\`${perm.origin_existing ? ` (${deps.escapeHtml(perm.origin_existing)})` : ""}</span></label>`
+      ? `<label class="chat-skill-check"><input type="checkbox" data-perm-replace><span>Replace your existing <code>${deps.escapeHtml(perm.slug || "")}</code>${perm.origin_existing ? ` (${deps.escapeHtml(perm.origin_existing)})` : ""}</span></label>`
       : "";
     const actions = pending
       ? `<div class="chat-perm-actions"><button type="button" class="btn sm ghost" data-perm-reject>Discard</button><button type="button" class="btn sm" data-perm-save>Save skill</button></div>`
       : "";
     const fields = pending
-      ? `<label class="hosts-field"><span>slug</span><input data-perm-slug maxlength="64" value="${deps.escapeHtml(perm.slug || "")}"></label>
-         <label class="hosts-field"><span>when</span><input data-perm-desc maxlength="1024" value="${deps.escapeHtml(perm.description || "")}"></label>
-         <label class="hosts-field"><span>body</span><textarea class="mono" data-perm-body rows="8"></textarea></label>
-         <p class="usage-sub">${files || "SKILL.md"}</p>
-         <label class="hosts-field"><span><input type="checkbox" data-perm-enable ${perm.enable === false ? "" : "checked"}> Enable after save</span></label>
-         ${replace}`
+      ? `<p class="chat-skill-scope">Saves to your own skills only. Other users don't see it.</p>
+         <label class="chat-skill-field"><span>Name</span><input class="mono" data-perm-slug maxlength="64" spellcheck="false" value="${deps.escapeHtml(perm.slug || "")}"></label>
+         <label class="chat-skill-field"><span>When to use</span><textarea data-perm-desc maxlength="1024" rows="3">${deps.escapeHtml(perm.description || "")}</textarea></label>
+         <label class="chat-skill-field"><span>Instructions <em class="mono">${files}</em></span><textarea class="mono" data-perm-body rows="10" spellcheck="false"></textarea></label>
+         <div class="chat-skill-opts">
+           <label class="chat-skill-check"><input type="checkbox" data-perm-enable ${perm.enable === false ? "" : "checked"}><span>Enable after saving</span></label>
+           ${replace}
+         </div>`
       : `<p class="chat-perm-slug mono">${deps.escapeHtml(perm.slug || "")}</p><p class="usage-sub">${deps.escapeHtml(perm.description || "")}</p>`;
-    return `<div class="chat-perm" data-perm-id="${deps.escapeHtml(perm.id)}" data-msg="${deps.escapeHtml(msg.id || "")}">
+    return `<div class="chat-perm chat-skill-card" data-perm-id="${deps.escapeHtml(perm.id)}" data-msg="${deps.escapeHtml(msg.id || "")}">
       <div class="chat-perm-head"><span>Skill proposal</span><span class="chat-perm-status">${deps.escapeHtml(status)}</span></div>
       ${fields}${actions}
     </div>`;

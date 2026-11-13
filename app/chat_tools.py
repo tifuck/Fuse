@@ -1199,6 +1199,7 @@ async def execute_tool(
                 f"Overwrite: {'yes' if overwrite else 'no'}\n"
                 f"Enable after confirm: {'yes' if enable else 'no'}\n"
                 f"Files: {', '.join(file_names)}\n"
+                "Scope: this user's own library only (not global; other users never see it).\n"
                 "The user must confirm the card in this chat. Do not claim this skill is in the library "
                 f"or callable via /{slug} until status is saved."
             )

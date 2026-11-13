@@ -14,13 +14,64 @@
   color: var(--steel);
 }
 .chat-perm-status { color: var(--brass); }
-.chat-perm label.hosts-field { margin: 0.35rem 0; }
-.chat-perm textarea {
-  width: 100%;
-  min-height: 8rem;
-  font-family: var(--mono);
+.chat-skill-scope {
+  margin: -0.2rem 0 0.7rem;
+  color: var(--mute);
+  font-size: 0.8rem;
+}
+.chat-skill-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.65rem;
+  min-width: 0;
+}
+.chat-skill-field > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--steel);
   font-size: 0.78rem;
 }
+.chat-skill-field > span em {
+  font-style: normal;
+  color: var(--mute);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.chat-skill-field :is(input, textarea) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--mist);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+.chat-skill-field textarea { min-height: 4.5rem; }
+.chat-skill-field textarea.mono { min-height: 10rem; font-family: var(--mono); font-size: 0.78rem; }
+.chat-skill-field :is(input, textarea):focus { border-color: var(--brass); outline: none; }
+.chat-skill-opts { display: flex; flex-direction: column; gap: 0.15rem; }
+.chat-skill-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.25rem;
+  color: var(--mist);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.chat-skill-check input { flex: none; width: 1rem; height: 1rem; margin: 0; accent-color: var(--brass); }
+.chat-skill-check code { font-family: var(--mono); font-size: 0.8rem; }
 .chat-perm-actions {
   display: flex;
   justify-content: flex-end;
