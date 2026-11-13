@@ -18,7 +18,7 @@ _TMP = tempfile.mkdtemp(prefix="fuse-skills-")
 os.environ.setdefault("DATABASE_PATH", str(Path(_TMP) / "skills.db"))
 os.environ.setdefault("APP_SECRET", "s" * 32)
 
-from app import accounts, agent_catalog, chats, db, skills, vault
+from app import accounts, agent_catalog, chats, command_jobs, db, skills, vault
 from app.chat_runtime import (
     _provider_snapshot,
     _tool_messages,
@@ -179,6 +179,9 @@ class SkillsDbTest(unittest.TestCase):
         self.connection_patch = patch.object(db, "connect", return_value=self.conn)
         self.connection_patch.start()
         self.addCleanup(self.connection_patch.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         self.data_patch = patch("app.skill_install.data_dir", return_value=Path(self.tmp.name) / "skills")
         self.data_patch.start()
         self.addCleanup(self.data_patch.stop)
