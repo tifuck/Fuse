@@ -35,12 +35,12 @@ Scale fan-out to the job: one worker for a focused question, two to four for a c
 ## Plan, then go
 
 1. Orient: a short map of the layout, the relevant modules and how they fit. Enough to slice, not a full read.
-2. Write the plan where the user can see it, in a few lines: each slice, read or write, parallel or sequential, which model. Put it in the todo list if the host has one; that is also your record after compaction.
+2. Write the plan where the user can see it, in a few lines: each slice, read or write, parallel or sequential, and the model (the user's choice, or inherited). Put it in the todo list if the host has one; that is also your record after compaction.
 3. Dispatch. The user asking you to delegate is the go-ahead: do not ask them to approve the plan or pick between options.
 
-Stop and ask first only when a slice would change production, live data or anything irreversible, or when the request is ambiguous enough that a wrong split would waste the run.
+Stop and ask first only when a slice would change production, live data or anything irreversible, when the request is ambiguous enough that a wrong split would waste the run, or when a model is needed that the user has not named (see below).
 
-If the plan changes mid-run (a different split, model or fan-out), say so in one line and continue.
+If the split or fan-out changes mid-run, say so in one line and continue. The model never changes without the user.
 
 ## Parallel or sequential
 
@@ -50,15 +50,14 @@ If the plan changes mid-run (a different split, model or fan-out), say so in one
 
 A shape that fits most coding jobs: parallel read-only workers map and audit, the lead decides, then one writer at a time.
 
-## Pick a model per slice
+## The model is the user's choice
 
-Use the least capable model that will do the slice well:
+The user decides which provider and model every worker runs on. Never guess or pick one yourself: models cost the user money and usage, and the same model name can exist on several providers.
 
-- Mechanical work with a complete spec (one or two files, exact changes named): a cheap, fast model.
-- Integration, debugging, multi-file judgment: a standard model or a same-model clone.
-- Design, architecture, final review: the most capable model available.
-
-Cheap models often take two or three times the turns on multi-step work, so they are not always cheaper overall. When unsure, clone.
+- **User named nothing:** spawn without a model. The worker inherits the model the lead is running on, which is the one the user chose for this chat.
+- **User named a model:** use exactly that one. If the name matches several providers, or you cannot find it, ask which one; do not pick the closest match.
+- **A cheaper or stronger model would fit a slice:** you may suggest it in the plan, but spawn with it only after the user names it.
+- **A model runs out** (usage limit, quota, rate limit, auth or billing error): stop dispatching on it and ask the user which provider and model to use instead. Never fall back to another provider or model on your own, even if one is available.
 
 ## The brief
 
@@ -105,7 +104,7 @@ Don't re-do a slice that checks out, and don't pull a whole diff into your conte
 
 Timeout, crash, an empty or malformed report, or coverage well short of the scope:
 
-1. Resend once, tighter: a smaller scope or the specific gap. Resume the same worker if the host allows it, so it keeps what it learned.
+1. Resend once, tighter: a smaller scope or the specific gap. Resume the same worker if the host allows it, so it keeps what it learned. A usage or quota failure is not a resend case: ask the user, as above.
 2. If it fails again, do the slice yourself or report it as uncovered. Partial coverage is not success.
 
 Two workers in conflict means the slices overlapped: re-slice rather than resend the same briefs. A worker that starts planning the whole repo got too wide a brief: stop it and narrow the scope.
@@ -129,6 +128,7 @@ GAPS:
 
 - Spawning for small, coupled or exploratory work.
 - Asking the user to approve a plan they already asked you to run.
+- Choosing a provider or model the user did not name, or switching to a backup when one runs out.
 - One-line briefs, or the transcript instead of the decisions.
 - Parallel writers on shared files or interfaces.
 - Workers spawning workers.
