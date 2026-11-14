@@ -215,5 +215,61 @@ class VaultMariaDBRaceTest(unittest.TestCase):
         self.assertEqual(deks[0], deks[1])
 
 
+class KeepCookieMariaDBTest(unittest.TestCase):
+    """restore_keep refuses any keep-cookie it cannot tie to this sign-in and vault."""
+
+    def setUp(self):
+        from tests.mariadb_fixture import isolated_database
+
+        fixture = isolated_database()
+        fixture.__enter__()
+        self.addCleanup(fixture.__exit__, None, None, None)
+        vault.lock_all()
+        self.addCleanup(vault.lock_all)
+        self.uid = accounts.create_user("keep@test.invalid", "password12", admin=False)["id"]
+        vault.unlock(self.uid, "password12")
+
+    def _token(self, sid="sid-1", **changes):
+        import json
+
+        from app.crypto import encrypt
+
+        payload = json.loads(decrypt(vault.issue_keep(self.uid, sid)))
+        payload.update(changes)
+        vault.lock_all()
+        return encrypt(json.dumps(payload))
+
+    def assertRefused(self, token, sid="sid-1"):
+        self.assertFalse(vault.restore_keep(self.uid, token, sid))
+        self.assertFalse(vault.unlocked(self.uid))
+
+    def test_untouched_token_restores(self):
+        # Positive control for the refusals below: _token's round trip is valid.
+        self.assertTrue(vault.restore_keep(self.uid, self._token(), "sid-1"))
+        self.assertTrue(vault.unlocked(self.uid))
+
+    def test_v1_payload_is_refused(self):
+        self.assertRefused(self._token(v=1))
+
+    def test_expired_token_is_refused(self):
+        import time
+
+        self.assertRefused(self._token(exp=int(time.time()) - 1))
+
+    def test_token_for_another_vault_is_refused(self):
+        self.assertRefused(self._token(fp="0" * 32))
+
+    def test_token_for_another_session_is_refused(self):
+        token = self._token(sid="sid-1")
+        self.assertRefused(token, sid="sid-2")
+        self.assertRefused(token, sid="")
+
+    def test_token_issued_before_a_password_reset_is_refused(self):
+        token = self._token()
+        accounts.reset_password("keep@test.invalid", "password34")
+        self.assertIsNone(accounts.get_user(self.uid)["wrapped_dek"])
+        self.assertRefused(token)
+
+
 if __name__ == "__main__":
     unittest.main()
