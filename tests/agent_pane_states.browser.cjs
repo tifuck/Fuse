@@ -491,7 +491,7 @@ function agent(id, patch) {
     const openRow = async (id) => {
       const row = page.locator(`[data-thread="${id}"]`);
       if (!await row.isVisible()) await page.locator('.chat-bar [data-history-toggle]').click();
-      await row.locator('button.open').click();
+      await row.locator('[data-row-open]').click();
       await page.waitForFunction((tid) => document.querySelector(`[data-thread="${tid}"]`)?.classList.contains('is-on'), id);
     };
     await openRow(THREAD_B);
@@ -529,6 +529,10 @@ function agent(id, patch) {
     await back();
     await page.locator('[data-agents-list]').waitFor({ state: 'visible' });
     await page.setViewportSize({ width: 390, height: 844 });
+    // A theme may keep the tree behind its status pill on a phone (Combined's
+    // rail dropdown, data-theme-pill): open it the way a user would.
+    const pill = page.locator('[data-theme-pill]');
+    if (await pill.count() && !(await page.locator('[data-work-strip]').isVisible())) await pill.click();
     await page.locator('[data-work-strip]').waitFor({ state: 'visible' });
     ui = await read();
     assert.ok(ui.overflow <= 0, `390: the agents list does not widen the page (${ui.overflow}px)`);

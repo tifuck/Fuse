@@ -23,31 +23,31 @@ export function create(deps) {
     return `<time class="cb-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
   }
 
-  const square = (color) => `<i class="cb-pj" aria-hidden="true"${HEX.test(color || "") ? ` style="--cb-pj:${color}"` : ""}></i>`;
+  const square = (color) => `<i class="cb-pj" aria-hidden="true" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="--cb-pj:${color}"` : ""}></i>`;
 
-  function rowHtml({ cls, attrs, title, label, lead, extra = "", when = "", menu, on }) {
+  function rowHtml({ cls, attrs, title, label, lead, extra = "", when = "", menu, on, working = "" }) {
     return `<div class="cb-row${cls}" data-history-item${attrs}>` +
-      `<button type="button" class="cb-open" data-row-open title="${title}"${on ? ' aria-current="true"' : ""}>${lead}<span class="cb-name">${label}</span>${extra}${when}</button>` +
+      `<button type="button" class="cb-open" data-row-open title="${title}"${on ? ' aria-current="true"' : ""}>${working}${lead}<span class="cb-name" data-row-name>${label}</span>${extra}${when}</button>` +
       `<button type="button" class="cb-more" data-row-more aria-label="${menu}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
   }
 
   function threadRowHtml(item, row) {
     const title = esc(row.title);
-    const lead = row.project ? square(item.project_color) : '<i class="cb-dot" aria-hidden="true"></i>';
-    const where = row.meta ? `<span class="cb-sub">${esc(row.meta.name)}</span>` : "";
+    const lead = !row.project ? '<i class="cb-dot" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : square(item.project_color);
+    const where = row.meta ? `<span class="cb-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     const chip = row.chip ? `<span class="cb-chip">${esc(row.chip)}</span>` : "";
     const snip = item.snippet ? `<span class="cb-snip">${esc(item.snippet)}</span>` : "";
     const cls = (row.on ? " is-on" : "") + (row.running ? " is-running" : "") + (row.unread ? " is-unread" : "") +
       (item.pinned ? " is-pinned" : "") + (item.schedule_id ? " is-task" : "") + (row.grouped ? " is-grouped" : "") + (snip ? " has-snip" : "");
     const attrs = (item.pinned ? " data-pinned" : "") + ` data-thread="${esc(String(item.id))}"` + (row.running ? ' aria-busy="true"' : "");
     const working = row.running ? '<span class="visually-hidden">Working</span>' : "";
-    return rowHtml({ cls, attrs, title, label: working + title, lead, extra: where + chip + snip, when: whenHtml(row), menu: `Actions for ${title}`, on: row.on });
+    return rowHtml({ cls, attrs, title, label: title, working, lead, extra: where + chip + snip, when: whenHtml(row), menu: `Actions for ${title}`, on: row.on });
   }
 
   function draftRowHtml(item, row) {
     const title = esc(item.title);
     const lead = row.project ? square(item.project_color) : '<i class="cb-dot is-draft" aria-hidden="true"></i>';
-    const where = row.meta ? `<span class="cb-sub">${esc(row.meta.name)}</span>` : "";
+    const where = row.meta ? `<span class="cb-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     return rowHtml({
       cls: " is-draft" + (row.on ? " is-on" : "") + (row.grouped ? " is-grouped" : ""),
       attrs: ` data-draft="${esc(item.draft)}"`,
@@ -58,12 +58,12 @@ export function create(deps) {
 
   function projectRowHtml(item, row) {
     const name = esc(item.name || "Project");
-    const host = item.host_alias ? `<span class="cb-sub">${esc(item.host_alias)}</span>` : "";
+    const host = item.remote_path ? `<span class="cb-sub" data-row-meta>${esc(item.remote_path)}</span>` : item.host_alias ? `<span class="cb-sub">${esc(item.host_alias)}</span>` : "";
     const chip = row.archived ? '<span class="cb-chip">Archived</span>' : "";
     return rowHtml({
       cls: " is-project" + (row.on ? " is-on" : "") + (row.running ? " is-running" : ""),
       attrs: ` data-project="${item.host_id}:${item.id}"` + (item.thread_id ? ` data-thread="${esc(String(item.thread_id))}"` : "") + (row.running ? ' aria-busy="true"' : ""),
-      title: name, label: name, lead: square(item.color), extra: host + chip, when: whenHtml(row),
+      title: name, label: name, lead: item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
       menu: `Actions for project ${name}`, on: row.on,
     });
   }
@@ -83,7 +83,7 @@ export function create(deps) {
     for (const block of blocks) {
       switch (block.type) {
         case "kicker":
-          out += `<h5 class="cb-group">${esc(block.text)}</h5>`;
+          out += `<h5 class="cb-group" data-history-section>${esc(block.text)}</h5>`;
           // Rows under a named section (Pinned, Projects, Sessions) are not dated.
           heading = block.text;
           timeline = false;
@@ -93,20 +93,20 @@ export function create(deps) {
           heading = "";
           break;
         case "group":
-          out += `<h5 class="cb-group is-project">${square(block.color)}<span>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h5>`;
+          out += `<h5 class="cb-group is-project" data-history-group data-project-color="${esc(block.color || "")}">${/fp-logo/.test(block.icon) ? block.icon : square(block.color)}<span data-group-name>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h5>`;
           timeline = false;
           break;
         case "thread":
         case "draft":
           if (timeline && !block.row.grouped) {
             const next = bucket(block);
-            if (next !== heading) { out += `<h5 class="cb-group">${next}</h5>`; heading = next; }
+            if (next !== heading) { out += `<h5 class="cb-group" data-history-section>${next}</h5>`; heading = next; }
           }
           out += block.type === "thread" ? threadRowHtml(block.item, block.row) : draftRowHtml(block.item, block.row);
           break;
         case "project": out += projectRowHtml(block.item, block.row); break;
-        case "empty": out += `<p class="cb-empty">${esc(block.text)}</p>`; break;
-        case "loading": out += '<div class="cb-loading" role="img" aria-label="Loading chats"><span></span><span></span><span></span></div>'; break;
+        case "empty": out += `<p class="cb-empty" data-history-empty>${esc(block.text)}</p>`; break;
+        case "loading": out += '<div class="cb-loading" data-history-loading role="img" aria-label="Loading chats"><span></span><span></span><span></span></div>'; break;
         default: break;
       }
     }

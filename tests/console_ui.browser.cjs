@@ -244,8 +244,14 @@ function scenarios() {
       }
     }
 
-    for (const sc of scenarios()) {
+    // Rows are written in Console's verbs; Combined names some calls in plainer
+    // words (themes/combined/tool-headers.js). Same row, its theme's verb.
+    const COMBINED_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
+    const verbFor = (text) => (process.env.FUSE_CHAT_VIEW || 'console') !== 'combined' ? text
+      : text.replace(/^(Update Todos|Web Search|Stop Task|Await|Update|Bash)(?=\(|$)/, (m) => COMBINED_VERBS[m]);
+    for (const raw of scenarios()) {
       if (ONLY !== null) break;
+      const sc = { ...raw, has: (raw.has || []).map(verbFor) };
       for (const width of sc.wide ? [1280, 390] : [1280]) {
         await page.setViewportSize({ width, height: 900 });
         const result = await page.evaluate(async (sc) => {

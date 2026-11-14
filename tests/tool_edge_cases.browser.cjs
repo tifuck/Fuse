@@ -105,6 +105,12 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
     }, id);
     const rowOf = (id) => rowSnap(id);
     const eq = (actual, expected, where) => check(actual === expected, `${where}: ${JSON.stringify(actual)} !== ${JSON.stringify(expected)}`);
+    // Call lines are written in Console's verbs; Combined names some calls in
+    // plainer words (themes/combined/tool-headers.js). Same line, its theme's verb.
+    const COMBINED_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
+    const verbFor = (head) => (process.env.FUSE_CHAT_VIEW || 'console') !== 'combined' ? head
+      : head.replace(/^(Update Todos|Web Search|Stop Task|Await|Update|Bash)(?=\(|$)/, (m) => COMBINED_VERBS[m]);
+    const headEq = (actual, expected, where) => eq(actual, verbFor(expected), where);
 
     // ————————————————————————————————————————————————
     // load_skill: a tool row like any other — Skill(name) on the call line,
@@ -118,7 +124,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([sk], [T(sk)])]);
       await frame();
       let row = await rowOf(sk.id);
-      eq(row.head, 'Skill(café-🚀-über)', 'skill call line names the skill');
+      headEq(row.head, 'Skill(café-🚀-über)', 'skill call line names the skill');
       eq(row.result, 'Writes excellent café menus.', 'the line under it is the skill description, on one line');
       eq(row.state, 'done', 'skill done state');
       eq(row.stateTitle, 'Done', 'skill done dot title');
@@ -138,7 +144,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([bare], [T(bare)])]);
       await frame();
       row = await rowOf(bare.id);
-      eq(row.head, 'Skill(skill)', 'skill without preview');
+      headEq(row.head, 'Skill(skill)', 'skill without preview');
       eq(row.result, 'Loaded skill', 'skill without description or body says it loaded');
 
       // A supporting file names the file on both lines.
@@ -146,7 +152,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([file], [T(file)])]);
       await frame();
       row = await rowOf(file.id);
-      eq(row.head, 'Skill(ponytail / reference/forms.md)', 'skill file load names the file');
+      headEq(row.head, 'Skill(ponytail / reference/forms.md)', 'skill file load names the file');
       eq(row.result, 'Loaded reference/forms.md', 'skill file load outcome');
 
       // While it runs the family's running mark hangs under it.
@@ -154,12 +160,12 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([bad], [T(bad)])], true);
       await frame();
       row = await rowOf(bad.id);
-      eq(row.head, 'Skill(nope)', 'skill running line');
+      headEq(row.head, 'Skill(nope)', 'skill running line');
       eq(row.result, 'Running…', 'skill running mark');
       await send({ event: 'tool', id: bad.id, name: 'load_skill', status: 'error', preview: 'nope', error: "Unknown skill 'nope'." });
       await frame();
       row = await rowOf(bad.id);
-      eq(row.head, 'Skill(nope)', 'skill failed line keeps the name');
+      headEq(row.head, 'Skill(nope)', 'skill failed line keeps the name');
       check(!/loaded/i.test(row.body), `a failed skill never claims loaded: ${row.body}`);
       check(row.body.includes('Error:') && row.body.includes("Unknown skill 'nope'."), `skill failure keeps the family Error: mark: ${row.body}`);
       eq(row.state, 'error', 'skill failed state');
@@ -170,7 +176,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([lost], [T(lost)])]);
       await frame();
       row = await rowOf(lost.id);
-      eq(row.head, 'Skill(ponytail)', 'an interrupted load keeps its call line');
+      headEq(row.head, 'Skill(ponytail)', 'an interrupted load keeps its call line');
       eq(row.result, 'Interrupted · the result was lost', 'skill lost result');
       eq(row.state, 'interrupted', 'skill lost state');
       eq(row.stateTitle, 'Lost', 'skill lost dot title');
@@ -204,7 +210,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([quiet], [T(quiet)])]);
       await frame();
       let row = await rowOf(quiet.id);
-      eq(row.head, 'Web Search("quiet")', 'empty search head');
+      headEq(row.head, 'Web Search("quiet")', 'empty search head');
       eq(row.result, 'Did 1 search in 240ms', 'empty search result line');
       eq(row.webRows.length, 0, 'empty search shows no result rows');
       eq(row.more.length, 0, 'empty search shows no overflow marker');
@@ -288,7 +294,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([fetch], [T(fetch)])]);
       await frame();
       row = await rowOf(fetch.id);
-      eq(row.head, `Fetch(${PAGE})`, 'fetch head');
+      headEq(row.head, `Fetch(${PAGE})`, 'fetch head');
       eq(row.result, 'Received 12.3KB (200 OK)', 'fetch result line names bytes and status');
       await openRow(fetch.id);
       row = await rowOf(fetch.id);
@@ -375,7 +381,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([art], [T(art)])]);
       await frame();
       let row = await rowOf(art.id);
-      eq(row.head, 'Artifact(Sales dashboard)', 'artifact head names the title');
+      headEq(row.head, 'Artifact(Sales dashboard)', 'artifact head names the title');
       eq(row.result, 'Created v3', 'artifact created label carries the version');
       eq(row.stateTitle, 'Done', 'artifact done dot title');
       eq(row.openArtifact, 'art-1', 'artifact row opens its artifact');
@@ -394,7 +400,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([bare], [T(bare)])]);
       await frame();
       row = await rowOf(bare.id);
-      eq(row.head, 'Artifact(artifact)', 'artifact without a title');
+      headEq(row.head, 'Artifact(artifact)', 'artifact without a title');
       eq(row.result, 'Created', 'artifact without a version');
       eq(row.openArtifact, '', 'artifact without an identifier offers no open button');
 
@@ -499,7 +505,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([spawn], [T(spawn)])], true);
       await frame();
       let row = await rowOf(spawn.id);
-      eq(row.head, 'Explore(Audit the pool)', 'spawn head names the child kind and description');
+      headEq(row.head, 'Explore(Audit the pool)', 'spawn head names the child kind and description');
       check(row.labelTitle.includes('Audit the pool') && row.labelTitle.includes('grok-4'), `spawn label names description and model: ${row.labelTitle}`);
       // The terminal update comes through the trace's own fields (the agent
       // feed path is console_subagent_rows' case).
@@ -515,7 +521,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([bare], [T(bare)])], true);
       await frame();
       row = await rowOf(bare.id);
-      eq(row.head, 'Agent(subagent)', 'spawn without a description');
+      headEq(row.head, 'Agent(subagent)', 'spawn without a description');
       eq(row.openAgent, '', 'spawn without a child offers no open button');
 
       // A spawn that fails outright shows the error on its own row.
@@ -547,7 +553,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await frame();
       await openRow(five.id);
       row = await rowOf(five.id);
-      eq(row.head, 'Agents', 'list_subagents head');
+      headEq(row.head, 'Agents', 'list_subagents head');
       eq(row.kvRows.length, 5, 'list rows equal the children');
       check(row.kvRows[0].includes('Rewrite auth') && row.kvRows[0].includes('running · grok-4'), `list row names child and state: ${row.kvRows[0]}`);
       check(row.kvRows.some((line) => line.includes('Flaky test') && line.includes('failed')), `list rows keep failure states: ${row.kvRows.join(' | ')}`);
@@ -572,7 +578,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([awaitBare], [T(awaitBare)])]);
       await frame();
       row = await rowOf(awaitBare.id);
-      eq(row.head, 'Await(subagent)', 'await without a description');
+      headEq(row.head, 'Await(subagent)', 'await without a description');
       eq(row.result, 'Agent "subagent" finished', 'await without a duration');
 
       // Unicode descriptions survive the label (preview cleanup normalises
@@ -581,7 +587,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([awaitUni], [T(awaitUni)])]);
       await frame();
       row = await rowOf(awaitUni.id);
-      eq(row.head, 'Await(Über 🚀 audit)', 'await names its child');
+      headEq(row.head, 'Await(Über 🚀 audit)', 'await names its child');
       eq(row.result, 'Agent "Über 🚀 audit" finished · 41s', 'await result line');
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
@@ -596,7 +602,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([tw], [T(tw)])], true);
       await frame();
       const row = await rowOf(tw.id);
-      eq(row && row.head, 'Update Todos', 'an interrupted todo_write prints its row');
+      headEq(row && row.head, 'Update Todos', 'an interrupted todo_write prints its row');
       check(row && /^Interrupted/.test(row.body), `an interrupted todo row says so on its one line: ${row && row.body}`);
       eq(row && row.toggleAria.length, 0, 'a todo row opens nothing');
       check(row && !row.dom.includes('Edge check'), 'a todo row never prints its items');
@@ -623,7 +629,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([watch], [T(watch)])], true);
       await frame();
       let row = await rowOf(watch.id);
-      eq(row.head, 'Monitor(boot log)', 'monitor head names what it watches');
+      headEq(row.head, 'Monitor(boot log)', 'monitor head names what it watches');
       eq(row.result, 'Monitor started · task m1 (timeout: 5m)', 'running monitor names its deadline');
       // Events arrive as updates; the count label tracks the delivered count.
       for (const n of [1, 3]) {

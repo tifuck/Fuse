@@ -8,6 +8,7 @@ export function create(deps) {
   let userRail = null; // null follows the run; true/false is the user's choice
   let bound = false;
   let lastBusy = false;
+  let lastAgentView = false;
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
 
@@ -41,6 +42,7 @@ export function create(deps) {
     const watch = new MutationObserver(() => syncChrome());
     const rail = q("[data-theme-rail]");
     if (rail) watch.observe(rail, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"] });
+    watch.observe(deps.root, { attributes: true, attributeFilter: ["class"] });
   }
 
   function clock(seconds) {
@@ -102,9 +104,19 @@ export function create(deps) {
     // A run that starts again hands the rail back to the run.
     if (any && !lastBusy && userRail === false && window.matchMedia(WIDE).matches) userRail = null;
     lastBusy = any;
+    // Entering or leaving a subagent hands the rail back to the defaults.
+    const agentView = deps.root.classList.contains("is-agent-view");
+    if (agentView !== lastAgentView) userRail = null;
+    lastAgentView = agentView;
     const wide = window.matchMedia(WIDE).matches;
-    const open = userRail !== null ? userRail : wide && (state.agents || state.jobs || state.todos || (state.run && !q("[data-work-strip]")?.hidden));
-    const next = open ? "open" : "closed";
+    // Wide: open whenever there is work to show (the strip has rows) or live
+    // todos. Narrow: a dropdown behind the pill, except inside a subagent,
+    // where the agent tree (its way back to main) sits inline under the header.
+    const strip = !q("[data-work-strip]")?.hidden;
+    let next = "closed";
+    if (userRail !== null) next = userRail ? "open" : "closed";
+    else if (wide) next = strip || state.todos ? "open" : "closed";
+    else if (agentView && strip) next = "inline";
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
     syncPill(state);
     syncContext();

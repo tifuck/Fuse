@@ -165,7 +165,9 @@ window.ConsoleAudit = (() => {
     }
     for (const turn of log.querySelectorAll(".chat-console-turn")) {
       const text = turn.querySelector(":scope > span:not(.chat-console-turn-mark)");
-      const column = log.querySelector(".chat-flow > .chat-md p, .chat-step:not(.is-think) .chat-step-label");
+      // The text column: the answer's prose where there is one (in Console the
+      // call labels share it; Combined indents them behind their icon).
+      const column = log.querySelector(".chat-flow > .chat-md p") || log.querySelector(".chat-step:not(.is-think) .chat-step-label");
       if (!visible(turn) || !text || !visible(column)) continue;
       const want = column.getBoundingClientRect().left;
       const got = text.getBoundingClientRect().left;

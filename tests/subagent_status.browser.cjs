@@ -71,7 +71,7 @@ function bump(id, patch) {
       const pane = document.querySelector('[data-agent-log-body]');
       const strip = (sel) => [...document.querySelectorAll(sel + ' [data-show-job]')].map((el) => el.getAttribute('data-show-job'));
       const main = document.querySelector('[data-chat-thread]');
-      const history = document.querySelector('.chat-history-item.is-on');
+      const history = document.querySelector('[data-history-item].is-on');
       return {
         rows,
         badge: (cur?.querySelector('.chat-agents-state')?.textContent || '').trim(),
@@ -199,9 +199,9 @@ function bump(id, patch) {
       const f = fuseToolFixture;
       const row = (id, live) => f.state(f.snapshot()[0].tools.find((t) => t.id === id), live);
       // A join only reads as Waiting while its own turn is still live.
-      f.mount([{ tools }], true, document.querySelector('.chat-history-item.is-on')?.getAttribute('data-thread') || '');
+      f.mount([{ tools }], true, document.querySelector('[data-history-item].is-on')?.getAttribute('data-thread') || '');
       const waiting = row('wait-a', true);
-      f.mount([{ tools }], false, document.querySelector('.chat-history-item.is-on')?.getAttribute('data-thread') || '');
+      f.mount([{ tools }], false, document.querySelector('[data-history-item].is-on')?.getAttribute('data-thread') || '');
       f.toolEvent({ event: 'tool', id: 'wait-a', name: 'get_subagent_output', child_id: 'alpha', status: 'done', summary: 'ALPHA_REPORT_ONLY' });
       const done = row('wait-a', false);
       f.agents([{ id: 'bravo', status: 'failed', message: { content: 'BRAVO_PARTIAL_MUST_NOT_DELIVER', error: 'provider down' } }]);

@@ -20,13 +20,13 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.locator('[data-chat-input]').fill('Spinner fixture');
       await page.locator('[data-chat-send]').click();
       await page.waitForFunction(() => document.body.classList.contains('is-streaming'));
-      const row = page.locator('.chat-history-item.is-on');
+      const row = page.locator('[data-history-item].is-on');
       await row.waitFor({ state: 'attached' });
       assert.equal(await row.getAttribute('aria-busy'), 'true', `row spins while the turn streams`);
       // A running turn must not lock the chat menu (it used to return silently).
       if (!(await row.isVisible())) await page.locator('.chat-bar [data-history-toggle]').click();
       await row.hover();
-      await row.locator('button.more').click();
+      await row.locator('[data-row-more]').click();
       const menu = await page.locator('.chat-pop:not([data-artifact-menu])').innerText();
       assert.equal(await page.evaluate(() => document.body.classList.contains('is-streaming')), true, `still streaming while the menu opens`);
       assert.match(menu, /Rename[\s\S]*Move to project[\s\S]*Delete/, `chat menu opens mid-turn: ${menu}`);
@@ -36,8 +36,8 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       // Let the closing thread.updated / run.completed events land.
       await page.waitForTimeout(1500);
       const state = await page.evaluate(() => ({
-        row: document.querySelector('.chat-history-item.is-on')?.className || '',
-        busy: document.querySelector('.chat-history-item.is-on')?.getAttribute('aria-busy') || '',
+        row: document.querySelector('[data-history-item].is-on')?.className || '',
+        busy: document.querySelector('[data-history-item].is-on')?.getAttribute('aria-busy') || '',
         spins: [...document.querySelectorAll('[data-run-spin]')].filter(el => !el.hidden).map(el => el.getAttribute('data-run-spin')),
         tab: [...document.querySelectorAll('[data-history-tab]')].map(el => el.getAttribute('aria-busy')),
       }));

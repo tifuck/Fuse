@@ -147,7 +147,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     border: 1px solid var(--line);
     border-radius: 5px;
     background: var(--ink);
-    color: var(--mute);
+    color: var(--mist);
     font: 12px var(--sans);
   }
   & .cb-group {
@@ -162,6 +162,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   & .cb-group[hidden] { display: none; }
   & .cb-group small { margin-left: auto; font: 11px var(--mono); }
+  & .cb-group > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .cb-group > small { flex: none; }
   & .cb-list {
     display: flex;
     flex: 1;
@@ -200,6 +202,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
   & .cb-dot.is-draft { background: var(--brass); }
   & .cb-pj { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--cb-pj, var(--mute)); }
+  & .cb-open > :is(svg, img) { flex: none; width: 12px; height: 12px; }
+  & .cb-group.is-project > :is(svg, img) { width: 12px; height: 12px; }
   & .cb-unread { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
   & .cb-live { display: block; flex: none; width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--brass); animation: cb-pulse 1.2s ease-in-out infinite; }
   & .cb-live > * { display: none; }
@@ -275,7 +279,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     gap: 6px;
     height: var(--chat-bar-h);
     min-height: 0;
-    padding: 0 6px;
+    padding: 0 6px 0 12px;
     border-bottom: 1px solid var(--line);
     background: var(--ink);
     container-type: normal;
@@ -577,7 +581,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-send.is-stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
   & .cb-welcome { margin: 0 0 4px; color: var(--mist); font: 600 22px/1.3 var(--sans); letter-spacing: -0.01em; text-align: center; }
   & .cb-welcome-note { margin: 0 0 14px; color: var(--mute); font: 14px/1.5 var(--sans); text-align: center; }
-  &:not(.is-empty) :is(.cb-welcome, .cb-welcome-note) { display: none; }
+  /* The hero steps aside once the chat has a message (opacity is the contract tests read). */
+  &:not(.is-empty) :is(.cb-welcome, .cb-welcome-note) { display: none; opacity: 0; }
 
   /* ---- Live status line: a dot, plain words, the clock ---- */
   & .chat-live-dock {
@@ -660,6 +665,26 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
       box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
     }
     &[data-theme-rail-state="open"] :is(.chat-thread, .chat-dock, .chat-latest) { margin-right: 0; }
+    &[data-theme-rail-state="inline"] .cb-rail {
+      position: static;
+      display: block;
+      flex: none;
+      max-height: 40vh;
+      margin-top: var(--chat-bar-h);
+      padding: 2px 6px 4px;
+      overflow-y: auto;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      font-size: 13px;
+    }
+    &[data-theme-rail-state="inline"] .cb-rail > .cb-rail-sec { display: none; }
+    &[data-theme-rail-state="inline"] .chat-stage > .chat-thread { margin-top: 0; }
+  }
+  /* Touch: rows and switches stay tappable. */
+  @media (max-width: 800px) {
+    & .cb-row { height: 44px; }
+    & .cb-tab { height: 30px; }
+    & .cb-new { height: 40px; }
   }
   @media (max-width: 760px) {
     & .cb-head { gap: 2px; padding: 0 4px; }
@@ -668,7 +693,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     & .cb-pill em,
     & .cb-tb.is-lab span { display: none; }
     & .cb-pill { margin-right: 2px; padding: 0 9px; }
-    & .cb-ring-wrap { display: none; }
     & .chat-dock { padding: 4px 8px 8px; }
     & .cb-model .chat-picker-btn { max-width: 8.5rem; }
     & .cb-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
