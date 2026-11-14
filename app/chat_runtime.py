@@ -1228,7 +1228,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     if _is_idle_timeout(str(exc.detail)):
                         idle_stalls += 1
                     if (
-                        _should_resume(exc.status_code, str(exc.detail), resumes_left=resumes_left, idle_stalls=idle_stalls)
+                        _should_resume(exc.status_code, str(exc.detail), resumes_left=resumes_left, idle_stalls=idle_stalls,
+                                       kind=(provider_errors.classify(src_type or src_type_guess or "", exc.status_code,
+                                                                      {"error": {"message": str(exc.detail)}}) or {}).get("kind", ""))
                         and not await request.is_disconnected()
                     ):
                         resumes_left -= 1

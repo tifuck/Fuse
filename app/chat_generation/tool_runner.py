@@ -25,7 +25,7 @@ from ..chat_tools import ARTIFACT_TOOL_IDS
 
 from .parsing import _ARG_LIMIT_FILE, _ARG_OVERFLOW
 from .stream import _SENTINEL, HEARTBEAT_S
-from .tool_jobs import ToolJob, _redact_tool_args, _running_event, jobs_from_calls
+from .tool_jobs import MAX_TOOL_CALLS, ToolJob, _redact_tool_args, _running_event, jobs_from_calls
 
 logger = logging.getLogger(__name__)
 
@@ -479,10 +479,11 @@ async def run_tools(
 
     async def worker():
         try:
-            # Coding steps are uncapped; only chat replies keep a per-step cap.
-            call_cap = None if coding else MAX_CALLS_PER_ROUND
+            # Coding steps are capped only at what one transcript row may hold;
+            # chat replies keep a tighter per-step cap.
+            call_cap = MAX_TOOL_CALLS if coding else MAX_CALLS_PER_ROUND
             for j in jobs:
-                if call_cap is not None and j.orig_index >= call_cap:
+                if j.orig_index >= call_cap:
                     extra = "Too many tool calls in one step; extra calls were ignored."
                     j.text = extra
                     j.trace = {
@@ -504,7 +505,7 @@ async def run_tools(
                     emit({"event": "tool", **j.trace})
                     continue
             await persist_now()
-            runnable = jobs if call_cap is None else [j for j in jobs if j.orig_index < call_cap]
+            runnable = [j for j in jobs if j.orig_index < call_cap]
             # Independent calls run concurrently: the old phase chain (spawn →
             # join → shell → search) made a 75s foreground spawn or a long
             # join freeze every file/shell/search call in the same step.

@@ -8,6 +8,7 @@ No I/O, no state, no provider calls."""
 from __future__ import annotations
 
 import json
+import math
 import re
 
 
@@ -359,14 +360,23 @@ def _take_calls(bucket: dict, raw) -> None:
             idx = int(item.get("index", len(bucket)))
         except (TypeError, ValueError, OverflowError):
             idx = len(bucket)
-        rec = bucket.setdefault(
-            idx,
-            {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
-        )
-        if item.get("id"):
-            rec["id"] = str(item["id"])[:128]
         fn = item.get("function") if isinstance(item.get("function"), dict) else {}
         name = fn.get("name")
+        # Providers that reuse one index for parallel calls tell them apart
+        # only by id: a named call with a new id opens a record filed after
+        # the index's newest one, and the fragments that follow land there.
+        siblings = [key for key in bucket if math.floor(key) == idx]
+        key = max(siblings, default=idx)
+        held = bucket.get(key)
+        item_id = str(item.get("id") or "")[:128]
+        if held and item_id and held["id"] and item_id != held["id"] and held["function"]["name"] and name:
+            key = idx + len(siblings) / (len(siblings) + 1)
+        rec = bucket.setdefault(
+            key,
+            {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
+        )
+        if item_id:
+            rec["id"] = item_id
         if isinstance(name, str) and name:
             cur = rec["function"]["name"]
             if not cur or name.startswith(cur):

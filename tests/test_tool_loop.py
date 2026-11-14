@@ -79,6 +79,49 @@ class TakeCallsTest(unittest.TestCase):
         _take_calls(bucket, [{"index": 0, "function": {"name": "web_search", "arguments": {"query": "x"}}}])
         self.assertEqual(json.loads(bucket[0]["function"]["arguments"])["query"], "x")
 
+    def _calls(self, bucket):
+        return [(c["id"], c["function"]["name"], json.loads(c["function"]["arguments"]))
+                for c in (bucket[k] for k in sorted(bucket))]
+
+    def test_parallel_whole_calls_sharing_index_zero_stay_apart(self):
+        bucket = {}
+        _take_calls(bucket, [{"index": 0, "id": "a", "function": {"name": "read_file", "arguments": '{"path":"x"}'}}])
+        _take_calls(bucket, [{"index": 0, "id": "b", "function": {"name": "grep", "arguments": '{"pattern":"y"}'}}])
+        self.assertEqual(self._calls(bucket), [("a", "read_file", {"path": "x"}), ("b", "grep", {"pattern": "y"})])
+
+    def test_parallel_same_tool_sharing_index_zero_keeps_both(self):
+        bucket = {}
+        _take_calls(bucket, [
+            {"index": 0, "id": "a", "function": {"name": "web_search", "arguments": '{"query":"one"}'}},
+            {"index": 0, "id": "b", "function": {"name": "web_search", "arguments": '{"query":"two"}'}},
+        ])
+        self.assertEqual(self._calls(bucket), [("a", "web_search", {"query": "one"}), ("b", "web_search", {"query": "two"})])
+
+    def test_fragmented_calls_sharing_index_zero_stay_apart(self):
+        bucket = {}
+        for delta in (
+            {"index": 0, "id": "a", "function": {"name": "web_search", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '{"query":'}},
+            {"index": 0, "function": {"arguments": '"one"}'}},
+            {"index": 0, "id": "b", "function": {"name": "web_search", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '{"query":"two"}'}},
+        ):
+            _take_calls(bucket, [delta])
+        self.assertEqual(self._calls(bucket), [("a", "web_search", {"query": "one"}), ("b", "web_search", {"query": "two"})])
+
+    def test_standard_fragment_stream_unchanged(self):
+        bucket = {}
+        for delta in (
+            {"index": 0, "id": "a", "type": "function", "function": {"name": "read_file", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '{"path":'}},
+            {"index": 1, "id": "b", "type": "function", "function": {"name": "grep", "arguments": ""}},
+            {"index": 0, "function": {"arguments": '"x"}'}},
+            {"index": 1, "function": {"arguments": '{"pattern":"y"}'}},
+        ):
+            _take_calls(bucket, [delta])
+        self.assertEqual(sorted(bucket), [0, 1])
+        self.assertEqual(self._calls(bucket), [("a", "read_file", {"path": "x"}), ("b", "grep", {"pattern": "y"})])
+
 
 class InjectTest(unittest.TestCase):
     def test_concat_last_user_keeps_alternation(self):
@@ -389,18 +432,20 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
                 pass
         self.assertEqual(payloads[0]["reasoning_effort"], "high")
 
-    async def _run(self, invoke):
+    async def _run(self, invoke, raw=None, *, connected=False):
         from starlette.requests import Request as StarletteRequest
         from starlette.datastructures import Headers
 
         scope = {"type": "http", "method": "POST", "path": "/", "headers": [], "client": ("127.0.0.1", 1)}
 
         async def receive():
+            if connected:
+                await asyncio.Future()
             return {"type": "http.disconnect"}
 
         request = StarletteRequest(scope, receive)
         user = {"id": 1, "key_id": None}
-        raw = {
+        raw = raw or {
             "model": "test-model",
             "messages": [{"role": "user", "content": "hi"}],
             "tools": ["web_search"],
@@ -522,10 +567,122 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.chat_runtime._run_tools", fake_tools):
             body, _ = await self._run(invoke)
-        none_payloads = [p for p in payloads if p.get("tool_choice") == "none"]
-        omit_payloads = [p for p in payloads[1:] if "tool_choice" not in p and p.get("tools")]
-        self.assertTrue(none_payloads)
-        self.assertTrue(any("tool_choice" not in p for p in payloads[1:]))
+        none_index = next(i for i, p in enumerate(payloads) if p.get("tool_choice") == "none")
+        retry = payloads[none_index + 1]
+        # The rejected tool_choice=none is retried with the key left out, tools kept.
+        self.assertNotIn("tool_choice", retry)
+        self.assertTrue(retry.get("tools"))
+        self.assertIn(b"final", body)
+
+    async def test_round_over_100_calls_keeps_the_next_request_valid(self):
+        from app import api
+
+        payloads = []
+
+        async def invoke(request, user, payload, **_kwargs):
+            payloads.append(payload)
+            if len(payloads) == 1:
+                calls = [{"id": f"c{i}", "type": "function",
+                          "function": {"name": "web_search", "arguments": json.dumps({"query": f"q{i}"})}}
+                         for i in range(101)]
+                message = {"role": "assistant", "content": "", "tool_calls": calls}
+                return user, FakeSrc("llama"), "m", "m", FakeResult(
+                    200, {"choices": [{"message": message, "finish_reason": "tool_calls"}]})
+            return user, FakeSrc("llama"), "m", "m", FakeResult(
+                200, {"choices": [{"message": {"content": "final"}, "finish_reason": "stop"}]})
+
+        with patch("app.chat_runtime.execute_tool", AsyncMock(return_value=("hits", {"name": "web_search", "status": "done"}))):
+            await self._run(invoke)
+        self.assertEqual(len(payloads), 2)
+        api._validate_messages(payloads[1]["messages"], retained=True)
+        rows = payloads[1]["messages"]
+        assistant = next(m for m in rows if m.get("tool_calls"))
+        self.assertEqual([c["id"] for c in assistant["tool_calls"]], [f"c{i}" for i in range(100)])
+        results = [m for m in rows if m.get("role") == "tool"]
+        self.assertEqual(len(results), 100)
+        self.assertIn("1 more tool calls in this step were ignored", results[-1]["content"])
+
+    async def test_coding_round_over_100_calls_runs_only_the_first_100(self):
+        from app.chat_runtime import _tool_messages
+        from app.chat_generation import tool_runner
+
+        class Request:
+            async def is_disconnected(self):
+                return False
+
+        calls = [{"id": f"c{i}", "function": {"name": "todo_write", "arguments": "{}"}} for i in range(101)]
+        execute = AsyncMock(return_value=("ok", {"name": "todo_write", "status": "done"}))
+        jobs = None
+        with patch.object(tool_runner, "_record_failure", AsyncMock()):
+            async for item in tool_runner.run_tools(calls, user_id=1, allowed_urls=set(), request=Request(),
+                                                    completion_i=0, budgets={}, coding=True, execute_tool=execute):
+                if isinstance(item, list):
+                    jobs = item
+        self.assertEqual(execute.await_count, 100)
+        self.assertEqual(jobs[100].trace["kind"], "over_call_cap")
+        self.assertEqual(len(_tool_messages(jobs)[0]["tool_calls"]), 100)
+
+    async def test_resume_does_not_count_earlier_turns_rounds(self):
+        payloads = []
+
+        async def invoke(request, user, payload, **_kwargs):
+            payloads.append(payload)
+            return user, FakeSrc("llama"), "m", "m", FakeResult(
+                200, {"choices": [{"message": {"content": "final"}, "finish_reason": "stop"}]})
+
+        history = [{"role": "user", "content": "earlier question"}]
+        for i in range(6):
+            history += [
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": f"old{i}", "type": "function", "function": {"name": "web_search", "arguments": '{"query":"x"}'}}]},
+                {"role": "tool", "tool_call_id": f"old{i}", "content": "hits"},
+            ]
+        history += [{"role": "assistant", "content": "earlier answer"}, {"role": "user", "content": "fresh question"}]
+        raw = {"model": "test-model", "messages": history, "tools": ["web_search"], "agent": {"resumed": True, "skip_sanitize": True}}
+        await self._run(invoke, raw)
+        first = payloads[0]
+        self.assertNotEqual(first.get("tool_choice"), "none")
+        self.assertFalse(any("Wrap-up notice" in str(m.get("content")) for m in first["messages"]))
+
+    async def test_terminal_http_exception_is_not_retried(self):
+        from fastapi import HTTPException
+
+        # Both details read as transient; the status says the retry would fail the same way.
+        for status, detail in ((403, "Access to this model is unavailable"),
+                               (400, "Request temporarily rejected: unavailable model")):
+            with self.subTest(status=status):
+                invoke = AsyncMock(side_effect=HTTPException(status, detail))
+                with patch("app.chat_runtime._resume_delay", return_value=0):
+                    body, _ = await self._run(invoke, connected=True)
+                invoke.assert_awaited_once()
+                self.assertNotIn(b"retrying this step", body)
+        # A transient one still retries on this path.
+        invoke = AsyncMock(side_effect=[HTTPException(503, "upstream timeout"), HTTPException(403, "Forbidden")])
+        with patch("app.chat_runtime._resume_delay", return_value=0):
+            body, _ = await self._run(invoke, connected=True)
+        self.assertEqual(invoke.await_count, 2)
+        self.assertIn(b"retrying this step", body)
+
+    def test_fallback_call_ids_stay_unique_across_rounds(self):
+        from app import chat_history
+        from app.chat_runtime import _tool_messages, jobs_from_calls
+        from app.sources.claude_payload import build_messages_payload
+
+        xml = "<tool_call><function=web_search><parameter=query>a</parameter></function></tool_call>"
+        transcript = [{"role": "user", "content": "go"}]
+        for round_i in range(3):
+            _, calls = extract_text_tool_calls(xml)
+            calls.append({"function": {"name": "grep", "arguments": "{}"}})
+            jobs = jobs_from_calls(calls, round_i)
+            for job in jobs:
+                job.done, job.text = True, "ok"
+            transcript += _tool_messages(jobs)
+        payload = build_messages_payload({"messages": chat_history.for_model(transcript, "claude-sonnet-5")}, "claude-sonnet-5")
+        blocks = [b for m in payload["messages"] if isinstance(m["content"], list) for b in m["content"]]
+        uses = [b["id"] for b in blocks if b.get("type") == "tool_use"]
+        self.assertEqual(len(uses), 6)
+        self.assertEqual(len(set(uses)), 6)
+        self.assertEqual([b["tool_use_id"] for b in blocks if b.get("type") == "tool_result"], uses)
 
     async def test_parallel_400_does_not_retrieval_first(self):
         payloads = []
@@ -569,6 +726,9 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
         phases = {event["phase"] for event in events}
         self.assertIn("round", phases)
         self.assertIn("end", phases)
+        from app import context_meter
+
+        replayed = 90_000 + context_meter.estimate_messages([{"role": "assistant", "content": "ok"}])
         for event in events:
             # Inclusive request usage is measured for llama; the retained end
             # payload is calibrated, not pinned to an old high-water mark.
@@ -577,14 +737,14 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
             if event["phase"] == "round":
                 # Next request is the measured prompt plus the replayed reply,
                 # not prompt+completion and not a rescaled transcript.
-                self.assertEqual(event["used"], 90_000 + event["used"] - 90_000)
+                self.assertEqual(event["used"], replayed)
                 self.assertLess(event["used"], 90_500)
                 self.assertGreater(event["used"], 90_000)
                 self.assertEqual(event["basis"], "provider_prompt")
                 self.assertTrue(event["estimated"])
             elif event["phase"] == "end":
                 self.assertEqual(event["basis"], "provider_prompt")
-                self.assertEqual(event["used"], 90_000 + (event["used"] - 90_000))
+                self.assertEqual(event["used"], replayed)
                 self.assertLess(event["used"], 90_500)
             if event["phase"] in ("round", "end"):
                 self.assertEqual(event["provider_usage"]["prompt_tokens"], 90_000)
@@ -616,8 +776,18 @@ class LoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_tool_rounds_done(history), 2)
         self.assertEqual(_completion_start_index({}, history, 8), 0)
         self.assertEqual(_completion_start_index({"parent_run_id": "c"}, history, 8), 0)
-        self.assertEqual(_completion_start_index({"resumed": True}, history, 8), 2)
-        self.assertEqual(_completion_start_index({"resumed": True}, history, 2), 1)
+        # Rounds before this turn's user row belong to earlier turns.
+        self.assertEqual(_completion_start_index({"resumed": True}, history, 8), 0)
+        this_turn = history + [
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "3"}]},
+            {"role": "tool", "tool_call_id": "3", "content": "ok"},
+            {"role": "user", "content": "[Fuse] The tools already ran. Server-added notice, not user input."},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "4"}]},
+            {"role": "tool", "tool_call_id": "4", "content": "ok"},
+            {"role": "user", "content": [{"type": "text", "text": "[Fuse: untrusted read_file image output, ...]"}]},
+        ]
+        self.assertEqual(_completion_start_index({"resumed": True}, this_turn, 8), 2)
+        self.assertEqual(_completion_start_index({"resumed": True}, this_turn, 2), 1)
         self.assertEqual(STALL_FAIL_CALLS, 20)
 
     def test_duplicate_call_ids_keep_partial_results_with_the_right_tool(self):

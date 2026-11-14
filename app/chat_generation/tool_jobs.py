@@ -40,6 +40,9 @@ WEB_PAGE_RESULT_CHARS = 32_000
 # Subagent reports must reach the parent whole (chats.CONTENT_MAX plus the
 # task-envelope wrapper). Auto-compaction, not a byte cap, handles overflow.
 SUBAGENT_RESULT_CHARS = 120_000
+# One assistant row holds at most this many calls (api._validate_messages);
+# a longer step would make every later request of the thread fail.
+MAX_TOOL_CALLS = 100
 _SUBAGENT_RESULT_TOOLS = frozenset({"spawn_subagent", "get_subagent_output"})
 
 
@@ -280,11 +283,12 @@ def fold_preload_skill(messages: list[dict]) -> list[dict]:
 
 
 def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
-    """Jobs grouped per model call; only a split host list has several."""
+    """Jobs grouped per model call; only a split host list has several.
+    Calls past MAX_TOOL_CALLS were refused (tool_runner) and are left out."""
     groups: dict[str, list[ToolJob]] = {}
     for j in jobs:
         groups.setdefault(j.call_id, []).append(j)
-    return list(groups.values())
+    return list(groups.values())[:MAX_TOOL_CALLS]
 
 
 def _call_result(group: list[ToolJob]) -> str:
@@ -316,6 +320,10 @@ def _tool_messages(jobs: list[ToolJob], content: str = "") -> list[dict]:
         ],
     }
     tools = [{"role": "tool", "tool_call_id": g[0].call_id, "content": _call_result(g)} for g in groups]
+    dropped = len({j.call_id for j in jobs}) - len(groups)
+    if dropped:
+        tools[-1]["content"] += (f"\n[Fuse: {dropped} more tool calls in this step were ignored "
+                                 f"(max {MAX_TOOL_CALLS} per step); re-issue the ones still needed.]")
     return [assistant, *tools, *_tool_images(jobs)]
 
 
@@ -368,12 +376,27 @@ def _tool_rounds_done(messages: list[dict]) -> int:
     return n
 
 
+def _turn_input(msg) -> bool:
+    """A user row that starts work: the person's message, a steer, a parent
+    follow-up or a wake's results. Fuse's own nudges ("[Fuse] …") and
+    read_file image rows ("[Fuse: …") do not."""
+    from ..chat_views import FOLLOWUP_FRAME_HEAD, USER_FRAME_HEAD
+    from .inbox import RESULTS_HEAD
+
+    if not isinstance(msg, dict) or msg.get("role") != "user":
+        return False
+    text = _text_of(msg.get("content")).lstrip()
+    return not text.startswith(("[Fuse]", "[Fuse:")) or text.startswith((USER_FRAME_HEAD, FOLLOWUP_FRAME_HEAD, RESULTS_HEAD))
+
+
 def _completion_start_index(agent: dict, messages: list, limit: int) -> int:
     """Crash-resume of THIS run continues the counter. A new child (including
-    resume_from) always gets a fresh budget — copied history is context, not spend."""
+    resume_from) always gets a fresh budget — copied history is context, not spend.
+    Only rounds after the turn's input count: earlier turns are history too."""
     if not agent.get("resumed"):
         return 0
-    start_i = _tool_rounds_done(messages)
+    start = max((i for i, msg in enumerate(messages) if _turn_input(msg)), default=-1)
+    start_i = _tool_rounds_done(messages[start + 1:])
     if start_i >= limit:
         return max(0, limit - 1)
     return start_i
