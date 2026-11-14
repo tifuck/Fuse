@@ -367,13 +367,22 @@ def contributes(user_id: int | None, kind: str) -> bool:
 
     That is what "contributors" sharing asks of a caller, and what the Z.AI
     cross-unlock asks of an x.ai or OpenAI donor. A dead or private account
-    does not count.
+    does not count, nor one that is never lent to anyone (a NanoGPT key that
+    can spend its owner's balance, a Refuseless key without credit).
     """
     if user_id is None or kind not in POOL_KIND_SET:
         return False
     uid = int(user_id)
     if effective_pref(uid, kind)["share"] == "private":
         return False
+    if kind == "nanogpt":
+        from .nanogpt import lends_any
+
+        return lends_any(uid)
+    if kind == "refuseless":
+        from .refuseless import lends_any
+
+        return lends_any(uid)
     return bool(own_access(kind, uid).get("ok"))
 
 
@@ -441,6 +450,50 @@ def donated_by(row) -> int | None:
         return int(val)
     except (TypeError, ValueError):
         return None
+
+
+# Chat Completions fields a request on another user's account may carry:
+# generation controls, function tools and reasoning. Anything else (n, which
+# bills every extra choice; provider search and server-side tools; service
+# tiers; ...) can multiply or extend what the request costs its donor.
+BORROWED_FIELDS = frozenset(
+    {
+        "model", "messages", "stream", "stream_options", "temperature", "top_p", "top_k", "min_p",
+        "max_tokens", "max_completion_tokens", "stop", "seed", "presence_penalty", "frequency_penalty",
+        "repetition_penalty", "logit_bias", "logprobs", "top_logprobs", "response_format", "tools",
+        "tool_choice", "parallel_tool_calls", "user", "reasoning_effort", "thinking", "prompt_cache_key",
+    }
+)
+
+
+def borrowed(row, user_id: int | None) -> bool:
+    """`row` belongs to another user than the caller."""
+    donor = donated_by(row)
+    return donor is not None and (user_id is None or donor != int(user_id))
+
+
+def strip_borrowed(payload: dict, fields=BORROWED_FIELDS) -> dict:
+    """`payload` without the fields a borrowed request may not carry, and
+    without tools other than functions (provider-side search and the like)."""
+    out = {k: v for k, v in payload.items() if k in fields}
+    tools = out.get("tools")
+    if isinstance(tools, list):
+        kept = [t for t in tools if isinstance(t, dict) and t.get("type", "function") == "function"]
+        if kept:
+            out["tools"] = kept
+        else:
+            for key in ("tools", "tool_choice", "parallel_tool_calls"):
+                out.pop(key, None)
+    choice = out.get("tool_choice")
+    if isinstance(choice, dict) and choice.get("type", "function") != "function":
+        out.pop("tool_choice")
+    return out
+
+
+def lent_payload(payload: dict, row, user_id: int | None) -> dict:
+    """The request as sent on `row`: unchanged on the caller's own account,
+    stripped to BORROWED_FIELDS on anyone else's."""
+    return strip_borrowed(payload) if borrowed(row, user_id) else payload
 
 
 _SHARE_TTL = 30.0

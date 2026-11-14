@@ -593,9 +593,9 @@ class GrokSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Grok accounts in the pool"})
         model = body.get("model") or "grok-4.6"
-        payload = chat_payload(body)
-        if isinstance(payload.get("messages"), list):
-            payload["messages"] = await jpeg_png_images(payload["messages"])
+        prepared = chat_payload(body)
+        if isinstance(prepared.get("messages"), list):
+            prepared["messages"] = await jpeg_png_images(prepared["messages"])
         prefer_id = lookup("grok", session_id)
         hint_id = lookup("grok", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "grok")
@@ -613,6 +613,7 @@ class GrokSource:
             cred, extra = picked
             tried.add(int(cred["id"]))
             note_pool_invoke(cred["id"])
+            payload = pool_policy.lent_payload(prepared, cred, user_id)
             token = extra.get("access_token") or accounts.cred_secret(cred)
             client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False

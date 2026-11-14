@@ -678,7 +678,7 @@ class ZaiSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Z.AI accounts in the pool"})
         model = body.get("model") or ZAI_MODELS[0]
-        payload = _chat_payload(body)
+        prepared = _chat_payload(body)
         prefer_id = lookup("zai", session_id)
         hint_id = lookup("zai", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "zai")
@@ -698,6 +698,7 @@ class ZaiSource:
             cred, extra = picked
             tried.add(int(cred["id"]))
             note_pool_invoke(cred["id"])
+            payload = pool_policy.lent_payload(prepared, cred, user_id)
             reserve(cred["id"])
             key = extra.get("api_key") or accounts.cred_secret(cred)
             region = extra.get("region") or "global"

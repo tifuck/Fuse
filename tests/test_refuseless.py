@@ -219,6 +219,39 @@ def test_owner_key_serves_and_conversation_stays_pinned(backend, network):
     assert pool_session.lookup("refuseless", f"s-{a}-refuseless/{GLM}") == ka
 
 
+def test_borrowed_key_gets_only_plain_fields(backend, network):
+    src, sid, (a, b, _c) = backend
+    ka = link(sid, a, "abl_key_aaaaaaaa")
+    pool_policy.set_user_pref(a, "refuseless", share="everyone")
+    pool_policy.set_user_pref(b, "refuseless", share="everyone")  # a private owner uses only their own keys
+    requests = network(lambda r: httpx.Response(200, json=completion()))
+    fn = {"type": "function", "function": {"name": "f", "parameters": {"type": "object"}}}
+    extra = {"n": 4, "service_tier": "priority", "tools": [fn, {"type": "web_search"}], "reasoning_effort": "high"}
+    assert _chat(src, f"refuseless/{GLM}", b, **extra).credential_id == ka
+    sent = json.loads(requests[-1].content)
+    assert "n" not in sent and "service_tier" not in sent
+    assert sent["tools"] == [fn] and sent["reasoning_effort"] == "high"
+    # The owner's own key takes the request as sent.
+    _chat(src, f"refuseless/{GLM}", a, **extra)
+    sent = json.loads(requests[-1].content)
+    assert sent["n"] == 4 and sent["service_tier"] == "priority" and len(sent["tools"]) == 2
+
+
+def test_contributors_must_hold_a_key_with_credit(backend):
+    _src, sid, (a, b, c) = backend
+    ka = link(sid, a, "abl_key_aaaaaaaa")
+    pool_policy.set_user_pref(a, "refuseless", share="contributors")
+    kb = link(sid, b, "abl_key_bbbbbbbb", available=0)
+    kc = link(sid, c, "abl_key_cccccccc")
+    pool_policy.set_user_pref(b, "refuseless", share="everyone")
+    pool_policy.set_user_pref(c, "refuseless", share="everyone")
+    rows = db.fetchall("SELECT * FROM credentials WHERE source_id=?", (sid,))
+    reach = lambda uid: {r["id"] for r in pool_policy.filter_credentials(rows, "refuseless", uid)}
+    # b's key has no credit to lend, so b is no contributor.
+    assert not pool_policy.contributes(b, "refuseless") and reach(b) == {kb, kc}
+    assert pool_policy.contributes(c, "refuseless") and reach(c) == {ka, kb, kc}
+
+
 def test_out_of_credits_moves_to_the_next_key(backend, network):
     src, sid, (a, b, _c) = backend
     ka = link(sid, a, "abl_key_aaaaaaaa")

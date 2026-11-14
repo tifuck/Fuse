@@ -655,7 +655,7 @@ class MimoSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Xiaomi accounts in the pool"})
         model = body.get("model") or MIMO_MODELS[0]
-        payload = _chat_payload(body)
+        prepared = _chat_payload(body)
         prefer_id = lookup("mimo", session_id)
         hint_id = lookup("mimo", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "mimo")
@@ -673,6 +673,7 @@ class MimoSource:
             cred, extra = picked
             tried.add(int(cred["id"]))
             note_pool_invoke(cred["id"])
+            payload = pool_policy.lent_payload(prepared, cred, user_id)
             key = extra.get("api_key") or accounts.cred_secret(cred)
             region = extra.get("region") if extra.get("region") in _REGIONS else "cn"
             base = extra.get("base_url") or base_for_region(region)

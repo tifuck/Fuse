@@ -197,10 +197,12 @@ def test_borrowed_payload_keeps_only_plain_chat_fields():
         "model": "nanogpt/" + SUB, "stream": True, "max_tokens": 999_999, "reasoning_effort": "medium",
         "provider": {"only": ["x"]}, "billing_mode": "paygo", "prompt_caching": {"enabled": True},
         "caching": True, "service_tier": "fast", "web_search": {"enabled": True}, "session_id": "s", "_fuse_x": 1,
+        "n": 8, "tools": [{"type": "web_search"}], "tool_choice": "required",
         "messages": [{"role": "user", "content": [{"type": "text", "text": "hi", "cache_control": {"type": "ephemeral"}}],
                       "claude_thinking": "x"}],
     }
     out = nanogpt.chat_payload(body, SUB, rec, owner=False)
+    # n would spend the donor's quota once per choice; a provider-side tool is not a function.
     assert set(out) == {"model", "stream", "max_tokens", "reasoning_effort", "messages"}
     assert out["model"] == SUB and out["max_tokens"] == 131072 and out["reasoning_effort"] == "high"
     assert out["messages"] == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
@@ -362,6 +364,34 @@ def test_owner_runs_paid_models_on_their_own_key_first(backend, network):
     assert result.credential_id == ka
     assert json.loads(requests[-1].content)["prompt_caching"] == {"enabled": True, "ttl": "1h"}
     assert _chat(src, SUB, a).credential_id == ka
+
+
+def test_failed_or_stale_usage_reading_stops_lending(backend, network):
+    src, sid, (a, b, _c) = backend
+    kb = link(sid, b, "sk-nano-bbbbbbbbbbbb", allows_balance=False)
+    # The usage endpoint fails: the last reading may predate the owner
+    # allowing balance spend, so nobody else is routed onto the key.
+    nanogpt._store_billing(kb, {}, error="http 500")
+    extra = accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (kb,)))
+    assert extra["billing"]["allows_balance"] is False and not nanogpt.shareable(extra)
+    network(lambda r: httpx.Response(200, json=completion()))
+    assert _chat(src, SUB, a).status == 403
+    assert _chat(src, SUB, b).credential_id == kb  # the owner's own use is unaffected
+    old = {"billing": {"fetched_at": "2020-01-01T00:00:00Z"}}
+    assert not nanogpt.reading_recent(old) and nanogpt.reading_recent({"billing": {"fetched_at": db.now()}})
+
+
+def test_contributors_must_lend_a_key_others_can_use(backend):
+    _src, sid, (a, b, c) = backend
+    kb = link(sid, b, "sk-nano-bbbbbbbbbbbb", allows_balance=False)
+    pool_policy.set_user_pref(b, "nanogpt", share="contributors")
+    # a's key can spend a's balance, so it is never lent: a contributes nothing.
+    link(sid, a, "sk-nano-aaaaaaaaaaaa", allows_balance=True)
+    kc = link(sid, c, "sk-nano-cccccccccccc", allows_balance=False)
+    rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (sid,))
+    reach = lambda uid: {int(r["id"]) for r in pool_policy.filter_credentials(rows, "nanogpt", uid)}
+    assert not pool_policy.contributes(a, "nanogpt") and kb not in reach(a)
+    assert pool_policy.contributes(c, "nanogpt") and reach(c) == {kb, kc}
 
 
 def test_key_nanogpt_marks_unavailable_is_skipped(backend, network):

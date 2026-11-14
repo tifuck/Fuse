@@ -54,11 +54,12 @@ MAX_PINS = 50
 # Chat Completions fields a request on someone else's key may carry. Anything
 # else (provider, billing_mode, prompt_caching, cache_control, caching,
 # web_search, memory, advisor, service_tier, …) can move it to pay-as-you-go
-# on the donor's balance or add paid extras.
+# on the donor's balance or add paid extras, and n spends the donor's quota
+# once per choice.
 _BORROWED_FIELDS = frozenset(
     {
         "model", "messages", "stream", "stream_options", "temperature", "top_p", "top_k", "min_p",
-        "max_tokens", "max_completion_tokens", "stop", "n", "seed", "presence_penalty",
+        "max_tokens", "max_completion_tokens", "stop", "seed", "presence_penalty",
         "frequency_penalty", "repetition_penalty", "logit_bias", "logprobs", "top_logprobs",
         "response_format", "tools", "tool_choice", "parallel_tool_calls", "user", "reasoning_effort",
     }
@@ -296,9 +297,19 @@ def billing_has_subscription(billing: dict | None) -> bool:
 
 
 def shareable(extra: dict | None) -> bool:
-    """An active subscription on a key that cannot spend its owner's balance."""
+    """An active subscription on a key that cannot spend its owner's balance,
+    per a reading whose refresh did not fail. A failed refresh keeps the last
+    reading, which may predate the owner allowing balance spend."""
     billing = _billing(extra)
+    if billing.get("last_error"):
+        return False
     return billing_has_subscription(billing) and billing.get("allows_balance") is False
+
+
+def reading_recent(extra: dict | None) -> bool:
+    """The last successful usage reading is under two refresh periods old."""
+    when = _parse_ts(_billing(extra).get("fetched_at") or "")
+    return bool(when and datetime.now(timezone.utc) - when < timedelta(seconds=2 * USAGE_TTL))
 
 
 def lendable_row(row) -> bool:
@@ -343,6 +354,22 @@ def _nanogpt_live(row) -> bool:
         return False
     extra = accounts.cred_extra(row)
     return credential_is_authed(row, extra) and shareable(extra)
+
+
+def lends_any(user_id: int) -> bool:
+    """One of this user's keys is authed and lendable to others."""
+    sid = ensure_nanogpt_source()
+    rows = db.fetchall_memo(
+        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0", (sid, user_id)
+    )
+    for row in rows:
+        try:
+            extra = accounts.cred_extra(row)
+        except (DecryptionError, accounts.CredentialDataError):
+            continue
+        if credential_is_authed(row, extra) and shareable(extra):
+            return True
+    return False
 
 
 def nanogpt_access_state(user_id: int) -> dict:
@@ -796,7 +823,7 @@ def chat_payload(body: dict, upstream: str, rec: dict, *, owner: bool, prefs: di
         if cap and isinstance(payload.get(field), int) and payload[field] > cap:
             payload[field] = cap
     if not owner:
-        return {k: v for k, v in payload.items() if k in _BORROWED_FIELDS}
+        return pool_policy.strip_borrowed(payload, _BORROWED_FIELDS)
     if covered:
         for field in ("prompt_caching", "promptCaching", "cache_control"):
             payload.pop(field, None)
@@ -879,7 +906,11 @@ class NanoGPTSource:
             # NanoGPT's own advice that this key can route nothing right now.
             if not credential_is_authed(cred, extra) or _billing(extra).get("recommended") == "unavailable":
                 return False
-            return pool_policy.donated_by(cred) == uid or (rec["subscription"] and shareable(extra))
+            # A lent key's reading must also be recent: the refresh above
+            # brings every key up to date unless it raised.
+            return pool_policy.donated_by(cred) == uid or (
+                rec["subscription"] and shareable(extra) and reading_recent(extra)
+            )
 
         body = {**body, "messages": await png_gifs(body.get("messages"))}
         prefs = model_prefs(uid)

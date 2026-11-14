@@ -265,6 +265,22 @@ def refuseless_own_access(user_id: int) -> dict:
     return {"ok": False, "reason": "unauthed"}
 
 
+def lends_any(user_id: int) -> bool:
+    """One of this user's keys is valid and has credit to lend."""
+    sid = ensure_refuseless_source()
+    rows = db.fetchall_memo(
+        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0", (sid, user_id)
+    )
+    for row in rows:
+        try:
+            extra = accounts.cred_extra(row)
+        except (DecryptionError, accounts.CredentialDataError):
+            continue
+        if credential_is_authed(row, extra) and not out_of_credits(extra):
+            return True
+    return False
+
+
 def refuseless_access_state(user_id: int) -> dict:
     own = refuseless_own_access(user_id)
     if own["ok"]:
@@ -531,7 +547,7 @@ class RefuselessSource:
             user_id,
         )
         uid = int(user_id) if user_id is not None else None
-        payload = chat_payload(body, upstream, rec)
+        prepared = chat_payload(body, upstream, rec)
         tried: set[int] = set()
         attempts: list[dict] = []
         last = ChatResult(
@@ -568,6 +584,7 @@ class RefuselessSource:
             cid = int(cred["id"])
             tried.add(cid)
             note_pool_invoke(cid)
+            payload = pool_policy.lent_payload(prepared, cred, uid)
             request_ids: list[str] = []
 
             async def capture(response, request_ids=request_ids):

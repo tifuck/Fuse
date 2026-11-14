@@ -1071,7 +1071,7 @@ class KimiSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Kimi accounts in the pool"})
         model = body.get("model") or KIMI_MODELS[0]
-        payload = _chat_payload(body, session_id)
+        prepared = _chat_payload(body, session_id)
         prefer_id = lookup("kimi", session_id)
         hint_id = lookup("kimi", affinity_id) if prefer_id is None and affinity_id else None
         primary_id = pool_policy.primary_account(user_id, "kimi")
@@ -1089,6 +1089,7 @@ class KimiSource:
             cred, extra = picked
             tried.add(int(cred["id"]))
             note_pool_invoke(cred["id"])
+            payload = pool_policy.lent_payload(prepared, cred, user_id)
             token = _bearer(cred, extra)
             region = extra.get("region") or "global"
             if region not in _REGIONS:
