@@ -212,7 +212,9 @@ def command(conn, user_id, command_id, request):
     fingerprint = hashlib.sha256(dumps(request).encode()).hexdigest()
     if command_id is None:
         return fingerprint, None
-    if not _text(command_id, "command_id", 200, strip=True):
+    # chat_commands.command_id is varchar(128): longer ids are refused here,
+    # not by the ledger insert as a database error.
+    if not _text(command_id, "command_id", 128, strip=True):
         raise ChatValidationError("command_id cannot be empty")
     row = conn.execute("SELECT * FROM chat_commands WHERE user_id=? AND command_id=?",
                        (user_id, command_id)).fetchone()

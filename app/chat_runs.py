@@ -7,6 +7,7 @@ with no such transcript is interrupted rather than retried.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import json
 import logging
@@ -63,11 +64,25 @@ def disown(run_id, lost: bool = True) -> None:
     That worker may still be unwinding, and a resume can requeue the same id
     before it is gone. Its final flush and finish_run check only that the row
     is active, so they would overwrite the new leg and end it. Both are no-ops
-    on the row it lost, so the worker skips them from here on. lost=False
+    on the row it lost, so the worker skips them from here on, and the store
+    drops that leg's transcript and state saves (leg_disowned). lost=False
     hands the row back when the abort itself could not commit."""
     task = _tasks.get(run_id)
     if task is not None and not task.done():
         task._fuse_disowned = lost
+
+
+# (run id, worker task) of the leg the current code runs for. Its saves run
+# in threads (to_thread and durable_call copy the context), and a resume may
+# already have handed the same run id to a new leg, so the store asks this
+# rather than the row whether a save still belongs to the run.
+_leg: contextvars.ContextVar = contextvars.ContextVar("chat_leg", default=(None, None))
+
+
+def leg_disowned(run_id) -> bool:
+    """Whether the calling worker leg of run_id lost its row (disown). Thread-safe."""
+    ident, task = _leg.get()
+    return ident == run_id and getattr(task, "_fuse_disowned", False)
 
 
 def _signal_cancel(ident: str):
@@ -488,7 +503,7 @@ def _reap_one(row):
     # blobs the scan no longer ships.
     full = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (ident,))
     if full is not None:
-        chat_store.recover_one(full)
+        chat_store.recover_one(full, capped=True)
 
 
 def _still_stopping(ident) -> bool:
@@ -817,6 +832,7 @@ async def _run(request, user, run):
     task = asyncio.current_task()
     task._fuse_started = True
     ident = run["id"]
+    _leg.set((ident, task))
     output = Output(run)
     pending = []
     pending_bytes = 0

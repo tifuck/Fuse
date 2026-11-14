@@ -87,8 +87,13 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
     # re-parse, projection) never shares a transaction with publication, so
     # concurrent subagents cannot serialize on each other's payloads.
     row = _checkpoint_row(run_id)
-    if row is None or row["status"] not in chat_tx.ACTIVE:
-        _state_dirty.discard(run_id)
+    # A disowned leg's row was requeued only after the disown: a row read
+    # before that is caught by the request guard below, one read after by
+    # the flag.
+    disowned = _leg_disowned(run_id)
+    if row is None or row["status"] not in chat_tx.ACTIVE or disowned:
+        if not disowned:  # else the id's write debt is the new leg's
+            _state_dirty.discard(run_id)
         if future is not None:
             chat_pub._resolve_future(future, None)
         return
@@ -287,8 +292,10 @@ def flush_pending_state(run_id, message, future=None):
     ticks: same optimistic request guard as checkpoint, strict shape check,
     and no publication (nothing new to tell clients)."""
     row = _checkpoint_row(run_id)
-    if row is None or row["status"] not in chat_tx.ACTIVE:
-        _state_dirty.discard(run_id)
+    disowned = _leg_disowned(run_id)
+    if row is None or row["status"] not in chat_tx.ACTIVE or disowned:
+        if not disowned:
+            _state_dirty.discard(run_id)
         if future is not None:
             chat_pub._resolve_future(future, None)
         return
@@ -464,6 +471,12 @@ def _mutable_request(request):
     return out
 
 
+def _leg_disowned(run_id) -> bool:
+    from .chat_runs import leg_disowned
+
+    return leg_disowned(run_id)
+
+
 def _request_guard_sql(guard) -> str:
     return "request_digest=?" if _has_request_digest() else "COALESCE(request,'')=?"
 
@@ -610,36 +623,6 @@ def save_meter(user_id, thread_id, meter):
             (ctxmod.dump_state(state), pk, user_id),
         )
         chat_tx.thread_event(conn, user_id, pk)
-
-
-def save_compaction(user_id, thread_id, state, *, bump=True, event_name="compaction.updated"):
-    from . import chats, context_compact as ctxmod, context_meter
-
-    parsed = ctxmod.parse_state(state)
-    with chat_tx.transaction() as conn:
-        pk, row = _compaction_row(conn, user_id, thread_id)
-        if row is None:
-            raise chats.ChatValidationError("chat not found", 404)
-        dumped = ctxmod.dump_state(parsed)
-        ts = db.now()
-        if bump:
-            conn.execute(
-                "UPDATE chat_threads SET compaction=?, revision=revision+1, updated_at=? WHERE id=? AND user_id=?",
-                (dumped, ts, pk, user_id),
-            )
-            chat_tx.thread_event(conn, user_id, pk)
-        else:
-            conn.execute(
-                "UPDATE chat_threads SET compaction=?, updated_at=? WHERE id=? AND user_id=?",
-                (dumped, ts, pk, user_id),
-            )
-            # Same contract as save_meter: a view-visible write must advance the
-            # thread watermark even without a revision bump.
-            chat_tx.thread_event(conn, user_id, pk)
-        view = chat_views.thread_view(conn, user_id, pk)
-        payload = (view or {}).get("compaction") or {"meter": parsed.get("meter")}
-        chat_tx.event(conn, user_id, event_name, pk, payload)
-        return view
 
 
 def prepare_compact(user_id, thread_id, expected_revision, command_id):
@@ -893,7 +876,10 @@ def save_turn_progress(run_id, messages, loaded_tools=None, extra=None):
             f"SELECT id,status,{request_col},user_id,thread_id{_provider_state_columns(conn)} FROM chat_runs WHERE id=?",
             (run_id,),
         ).fetchone()
-        if row is None or row["status"] not in chat_tx.ACTIVE:
+        # Checked under the row lock: a worker that lost the row (abort, then
+        # a resume requeued it) must not replace the new leg's transcript,
+        # resume note included.
+        if row is None or row["status"] not in chat_tx.ACTIVE or _leg_disowned(run_id):
             return
         raw_request = request_text(conn, run_id, row)
         chat_images.save(conn, row["thread_id"], row["user_id"], images)
