@@ -36,6 +36,8 @@ class FakeWS:
                 elif obj.get("op") in ("exec", "exec_stream"):
                     out = "ok\n"
                     if obj.get("op") == "exec_stream":
+                        # Streamed stdout arrives as chunks only; the result's out is empty.
+                        out = ""
                         rec = agent_hub._conns.get((1, self.host_id))
                         cb = rec.get("chunks", {}).get(obj["id"]) if rec else None
                         if cb:
@@ -59,6 +61,29 @@ class HelloWS(FakeWS):
         if self.frames:
             return self.frames.pop(0)
         await asyncio.sleep(3600)
+
+
+class ConnectorWS(FakeWS):
+    """Speaks the connector protocol to handle_socket: hello first, then every
+    result comes back as a frame on the receive loop, never inside send_json.
+    exec_stream sends stdout as a chunk and a final res with empty out."""
+
+    def __init__(self, host_id: int, hello: dict):
+        super().__init__(host_id)
+        self.inbox: asyncio.Queue = asyncio.Queue()
+        self.inbox.put_nowait(json.dumps(hello))
+
+    async def receive_text(self):
+        return await self.inbox.get()
+
+    async def send_json(self, obj):
+        self.sent.append(obj)
+        if obj.get("t") != "job":
+            return
+        if obj.get("op") == "exec_stream":
+            self.inbox.put_nowait(json.dumps({"v": 1, "t": "chunk", "id": obj["id"], "stream": "out", "data": "ok\n"}))
+        self.inbox.put_nowait(json.dumps({"v": 1, "t": "res", "id": obj["id"], "ok": True, "exit": 0,
+                                          "out": "", "err": "", "truncated": False}))
 
 
 class AgentHubTest(unittest.TestCase):
@@ -250,7 +275,7 @@ class AgentHubTest(unittest.TestCase):
                 bound_cwd="/tmp",
             )
             self.assertEqual(rec["status"], "done")
-            self.assertIn("ok", text)
+            self.assertEqual(rec["output"], "ok\n")
             self.assertEqual(rec["host"], self.host["alias"])
 
             text, rec = await workspace.execute(
@@ -432,7 +457,62 @@ class AgentHubTest(unittest.TestCase):
         asyncio.run(go())
 
     def test_inflight_cap_allows_burst(self):
-        self.assertGreaterEqual(agent_hub.MAX_INFLIGHT, 100)
+        class SilentWS(FakeWS):
+            async def send_json(self, obj):
+                self.sent.append(obj)
+
+        ws = SilentWS(self.hid)
+        rec = {"ws": ws, "pending": {}, "user_id": 1, "host_id": self.hid}
+        agent_hub._conns[(1, self.hid)] = rec
+
+        async def go():
+            # A burst of 100 parallel tool calls is all sent; only past the cap
+            # is a call refused as busy.
+            def launch(n):
+                return [asyncio.create_task(agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5)) for _ in range(n)]
+
+            burst = launch(100)
+            await asyncio.sleep(0.05)
+            self.assertEqual(len([m for m in ws.sent if m.get("t") == "job"]), 100)
+            burst += launch(agent_hub.MAX_INFLIGHT - 100)
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(rec["pending"]), agent_hub.MAX_INFLIGHT)
+            with self.assertRaises(agent_hub.AgentError) as ctx:
+                await agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5)
+            self.assertEqual(ctx.exception.detail, "agent is busy")
+            for fut in list(rec["pending"].values()):
+                fut.set_result({"ok": True, "exit": 0, "out": "ok\n", "err": "", "error": ""})
+            results = await asyncio.gather(*burst)
+            self.assertTrue(all(r["ok"] for r in results))
+
+        asyncio.run(go())
+
+    def test_streamed_command_round_trips_through_the_socket(self):
+        async def go():
+            ws = ConnectorWS(self.hid, {"v": 1, "t": "hello", "token": self.token, "ver": "1.7.0"})
+            loop = asyncio.create_task(agent_hub.handle_socket(ws))
+            try:
+                for _ in range(500):
+                    if (agent_hub._conns.get((1, self.hid)) or {}).get("ws") is ws:
+                        break
+                    await asyncio.sleep(0.01)
+                else:
+                    self.fail("hello never registered")
+                text, rec = await workspace.execute(
+                    "run_terminal_command",
+                    json.dumps({"command": "echo ok"}),
+                    user_id=1,
+                    bound_host_id=self.hid,
+                    bound_cwd="/tmp",
+                )
+            finally:
+                loop.cancel()
+                await asyncio.gather(loop, return_exceptions=True)
+            self.assertEqual(rec["status"], "done")
+            self.assertEqual(rec["output"], "ok\n")
+            self.assertIn("exec_stream", [m.get("op") for m in ws.sent if m.get("t") == "job"])
+
+        asyncio.run(go())
 
 
 if __name__ == "__main__":
