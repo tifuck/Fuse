@@ -237,7 +237,9 @@ class ArtifactStoreTest(unittest.TestCase):
         self.assertNotIn("connect-src 'self'", csp)
         # External images would carry data off to third parties.
         self.assertIn("img-src data: blob:;", csp)
-        self.assertIn("allow-popups-to-escape-sandbox allow-downloads", csp)
+        # Popups go through the viewer's confirm (the bridge's window.open).
+        self.assertIn("allow-modals allow-downloads", csp)
+        self.assertNotIn("allow-popups", csp)
         self.assertIn("https://cdn.tailwindcss.com", csp)
         self.assertEqual(resp.headers["x-frame-options"], "SAMEORIGIN")
         self.assertEqual(resp.headers["x-robots-tag"], "noindex, nofollow")

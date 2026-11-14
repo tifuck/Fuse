@@ -38,7 +38,10 @@ _REF_IN_URL = re.compile(r"(?:^|/)a/([A-Za-z0-9_-]{8,64})(?=$|[/?#])")
 _CDN = "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com"
 # The iframes in templates/chat.html and templates/artifact.html carry the same
 # flags: a sandbox is the intersection of the attribute and this directive.
-SANDBOX = "allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
+# No allow-popups: a page opened anything it liked without a click in Fuse
+# Desktop (no popup blocker), past the viewer's confirm. The bridge sends
+# window.open through that confirm instead, as it does links.
+SANDBOX = "allow-scripts allow-forms allow-modals allow-downloads"
 # Pages run with an opaque origin (no allow-same-origin), so eval adds no reach
 # that inline script lacks. External images are blocked: an image URL is the
 # easiest way for a page to carry data off to a third party.
@@ -72,6 +75,7 @@ window.addEventListener("error",function(e){var t=e.target;if(t&&t!==window&&t.t
 window.addEventListener("unhandledrejection",function(e){var r=e.reason;report("Unhandled promise rejection: "+(r&&r.message||r),"")});
 document.addEventListener("securitypolicyviolation",function(e){report("Blocked by the artifact sandbox: "+(e.blockedURI||"inline")+" ("+e.effectiveDirective+")","")});
 document.addEventListener("click",function(e){if(e.defaultPrevented)return;var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;var h=a.getAttribute("href")||"";if(!h||h.charAt(0)==="#")return;var u;try{u=new URL(h,document.baseURI)}catch(_){return}if(u.protocol!=="http:"&&u.protocol!=="https:")return;e.preventDefault();send("open",{url:u.href})});
+window.open=function(h){var u;try{u=new URL(String(h),document.baseURI)}catch(_){return null}if(u.protocol==="http:"||u.protocol==="https:")send("open",{url:u.href});return null};
 window.fuse={copy:function(t){send("copy",{text:String(t).slice(0,200000)})},sendToChat:function(t){send("compose",{text:String(t).slice(0,20000)})}};
 try{var c=navigator.clipboard;if(c&&c.writeText){var w=c.writeText.bind(c);c.writeText=function(t){return w(t).catch(function(){window.fuse.copy(t)})}}}catch(_){}
 var st=0;window.addEventListener("scroll",function(){if(st)return;st=setTimeout(function(){st=0;send("scroll",{y:Math.round(window.scrollY)})},250)},{passive:true});
