@@ -10,6 +10,26 @@ from .deps import _chat_auth, _chat_validation_error, _json_object, current_user
 
 router = APIRouter()
 
+# One-shot messages for the form posts' redirects, kept server-side: a message
+# read from the URL would let any link show its own text on a share page.
+_flash: dict[int, tuple[str, str, str]] = {}
+
+
+def _flash_redirect(user, path: str, kind: str, text: str) -> RedirectResponse:
+    _flash[user["id"]] = (path, kind, text[:200])
+    return RedirectResponse(path, status_code=303)
+
+
+def _take_flash(user, path: str) -> dict:
+    """{kind: text} for the message the last form post left for this page."""
+    if not user:
+        return {}
+    flash = _flash.pop(user["id"], None)
+    if not flash or flash[0] != path:
+        return {}
+    return {flash[1]: flash[2]}
+
+
 def _artifact_http_error(exc: artifacts.ArtifactError) -> HTTPException:
     return HTTPException(exc.status_code, exc.detail)
 
@@ -51,8 +71,7 @@ async def artifacts_gallery(request: Request):
     items = artifacts.list_for_user(user["id"])
     active = [item for item in items if not item["archived"]]
     archived = [item for item in items if item["archived"]]
-    error = (request.query_params.get("error") or "")[:200]
-    notice = (request.query_params.get("notice") or "")[:200]
+    flash = _take_flash(user, "/artifacts")
     return render(
         request,
         "artifacts.html",
@@ -60,8 +79,8 @@ async def artifacts_gallery(request: Request):
         items=active,
         archived=archived,
         limit=artifacts.MAX_PER_USER,
-        error=error,
-        notice=notice,
+        error=flash.get("error", ""),
+        notice=flash.get("notice", ""),
     )
 
 
@@ -104,7 +123,6 @@ async def artifact_page(request: Request, public_id: str):
         raise _artifact_http_error(exc) from None
     if version:
         item["content_url"] += f"?v={version}"
-    error = (request.query_params.get("error") or "")[:200]
     return render(
         request,
         "artifact.html",
@@ -114,7 +132,7 @@ async def artifact_page(request: Request, public_id: str):
         pinned=version,
         public=row["visibility"] == "public",
         sandbox=artifacts.SANDBOX,
-        error=error,
+        error=_take_flash(user, f"/a/{public_id}").get("error", ""),
     )
 
 
@@ -235,7 +253,7 @@ async def _owner_action(request: Request, public_id: str, act, result):
     except artifacts.ArtifactError as exc:
         if _wants_json(request):
             raise _artifact_http_error(exc) from None
-        return RedirectResponse(f"/a/{public_id}?error={quote_plus(exc.detail)}", status_code=303)
+        return _flash_redirect(user, f"/a/{public_id}", "error", exc.detail)
     if _wants_json(request):
         return JSONResponse({"ok": True, **result(item)})
     back = str(raw.get("next") or "")
@@ -333,11 +351,11 @@ async def _artifact_set_archived(request: Request, public_id: str, archived: boo
     except artifacts.ArtifactError as exc:
         if json_request:
             raise _artifact_http_error(exc) from None
-        return RedirectResponse(f"/artifacts?error={quote_plus(exc.detail)}", status_code=303)
+        return _flash_redirect(user, "/artifacts", "error", exc.detail)
     if json_request:
         return JSONResponse({"ok": True, "archived": archived})
     notice = "Artifact archived." if archived else "Artifact restored."
-    return RedirectResponse(f"/artifacts?notice={quote_plus(notice)}", status_code=303)
+    return _flash_redirect(user, "/artifacts", "notice", notice)
 
 
 @router.post("/a/{public_id}/delete")
@@ -351,14 +369,14 @@ async def artifact_delete(request: Request, public_id: str):
     except artifacts.ArtifactError as exc:
         if json_request:
             raise _artifact_http_error(exc) from None
-        return RedirectResponse(f"/artifacts?error={quote_plus(exc.detail)}", status_code=303)
+        return _flash_redirect(user, "/artifacts", "error", exc.detail)
     if not deleted:
         if json_request:
             raise HTTPException(404, "Artifact not found")
-        return RedirectResponse(f"/artifacts?error={quote_plus('Artifact not found')}", status_code=303)
+        return _flash_redirect(user, "/artifacts", "error", "Artifact not found")
     if json_request:
         return JSONResponse({"ok": True})
-    return RedirectResponse(f"/artifacts?notice={quote_plus('Artifact deleted.')}", status_code=303)
+    return _flash_redirect(user, "/artifacts", "notice", "Artifact deleted.")
 
 
 @router.post("/a/{public_id}/continue")

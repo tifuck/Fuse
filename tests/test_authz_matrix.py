@@ -283,6 +283,32 @@ def test_artifact_viewers_see_only_the_shared_version(client):
     assert token != ident and client.get(f"/a/{token}/content").status_code == 200
 
 
+def test_artifact_pages_show_only_messages_the_app_set(client):
+    alice_id = _uid("alice@authz.invalid")
+    ident = artifacts.create(alice_id, title="Shared", html="<p>shared</p>")["identifier"]
+    token = artifacts.set_visibility(alice_id, ident, "public")["share_url"].rsplit("/", 1)[-1]
+    phish = "Session expired, sign in at evil.invalid"
+
+    # Anyone's link with ?error= / ?notice= shows nothing of its own.
+    client.cookies.clear()
+    page = client.get(f"/a/{token}", params={"error": phish})
+    assert page.status_code == 200 and "evil.invalid" not in page.text
+    _login(client, "alice@authz.invalid")
+    for path in (f"/a/{ident}", "/artifacts"):
+        page = client.get(path, params={"error": phish, "notice": phish})
+        assert page.status_code == 200 and "evil.invalid" not in page.text, path
+
+    # A failed form post shows its own message once, from the server.
+    failed = client.post(f"/a/{ident}/pin", data={"version": "99"}, follow_redirects=False)
+    assert failed.status_code == 303 and failed.headers["location"] == f"/a/{ident}"
+    assert "version not found" in client.get(f"/a/{ident}").text
+    assert "version not found" not in client.get(f"/a/{ident}").text
+    deleted = client.post(f"/a/{ident}/delete", data={}, follow_redirects=False)
+    assert deleted.status_code == 303 and deleted.headers["location"] == "/artifacts"
+    assert "Artifact deleted." in client.get("/artifacts").text
+    assert "Artifact deleted." not in client.get("/artifacts").text
+
+
 def test_threads_and_runs_are_private_to_their_owner(client):
     alice_id = _uid("alice@authz.invalid")
     _login(client, "alice@authz.invalid")

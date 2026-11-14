@@ -84,7 +84,7 @@ window.addEventListener("load",function(){send("ready",{})});
 })();</script>"""
 
 _MD_SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>{bridge}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/{hljs}.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/{hljs}.min.css" integrity="{hljs_sri}" crossorigin="anonymous">
 <style>
 :root{{color-scheme:{scheme};--fg:var(--fuse-text);--mute:var(--fuse-muted);--line:var(--fuse-line);--code:var(--fuse-code);--link:var(--fuse-accent);--bg:var(--fuse-bg)}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}
@@ -95,8 +95,8 @@ a{{color:var(--link)}}code,pre{{font:.88em/1.5 ui-monospace,SFMono-Regular,Menlo
 blockquote{{margin:1em 0;padding:0 1em;color:var(--mute);border-left:.25em solid var(--line)}}
 table{{border-collapse:collapse;display:block;overflow:auto}}th,td{{border:1px solid var(--line);padding:.4em .8em}}img{{max-width:100%}}hr{{border:0;border-top:1px solid var(--line)}}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
 </head><body><main id="doc"></main>
 <script>(function(){{var src={source},doc=document.getElementById("doc");
 if(window.marked){{doc.innerHTML=marked.parse(src,{{gfm:true}});if(window.hljs)doc.querySelectorAll("pre code").forEach(function(el){{hljs.highlightElement(el)}});}}
@@ -104,6 +104,13 @@ else{{var pre=document.createElement("pre");pre.textContent=src;doc.appendChild(
 doc.querySelectorAll("h1,h2,h3,h4").forEach(function(h){{if(!h.id)h.id=h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}});
 if(location.hash){{var t=document.getElementById(decodeURIComponent(location.hash.slice(1)));if(t)t.scrollIntoView()}}}})();</script>
 </body></html>"""
+
+# The highlight.js theme per scheme, with its SRI hash (the CDN files above
+# are pinned versions; a changed byte must fail to load, not run).
+_HLJS_THEMES = {
+    "dark": ("github-dark", "sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH"),
+    "light": ("github", "sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L"),
+}
 
 
 class ArtifactError(ValueError):
@@ -559,9 +566,12 @@ def update(
         if new_vis is not None:
             sets.append("visibility=?")
             args.append(new_vis)
-            if new_vis == "public" and not fresh["share_token"]:
+            if new_vis == "public" and fresh["visibility"] != "public":
+                # A fresh link on every share: a link handed out before Stop
+                # sharing stays dead, and the identifier (in transcripts and
+                # "only you" links) never becomes a public one.
                 sets.append("share_token=?")
-                args.append(row["public_id"])
+                args.append(secrets.token_urlsafe(18))
         if new_icon is not None:
             sets.append("icon=?")
             args.append(new_icon)
@@ -970,11 +980,13 @@ def render_document(text: str, fmt: str = "html", title: str = "", theme: tuple[
     snippet = _BRIDGE + _theme_style(theme)
     if fmt == "markdown":
         source = json.dumps(text).replace("<", "\\u003c")
+        hljs, hljs_sri = _HLJS_THEMES["dark" if theme[0] == "dark" else "light"]
         return _MD_SHELL.format(
             title=html_lib.escape(title or "Artifact"),
             bridge=snippet,
             scheme=theme[0],
-            hljs="github-dark" if theme[0] == "dark" else "github",
+            hljs=hljs,
+            hljs_sri=hljs_sri,
             source=source,
         )
     return _inject(text, snippet)

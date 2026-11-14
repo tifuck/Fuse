@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -205,6 +206,28 @@ class ArtifactStoreTest(unittest.TestCase):
         artifacts.set_archived(self.archiver, art["identifier"], True)
         self.assertEqual(artifacts.list_for_prompt(self.archiver, thread["id"]), [])
         self.assertTrue(artifacts.delete(self.archiver, art["identifier"]))
+
+    def test_sharing_again_mints_a_new_link(self):
+        art = artifacts.create(self.owner, title="Reshare", html="<html><body>r</body></html>")
+        ident = art["identifier"]
+        first = artifacts.set_visibility(self.owner, ident, "public")["share_url"].rsplit("/", 1)[-1]
+        # The identifier sits in transcripts and "only you" links: never public.
+        self.assertNotEqual(first, ident)
+        self.assertIsNone(artifacts.get_for_view(ident, None))
+        self.assertIsNotNone(artifacts.get_for_view(first, None))
+        # Already public: a metadata change keeps the link.
+        same = artifacts.set_visibility(self.owner, ident, "public")["share_url"].rsplit("/", 1)[-1]
+        self.assertEqual(same, first)
+        artifacts.set_visibility(self.owner, ident, "private")
+        self.assertIsNone(artifacts.get_for_view(first, None))
+        second = artifacts.set_visibility(self.owner, ident, "public")["share_url"].rsplit("/", 1)[-1]
+        # Stop sharing said the old link no longer works: sharing again keeps it dead.
+        self.assertNotEqual(second, first)
+        self.assertIsNone(artifacts.get_for_view(first, None))
+        self.assertIsNone(artifacts.get_for_view(first, self.other))
+        self.assertIsNotNone(artifacts.get_for_view(second, None))
+        # The owner's chat references keep working.
+        self.assertIsNotNone(artifacts.get_for_view(ident, self.owner))
 
     def test_other_user_cannot_archive(self):
         art = artifacts.create(self.owner, title="Guard", html="<html><body>g</body></html>", visibility="public")
@@ -415,6 +438,16 @@ class ArtifactAuthoringTest(unittest.TestCase):
         md = artifacts.render_document("# x", "markdown", "Doc", palette)
         self.assertIn("color-scheme:light", md)
         self.assertIn("styles/github.min.css", md)
+        # Every CDN file the shell loads is pinned by hash, fetched in CORS mode.
+        dark = artifacts.render_document("# x", "markdown", "Doc")
+        self.assertIn("styles/github-dark.min.css", dark)
+        for page in (md, dark):
+            tags = re.findall(r"<(?:script|link)\b[^>]*https://[^>]*>", page)
+            self.assertEqual(len(tags), 3)
+            for tag in tags:
+                self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/]{64}" crossorigin="anonymous"')
+        self.assertNotEqual(re.search(r'css" integrity="([^"]+)', md).group(1),
+                            re.search(r'css" integrity="([^"]+)', dark).group(1))
         self.assertIn("--fuse-bg:#000000", artifacts.render_document("<p>x</p>"))
         # The param lands inside a <style>: anything but scheme + hex is dropped.
         injected = "light,ffffff;}</style><script>alert(1)</script>," + ",".join(["ffffff"] * 10)
