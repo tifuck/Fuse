@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import re
+import time
 
 import anyio
 from fastapi import APIRouter, HTTPException, Request
@@ -779,19 +780,68 @@ async def dispatch_chat(request: Request, user, body: dict):
     return JSONResponse(result.body or {}, headers=omitted)
 
 
+# Open /v1 requests per user: {user_id: {token: started}}. The per-minute
+# limit alone let one user hold long streams until every uvicorn slot
+# (--limit-concurrency) and pool account in-flight cap was theirs. Entries
+# expire after _IN_FLIGHT_TTL, so a stream whose generator never started (a
+# client gone before the first byte) cannot pin a slot forever.
+_in_flight: dict[int, dict[object, float]] = {}
+_IN_FLIGHT_TTL = 3600.0
+
+
+def _admit(user_id: int):
+    now = time.monotonic()
+    live = {t: s for t, s in _in_flight.get(user_id, {}).items() if now - s < _IN_FLIGHT_TTL}
+    _in_flight[user_id] = live
+    if len(live) >= settings.api_max_in_flight:
+        return None
+    token = object()
+    live[token] = now
+    return token
+
+
+def _release(user_id: int, token) -> None:
+    live = _in_flight.get(user_id)
+    if live is not None:
+        live.pop(token, None)
+        if not live:
+            _in_flight.pop(user_id, None)
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     from .web.deps import _json_object
 
     user = require_key(request)
+    token = _admit(user["id"])
+    if token is None:
+        raise HTTPException(429, "Too many concurrent requests")
     try:
-        # Same strict parser as the dashboard: invalid UTF-8, lone surrogates,
-        # NaN/Infinity and pathological nesting are client errors, not 500s or
-        # upstream encode failures blamed on a pool account.
-        body = await _json_object(request)
-    except HTTPException as exc:
-        logger.warning(
-            "Rejected chat request user=%s status=%s detail=%s", user["id"], exc.status_code, exc.detail
-        )
+        try:
+            # Same strict parser as the dashboard: invalid UTF-8, lone surrogates,
+            # NaN/Infinity and pathological nesting are client errors, not 500s or
+            # upstream encode failures blamed on a pool account.
+            body = await _json_object(request)
+        except HTTPException as exc:
+            logger.warning(
+                "Rejected chat request user=%s status=%s detail=%s", user["id"], exc.status_code, exc.detail
+            )
+            raise
+        response = await dispatch_chat(request, user, body)
+    except BaseException:
+        _release(user["id"], token)
         raise
-    return await dispatch_chat(request, user, body)
+    if not isinstance(response, StreamingResponse):
+        _release(user["id"], token)
+        return response
+    inner = response.body_iterator
+
+    async def held():
+        try:
+            async for chunk in inner:
+                yield chunk
+        finally:
+            _release(user["id"], token)
+
+    response.body_iterator = held()
+    return response

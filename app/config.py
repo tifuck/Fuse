@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     chat_body_bytes: int = 8_388_608
     auth_rate_per_minute: int = 10
     api_rate_per_minute: int = 90
+    # Concurrent /v1/chat/completions per user (open streams count until they end).
+    api_max_in_flight: int = 16
     web_search_queries_per_turn: int = 32
     # Top result pages read at search time for query-relevant excerpts
     # (search/excerpts.py); 0 turns search-time reads off.

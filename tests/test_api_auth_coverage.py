@@ -90,6 +90,37 @@ def test_revoked_and_deleted_keys_stop_authenticating(client):
     assert _get(client, bystander).status_code == 200
 
 
+def test_concurrent_requests_per_user_are_capped_and_released(client, monkeypatch):
+    from fastapi.responses import JSONResponse, StreamingResponse
+
+    uid, key = _user("streams@keys.invalid")
+    _, other = _user("other@keys.invalid")
+    headers = {"Authorization": f"Bearer {key}"}
+    body = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+
+    async def dispatch(request, user, payload):
+        if payload.get("stream"):
+            async def chunks():
+                yield b"data: [DONE]\n\n"
+            return StreamingResponse(chunks(), media_type="text/event-stream")
+        return JSONResponse({"ok": True})
+
+    monkeypatch.setattr(api, "dispatch_chat", dispatch)
+    monkeypatch.setattr(settings, "api_max_in_flight", 2)
+    held = [api._admit(uid), api._admit(uid)]  # two streams still open
+    refused = client.post("/v1/chat/completions", headers=headers, json=body)
+    assert refused.status_code == 429
+    assert refused.json()["detail"] == "Too many concurrent requests"
+    # Another user is unaffected by this user's open streams.
+    assert client.post("/v1/chat/completions", headers={"Authorization": f"Bearer {other}"}, json=body).status_code == 200
+    for token in held:
+        api._release(uid, token)
+    # Finished requests, streamed or not, give their slot back.
+    for payload in (body, {**body, "stream": True}, body):
+        assert client.post("/v1/chat/completions", headers=headers, json=payload).status_code == 200
+    assert uid not in api._in_flight
+
+
 def test_a_key_maps_only_to_its_own_user(client):
     """A key resolves to one account: exhausting its owner's per-user API
     budget neither blocks nor is absorbed by any other account."""
