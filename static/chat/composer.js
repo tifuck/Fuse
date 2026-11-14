@@ -4,6 +4,7 @@ import { createSlash } from './composer/slash.js';
 import { createAttachments } from './composer/attachments.js';
 import { createDrafts } from './composer/drafts.js';
 import { createLibrary } from './composer/library.js';
+import { createWallpapers } from './composer/wallpapers.js';
 
 export function createComposer(ctx) {
   const input = createInput({ ...ctx,
@@ -13,9 +14,11 @@ export function createComposer(ctx) {
     input,
     stash: () => slash.stashPrompt(),
   });
+  const wallpapers = createWallpapers(ctx);
   const slash = createSlash({ ...ctx,
     input,
     library,
+    wallpapers,
   });
   const attachments = createAttachments({ ...ctx,
     input,
@@ -24,7 +27,7 @@ export function createComposer(ctx) {
     input,
   });
   return {
-    ...input, ...slash, ...attachments, ...drafts, ...library,
+    ...input, ...slash, ...attachments, ...drafts, ...library, ...wallpapers,
     get dockSpaceLocked() { return input.dockSpaceLocked; },
   };
 }

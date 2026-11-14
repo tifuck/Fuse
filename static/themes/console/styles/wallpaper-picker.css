@@ -1,0 +1,15 @@
+/* Console's /theme picker: a plain strip of wallpaper cards above the composer. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wallpaper-picker[hidden] { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wallpaper-picker { width: 100%; margin: 0 0 0.4rem; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp { border: 1px solid var(--line); background: var(--panel); font: 0.8rem/1.4 var(--mono); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--line); color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-head b { color: var(--mist); font-weight: 600; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-cmd { color: var(--brass); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-keys { margin-left: auto; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-x { padding: 0 0.3rem; border: 0; background: none; color: var(--mute); font: inherit; cursor: pointer; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-row { display: flex; gap: 0.4rem; padding: 0.4rem 0.5rem; overflow-x: auto; scrollbar-width: thin; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-card { display: flex; flex: none; flex-direction: column; gap: 0.2rem; width: 74px; padding: 2px; border: 1px solid transparent; background: none; color: var(--mute); font: inherit; text-align: left; cursor: pointer; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-card.is-active { border-color: var(--brass); color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-thumb { display: block; width: 68px; height: 40px; overflow: hidden; border: 1px solid var(--line); background: var(--ink); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-name { overflow: hidden; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wp-check { margin-right: 0.3ch; color: var(--ok); }

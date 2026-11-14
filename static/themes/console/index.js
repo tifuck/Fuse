@@ -22,6 +22,7 @@ import { create as createWorkPanels } from './work-panels.js';
 import { create as createSidebar } from './sidebar.js';
 import { create as createTurnExtras } from './turn-extras.js';
 import { create as createProviderError } from './provider-error.js';
+import { create as createWallpaperPicker } from './wallpaper-picker.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
 export function createConsoleTheme(runtime) {
@@ -459,6 +460,9 @@ export function createConsoleTheme(runtime) {
     get consoleSpinGlyph() { return theme.consoleSpinGlyph; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createWallpaperPicker({
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   Object.assign(theme, createTurnExtras({
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -512,6 +516,7 @@ export function createConsoleTheme(runtime) {
     toolRowLabel: theme.toolRowLabel,
     updateAssistant: theme.updateAssistant,
     visibleAssistantError: theme.visibleAssistantError,
+    wallpaperPickerHtml: theme.wallpaperPickerHtml,
     workClocksLive: theme.workClocksLive,
     workHeadHtml: theme.workHeadHtml,
   };

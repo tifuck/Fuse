@@ -18,6 +18,7 @@
 @import url("dictation.css");
 @import url("combined.css");
 @import url("shell.css");
+@import url("wallpaper-picker.css");
 /* Spinner faces, formerly the shared spinner-next/future.css linked after this file. */
 @import url("base/spinner-next.css");
 @import url("base/spinner-future.css");

@@ -88,7 +88,13 @@ change: each pool merges its live catalog into its seed list.
   check (`app/chat_themes.py`), the Appearance › Layout buttons,
   `chat-appearance.js` and `registry.js` read (`tests/test_chat_themes.py`).
   `FUSE_CHAT_VIEW=<theme> scripts/run_browser_tests.sh …` runs browser
-  suites under that theme.
+  suites under that theme. The themes are `console` (default), `combined`
+  and `desktop` (a native coding-app window: top bar, sidebar, inspector).
+- `/theme` (every theme) opens a strip of wallpaper cards above the
+  composer: `static/chat/composer/wallpapers.js` owns the data, keys
+  (arrows, Enter, Esc) and the choice; each theme draws the strip with
+  `wallpaperPickerHtml` and keeps the `data-wallpaper-*` hooks. Desktop
+  also opens it from Sidebar › Customize.
 
 ## Stored transcripts
 

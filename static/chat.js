@@ -73,7 +73,10 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
-
+    wallpaperPickerHtml,
+    workClocksLive,
+    workHeadHtml,
+  } = createTheme({
     get PERM_TOTAL_S() { return perms.PERM_TOTAL_S; },
     get REVEAL_CALM() { return S.REVEAL_CALM; },
     get REVEAL_FIRST() { return S.REVEAL_FIRST; },
@@ -137,6 +140,7 @@ import { createDictation } from './chat/dictation.js';
     get liveMeter() { return S.liveMeter; },
     get log() { return S.log; },
     get messages() { return S.messages; },
+    get openWallpaperPicker() { return composer.openWallpaperPicker; },
     get motionPaints() { return transcript.motionPaints; },
     get normalizeTodos() { return transcript.normalizeTodos; },
     get pauseThreadFollow() { return transcript.pauseThreadFollow; },
@@ -228,7 +232,10 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
-
+    wallpaperPickerHtml,
+    workClocksLive,
+    workHeadHtml,
+  };
 
   const chatApi = { clearChatState };
 

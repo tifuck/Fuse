@@ -23,6 +23,7 @@ import { create as createSidebar } from './sidebar.js';
 import { create as createTurnExtras } from './turn-extras.js';
 import { create as createChrome } from './chrome.js';
 import { create as createProviderError } from './provider-error.js';
+import { create as createWallpaperPicker } from './wallpaper-picker.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
 export function createDesktopTheme(runtime) {
@@ -460,6 +461,9 @@ export function createDesktopTheme(runtime) {
     get consoleSpinGlyph() { return theme.consoleSpinGlyph; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createWallpaperPicker({
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   Object.assign(theme, createTurnExtras({
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -471,6 +475,7 @@ export function createDesktopTheme(runtime) {
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
     get looksLikeDiff() { return theme.looksLikeDiff; },
+    get openWallpaperPicker() { return runtime.openWallpaperPicker; },
     get renderAnsi() { return theme.renderAnsi; },
     get sessionProject() { return runtime.sessionProject; },
     get agentLive() { return runtime.agentLive; },
@@ -535,6 +540,7 @@ export function createDesktopTheme(runtime) {
     toolRowLabel: theme.toolRowLabel,
     updateAssistant: theme.updateAssistant,
     visibleAssistantError: theme.visibleAssistantError,
+    wallpaperPickerHtml: theme.wallpaperPickerHtml,
     workClocksLive: theme.workClocksLive,
     workHeadHtml: theme.workHeadHtml,
   };
