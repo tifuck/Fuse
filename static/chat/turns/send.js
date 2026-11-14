@@ -1,13 +1,13 @@
 // Send path: slash parse, complete, stop, retry, rewind.
 import { S, draftKey } from '../state.js';
-import { escapeHtml } from '../core.js';
+import { fromHtml } from '../core.js';
 import { newSession } from '../state.js';
 
 // These commands are dispatched locally, never queued as model input.
 const LOCAL_SLASH = new Set(["thinking", "help", "permissions", "undo", "artifacts", "prompts"]);
 
 export function createSend(ctx) {
-  const { composer, context, net, overlays, panels, picker, queue, sidebar, sync, traces, transcript } = ctx;
+  const { composer, context, net, overlays, panels, picker, queue, sidebar, sync, traces, transcript, ui } = ctx;
     function closeRewind() {
     const wasOpen = S.rewindPanel && !S.rewindPanel.hidden;
     const hadFocus = wasOpen && S.rewindPanel.contains(document.activeElement);
@@ -30,27 +30,16 @@ export function createSend(ctx) {
       .map((msg, index) => ({ msg, index }))
       .filter((item) => item.msg.role === "user");
     S.rewindPanel.hidden = false;
-    S.rewindList.innerHTML = "";
-    if (!prompts.length) {
-      const empty = document.createElement("p");
-      empty.className = "chat-rewind-empty";
-      empty.textContent = "No messages to rewind to yet.";
-      S.rewindList.appendChild(empty);
-      return;
-    }
-    prompts.slice().reverse().forEach((item) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "chat-rewind-item";
-      const preview = String(item.msg.content || "").replace(/\s+/g, " ").trim() || "(empty)";
-      const after = S.messages.length - item.index - 1;
-      btn.innerHTML = `<strong>${escapeHtml(preview.slice(0, 72))}</strong><span>${
-        after ? after + " after this" : "latest"
-      }</span>`;
-      btn.addEventListener("click", () => sidebar.rewindTo(item.index));
-      S.rewindList.appendChild(btn);
-    });
-    S.rewindList.querySelector("button")?.focus({ preventScroll: true });
+    S.rewindList.innerHTML = ui.rewindListHtml(prompts.slice().reverse().map((item) => ({
+      index: item.index,
+      preview: String(item.msg.content || "").replace(/\s+/g, " ").trim() || "(empty)",
+      after: S.messages.length - item.index - 1,
+    })));
+    S.rewindList.onclick = (event) => {
+      const pick = event.target.closest("[data-rewind-index]");
+      if (pick) sidebar.rewindTo(Number(pick.dataset.rewindIndex));
+    };
+    S.rewindList.querySelector("[data-rewind-index]")?.focus({ preventScroll: true });
   }
 
     function retryAssistant(index) {
@@ -222,19 +211,7 @@ export function createSend(ctx) {
     // Show local feedback before copying history or waiting for HTTP. This is
     // deliberately outside the durable transcript: retries keep their command
     // identity, and a failed request never leaves a phantom saved message.
-    const pending = document.createElement("div");
-    pending.className = "chat-log chat-pending-send";
-    pending.setAttribute("role", "status");
-    const pendingArticle = document.createElement("article");
-    pendingArticle.className = "chat-turn is-user";
-    const bubble = document.createElement("div");
-    bubble.className = "chat-bubble";
-    bubble.textContent = text || `${attachments.length} attachment(s)`;
-    const status = document.createElement("small");
-    status.textContent = "Sending…";
-
-    pendingArticle.append(bubble);
-    pending.append(pendingArticle, status);
+    const pending = fromHtml(ui.pendingSendHtml(text || `${attachments.length} attachment(s)`));
     S.log.after(pending);
     transcript.setActive(true);
     // Send now from the queue keeps a paused reader's position: the interrupt

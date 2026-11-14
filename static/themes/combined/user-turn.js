@@ -78,6 +78,7 @@ function renderUser(msg, index) {
       tag.textContent = msg.pending ? who + " · delivering at the next step" : who;
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
+      bubble.dataset.userText = "";
       bubble.textContent = msg.content;
       article.append(tag, bubble);
       return article;
@@ -102,6 +103,7 @@ function renderUser(msg, index) {
     if (msg.content) {
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
+      bubble.dataset.userText = "";
       bubble.textContent = msg.content;
       article.appendChild(bubble);
     }

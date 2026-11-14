@@ -165,4 +165,11 @@ function humanMs(ms) {
   return formatTurnDuration(n);
 }
 
-export { deltaParts, escapeHtml, formatTokens, formatTurnDuration, formatTurnMeta, humanMs, messageRunLive, runIsStopping, safeUrl, splitThink, untimed, usageInOut };
+// One element built from theme markup (the runtime never writes theme DOM itself).
+function fromHtml(html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = String(html).trim();
+  return tpl.content.firstElementChild;
+}
+
+export { deltaParts, escapeHtml, fromHtml, formatTokens, formatTurnDuration, formatTurnMeta, humanMs, messageRunLive, runIsStopping, safeUrl, splitThink, untimed, usageInOut };

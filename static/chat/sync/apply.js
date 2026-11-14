@@ -210,8 +210,9 @@ export function createApply(ctx) {
         if (msg.role === "assistant") {
           const live = messageRunLive(msg);
           ui.updateAssistant(article, msg, live);
-        } else if (article.querySelector(".chat-bubble")) {
-          if (article.querySelector(".chat-bubble").textContent !== msg.content) article.querySelector(".chat-bubble").textContent = msg.content;
+        } else if (article.querySelector("[data-user-text]")) {
+          const text = article.querySelector("[data-user-text]");
+          if (text.textContent !== msg.content) text.textContent = msg.content;
           ui.fillUserFiles(article, msg, i);
         }
       });

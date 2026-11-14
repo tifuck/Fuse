@@ -344,7 +344,8 @@ test('a queued send that fails after its chat was replaced is not written into t
 });
 
 function makeSend(api, calls = {}) {
-  global.document = { createElement: () => ({ className: '', setAttribute: noop, append: noop, remove: noop, textContent: '' }) };
+  // The pending bubble is built from theme markup through a <template>.
+  global.document = { createElement: () => ({ className: '', setAttribute: noop, append: noop, remove: noop, textContent: '', content: { firstElementChild: { remove: noop } } }) };
   global.requestAnimationFrame = fn => fn();
   global.window = { setTimeout, clearTimeout };
   S.log.after = noop;

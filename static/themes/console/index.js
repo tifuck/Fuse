@@ -20,6 +20,7 @@ import { create as createActivityGroups } from './activity-groups.js';
 import { create as createTranscript } from './transcript.js';
 import { create as createWorkPanels } from './work-panels.js';
 import { create as createSidebar } from './sidebar.js';
+import { create as createTurnExtras } from './turn-extras.js';
 import { create as createProviderError } from './provider-error.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
@@ -458,6 +459,10 @@ export function createConsoleTheme(runtime) {
     get consoleSpinGlyph() { return theme.consoleSpinGlyph; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createTurnExtras({
+    get compactionMarkHtml() { return theme.compactionMarkHtml; },
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,
@@ -466,6 +471,7 @@ export function createConsoleTheme(runtime) {
     compactionMarkHtml: theme.compactionMarkHtml,
     consoleSpinGlyph: theme.consoleSpinGlyph,
     currentActivity: theme.currentActivity,
+    deferredShellHtml: theme.deferredShellHtml,
     displayCommand: theme.displayCommand,
     disposeThinking: theme.disposeThinking,
     fillUserFiles: theme.fillUserFiles,
@@ -477,11 +483,16 @@ export function createConsoleTheme(runtime) {
     historyListHtml: theme.historyListHtml,
     jobDetailHtml: theme.jobDetailHtml,
     jobRowHtml: theme.jobRowHtml,
+    markerTurnHtml: theme.markerTurnHtml,
     parseProviderError: theme.parseProviderError,
     patchMarkdown: theme.patchMarkdown,
+    pendingSendHtml: theme.pendingSendHtml,
     permQueueCardHtml: theme.permQueueCardHtml,
+    queueItemHtml: theme.queueItemHtml,
+    recapHtml: theme.recapHtml,
     renderAssistant: theme.renderAssistant,
     renderUser: theme.renderUser,
+    rewindListHtml: theme.rewindListHtml,
     setConsoleSpin: theme.setConsoleSpin,
     setLiveLabelText: theme.setLiveLabelText,
     setLivePhase: theme.setLivePhase,
