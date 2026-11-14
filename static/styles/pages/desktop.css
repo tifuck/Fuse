@@ -79,7 +79,7 @@
 @media (max-width: 720px) {
   .dl-hero { grid-template-columns: auto minmax(0, 1fr); padding: 1rem; }
   .dl-hero-action { grid-column: 1 / -1; align-items: stretch; }
-  .dl-hero-action .btn { width: 100%; }
+  :where(html:not(.is-chat-root)) .dl-hero-action .btn { width: 100%; }
   .dl-hero-file { text-align: center; }
   .dl-row { grid-template-columns: minmax(0, 1fr) auto; }
   .dl-row-note { grid-column: 1 / -1; grid-row: 2; }

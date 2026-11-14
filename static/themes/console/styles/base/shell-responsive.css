@@ -1,0 +1,140 @@
+/* console theme copy of static/styles/pages/shell-responsive.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+/* Settings pages sit beside the rail: these follow the page box (settings.css). */
+@container page (max-width: 56rem) {
+  :where(html.is-chat-root[data-chat-view="console"]) .steps { grid-template-columns: 1fr; }
+}
+@media (max-width: 800px) {
+  html:where(.is-chat-root[data-chat-view="console"]).is-chat-root { scrollbar-gutter: auto; }
+  :where(html.is-chat-root[data-chat-view="console"]) body.is-nav { overflow: hidden; }
+  :where(html.is-chat-root[data-chat-view="console"]) form.stack .btn { align-self: stretch; width: 100%; }
+  :where(html.is-chat-root[data-chat-view="console"]) .panel { padding: 1rem 1rem 1.1rem; }
+  :where(html.is-chat-root[data-chat-view="console"]) .auth-main { grid-template-columns: 1fr; }
+  :where(html.is-chat-root[data-chat-view="console"]) .catalog-copy { opacity: 1; }
+  :where(html.is-chat-root[data-chat-view="console"]) .modal-shell { padding: 1rem; }
+  :where(html.is-chat-root[data-chat-view="console"]) .modal-actions,
+  :where(html.is-chat-root[data-chat-view="console"]) .modal-actions .btn,
+  :where(html.is-chat-root[data-chat-view="console"]) .modal-actions form { width: 100%; }
+  :where(html.is-chat-root[data-chat-view="console"]) .modal-confirm .modal-actions .btn {
+    min-height: 2.75rem;
+    height: auto;
+  }
+}
+@container page (max-width: 48rem) {
+  :where(html.is-chat-root[data-chat-view="console"]) .log,
+  :where(html.is-chat-root[data-chat-view="console"]) .log tbody { display: block; width: 100%; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log thead { display: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log tbody tr {
+    display: block;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--line);
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log tbody tr:first-child { border-top: 0; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.35rem 0.65rem;
+    align-items: baseline;
+    width: 100%;
+    padding: 0.2rem 0;
+    border: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td.num { text-align: left; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td::before {
+    content: attr(data-label);
+    color: var(--mute);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td:not([data-label]) {
+    display: block;
+    grid-template-columns: none;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td:not([data-label])::before { content: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log tbody tr:not(.probe-row) td:first-child {
+    display: block;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding-bottom: 0.35rem;
+    color: var(--mist);
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log tbody tr:not(.probe-row) td:first-child::before { content: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log .tight {
+    width: auto;
+    min-width: 0;
+    padding-left: 0;
+    white-space: normal;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td[data-label="Actions"] {
+    display: block;
+    margin-top: 0.55rem;
+    text-align: left;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .log td[data-label="Actions"]::before { content: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .log .nows { white-space: normal; overflow-wrap: anywhere; }
+}
+@media (max-width: 520px) {
+  :where(html.is-chat-root[data-chat-view="console"]) .device .code {
+    font-size: 1.55rem;
+    letter-spacing: 0.1em;
+    overflow-wrap: anywhere;
+  }
+}
+@media (hover: none) {
+  :where(html.is-chat-root[data-chat-view="console"]) .catalog-copy { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-caret,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-spin,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-shimmer,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-count.is-bump { animation: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-shimmer,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-status-shimmer,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-status-shimmer .chat-status-verb,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-status-shimmer .chat-status-verb.is-swap,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-status-shimmer .chat-dock-dots i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity.is-live .chat-activity-text,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-step.is-running .chat-step-label,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-query.is-running .chat-query-label,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-face,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin [class^="cas-"],
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin [class^="cas-"] i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin [class^="cas-"] i::before,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin [class^="cas-"] i::after,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-face,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin [class^="cas-"],
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin [class^="cas-"] i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin [class^="cas-"] i::before,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin [class^="cas-"] i::after {
+    animation: none;
+    background: none;
+    color: inherit;
+    -webkit-text-fill-color: inherit;
+    transform: none;
+    filter: none;
+    opacity: 1;
+  }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-still,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-still,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin svg *,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin svg * { animation: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-comet i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-comet i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-orbit i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-orbit i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-petal i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-petal i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-grain i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-grain i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-bars i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-bars i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-spin .cas-quad i,
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-run-spin .cas-quad i {
+    background: currentColor;
+    opacity: 0.55;
+  }
+}

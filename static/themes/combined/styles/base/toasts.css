@@ -1,0 +1,106 @@
+/* combined theme copy of static/styles/components/toasts.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+/* —— Toasts: the one notice surface on every page (fuseUI.toast) ——
+   Under the header bar on the right (full width on a phone), clear of the
+   composer and above every panel and sheet; while a modal dialog is open the
+   stack lives inside it. Tone is the left rule and the first line: brass for
+   a limit or a guardrail, red for a fault. */
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toasts {
+  position: fixed;
+  top: max(var(--toast-top, 0px), env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(23rem, calc(100vw - 2rem));
+  margin-top: 0.5rem;
+  pointer-events: none;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toasts:empty { display: none; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast {
+  --toast-tone: var(--line);
+  --toast-ink: var(--mist);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.45rem 0.6rem 0.8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--toast-tone);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  color: var(--mist);
+  pointer-events: auto;
+  animation: fuse-toast-in var(--dur-2, 180ms) var(--ease-snap, ease-out);
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast.is-ok { --toast-tone: var(--ok); }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast.is-warn { --toast-tone: var(--brass); --toast-ink: var(--brass); }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast.is-err { --toast-tone: var(--fault); --toast-ink: var(--fault); }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-body b {
+  color: var(--toast-ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-body b:empty { display: none; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-body span {
+  color: var(--mute);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-body b:empty + span { color: var(--toast-ink); }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-act { display: flex; flex: 0 0 auto; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-act:empty { display: none; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-x {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--mute);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-x:hover { color: var(--mist); background: var(--raise); }
+@keyframes fuse-toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="combined"]) .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
+  :where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast-x { width: 2.25rem; height: 2.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="combined"]) .fuse-toast { animation: none; }
+}
+/* Vault unlock prompt: a modal dialog (.modal.modal-confirm). */
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault-why {
+  margin: 0 0 0.7rem;
+  color: var(--mist);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault form { display: flex; flex-direction: column; gap: 0.6rem; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault-field input { min-height: var(--control); }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault .fuse-vault-err { margin: 0.55rem 0 0; font-size: 0.8rem; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault-dismiss {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+:where(html.is-chat-root[data-chat-view="combined"]) .fuse-vault-dismiss:hover { color: var(--mist); }

@@ -1,4 +1,6 @@
 /* Combined design: preserve import order. */
+/* The former shared chat-design.css layer (palettes stay shared there). */
+@import url("base/chat-design.css");
 @import url("design-001-tools.css");
 @import url("design-002-transcript.css");
 @import url("design-003-tools.css");
@@ -15,3 +17,6 @@
 @import url("chrome.css");
 @import url("dictation.css");
 @import url("combined.css");
+/* Spinner faces, formerly the shared spinner-next/future.css linked after this file. */
+@import url("base/spinner-next.css");
+@import url("base/spinner-future.css");

@@ -24,13 +24,13 @@
 @container page (max-width: 56rem) {
   .api-docs { grid-template-columns: 1fr; }
   .docs-toc { display: none; }
-  .steps { grid-template-columns: 1fr; }
+  :where(html:not(.is-chat-root)) .steps { grid-template-columns: 1fr; }
 }
 @media (max-width: 800px) {
   html.is-settings-root { scrollbar-gutter: auto; }
-  html.is-chat-root { scrollbar-gutter: auto; }
-  body.is-nav { overflow: hidden; }
-  form.stack .btn { align-self: stretch; width: 100%; }
+  html:where(:not(.is-chat-root)).is-chat-root { scrollbar-gutter: auto; }
+  :where(html:not(.is-chat-root)) body.is-nav { overflow: hidden; }
+  :where(html:not(.is-chat-root)) form.stack .btn { align-self: stretch; width: 100%; }
   .row-actions { min-width: 0; }
   .key-create { grid-template-columns: 1fr; }
 
@@ -63,7 +63,7 @@
   }
   .page-copy p { max-width: none; }
   .page-actions { justify-content: flex-start; }
-  .panel { padding: 1rem 1rem 1.1rem; }
+  :where(html:not(.is-chat-root)) .panel { padding: 1rem 1rem 1.1rem; }
   .pool-account { padding: 0.85rem 1rem 1rem; }
   .account-head { flex-wrap: wrap; }
   .band-head { flex-wrap: wrap; }
@@ -83,7 +83,7 @@
   .pool-account .stat-main { min-width: 0; }
   .head-actions { flex-wrap: wrap; }
   
-  .auth-main { grid-template-columns: 1fr; }
+  :where(html:not(.is-chat-root)) .auth-main { grid-template-columns: 1fr; }
   .auth-brand { padding: 3.5rem 1.5rem 1.25rem; }
   .auth-pane {
     padding: 0 1.5rem 3rem;
@@ -95,27 +95,30 @@
   .lede { max-width: none; }
 
   .source-stats { grid-template-columns: 1fr; gap: 0.85rem; }
-  .catalog-copy { opacity: 1; }
-  .modal-shell { padding: 1rem; }
+  :where(html:not(.is-chat-root)) .catalog-copy { opacity: 1; }
+  :where(html:not(.is-chat-root)) .modal-shell { padding: 1rem; }
   .device-code { align-items: flex-start; flex-direction: column; gap: 0.35rem; }
   .device-code strong { text-align: left; }
-  .modal-actions, .modal-actions .btn, .modal-actions form { width: 100%; }
-  .modal-confirm .modal-actions .btn {
+  :where(html:not(.is-chat-root)) .modal-actions,
+:where(html:not(.is-chat-root)) .modal-actions .btn,
+:where(html:not(.is-chat-root)) .modal-actions form { width: 100%; }
+  :where(html:not(.is-chat-root)) .modal-confirm .modal-actions .btn {
     min-height: 2.75rem;
     height: auto;
   }
 }
 @container page (max-width: 48rem) {
   .table-wrap { overflow: visible; margin: 0; }
-  .log, .log tbody { display: block; width: 100%; }
-  .log thead { display: none; }
-  .log tbody tr {
+  :where(html:not(.is-chat-root)) .log,
+:where(html:not(.is-chat-root)) .log tbody { display: block; width: 100%; }
+  :where(html:not(.is-chat-root)) .log thead { display: none; }
+  :where(html:not(.is-chat-root)) .log tbody tr {
     display: block;
     padding: 0.85rem 0;
     border-top: 1px solid var(--line);
   }
-  .log tbody tr:first-child { border-top: 0; }
-  .log td {
+  :where(html:not(.is-chat-root)) .log tbody tr:first-child { border-top: 0; }
+  :where(html:not(.is-chat-root)) .log td {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 0.35rem 0.65rem;
@@ -126,8 +129,8 @@
     overflow-wrap: anywhere;
     text-align: left;
   }
-  .log td.num { text-align: left; }
-  .log td::before {
+  :where(html:not(.is-chat-root)) .log td.num { text-align: left; }
+  :where(html:not(.is-chat-root)) .log td::before {
     content: attr(data-label);
     color: var(--mute);
     font-family: var(--mono);
@@ -135,32 +138,32 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  .log td:not([data-label]) {
+  :where(html:not(.is-chat-root)) .log td:not([data-label]) {
     display: block;
     grid-template-columns: none;
   }
-  .log td:not([data-label])::before { content: none; }
-  .log tbody tr:not(.probe-row) td:first-child {
+  :where(html:not(.is-chat-root)) .log td:not([data-label])::before { content: none; }
+  :where(html:not(.is-chat-root)) .log tbody tr:not(.probe-row) td:first-child {
     display: block;
     font-weight: 700;
     font-size: 0.92rem;
     padding-bottom: 0.35rem;
     color: var(--mist);
   }
-  .log tbody tr:not(.probe-row) td:first-child::before { content: none; }
-  .log .tight {
+  :where(html:not(.is-chat-root)) .log tbody tr:not(.probe-row) td:first-child::before { content: none; }
+  :where(html:not(.is-chat-root)) .log .tight {
     width: auto;
     min-width: 0;
     padding-left: 0;
     white-space: normal;
   }
-  .log td[data-label="Actions"] {
+  :where(html:not(.is-chat-root)) .log td[data-label="Actions"] {
     display: block;
     margin-top: 0.55rem;
     text-align: left;
   }
-  .log td[data-label="Actions"]::before { content: none; }
-  .log .nows { white-space: normal; overflow-wrap: anywhere; }
+  :where(html:not(.is-chat-root)) .log td[data-label="Actions"]::before { content: none; }
+  :where(html:not(.is-chat-root)) .log .nows { white-space: normal; overflow-wrap: anywhere; }
   .key-model { display: inline; margin: 0; overflow-wrap: anywhere; }
 
   .agent-prompt { grid-template-columns: 1fr; }
@@ -180,7 +183,7 @@
   .metric-value { font-size: 1.25rem; }
 
   .param-row { grid-template-columns: 1fr; gap: 0.15rem; padding: 0.55rem 0; }
-  .device .code {
+  :where(html:not(.is-chat-root)) .device .code {
     font-size: 1.55rem;
     letter-spacing: 0.1em;
     overflow-wrap: anywhere;
@@ -191,29 +194,32 @@
 }
 
 @media (hover: none) {
-  .catalog-copy { opacity: 1; }
+  :where(html:not(.is-chat-root)) .catalog-copy { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fuse-fill { animation: none; width: var(--fill); }
-  .chat-caret, .chat-spin, .chat-shimmer, .chat-count.is-bump { animation: none; }
-  .chat-shimmer,
-  .chat-status-shimmer,
-  .chat-status-shimmer .chat-status-verb,
-  .chat-status-shimmer .chat-status-verb.is-swap,
-  .chat-status-shimmer .chat-dock-dots i,
-  .chat-activity.is-live .chat-activity-text,
-  .chat-step.is-running .chat-step-label,
-  .chat-query.is-running .chat-query-label,
-  .chat-activity-spin .cas-face,
-  .chat-activity-spin [class^="cas-"],
-  .chat-activity-spin [class^="cas-"] i,
-  .chat-activity-spin [class^="cas-"] i::before,
-  .chat-activity-spin [class^="cas-"] i::after,
-  .chat-run-spin .cas-face,
-  .chat-run-spin [class^="cas-"],
-  .chat-run-spin [class^="cas-"] i,
-  .chat-run-spin [class^="cas-"] i::before,
-  .chat-run-spin [class^="cas-"] i::after {
+  :where(html:not(.is-chat-root)) .chat-caret,
+:where(html:not(.is-chat-root)) .chat-spin,
+:where(html:not(.is-chat-root)) .chat-shimmer,
+:where(html:not(.is-chat-root)) .chat-count.is-bump { animation: none; }
+  :where(html:not(.is-chat-root)) .chat-shimmer,
+:where(html:not(.is-chat-root)) .chat-status-shimmer,
+:where(html:not(.is-chat-root)) .chat-status-shimmer .chat-status-verb,
+:where(html:not(.is-chat-root)) .chat-status-shimmer .chat-status-verb.is-swap,
+:where(html:not(.is-chat-root)) .chat-status-shimmer .chat-dock-dots i,
+:where(html:not(.is-chat-root)) .chat-activity.is-live .chat-activity-text,
+:where(html:not(.is-chat-root)) .chat-step.is-running .chat-step-label,
+:where(html:not(.is-chat-root)) .chat-query.is-running .chat-query-label,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-face,
+:where(html:not(.is-chat-root)) .chat-activity-spin [class^="cas-"],
+:where(html:not(.is-chat-root)) .chat-activity-spin [class^="cas-"] i,
+:where(html:not(.is-chat-root)) .chat-activity-spin [class^="cas-"] i::before,
+:where(html:not(.is-chat-root)) .chat-activity-spin [class^="cas-"] i::after,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-face,
+:where(html:not(.is-chat-root)) .chat-run-spin [class^="cas-"],
+:where(html:not(.is-chat-root)) .chat-run-spin [class^="cas-"] i,
+:where(html:not(.is-chat-root)) .chat-run-spin [class^="cas-"] i::before,
+:where(html:not(.is-chat-root)) .chat-run-spin [class^="cas-"] i::after {
     animation: none;
     background: none;
     color: inherit;
@@ -222,22 +228,22 @@
     filter: none;
     opacity: 1;
   }
-  .chat-activity-spin .cas-still,
-  .chat-run-spin .cas-still,
-  .chat-activity-spin svg *,
-  .chat-run-spin svg * { animation: none; }
-  .chat-activity-spin .cas-comet i,
-  .chat-run-spin .cas-comet i,
-  .chat-activity-spin .cas-orbit i,
-  .chat-run-spin .cas-orbit i,
-  .chat-activity-spin .cas-petal i,
-  .chat-run-spin .cas-petal i,
-  .chat-activity-spin .cas-grain i,
-  .chat-run-spin .cas-grain i,
-  .chat-activity-spin .cas-bars i,
-  .chat-run-spin .cas-bars i,
-  .chat-activity-spin .cas-quad i,
-  .chat-run-spin .cas-quad i {
+  :where(html:not(.is-chat-root)) .chat-activity-spin .cas-still,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-still,
+:where(html:not(.is-chat-root)) .chat-activity-spin svg *,
+:where(html:not(.is-chat-root)) .chat-run-spin svg * { animation: none; }
+  :where(html:not(.is-chat-root)) .chat-activity-spin .cas-comet i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-comet i,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-orbit i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-orbit i,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-petal i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-petal i,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-grain i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-grain i,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-bars i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-bars i,
+:where(html:not(.is-chat-root)) .chat-activity-spin .cas-quad i,
+:where(html:not(.is-chat-root)) .chat-run-spin .cas-quad i {
     background: currentColor;
     opacity: 0.55;
   }

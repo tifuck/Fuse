@@ -1,0 +1,26 @@
+/* console theme copy of static/styles/pages/schedules.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+:where(html.is-chat-root[data-chat-view="console"]) .hosts-tabs a.on {
+  background: color-mix(in srgb, var(--mist) 10%, transparent);
+  color: var(--mist);
+}
+:where(html.is-chat-root[data-chat-view="console"]) .sched-table tbody tr:hover,
+:where(html.is-chat-root[data-chat-view="console"]) .sched-table tbody tr.is-open { background: color-mix(in srgb, var(--raise) 80%, transparent); }
+:where(html.is-chat-root[data-chat-view="console"]) .sched-table tbody tr.is-fault td:first-child { box-shadow: inset 2px 0 0 var(--fault, #c45b4a); }
+:where(html.is-chat-root[data-chat-view="console"]) .sched-status.is-running { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="console"]) .sched-status.is-failed,
+:where(html.is-chat-root[data-chat-view="console"]) .sched-status.is-vault_locked { color: var(--fault, #c45b4a); }
+:where(html.is-chat-root[data-chat-view="console"]) .sched-page [hidden],
+:where(html.is-chat-root[data-chat-view="console"]) dialog[data-sched-modal] [hidden] {
+  display: none !important;
+}
+:where(html.is-chat-root[data-chat-view="console"]) dialog[data-sched-modal] input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+@container page (max-width: 40rem) {
+  :where(html.is-chat-root[data-chat-view="console"]) .sched-table[data-sched-table] tbody tr.is-fault td:first-child { box-shadow: none; }
+  :where(html.is-chat-root[data-chat-view="console"]) .sched-table[data-sched-table] tbody tr.is-fault { box-shadow: inset 2px 0 0 var(--fault); }
+}

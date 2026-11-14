@@ -1,5 +1,5 @@
 /* —— Settings shell (chat chrome) —— */
-.settings-shell {
+:where(html:not(.is-chat-root)) .settings-shell {
   --chat-history: 19rem;
   --chat-bar-h: 3.2rem;
   --chat-secondary: color-mix(in srgb, var(--mist) 76%, var(--mute));
@@ -13,8 +13,8 @@
   width: 100%;
   height: 100%;
 }
-.settings-shell > * { min-width: 0; }
-.settings-shell .app-rail {
+:where(html:not(.is-chat-root)) .settings-shell > * { min-width: 0; }
+:where(html:not(.is-chat-root)) .settings-shell .app-rail {
   grid-column: 1;
   grid-row: 1;
   display: flex;
@@ -24,7 +24,7 @@
   z-index: 12;
   background: var(--panel);
 }
-.settings-stage {
+:where(html:not(.is-chat-root)) .settings-stage {
   grid-column: 2;
   grid-row: 1;
   position: relative;
@@ -35,7 +35,7 @@
   min-height: 0;
   background: var(--ink);
 }
-.settings-bar.chat-bar {
+:where(html:not(.is-chat-root)) .settings-bar.chat-bar {
   position: relative;
   top: auto;
   left: auto;
@@ -53,25 +53,25 @@
   border: 0;
   pointer-events: auto;
 }
-.settings-bar .chat-bar-title {
+:where(html:not(.is-chat-root)) .settings-bar .chat-bar-title {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.settings-tools {
+:where(html:not(.is-chat-root)) .settings-tools {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0 0 0.75rem;
 }
-.settings-tools:empty,
-.settings-tools:not(:has(*)) { display: none; }
+:where(html:not(.is-chat-root)) .settings-tools:empty,
+:where(html:not(.is-chat-root)) .settings-tools:not(:has(*)) { display: none; }
 
-.settings-tools .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.settings-bar .chat-history-toggle {
+:where(html:not(.is-chat-root)) .settings-tools .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+:where(html:not(.is-chat-root)) .settings-bar .chat-history-toggle {
   display: inline-flex;
   place-items: center;
   width: auto;
@@ -82,8 +82,8 @@
   border-radius: 5px;
   color: var(--chat-secondary);
 }
-.settings-bar .chat-history-toggle:hover { color: var(--brass); background: var(--raise); }
-.settings-scroll {
+:where(html:not(.is-chat-root)) .settings-bar .chat-history-toggle:hover { color: var(--brass); background: var(--raise); }
+:where(html:not(.is-chat-root)) .settings-scroll {
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -96,22 +96,22 @@
 }
 /* Page layouts query this box, not the viewport: beside the rail it is
    narrower than a phone's from 801px up (and in a zoomed Fuse Desktop). */
-.settings-scroll > main {
+:where(html:not(.is-chat-root)) .settings-scroll > main {
   width: 100%;
   max-width: none;
   container: page / inline-size;
 }
-.settings-lead {
+:where(html:not(.is-chat-root)) .settings-lead {
   margin: 0 0 0.7rem;
   max-width: 62ch;
   color: var(--mute);
   font-size: 0.82rem;
   line-height: 1.4;
 }
-.settings-lead:empty,
-.settings-lead:not(:has(*)) { display: none; }
-.settings-lead p { margin: 0; }
-.settings-shell .app-rail-nav {
+:where(html:not(.is-chat-root)) .settings-lead:empty,
+:where(html:not(.is-chat-root)) .settings-lead:not(:has(*)) { display: none; }
+:where(html:not(.is-chat-root)) .settings-lead p { margin: 0; }
+:where(html:not(.is-chat-root)) .settings-shell .app-rail-nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -120,24 +120,24 @@
   overflow-y: auto;
   padding: 0.2rem 0.55rem 0.85rem;
 }
-.settings-shell .app-rail-nav a { border-radius: 5px; }
+:where(html:not(.is-chat-root)) .settings-shell .app-rail-nav a { border-radius: 5px; }
 @media (min-width: 801px) {
-  .settings-shell.history-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
-  .settings-shell.history-collapsed .app-rail { display: none; }
-  .settings-shell:not(.history-collapsed) .settings-bar .chat-history-toggle { display: none; }
-  .settings-shell.history-collapsed .settings-bar .chat-history-toggle { display: inline-flex; }
-  .settings-shell:not(.history-collapsed) .chat-history-collapse { display: grid; }
+  :where(html:not(.is-chat-root)) .settings-shell.history-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  :where(html:not(.is-chat-root)) .settings-shell.history-collapsed .app-rail { display: none; }
+  :where(html:not(.is-chat-root)) .settings-shell:not(.history-collapsed) .settings-bar .chat-history-toggle { display: none; }
+  :where(html:not(.is-chat-root)) .settings-shell.history-collapsed .settings-bar .chat-history-toggle { display: inline-flex; }
+  :where(html:not(.is-chat-root)) .settings-shell:not(.history-collapsed) .chat-history-collapse { display: grid; }
 }
 
-.settings-shell .app-rail { position: relative; }
-.settings-shell .chat-history-backdrop { display: none; }
+:where(html:not(.is-chat-root)) .settings-shell .app-rail { position: relative; }
+:where(html:not(.is-chat-root)) .settings-shell .chat-history-backdrop { display: none; }
 
-.settings-jump {
+:where(html:not(.is-chat-root)) .settings-jump {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
-.settings-jump a {
+:where(html:not(.is-chat-root)) .settings-jump a {
   display: inline-flex;
   align-items: center;
   height: 1.85rem;
@@ -148,16 +148,16 @@
   text-decoration: none;
   font-size: 0.78rem;
 }
-.settings-jump a:hover { color: var(--mist); background: var(--raise); }
+:where(html:not(.is-chat-root)) .settings-jump a:hover { color: var(--mist); background: var(--raise); }
 
 /* Settings sections: one panel per concern, a short description under the
    heading, then rows of label + help beside the control. Rows stack on
    narrow screens. */
 .set-page { display: flex; flex-direction: column; gap: 0.85rem; }
-.set-page > .settings-jump { margin-bottom: 0.1rem; }
-.set[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .set-page > .settings-jump { margin-bottom: 0.1rem; }
+:where(html:not(.is-chat-root)) .set[hidden] { display: none; }
 body.is-settings .panel.set { padding: 0; }
-.set { scroll-margin-top: 0.75rem; }
+:where(html:not(.is-chat-root)) .set { scroll-margin-top: 0.75rem; }
 .set-head { padding: 0.9rem 1.1rem 0.8rem; }
 .set-head h2 { margin: 0; }
 .set-head p { margin: 0.3rem 0 0; max-width: 68ch; color: var(--mute); font-size: 0.82rem; line-height: 1.45; }
@@ -171,17 +171,17 @@ body.is-settings .panel.set { padding: 0; }
 .set-label strong { display: block; color: var(--mist); font-size: 0.86rem; font-weight: 500; }
 .set-label span { display: block; margin-top: 0.2rem; color: var(--mute); font-size: 0.78rem; line-height: 1.45; }
 .set-control { display: flex; flex-direction: column; align-items: flex-start; gap: 0.55rem; min-width: 0; }
-.set-control > label:not(.check),
-.set-control > input,
-.set-control > textarea,
-.set-control > select { align-self: stretch; }
+:where(html:not(.is-chat-root)) .set-control > label:not(.check),
+:where(html:not(.is-chat-root)) .set-control > input,
+:where(html:not(.is-chat-root)) .set-control > textarea,
+:where(html:not(.is-chat-root)) .set-control > select { align-self: stretch; }
 .set-control textarea { min-height: 6.5rem; }
-.set-control > label:has(> input:not([type="checkbox"])) { width: min(100%, 26rem); align-self: flex-start; }
+:where(html:not(.is-chat-root)) .set-control > label:has(> input:not([type="checkbox"])) { width: min(100%, 26rem); align-self: flex-start; }
 .set-control .code-chip { margin: 0; overflow-wrap: anywhere; }
 .set-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--mute); font-size: 0.86rem; }
-.set-inline input[type="number"] { width: 6rem; }
+:where(html:not(.is-chat-root)) .set-inline input[type="number"] { width: 6rem; }
 .set-inline select { width: auto; }
-.set-control .is-off { opacity: 0.5; }
+:where(html:not(.is-chat-root)) .set-control .is-off { opacity: 0.5; }
 .set-note { margin: 0 0 0.9rem; color: var(--mute); font-size: 0.84rem; }
 .set-value { margin: 0; color: var(--mist); font-size: 0.88rem; overflow-wrap: anywhere; }
 .set-foot {
@@ -192,11 +192,11 @@ body.is-settings .panel.set { padding: 0; }
   padding: 0.8rem 1.1rem;
   border-top: 1px solid var(--line);
 }
-.set-foot .callout { margin: 0; }
+:where(html:not(.is-chat-root)) .set-foot .callout { margin: 0; }
 .set-status { margin: 0; color: var(--mute); font-size: 0.8rem; }
 .set-status:empty { display: none; }
-.set-status.is-ok { color: var(--ok); }
-.set-status.is-fault { color: var(--fault); }
+:where(html:not(.is-chat-root)) .set-status.is-ok { color: var(--ok); }
+:where(html:not(.is-chat-root)) .set-status.is-fault { color: var(--fault); }
 .set-link { display: inline-flex; align-items: center; gap: 0.35rem; }
 /* A details element's content sits in one anonymous box, so a memory row is
    a block, not the two-column grid of other rows. */
@@ -204,11 +204,11 @@ body.is-settings .panel.set { padding: 0; }
 .set-mem > summary { cursor: pointer; list-style: none; min-height: 44px; }
 .set-mem > summary::-webkit-details-marker { display: none; }
 .set-mem > summary span { overflow-wrap: anywhere; }
-.set-mem[open] > summary strong { color: var(--brass); }
+:where(html:not(.is-chat-root)) .set-mem[open] > summary strong { color: var(--brass); }
 .set-mem > .set-control { margin-top: 0.75rem; }
-.set-mem .set-control > label:not(.check) { display: grid; gap: 0.25rem; align-self: stretch; width: auto; max-width: 46rem; color: var(--mute); font-size: 0.8rem; }
+:where(html:not(.is-chat-root)) .set-mem .set-control > label:not(.check) { display: grid; gap: 0.25rem; align-self: stretch; width: auto; max-width: 46rem; color: var(--mute); font-size: 0.8rem; }
 .set-mem .set-control select { width: auto; justify-self: start; }
-.set .table-wrap { margin: 0 1.1rem 1rem; }
+:where(html:not(.is-chat-root)) .set .table-wrap { margin: 0 1.1rem 1rem; }
 .set-state {
   display: inline-flex;
   align-items: center;
@@ -222,17 +222,17 @@ body.is-settings .panel.set { padding: 0; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-[aria-pressed="true"] + .set-state { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+:where(html:not(.is-chat-root)) [aria-pressed="true"] + .set-state { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 @media (max-width: 720px) {
   .set-row { grid-template-columns: minmax(0, 1fr); }
   .set-head, .set-row, .set-foot { padding-left: 0.9rem; padding-right: 0.9rem; }
-  .set .table-wrap { margin: 0 0.9rem 0.9rem; }
+  :where(html:not(.is-chat-root)) .set .table-wrap { margin: 0 0.9rem 0.9rem; }
 }
 
 body.is-settings .page-head { display: none; }
 
-.chat-view { position: relative; }
-.chat-view-menu {
+:where(html:not(.is-chat-root)) .chat-view { position: relative; }
+:where(html:not(.is-chat-root)) .chat-view-menu {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -249,7 +249,7 @@ body.is-settings .page-head { display: none; }
   --ap-ring: color-mix(in srgb, var(--brass) 70%, var(--line));
 }
 .set-appearance-body { padding: 0 1.1rem 0.4rem; }
-.set-appearance-body .ap-section:first-child { border-top: 0; }
+:where(html:not(.is-chat-root)) .set-appearance-body .ap-section:first-child { border-top: 0; }
 .set-appearance :is(button, input, label) { font-family: inherit; }
 html[data-chat-console="true"] body.is-settings .set-appearance .ap-switch input[type="checkbox"]::after { border-radius: 0; }
 html[data-chat-console="true"] body.is-settings .set-appearance .ap-color input[type="color"]::-webkit-color-swatch,
@@ -267,10 +267,10 @@ html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-moz-
 .pool-matrix th, .pool-matrix td { padding: 0.55rem 1.1rem; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
 .pool-matrix thead th { padding-top: 0.5rem; padding-bottom: 0.5rem; color: var(--mute); font: 500 0.62rem/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); }
 .pool-matrix tbody th { font-weight: 500; color: var(--mist); }
-.pool-matrix td.num { color: var(--mute); font-variant-numeric: tabular-nums; }
+:where(html:not(.is-chat-root)) .pool-matrix td.num { color: var(--mute); font-variant-numeric: tabular-nums; }
 .pool-matrix :is(th, td):nth-child(n+2) { width: 8rem; }
 .pool-matrix tbody tr:hover { background: color-mix(in srgb, var(--mist) 3%, transparent); }
-.pool-matrix label.check { display: inline-flex; }
+:where(html:not(.is-chat-root)) .pool-matrix label.check { display: inline-flex; }
 @media (max-width: 720px) {
   .pool-matrix th, .pool-matrix td { padding: 0.55rem 0.7rem; }
   .pool-matrix :is(th, td):nth-child(n+2) { width: auto; }

@@ -17,7 +17,7 @@
   color: var(--mute);
 }
 .proj-search:focus-within { border-color: var(--brass); color: var(--mist); }
-.proj-search input[type="search"] {
+:where(html:not(.is-chat-root)) .proj-search input[type="search"] {
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
@@ -42,10 +42,10 @@
   cursor: pointer;
 }
 .proj-tab:hover { color: var(--mist); background: var(--raise); }
-.proj-tab.is-on { color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); }
+:where(html:not(.is-chat-root)) .proj-tab.is-on { color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); }
 .proj-tab span { opacity: 0.7; font-size: 0.7rem; }
 .proj-machine select { width: auto; min-width: 10rem; }
-.proj-machine select[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .proj-machine select[hidden] { display: none; }
 
 .proj-list {
   --proj-cols: minmax(0, 1fr) minmax(7rem, 11rem) 6.5rem 7rem 9.5rem;
@@ -100,7 +100,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.proj-card-title .badge { flex-shrink: 0; }
+:where(html:not(.is-chat-root)) .proj-card-title .badge { flex-shrink: 0; }
 .proj-open:hover .proj-card-name { color: var(--brass); }
 .proj-card-path {
   overflow: hidden;
@@ -122,8 +122,8 @@
 .proj-none { color: var(--mute); }
 .proj-unit { color: var(--mute); }
 .proj-dot { flex-shrink: 0; width: 0.45rem; height: 0.45rem; background: color-mix(in srgb, var(--mute) 70%, transparent); }
-.proj-dot.is-on { background: var(--status-done); }
-.proj-dot.is-off { background: transparent; box-shadow: inset 0 0 0 1px var(--mute); }
+:where(html:not(.is-chat-root)) .proj-dot.is-on { background: var(--status-done); }
+:where(html:not(.is-chat-root)) .proj-dot.is-off { background: transparent; box-shadow: inset 0 0 0 1px var(--mute); }
 .proj-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.35rem; }
 .proj-more {
   display: grid;
@@ -136,7 +136,8 @@
   color: var(--mist);
   cursor: pointer;
 }
-.proj-more:hover, .proj-more[aria-expanded="true"] { background: var(--raise); border-color: color-mix(in srgb, var(--mist) 22%, transparent); }
+:where(html:not(.is-chat-root)) .proj-more:hover,
+:where(html:not(.is-chat-root)) .proj-more[aria-expanded="true"] { background: var(--raise); border-color: color-mix(in srgb, var(--mist) 22%, transparent); }
 .proj-empty {
   display: grid;
   justify-items: center;
@@ -180,7 +181,8 @@
 .proj-list { container-type: inline-size; }
 @container (max-width: 52rem) {
   .proj-row { --proj-cols: minmax(0, 1fr) minmax(6rem, 9rem) 6.5rem 9.5rem; }
-  .proj-row > .proj-chats, .proj-head > :nth-child(3) { display: none; }
+  :where(html:not(.is-chat-root)) .proj-row > .proj-chats,
+:where(html:not(.is-chat-root)) .proj-head > :nth-child(3) { display: none; }
 }
 @container (max-width: 42rem) {
   .proj-row { --proj-cols: minmax(0, 1fr) auto; grid-template-areas: "open actions" "meta meta"; row-gap: 0.35rem; padding: 0.7rem 0.75rem; }
@@ -195,5 +197,5 @@
   .proj-search input { font-size: 16px; }
   .proj-menu button { min-height: 44px; }
   .proj-more { width: 2.5rem; height: 2.5rem; }
-  .proj-row .btn.sm { height: 2.5rem; }
+  :where(html:not(.is-chat-root)) .proj-row .btn.sm { height: 2.5rem; }
 }
