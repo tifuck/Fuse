@@ -130,7 +130,34 @@ _INTERPRETER_SHELL = re.compile(
 )
 _FETCH_EXEC_SHELL = re.compile(
     r"(?is)\b(?:curl|wget|fetch|aria2c)\b[^\n;]*\|\s*(?:sudo\s+)?(?:ba|z|k|fi|a|c|tc|da)?sh\b"
+    r"|<\(\s*(?:curl|wget|fetch|aria2c)\b"  # bash <(curl ...), source <(wget -O- ...)
+    r"|\b(?:iwr|irm|invoke-webrequest|invoke-restmethod)\b[^\n;]*\|\s*(?:iex|invoke-expression)\b"
+    r"|\b(?:iex|invoke-expression)\b[^\n;]*\b(?:iwr|irm|invoke-webrequest|invoke-restmethod|downloadstring)\b"
 )
+# Where a shell starts a command: line start, after a separator or (, past sudo.
+_CMD_AT = r"(?:^|[;&|(\n])\s*(?:sudo\s+(?:-\S+\s+)*)?"
+# Commands that send this machine's data elsewhere: a file or stdin as a
+# request body or upload, raw sockets, remote copies and remote shells. Their
+# operands can all sit inside the roots, so scope alone ran them silently and
+# a prompt-injected model could ship .env off the machine.
+_NETWORK_SEND_SHELL = re.compile(
+    rf"(?s){_CMD_AT}curl\b[^\n;&|]*?(?:\s(?:-[a-zA-Z]*[dF]|--data(?:-\w+)?|--form(?:-string)?|--json)[\s=]+['\"]?(?:[^\s'\"@]*=)?@"
+    r"|\s(?:-[a-zA-Z]*T|--upload-file)\s)"
+    rf"|{_CMD_AT}wget\b[^\n;&|]*--(?:post|body)-file\b"
+    rf"|{_CMD_AT}(?:nc|ncat|netcat|socat|telnet|scp|sftp|ssh)(?=\s|$)"
+    rf"|{_CMD_AT}rsync\b[^\n;&|]*\s[^\s:/'\"-][^\s:'\"]*:(?!//)"
+)
+# A download followed, in the same command, by something that runs a file.
+_DOWNLOAD_SHELL = re.compile(rf"(?s){_CMD_AT}(?:curl|wget|fetch|aria2c)\b")
+_RUN_FILE_SHELL = re.compile(
+    rf"(?s){_CMD_AT}(?:(?:ba|z|k|da|fi)?sh|source|\.|python[\d.]*|pypy[\d.]*|node|bun|deno|perl|ruby|php|chmod)(?=\s)"
+    rf"|{_CMD_AT}\./"
+)
+
+
+def _downloads_then_runs(command: str) -> bool:
+    found = _DOWNLOAD_SHELL.search(command)
+    return bool(found) and bool(_RUN_FILE_SHELL.search(command, found.end()))
 _DESTRUCTIVE_SHELL = re.compile(
     r"(?is)("
     r"\brm\s+(?:-[^\s]*[rf][^\s]*\s*)+"
@@ -171,8 +198,13 @@ def is_secret_name(name: str) -> bool:
 _SECRET_DIRS = {".aws", ".docker", ".kube", ".ssh", ".gnupg"}
 
 
+# A Windows 8.3 short name drops the leading dot: SSH~1 is .ssh, ENV~1 .env.
+_SHORT_NAME = re.compile(r"^([a-z0-9_-]{1,6})~\d+$")
+
+
 def _path_parts(path: str) -> list[str]:
-    return [part for part in str(path or "").replace("\\", "/").lower().split("/") if part not in ("", ".")]
+    parts = [part for part in str(path or "").replace("\\", "/").lower().split("/") if part not in ("", ".")]
+    return ["." + m.group(1) if (m := _SHORT_NAME.match(part)) else part for part in parts]
 
 
 def is_secret_path(path: str) -> bool:
@@ -1335,7 +1367,8 @@ async def review(*, tool: str, args: dict, user_id: int,
     """Decide whether a workspace tool call may run. Pure verdict + ask flow.
 
     deny_reason (workspace denylist hit): the command may only run on the
-    user's own Allow or bypass — never a grant, Allow-always, or Jev auto.
+    user's own Allow, bypass, or Auto's Jev verdict (it rides along as an
+    advisory) — never a grant or Allow-always.
 
     realpath (async, list of paths -> list of host-resolved paths or None):
     lexical scope alone lets a symlink inside a root reach outside it, so an
@@ -1397,6 +1430,10 @@ async def review(*, tool: str, args: dict, user_id: int,
             restricted_why.append("it matches a destructive command pattern")
         if _FETCH_EXEC_SHELL.search(command):
             restricted_why.append("it pipes a download into a shell")
+        elif _downloads_then_runs(command):
+            restricted_why.append("it downloads a file and then runs it")
+        if _NETWORK_SEND_SHELL.search(command):
+            restricted_why.append("it sends data from this machine over the network")
         if deny_reason:
             restricted_why.append(deny_reason)
         restricted_shell = bool(restricted_why)
