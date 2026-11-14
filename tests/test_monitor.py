@@ -527,6 +527,32 @@ class MonitorWorkspace(unittest.IsolatedAsyncioTestCase):
         self.assertIn("READY", live.get("out") or "")
         self.assertIn("noise", live.get("err") or "")
 
+    async def test_connector_clip_marker_is_never_an_event(self):
+        mark = "\n[fuse-agent: output truncated]\n"
+
+        async def fake_call(user_id, host_id, op, args=None, timeout=30.0, on_chunk=None):
+            on_chunk("out", "READY\n")
+            return {"ok": True, "exit": 0, "out": mark, "err": "", "error": "", "timeout": False,
+                    "termination_confirmed": True, "truncated": True}
+
+        delivered = []
+
+        async def deliver(rec, envelope, seq):
+            delivered.append(envelope)
+
+        with patch.object(workspace, "_is_agent", return_value=True), \
+             patch.object(workspace, "_rate_ok"), \
+             patch("app.agent_hub.call", fake_call), \
+             patch.object(command_jobs, "_deliver_monitor_event", deliver), \
+             patch.object(command_jobs, "_deliver"):
+            _, rec = await workspace._monitor(1, 2, "box", {"command": "tail -f x", "description": "any line in x",
+                                                            "pattern": ".", "max_events": 8}, "/repo")
+            with contextlib.suppress(asyncio.CancelledError):
+                await command_jobs._live[rec["child_id"]]["task"]
+        self.assertTrue(delivered)
+        self.assertIn("READY", "".join(delivered))
+        self.assertNotIn("output truncated", "".join(delivered))
+
 
 if __name__ == "__main__":
     unittest.main()
