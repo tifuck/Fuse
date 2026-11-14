@@ -1048,7 +1048,10 @@ def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: b
                WHERE schedule_id=? AND slot_key=?""",
             (status, err, thread_id, run_id, now if status not in ("queued", "running") else None, schedule["id"], slot),
         )
-        row = conn.execute("SELECT * FROM chat_schedules WHERE id=?", (schedule["id"],)).fetchone()
+        # Locking read: on MariaDB a plain SELECT is a snapshot that misses a
+        # PATCH committing meanwhile, and the UPDATE below would clobber it.
+        row = conn.execute("SELECT * FROM chat_schedules WHERE id=?" + db.for_update(conn),
+                           (schedule["id"],)).fetchone()
         if row is None:
             return
         # A fire that never started a run sends no run-done alert: say so,
@@ -1185,7 +1188,7 @@ def _claim_due():
                    WHERE enabled=1 AND paused=0 AND firing_at IS NULL
                      AND next_fire_at IS NOT NULL AND next_fire_at <= ?
                      AND (next_fire_at > ? OR (next_fire_at = ? AND id > ?))
-                   ORDER BY next_fire_at, id LIMIT 8""",
+                   ORDER BY next_fire_at, id LIMIT 8""" + db.for_update(conn),
                 (iso_utc(now), cursor[0], cursor[0], cursor[1]),
             ).fetchall()
             if not rows:
