@@ -3,6 +3,7 @@ against the file as it is now, and write_file overwrites and says what it
 replaced. Only a change landing while Fuse's own edit is in flight is refused."""
 from __future__ import annotations
 
+import asyncio
 import unittest
 from unittest.mock import patch
 
@@ -71,10 +72,19 @@ class ConnectorEditTest(unittest.IsolatedAsyncioTestCase):
             start = args["offset"] - 1
             return {"ok": True, "out": "".join(lines[start:start + args["limit"]])}
         if op == "replace":
-            if args["old"] not in self.text:
+            # As the connector: an ambiguous old_string, overlapping matches
+            # (`aa` in `aaa`) included, is refused unless replace_all is set.
+            old = args["old"]
+            count = self.text.count(old)
+            if count == 1 and self.text.find(old, self.text.find(old) + 1) >= 0:
+                count = 2
+            if not count:
                 return {"ok": False, "error": "old_string not found"}
-            self.text = self.text.replace(args["old"], args["new"], 1)
-            return {"ok": True, "out": "1 replacement"}
+            if count > 1 and not args.get("replace_all"):
+                return {"ok": False, "error": f"old_string is not unique ({count} occurrences)"}
+            self.text = self.text.replace(old, args["new"], -1 if args.get("replace_all") else 1)
+            reps = count if args.get("replace_all") else 1
+            return {"ok": True, "out": f"{reps} replacement{'s' if reps != 1 else ''}"}
         if op == "write":
             self.text = args["content"]
             return {"ok": True, "out": "wrote"}
@@ -122,6 +132,62 @@ class ConnectorEditTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(ws, "_agent_call", not_unique):
             with self.assertRaisesRegex(ws.WorkspaceError, r"not unique \(2 occurrences\)\. Include more surrounding context lines, or pass replace_all=true"):
                 await ws._replace(1, 2, "h", edit("o", "0", "/w/a.py"), "/w")
+
+    async def test_overlapping_match_is_refused_as_ambiguous(self):
+        self.text = "aaa\n"
+        with self.assertRaisesRegex(ws.WorkspaceError, r"not unique \(2 occurrences\)"):
+            await ws._replace(1, 2, "h", edit("aa", "b", "/w/a.py"), "/w")
+        self.assertEqual(self.text, "aaa\n")
+
+    async def test_crlf_retry_reports_the_retry_error(self):
+        # A legacy connector misses the LF-only old_string in a CRLF file; the
+        # CR-restored retry's own answer is what the model must be told.
+        self.text = "one\r\ntwo\r\none\r\ntwo\r\n"
+        with self.assertRaises(ws.WorkspaceError) as ctx:
+            await ws._replace(1, 2, "h", edit("one\ntwo", "1\n2", "/w/a.py"), "/w")
+        self.assertIn("not unique (2 occurrences)", ctx.exception.detail)
+        self.assertNotIn("not found", ctx.exception.detail)
+        self.assertEqual(self.calls.count("replace"), 2)
+        self.assertEqual(self.text, "one\r\ntwo\r\none\r\ntwo\r\n")
+
+    async def run_parked(self, first_path, second_path):
+        """Two edits racing on paths; the first parks inside its replace call.
+        Returns the order in which replace calls were sent and returned."""
+        events = []
+        release = asyncio.Event()
+
+        async def slow(_u, _h, op, args, seconds=30):
+            if op == "replace":
+                events.append(("sent", args["old"]))
+                if args["old"] == "one":
+                    await release.wait()
+                result = await self.call(_u, _h, op, args, seconds)
+                events.append(("returned", args["old"]))
+                return result
+            return await self.call(_u, _h, op, args, seconds)
+
+        with patch.object(ws, "_agent_call", slow):
+            first = asyncio.create_task(ws._replace(1, 2, "h", edit("one", "1", first_path), "/home/u"))
+            await asyncio.sleep(0.05)
+            second = asyncio.create_task(ws._replace(1, 2, "h", edit("two", "2", second_path), "/home/u"))
+            await asyncio.sleep(0.05)
+            release.set()
+            await asyncio.gather(first, second)
+        self.assertEqual(self.text, "1\n2\n")
+        return events
+
+    async def test_edits_to_one_file_are_serialized(self):
+        events = await self.run_parked("/home/u/a.py", "/home/u/a.py")
+        self.assertEqual(events, [("sent", "one"), ("returned", "one"), ("sent", "two"), ("returned", "two")])
+
+    async def test_home_relative_and_absolute_paths_share_the_lock(self):
+        with patch.dict(ws._host_homes, {2: "/home/u"}):
+            events = await self.run_parked("~/a.py", "/home/u/a.py")
+        self.assertEqual(events, [("sent", "one"), ("returned", "one"), ("sent", "two"), ("returned", "two")])
+
+    async def test_edits_to_different_files_do_not_wait(self):
+        events = await self.run_parked("/home/u/a.py", "/home/u/b.py")
+        self.assertEqual(events[:2], [("sent", "one"), ("sent", "two")])
 
 
 class IdentityTest(unittest.TestCase):

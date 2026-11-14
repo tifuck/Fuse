@@ -1061,11 +1061,17 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
             # Pre-exec_stream connector: buffered result only, no live chunks.
             data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10)
         res = _AgentExec(data)
+        # A streamed result's err carries only the connector's own notes (clip
+        # marker, signal death): append them to the streamed stderr, never
+        # in place of it.
+        err = "".join(err_parts)
+        if res.stderr and res.stderr != err:
+            err += ("" if not err or err.endswith("\n") else "\n") + res.stderr
         if res.stdout or not streamed["out"]:
             # Buffered result (or a stream that produced nothing): merge as before.
-            sink(_agent_job_output(res.stdout or "", res.stderr or "".join(err_parts)))
-        elif err_parts:
-            sink(("" if streamed["nl"] else "\n") + "[stderr]\n" + "".join(err_parts))
+            sink(_agent_job_output(res.stdout or "", err))
+        elif err:
+            sink(("" if streamed["nl"] else "\n") + "[stderr]\n" + err)
         incomplete(not _agent_output_complete(data))
         if _agent_timed_out(data):
             # Connectors flag deadline kills so a killed command is not
@@ -1344,7 +1350,9 @@ def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout
         except agent_hub.AgentError as exc:
             raise WorkspaceError(exc.detail) from exc
         res = _AgentExec(data)
-        leftover_out = res.stdout or ""
+        # The clip marker is the connector's note, not a line the command
+        # printed: it must never match the pattern as an event.
+        leftover_out = (res.stdout or "").replace("\n[fuse-agent: output truncated]\n", "")
         leftover_err = res.stderr or ""
         if leftover_out:
             sink(leftover_out if leftover_out.endswith("\n") else leftover_out + "\n")
@@ -2878,6 +2886,7 @@ async def _replace(user_id, host_id, alias, args, root, *, windows: bool = False
                         },
                         45,
                     )
+                    error = str(data.get("error") or "").strip().lower()
         if data.get("ok"):
             count = len(edits)
             out = str(data.get("out") or "")

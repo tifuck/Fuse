@@ -300,6 +300,28 @@ class LifecycleContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(view["output"], "tick 1\n[stderr]\nwarn\n")
         self.assertTrue(view["output_chars_exact"])
 
+    async def test_connector_runner_keeps_streamed_stderr_beside_result_notes(self):
+        # A streamed result's out/err carry only the connector's own notes (the
+        # clip marker, a signal death): they join the streamed stderr.
+        mark = "\n[fuse-agent: output truncated]\n"
+        cases = (
+            ({"ok": True, "exit": 0, "out": mark, "err": mark, "truncated": True},
+             0, "a\n" + mark + "[stderr]\nboom\n" + mark),
+            ({"ok": False, "exit": 137, "out": "", "err": "[killed by signal 9]\n",
+              "error": "[killed by signal 9]", "truncated": False},
+             137, "a\n[stderr]\nboom\n[killed by signal 9]\n"),
+        )
+        for final, code, expected in cases:
+            async def fake_call(_u, _h, op, _args, seconds=30, on_chunk=None):
+                on_chunk("out", "a\n")
+                on_chunk("err", "boom\n")
+                return final
+            got = []
+            with patch.object(ws, "_rate_ok"), patch.object(ws, "_agent_call", AsyncMock(side_effect=fake_call)):
+                result = await ws._make_agent_runner(1, 2, "mock", "/repo", 1000)(got.append)
+            self.assertEqual("".join(got), expected)
+            self.assertEqual(result.exit_status, code)
+
     async def test_connector_runner_falls_back_without_exec_stream(self):
         ops = []
 
