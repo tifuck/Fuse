@@ -390,6 +390,7 @@ class ToolRoundCheckpointFailureTest(unittest.IsolatedAsyncioTestCase):
         from starlette.requests import Request
 
         from app import chat_runtime as runtime
+        from app.chat_generation import tool_runner
         from app.chat_generation.tool_runner import CheckpointFailed
 
         seen = []
@@ -407,7 +408,7 @@ class ToolRoundCheckpointFailureTest(unittest.IsolatedAsyncioTestCase):
 
         calls = [{"id": "a", "function": {"name": "todo_write", "arguments": "{}"}}]
         request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}, receive=never)
-        with patch.object(runtime, "execute_tool", execute), patch.object(runtime, "_record_failure", AsyncMock()):
+        with patch.object(runtime, "execute_tool", execute), patch.object(tool_runner, "_record_failure", AsyncMock()):
             with self.assertRaises(CheckpointFailed):
                 async for _ in runtime._run_tools(calls, user_id=1, allowed_urls=set(), request=request,
                                                   completion_i=0, budgets={}, persist=persist):

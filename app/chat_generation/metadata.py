@@ -97,7 +97,14 @@ async def summarize_once(request: Request, user, model: str, head: list[dict], i
         return ""
     if not summary or summary.get("error"):
         return ""
-    return ctxmod.compact_result_body(summary.get("content") or "")[: ctxmod.MAX_SUMMARY_CHARS]
+    content = summary.get("content") or ""
+    # A tool call, a reply cut off by its output limit, or one with no closed
+    # <summary> is not a handoff; the caller's truncate fallback is better.
+    if (summary.get("calls") or str(summary.get("finish") or "").lower() in ("length", "max_tokens")
+            or not re.search(r"<summary>[\s\S]*</summary>", content, re.IGNORECASE)):
+        logger.warning("Context compaction reply was not a complete summary (finish %s)", summary.get("finish"))
+        return ""
+    return ctxmod.compact_result_body(content)[: ctxmod.MAX_SUMMARY_CHARS]
 
 
 async def generate_metadata(request, user, model, text, system, limit, parser, *, once):

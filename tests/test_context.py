@@ -472,6 +472,49 @@ class LiveCompactTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(m.get("role") != "user" and "SECRET_LIVE_" in str(m.get("content") or "") for m in rebuilt))
         self.assertFalse(any("persisted no tools" in str(m.get("content") or "") for m in rebuilt))
 
+    async def test_compact_current_truncates_when_the_summarizer_calls_a_tool(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from starlette.requests import Request as StarletteRequest
+
+        from app.chat_runtime import _compact_current
+        from app.config import settings
+
+        result = SimpleNamespace(status=200, body={}, stream=None, usage={}, credential_id=None, attempts=[])
+        asked = []
+
+        async def invoke(request, user_in, payload, **_kwargs):
+            asked.append(payload["model"])
+            return user_in, SimpleNamespace(source_id=1, type_id="openai"), "m", payload["model"], result
+
+        async def consume_round(*args, **kwargs):
+            yield "done", {"content": "TOOL_TURN_TEXT", "finish": "tool_calls",
+                           "calls": [{"id": "c1", "function": {"name": "read_file", "arguments": "{}"}}]}
+
+        request = StarletteRequest(
+            {"type": "http", "method": "POST", "path": "/", "headers": [], "client": ("127.0.0.1", 1)},
+            lambda: None,
+        )
+        with (
+            patch.object(settings, "context_strategy", "summarize"),
+            patch.object(settings, "context_summarizer_model", ""),
+            patch("app.chat_runtime.api.invoke_chat", side_effect=invoke),
+            patch("app.chat_runtime._consume_round", consume_round),
+        ):
+            rebuilt, _meter, kind = await _compact_current(
+                self._live_transcript(),
+                request=request,
+                user={"id": 1},
+                model="offline",
+                type_id="openai",
+                trigger="manual",
+                thread_id=None,
+            )
+        self.assertEqual(asked, ["offline"])
+        self.assertEqual(kind, "truncate")
+        self.assertNotIn("TOOL_TURN_TEXT", str(rebuilt))
+
     async def test_compact_current_child_never_writes_thread_state(self):
         from unittest.mock import patch
 

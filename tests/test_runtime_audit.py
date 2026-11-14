@@ -13,6 +13,7 @@ os.environ.setdefault("APP_SECRET", "audit-test-secret-" * 3)
 
 from app import agents, chat_runs, chat_runtime as runtime, chat_store as store, chat_tools, chats, db, tool_failures
 from app import chat_children
+from app.chat_generation import tool_runner
 
 import pytest
 
@@ -32,7 +33,7 @@ def call(name, arguments):
 class ArgumentsTest(unittest.IsolatedAsyncioTestCase):
     async def run_calls(self, calls, executor):
         events, jobs = [], None
-        with patch.object(runtime, "execute_tool", executor), patch.object(runtime, "_record_failure"):
+        with patch.object(runtime, "execute_tool", executor), patch.object(tool_runner, "_record_failure"):
             async for item in runtime._run_tools(calls, user_id=1, allowed_urls=set(), request=Request(), completion_i=0, budgets={}, coding=True):
                 if isinstance(item, list):
                     jobs = item

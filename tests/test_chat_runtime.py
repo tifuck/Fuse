@@ -576,7 +576,7 @@ class SummarizerModelTest(unittest.IsolatedAsyncioTestCase):
             return user_in, src, "m", payload["model"], result
 
         async def consume_round(*args, **kwargs):
-            yield "done", {"content": "handoff text"}
+            yield "done", {"content": "<summary>handoff text</summary>"}
 
         head = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
         with (
@@ -609,7 +609,7 @@ class SummarizerModelTest(unittest.IsolatedAsyncioTestCase):
             return user_in, src, "m", payload["model"], result
 
         async def consume_round(*args, **kwargs):
-            yield "done", {"content": "same model summary"}
+            yield "done", {"content": "<analysis>notes</analysis>\n<summary>same model summary</summary>"}
 
         head = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
         with (
@@ -651,6 +651,38 @@ class SummarizerModelTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("OTHER_MODEL_THOUGHT", wire)
         self.assertNotIn("claude_thinking", wire)
         self.assertEqual(sent[0][1]["content"], "a")
+
+    async def test_incomplete_summary_replies_fall_back(self):
+        from app import chat_runtime
+        from app.config import settings
+
+        result = SimpleNamespace(status=200, body={}, stream=None, usage={}, credential_id=None, attempts=[])
+        src = SimpleNamespace(source_id=1, type_id="openai")
+
+        async def invoke(request, user_in, payload, **_kwargs):
+            return user_in, src, "m", payload["model"], result
+
+        call = {"id": "c1", "function": {"name": "grep", "arguments": "{}"}}
+        replies = {
+            "tool call": {"content": "<summary>partial</summary>", "calls": [call], "finish": "tool_calls"},
+            "length": {"content": "<summary>cut off</summary>", "finish": "length"},
+            "max_tokens": {"content": "<summary>cut off</summary>", "finish": "max_tokens"},
+            "unclosed summary": {"content": "<analysis>plan</analysis>\n<summary>1. Primary request", "finish": "stop"},
+            "no summary": {"content": "Let me check the files first.", "finish": "stop"},
+        }
+        head = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+        for name, reply in replies.items():
+            with self.subTest(name):
+                async def consume_round(*args, reply=reply, **kwargs):
+                    yield "done", reply
+
+                with (
+                    patch.object(settings, "context_summarizer_model", ""),
+                    patch("app.chat_runtime.api.invoke_chat", side_effect=invoke),
+                    patch("app.chat_runtime._consume_round", consume_round),
+                ):
+                    text = await chat_runtime.summarize_conversation(None, {"id": 1}, "grok-4.6", head)
+                self.assertEqual(text, "")
 
 
 class RunningEventTest(unittest.TestCase):
