@@ -227,8 +227,8 @@ function bump(id, patch) {
     assert.equal(ui.steps.filter((row) => row.state === 'running').length, 0, `no row stays Running: ${JSON.stringify(ui.steps.map((r) => r.tool + ':' + r.state))}`);
     assert.equal(ui.clocks.filter((text) => text.trim()).length, 0, `finished rows stop ticking: ${JSON.stringify(ui.clocks)}`);
     const shell = ui.steps.find((row) => row.tool === 'run_terminal_command');
-    // Combined names a shell call Run (themes/combined/tool-headers.js), Console Bash.
-    const shellVerb = (process.env.FUSE_CHAT_VIEW || 'console') === 'combined' ? 'Run' : 'Bash';
+    // Combined and Desktop name a shell call Run (themes/<t>/tool-headers.js), Console Bash.
+    const shellVerb = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW || 'console') ? 'Run' : 'Bash';
     assert.ok(shell.text.includes(`${shellVerb}(pytest tests/test_chat.py -q)`), `finished shell prints the command: ${shell.text}`);
     assert.match(shell.text, /2 passed/, 'the shell keeps its output');
     assert.match(ui.text, /NOVA_FINAL_REPORT/, 'the final report shows in the pane');

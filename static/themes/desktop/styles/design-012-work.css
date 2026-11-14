@@ -1,0 +1,147 @@
+/* Work strip: the agent tree and the background commands of the transcript
+   on screen, one dense block under the header. Every row is one thin mono
+   line on the composer's surface, like a terminal agent's agent and task lists:
+   no headings, the main row and the `$` prompt say what each group is.
+   Rows are the transcript's line height; main stays tall enough to tap,
+   since it folds the tree and leads back from a subagent. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work {
+  --work-row: var(--console-row);
+  --work-main: max(var(--work-row), 1.3rem);
+  padding: 0;
+  background: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  font: calc(var(--console-type) * 0.92)/var(--work-row) var(--mono);
+  color: var(--mist);
+}
+/* Room under the last row, but not under a lone main row: its tint runs to
+   the border. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work:has(:is(.chat-agents-row:not(.is-main), .chat-jobs-row)) { padding-bottom: 0.25rem; }
+/* Commands alone lead the strip: the same room above them as below. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work:has(> .chat-work-agents[hidden]) { padding-top: 0.25rem; }
+/* Both lists share their gutters and action column, so agent and command
+   clocks and stop buttons line up. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-work-agents, .chat-work-jobs) {
+  --work-gap: 0.6rem;
+  --work-act: 1.4rem;
+  --work-pad-l: 0.75rem;
+  --work-pad-r: 0.5rem;
+}
+/* A subgrid row hands its right padding to the last track's item as margin,
+   so that track carries it. The state column fits "wedged — force stop" and
+   the clock "59m 59s": a row changing state or a ticking clock moves no
+   other column. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents {
+  grid-template-columns: auto minmax(19ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
+  max-height: calc(var(--work-main) + 9 * var(--work-row));
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
+  margin-top: 0.15rem;
+  padding-top: 0.15rem;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-agents-row, .chat-jobs-row) {
+  height: var(--work-row);
+  padding: 0 var(--work-pad-r) 0 var(--work-pad-l);
+  column-gap: var(--work-gap);
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(7ch, auto) var(--work-act); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row.is-main { height: var(--work-main); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-agents-row, .chat-jobs-row):hover {
+  background: color-mix(in srgb, var(--mist) 5%, transparent);
+}
+/* The transcript on screen: a tint and a brass bar on its row. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row[aria-current="true"] {
+  background: color-mix(in srgb, var(--brass) 9%, transparent);
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--brass);
+}
+/* Main stays pinned while its subagents scroll under it, and the scrollbar
+   starts below it instead of running beside it. Its fills are opaque so no
+   row shows through. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents > .chat-agents-row.is-main {
+  --work-bg: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--work-bg);
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents > .chat-agents-row.is-main:hover {
+  background: color-mix(in srgb, var(--mist) 5%, var(--work-bg));
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents > .chat-agents-row.is-main[aria-current="true"] {
+  background: color-mix(in srgb, var(--brass) 9%, var(--work-bg));
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents::-webkit-scrollbar-track { margin-top: var(--work-main); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-name {
+  max-width: 40ch;
+  color: color-mix(in srgb, var(--mist) 86%, var(--ink));
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row[aria-current="true"] .chat-agents-name { color: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row.is-main .chat-agents-name { font-weight: 600; color: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-agents-meta, .chat-jobs-meta, .chat-agents-time, .chat-agents-fold) { color: var(--mute); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row.is-idle .chat-agents-state { color: var(--mute); }
+/* Between the task and the clock in weight, so the three never read as one. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-model { color: color-mix(in srgb, var(--mist) 62%, var(--ink)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-fold:hover { color: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-cmd { color: color-mix(in srgb, var(--mist) 86%, var(--ink)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-output-link:hover .chat-jobs-cmd { color: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-row:not(.is-monitor) .chat-jobs-cmd::before {
+  content: "$ ";
+  color: var(--mute);
+}
+/* The command gives way first; where and how it runs keeps its words. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-meta {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 40%;
+  text-overflow: ellipsis;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-agents-act, .chat-jobs-kill) {
+  width: var(--work-act);
+  height: var(--work-row);
+  overflow: hidden; /* a glyph's text box is taller than the row: keep its hit area out of the rows around it */
+  font-size: 0.95rem;
+}
+
+/* Phones: a taller main row to tap, the lists shorter so the transcript
+   keeps the screen. Clocks keep their column so they line up. A subagent
+   row drops what it is doing (its tooltip has the full line) so the task
+   keeps the room. */
+@media (max-width: 800px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work {
+    --work-main: max(var(--work-row), 1.6rem);
+  }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-work-agents, .chat-work-jobs) {
+    --work-gap: 0.4rem;
+    --work-act: 1.6rem;
+    --work-pad-l: var(--console-gutter, 0.55rem);
+    --work-pad-r: 0.25rem;
+  }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents {
+    grid-template-columns: minmax(0, auto) minmax(16ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
+    max-height: calc(var(--work-main) + 5 * var(--work-row));
+  }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row:not(.is-main) :is(.chat-agents-doing, .chat-agents-sum) { display: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-model { max-width: 16ch; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-provider { display: none; }
+}
+/* Narrow phones: a subagent row is its task and dot (the dot carries its
+   state, the full line is in its tooltip); a command row is its command.
+   Main says "2 running": the fold beside it counts agents. */
+@media (max-width: 520px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row:not(.is-main) .chat-agents-meta,
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-meta,
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-noun { display: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-model { max-width: 10ch; }
+  /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row.is-main .chat-agents-state { display: none; }
+}

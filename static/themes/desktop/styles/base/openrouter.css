@@ -1,0 +1,25 @@
+/* desktop theme copy of static/styles/pages/openrouter.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-toolbar input[type="search"] {
+  flex: 1 1 16rem; min-width: 0; height: var(--control); padding: 0 0.75rem;
+  background: var(--raise); border: 1px solid var(--line); border-radius: 8px; color: var(--mist);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-seg button.on { background: var(--raise); color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-row.is-on { box-shadow: inset 2px 0 0 var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov-btn:hover,
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-row.is-open .or-prov-btn { color: var(--mist); border-color: color-mix(in srgb, var(--mist) 35%, transparent); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-row.is-open .or-prov-btn::after { transform: rotate(90deg); }
+@keyframes or-open { from { opacity: 0; transform: translateY(-4px); } }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-drawer-note.bad { color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov tr.down td { opacity: 0.55; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov th.num { font-family: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov-name a { color: var(--mist); text-decoration: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-prov-name a:hover { text-decoration: underline; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-sub { color: var(--mute); font-family: var(--mono); font-size: 0.68rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-replace[open] summary { color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .or-drawer-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+@media (max-width: 720px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .or-row-name { white-space: normal; overflow-wrap: anywhere; }
+}

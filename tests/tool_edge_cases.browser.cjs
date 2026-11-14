@@ -108,7 +108,7 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
     // Call lines are written in Console's verbs; Combined names some calls in
     // plainer words (themes/combined/tool-headers.js). Same line, its theme's verb.
     const COMBINED_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
-    const verbFor = (head) => (process.env.FUSE_CHAT_VIEW || 'console') !== 'combined' ? head
+    const verbFor = (head) => !['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW || 'console') ? head
       : head.replace(/^(Update Todos|Web Search|Stop Task|Await|Update|Bash)(?=\(|$)/, (m) => COMBINED_VERBS[m]);
     const headEq = (actual, expected, where) => eq(actual, verbFor(expected), where);
 

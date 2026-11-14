@@ -159,17 +159,32 @@ test('each view keeps its own font', () => {
   assert.deepEqual(JSON.parse(ui.storage.get('fuse.chat.fonts.v1')), { console: 'jetbrains', combined: 'fraunces' });
 });
 
-test('console and combined are independent theme folders', () => {
-  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
+test('theme folders are independent of each other', () => {
+  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html|json)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
   // A theme is its static folder plus its template folder.
-  const consoleFiles = [...read(resolve(__dirname, '../static/themes/console')), ...read(resolve(__dirname, '../templates/themes/console'))];
-  const combinedFiles = [...read(resolve(__dirname, '../static/themes/combined')), ...read(resolve(__dirname, '../templates/themes/combined'))];
-  for (const [name, text] of consoleFiles) assert.doesNotMatch(text, /combined/, `console/${name}`);
-  for (const [name, text] of combinedFiles) {
-    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//, `combined/${name}`);
+  const files = (theme) => [...read(resolve(__dirname, `../static/themes/${theme}`)), ...read(resolve(__dirname, `../templates/themes/${theme}`))];
+  const consoleFiles = files('console');
+  const combinedFiles = files('combined');
+  const desktopFiles = files('desktop');
+  // "desktop" alone also names the Fuse Desktop app (data-desktop-app, desktop.css), so the
+  // Desktop theme is matched by its own references: its folder, its view and its factory.
+  const desktopRef = /themes\/desktop\/|\.\.\/desktop\/|data-chat-view="desktop"|data-view="desktop"|createDesktopTheme|\bdk-/;
+  const consoleRef = /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//;
+  for (const [name, text] of consoleFiles) {
+    assert.doesNotMatch(text, /combined/, `console/${name}`);
+    assert.doesNotMatch(text, desktopRef, `console/${name}`);
   }
-  assert.ok(combinedFiles.some(([name]) => name === 'index.js'));
-  assert.ok(consoleFiles.some(([name]) => name === '_chat.html') && combinedFiles.some(([name]) => name === '_chat.html'));
+  for (const [name, text] of combinedFiles) {
+    assert.doesNotMatch(text, consoleRef, `combined/${name}`);
+    assert.doesNotMatch(text, desktopRef, `combined/${name}`);
+  }
+  for (const [name, text] of desktopFiles) {
+    assert.doesNotMatch(text, consoleRef, `desktop/${name}`);
+    assert.doesNotMatch(text, /combined|Combined|\bcb-/, `desktop/${name}`);
+  }
+  for (const list of [consoleFiles, combinedFiles, desktopFiles]) {
+    assert.ok(list.some(([name]) => name === 'index.js') && list.some(([name]) => name === '_chat.html'));
+  }
 });
 
 test('retired backdrops migrate to their replacement', () => {
@@ -196,7 +211,7 @@ test('backdrop wallpaper is a scene layer, not an opaque plate', () => {
   const js = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
   assert.match(css, /\.chat-scene\[data-kind\] \[data-chat-scene-wash\]/);
   assert.doesNotMatch(css, /chat-scene-bubbles/);
-  for (const theme of ['console', 'combined']) {
+  for (const theme of ['console', 'combined', 'desktop']) {
     const own = readFileSync(resolve(__dirname, `../static/themes/${theme}/styles/base/chat-design.css`), 'utf8');
     const html = `html:where\\(\\.is-chat-root\\[data-chat-view="${theme}"\\]\\)\\[data-chat-backdrop\\]:not\\(\\[data-chat-backdrop="none"\\]\\) body\\.is-chat`;
     assert.match(own, new RegExp(html + ' :is\\(\\.stage, \\.stage-inner, main, \\.chat, \\.chat-stage, \\.chat-thread\\)[^{]*\\{\\s*background:\\s*transparent'), theme);

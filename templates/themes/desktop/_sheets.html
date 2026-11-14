@@ -1,0 +1,113 @@
+{#- Desktop theme: the Context, Skills and Appearance sheets (the artifact pane is the inspector's Preview card, _inspector.html). Every data-* hook here is a runtime contract; the other
+    themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
+  <button type="button" class="chat-artifact-backdrop" data-artifact-backdrop aria-label="Close artifact" tabindex="-1" hidden></button>
+  <button type="button" class="chat-sheet-backdrop" data-memory-backdrop aria-label="Close context" tabindex="-1" hidden></button>
+  <div class="chat-sheet chat-memory" id="chat-context" data-chat-sheet data-chat-memory hidden role="dialog" aria-label="Context" aria-modal="true">
+    <div class="chat-sheet-head">
+      <div>
+        <p>Context</p>
+        <span>On every chat and project.</span>
+      </div>
+      <button type="button" class="chat-menu-close" data-memory-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    {#- Saved by chat.js, which reports unsaved edits through fuseUnsaved. -#}
+    <div class="chat-sheet-body chat-context-body" data-reload-safe>
+      <div class="chat-context-tabs" role="tablist" aria-label="Context sections">
+        <button type="button" class="chat-context-tab is-on" role="tab" aria-selected="true" aria-controls="context-panel-instructions" data-context-tab="instructions">Instructions</button>
+        <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-profile" data-context-tab="profile">About you</button>
+        <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-thread" data-context-tab="thread">This chat</button>
+        <button type="button" class="chat-context-tab" role="tab" aria-selected="false" aria-controls="context-panel-agents" data-context-tab="agents" data-agents-tab hidden>AGENTS.md</button>
+      </div>
+      <div class="chat-context-panel" id="context-panel-instructions" data-context-panel="instructions" role="tabpanel">
+        <p class="chat-context-desc">How Fuse answers, in every chat and project.<span class="chat-context-eg">e.g. Be brief. Show diffs, not prose.</span></p>
+        <label class="chat-memory-field">
+          <span class="visually-hidden">Instructions</span>
+          <textarea data-memory-instructions maxlength="4000" rows="8" placeholder="How Fuse should answer you"></textarea>
+        </label>
+      </div>
+      <div class="chat-context-panel" id="context-panel-profile" data-context-panel="profile" role="tabpanel" hidden>
+        <p class="chat-context-desc">Who you are, in every chat and project.<span class="chat-context-eg">e.g. Berlin, CET. Solo dev on a Rails app.</span></p>
+        <label class="chat-memory-field">
+          <span class="visually-hidden">About you</span>
+          <textarea data-memory-profile maxlength="4000" rows="8" placeholder="Name, timezone, stack, preferences"></textarea>
+        </label>
+      </div>
+      <div class="chat-context-panel" id="context-panel-thread" data-context-panel="thread" role="tabpanel" hidden>
+        <p class="chat-context-desc">Notes for this thread only.<span class="chat-context-eg">e.g. We're on staging; the old API key is revoked.</span></p>
+        <label class="chat-memory-field">
+          <span class="visually-hidden">This conversation</span>
+          <textarea data-memory-thread maxlength="4000" rows="8" placeholder="Notes for this thread only"></textarea>
+        </label>
+        <label class="ap-switch chat-memory-switch">
+          <input type="checkbox" role="switch" data-chat-memory-toggle>
+          <span class="ap-switch-copy"><span>Memory in this chat</span><small data-chat-memory-note></small></span>
+        </label>
+      </div>
+      <div class="chat-context-panel" id="context-panel-agents" data-context-panel="agents" role="tabpanel" hidden>
+        <p class="chat-context-desc">The project's instruction file, loaded into every chat in this project. Saving writes it to the project folder.</p>
+        <label class="chat-memory-field">
+          <span class="visually-hidden">Project instructions</span>
+          <textarea data-agents-body rows="8" spellcheck="false" placeholder="No instruction file yet. Write one and save to create AGENTS.md."></textarea>
+        </label>
+        <div class="chat-agents-foot"><span class="chat-memory-project" data-agents-status></span><button type="button" class="btn sm" data-agents-save>Save</button></div>
+      </div>
+      <p class="chat-memory-project" data-memory-project hidden></p>
+      <p class="chat-sheet-note">Empty instructions use Fuse's default style. Notes cannot add tools or change routing.</p>
+    </div>
+  </div>
+  <button type="button" class="chat-sheet-backdrop" data-skills-backdrop aria-label="Close skills" tabindex="-1" hidden></button>
+  <aside class="chat-sheet chat-skills" id="chat-skills" data-chat-sheet data-chat-skills data-skills hidden role="dialog" aria-label="Skills" aria-modal="true">
+    <div class="chat-sheet-head">
+      <div>
+        <p>Skills</p>
+        <span>On for every chat and project. Slash /name to run.</span>
+      </div>
+      <button type="button" class="chat-menu-close" data-skills-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <p class="callout fault" data-page-error role="alert" hidden></p>
+    <div class="chat-sheet-body chat-skills-body">
+      <div class="skills-installed">
+        <div data-skill-list></div>
+        <p class="skills-empty usage-sub" data-empty hidden>Nothing on the wire yet. Search below or upload a SKILL.md.</p>
+      </div>
+      <div class="skills-add">
+        <form class="skills-search" data-search-form>
+          <label class="hosts-field">
+            <span>Search skills.sh</span>
+            <input type="search" name="q" maxlength="80" placeholder="ponytail" data-search-q autocomplete="off">
+          </label>
+          <button type="submit" class="btn sm">Search</button>
+        </form>
+        <form class="skills-upload" data-upload-form>
+          <label class="hosts-field">
+            <span>Upload zip or SKILL.md</span>
+            <input type="file" name="file" accept=".zip,.md,SKILL.md" data-upload-file>
+          </label>
+          <button type="submit" class="btn sm ghost">Install</button>
+        </form>
+        <p class="callout fault" data-search-error role="alert" hidden></p>
+        <div data-search-results></div>
+        <p class="callout fault" data-upload-error role="alert" hidden></p>
+      </div>
+    </div>
+  </aside>
+  <button type="button" class="chat-view-backdrop" data-view-backdrop hidden aria-label="Close appearance" tabindex="-1"></button>
+  <div class="chat-view-menu" id="chat-view-menu" data-chat-sheet data-view-menu hidden role="dialog" aria-label="Appearance" aria-modal="true" tabindex="-1">
+    <div class="chat-view-sheet-head" data-view-sheet-head>
+      <span class="chat-view-grip" aria-hidden="true"></span>
+      <div class="chat-view-sheet-heading">
+        <p class="chat-view-sheet-title">Appearance</p>
+        <span class="chat-view-sheet-sub">Theme, backdrop and type. Saved in this browser.</span>
+      </div>
+      <button type="button" class="chat-menu-close chat-view-sheet-close" data-view-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="chat-view-sheet-body ap">
+      {% include "_appearance_body.html" %}
+    </div>
+  </div>

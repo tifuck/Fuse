@@ -73,9 +73,7 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
-    workClocksLive,
-    workHeadHtml,
-  } = createTheme({
+
     get PERM_TOTAL_S() { return perms.PERM_TOTAL_S; },
     get REVEAL_CALM() { return S.REVEAL_CALM; },
     get REVEAL_FIRST() { return S.REVEAL_FIRST; },
@@ -230,9 +228,7 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
-    workClocksLive,
-    workHeadHtml,
-  };
+
 
   const chatApi = { clearChatState };
 
@@ -1713,7 +1709,13 @@ import { createDictation } from './chat/dictation.js';
         if (!S.messages.length) picker.setHint("Nothing to rewind.");
         else turns.openRewind();
       } else if (action === "agents") agents.setAgentsOpen(true);
-      else if (action === "new") {
+      else if (action === "fork" || action === "pin") {
+        if (!S.currentId) picker.setHint("Nothing to " + action + " yet.");
+        else (action === "fork" ? sidebar.forkThread(S.currentId) : sidebar.togglePin(S.currentId))
+          .catch((error) => sync.showFailure(action === "fork" ? "Could not fork" : "Could not pin", error));
+      } else if (action === "project") {
+        sidebar.openProjectPicker().catch((error) => sync.showFailure("Could not start a project", error));
+      } else if (action === "new") {
         const project = sidebar.sessionProject();
         const start = project ? sidebar.startProjectThread(project.host_id, project.project_id) : resetChat();
         Promise.resolve(start).catch((error) => sync.showFailure("Could not start a new chat", error));

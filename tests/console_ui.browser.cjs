@@ -245,9 +245,9 @@ function scenarios() {
     }
 
     // Rows are written in Console's verbs; Combined names some calls in plainer
-    // words (themes/combined/tool-headers.js). Same row, its theme's verb.
+    // words (themes/combined/tool-headers.js; Desktop keeps the same set). Same row, its theme's verb.
     const COMBINED_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
-    const verbFor = (text) => (process.env.FUSE_CHAT_VIEW || 'console') !== 'combined' ? text
+    const verbFor = (text) => !['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW || 'console') ? text
       : text.replace(/^(Update Todos|Web Search|Stop Task|Await|Update|Bash)(?=\(|$)/, (m) => COMBINED_VERBS[m]);
     for (const raw of scenarios()) {
       if (ONLY !== null) break;
