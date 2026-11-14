@@ -103,6 +103,13 @@ class RestartRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(noted), len(progressed) + 1)
         self.assertIn("resume-note:r1:2", noted[-1]["content"])
 
+    def test_resume_note_sentinel_alone_blocks_a_second_note(self):
+        noted = store._with_resume_note([{"role": "user", "content": "Hello"}], "r1", 1)
+        # The model progressed since, so only the per-generation sentinel
+        # keeps a re-run of the same resume from noting again.
+        progressed = [*noted, {"role": "assistant", "content": "partial"}]
+        self.assertEqual(store._with_resume_note(progressed, "r1", 1), progressed)
+
     def test_resume_count_increments_and_caps_recovery(self):
         thread = self.make_thread()
         run = self.start_run(thread)
