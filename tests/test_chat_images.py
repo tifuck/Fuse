@@ -14,7 +14,8 @@ from urllib.parse import urlsplit
 import pymysql
 import pytest
 
-from app import chat_history, chat_images, chat_runtime, chat_store as store, chats, db, model_caps, mysql_compat
+from app import (chat_history, chat_images, chat_runtime, chat_store as store, chats, command_jobs, db, model_caps,
+                 mysql_compat)
 from tests.test_image_cache_replay import invoke, routed  # noqa: F401  (fixture)
 from tests.test_read_file_images_runtime import IMAGE, pixels
 
@@ -86,6 +87,18 @@ def test_provider_receives_the_inline_bytes_for_a_reference(routed, monkeypatch)
     assert chat_images.PREFIX not in json.dumps(sent)
 
 
+def test_rehydrate_puts_back_only_a_budget_of_the_newest_references(monkeypatch):
+    # One stored image's reference repeated thousands of times must not
+    # expand to len(URL) * count before any size check.
+    monkeypatch.setattr(chat_images, "lookup", lambda user_id, shas: {SHA: URL})
+    monkeypatch.setattr(chat_images, "REHYDRATE_CHARS", len(URL) * 3)
+    rows = [shot(REF, label=f"shot {i}") for i in range(5)]
+    out = chat_images.rehydrate(1, rows)
+    assert pixels(out) == [URL] * 3  # the three newest
+    assert [part.get("text") for part in out[0]["content"]] == ["shot 0", chat_images.MISSING]
+    assert [part.get("text") for part in out[1]["content"]] == ["shot 1", chat_images.MISSING]
+
+
 class StoreTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="fuse-images-")
@@ -98,6 +111,9 @@ class StoreTest(unittest.TestCase):
         p = patch.object(db, "connect", return_value=self.conn)
         p.start()
         self.addCleanup(p.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         chat_images._cache.clear()
         self.addCleanup(chat_images._cache.clear)
         for uid in (1, 2):

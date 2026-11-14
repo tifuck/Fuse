@@ -33,6 +33,11 @@ MISSING = "[Image unavailable: Fuse no longer stores it.]"
 CACHE_BYTES = 64 * 1024 * 1024
 # Rows per lookup: each is a whole image, so a batch is a few MB at most.
 _FETCH_BATCH = 16
+# Characters one rehydration may put back inline, newest images first; twice
+# api._MAX_IMAGE_CHARS, so shedding there still decides in any real transcript.
+# Without it a 2 MB request repeating one stored 6 MB image's reference
+# expanded to tens of GB before any size check.
+REHYDRATE_CHARS = 96_000_000
 
 _cache: OrderedDict[tuple[int, str], str] = OrderedDict()
 _cache_bytes = 0
@@ -229,11 +234,23 @@ def rehydrate(user_id, messages):
     lost = [sha for sha in dict.fromkeys(shas) if sha not in urls]
     if lost:
         logger.warning("Chat images missing for user=%s: %s", user_id, ", ".join(sha[:12] for sha in lost))
+    keep = [False] * len(shas)
+    budget = REHYDRATE_CHARS
+    for index in range(len(shas) - 1, -1, -1):
+        size = len(urls.get(shas[index]) or "")
+        if size and size <= budget:
+            keep[index] = True
+            budget -= size
+    over = sum(1 for i, sha in enumerate(shas) if sha in urls and not keep[i])
+    if over:
+        logger.warning("Chat images over %s chars for user=%s: left out %s older reference(s)",
+                       REHYDRATE_CHARS, user_id, over)
+    seen = iter(range(len(shas)))
 
     def fill(part, url):
         if not is_ref(url):
             return None
-        data = urls.get(url[len(PREFIX):])
+        data = urls.get(url[len(PREFIX):]) if keep[next(seen)] else None
         return _with_url(part, data) if data is not None else {"type": "text", "text": MISSING}
 
     return _map(messages, fill)

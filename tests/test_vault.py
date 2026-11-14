@@ -13,7 +13,7 @@ _TMP = tempfile.mkdtemp(prefix="fuse-vault-")
 os.environ.setdefault("DATABASE_PATH", str(Path(_TMP) / "vault.db"))
 os.environ.setdefault("APP_SECRET", "x" * 32)
 
-from app import accounts, db, hosts, vault
+from app import accounts, command_jobs, db, hosts, vault
 from app.crypto import decrypt, decrypt_with_dek
 
 
@@ -29,6 +29,9 @@ class VaultTest(unittest.TestCase):
         self.connection_patch = patch.object(db, "connect", return_value=self.conn)
         self.connection_patch.start()
         self.addCleanup(self.connection_patch.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         vault.lock_all()
         accounts.create_user("1@test.invalid", "password12", admin=False)
 
@@ -166,8 +169,9 @@ class SshSsrfTest(unittest.TestCase):
                 with self.assertRaises(ssh_pool.SshError):
                     ssh_pool.resolve_public("10.0.0.5", 22)
         with mock.patch.object(ssh_pool.settings, "allow_private_hosts", False):
-            with self.assertRaises(ssh_pool.SshError):
-                ssh_pool.resolve_public("10.0.0.5", 22)
+            for address in ("10.0.0.5", "100.64.1.2", "fd00::1"):  # CGNAT is not "private" to ipaddress
+                with self.subTest(address=address), self.assertRaises(ssh_pool.SshError):
+                    ssh_pool.resolve_public(address, 22)
 
 
 class VaultMariaDBRaceTest(unittest.TestCase):

@@ -151,6 +151,7 @@ def _validate_messages(messages, *, retained=False) -> None:
         )
     roles = {"system", "developer", "user", "assistant", "tool"}
     total = 0
+    checked: set[str] = set()
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
             raise HTTPException(400, f"messages[{index}] must be an object")
@@ -191,7 +192,10 @@ def _validate_messages(messages, *, retained=False) -> None:
                     url = image.get("url") if isinstance(image, dict) else image
                     if not isinstance(url, str) or not url:
                         raise HTTPException(400, "Image parts must include image_url")
-                    if url.startswith("data:"):
+                    if url in checked:
+                        pass  # one decode per distinct image, however often it repeats
+                    elif url.startswith("data:"):
+                        checked.add(url)
                         header, sep, data = url.partition(",")
                         if not sep or not header.endswith(";base64") or not data:
                             raise HTTPException(400, "Images must use a base64 data URI")

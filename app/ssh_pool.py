@@ -54,7 +54,8 @@ def _ip_forbidden(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         return True
     if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
         return True
-    if not settings.allow_private_hosts and (ip.is_private or ip.is_reserved):
+    # is_global, not is_private: CGNAT 100.64/10 (Tailscale) is neither.
+    if not settings.allow_private_hosts and (not ip.is_global or ip.is_reserved):
         return True
     return False
 

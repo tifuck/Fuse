@@ -101,6 +101,20 @@ class AgentHubTest(unittest.TestCase):
         agent_hub._conns.clear()
         agent_hub._held.clear()
 
+    def test_hello_with_overlong_integer_closes_cleanly(self):
+        # json.loads raises a plain ValueError past 4300 digits: a bad frame,
+        # not an unhandled exception for anyone who can open the socket.
+        ws = HelloWS(self.hid, {})
+        ws.frames = ['{"t":"hello","n":' + "9" * 5000 + "}"]
+        closed = []
+
+        async def close(code=None):
+            closed.append(code)
+
+        ws.close = close
+        asyncio.run(agent_hub.handle_socket(ws, hello_timeout=1))
+        self.assertEqual(closed, [4400])
+
     def test_offline_call(self):
         started = time.monotonic()
         with self.assertRaises(agent_hub.AgentError):

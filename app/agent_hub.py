@@ -385,7 +385,7 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
         return
     try:
         msg = json.loads(raw)
-    except (json.JSONDecodeError, RecursionError):
+    except (ValueError, RecursionError):  # ValueError: JSONDecodeError and over-long integers
         await ws.close(code=4400)
         return
     if not isinstance(msg, dict) or msg.get("t") != "hello":
@@ -454,7 +454,7 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                 continue  # a binary frame: malformed, skipped like bad JSON
             try:
                 data = json.loads(text)
-            except (json.JSONDecodeError, RecursionError):
+            except (ValueError, RecursionError):
                 continue
             if not isinstance(data, dict):
                 continue

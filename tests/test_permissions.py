@@ -719,6 +719,20 @@ class ReviewTest(PermSchemaTest):
                 self.assertEqual(events[0]["grant_value"], "")
                 self.assertEqual(permissions.grants_for(1, 1), [])
 
+    def test_shell_naming_a_credential_directory_inside_the_root_asks(self):
+        # A home-root chat has ~/.ssh in scope; naming the directory itself
+        # (not a file in it) still reads every key, so it is never silent.
+        async def run(command):
+            return await permissions.review(
+                tool="run_terminal_command", args={"command": command}, user_id=1, host_id=7, host_alias="prod",
+                root="~", windows=False, gate=_gate(unattended=True),
+            )
+
+        for command in ("zip -r /tmp/k.zip .ssh", "tar czf /tmp/k.tgz ~/.aws/", "cp -r .gnupg /tmp/g"):
+            with self.subTest(command=command):
+                self.assertFalse(asyncio.run(run(command)).allowed)
+        self.assertTrue(asyncio.run(run("ls notes")).allowed)
+
     def test_shell_cwd_and_paths_ask(self):
         # A simple read of an out-of-root path asks, and allowing it for the
         # session grants that directory.

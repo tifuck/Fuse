@@ -398,7 +398,7 @@ def _token_paths(token: str, windows: bool) -> list[str]:
     program (su -c '...', awk '...', ssh host '...'), so each of its words is
     judged on its own."""
     if windows:
-        return [token] if _looks_like_path(token, True) or is_secret_path(token) else []
+        return [token] if _looks_like_path(token, True) or is_secret_path(token) or is_secret_dir(token) else []
     if re.search(r"\s", token):
         out: list[str] = []
         for word in token.split():
@@ -415,7 +415,7 @@ def _token_paths(token: str, windows: bool) -> list[str]:
     if "://" in low:
         return []
     found = _EMBEDDED_PATH.findall(token)
-    if (_looks_like_path(token, False) or is_secret_path(token)) and (
+    if (_looks_like_path(token, False) or is_secret_path(token) or is_secret_dir(token)) and (
             not found or token.startswith(("/", "./", "../", "~"))):
         found.insert(0, token)
     return found
@@ -1419,9 +1419,10 @@ async def review(*, tool: str, args: dict, user_id: int,
                     secret = True
                     secret_target = secret_target or resolved_cand
                     reasons.append("secret-named file")
-                elif not ok and is_secret_dir(resolved_cand):
+                elif is_secret_dir(resolved_cand):
                     # `grep -r . ~/.ssh` reads every key in it: never a
-                    # reusable directory grant.
+                    # reusable directory grant, and never silent, even where
+                    # a home-root chat has the directory in scope.
                     secret = True
                     secret_target = secret_target or resolved_cand
                     reasons.append("credential directory")
@@ -1457,8 +1458,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                     continue
                 else:
                     real_ok = _in_roots(real, real_roots, windows)
-                    if (is_secret_path(real) and (secret_dir_in_path(real) or not real_ok)) or (
-                            not real_ok and is_secret_dir(real)):
+                    if (is_secret_path(real) and (secret_dir_in_path(real) or not real_ok)) or is_secret_dir(real):
                         secret = True
                         secret_target = secret_target or real
                         reasons.append("secret-named file")

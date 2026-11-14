@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -35,9 +36,10 @@ async def login_get(request: Request):
 @router.post("/login")
 async def login_post(request: Request, email: str = Form(), password: str = Form(), next: str = Form("")):
     target = safe_next(next)
-    if _auth_limited(request):
+    if _auth_limited(request, email):
         return render(request, "login.html", error="Too many attempts. Try again in a minute.", next=target, status_code=429)
-    user = accounts.login(email, password)
+    # scrypt is ~30 ms of CPU: off the event loop, or every guess stalls the site.
+    user = await asyncio.to_thread(accounts.login, email, password)
     if not user:
         return render(request, "login.html", error="Email or password is wrong.", next=target, status_code=401)
     request.session["uid"] = user["id"]
@@ -46,7 +48,7 @@ async def login_post(request: Request, email: str = Form(), password: str = Form
     ensure_csrf(request)
     resp = RedirectResponse(target, status_code=303)
     try:
-        vault.unlock(user["id"], password)
+        await asyncio.to_thread(vault.unlock, user["id"], password)
         _set_vault_cookie(resp, user["id"])
     except Exception:
         logger.exception("vault unlock after login failed")
@@ -69,7 +71,7 @@ async def register_post(request: Request, email: str = Form(), password: str = F
         return render(request, "register.html", error="Too many attempts. Try again in a minute.", status_code=429,
                       invite=invite[:128])
     try:
-        user = accounts.register(email, password, invite[:128])
+        user = await asyncio.to_thread(accounts.register, email, password, invite[:128])
     except ValueError as exc:
         mapped = {
             "email": ("Enter a valid email address.", 400),
@@ -87,7 +89,7 @@ async def register_post(request: Request, email: str = Form(), password: str = F
     ensure_csrf(request)
     resp = RedirectResponse("/chat", status_code=303)
     try:
-        vault.unlock(user["id"], password)
+        await asyncio.to_thread(vault.unlock, user["id"], password)
         _set_vault_cookie(resp, user["id"])
     except Exception:
         logger.exception("vault unlock after register failed")
@@ -123,7 +125,7 @@ async def account_password(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
-    if _auth_limited(request):
+    if _auth_limited(request, f"uid:{user['id']}"):
         raise HTTPException(429, "Too many attempts. Try again in a minute.")
     raw = await _json_object(request)
     old = raw.get("old_password")
@@ -131,7 +133,7 @@ async def account_password(request: Request):
     if not isinstance(old, str) or not isinstance(new, str):
         raise HTTPException(400, "invalid password")
     try:
-        accounts.change_password(user["id"], old, new)
+        await asyncio.to_thread(accounts.change_password, user["id"], old, new)
     except ValueError as exc:
         code = str(exc)
         if code == "auth":
@@ -163,14 +165,14 @@ async def account_vault_unlock(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
-    if _auth_limited(request):
+    if _auth_limited(request, f"uid:{user['id']}"):
         raise HTTPException(429, "Too many attempts. Try again in a minute.")
     raw = await _json_object(request)
     password = raw.get("password")
     if not isinstance(password, str) or not password:
         raise HTTPException(400, "password required")
     try:
-        accounts.unlock_vault(user["id"], password)
+        await asyncio.to_thread(accounts.unlock_vault, user["id"], password)
     except ValueError as exc:
         if str(exc) == "vault":
             raise HTTPException(500, "Your account vault could not be decrypted.") from None

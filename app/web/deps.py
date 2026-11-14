@@ -157,8 +157,13 @@ def render(request: Request, name: str, user=None, status_code: int = 200, **ext
     return resp
 
 
-def _auth_limited(request: Request) -> bool:
-    return not limiter.allow(f"auth:{client_ip(request)}", settings.auth_rate_per_minute, 60)
+def _auth_limited(request: Request, account: str = "") -> bool:
+    """Per IP, and per account when one is named: guesses spread over many
+    addresses (or IPv6 /64 rotation) still hit the account's own budget."""
+    if not limiter.allow(f"auth:{client_ip(request)}", settings.auth_rate_per_minute, 60):
+        return True
+    account = account.strip().lower()
+    return bool(account) and not limiter.allow(f"auth-account:{account}", settings.auth_rate_per_minute * 3, 900)
 
 
 def _public_base(request: Request) -> str:

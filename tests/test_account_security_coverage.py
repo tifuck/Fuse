@@ -258,6 +258,28 @@ def test_sign_in_returns_to_the_deep_link_and_only_on_this_site(client):
         assert posted.headers["location"] == landed
 
 
+def test_login_guesses_from_many_addresses_hit_the_account_budget(client, monkeypatch):
+    from app.web import deps
+
+    limiter._hits.clear()
+    page = client.get("/login").text
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+    addresses = iter(f"203.0.113.{i}" for i in range(1, 255))
+    monkeypatch.setattr(deps, "client_ip", lambda request: next(addresses))
+    budget = settings.auth_rate_per_minute * 3
+
+    def attempt(password, email="owner@account.invalid"):
+        return client.post("/login", data={"email": email, "password": password, "csrf_token": token},
+                           follow_redirects=False).status_code
+
+    for _ in range(budget):
+        assert attempt("wrong-password") == 401
+    # A fresh address per guess: only the per-account budget can stop it,
+    # and it holds even for the right password and any spelling of the email.
+    assert attempt(_PASSWORD) == 429
+    assert attempt(_PASSWORD, " Owner@Account.invalid ") == 429
+
+
 def test_password_and_vault_unlock_share_the_login_rate_limit(client):
     _login(client)  # the login itself consumes one auth-window hit
     for _ in range(settings.auth_rate_per_minute - 1):
