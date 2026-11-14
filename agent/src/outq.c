@@ -132,7 +132,8 @@ void send_res_tmo_len(struct tls *t, const char *id, int ok, int exit_code,
     cJSON_AddNumberToObject(o, "exit", exit_code);
     cJSON_AddItemToObject(o, "out", json_string_bytes(out ? out : "", out ? out_len : 0));
     cJSON_AddItemToObject(o, "err", json_string_bytes(err ? err : "", err ? err_len : 0));
-    if (error && error[0]) cJSON_AddStringToObject(o, "error", error);
+    /* Often a raw output line (a failed exec's first line): sanitized too. */
+    if (error && error[0]) cJSON_AddItemToObject(o, "error", json_string_bytes(error, strlen(error)));
     if (timed_out) cJSON_AddBoolToObject(o, "timeout", 1);
     cJSON_AddBoolToObject(o, "termination_confirmed", exit_code >= 0);
     /* Reported from the operation that produced the output. Matching the

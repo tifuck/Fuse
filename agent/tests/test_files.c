@@ -13,6 +13,20 @@
 #include <sys/stat.h>
 #include "../src/config.h"
 
+/* Independent of the agent's own UTF-8 helpers: the check the server's
+ * WebSocket text-frame decoder applies. */
+static int valid_utf8(const unsigned char *s, size_t n) {
+    for (size_t i = 0; i < n;) {
+        unsigned char c = s[i];
+        size_t len = c < 0x80 ? 1 : c >= 0xC2 && c <= 0xDF ? 2 : c >= 0xE0 && c <= 0xEF ? 3 : c >= 0xF0 && c <= 0xF4 ? 4 : 0;
+        if (!len || len > n - i) return 0;
+        for (size_t k = 1; k < len; k++)
+            if ((s[i + k] & 0xC0) != 0x80) return 0;
+        i += len;
+    }
+    return 1;
+}
+
 int main(void) {
     char dir[] = "/tmp/opencode/fuse-files-XXXXXX";
     assert(mkdtemp(dir));
@@ -228,6 +242,35 @@ int main(void) {
         assert(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(res, "ok")));
         assert(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(res, "truncated")));
         cJSON_Delete(res);
+    }
+    /* A failed exec's error line is raw command output: a non-UTF-8 byte, or
+     * a multibyte character cut by the 239-byte clip, must not make the res
+     * frame invalid UTF-8 (the server closes the socket with 1007). */
+    {
+        char longcmd[512];
+        char *w = stpcpy(longcmd, "printf '");
+        memset(w, 'a', 237);
+        strcpy(w + 237, "\\344\\270\\255\\n' >&2; exit 1");
+        const char *cmds[] = {"printf \"ls: '\\351t\\351'\\n\" >&2; exit 2", longcmd};
+        for (int i = 0; i < 2; i++) {
+            cJSON *ex = cJSON_CreateObject();
+            cJSON_AddStringToObject(ex, "id", "exjob");
+            cJSON_AddStringToObject(ex, "op", "exec");
+            cJSON_AddStringToObject(ex, "cwd", dir);
+            cJSON_AddStringToObject(ex, "cmd", cmds[i]);
+            int before = g_out_n;
+            handle_job(NULL, ex);
+            cJSON_Delete(ex);
+            assert(g_out_n == before + 1);
+            int last = (g_out_tail + OUT_QMAX - 1) % OUT_QMAX;
+            assert(valid_utf8(g_outq[last].data, g_outq[last].n));
+            cJSON *res = cJSON_ParseWithLength((const char *)g_outq[last].data, g_outq[last].n);
+            const char *error = json_cstr(res, "error", NULL);
+            assert(error);
+            if (i == 0) assert(!strcmp(error, "ls: '\xef\xbf\xbdt\xef\xbf\xbd'"));
+            else assert(strspn(error, "a") == 237);
+            cJSON_Delete(res);
+        }
     }
     /* A lone control frame must be handed back to the session loop. Reading
      * on for a next frame blocks for the I/O timeout and drops the session. */
