@@ -7,7 +7,10 @@
   and a session with no stamp (minted before the stamp existed) passes;
 - both endpoints share the login limiter and answer 429 once it is
   exhausted — and only then: the same request succeeds after the window is
-  cleared.
+  cleared;
+- logout revokes the session server-side (a copied cookie and its vault
+  keep-cookie stop working), sign-ins have an absolute lifetime, and logout
+  leaves the user's connectors alone.
 """
 import base64
 import json
@@ -70,6 +73,17 @@ def _login(client, email="owner@account.invalid"):
 
 def _session_cookie(http):
     return [c.value for c in http.cookies.jar if c.name == "session"][-1]
+
+
+def _cookie(http, name):
+    return [c.value for c in http.cookies.jar if c.name == name][-1]
+
+
+def _resign(cookie, **changes):
+    signer = itsdangerous.TimestampSigner(settings.app_secret)
+    session = json.loads(base64.b64decode(signer.unsign(cookie)))
+    session.update(changes)
+    return signer.sign(base64.b64encode(json.dumps(session).encode())).decode()
 
 
 def _uid():
@@ -227,6 +241,94 @@ def test_active_use_renews_the_session_cookie(client):
     renewed = client.get("/chat/threads")
     assert renewed.status_code == 200
     assert "Max-Age=" in renewed.headers["set-cookie"]
+
+
+def test_logout_revokes_a_copied_session_and_vault_keep_cookie(app, client):
+    from app import chat_events, vault
+
+    _login(client)
+    stolen_session = _session_cookie(client)
+    stolen_keep = _cookie(client, vault.KEEP_COOKIE)
+    assert client.post("/logout", follow_redirects=False).status_code == 303
+    assert not vault.unlocked(_uid())
+
+    with TestClient(app, base_url="https://testserver") as thief:
+        thief.cookies.set("session", stolen_session)
+        thief.cookies.set(vault.KEEP_COOKIE, stolen_keep)
+        refused = thief.get("/chat", follow_redirects=False)
+        assert refused.status_code == 303
+        assert refused.headers["location"] == "/login"
+        # The keep-cookie did not reload the DEK logout wiped.
+        assert not vault.unlocked(_uid())
+        app.include_router(chat_events.router)
+        with pytest.raises(Exception) as closed:
+            with thief.websocket_connect(
+                "wss://testserver/chat/events",
+                headers={"origin": "https://testserver", "cookie": f"session={stolen_session}"},
+            ) as ws:
+                ws.receive_json()
+        assert getattr(closed.value, "code", None) == 4401
+
+    # Signing in again works and is a new, unrevoked session.
+    _login(client)
+    assert client.get("/chat", follow_redirects=False).status_code == 200
+
+
+def test_vault_keep_cookie_only_restores_its_own_session(app, client):
+    from app import vault
+
+    _login(client)
+    keep = _cookie(client, vault.KEEP_COOKIE)
+    with TestClient(app, base_url="https://testserver") as other:
+        _login(other)
+        vault.lock(_uid())
+        other.cookies.delete(vault.KEEP_COOKIE)
+        other.cookies.set(vault.KEEP_COOKIE, keep)
+        assert other.get("/chat", follow_redirects=False).status_code == 200
+        assert not vault.unlocked(_uid())
+    # Its own session still restores it.
+    assert client.get("/chat", follow_redirects=False).status_code == 200
+    assert vault.unlocked(_uid())
+
+
+def test_sign_in_has_an_absolute_lifetime(client):
+    import time
+
+    _login(client)
+    cookie = _session_cookie(client)
+    now = int(time.time())
+    for iat, status in ((now - settings.session_max_age_days * 86400 + 600, 200),
+                        (now - settings.session_max_age_days * 86400 - 1, 303),
+                        (None, 303)):
+        client.cookies.clear()
+        # A recent renewal (seen) does not extend the sign-in itself.
+        client.cookies.set("session", _resign(cookie, iat=iat, seen=now))
+        assert client.get("/chat", follow_redirects=False).status_code == status
+
+
+def test_a_session_minted_without_an_id_signs_in_again(client):
+    _login(client)
+    cookie = _session_cookie(client)
+    client.cookies.clear()
+    client.cookies.set("session", _resign(cookie, sid=None))
+    refused = client.get("/chat", follow_redirects=False)
+    assert refused.status_code == 303
+    assert refused.headers["location"] == "/login"
+
+
+def test_logout_keeps_connectors_but_drops_ssh_with_the_vault(client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app import agent_hub, ssh_pool
+
+    hub = AsyncMock()
+    ssh = AsyncMock()
+    monkeypatch.setattr(agent_hub, "close_user", hub)
+    monkeypatch.setattr(ssh_pool, "close_user", ssh)
+    _login(client)
+    assert client.post("/logout", follow_redirects=False).status_code == 303
+    hub.assert_not_called()
+    ssh.assert_awaited_once_with(_uid())
 
 
 def test_a_second_sign_in_submit_goes_to_the_app(client):

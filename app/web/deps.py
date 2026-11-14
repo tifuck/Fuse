@@ -68,8 +68,7 @@ def current_user(request: Request):
     uid = request.session.get("uid")
     if not uid:
         return None
-    stamped = request.session.get("ph")
-    user = accounts.session_user(uid, stamped)
+    user = accounts.session_user(request.session)
     if not user:
         request.session.clear()
         return None
@@ -90,8 +89,8 @@ def _vault_cookie_args():
     }
 
 
-def _set_vault_cookie(response, user_id: int):
-    token = vault.issue_keep(user_id)
+def _set_vault_cookie(response, request: Request, user_id: int):
+    token = vault.issue_keep(user_id, request.session.get("sid") or "")
     if token:
         response.set_cookie(value=token, **_vault_cookie_args())
     return response
@@ -107,7 +106,7 @@ def restore_vault_keep(request: Request, user_id: int) -> None:
         return
     token = request.cookies.get(vault.KEEP_COOKIE)
     if token:
-        vault.restore_keep(user_id, token)
+        vault.restore_keep(user_id, token, request.session.get("sid") or "")
 
 
 def safe_next(raw) -> str:

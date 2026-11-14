@@ -241,7 +241,8 @@ your domain, builds the image (including the connector binaries), and starts
 Fuse, a bundled MariaDB, and Caddy if you chose a domain
 (`docker-compose.caddy.yml`, enabled through `COMPOSE_FILE` in `.env`). Open
 `https://your-domain` (or `https://localhost:8088`) and register the admin
-account.
+account with the one-time setup token (`docker compose exec fuse cat data/setup-token`,
+or the `register?setup=` link in `docker compose logs fuse`).
 
 - Logs: `docker compose logs -f fuse`
 - Update: `git pull && docker compose up -d --build`
@@ -308,8 +309,12 @@ then installed as a systemd user unit.
 
 ### After installing
 
-- **The first account to register becomes the admin.** After that,
-  registration is invite-only unless `ALLOW_REGISTER=true`.
+- **The first account to register becomes the admin.** Until it exists,
+  `/register` asks for a one-time setup token: Fuse writes it to
+  `data/setup-token` (mode 0600) at startup and logs a `register?setup=` link,
+  and removes it once the admin account is created. After that,
+  registration is invite-only unless `ALLOW_REGISTER=true`; invite links
+  expire after `INVITE_TTL_DAYS` (14).
 - Add a model source under **Admin › Sources** (for example a llama.cpp or
   OpenAI-compatible URL and key), or link a subscription under **Sources**.
 - Connect machines from **Machines**: the install line there uses your domain

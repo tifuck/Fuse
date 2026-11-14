@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     max_body_bytes: int = 2_097_152
     chat_body_bytes: int = 8_388_608
     auth_rate_per_minute: int = 10
+    # A sign-in lasts at most this long however actively it is used.
+    session_max_age_days: int = 30
+    # Admin invite links stop working this long after they were made.
+    invite_ttl_days: int = 14
     api_rate_per_minute: int = 90
     # Concurrent /v1/chat/completions per user (open streams count until they end).
     api_max_in_flight: int = 16

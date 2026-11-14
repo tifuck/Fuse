@@ -77,8 +77,7 @@ async def events(ws: WebSocket):
     if _origin(ws.headers.get("origin", "")) != _origin(expected):
         await ws.close(code=4403)
         return
-    stamp = ws.session.get("ph")
-    if not await asyncio.to_thread(accounts.session_user, uid, stamp):
+    if not await asyncio.to_thread(accounts.session_user, ws.session):
         await ws.close(code=4401)
         return
     if _closing or len(_subscribers.get(uid, {})) >= MAX_CONNECTIONS_PER_USER:
@@ -119,7 +118,7 @@ async def events(ws: WebSocket):
         while not _closing and not reader.done():
             now = time.monotonic()
             if now - last_ping >= 15:
-                owner = await asyncio.to_thread(accounts.session_user, uid, stamp)
+                owner = await asyncio.to_thread(accounts.session_user, ws.session)
                 if now - started > 1800 or now - last_pong > 60 or not owner:
                     await ws.close(code=4401 if not owner else 1012)
                     return

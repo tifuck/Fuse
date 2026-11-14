@@ -42,14 +42,13 @@ async def login_post(request: Request, email: str = Form(), password: str = Form
     user = await asyncio.to_thread(accounts.login, email, password)
     if not user:
         return render(request, "login.html", error="Email or password is wrong.", next=target, status_code=401)
-    request.session["uid"] = user["id"]
-    request.session["ph"] = accounts.password_fingerprint(user)
+    accounts.start_session(request.session, user)
     request.session.pop("csrf", None)
     ensure_csrf(request)
     resp = RedirectResponse(target, status_code=303)
     try:
         await asyncio.to_thread(vault.unlock, user["id"], password)
-        _set_vault_cookie(resp, user["id"])
+        _set_vault_cookie(resp, request, user["id"])
     except Exception:
         logger.exception("vault unlock after login failed")
     return resp
@@ -58,39 +57,46 @@ async def login_post(request: Request, email: str = Form(), password: str = Form
 _REGISTER_CLOSED = "User registration is disabled."
 
 
+def _register_page(request: Request, *, invite: str, setup: str, error=None, status_code: int = 200):
+    return render(request, "register.html", error=error, status_code=status_code, invite=invite[:128],
+                  setup=setup[:128], setup_needed=accounts.needs_setup())
+
+
 @router.get("/register", response_class=HTMLResponse)
 async def register_get(request: Request):
     if current_user(request):
         return RedirectResponse("/chat", status_code=303)
-    return render(request, "register.html", error=None, invite=request.query_params.get("invite", "")[:128])
+    return _register_page(request, invite=request.query_params.get("invite", ""),
+                          setup=request.query_params.get("setup", ""))
 
 
 @router.post("/register")
-async def register_post(request: Request, email: str = Form(), password: str = Form(), invite: str = Form("")):
+async def register_post(request: Request, email: str = Form(), password: str = Form(), invite: str = Form(""),
+                        setup: str = Form("")):
     if _auth_limited(request):
-        return render(request, "register.html", error="Too many attempts. Try again in a minute.", status_code=429,
-                      invite=invite[:128])
+        return _register_page(request, invite=invite, setup=setup,
+                              error="Too many attempts. Try again in a minute.", status_code=429)
     try:
-        user = await asyncio.to_thread(accounts.register, email, password, invite[:128])
+        user = await asyncio.to_thread(accounts.register, email, password, invite[:128], setup[:128])
     except ValueError as exc:
         mapped = {
             "email": ("Enter a valid email address.", 400),
             "password": ("Password must be between 8 and 256 characters.", 400),
             "exists": ("An account with that email already exists.", 409),
             "closed": (_REGISTER_CLOSED, 403),
+            "setup": ("The setup token is wrong. It is in data/setup-token on the server and in its log.", 403),
         }.get(str(exc))
         if mapped is None:
             raise
         error, status = mapped
-        return render(request, "register.html", error=error, status_code=status, invite=invite[:128])
-    request.session["uid"] = user["id"]
-    request.session["ph"] = accounts.password_fingerprint(user)
+        return _register_page(request, invite=invite, setup=setup, error=error, status_code=status)
+    accounts.start_session(request.session, user)
     request.session.pop("csrf", None)
     ensure_csrf(request)
     resp = RedirectResponse("/chat", status_code=303)
     try:
         await asyncio.to_thread(vault.unlock, user["id"], password)
-        _set_vault_cookie(resp, user["id"])
+        _set_vault_cookie(resp, request, user["id"])
     except Exception:
         logger.exception("vault unlock after register failed")
     _stash_key_reveal(request, user["id"], user["new_key"])
@@ -100,6 +106,7 @@ async def register_post(request: Request, email: str = Form(), password: str = F
 @router.post("/logout")
 async def logout(request: Request):
     uid = request.session.get("uid")
+    await asyncio.to_thread(accounts.revoke_session, request.session)
     await chat_events.close_session(uid, request.session.get("csrf"))
     try:
         from .. import host_events
@@ -108,10 +115,12 @@ async def logout(request: Request):
         logger.exception("host events close on logout failed")
     if uid:
         vault.lock(uid)
+        # Connector sockets stay up: device tokens are not session credentials
+        # (they reconnect at once), and dropping them cancelled jobs other
+        # sessions' runs had in flight.
         try:
-            from .. import ssh_pool, agent_hub
+            from .. import ssh_pool
             await ssh_pool.close_user(uid)
-            await agent_hub.close_user(uid)
         except Exception:
             logger.exception("ssh pool drain on logout failed")
     request.session.clear()
@@ -156,7 +165,7 @@ async def account_password(request: Request):
 
     resp = JSONResponse({"ok": True}, background=BackgroundTask(_reauth_sockets))
     request.session["ph"] = accounts.password_fingerprint(accounts.get_user(user["id"]))
-    _set_vault_cookie(resp, user["id"])
+    _set_vault_cookie(resp, request, user["id"])
     return resp
 
 
@@ -178,6 +187,6 @@ async def account_vault_unlock(request: Request):
             raise HTTPException(500, "Your account vault could not be decrypted.") from None
         raise HTTPException(401, "Password is wrong.") from None
     resp = JSONResponse({"ok": True, "vault": "unlocked"})
-    _set_vault_cookie(resp, user["id"])
+    _set_vault_cookie(resp, request, user["id"])
     return resp
 

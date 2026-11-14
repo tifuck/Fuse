@@ -192,8 +192,11 @@ def _wrapped_fp(row) -> str:
     return hashlib.sha256(str(row["wrapped_dek"] or "").encode()).hexdigest()[:32] if row else ""
 
 
-def issue_keep(user_id: int) -> str | None:
-    """Encrypt the live DEK for a short HttpOnly cookie. None if the vault is locked."""
+def issue_keep(user_id: int, sid: str = "") -> str | None:
+    """Encrypt the live DEK for a short HttpOnly cookie. None if the vault is locked.
+
+    Bound to the sign-in's session id, so a copied keep-cookie cannot reload
+    the DEK once logout has revoked that session."""
     from .crypto import encrypt
 
     try:
@@ -206,6 +209,7 @@ def issue_keep(user_id: int) -> str | None:
             "v": 2,
             "uid": int(user_id),
             "fp": _wrapped_fp(row),
+            "sid": str(sid or ""),
             "dek": base64.b64encode(dek).decode("ascii"),
             "exp": int(time.time()) + KEEP_SECONDS,
         },
@@ -214,7 +218,7 @@ def issue_keep(user_id: int) -> str | None:
     return encrypt(payload)
 
 
-def restore_keep(user_id: int, token: str) -> bool:
+def restore_keep(user_id: int, token: str, sid: str = "") -> bool:
     """Load a keep-cookie DEK into RAM. Does not extend idle by itself until get_dek."""
     from .crypto import DecryptionError, decrypt
 
@@ -237,7 +241,7 @@ def restore_keep(user_id: int, token: str) -> bool:
         exp = int(data.get("exp") or 0)
     except (TypeError, ValueError):
         return False
-    if uid != int(user_id) or exp < time.time():
+    if uid != int(user_id) or exp < time.time() or str(data.get("sid") or "") != str(sid or ""):
         return False
     if str(data.get("fp") or "") != _wrapped_fp(_row(user_id)):
         # Account deleted/recreated (or vault replaced): this DEK belongs to

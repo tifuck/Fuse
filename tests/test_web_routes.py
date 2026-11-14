@@ -98,6 +98,7 @@ class AccountSecurityTest(unittest.TestCase):
         limiter._hits.clear()
         db.execute("DELETE FROM api_keys")
         db.execute("DELETE FROM users")
+        db.execute("DELETE FROM registration_whitelist")
         db.execute("DELETE FROM schema_meta WHERE key='first_user_claimed'")
 
     def _client(self):
@@ -174,6 +175,44 @@ class AccountSecurityTest(unittest.TestCase):
         user = accounts.register("invited@test.invalid", "password12", token)
         self.assertEqual(user["email"], "invited@test.invalid")
         self.assertEqual(accounts.list_whitelist(), [])
+
+    def test_expired_invite_is_refused_like_a_wrong_one(self):
+        accounts.create_user("first@test.invalid", "password12", require_invite=True)
+        _email, token = accounts.add_whitelist("late@test.invalid")
+        db.execute("UPDATE registration_whitelist SET created_at='2000-01-01T00:00:00Z' WHERE email=?",
+                   ("late@test.invalid",))
+        with self.assertRaises(ValueError) as ctx:
+            accounts.register("late@test.invalid", "password12", token)
+        self.assertEqual(str(ctx.exception), "closed")
+        self.assertEqual(len(accounts.list_whitelist()), 1)
+
+    def test_first_registration_needs_the_setup_token(self):
+        from unittest.mock import patch
+
+        token_file = Path(tempfile.mkdtemp(prefix="fuse-setup-")) / "data" / "setup-token"
+        patcher = patch.object(accounts, "SETUP_TOKEN_FILE", token_file)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        token = accounts.ensure_setup_token()
+        self.assertTrue(token)
+        self.assertEqual(token_file.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(accounts.ensure_setup_token(), token)
+
+        client = self._client()
+        page = client.get("/register").text
+        self.assertIn('name="setup"', page)
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+        form = {"email": "admin@test.invalid", "password": "password12", "csrf_token": csrf}
+        for wrong in ("", "guess", token + "x"):
+            refused = client.post("/register", data={**form, "setup": wrong}, follow_redirects=False)
+            self.assertEqual(refused.status_code, 403)
+        self.assertTrue(accounts.needs_setup())
+        made = client.post("/register", data={**form, "setup": token}, follow_redirects=False)
+        self.assertEqual(made.status_code, 303, made.text)
+        self.assertEqual(accounts.user_by_email("admin@test.invalid")["is_admin"], 1)
+        self.assertFalse(token_file.exists())
+        self.assertIsNone(accounts.ensure_setup_token())
+        self.assertFalse(token_file.exists())
 
     def test_last_admin_guard_and_delete_locks_vault(self):
         admin = accounts.create_user("root@test.invalid", "password12")

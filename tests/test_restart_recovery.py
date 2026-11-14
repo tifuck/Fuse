@@ -5,6 +5,7 @@ import json
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from itsdangerous import TimestampSigner
 from starlette.middleware.sessions import SessionMiddleware
-from app import chat_events, chat_runs as runs, chat_runtime as runtime, chat_store as store, chats, db
+from app import chat_events, chat_runs as runs, chat_runtime as runtime, chat_store as store, chats, command_jobs, db
 from app.web import router as web_router
 
 USER = {"id": 1}
@@ -40,6 +41,9 @@ class RestartRecoveryTest(unittest.IsolatedAsyncioTestCase):
         patcher = patch.object(db, "connect", return_value=self.conn)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(1,'t@invalid','x',?)", (db.now(),))
         store.init_schema()
         runs._stopping = False
@@ -315,6 +319,9 @@ class SteerEndpointTest(unittest.TestCase):
         p = patch.object(db, "connect", return_value=self.conn)
         p.start()
         self.addCleanup(p.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(1,'t@invalid','x',?)", (db.now(),))
         store.init_schema()
         runs._stopping = False
@@ -337,7 +344,7 @@ class SteerEndpointTest(unittest.TestCase):
         from app import accounts
 
         ph = accounts.password_fingerprint(accounts.get_user(1))
-        data = base64.b64encode(json.dumps({"uid": 1, "ph": ph, "csrf": "test-csrf"}).encode())
+        data = base64.b64encode(json.dumps({"uid": 1, "ph": ph, "sid": "test-sid", "iat": int(time.time()), "csrf": "test-csrf"}).encode())
         self.client.cookies.set(
             "session", TimestampSigner(SECRET).sign(data).decode()
         )

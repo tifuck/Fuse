@@ -1,4 +1,6 @@
 import hmac
+import logging
+import re
 import secrets
 import threading
 import time
@@ -222,3 +224,24 @@ def safe_verify_url(url: str) -> str:
     if host == "nano-gpt.com" or host.endswith(".nano-gpt.com"):
         return url
     return ""
+
+
+# One-time secrets that travel in URLs: connector install codes (/i/<code>),
+# invite and setup tokens, OAuth callback codes/state and the Xiaomi login
+# blob (u=). Anyone who can read the journal or a log shipper must not get them.
+_SECRET_PATH = re.compile(r"^/i/[^?]*")
+_SECRET_QUERY = re.compile(r"([?&](?:invite|setup|code|state|token|u)=)[^&]*", re.IGNORECASE)
+
+
+def redact_url(path: str) -> str:
+    return _SECRET_QUERY.sub(r"\1[redacted]", _SECRET_PATH.sub("/i/[redacted]", path))
+
+
+class AccessLogRedactor(logging.Filter):
+    """For uvicorn.access, whose args are (client, method, path, http, status)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = (*args[:2], redact_url(args[2]), *args[3:])
+        return True

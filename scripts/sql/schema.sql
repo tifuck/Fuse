@@ -634,6 +634,15 @@ CREATE TABLE `schema_meta` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `session_revocations` (
+  `sid` varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `expires_at` bigint(20) NOT NULL,
+  PRIMARY KEY (`sid`),
+  KEY `session_revocations_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `skill_proposals` (
   `id` varchar(191) NOT NULL,
   `user_id` bigint(20) NOT NULL,
@@ -801,6 +810,7 @@ CREATE TABLE `user_hosts` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_user_hosts_1` (`user_id`,`alias`) USING HASH,
   KEY `user_hosts_user` (`user_id`),
+  KEY `user_hosts_device_token` (`device_token_hash`(64)),
   CONSTRAINT `fk_user_hosts_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;

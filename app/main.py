@@ -32,9 +32,10 @@ from .sources.refuseless import refresh_due as refuseless_refresh_due
 from .sources.openrouter import refresh_due as openrouter_refresh_due
 from .pricing import auto_price_due
 from .sources.usage_walk import WALK_PAUSE, walk_next
-from .security import MaxBodyMiddleware, SecurityHeadersMiddleware
+from .security import AccessLogRedactor, MaxBodyMiddleware, SecurityHeadersMiddleware
 
 logger = logging.getLogger(__name__)
+logging.getLogger("uvicorn.access").addFilter(AccessLogRedactor())
 _REFRESH_INTERVAL = 60
 _REFRESH_MAX_BACKOFF = 300
 
@@ -211,6 +212,14 @@ async def lifespan(app: FastAPI):
                 raise RuntimeError("Dashboard runs require one Fuse worker per database.") from None
         db.connect()
         accounts.validate_credential_encryption()
+        setup_token = accounts.ensure_setup_token()
+        if setup_token:
+            base = (settings.public_base_url or "").rstrip("/") or "https://<this server>"
+            logger.warning(
+                "No account exists yet. Create the admin account at %s/register?setup=%s "
+                "(the token is also in %s and stops working once the first account exists)",
+                base, setup_token, accounts.SETUP_TOKEN_FILE,
+            )
         from .sources.token_store import claim_refresh_ownership
 
         claim_refresh_ownership()

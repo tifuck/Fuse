@@ -39,6 +39,11 @@ def _init(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             token_hash TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS session_revocations (
+            sid VARCHAR(64) PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS session_revocations_expires ON session_revocations(expires_at);
         CREATE TABLE IF NOT EXISTS api_keys (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
@@ -542,6 +547,7 @@ def _ensure_host_tables(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "user_hosts", "agent_os", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "user_hosts", "agent_arch", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "user_hosts", "last_seen_at", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS user_hosts_device_token ON user_hosts(device_token_hash)")
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS host_pairings (

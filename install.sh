@@ -288,7 +288,8 @@ EOF
   printf '  Local:   https://localhost:%s  (self-signed cert: expect a browser warning)\n' "${PORT_VALUE:-8088}"
   printf '  Logs:    docker compose logs -f fuse\n'
   printf '  Update:  git pull && docker compose up -d --build\n'
-  printf '\nThe first account registered becomes the admin.\n'
+  printf '\nThe first account registered becomes the admin. Registering it needs the one-time setup\n'
+  printf 'token from the log (docker compose logs fuse | grep setup=) or docker compose exec fuse cat data/setup-token\n'
 }
 
 install_system_service() {
@@ -520,4 +521,5 @@ printf '  Direct:    https://%s:%s  (self-signed cert: expect a browser warning)
 printf '  Config:    %s/config.env (secrets: .env)\n' "$FUSE_HOME"
 printf '  Data:      %s/data\n' "$FUSE_HOME"
 printf '\n'
-printf 'The first account registered becomes the admin.\n'
+printf 'The first account registered becomes the admin. Registering it needs the one-time setup\n'
+printf 'token in %s/data/setup-token (also in the service log; it is removed once used).\n' "$FUSE_HOME"

@@ -4,6 +4,7 @@ import base64
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,7 +17,7 @@ from itsdangerous import TimestampSigner
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.websockets import WebSocketDisconnect
 
-from app import chat_events, chat_runs, chat_runtime, chat_store, chats, db, static_assets, web
+from app import chat_events, chat_runs, chat_runtime, chat_store, chats, command_jobs, db, static_assets, web
 
 
 SECRET = "offline-sync-tests-only"
@@ -34,6 +35,9 @@ class ChatSyncTest(unittest.TestCase):
         p = patch.object(db, "connect", return_value=self.conn)
         p.start()
         self.addCleanup(p.stop)
+        # Thread queries read command_jobs; it is created lazily, per process.
+        with patch.object(command_jobs, "_schema_ready", False):
+            command_jobs.ensure_schema()
         title = patch.object(chat_runtime, "generate_thread_title", new_callable=AsyncMock, return_value="")
         title.start()
         self.addCleanup(title.stop)
@@ -66,7 +70,7 @@ class ChatSyncTest(unittest.TestCase):
 
         user = accounts.get_user(uid)
         ph = accounts.password_fingerprint(user) if user else ""
-        data = base64.b64encode(json.dumps({"uid": uid, "ph": ph, "csrf": "test-csrf"}).encode())
+        data = base64.b64encode(json.dumps({"uid": uid, "ph": ph, "sid": "test-sid", "iat": int(time.time()), "csrf": "test-csrf"}).encode())
         return TimestampSigner(SECRET).sign(data).decode()
 
     def login(self, uid):

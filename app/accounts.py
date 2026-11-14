@@ -1,17 +1,25 @@
 import hashlib
+import hmac
 import json
 import logging
+import os
 import secrets
+import time
+from datetime import datetime, timedelta, timezone
 from .database_errors import IntegrityError
 
 from . import db
-from .config import settings
+from .config import ROOT, settings
 from .crypto import DecryptionError, decrypt, encrypt, hash_password, verify_password
 from .vault import VaultError, create_wrapped_dek, rewrap as vault_rewrap, unlock as vault_unlock
 
 logger = logging.getLogger(__name__)
 
 _DUMMY_HASH: str | None = None
+# While no account exists, /register needs this one-time token (written at
+# boot, removed by the first registration): a fresh public install is
+# reachable before its operator signs up, and the first account is admin.
+SETUP_TOKEN_FILE = ROOT / "data" / "setup-token"
 _CRYPTO_SENTINEL_KEY = "credential_crypto_sentinel_v1"
 _CRYPTO_SENTINEL_VALUE = "fuse-credential-crypto-v1"
 
@@ -57,8 +65,40 @@ def _invite_hash(token: str) -> str:
     return hashlib.sha256(str(token or "").encode()).hexdigest()
 
 
+def needs_setup() -> bool:
+    return db.fetchone("SELECT 1 AS one FROM users LIMIT 1") is None
+
+
+def ensure_setup_token() -> str | None:
+    """The setup token while no account exists (made on first call, 0600);
+    None, and the file removed, once one does."""
+    if not needs_setup():
+        SETUP_TOKEN_FILE.unlink(missing_ok=True)
+        return None
+    try:
+        token = SETUP_TOKEN_FILE.read_text().strip()
+    except FileNotFoundError:
+        token = ""
+    if not token:
+        token = secrets.token_urlsafe(24)
+        SETUP_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(SETUP_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(token + "\n")
+    os.chmod(SETUP_TOKEN_FILE, 0o600)
+    return token
+
+
+def _setup_matches(given: str) -> bool:
+    try:
+        expected = SETUP_TOKEN_FILE.read_text().strip()
+    except OSError:
+        return False
+    return bool(expected) and hmac.compare_digest(expected.encode(), str(given or "").strip().encode())
+
+
 def create_user(email: str, password: str, *, admin: bool | None = None, require_invite: bool = False,
-                invite: str = "") -> dict:
+                invite: str = "", setup: str | None = None) -> dict:
     email = normalize_email(email)
     if len(password) < 8 or len(password) > 256:
         raise ValueError("password")
@@ -73,13 +113,18 @@ def create_user(email: str, password: str, *, admin: bool | None = None, require
                 conn.execute("INSERT INTO schema_meta(key, value) VALUES('first_user_claimed', ?)", (db.now(),))
             except IntegrityError:
                 n = 1
+        if setup is not None and n == 0 and not _setup_matches(setup):
+            raise ValueError("setup")
         if require_invite:
             open_reg = settings.allow_register or n == 0
             # Knowing an invited address is not an invitation: the single-use
             # token from the admin's invite link must match too.
+            expired = (datetime.now(timezone.utc) - timedelta(days=settings.invite_ttl_days)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
             consumed = conn.execute(
-                "DELETE FROM registration_whitelist WHERE email=? AND token_hash<>'' AND token_hash=?",
-                (email, _invite_hash(invite)),
+                "DELETE FROM registration_whitelist WHERE email=? AND token_hash<>'' AND token_hash=? AND created_at>=?",
+                (email, _invite_hash(invite), expired),
             )
             if not open_reg and consumed.rowcount == 0:
                 raise ValueError("closed")
@@ -108,12 +153,15 @@ def create_user(email: str, password: str, *, admin: bool | None = None, require
     return user
 
 
-def register(email: str, password: str, invite: str = "") -> dict:
+def register(email: str, password: str, invite: str = "", setup: str = "") -> dict:
     try:
-        return create_user(email, password, require_invite=True, invite=invite)
+        user = create_user(email, password, require_invite=True, invite=invite, setup=setup)
     except ValueError:
         verify_password((password or "x")[:256], _dummy_hash())
         raise
+    if user["is_admin"]:
+        SETUP_TOKEN_FILE.unlink(missing_ok=True)
+    return user
 
 
 def list_whitelist():
@@ -146,19 +194,64 @@ def get_user(uid: int):
     return db.fetchone("SELECT * FROM users WHERE id=?", (uid,))
 
 
-def session_user(uid, stamp):
+def start_session(session, user) -> None:
+    """Stamp a fresh sign-in: a random id logout can revoke server-side (the
+    cookie itself is client-side, so a copy outlives clearing it) and the
+    sign-in time the absolute lifetime runs from."""
+    session["uid"] = user["id"]
+    session["ph"] = password_fingerprint(user)
+    session["sid"] = secrets.token_urlsafe(18)
+    session["iat"] = int(time.time())
+
+
+def _session_max_age() -> int:
+    return settings.session_max_age_days * 86400
+
+
+def session_user(session):
     """The user a session cookie still authenticates, or None. Sessions are
     bound to the password hash, so a password change logs out every cookie
-    issued before it (HTTP and WebSocket alike). An unstamped session cannot
-    be checked against the current password and must sign in again."""
-    if not uid or not stamp:
+    issued before it (HTTP and WebSocket alike); logout revokes the session's
+    id, and none outlives session_max_age_days from sign-in. A session without
+    a stamp or id (minted before they existed) must sign in again."""
+    uid, stamp, sid = session.get("uid"), session.get("ph"), session.get("sid")
+    if not uid or not stamp or not isinstance(sid, str) or not sid:
+        return None
+    try:
+        issued = int(session.get("iat"))
+    except (TypeError, ValueError):
+        return None
+    now = time.time()
+    if issued > now + 60 or now - issued > _session_max_age():
         return None
     user = get_user(uid)
     if not user:
         return None
     if stamp != password_fingerprint(user):
         return None
+    if db.fetchone("SELECT 1 AS one FROM session_revocations WHERE sid=?", (sid,)):
+        return None
     return user
+
+
+def revoke_session(session) -> None:
+    """Logout: the session id stops authenticating everywhere, including
+    copies of the cookie. The row is kept only until the session would have
+    expired anyway."""
+    sid = session.get("sid")
+    if not isinstance(sid, str) or not sid:
+        return
+    try:
+        issued = int(session.get("iat"))
+    except (TypeError, ValueError):
+        issued = int(time.time())
+    now = int(time.time())
+    with db.tx() as conn:
+        conn.execute("DELETE FROM session_revocations WHERE expires_at<?", (now,))
+        conn.execute(
+            "INSERT OR IGNORE INTO session_revocations(sid, expires_at) VALUES (?, ?)",
+            (sid, max(issued, now) + _session_max_age()),
+        )
 
 
 def user_by_email(email: str):

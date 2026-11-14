@@ -5,6 +5,7 @@
   <p class="eyebrow">Fuse</p>
   <h1>Create an account</h1>
   <p class="lede">You get an API key. First account on this server is admin.</p>
+  {% if setup_needed %}<p class="lede">Setting up: enter the token from <code>data/setup-token</code> on the server (also printed in its log).</p>{% endif %}
 </section>
 <section class="auth-pane">
   <div class="auth-card">
@@ -13,6 +14,7 @@
     <form method="post" action="/register">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="invite" value="{{ invite or '' }}">
+      {% if setup_needed %}<label>Setup token <input type="text" name="setup" required maxlength="128" autocomplete="off" value="{{ setup or '' }}"></label>{% endif %}
       <label>Email <input type="email" name="email" required maxlength="254" autocomplete="username"></label>
       <label>Password <input type="password" name="password" required minlength="8" maxlength="256" autocomplete="new-password"></label>
       <button type="submit" class="btn">Create account</button>
