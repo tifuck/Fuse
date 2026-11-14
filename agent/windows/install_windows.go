@@ -247,6 +247,12 @@ func doInstall(cfg *agentConfig) int {
 		log.Printf("fuse-agent: could not install binary to %s: %v", bin, err)
 		return 1
 	}
+	if elev {
+		if err := secureSystemDir(filepath.Dir(conf)); err != nil {
+			log.Printf("fuse-agent: %v", err)
+			return 1
+		}
+	}
 	cfg.Path = conf
 	cfg.AutoUpdate = true
 	if cfg.Code != "" || cfg.Token == "" {

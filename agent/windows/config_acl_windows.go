@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"unsafe"
 
@@ -22,7 +23,7 @@ func createSecretFile(path string, previous string) (*os.File, error) {
 	if len(sids) == 0 {
 		return nil, windows.ERROR_INVALID_SID
 	}
-	dacl, buf, err := buildAllowAllACL(sids)
+	dacl, buf, err := buildAllowAllACL(sids, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +86,53 @@ func secretSIDs(previous string) []*windows.SID {
 	return sids
 }
 
+// secureSystemDir makes the elevated install's config folder (under
+// C:\ProgramData) belong to Administrators with a protected DACL: SYSTEM,
+// Administrators and the installing user, inherited by what it holds.
+// ProgramData lets any local user create a folder, which they then own, and
+// write into subfolders; a folder squatted before the install could later
+// swap agent.conf for one naming the squatter's server, run as SYSTEM. A
+// folder someone else owns is refused rather than taken over: they may still
+// hold an open handle to it.
+func secureSystemDir(dir string) error {
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	sd, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	owner, _, err := sd.Owner()
+	if err != nil {
+		return err
+	}
+	sids := secretSIDs("")
+	trusted := false
+	for _, sid := range sids {
+		trusted = trusted || owner.Equals(sid)
+	}
+	if !trusted {
+		return fmt.Errorf("%s is owned by %s, not SYSTEM, Administrators or you: delete the folder and install again", dir, owner.String())
+	}
+	admins, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		return err
+	}
+	dacl, buf, err := buildAllowAllACL(sids, windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE)
+	if err != nil {
+		return err
+	}
+	err = windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		admins, nil, dacl, nil)
+	_ = buf // keep the ACL bytes alive across the call
+	return err
+}
+
 // buildAllowAllACL packs one ACCESS_ALLOWED ACE (GENERIC_ALL) per SID into a
 // single ACL block; SetEntriesInAcl is unexported in x/sys so the layout is
 // written directly (ACE sizes are 8+sidLen, always DWORD-aligned).
-func buildAllowAllACL(sids []*windows.SID) (*windows.ACL, []byte, error) {
+func buildAllowAllACL(sids []*windows.SID, aceFlags uint8) (*windows.ACL, []byte, error) {
 	size := 8 // ACL header
 	for _, sid := range sids {
 		size += 8 + sid.Len()
@@ -101,6 +145,7 @@ func buildAllowAllACL(sids []*windows.SID) (*windows.ACL, []byte, error) {
 	for _, sid := range sids {
 		sidLen := sid.Len()
 		buf[off] = windows.ACCESS_ALLOWED_ACE_TYPE
+		buf[off+1] = aceFlags
 		binary.LittleEndian.PutUint16(buf[off+2:], uint16(8+sidLen))
 		binary.LittleEndian.PutUint32(buf[off+4:], windows.GENERIC_ALL)
 		copy(buf[off+8:], unsafe.Slice((*byte)(unsafe.Pointer(sid)), sidLen))
