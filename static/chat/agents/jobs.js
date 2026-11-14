@@ -18,11 +18,17 @@ function jobElapsedMs(job, nowMs) {
 export function createJobs(ctx) {
   const { live, net, sync, traces, transcript, ui } = ctx;
     function jobDetail(job, open) {
-    const details = document.createElement("div");
-    details.className = "chat-jobs-detail chat-step-reveal" + (open ? " is-open" : "");
-    details.innerHTML = `<div class="chat-step-reveal-inner">${ui.toolDetailHtml({ ...job, name: job.name === "monitor" || job.kind === "monitor" ? "monitor" : "run_terminal_command", status: "running" }, false, true)}</div>`;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = ui.jobDetailHtml(job).trim();
+    const details = tpl.content.firstElementChild;
+    details.classList.toggle("is-open", open);
     return details;
   }
+
+  // A job's detail is its row's next sibling in the list (the row is one
+  // fixed-height line, so nothing may open inside it).
+  const jobRow = (id) => S.jobsListEl?.querySelector(`[data-job-row="${CSS.escape(id)}"]`);
+  const jobDetailEl = (id) => S.jobsListEl?.querySelector(`[data-job-detail="${CSS.escape(id)}"]`);
 
     async function onJobsClick(event) {
     const output = event.target.closest("[data-show-job]");
@@ -41,10 +47,10 @@ export function createJobs(ctx) {
         setTimeout(() => { if (row.isConnected) { row.scrollIntoView({ block: "center", behavior: S.reduceMotion.matches ? "auto" : "smooth" }); row.classList.add("is-work-highlight"); setTimeout(() => row.classList.remove("is-work-highlight"), 1800); } }, S.reduceMotion.matches ? 0 : 230);
       } else {
         const job = S.jobsRows.find(job => String(job.command_id || job.id) === id);
-        const container = output.closest(".chat-jobs-row");
-        if (job && container) {
-          let details = container.querySelector(".chat-jobs-detail");
-          if (!details) container.appendChild(details = jobDetail(job, false));
+        const row = jobRow(id);
+        if (job && row) {
+          let details = jobDetailEl(id);
+          if (!details) row.after(details = jobDetail(job, false));
           transcript.setToolReveal(details, !details.classList.contains("is-open"));
         }
       }
@@ -78,13 +84,12 @@ export function createJobs(ctx) {
       jobsRendered = sig;
       // A row change (a monitor's event count) must not close an open detail;
       // it reopens built from the current job.
-      const open = new Set([...S.jobsListEl.querySelectorAll(".chat-jobs-detail.is-open")]
-        .map((el) => el.closest(".chat-jobs-row")?.querySelector("[data-show-job]")?.dataset.showJob));
+      const open = new Set([...S.jobsListEl.querySelectorAll("[data-job-detail].is-open")].map((el) => el.dataset.jobDetail));
       S.jobsListEl.hidden = !rows.length;
       S.jobsListEl.innerHTML = rows.map((job) => ui.jobRowHtml(job, Date.now())).join("");
       rows.forEach((job) => {
         const id = String(job.command_id || job.id);
-        if (open.has(id)) S.jobsListEl.querySelector(`[data-show-job="${CSS.escape(id)}"]`)?.closest(".chat-jobs-row")?.appendChild(jobDetail(job, true));
+        if (open.has(id)) jobRow(id)?.after(jobDetail(job, true));
       });
       live.syncWorkStrip();
     }

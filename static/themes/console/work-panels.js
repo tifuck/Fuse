@@ -118,7 +118,7 @@ function jobRowHtml(job, nowMs) {
     ].filter(Boolean).join(" · ");
     const id = deps.escapeHtml(job.command_id || job.id);
     return (
-      `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem">` +
+      `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem" data-job-row="${id}">` +
       `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(deps.toolText(title))}${meta ? " · " + deps.escapeHtml(meta) : ""}">` +
       '<span class="chat-agents-dot" aria-hidden="true"></span>' +
       `<span class="chat-jobs-cmd">${deps.escapeHtml(deps.toolText(title))}</span>` +
@@ -130,5 +130,14 @@ function jobRowHtml(job, nowMs) {
     );
   }
 
-  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml };
+// A background command's output, opened from its row. The runtime mounts it
+// right after that row in the list (data-job-detail), never inside it: the row
+// is one fixed-height line.
+function jobDetailHtml(job) {
+    const trace = { ...job, name: job.name === "monitor" || job.kind === "monitor" ? "monitor" : "run_terminal_command", status: "running" };
+    return `<div class="chat-jobs-detail chat-step-reveal" role="listitem" data-job-detail="${deps.escapeHtml(job.command_id || job.id)}">` +
+      `<div class="chat-step-reveal-inner">${deps.toolDetailHtml(trace, false, true)}</div></div>`;
+  }
+
+  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml, jobDetailHtml };
 }

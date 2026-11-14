@@ -450,6 +450,7 @@ export function createConsoleTheme(runtime) {
     get jobElapsedMs() { return runtime.jobElapsedMs; },
     get jobsFor() { return runtime.jobsFor; },
     get renderMarkdown() { return theme.renderMarkdown; },
+    get toolDetailHtml() { return theme.toolDetailHtml; },
     get toolText() { return theme.toolText; },
   }));
   return {
@@ -468,6 +469,7 @@ export function createConsoleTheme(runtime) {
     formatActivityClock: theme.formatActivityClock,
     formatConsoleLiveStatus: theme.formatConsoleLiveStatus,
     groupTraces: theme.groupTraces,
+    jobDetailHtml: theme.jobDetailHtml,
     jobRowHtml: theme.jobRowHtml,
     parseProviderError: theme.parseProviderError,
     patchMarkdown: theme.patchMarkdown,
