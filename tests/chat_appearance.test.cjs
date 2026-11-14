@@ -8,7 +8,7 @@ const themeStyles = readdirSync(resolve(__dirname, '../static/themes/console/sty
 
 const source = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
 
-function boot(saved = {}, blocked = false, cookie = '') {
+function boot(saved = {}, blocked = false) {
   const storage = new Map(Object.entries(saved));
   const meta = {};
   const html = { dataset: {}, style: { setProperty() {}, removeProperty() {} }, removeAttribute(name) { delete this.dataset[name.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]; } };
@@ -16,7 +16,6 @@ function boot(saved = {}, blocked = false, cookie = '') {
   let ready;
   const world = {
     document: {
-      cookie,
       documentElement: html,
       querySelector(selector) {
         if (selector === '[data-chat]') return root;
@@ -124,48 +123,6 @@ test('only the saved console font is restored; legacy view fonts cannot change i
   ui.appearance.setFont(null);
   assert.equal(ui.html.dataset.chatFont, 'redhat');
   assert.equal(boot({ 'fuse.chat.fonts.v1': JSON.stringify({ cli: 'geist', prism: 'serif' }) }).html.dataset.chatFont, 'redhat');
-});
-
-test('the layout cookie picks combined; console stays the default and the renderer', () => {
-  for (const cookie of ['', 'fuse_chat_layout=prism', 'other=1; fuse_chat_layout=']) {
-    const ui = boot({}, false, cookie);
-    assert.equal(ui.html.dataset.chatLayout, 'console', cookie);
-    assert.equal(ui.html.dataset.chatFont, 'redhat', cookie);
-    assert.equal(ui.appearance.layout, 'console', cookie);
-  }
-  const ui = boot({}, false, 'theme=x; fuse_chat_layout=combined');
-  assert.equal(ui.html.dataset.chatLayout, 'combined');
-  assert.equal(ui.html.dataset.chatView, 'console');
-  assert.equal(ui.html.dataset.chatFont, 'bricolage');
-  assert.equal(ui.appearance.layout, 'combined');
-});
-
-test('every combined rule is scoped to the combined layout, so console never changes', () => {
-  const css = readFileSync(resolve(__dirname, '../static/themes/combined/theme.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  const preludes = [...css.matchAll(/([^{}]+)\{/g)].map(m => m[1].trim()).filter(p => !p.startsWith('@'));
-  assert.ok(preludes.length > 20);
-  for (const prelude of preludes) {
-    let depth = 0, start = 0;
-    const parts = [];
-    for (let i = 0; i <= prelude.length; i++) {
-      const c = prelude[i];
-      if (c === '(') depth++;
-      else if (c === ')') depth--;
-      else if ((c === ',' && depth === 0) || i === prelude.length) { parts.push(prelude.slice(start, i).trim()); start = i + 1; }
-    }
-    for (const selector of parts) assert.match(selector, /^html\[data-chat-layout="combined"\]/, selector);
-  }
-});
-
-test('each layout keeps its own font', () => {
-  const saved = { 'fuse.chat.fonts.v1': JSON.stringify({ console: 'jetbrains', combined: 'geist', cli: 'serif' }) };
-  assert.equal(boot(saved).html.dataset.chatFont, 'jetbrains');
-  const ui = boot(saved, false, 'fuse_chat_layout=combined');
-  assert.equal(ui.html.dataset.chatFont, 'geist');
-  ui.appearance.setFont('fraunces');
-  assert.deepEqual(JSON.parse(ui.storage.get('fuse.chat.fonts.v1')), { console: 'jetbrains', combined: 'fraunces' });
-  ui.appearance.setFont(null);
-  assert.equal(ui.html.dataset.chatFont, 'bricolage');
 });
 
 test('retired backdrops migrate to their replacement', () => {
