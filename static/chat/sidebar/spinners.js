@@ -1,6 +1,5 @@
 // Run spinners and age chips in the history list.
 import { S } from '../state.js';
-import { escapeHtml } from '../core.js';
 
 function stampSpinHtml(html, stamp) {
   const tag = String(stamp || "run").replace(/[^A-Za-z0-9_-]/g, "") || "run";
@@ -29,16 +28,14 @@ function ageStamp(iso) {
   return Math.floor(days / 365.25) + "y";
 }
 
-// An unread row shows a dot in the age slot instead of the stamp; the time
-// stays in the tooltip.
-function ageChip(item, unread = false) {
-  if (!item || !item.updated_at) return "";
-  const stamp = ageStamp(item.updated_at);
-  if (!stamp) return "";
+// What a row's age slot shows (the theme draws it; refreshAgeChips keeps
+// [data-age-stamp] text current). Unread rows show a dot, the time in the tooltip.
+function ageInfo(item, unread = false) {
+  if (!item || !item.updated_at) return null;
+  const text = ageStamp(item.updated_at);
+  if (!text) return null;
   const when = new Date(item.updated_at);
-  const title = Number.isFinite(when.getTime()) ? ` title="${escapeHtml(when.toLocaleString())}"` : "";
-  if (unread) return `<span class="chat-history-age"${title}><span class="chat-history-unread-dot" role="img" aria-label="Unread"></span></span>`;
-  return `<span class="chat-history-age" data-age-stamp="${escapeHtml(String(item.updated_at))}"${title}>${escapeHtml(stamp)}</span>`;
+  return { at: String(item.updated_at), text, unread, title: Number.isFinite(when.getTime()) ? when.toLocaleString() : "" };
 }
 
 export function createSpinners(ctx) {
@@ -89,14 +86,6 @@ export function createSpinners(ctx) {
       window.setTimeout(done, 480);
     });
     el.appendChild(face);
-  }
-
-    function runSpinMarkup(stamp) {
-    {
-      return `<span class="chat-run-spin" data-run-spin="${escapeHtml(String(stamp))}" data-spin-set="console-glyph" aria-hidden="true">` +
-        `<span class="chat-console-spin">${ui.consoleSpinGlyph(true)}</span></span>`;
-    }
-
   }
 
     function fillSpinEl(el, stamp, swap) {
@@ -209,13 +198,12 @@ export function createSpinners(ctx) {
     currentThreadBusy,
     noteServerRunning,
     pickRandomSpin,
-    runSpinMarkup,
     startAgeClock,
     syncCurrentThreadBusy,
     syncRunSpinners,
-    ageChip,
+    ageInfo,
     threadIsRunning,
   };
 }
 
-export { ageChip, threadIsRunning };
+export { ageInfo, threadIsRunning };

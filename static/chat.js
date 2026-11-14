@@ -42,6 +42,7 @@ import { createDictation } from './chat/dictation.js';
     formatActivityClock,
     formatConsoleLiveStatus,
     groupTraces,
+    historyListHtml,
     jobDetailHtml,
     jobRowHtml,
     parseProviderError,
@@ -192,6 +193,7 @@ import { createDictation } from './chat/dictation.js';
     formatActivityClock,
     formatConsoleLiveStatus,
     groupTraces,
+    historyListHtml,
     jobDetailHtml,
     jobRowHtml,
     parseProviderError,
@@ -1898,7 +1900,7 @@ import { createDictation } from './chat/dictation.js';
 
     if (S.historyList) {
     S.historyList.addEventListener("contextmenu", (event) => {
-      const row = event.target.closest(".chat-history-item");
+      const row = event.target.closest("[data-history-item]");
       if (!row || !S.historyList.contains(row)) return;
       event.preventDefault();
       const at = { x: event.clientX, y: event.clientY };
@@ -1913,7 +1915,7 @@ import { createDictation } from './chat/dictation.js';
       if (row.dataset.thread) sidebar.threadMenu(row, row.dataset.thread, at);
     });
 
-    const pinnedRowEls = () => [...S.historyList.querySelectorAll(".chat-history-item.is-pinned")];
+    const pinnedRowEls = () => [...S.historyList.querySelectorAll("[data-history-item][data-pinned]")];
 
     function endPinDrag(commit) {
       const drag = S.pinDrag;
@@ -1966,8 +1968,8 @@ import { createDictation } from './chat/dictation.js';
       // view and a project filter each hide rows, so a drop there would write
       // an order the hidden rows never voted on.
       if (S.historyQuery.trim() || S.showArchived || (S.historyTab === "projects" && S.projectFilter)) return;
-      const row = event.target.closest(".chat-history-item.is-pinned");
-      if (!row || event.target.closest("button.more")) return;
+      const row = event.target.closest("[data-history-item][data-pinned]");
+      if (!row || event.target.closest("[data-row-more]")) return;
       const touch = event.pointerType !== "mouse";
       S.pinDrag = {
         row,
@@ -2015,7 +2017,7 @@ import { createDictation } from './chat/dictation.js';
         event.stopPropagation();
         return;
       }
-      const more = event.target.closest("button.more");
+      const more = event.target.closest("[data-row-more]");
       if (more) {
         event.preventDefault();
         event.stopPropagation();
@@ -2032,7 +2034,7 @@ import { createDictation } from './chat/dictation.js';
         if (id) sidebar.threadMenu(more, id);
         return;
       }
-      const open = event.target.closest("button.open");
+      const open = event.target.closest("[data-row-open]");
       if (open) {
         const row = open.closest("[data-project], [data-thread], [data-draft]");
         const draft = row?.dataset.draft;
@@ -2067,7 +2069,7 @@ import { createDictation } from './chat/dictation.js';
         !(S.spellPop && S.spellPop.contains(t))) composer.closeSlash();
     if (S.rewindPanel && !S.rewindPanel.hidden && !S.rewindPanel.contains(event.target)) turns.closeRewind();
     if (S.contextPop && !S.contextPop.hidden && S.contextWrap && !S.contextWrap.contains(event.target)) context.closeContextPop();
-    if (S.pop && !S.pop.contains(event.target) && !event.target.closest(".more")) {
+    if (S.pop && !S.pop.contains(event.target) && !event.target.closest("[data-row-more]")) {
       overlays.closePop();
     }
     if (S.root.classList.contains("is-history") && S.historyToggle && !sidebar.historyPanel.contains(event.target) && !S.historyToggle.contains(event.target) && !event.target.closest(".chat-pop, dialog")) {

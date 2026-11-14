@@ -3,13 +3,6 @@ import { S } from '../state.js';
 import { escapeHtml } from '../core.js';
 import { newSession } from '../state.js';
 
-function projectMeta(name, host) {
-  const hostLabel = host
-    ? `<span class="chat-history-host-label">${escapeHtml(host)}</span>`
-    : "";
-  return `<span class="chat-history-meta"><span class="chat-history-project">${escapeHtml(name || "Project")}</span>${hostLabel}</span>`;
-}
-
 function projectKey(hostId, projectId) {
   return `${hostId}:${projectId}`;
 }
@@ -51,32 +44,19 @@ export function createProjects(ctx) {
     return window.FuseProjects.icon(project || {}, { size: size || 13, className: "chat-history-glyph" });
   }
 
-    function projectRow(item) {
+    function projectBlock(item) {
     const bound = threads.sessionProject();
-    const on =
-      bound &&
+    const on = Boolean(bound &&
       Number(bound.project_id) === Number(item.id) &&
-      Number(bound.host_id) === Number(item.host_id)
-        ? " is-on"
-        : "";
+      Number(bound.host_id) === Number(item.host_id));
     const running = spinners.threadIsRunning(item);
-    const name = item.name || "Project";
-    const hostLabel = item.host_alias
-      ? `<span class="chat-history-host-label">${escapeHtml(item.host_alias)}</span>`
-      : "";
-    const path = item.remote_path
-      ? `<span class="chat-history-meta"><span class="chat-history-project">${escapeHtml(item.remote_path)}</span>${hostLabel}</span>`
-      : "";
-    const chip = item.archived && !S.showArchived ? '<span class="chat-history-chip">Archived</span>' : "";
-    const threadAttr = item.thread_id ? ` data-thread="${escapeHtml(String(item.thread_id))}"` : "";
-    const lead =
-      (running ? spinners.runSpinMarkup("p-" + item.host_id + "-" + item.id) : spinners.ageChip(item)) +
-      projectIcon(item);
-    const runningClass = running ? " is-running" : "";
-    const busy = running ? ' aria-busy="true"' : "";
-    const working = running ? '<span class="visually-hidden">Working</span>' : "";
-    const twoLine = Boolean(item.remote_path);
-    return `<div class="chat-history-item is-project${on}${twoLine ? " has-snip" : ""}${runningClass}" data-project="${item.host_id}:${item.id}"${threadAttr}${busy}><button type="button" class="open" title="${escapeHtml(name)}"${on ? ' aria-current="true"' : ""}>${working}<span class="chat-history-title">${lead}<span class="chat-history-copy"><span class="chat-history-name">${escapeHtml(name)}</span>${path}</span></span>${chip}</button><button type="button" class="more" aria-label="Actions for project ${escapeHtml(name)}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
+    return { type: "project", item, row: {
+      on, running,
+      archived: Boolean(item.archived && !S.showArchived),
+      spin: "p-" + item.host_id + "-" + item.id,
+      age: spinners.ageInfo(item),
+      icon: projectIcon(item),
+    } };
   }
 
     function fillProjectFilterOptions() {
@@ -324,15 +304,14 @@ export function createProjects(ctx) {
     openProjectPicker,
     projectIcon,
     projectMenu,
-    projectRow,
+    projectBlock,
     projectSessionList,
     resolveProjectInfo,
     sidebarProject,
     groupedProjectSessions,
     projectKey,
-    projectMeta,
     projectWorkspaceDetails,
   };
 }
 
-export { groupedProjectSessions, projectKey, projectMeta, projectWorkspaceDetails };
+export { groupedProjectSessions, projectKey, projectWorkspaceDetails };

@@ -150,14 +150,16 @@ test('each view keeps its own font', () => {
 });
 
 test('console and combined are independent theme folders', () => {
-  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
-  const consoleFiles = read(resolve(__dirname, '../static/themes/console'));
-  const combinedFiles = read(resolve(__dirname, '../static/themes/combined'));
+  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
+  // A theme is its static folder plus its template folder.
+  const consoleFiles = [...read(resolve(__dirname, '../static/themes/console')), ...read(resolve(__dirname, '../templates/themes/console'))];
+  const combinedFiles = [...read(resolve(__dirname, '../static/themes/combined')), ...read(resolve(__dirname, '../templates/themes/combined'))];
   for (const [name, text] of consoleFiles) assert.doesNotMatch(text, /combined/, `console/${name}`);
   for (const [name, text] of combinedFiles) {
-    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\//, `combined/${name}`);
+    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//, `combined/${name}`);
   }
   assert.ok(combinedFiles.some(([name]) => name === 'index.js'));
+  assert.ok(consoleFiles.some(([name]) => name === '_chat.html') && combinedFiles.some(([name]) => name === '_chat.html'));
 });
 
 test('retired backdrops migrate to their replacement', () => {

@@ -19,6 +19,7 @@ import { create as createCallProgress } from './call-progress.js';
 import { create as createActivityGroups } from './activity-groups.js';
 import { create as createTranscript } from './transcript.js';
 import { create as createWorkPanels } from './work-panels.js';
+import { create as createSidebar } from './sidebar.js';
 import { create as createProviderError } from './provider-error.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
@@ -453,6 +454,10 @@ export function createCombinedTheme(runtime) {
     get toolDetailHtml() { return theme.toolDetailHtml; },
     get toolText() { return theme.toolText; },
   }));
+  Object.assign(theme, createSidebar({
+    get consoleSpinGlyph() { return theme.consoleSpinGlyph; },
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,
@@ -469,6 +474,7 @@ export function createCombinedTheme(runtime) {
     formatActivityClock: theme.formatActivityClock,
     formatConsoleLiveStatus: theme.formatConsoleLiveStatus,
     groupTraces: theme.groupTraces,
+    historyListHtml: theme.historyListHtml,
     jobDetailHtml: theme.jobDetailHtml,
     jobRowHtml: theme.jobRowHtml,
     parseProviderError: theme.parseProviderError,

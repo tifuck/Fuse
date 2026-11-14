@@ -35,7 +35,7 @@ test('Rename from a menu that outlived a list repaint edits the row on screen', 
   threads.threadMenu(detached, 't1');
   const rename = items.find((item) => item.label === 'Rename');
   rename.run();
-  assert.equal(selector, '.chat-history-item[data-thread="t1"]');
+  assert.equal(selector, '[data-history-item][data-thread="t1"]');
   assert.equal(onScreen.appended.length, 1, 'the rename field goes into the live row');
   assert.equal(S.renaming, true);
   S.renaming = false;

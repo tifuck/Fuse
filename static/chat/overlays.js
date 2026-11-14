@@ -145,7 +145,7 @@ export function createOverlays(ctx) {
       overlayDrop("pop");
       S.popAnchor?.setAttribute("aria-expanded", "false");
       // A list repaint replaces the row: fall back to its new ⋯ button.
-      const row = S.popRowKey && S.historyList?.querySelector(`[${S.popRowKey[0]}="${CSS.escape(S.popRowKey[1])}"] button.more`);
+      const row = S.popRowKey && S.historyList?.querySelector(`[${S.popRowKey[0]}="${CSS.escape(S.popRowKey[1])}"] [data-row-more]`);
       row?.setAttribute("aria-expanded", "false");
       const back = [S.popAnchor, row, S.popReturn].find((el) => el?.isConnected);
       if (restoreFocus || hadFocus) back?.focus({ preventScroll: true });
@@ -162,7 +162,7 @@ export function createOverlays(ctx) {
     // The row whose menu is open keeps .is-menu while the pop is up. closePop()
     // just stripped every flag, so stamp the owner here and remember its key:
     // a repaint replaces the row nodes, and syncHistoryFooter re-stamps them.
-    const menuRow = anchor && anchor.closest ? anchor.closest(".chat-history-item") : null;
+    const menuRow = anchor && anchor.closest ? anchor.closest("[data-history-item]") : null;
     if (menuRow) {
       const attr = ["data-thread", "data-draft"].find((name) => menuRow.hasAttribute(name)) || "data-project";
       S.popRowKey = [attr, menuRow.getAttribute(attr)];

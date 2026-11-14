@@ -345,7 +345,7 @@ export function createThreads(ctx) {
     else render.setHistoryTab("chats", { persist: true, silent: true });
     S.stickToBottom = true;
     if (S.searchOpen) {
-      const top = S.root.querySelector(".chat-history-top");
+      const top = S.root.querySelector("[data-history-top]");
       const row = S.root.querySelector("[data-history-row]");
       S.searchOpen = false;
       if (top) top.classList.remove("is-searching");
@@ -459,7 +459,7 @@ export function createThreads(ctx) {
     if (!thread) return;
     if (!net.requireLive()) return;
     // The keyboard alternative to dragging a pinned row; offered where the drag is.
-    const pinIds = [...S.historyList.querySelectorAll(".chat-history-item.is-pinned")].map((el) => el.getAttribute("data-thread")).filter(Boolean);
+    const pinIds = [...S.historyList.querySelectorAll("[data-history-item][data-pinned]")].map((el) => el.getAttribute("data-thread")).filter(Boolean);
     const at_ = pinIds.indexOf(String(id));
     const canMove = thread.pinned && at_ >= 0 && !S.historyQuery.trim() && !S.showArchived && !(S.historyTab === "projects" && S.projectFilter);
     const move = (by) => () => {
@@ -492,7 +492,7 @@ export function createThreads(ctx) {
       {
         label: "Rename",
         // A list repaint while the menu was open replaced the row it opened on.
-        run: () => startRename(S.historyList.querySelector(`.chat-history-item[data-thread="${CSS.escape(String(id))}"]`), threadById(id) || thread),
+        run: () => startRename(S.historyList.querySelector(`[data-history-item][data-thread="${CSS.escape(String(id))}"]`), threadById(id) || thread),
       },
       {
         label: "Fork",

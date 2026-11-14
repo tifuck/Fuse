@@ -5,7 +5,7 @@
    (pick | clock | action) so agent and command clocks line up; the agents list
    is one grid that its rows subgrid, so task, state, detail and clock are columns.
    The console theme sets the type and density
-   (themes/console/styles/design-012-work.css). */
+   (its styles/design-012-work.css). */
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-work[hidden],
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-work-agents[hidden],
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-work-jobs[hidden] { display: none; }

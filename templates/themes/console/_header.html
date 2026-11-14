@@ -1,0 +1,43 @@
+{#- Console theme: the header bar. Every data-* hook here is a runtime contract; the other
+    themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
+  <header class="chat-bar">
+    <button type="button" class="btn ghost sm chat-history-toggle" data-history-toggle aria-label="Toggle chat history" aria-controls="chat-history" aria-expanded="true" title="Toggle chat history">
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7.5 4v12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+    </button>
+    <div class="chat-project-chip" data-project-chip hidden>
+      <span class="chat-project-icon" data-project-icon aria-hidden="true"></span>
+      <span class="chat-project-name" data-project-name></span>
+    </div>
+    <h1 class="chat-bar-title"><span data-chat-title class="is-untitled"></span><span class="visually-hidden" data-chat-title-fallback>New chat</span></h1>
+    <div class="chat-bar-actions">
+      <div class="chat-view" data-chat-view-picker>
+        <button type="button" class="chat-bar-btn" data-view-toggle aria-label="Appearance" aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-view-menu" title="Appearance">
+          <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><rect x="2.6" y="3.4" width="10.8" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 6.2h6M5 8.2h4.2M5 10.2h5.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>Appearance</span>
+        </button>
+      </div>
+      <button type="button" class="chat-bar-btn" data-artifact-toggle aria-expanded="false" aria-controls="chat-artifact" aria-label="Artifacts" title="Artifacts (Ctrl+])">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><rect x="2.6" y="3.4" width="10.8" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 9.2l1.7-2 1.5 1.7 2.2-2.7 2.2 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <span>Artifact</span>
+      </button>
+      <div class="chat-bar-manage">
+        <button type="button" class="chat-bar-btn" data-memory-toggle aria-expanded="false" aria-controls="chat-context" aria-label="Context" title="Instructions and saved context">
+          <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M3.5 5h9v8.5h-9zM6 5V3.85a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.5 9.25h3M6.5 11.5h2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>Context</span>
+        </button>
+        <button type="button" class="chat-bar-btn" data-skills-toggle aria-expanded="false" aria-controls="chat-skills" aria-label="Skills" title="Skills">
+          <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><rect x="2.6" y="2.6" width="10.8" height="10.8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 5.3L6.5 10.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span>Skills</span>
+        </button>
+      </div>
+      <button type="button" class="chat-bar-btn" data-notif-toggle aria-pressed="false" aria-label="Alerts" title="Notify me when a chat finishes on any device">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M8 2.4a3.6 3.6 0 0 0-3.6 3.6c0 2.8-1.1 3.9-1.6 4.4h10.4c-.5-.5-1.6-1.6-1.6-4.4A3.6 3.6 0 0 0 8 2.4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.6 12.6a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>Alerts</span>
+      </button>
+      <button type="button" class="chat-bar-btn chat-todo-toggle" data-todo-header hidden aria-expanded="false" aria-label="Todos" title="Show todos">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path d="M2.8 4.2l1 1 1.7-1.9M2.8 8.2l1 1 1.7-1.9M2.8 12.2l1 1 1.7-1.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.6 4.5h5.6M7.6 8.5h5.6M7.6 12.5h5.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>Todos</span>
+        <b class="chat-todo-badge" data-todo-badge aria-hidden="true"></b>
+      </button>
+    </div>
+  </header>

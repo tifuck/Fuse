@@ -22,11 +22,6 @@ function splitPinned(items) {
   };
 }
 
-// Hairline between the pinned section and the timeline below it.
-const PINNED_SEP = '<div class="chat-history-sep" aria-hidden="true"></div>';
-
-const DRAFT_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M10.8 2.7l2.5 2.5-7.6 7.6-3.2.7.7-3.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-
 // Sorts unsent drafts above every dated row.
 const DRAFT_AT = "9999-12-31T00:00:00Z";
 
@@ -40,7 +35,7 @@ function historyIcons() {
 }
 
 export function createRender(ctx) {
-  const { composer, net, overlays, projects, spinners, sync, threads } = ctx;
+  const { composer, net, overlays, projects, spinners, sync, threads, ui } = ctx;
     function providerLogo(type) {
     const src = S.logoByType.get(type) || "/static/icon.svg";
     return `<img class="provider-logo" src="${escapeHtml(src)}" alt="" aria-hidden="true" draggable="false">`;
@@ -126,31 +121,21 @@ export function createRender(ctx) {
     return [...source].sort(runningFirst).filter((item) => (item.title || "").toLowerCase().includes(q));
   }
 
-    function historyRow(item, grouped = false) {
-    const on = item.id === S.currentId ? " is-on" : "";
+    // Rows are data; the theme draws them (ui.historyListHtml).
+  function threadBlock(item, grouped = false) {
     const project = item.kind === "project";
     const running = spinners.threadIsRunning(item);
     const unread = Boolean(item.unread) && item.id !== S.currentId;
-    let sessionTitle = item.title || "New chat";
-    if (project && item.project_name && sessionTitle === item.project_name) sessionTitle = "New chat";
-    const title = escapeHtml(sessionTitle);
-    const snip = item.snippet ? `<span class="chat-history-snip">${escapeHtml(item.snippet)}</span>` : "";
-    const chip = searchingChip(item);
-    const meta =
-      project && !grouped ? projects.projectMeta(item.project_name || "Project", item.host_alias) : "";
-    const age = running ? spinners.runSpinMarkup("h-" + item.id) : spinners.ageChip(item, unread);
-    const lead = project
-      ? age + `<span class="chat-history-indicator is-folder">${projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url })}</span>`
-      : `<span class="chat-history-indicator">${age}</span>`;
-    const groupedClass = project && grouped ? " is-grouped" : "";
-    const runningClass = running ? " is-running" : "";
-    const busy = running ? ' aria-busy="true"' : "";
-    const working = running ? '<span class="visually-hidden">Working</span>' : "";
-    const twoLine = Boolean(item.snippet || meta);
-    const scheduledClass = item.schedule_id ? " is-task" : "";
-    const pinClass = item.pinned ? " is-pinned" : "";
-    const unreadClass = unread ? " is-unread" : "";
-    return `<div class="chat-history-item${on}${twoLine ? " has-snip" : ""}${project ? " is-project" : ""}${groupedClass}${runningClass}${scheduledClass}${pinClass}${unreadClass}" data-thread="${escapeHtml(String(item.id))}"${busy}><button type="button" class="open" title="${title}"${on ? ' aria-current="true"' : ""}>${working}<span class="chat-history-title">${lead}<span class="chat-history-copy"><span class="chat-history-name">${title}</span>${meta}${snip}</span></span>${chip}</button><button type="button" class="more" aria-label="Actions for ${title}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
+    let title = item.title || "New chat";
+    if (project && item.project_name && title === item.project_name) title = "New chat";
+    return { type: "thread", item, row: {
+      on: item.id === S.currentId, project, running, unread, grouped, title,
+      chip: searchingChip(item),
+      meta: project && !grouped ? { name: item.project_name || "Project", host: item.host_alias || "" } : null,
+      spin: "h-" + item.id,
+      age: spinners.ageInfo(item, unread),
+      icon: project ? projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url }) : "",
+    } };
   }
 
     // Unsent new chats that have text or files in their box (null key: a
@@ -179,22 +164,22 @@ export function createRender(ctx) {
     return items;
   }
 
-    function draftRow(item, grouped = false) {
+    function draftBlock(item, grouped = false) {
     const project = item.kind === "project";
-    const on = !S.currentId && (draftKey() ?? "") === item.draft ? " is-on" : "";
-    const title = escapeHtml(item.title);
-    const meta = project && !grouped ? projects.projectMeta(item.project_name || "Project", item.host_alias) : "";
-    const pen = `<span class="chat-history-age">${DRAFT_ICON}</span>`;
-    const lead = project
-      ? pen + `<span class="chat-history-indicator is-folder">${projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url })}</span>`
-      : `<span class="chat-history-indicator">${pen}</span>`;
-    const classes = `${on}${meta ? " has-snip" : ""}${project ? " is-project" : ""}${project && grouped ? " is-grouped" : ""}`;
-    return `<div class="chat-history-item is-draft${classes}" data-draft="${escapeHtml(item.draft)}"><button type="button" class="open" title="Draft: ${title}"${on ? ' aria-current="true"' : ""}><span class="chat-history-title">${lead}<span class="chat-history-copy"><span class="chat-history-name"><span class="chat-history-draft">Draft</span> ${title}</span>${meta}</span></span></button><button type="button" class="more" aria-label="Actions for draft ${title}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
+    return { type: "draft", item, row: {
+      on: !S.currentId && (draftKey() ?? "") === item.draft, project, grouped,
+      meta: project && !grouped ? { name: item.project_name || "Project", host: item.host_alias || "" } : null,
+      icon: project ? projects.projectIcon({ color: item.project_color, logo_url: item.project_logo_url }) : "",
+    } };
   }
 
-    function sessionRow(item, grouped = false) {
-    return item.draft === undefined ? historyRow(item, grouped) : draftRow(item, grouped);
+    function sessionBlock(item, grouped = false) {
+    return item.draft === undefined ? threadBlock(item, grouped) : draftBlock(item, grouped);
   }
+
+  const kicker = (text) => ({ type: "kicker", text });
+  const empty = (text) => ({ type: "empty", text });
+  const SEP = { type: "sep" };
 
     function draftMenu(anchor, key, at) {
     overlays.showPop(anchor, [{
@@ -219,8 +204,8 @@ export function createRender(ctx) {
     function searchingChip(item) {
     const searching = Boolean(S.historyQuery.trim());
     if (!searching) return "";
-    if (item.archived) return '<span class="chat-history-chip">Archived</span>';
-    if (item.pinned) return '<span class="chat-history-chip">Pinned</span>';
+    if (item.archived) return "Archived";
+    if (item.pinned) return "Pinned";
     return "";
   }
 
@@ -228,15 +213,15 @@ export function createRender(ctx) {
     // A repaint replaced the row nodes; put the open menu's flag back.
     if (S.popRowKey && S.historyList) {
       const [attr, key] = S.popRowKey;
-      for (const el of S.historyList.querySelectorAll(".chat-history-item")) {
+      for (const el of S.historyList.querySelectorAll("[data-history-item]")) {
         if (el.getAttribute(attr) === key) {
           el.classList.add("is-menu");
-          el.querySelector("button.more")?.setAttribute("aria-expanded", "true");
+          el.querySelector("[data-row-more]")?.setAttribute("aria-expanded", "true");
           break;
         }
       }
     }
-    const footer = S.root.querySelector(".chat-history-footer");
+    const footer = S.root.querySelector("[data-history-footer]");
     if (!footer) return;
     footer.hidden = false;
     spinners.syncRunSpinners();
@@ -286,74 +271,67 @@ export function createRender(ctx) {
         chats.filter((item) => item.kind === "project").map((item) => projects.projectKey(item.host_id, item.project_id))
       );
       const unusedHits = nativeHits.filter((item) => !threadProjectKeys.has(projects.projectKey(item.host_id, item.id)));
-      let html = "";
-      if (chats.length) html += chats.map((item) => historyRow(item)).join("");
+      const blocks = chats.map((item) => threadBlock(item));
       if (unusedHits.length) {
-        if (chats.length) html += `<p class="chat-history-kicker">Projects</p>`;
-        html += unusedHits.map(projects.projectRow).join("");
+        if (chats.length) blocks.push(kicker("Projects"));
+        blocks.push(...unusedHits.map(projects.projectBlock));
       }
-      S.historyList.innerHTML = html || `<p class="chat-history-empty">No chats or projects match your search.</p>`;
-      syncHistoryFooter();
+      paint(blocks.length ? blocks : [empty("No chats or projects match your search.")]);
       return;
     }
     if (S.showArchived) {
       const shelved = archivedProjects();
-      let html = "";
+      const blocks = [];
       if (shelved.length) {
-        html += `<p class="chat-history-kicker">Projects</p>` + shelved.map(projects.projectRow).join("");
-        if (archived.length) html += `<p class="chat-history-kicker">Sessions</p>`;
+        blocks.push(kicker("Projects"), ...shelved.map(projects.projectBlock));
+        if (archived.length) blocks.push(kicker("Sessions"));
       }
-      html += archived.map((item) => historyRow(item)).join("");
-      S.historyList.innerHTML = html ||
-        `<p class="chat-history-empty">${S.historyTab === "projects" ? "No archived projects or sessions." : "No archived chats."}</p>`;
-      syncHistoryFooter();
+      blocks.push(...archived.map((item) => threadBlock(item)));
+      paint(blocks.length ? blocks : [empty(S.historyTab === "projects" ? "No archived projects or sessions." : "No archived chats.")]);
       return;
     }
     if (S.historyTab === "projects") {
       const sessions = projects.projectSessionList(draftItems(true));
       const { pinned, rest } = splitPinned(sessions);
       if (!sessions.length) {
-        S.historyList.innerHTML =
-          `<p class="chat-history-empty">No project sessions yet. Use New project to start one.</p>`;
-        syncHistoryFooter();
+        paint([empty("No project sessions yet. Use New project to start one.")]);
         return;
       }
-      let html = "";
-      if (pinned.length) html += `<p class="chat-history-kicker">Pinned</p>` + pinned.map((item) => historyRow(item)).join("") + (rest.length ? PINNED_SEP : "");
+      const blocks = [];
+      if (pinned.length) blocks.push(kicker("Pinned"), ...pinned.map((item) => threadBlock(item)), ...(rest.length ? [SEP] : []));
       if (S.projectSort === "project") {
         // Drafts sit directly under the pinned section, above every group.
-        html += rest.filter((item) => item.draft !== undefined).map((item) => sessionRow(item)).join("");
+        blocks.push(...rest.filter((item) => item.draft !== undefined).map((item) => sessionBlock(item)));
         projects.groupedProjectSessions(rest.filter((item) => item.draft === undefined)).forEach((group) => {
-          html +=
-            `<div class="chat-history-project-head">` +
-            projects.projectIcon(group.icon) +
-            `<span class="chat-history-project">${escapeHtml(group.name)}</span>` +
-            (group.host ? `<span class="chat-history-host-label">${escapeHtml(group.host)}</span>` : "") +
-            `</div>`;
-          html += group.items.map((item) => sessionRow(item, true)).join("");
+          blocks.push({ type: "group", name: group.name, host: group.host, icon: projects.projectIcon(group.icon) });
+          blocks.push(...group.items.map((item) => sessionBlock(item, true)));
         });
       } else {
-        html += rest.map((item) => sessionRow(item)).join("");
+        blocks.push(...rest.map((item) => sessionBlock(item)));
       }
-      S.historyList.innerHTML = html;
-      syncHistoryFooter();
+      paint(blocks);
       return;
     }
     const items = filteredHistory();
-    const drafts = draftItems(false).map((item) => draftRow(item)).join("");
-    if (!items.length && !drafts && !S.historyLoaded) {
-      S.historyList.innerHTML = `<div class="chat-history-loading" role="img" aria-label="Loading chats">${"<span></span>".repeat(6)}</div>`;
-    } else if (!items.length && !drafts) {
-      S.historyList.innerHTML = `<p class="chat-history-empty">No chats yet.</p>`;
+    const drafts = draftItems(false).map((item) => draftBlock(item));
+    if (!items.length && !drafts.length && !S.historyLoaded) {
+      paint([{ type: "loading" }]);
+    } else if (!items.length && !drafts.length) {
+      paint([empty("No chats yet.")]);
     } else {
       const { pinned, rest } = splitPinned(items);
       // Pinned first, then drafts (they out-sort every dated row), then the
       // timeline: a newly updated chat never climbs above a draft.
-      S.historyList.innerHTML =
-        (pinned.length ? `<p class="chat-history-kicker">Pinned</p>` + pinned.map((item) => historyRow(item)).join("") + (rest.length || drafts ? PINNED_SEP : "") : "") +
-        drafts +
-        rest.map((item) => historyRow(item)).join("");
+      paint([
+        ...(pinned.length ? [kicker("Pinned"), ...pinned.map((item) => threadBlock(item)), ...(rest.length || drafts.length ? [SEP] : [])] : []),
+        ...drafts,
+        ...rest.map((item) => threadBlock(item)),
+      ]);
     }
+  }
+
+    function paint(blocks) {
+    S.historyList.innerHTML = ui.historyListHtml(blocks);
     syncHistoryFooter();
   }
 
@@ -365,7 +343,7 @@ export function createRender(ctx) {
   }
 
     function setSearchOpen(open) {
-    const top = S.root.querySelector(".chat-history-top");
+    const top = S.root.querySelector("[data-history-top]");
     const row = S.root.querySelector("[data-history-row]");
     if (!top || !row || !S.historySearch || !S.searchToggle) return;
     const was = S.searchOpen;

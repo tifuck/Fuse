@@ -22,7 +22,7 @@ export function createSidebar(ctx) {
   });
   const projects = createProjects({ ...ctx,
     render: { historyIcons: (...args) => render.historyIcons(...args), runningFirst: (...args) => render.runningFirst(...args), refreshThreads: (...args) => render.refreshThreads(...args), renderHistory: (...args) => render.renderHistory(...args) },
-    spinners: { ageChip: (...args) => spinners.ageChip(...args), runSpinMarkup: (...args) => spinners.runSpinMarkup(...args), threadIsRunning: (...args) => spinners.threadIsRunning(...args) },
+    spinners: { ageInfo: (...args) => spinners.ageInfo(...args), threadIsRunning: (...args) => spinners.threadIsRunning(...args) },
     threads,
     drawer,
     undo,
