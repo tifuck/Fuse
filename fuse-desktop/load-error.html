@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Fuse</title>
+<style>
+  html { color-scheme: dark; background: #141615; color: #e8e6e3; font: 16px/1.5 system-ui, sans-serif; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+  main { max-width: 34rem; padding: 2rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
+  p { margin: 0 0 1rem; color: #a9a7a3; overflow-wrap: anywhere; }
+  button { font: inherit; min-height: 44px; padding: 0.5rem 1.25rem; border: 1px solid #3a3d3b; border-radius: 6px; background: #232624; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Can't reach Fuse</h1>
+  <p id="error"></p>
+  <p id="status" aria-live="polite"></p>
+  <button id="retry" type="button">Retry now</button>
+</main>
+<script>
+  // main.js shows this page when the site fails to load or its page crashes.
+  const q = new URLSearchParams(location.search);
+  if (q.get("title")) document.getElementById("title").textContent = q.get("title");
+  document.getElementById("error").textContent = q.get("error") || "";
+  const status = document.getElementById("status");
+  const retry = () => location.replace(q.get("url"));
+  document.getElementById("retry").addEventListener("click", retry);
+  addEventListener("online", retry);
+  let left = Number(q.get("retry")) || 0;
+  function tick() {
+    if (left <= 0) return retry();
+    status.textContent = `Retrying in ${left} s.`;
+    left -= 1;
+    setTimeout(tick, 1000);
+  }
+  if (left > 0) tick();
+</script>
+</body>
+</html>

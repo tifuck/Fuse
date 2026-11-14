@@ -1,10 +1,11 @@
-const { app, BaseWindow, clipboard, Menu, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
+const { app, BaseWindow, clipboard, dialog, Menu, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawnSync } = require("child_process");
-const { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } = require("fs");
+const { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } = require("fs");
 const path = require("path");
 const { MAX_INSTALL_TRIES, launchNotice } = require("./update-notice");
 const { contextMenuTemplate } = require("./context-menu");
+const { checkSiteUrl } = require("./site-url");
 
 // The site this build wraps: FUSE_URL at runtime, else the fuseUrl that
 // scripts/dist.js stamps into package.json, else site.json for `npm start`.
@@ -14,11 +15,18 @@ function siteUrl() {
   if (stamped) return stamped;
   try {
     return JSON.parse(readFileSync(path.join(__dirname, "site.json"), "utf8")).url;
-  } catch {
-    return "https://fuse.example.com";
+  } catch (err) {
+    throw new Error(`No Fuse site URL: set FUSE_URL or fuse-desktop/site.json {"url": ...} (${err.message})`);
   }
 }
-const APP_URL = siteUrl();
+let APP_URL;
+try {
+  APP_URL = checkSiteUrl(siteUrl()).href;
+} catch (err) {
+  // Before ready, Linux prints this to stderr instead of a dialog.
+  dialog.showErrorBox("Fuse can't start", err.message);
+  process.exit(1);
+}
 
 // Windows attributes toasts to the Start-menu shortcut, whose AUMID the NSIS
 // installer sets to appId. Electron's default (electron.app.Fuse) matches no
@@ -50,15 +58,21 @@ function userNamespacesUsable() {
   return true;
 }
 
-if (process.platform === "linux" && process.getuid() !== 0) {
-  let setuidHelper = false;
-  if (!process.env.APPIMAGE) {
-    try {
-      const helper = path.join(path.dirname(process.execPath), "chrome-sandbox");
-      setuidHelper = Boolean(statSync(helper).mode & 0o4000);
-    } catch {}
+// Chromium refuses a setuid helper that root does not own, so only that
+// one counts.
+function setuidSandboxHelper() {
+  if (process.env.APPIMAGE) return false;
+  try {
+    const helper = statSync(path.join(path.dirname(process.execPath), "chrome-sandbox"));
+    return helper.uid === 0 && Boolean(helper.mode & 0o4000);
+  } catch {
+    return false;
   }
-  if (!setuidHelper && !userNamespacesUsable()) app.commandLine.appendSwitch("no-sandbox");
+}
+
+if (process.platform === "linux" && process.getuid() !== 0 && !setuidSandboxHelper() && !userNamespacesUsable()) {
+  console.warn("fuse: no root-owned setuid chrome-sandbox and unprivileged user namespaces are restricted; running without the Chromium sandbox");
+  app.commandLine.appendSwitch("no-sandbox");
 }
 
 // GPU rendering on Linux flashes random pink/green/black garbage blocks on
@@ -70,6 +84,10 @@ if (process.platform === "linux") app.disableHardwareAcceleration();
 let win = null;
 let bar = null;
 let site = null;
+
+// A view's webContents is undefined while it is torn down, and its events
+// (the bar taking focus as the page closes) still fire then.
+const alive = (view) => Boolean(view && view.webContents && !view.webContents.isDestroyed());
 
 // The bar takes the site's active theme (Paper, Sand, Midnight, ...). The site
 // publishes its background in <meta name="theme-color"> on every theme change;
@@ -87,7 +105,7 @@ function loadFrameTheme() {
 }
 
 async function syncFrameTheme() {
-  if (!site || site.webContents.isDestroyed()) return;
+  if (!alive(site)) return;
   let theme;
   try {
     theme = await site.webContents.executeJavaScript(`(() => {
@@ -127,7 +145,7 @@ function layout() {
 }
 
 function sendFrameState() {
-  if (!bar || bar.webContents.isDestroyed()) return;
+  if (!alive(bar)) return;
   bar.webContents.send("titlebar-state", {
     maximized: win.isMaximized(),
     focused: win.isFocused(),
@@ -165,7 +183,7 @@ function handleShortcuts(event, input) {
 // Window focus can return on the title bar or on the site with nothing
 // focused; webContents.focus() alone does not bring the composer caret back.
 function restoreFocus() {
-  if (!site || site.webContents.isDestroyed()) return;
+  if (!alive(site)) return;
   site.webContents.focus();
   site.webContents.executeJavaScript(`(() => {
     const a = document.activeElement;
@@ -195,6 +213,29 @@ function openExternalSafe(url) {
   }
   if (EXTERNAL_PROTOCOLS.has(protocol)) shell.openExternal(url);
 }
+
+// A failed load or a crashed page used to leave a blank window, with only a
+// hidden F5 to get out. Say why and retry, backing off to a minute.
+let loadFailures = 0;
+function showLoadError(title, error, url, autoRetry = true) {
+  if (!alive(site)) return;
+  loadFailures += 1;
+  site.webContents.loadFile(path.join(__dirname, "load-error.html"), {
+    query: {
+      title,
+      error,
+      url: originOf(url) === APP_ORIGIN ? url : APP_URL,
+      retry: autoRetry ? String(Math.min(60, 2 ** loadFailures)) : "0",
+    },
+  });
+}
+
+// Set by app.quit(); a window that closes because Fuse is quitting quits
+// again once its page is gone, since closing it first cancelled the quit.
+let quitting = false;
+app.on("before-quit", () => {
+  quitting = true;
+});
 
 function createWindow() {
   const background = (frameTheme && frameTheme.ink) || BACKGROUND;
@@ -258,6 +299,18 @@ function createWindow() {
   win.on("focus", restoreFocus);
   if (bar) bar.webContents.on("focus", restoreFocus);
   wc.on("did-finish-load", flushToasts);
+  wc.on("did-finish-load", () => {
+    if (originOf(wc.getURL()) === APP_ORIGIN) loadFailures = 0;
+  });
+  wc.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+    // -3 is an aborted navigation (a newer one, or one refused here).
+    if (!isMainFrame || code === -3 || originOf(url) !== APP_ORIGIN) return;
+    showLoadError("Can't reach Fuse", `${description} (${code}) loading ${url}`, url);
+  });
+  wc.on("render-process-gone", (_event, details) => {
+    if (details.reason === "clean-exit") return;
+    showLoadError("Fuse stopped", `The page process ended: ${details.reason} (exit code ${details.exitCode}).`, wc.getURL());
+  });
   wc.on("dom-ready", () => {
     wc.executeJavaScript(`document.addEventListener("focusin", (ev) => {
       const t = ev.target;
@@ -296,11 +349,41 @@ function createWindow() {
     if (main && originOf(target) !== APP_ORIGIN) {
       event.preventDefault();
       openExternalSafe(target);
+      // Nothing of the site is showing (the first load): say so instead of a
+      // blank window. No auto-retry, which would reopen the browser each time.
+      if (originOf(wc.getURL()) !== APP_ORIGIN) {
+        showLoadError("Fuse opened in your browser", `${APP_ORIGIN} redirected to ${originOf(target)}, outside this app. Check the site URL this build uses.`, APP_URL, false);
+      }
     }
   });
 
+  // A BaseWindow closes without asking its page, so chat.js's beforeunload
+  // guard (unsent turns, unsaved memory) never ran and that work was dropped.
+  // Close the page first; the window follows once it is gone.
+  win.on("close", (event) => {
+    if (wc.isDestroyed()) return;
+    event.preventDefault();
+    wc.close({ waitForBeforeUnload: true });
+  });
+  wc.on("will-prevent-unload", (event) => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: "question",
+      buttons: ["Leave", "Stay"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Leave Fuse?",
+      detail: "Changes that haven't reached the server yet will be lost.",
+    });
+    if (choice === 0) event.preventDefault();
+    else quitting = false;
+  });
+  wc.on("destroyed", () => {
+    if (win) win.destroy();
+    if (quitting) app.quit();
+  });
+
   win.on("closed", () => {
-    wc.close();
+    if (!wc.isDestroyed()) wc.close();
     if (bar) bar.webContents.close();
     win = bar = site = null;
   });
@@ -355,7 +438,7 @@ function showToast(toast) {
     ui.toast(t);
     return true;
   })()`;
-  if (!site || site.webContents.isDestroyed()) return queuedToasts.push(toast);
+  if (!alive(site)) return queuedToasts.push(toast);
   site.webContents.executeJavaScript(script).then(
     (shown) => shown || queuedToasts.push(toast),
     () => queuedToasts.push(toast),
@@ -373,7 +456,14 @@ function flushToasts() {
 // place; the next launch says so, and a version that fails MAX_INSTALL_TRIES
 // times stops installing on quit.
 const UPDATE_CHECK_MS = 4 * 60 * 60 * 1000;
+const RESTART_TIMEOUT_MS = 15 * 1000;
 let restartToUpdate = null;
+
+// Squirrel.Mac installs only an update signed like the running app, and mac
+// builds are ad-hoc signed (electron-builder.yml identity: null), so every
+// install failed after a "ready" toast. Point at the Download page instead;
+// drop this once mac builds carry a Developer ID.
+const CAN_INSTALL = process.platform !== "darwin";
 
 // Variables systemd sets per unit; the relaunched unit gets its own.
 const UNIT_ENV = new Set(["INVOCATION_ID", "JOURNAL_STREAM", "MANAGERPID", "MANAGERPIDFDID", "SYSTEMD_EXEC_PID", "MEMORY_PRESSURE_WATCH", "MEMORY_PRESSURE_WRITE"]);
@@ -403,31 +493,46 @@ function startUpdater() {
     mkdirSync(dir, { recursive: true });
   } catch {}
   const file = path.join(dir, "updater.log");
+  const hadLog = existsSync(file);
   const write = (level) => (...args) => {
     try {
       appendFileSync(file, `${new Date().toISOString()} ${level} ${args.join(" ")}\n`);
     } catch {}
   };
+  autoUpdater.logger = { info: write("info"), warn: write("warn"), error: write("error"), debug() {} };
+  autoUpdater.autoDownload = CAN_INSTALL;
+  autoUpdater.autoInstallOnAppQuit = CAN_INSTALL;
 
   const stateFile = path.join(app.getPath("userData"), "update-state.json");
   let saved = {};
   try {
     saved = JSON.parse(readFileSync(stateFile, "utf8")) || {};
-  } catch {}
-  const { state, toast } = launchNotice(saved, app.getVersion(), existsSync(file));
+  } catch (err) {
+    if (err.code !== "ENOENT") write("warn")(`Ignoring ${stateFile}: ${err.message}`);
+  }
+  const { state, toast } = launchNotice(saved, app.getVersion(), hadLog);
+  // Written whole and renamed into place, so a crash cannot truncate it. The
+  // tries count is what stops a failing install at MAX_INSTALL_TRIES: while
+  // it cannot be saved, nothing installs on quit.
   const save = () => {
-    try { writeFileSync(stateFile, JSON.stringify(state)); } catch {}
+    const tmp = `${stateFile}.tmp`;
+    try {
+      writeFileSync(tmp, JSON.stringify(state));
+      renameSync(tmp, stateFile);
+      return true;
+    } catch (err) {
+      write("error")(`Cannot save ${stateFile}: ${err.message}; not installing on quit`);
+      autoUpdater.autoInstallOnAppQuit = false;
+      return false;
+    }
   };
-  save();
+  // A notice that cannot be recorded as shown would repeat on every launch.
   // Its own key: the cached update's "ready" toast follows at once and must not replace it.
-  if (toast) showToast({ key: "fuse-desktop-launch", ...toast });
-
-  autoUpdater.logger = { info: write("info"), warn: write("warn"), error: write("error"), debug() {} };
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  if (save() && toast) showToast({ key: "fuse-desktop-launch", ...toast });
 
   let announced = null;
   let offered = null;
+  let unfetched = null;
   let restarting = false;
   const installing = () => {
     state.pending.installing = true;
@@ -437,7 +542,9 @@ function startUpdater() {
   autoUpdater.on("update-available", ({ version }) => {
     if (announced === version) return;
     announced = version;
-    showToast({ title: `Downloading Fuse ${version}`, msg: "In the background. Keep working.", ttl: 6000 });
+    showToast(CAN_INSTALL
+      ? { title: `Downloading Fuse ${version}`, msg: "In the background. Keep working.", ttl: 6000 }
+      : { title: `Fuse ${version} is available`, msg: "Install it from the Download page.", actionLabel: "Download", href: "/download" });
   });
 
   // Runs before electron-updater's own handler, which the download adds.
@@ -458,7 +565,14 @@ function startUpdater() {
   });
 
   autoUpdater.on("error", () => {
-    if (!restarting) return;
+    if (!restarting) {
+      // A failed download used to show nothing; the next check retries it.
+      if (announced && offered !== announced && unfetched !== announced && CAN_INSTALL) {
+        unfetched = announced;
+        showToast({ kind: "warn", title: `Fuse ${announced} didn't download`, msg: "Fuse tries again in a few hours.", ttl: 10000 });
+      }
+      return;
+    }
     restarting = false;
     const still = `Still on ${app.getVersion()}.`;
     showToast(autoUpdater.autoInstallOnAppQuit
@@ -466,22 +580,37 @@ function startUpdater() {
       : { kind: "err", title: "Update didn't install", msg: `${still} Install it from the Download page.`, actionLabel: "Download", href: "/download" });
   });
 
+  // Only an error or the quit clears `restarting`. A quit kept back (Stay in
+  // the leave dialog) left Restart dead without a word; Restart stays off
+  // then, since a second install call is ignored once one has run.
+  const watchRestart = () => setTimeout(() => {
+    if (!restarting) return;
+    write("warn")("Restart to update did not quit");
+    showToast({ kind: "warn", title: "Fuse didn't restart", msg: `Still on ${app.getVersion()}. Close Fuse to finish updating.` });
+  }, RESTART_TIMEOUT_MS);
+
   restartToUpdate = () => {
     if (!offered || restarting) return;
     restarting = true;
     installing();
     if (process.platform !== "linux" || process.env.APPIMAGE) {
       autoUpdater.quitAndInstall(true, true);
+      watchRestart();
       return;
     }
     autoUpdater.quitAndInstall(true, false);
     // The .deb install runs synchronously; a failed one already fired "error".
     // The quit itself waits for the next tick, so app.relaunch() is still in time.
     if (!restarting) return;
+    watchRestart();
     if (relaunchFromSystemd()) write("info")("Relaunching through systemd-run --user");
-    else {
+    else if (!setuidSandboxHelper() || userNamespacesUsable()) {
       write("warn")("systemd-run --user failed; relaunching through app.relaunch()");
       app.relaunch();
+    } else {
+      // The setuid sandbox under no_new_privs: app.relaunch() would abort.
+      write("warn")("systemd-run --user failed and app.relaunch() cannot start the sandbox here; not relaunching");
+      dialog.showMessageBoxSync({ type: "info", message: `Fuse ${offered} is installed`, detail: "Open Fuse again to use it." });
     }
   };
 
