@@ -269,7 +269,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-foot .user-dock .user-dock-btn .user-dock-copy { display: block; flex: 1 1 auto; width: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .cb-foot .user-dock-btn .user-dock-copy strong,
   & .cb-foot .user-dock-btn .user-dock-caret { display: none; }
-  & .cb-foot .user-dock-btn .user-dock-copy span { color: inherit; font: inherit; }
+  & .cb-foot .user-dock .user-dock-btn .user-dock-copy span { display: inline; color: inherit; font: inherit; }
 
   /* ---- Header: 40px ---- */
   & .cb-head {
