@@ -16,6 +16,7 @@ files:
   - update-notice.js
   - context-menu.js
   - site-url.js
+  - permissions.js
   - load-error.html
   - package.json
   - build/icon.png

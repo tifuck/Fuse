@@ -6,6 +6,7 @@ const path = require("path");
 const { MAX_INSTALL_TRIES, launchNotice } = require("./update-notice");
 const { contextMenuTemplate } = require("./context-menu");
 const { checkSiteUrl } = require("./site-url");
+const { allowPermission, EXTERNAL_PROTOCOLS } = require("./permissions");
 
 // The site this build wraps: FUSE_URL at runtime, else the fuseUrl that
 // scripts/dist.js stamps into package.json, else site.json for `npm start`.
@@ -203,7 +204,6 @@ function originOf(url) {
 
 // Page content picks these URLs: only hand web links to the OS, never a
 // custom scheme that would launch some installed protocol handler.
-const EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 function openExternalSafe(url) {
   let protocol = "";
   try {
@@ -263,6 +263,10 @@ function createWindow() {
   });
   site.setBackgroundColor(background);
   win.contentView.addChildView(site);
+  const ses = site.webContents.session;
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => callback(allowPermission(permission, details, APP_ORIGIN)));
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) =>
+    allowPermission(permission, { requestingOrigin, ...details }, APP_ORIGIN));
 
   if (CUSTOM_FRAME) {
     bar = new WebContentsView({
