@@ -71,8 +71,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
   /* ---- Window layout: sidebar | stage | inspector ---- */
   @media (min-width: 801px) {
-    grid-template-columns: var(--dk-side-w) minmax(0, 1fr) var(--dk-insp-w);
-    grid-template-rows: minmax(0, 1fr);
+    & { grid-template-columns: var(--dk-side-w) minmax(0, 1fr) var(--dk-insp-w); grid-template-rows: minmax(0, 1fr); }
     &.history-collapsed { --dk-side-w: 0px; grid-template-columns: 0 minmax(0, 1fr) var(--dk-insp-w); }
     & .chat-history { grid-row: 1; }
     & > .chat-stage { grid-column: 2; grid-row: 1; }
@@ -286,7 +285,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     gap: 4px;
     height: var(--chat-bar-h);
     min-height: 0;
-    padding: 0 8px;
+    padding: 0 8px 0 12px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: var(--dk-canvas);
     container-type: normal;
@@ -651,6 +650,22 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-memory-field textarea { border-radius: 8px; font: 13.5px/1.5 var(--sans); }
   & :is(.chat-slash-item, .chat-picker-row, .chat-perms-row) { border-radius: 7px; font-family: var(--sans); }
 
+  /* ---- Inside a subagent on a narrow screen: the Tasks card inline under the top bar ---- */
+  @media (max-width: 1039.98px) {
+    &[data-theme-rail-state="inline"] .dk-insp {
+      position: absolute;
+      inset: var(--chat-bar-h) 0 auto;
+      z-index: 6;
+      display: block;
+      max-height: 40vh;
+      padding: 6px 8px;
+      overflow-y: auto;
+      border-bottom: 1px solid var(--dk-card-line);
+      background: var(--dk-canvas);
+    }
+    &[data-theme-rail-state="inline"] .dk-insp > :not([data-theme-card="tasks"]) { display: none; }
+    &[data-theme-rail-state="inline"] .chat-agent-view { margin-top: calc(var(--chat-bar-h) + var(--dk-inline-h, 0px)); }
+  }
   /* ---- Narrow window: the inspector overlays the chat ---- */
   @media (min-width: 801px) and (max-width: 1039.98px) {
     &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp {
@@ -664,6 +679,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   /* ---- Phones: the inspector is a full-screen sheet, the sidebar a drawer ---- */
   @media (max-width: 800px) {
+    /* Notched phones: the top bar, the drawer's head and foot and the composer clear the insets. */
     &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp {
       position: fixed;
       inset: 0;
@@ -676,10 +692,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-card-preview { flex: 1 0 60dvh; }
     & .dk-card-preview .chat-artifact { position: relative; inset: auto; z-index: auto; width: auto; }
     & .dk-card-preview .chat-artifact-head { height: 44px; padding: 0 4px 0 10px; }
-    & .dk-head { gap: 0; padding: 0 4px; }
+    & .dk-head { gap: 0; height: auto; min-height: calc(38px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 4px 0; }
+    & .dk-side { padding-top: calc(6px + var(--safe-top, 0px)); padding-bottom: calc(6px + var(--safe-bottom, 0px)); }
+    & .chat-dock { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
     & :is(.dk-nav, .dk-seg, .dk-crumb-icon, .dk-crumb-home, .dk-crumb-sep, .dk-crumb .dk-chip, [data-theme-terminal], [data-theme-project], [data-theme-new], .dk-web) { display: none; }
     & .dk-head .dk-ib { width: 34px; height: 36px; }
-    & .chat-dock { padding: 4px 8px 8px; }
+    & .chat-dock { padding-inline: 8px; padding-top: 4px; }
     & .dk-model .chat-picker-btn { max-width: 10rem; }
     & .dk-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .dk-row { height: 44px; }

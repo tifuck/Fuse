@@ -306,10 +306,19 @@ export function create(deps) {
     syncChips();
     const wide = window.matchMedia(WIDE).matches;
     const running = Boolean(deps.streaming || deps.runIsActive(deps.activeRun));
+    // Inside a subagent the agent tree is the way back to main: wide, the
+    // inspector opens; narrow, the Tasks card sits inline under the top bar.
     let next = "closed";
     if (userOpen !== null) next = userOpen ? "open" : "closed";
+    else if (agentView && tasks) next = wide ? "open" : "inline";
     else if (wide && (tasks || plan)) next = "open";
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
+    const inline = next === "inline" ? q("[data-theme-rail]")?.offsetHeight || 0 : 0;
+    const inlineH = inline ? `${inline}px` : "";
+    if (deps.root.style.getPropertyValue("--dk-inline-h") !== inlineH) {
+      if (inlineH) deps.root.style.setProperty("--dk-inline-h", inlineH);
+      else deps.root.style.removeProperty("--dk-inline-h");
+    }
     deps.root.classList.toggle("dk-has-diff", diff);
     deps.root.classList.toggle("dk-has-term", terminal);
     deps.root.classList.toggle("dk-running", running);

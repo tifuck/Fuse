@@ -10,7 +10,8 @@ export function create(deps) {
 
   // A run spinner slot; the runtime fills [data-run-spin] (setConsoleSpin).
   // Desktop shows it as a pulsing dot (styles/shell.css).
-  const CODE_ICON = '<svg class="dk-st-code" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  // A code session's </> mark wears its project's colour (data-project-color).
+  const codeIcon = (color) => `<svg class="dk-st-code" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="color:${color}"` : ""} viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   function runSpinHtml(stamp) {
     return `<span class="chat-run-spin dk-live" data-run-spin="${esc(String(stamp))}" data-spin-set="console-glyph" aria-hidden="true">` +
       `<span class="chat-console-spin">${deps.consoleSpinGlyph(true)}</span></span>`;
@@ -35,7 +36,7 @@ export function create(deps) {
 
   function threadRowHtml(item, row) {
     const title = esc(row.title);
-    const lead = !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : CODE_ICON;
+    const lead = !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : codeIcon(item.project_color);
     const where = row.meta ? `<span class="dk-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     const chip = row.chip ? `<span class="dk-chip">${esc(row.chip)}</span>` : "";
     const snip = item.snippet ? `<span class="dk-snip">${esc(item.snippet)}</span>` : "";
