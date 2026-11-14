@@ -12,5 +12,6 @@ import { orbit, galaxy } from "./scenes-orbit-galaxy.js";
 import { eclipse, belt, contact } from "./scenes-eclipse-belt-contact.js";
 import { koi } from "./scene-koi.js";
 import { signal } from "./scene-signal.js";
+import { spark, clouddrift, honulagoon, koipond, jellyfish, paperboats, fireflies, moonlit } from "./wallpapers.js";
 
-export const SCENES = { glyphs, life, rain, ripple, circuit, spiral, coral, riso, warp, mandala, aurora, garden, botanica, ivy, meadow, pond, orbit, galaxy, eclipse, belt, contact, koi, signal };
+export const SCENES = { glyphs, life, rain, ripple, circuit, spiral, coral, riso, warp, mandala, aurora, garden, botanica, ivy, meadow, pond, orbit, galaxy, eclipse, belt, contact, koi, signal, spark, clouddrift, honulagoon, koipond, jellyfish, paperboats, fireflies, moonlit };

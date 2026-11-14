@@ -43,6 +43,14 @@
     mandala: { label: "Mandala", hint: "Glyph rosette · multicolor" },
     spiral: { label: "Spiral", hint: "Cyclic automaton · multicolor" },
     riso: { label: "Riso", hint: "Halftone inks · multicolor" },
+    spark: { label: "Spark", hint: "Ember burst · warm dark" },
+    clouddrift: { label: "Cloud Drift", hint: "Tile clouds · birds" },
+    honulagoon: { label: "Honu Lagoon", hint: "Sea turtle · reef" },
+    koipond: { label: "Koi Pond", hint: "Tile koi · lily pads" },
+    jellyfish: { label: "Jellyfish", hint: "Pulsing jellies · deep" },
+    paperboats: { label: "Paper Boats", hint: "Boats on glyph waves" },
+    fireflies: { label: "Fireflies", hint: "Night grass · glow" },
+    moonlit: { label: "Moonlit", hint: "Crescent · glyph sea" },
   };
   // Saved choices from retired backdrops map to their nearest replacement
   // instead of silently switching the wallpaper off.
