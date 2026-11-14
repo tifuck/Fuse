@@ -870,6 +870,31 @@ class PatchHostMariaDBTest(unittest.TestCase):
         row = db.fetchone("SELECT alias, username FROM user_hosts WHERE id=?", (self.host["id"],))
         self.assertEqual((row["alias"], row["username"]), ("renamed", "rotated"))
 
+    def test_new_key_after_a_password_reset_drops_the_old_passphrase(self):
+        locked = hosts.add_host(self.uid, {"alias": "locked", "hostname": "l.example.com", "username": "u",
+                                           "auth_type": "key", "secret": "old-key", "passphrase": "old-pass"})
+        self.assertEqual(accounts.reset_password("patch@test.invalid", "password34"), ["box", "locked"])
+        # The DEK went with the vault: its ciphertext is unrecoverable and blanked.
+        row = db.fetchone("SELECT secret, passphrase FROM user_hosts WHERE id=?", (locked["id"],))
+        self.assertEqual((row["secret"], row["passphrase"]), ("", ""))
+        vault.lock_all()
+        vault.unlock(self.uid, "password34")
+        hosts.patch_host(self.uid, locked["id"], {"secret": "new-unencrypted-key"})
+        self.assertEqual(hosts.secret_plain(self.uid, locked["id"])[:2], ("new-unencrypted-key", ""))
+
+    def test_replacing_the_key_or_auth_type_clears_a_passphrase_not_resent(self):
+        host = hosts.add_host(self.uid, {"alias": "pp", "hostname": "p.example.com", "username": "u",
+                                         "auth_type": "key", "secret": "key-1", "passphrase": "pass-1"})
+        hosts.patch_host(self.uid, host["id"], {"label": "renamed"})
+        self.assertEqual(hosts.secret_plain(self.uid, host["id"])[:2], ("key-1", "pass-1"))
+        hosts.patch_host(self.uid, host["id"], {"secret": "key-2", "passphrase": "pass-2"})
+        self.assertEqual(hosts.secret_plain(self.uid, host["id"])[:2], ("key-2", "pass-2"))
+        hosts.patch_host(self.uid, host["id"], {"secret": "key-3"})
+        self.assertEqual(hosts.secret_plain(self.uid, host["id"])[:2], ("key-3", ""))
+        hosts.patch_host(self.uid, host["id"], {"passphrase": "pass-3"})
+        hosts.patch_host(self.uid, host["id"], {"auth_type": "password"})
+        self.assertEqual(hosts.secret_plain(self.uid, host["id"])[:2], ("key-3", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

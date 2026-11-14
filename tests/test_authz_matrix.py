@@ -179,6 +179,27 @@ def test_hosts_are_private_to_their_owner(client):
     assert client.patch(f"/hosts/{own['id']}", json={"label": "mine"}).status_code == 200
 
 
+def test_cannot_trust_a_host_key_for_another_users_host(client):
+    alice_id = _uid("alice@authz.invalid")
+    vault.unlock(alice_id, _PASSWORD)
+    host = hosts.add_host(alice_id, {
+        "alias": "alpha", "hostname": "a.example.com", "username": "ada", "auth_type": "key", "secret": "k",
+    })
+    hosts.set_pin(alice_id, host["id"], "ssh-ed25519", "ab" * 32)
+    swap = {"algorithm": "ssh-ed25519", "fingerprint": "cd" * 32}
+
+    _login(client, "bob@authz.invalid")
+    refused = client.post(f"/hosts/{host['id']}/trust", json=swap)
+    assert refused.status_code in (403, 404), refused.text
+    assert hosts.get_host(alice_id, host["id"])["fingerprint"] == "ab" * 32
+
+    # Positive control: the owner can re-pin through the same route.
+    _login(client, "alice@authz.invalid")
+    trusted = client.post(f"/hosts/{host['id']}/trust", json=swap)
+    assert trusted.status_code == 200, trusted.text
+    assert hosts.get_host(alice_id, host["id"])["fingerprint"] == "cd" * 32
+
+
 def test_serialized_host_payloads_never_carry_the_secret_or_passphrase(client):
     alice_id = _uid("alice@authz.invalid")
     _login(client, "alice@authz.invalid")
@@ -200,13 +221,23 @@ def test_serialized_host_payloads_never_carry_the_secret_or_passphrase(client):
     assert "SECRET-KEY-MATERIAL" not in page.text and "PASSPHRASE-x" not in page.text
 
 
+def _thread(client, command_id):
+    created = client.post("/chat/threads", json={"model": "offline", "command_id": command_id})
+    assert created.status_code == 201, created.text
+    return created.json()["id"]
+
+
 def test_artifacts_are_private_to_their_owner(client):
     alice_id = _uid("alice@authz.invalid")
     _login(client, "alice@authz.invalid")
     private = artifacts.create(alice_id, title="Private", html="<p>secret sauce</p>")
     public = artifacts.create(alice_id, title="Public", html="<p>shared</p>", visibility="public")
 
+    alice_thread = _thread(client, "authz-alice")
+
     _login(client, "bob@authz.invalid")
+    # Attach names one of bob's own chats, so its 404 is about the artifact.
+    bob_thread = _thread(client, "authz-bob")
     ident = private["identifier"]
     blocked = [
         ("get", f"/a/{ident}", 404),                 # page
@@ -222,16 +253,20 @@ def test_artifacts_are_private_to_their_owner(client):
         ("post", f"/a/{ident}/pin", 404),
         ("post", f"/a/{ident}/rotate-link", 404),
         ("post", f"/a/{ident}/revert", 404),          # json={"version": 1}
-        ("post", f"/a/{ident}/attach", 404),
+        ("post", f"/a/{ident}/attach", 404),          # json={"thread_id": <caller's own chat>}
     ]
-    for method, path, expected in blocked:
-        json = (
+
+    def body(path, thread_id):
+        return (
             {"visibility": "public"} if path.endswith("/visibility")
             else {"title": "pwned"} if path.endswith("/title")
             else {"version": 1} if path.endswith(("/revert", "/pin"))
+            else {"thread_id": thread_id} if path.endswith("/attach")
             else {}
         )
-        res = client.request(method.upper(), path, json=json)
+
+    for method, path, expected in blocked:
+        res = client.request(method.upper(), path, json=body(path, bob_thread))
         assert res.status_code == expected, (method, path, res.status_code)
     # A public artifact is intentionally viewable by others, but its
     # owner-only operations stay owner-only.
@@ -250,6 +285,12 @@ def test_artifacts_are_private_to_their_owner(client):
     meta = client.get(f"/a/{ident}/meta").json()
     assert meta["visibility"] == "private" and meta["title"] == "Private" and meta["owner"] is True
     assert client.get(f"/a/{public['identifier']}/meta").json()["visibility"] == "public"
+    # Positive control: every route bob was refused works for alice, so the
+    # 404s above were ownership, not a route that answers 404 to everyone.
+    # Archive goes last: an archived artifact cannot be continued.
+    for method, path, _expected in sorted(blocked, key=lambda attempt: attempt[1].endswith("/archive")):
+        res = client.request(method.upper(), path, json=body(path, alice_thread))
+        assert res.status_code < 400, (method, path, res.status_code, res.text[:200])
 
 
 def test_artifact_viewers_see_only_the_shared_version(client):
@@ -319,16 +360,22 @@ def test_threads_and_runs_are_private_to_their_owner(client):
     thread = created.json()
     pk = chats.resolve_thread_pk(alice_id, thread["id"])
     run = chat_store.start_turn(alice_id, pk, "hello", thread["revision"], "authz-run")["run"]
+    # /message is only for subagents: a root run 404s for its owner too.
+    child = chat_store.start_child_run(
+        user_id=alice_id, thread_id=thread["id"], parent_run_id=run["id"],
+        prompt="audit", description="worker", background=True,
+    )
+    revision = client.get(f"/chat/threads/{thread['id']}").json()["revision"]
 
     _login(client, "bob@authz.invalid")
     attempts = [
         ("GET", f"/chat/threads/{thread['id']}", None, 404),
-        ("PATCH", f"/chat/threads/{thread['id']}", {"title": "pwned", "expected_revision": 1, "command_id": "x"}, 404),
-        ("DELETE", f"/chat/threads/{thread['id']}", {"expected_revision": 1}, 404),
+        ("PATCH", f"/chat/threads/{thread['id']}", {"title": "pwned", "expected_revision": revision, "command_id": "x"}, 404),
+        ("DELETE", f"/chat/threads/{thread['id']}", {"expected_revision": revision}, 404),
         ("GET", f"/chat/runs/{run['id']}", None, 404),
         ("POST", f"/chat/runs/{run['id']}/cancel", None, 404),
         ("POST", f"/chat/runs/{run['id']}/resume", None, 404),
-        ("POST", f"/chat/runs/{run['id']}/message", {"text": "pwned"}, 404),
+        ("POST", f"/chat/runs/{child['id']}/message", {"text": "pwned"}, 404),
     ]
     for method, path, body, expected in attempts:
         res = client.request(method, path, json=body)
@@ -339,6 +386,25 @@ def test_threads_and_runs_are_private_to_their_owner(client):
     assert snapshot.status_code == 200
     assert snapshot.json()["title"] == "Alice thread"
     assert client.get(f"/chat/runs/{run['id']}").status_code == 200
+    # Positive control: the routes bob was refused work for alice, so his
+    # 404s were ownership, not routes that answer 404 to everyone.
+    messaged = client.post(f"/chat/runs/{child['id']}/message", json={"text": "mine"})
+    assert messaged.status_code == 200, messaged.text
+    cancelled = client.post(f"/chat/runs/{run['id']}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    # Found and refused on its merits: a new run has no transcript to resume.
+    resumed = client.post(f"/chat/runs/{run['id']}/resume")
+    assert resumed.status_code == 409, resumed.text
+    renamed = client.patch(f"/chat/threads/{thread['id']}", json={
+        "title": "Renamed", "command_id": "authz-rename",
+        "expected_revision": client.get(f"/chat/threads/{thread['id']}").json()["revision"],
+    })
+    assert renamed.status_code == 200, renamed.text
+    deleted = client.request("DELETE", f"/chat/threads/{thread['id']}", json={
+        "expected_revision": client.get(f"/chat/threads/{thread['id']}").json()["revision"],
+    })
+    assert deleted.status_code == 200, deleted.text
+    assert client.get(f"/chat/threads/{thread['id']}").status_code == 404
 
 
 def test_cannot_remove_another_users_push_subscription(client):
