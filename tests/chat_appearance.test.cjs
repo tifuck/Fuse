@@ -13,7 +13,7 @@ const themeMeta = readdirSync(resolve(__dirname, '../static/themes'), { withFile
   .map((d) => JSON.parse(readFileSync(resolve(__dirname, '../static/themes', d.name, 'theme.json'), 'utf8')))
   .sort((a, b) => a.order - b.order);
 
-function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
+function boot(saved = {}, blocked = false, { cookie = '', view, backdrop } = {}) {
   const storage = new Map(Object.entries(saved));
   const meta = {};
   const html = { dataset: view ? { chatView: view } : {}, style: { setProperty() {}, removeProperty() {} }, removeAttribute(name) { delete this.dataset[name.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]; } };
@@ -42,10 +42,12 @@ function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
     },
     MutationObserver: class { constructor(fn) {} observe() {} },
   };
+  if (backdrop) world.FuseBackdrop = backdrop;
   world.window = world;
   vm.runInNewContext(source, world);
   return {
     html, root, meta, storage, ready, appearance: world.FuseChatAppearance,
+    views: () => JSON.parse(storage.get('fuse.chat.views.v1')),
     change(theme) { world.FuseChatAppearance.setTheme(theme); },
   };
 }
@@ -80,7 +82,8 @@ test('theme choice persists with its meta colors', () => {
   const ui = boot();
   ui.ready();
   ui.change('midnight');
-  assert.equal(ui.storage.get('fuse.chat.theme.v1'), 'midnight');
+  // Palettes are saved per theme now (fuse.chat.views.v1), not in the global key.
+  assert.equal(ui.views().console.palette, 'midnight');
   assert.equal(ui.meta['meta[name="theme-color"]'], '#0a1018');
   assert.equal(ui.html.dataset.chatTheme, 'midnight');
   assert.equal(ui.meta['meta[name="theme-color"]'], '#0a1018');
@@ -116,7 +119,8 @@ test('backdrop kind persists independently of theme', () => {
   ui.ready();
   ui.appearance.setBackdrop('orbit');
   assert.equal(ui.html.dataset.chatBackdrop, 'orbit');
-  assert.equal(ui.storage.get('fuse.chat.backdrop.v1'), 'orbit');
+  assert.equal(ui.views().console.backdrop, 'orbit');
+  assert.equal(ui.views().console.strength, 40);
   ui.change('void');
   assert.equal(ui.html.dataset.chatBackdrop, 'orbit');
 });
@@ -232,4 +236,92 @@ test('tool rows collapse to one line; thinking unwraps in place', () => {
   assert.match(js, /function syncThinkingMode\(/);
   assert.match(js, /windowEl\.inert = mode === "collapsed"/);
   assert.match(js, /mode === "collapsed" \? -1 : 0/);
+});
+
+test('each theme keeps its own palette, backdrop and strength, starting from the old global values', () => {
+  const legacy = { 'fuse.chat.theme.v1': 'midnight', 'fuse.chat.backdrop.v1': 'garden', 'fuse.chat.backdrop.strength.v1': '40' };
+  const ui = boot(legacy, false, { view: 'combined' });
+  // Migration: every theme starts from the global values, once.
+  for (const meta of themeMeta) assert.deepEqual(ui.views()[meta.id], { palette: 'midnight', backdrop: 'garden', strength: 40, restore: '' }, meta.id);
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  ui.ready();
+  ui.change('ember');
+  ui.appearance.setBackdrop('rain');
+  ui.appearance.setStrength(20);
+  const saved = Object.fromEntries(ui.storage);
+  // Console is untouched by Combined's edits, and the global keys no longer decide.
+  const consoleUi = boot(saved);
+  assert.equal(consoleUi.html.dataset.chatTheme, 'midnight');
+  assert.equal(consoleUi.html.dataset.chatBackdrop, 'garden');
+  const combinedUi = boot(saved, false, { view: 'combined' });
+  assert.equal(combinedUi.html.dataset.chatTheme, 'ember');
+  assert.equal(combinedUi.html.dataset.chatBackdrop, 'rain');
+  assert.equal(combinedUi.views().combined.strength, 20);
+  // A later edit of a global key does not move a migrated theme.
+  const again = boot({ ...saved, 'fuse.chat.theme.v1': 'paper' });
+  assert.equal(again.html.dataset.chatTheme, 'midnight');
+});
+
+test('with no saved look each theme takes its metadata defaults', () => {
+  for (const meta of themeMeta) {
+    const ui = boot({}, false, { view: meta.id });
+    assert.equal(ui.html.dataset.chatScheme, meta.scheme, meta.id);
+    assert.equal(ui.html.dataset.chatBackdrop, meta.wallpaper, meta.id);
+    assert.equal(ui.html.dataset.chatFont, meta.font, meta.id);
+    assert.equal(ui.appearance.themeId, meta.id);
+  }
+  // Console and Combined keep today's look exactly.
+  for (const view of ['console', 'combined']) {
+    const ui = boot({}, false, { view });
+    assert.equal(ui.html.dataset.chatTheme, 'fuse');
+    assert.equal(ui.html.dataset.chatBackdrop, 'none');
+  }
+  // A theme added after migration starts from its own defaults, not the old globals.
+  const views = { console: { palette: 'ember', backdrop: 'rain', strength: 30 } };
+  const fresh = boot({ 'fuse.chat.views.v1': JSON.stringify(views), 'fuse.chat.theme.v1': 'midnight' }, false, { view: 'combined' });
+  assert.equal(fresh.html.dataset.chatTheme, 'fuse');
+  assert.equal(fresh.views().console.palette, 'ember');
+  // Garbage in the store falls back per field.
+  const junk = boot({ 'fuse.chat.views.v1': JSON.stringify({ console: { palette: 'nope', backdrop: '<b>', strength: 999, restore: 1 } }) });
+  assert.equal(junk.html.dataset.chatTheme, 'fuse');
+  assert.equal(junk.html.dataset.chatBackdrop, 'none');
+  junk.appearance.setStrength(30);
+  assert.deepEqual(junk.views().console, { palette: 'fuse', backdrop: 'none', strength: 30, restore: '' });
+});
+
+test('a light wallpaper switches a dark palette to light; None brings it back', () => {
+  const schemes = { clouddrift: 'light', honulagoon: 'dark' };
+  const backdrop = { sync() {}, previews() {}, isWallpaper: (k) => k in schemes, scheme: (k) => schemes[k] || '' };
+  const ui = boot({ 'fuse.chat.theme.v1': 'midnight' }, false, { backdrop });
+  ui.ready();
+  ui.appearance.setBackdrop('clouddrift');
+  assert.equal(ui.html.dataset.chatScheme, 'light');
+  assert.equal(ui.html.dataset.chatTheme, 'paper');
+  assert.equal(ui.views().console.restore, 'midnight');
+  ui.appearance.setBackdrop('none');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  assert.equal(ui.views().console.restore, '');
+  // Dark wallpapers leave the palette alone; leaving light for one restores it.
+  ui.appearance.setBackdrop('honulagoon');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  ui.appearance.setBackdrop('clouddrift');
+  ui.appearance.setBackdrop('honulagoon');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  // A palette the user picks over a light wallpaper is kept.
+  ui.appearance.setBackdrop('clouddrift');
+  ui.change('frost');
+  ui.appearance.setBackdrop('none');
+  assert.equal(ui.html.dataset.chatTheme, 'frost');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.appearance.wallpapers.map((w) => [w.id, w.scheme]))), [['clouddrift', 'light'], ['honulagoon', 'dark']]);
+});
+
+test('the sun toggle flips the scheme per theme and comes back to the dark palette', () => {
+  const ui = boot({ 'fuse.chat.theme.v1': 'ember' }, false, { view: 'combined' });
+  ui.ready();
+  ui.appearance.setScheme('light');
+  assert.equal(ui.html.dataset.chatScheme, 'light');
+  assert.equal(ui.appearance.scheme, 'light');
+  ui.appearance.setScheme('dark');
+  assert.equal(ui.html.dataset.chatTheme, 'ember');
+  assert.equal(boot(Object.fromEntries(ui.storage)).html.dataset.chatTheme, 'ember');
 });

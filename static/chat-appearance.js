@@ -174,6 +174,12 @@
   const STORE_CUSTOM = "fuse.chat.custom.v1";
   const STORE_BACKDROP = "fuse.chat.backdrop.v1";
   const STORE_STRENGTH = "fuse.chat.backdrop.strength.v1";
+  // Each theme keeps its own palette, backdrop and strength (and the palette a
+  // light wallpaper replaced): { [view]: { palette, backdrop, strength, restore } }.
+  // The global keys above are read once, as every theme's first value.
+  const STORE_VIEWS = "fuse.chat.views.v1";
+  // A light wallpaper (or a theme's sun toggle) switches a dark palette to this.
+  const LIGHT_PALETTE = "paper";
   const SIZE_MIN = 30;
   const SIZE_MAX = 130;
   const SIZE_DEFAULT = 100;
@@ -187,6 +193,7 @@
   let custom = { ink: "#000000", brass: "#a5d8ff" };
   let backdrop = "none";
   let strength = STRENGTH_DEFAULT;
+  let views = {};
   let fontFilter = "all";
   let fontHover = "";
 
@@ -249,9 +256,34 @@
     };
   }
 
+  const isPalette = (id) => id === "custom" || Object.prototype.hasOwnProperty.call(themes, id);
+  const backdropKey = (id) => typeof id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(id) ? (LEGACY_BACKDROPS[id] || id) : "";
+  const clampStrength = (value) => {
+    const n = Number(value);
+    return value != null && value !== "" && Number.isFinite(n) && n >= STRENGTH_MIN && n <= STRENGTH_MAX ? Math.round(n) : null;
+  };
+  function viewDefaults(id) {
+    const meta = VIEW_META[id] || {};
+    return {
+      palette: meta.scheme === "light" ? LIGHT_PALETTE : "fuse",
+      backdrop: backdropKey(meta.wallpaper) || "none",
+      strength: STRENGTH_DEFAULT,
+      restore: "",
+    };
+  }
+  function cleanView(raw, base) {
+    const entry = raw && typeof raw === "object" ? raw : {};
+    return {
+      palette: isPalette(entry.palette) ? entry.palette : base.palette,
+      backdrop: backdropKey(entry.backdrop) || base.backdrop,
+      strength: clampStrength(entry.strength) ?? base.strength,
+      restore: isPalette(entry.restore) ? entry.restore : "",
+    };
+  }
+  let legacy = {};
   try {
     const saved = localStorage.getItem(STORE_THEME);
-    if (saved === "custom" || Object.prototype.hasOwnProperty.call(themes, saved)) theme = saved;
+    if (isPalette(saved)) legacy.palette = saved;
     const storedSize = Number(localStorage.getItem(STORE_SIZE));
     if (Number.isFinite(storedSize) && storedSize >= SIZE_MIN && storedSize <= SIZE_MAX) textScale = Math.round(storedSize / 5) * 5;
     const storedFonts = JSON.parse(localStorage.getItem(STORE_FONTS) || "{}");
@@ -271,12 +303,31 @@
       storedBackdrop = LEGACY_BACKDROPS[storedBackdrop];
       localStorage.setItem(STORE_BACKDROP, storedBackdrop);
     }
-    if (storedBackdrop && Object.prototype.hasOwnProperty.call(BACKDROPS, storedBackdrop)) backdrop = storedBackdrop;
-    const storedStrength = Number(localStorage.getItem(STORE_STRENGTH));
-    if (Number.isFinite(storedStrength) && storedStrength >= STRENGTH_MIN && storedStrength <= STRENGTH_MAX) {
-      strength = Math.round(storedStrength);
-    }
+    if (storedBackdrop && Object.prototype.hasOwnProperty.call(BACKDROPS, storedBackdrop)) legacy.backdrop = storedBackdrop;
+    const storedStrength = clampStrength(localStorage.getItem(STORE_STRENGTH));
+    if (storedStrength != null) legacy.strength = storedStrength;
   } catch (_) {}
+  // First run of per-theme looks: every theme starts from the old global
+  // values (or its metadata defaults where there were none). After that a
+  // theme added later starts from its own defaults.
+  let storedViews = null;
+  try { storedViews = JSON.parse(localStorage.getItem(STORE_VIEWS) || "null"); } catch (_) {}
+  const migrating = !storedViews || typeof storedViews !== "object";
+  for (const id of VIEWS) {
+    const base = viewDefaults(id);
+    views[id] = migrating ? cleanView(legacy, base) : cleanView(storedViews[id], base);
+  }
+  if (migrating) persistViews();
+  const view = renderedView;
+  theme = views[view].palette;
+  backdrop = views[view].backdrop;
+  strength = views[view].strength;
+
+  // A saved key may name a wallpaper registered later (addWallpaper); until
+  // then it draws nothing.
+  function shownBackdrop() {
+    return Object.prototype.hasOwnProperty.call(BACKDROPS, backdrop) ? backdrop : "none";
+  }
 
   function fontFor() {
     return selectedFont || DEFAULT_FONT;
@@ -295,7 +346,7 @@
   // Drawing lives in chat-backdrop.js (loaded after this file); until it
   // arrives, the scene simply shows its CSS layers.
   function syncFx(scene) {
-    if (window.FuseBackdrop) window.FuseBackdrop.sync(scene, scene && !scene.hidden ? backdrop : "none");
+    if (window.FuseBackdrop) window.FuseBackdrop.sync(scene, scene && !scene.hidden ? shownBackdrop() : "none");
   }
 
   // Only chat draws a backdrop; every other page keeps a solid theme ground.
@@ -321,7 +372,7 @@
     const spec = specFor(theme);
     html.dataset.chatTheme = theme;
     if (renderedView === "console") html.dataset.chatConsole = "true";
-    html.dataset.chatBackdrop = backdrop;
+    html.dataset.chatBackdrop = shownBackdrop();
     html.dataset.chatView = renderedView;
     ensureFont(fontFor());
     html.style.setProperty("--chat-text-scale", String(textScale / 100));
@@ -347,8 +398,8 @@
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", spec.ink);
     const scene = ensureScene();
     if (scene) {
-      scene.hidden = backdrop === "none";
-      scene.dataset.kind = backdrop;
+      scene.hidden = shownBackdrop() === "none";
+      scene.dataset.kind = shownBackdrop();
       syncFx(scene);
     }
     if (typeof CustomEvent === "function" && document.dispatchEvent) {
@@ -419,17 +470,20 @@
     document.cookie = `${VIEW_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure}`;
     location.reload();
   }
+  function persistViews() {
+    try { localStorage.setItem(STORE_VIEWS, JSON.stringify(views)); } catch (_) {}
+  }
   function persistTheme() {
-    try { localStorage.setItem(STORE_THEME, theme); } catch (_) {}
+    views[view].palette = theme;
+    persistViews();
   }
   function persistCustom() {
     try { localStorage.setItem(STORE_CUSTOM, JSON.stringify(custom)); } catch (_) {}
   }
   function persistBackdrop() {
-    try {
-      localStorage.setItem(STORE_BACKDROP, backdrop);
-      localStorage.setItem(STORE_STRENGTH, String(strength));
-    } catch (_) {}
+    views[view].backdrop = backdrop;
+    views[view].strength = strength;
+    persistViews();
   }
 
   function paintSwatches() {
@@ -510,8 +564,8 @@
     });
     document.querySelectorAll("[data-chat-backdrop-swatches] [data-chat-backdrop]").forEach((btn) => {
       const id = btn.dataset.chatBackdrop;
-      btn.setAttribute("aria-pressed", String(id === backdrop));
-      btn.classList.toggle("is-on", id === backdrop);
+      btn.setAttribute("aria-pressed", String(id === shownBackdrop()));
+      btn.classList.toggle("is-on", id === shownBackdrop());
     });
     document.querySelectorAll("[data-chat-view-choice]").forEach((btn) => {
       btn.setAttribute("aria-pressed", String(btn.dataset.chatViewChoice === chosenView));
@@ -527,7 +581,10 @@
     const strengthWrap = document.querySelector("[data-chat-backdrop-strength-wrap]");
     if (strengthRange) strengthRange.value = String(strength);
     if (strengthOut) strengthOut.textContent = `${strength}%`;
-    if (strengthWrap) strengthWrap.hidden = backdrop === "none";
+    if (strengthWrap) strengthWrap.hidden = shownBackdrop() === "none";
+    document.querySelectorAll("[data-appearance-scope]").forEach((el) => {
+      el.textContent = `Saved for this theme (${VIEW_META[view].label || view}).`;
+    });
   }
 
   function syncUi() {
@@ -545,8 +602,10 @@
     syncSwatches();
   }
 
+  // A palette the user picks is theirs: a light wallpaper no longer owes it back.
   function setTheme(next) {
-    theme = next === "custom" || Object.prototype.hasOwnProperty.call(themes, next) ? next : "fuse";
+    theme = isPalette(next) ? next : "fuse";
+    views[view].restore = "";
     persistTheme();
     apply();
     syncSwatches();
@@ -558,14 +617,32 @@
       brass: clampHex(partial.brass, custom.brass),
     };
     theme = "custom";
+    views[view].restore = "";
     persistCustom();
     persistTheme();
     apply();
     syncSwatches();
   }
 
+  // A light wallpaper (its spec says scheme "light") moves a dark palette to
+  // the light one and remembers it; leaving for None or a dark wallpaper
+  // brings it back.
+  function wallpaperScheme(id) {
+    return (window.FuseBackdrop?.scheme?.(id)) || BACKDROPS[id]?.scheme || "";
+  }
   function setBackdrop(next) {
     backdrop = Object.prototype.hasOwnProperty.call(BACKDROPS, next) ? next : "none";
+    const entry = views[view];
+    if (wallpaperScheme(backdrop) === "light") {
+      if (specFor(theme).scheme !== "light") {
+        entry.restore = theme;
+        theme = LIGHT_PALETTE;
+      }
+    } else if (entry.restore) {
+      theme = entry.restore;
+      entry.restore = "";
+    }
+    entry.palette = theme;
     persistBackdrop();
     apply();
     syncSwatches();
@@ -581,6 +658,50 @@
     if (range) range.value = String(strength);
     const out = document.querySelector("[data-chat-backdrop-strength-value]");
     if (out) out.textContent = `${strength}%`;
+  }
+
+  // The theme's light/dark switch: dark keeps the palette to come back to.
+  function setScheme(next) {
+    if (next !== "light" && next !== "dark") return;
+    if (specFor(theme).scheme === next) return;
+    const entry = views[view];
+    if (next === "light") {
+      entry.restore = theme;
+      theme = LIGHT_PALETTE;
+    } else {
+      theme = entry.restore && specFor(entry.restore).scheme === "dark" ? entry.restore : "fuse";
+      entry.restore = "";
+    }
+    persistTheme();
+    apply();
+    syncSwatches();
+  }
+
+  // Registers a data-only wallpaper spec (docs/wallpapers.md) as a backdrop
+  // and adds it to the catalog: the hook a wallpaper-making tool calls.
+  // chat-backdrop.js validates it (validateWallpaper) and builds the scene.
+  function addWallpaper(key, spec) {
+    const engine = window.FuseBackdrop;
+    if (!engine || typeof engine.register !== "function") return { ok: false, errors: ["the backdrop engine is not loaded"] };
+    if (Object.prototype.hasOwnProperty.call(BACKDROPS, key) && !BACKDROPS[key].added) {
+      return { ok: false, errors: [`key: "${key}" is a built-in backdrop`] };
+    }
+    let result;
+    try { result = engine.register(key, spec); } catch (error) { result = { ok: false, errors: [String(error && error.message || error)] }; }
+    if (!result || !result.ok) return { ok: false, errors: (result && result.errors) || ["invalid wallpaper"] };
+    const name = String(spec.name || key).slice(0, 40);
+    BACKDROPS[key] = { label: name, hint: "Wallpaper", scheme: spec.scheme === "light" ? "light" : "dark", added: true };
+    const backHost = document.querySelector("[data-chat-backdrop-swatches]");
+    if (backHost && backHost.childElementCount) {
+      backHost.replaceChildren();
+      paintSwatches();
+    }
+    apply();
+    syncSwatches();
+    if (typeof CustomEvent === "function" && document.dispatchEvent) {
+      try { document.dispatchEvent(new CustomEvent("fuse-wallpapers", { detail: { key } })); } catch (_) {}
+    }
+    return { ok: true, errors: [] };
   }
 
   window.FuseChatAppearance = {
@@ -609,6 +730,18 @@
     setTheme,
     setBackdrop,
     setStrength,
+    setScheme,
+    addWallpaper,
+    get themeId() { return view; },
+    get palette() { return theme; },
+    get scheme() { return specFor(theme).scheme; },
+    get backdrop() { return shownBackdrop(); },
+    // The data-only wallpapers (built-in presets and any added), for the /theme picker.
+    get wallpapers() {
+      return Object.entries(BACKDROPS)
+        .filter(([id]) => window.FuseBackdrop?.isWallpaper?.(id))
+        .map(([id, spec]) => ({ id, label: spec.label, hint: spec.hint, scheme: wallpaperScheme(id) || "dark" }));
+    },
     getComposerPrefs,
     setComposerPrefs,
   };
