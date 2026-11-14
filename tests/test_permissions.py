@@ -82,6 +82,26 @@ class SecretNameTest(PermSchemaTest):
         self.assertTrue(permissions.is_secret_path("/home/u/.ssh/config"))
         self.assertTrue(permissions.is_secret_path("/home/u/.ssh/config/"))
 
+    def test_windows_name_forms_reach_secret_files(self):
+        # NTFS drops trailing dots and spaces and opens `name:stream` as a
+        # stream of name, so these all read the secret file itself.
+        for name in ("id_rsa.", "server.pem.", "credentials.json.", "id_rsa .", ".env::$DATA", "secret.pem:x"):
+            with self.subTest(name=name):
+                self.assertTrue(permissions.is_secret_name(name))
+                self.assertTrue(permissions.is_secret_path("C:\\g\\" + name))
+        self.assertTrue(permissions.is_secret_path(r"C:\Users\me\.ssh.\config"))
+        self.assertTrue(permissions.is_secret_path(r"C:\Users\me\.ssh::$INDEX_ALLOCATION\config"))
+        self.assertTrue(permissions.is_secret_dir(r"C:\Users\me\.aws."))
+        # 8.3 short names with an extension: six stem and three ext characters.
+        for path in (r"C:\g\CREDEN~1.JSO", r"C:\g\SECRET~1.JSO", r"C:\g\TOKEN~1.JSO", r"C:\g\MY~1.CNF",
+                     r"C:\g\ID_ED2~1", r"C:\g\KUBECO~1", r"C:\g\ENV~1.LOC", r"C:\g\CREDEN~1.JSO."):
+            with self.subTest(path=path):
+                self.assertTrue(permissions.is_secret_path(path))
+        for path in (r"C:\g\PROGRA~1.TXT", r"C:\g\DOCUME~1.JSO", r"C:\g\CREDEN~1.TXT", r"C:\g\notes.", r"C:\g\a:b"):
+            with self.subTest(path=path):
+                self.assertFalse(permissions.is_secret_path(path))
+        self.assertFalse(permissions.is_secret_name("id_rsa.pub."))
+
 
 class ScopeTest(PermSchemaTest):
     def test_home_aliases_share_normalized_scope(self):
@@ -606,8 +626,36 @@ class ReviewTest(PermSchemaTest):
             return [None] * len(paths)
 
         self.assertFalse(asyncio.run(self._shell("cat src/x.txt", broken)).allowed)
-        # Nothing to probe: no round trip, no ask.
+        # Plain words that do not resolve are no files: no ask.
         self.assertTrue(asyncio.run(self._shell("npm test", broken)).allowed)
+
+    def test_shell_bare_word_symlink_is_judged_by_its_target(self):
+        # `cat link` names no path, yet link -> /etc/shadow sits in the cwd;
+        # `cat ./link` and read_file link already asked.
+        probed: list = []
+
+        async def realpath(paths):
+            probed.extend(paths)
+            real = {"/srv/app/link": "/etc/shadow", "/srv/app/docs": "/srv/notes"}
+            return [real.get(p, p) for p in paths]
+
+        for command, target in (("cat link", "/etc/shadow"), ("cp link /tmp/x", "/etc/shadow"),
+                                ("git status && cat link", "/etc/shadow"), ("ls docs", "/srv/notes")):
+            with self.subTest(command=command):
+                res, events = asyncio.run(self._shell_flow(command, realpath))
+                self.assertFalse(res.allowed)
+                self.assertIn(target, res.detail)
+                self.assertTrue(any("outside the allowed roots" in r for r in events[0]["reasons"]))
+        self.assertIn("/srv/app/link", probed)
+        for command in ("git status", "cat README", "echo link-free > out.txt"):
+            with self.subTest(command=command):
+                self.assertTrue(asyncio.run(self._shell(command, realpath)).allowed)
+
+        async def missing(paths):
+            # readlink -f on a missing name under a missing dir prints nothing.
+            return [None if p.startswith("/srv/app/") else p for p in paths]
+
+        self.assertTrue(asyncio.run(self._shell("git status", missing)).allowed)
 
     async def _shell_flow(self, command, realpath):
         events = []
@@ -861,6 +909,20 @@ class ReviewTest(PermSchemaTest):
         res = asyncio.run(win())
         self.assertTrue(res.allowed)
         self.assertEqual(res.root, "")
+
+    def test_windows_dir_grant_does_not_cover_secret_name_forms(self):
+        permissions.add_grant(1, 1, 9, "dir", "C:\\g")
+
+        async def read(path):
+            return await permissions.review(
+                tool="read_file", args={"path": path}, user_id=1, host_id=9, host_alias="win",
+                root="C:\\proj", windows=True, gate=_gate(unattended=True),
+            )
+
+        self.assertTrue(asyncio.run(read("C:\\g\\notes.txt")).allowed)
+        for name in ("id_rsa.", ".env::$DATA", "secret.pem:x", "CREDEN~1.JSO"):
+            with self.subTest(name=name):
+                self.assertFalse(asyncio.run(read("C:\\g\\" + name)).allowed)
 
 
 class ModeMatrixTest(PermSchemaTest):
