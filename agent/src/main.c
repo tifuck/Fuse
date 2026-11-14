@@ -1,4 +1,5 @@
 /* Fuse connector: CLI entry, systemd install/uninstall. */
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -110,7 +111,7 @@ static int copy_self(const char *dest) {
     self[n] = 0;
     if (snprintf(tmp, sizeof(tmp), "%s.new.XXXXXX", dest) >= (int)sizeof(tmp)) return -1;
     FILE *in = fopen(self, "rb");
-    int ofd = in ? mkstemp(tmp) : -1;
+    int ofd = in ? mkostemp(tmp, O_CLOEXEC) : -1;
     FILE *out = ofd >= 0 ? fdopen(ofd, "wb") : NULL;
     if (!out) {
         if (in) fclose(in);

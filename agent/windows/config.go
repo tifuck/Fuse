@@ -51,6 +51,11 @@ func saveConfig(cfg *agentConfig) error {
 	if cfg.Path == "" {
 		return fmt.Errorf("missing config path")
 	}
+	// Values are written as bare k=v lines: a newline in the server-sent token
+	// would inject extra keys (url=) on the next load, as config.c refuses too.
+	if strings.ContainsAny(cfg.URL+cfg.Token, "\r\n") {
+		return fmt.Errorf("refusing a config value with a line break")
+	}
 	if err := os.MkdirAll(filepath.Dir(cfg.Path), 0700); err != nil {
 		return err
 	}

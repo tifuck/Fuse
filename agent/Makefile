@@ -2,6 +2,10 @@ VERSION := $(shell cat VERSION)
 CC ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=c11 -D_GNU_SOURCE
 CPPFLAGS += -Ithird_party -Isrc -DFUSE_AGENT_VERSION=\"$(VERSION)\"
+# Explicit, not the distro gcc's defaults: a binary that runs as root must
+# not lose these on another toolchain.
+HARDEN := -fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fPIE -pie \
+          -Wl,-z,relro,-z,now -Wl,-z,noexecstack -Wformat -Wformat-security
 LIBS ?= -lssl -lcrypto -lpthread -ldl
 SRC := src/main.c src/config.c src/lifecycle.c src/net.c src/outq.c src/exec.c \
        src/files.c src/edit.c src/jobs.c src/update.c src/session.c \
@@ -34,14 +38,14 @@ all: $(BIN)
 
 $(BIN): $(SRC) $(HDRS) VERSION
 	mkdir -p dist
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(SRC) $(LIBS)
+	$(CC) $(CFLAGS) $(HARDEN) $(CPPFLAGS) -o $@ $(SRC) $(LIBS)
 	chmod 755 $@
 
 dist: all linux-arm64 windows
 
 linux-arm64:
 	mkdir -p dist
-	$(ARM64_CC) $(CFLAGS) $(CPPFLAGS) -I$(OPENSSL_ARM64)/include \
+	$(ARM64_CC) $(CFLAGS) $(HARDEN) $(CPPFLAGS) -I$(OPENSSL_ARM64)/include \
 	  -o dist/fuse-agent-linux-arm64 $(SRC) \
 	  $(OPENSSL_ARM64)/lib/libssl.a $(OPENSSL_ARM64)/lib/libcrypto.a -lpthread -ldl
 	chmod 755 dist/fuse-agent-linux-arm64

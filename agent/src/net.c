@@ -230,9 +230,8 @@ int tls_connect(struct tls *t, const struct url *u) {
     if (getaddrinfo(u->host, port, &hints, &res) != 0) return -1;
     int fd = -1;
     for (rp = res; rp; rp = rp->ai_next) {
-        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
         if (fd < 0) continue;
-        fcntl(fd, F_SETFD, FD_CLOEXEC);
         set_nonblock(fd, 1);
         tune_sock(fd);
         if (connect_timeout(fd, rp->ai_addr, rp->ai_addrlen, CONNECT_TIMEOUT_MS) == 0) break;

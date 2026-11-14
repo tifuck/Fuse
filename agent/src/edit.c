@@ -153,7 +153,7 @@ int write_file_atomic_limit(const char *path, const char *content, long max) {
         return -1;
     }
     if (snprintf(tmp, sizeof(tmp), "%s/.fuse-XXXXXX", dir) >= (int)sizeof(tmp)) return -1;
-    int fd = mkstemp(tmp);
+    int fd = mkostemp(tmp, O_CLOEXEC);
     if (fd < 0) {
         /* Directory not writable but the file is: edit the file itself. */
         if (exists && (errno == EACCES || errno == EPERM))

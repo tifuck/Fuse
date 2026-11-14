@@ -42,3 +42,15 @@ func TestUpdateFetchRefusesHTTPRedirect(t *testing.T) {
 		t.Fatalf("expected non-https refusal, got %v", err)
 	}
 }
+
+func TestSaveConfigRefusesLineBreaksInValues(t *testing.T) {
+	path := t.TempDir() + "/agent.conf"
+	cfg := &agentConfig{Path: path, URL: "https://fuse.example", Token: "tok\nurl=https://evil.example"}
+	if err := saveConfig(cfg); err == nil {
+		t.Fatal("saved a token carrying a newline")
+	}
+	cfg.Token = "tok"
+	if err := saveConfig(cfg); err != nil {
+		t.Fatalf("plain token: %v", err)
+	}
+}

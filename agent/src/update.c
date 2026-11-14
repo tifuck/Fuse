@@ -132,7 +132,7 @@ static int http_get_file(const char *base, const char *path, int fd, size_t max_
     }
     /* Write through a dup so the caller always keeps sole ownership of fd and
      * closes it exactly once, on success and failure alike. */
-    int wfd = dup(fd);
+    int wfd = fcntl(fd, F_DUPFD_CLOEXEC, 0);
     FILE *f = wfd >= 0 ? fdopen(wfd, "wb") : NULL;
     if (!f) {
         if (wfd >= 0) close(wfd);
@@ -316,7 +316,7 @@ int maybe_update(int mode) {
      * another local user must never be truncated by an updater running as
      * root. */
     snprintf(tmp, sizeof(tmp), "/tmp/fuse-manifest.XXXXXX");
-    int mfd = mkstemp(tmp);
+    int mfd = mkostemp(tmp, O_CLOEXEC);
     if (mfd < 0) UPDATE_FAIL("could not create a temp file");
     int fetched = http_get_file(g_url, "/agent/v1/manifest", mfd, 300000);
     close(mfd);
@@ -364,7 +364,7 @@ int maybe_update(int mode) {
     if (path[0] != '/' || !expect[0] || strpbrk(path, " \t\r\n\"?#")) UPDATE_FAIL("manifest has no usable binary for " FUSE_ARCH_LABEL);
     if (update_is_self(self, expect)) goto out;
     if (format_update_staging(neu, sizeof(neu), self) != 0) UPDATE_FAIL("install path is too long");
-    int sfd = mkstemp(neu);
+    int sfd = mkostemp(neu, O_CLOEXEC);
     if (sfd < 0) UPDATE_FAIL("could not create the staging file next to the binary (is the directory writable?)");
     int got_bin = http_get_file(g_url, path, sfd, 128 * 1024 * 1024);
     close(sfd);
