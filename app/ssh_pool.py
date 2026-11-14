@@ -73,13 +73,37 @@ def _self_addresses() -> frozenset[str]:
     base = urlsplit(settings.public_base_url or "").hostname
     if base:
         names.add(base)
-    out: set[str] = set()
+    out: set[str] = set(_interface_addresses())
     for name in names:
         try:
             out.update(_address_key(info[4][0]) for info in socket.getaddrinfo(name, None))
         except OSError:
             continue
     return frozenset(out)
+
+
+def _interface_addresses() -> set[str]:
+    """Every address on this host's interfaces: the hostname often resolves
+    only to 127.0.1.1 while sshd also listens on the LAN address."""
+    out: set[str] = set()
+    try:
+        last = ""
+        with open("/proc/net/fib_trie") as trie:
+            for line in trie:
+                if "|--" in line:
+                    last = line.split("|--", 1)[1].strip()
+                elif "/32 host LOCAL" in line and last:
+                    out.add(_address_key(last))
+    except (OSError, ValueError):
+        pass
+    try:
+        with open("/proc/net/if_inet6") as table:
+            for line in table:
+                raw = line.split()[0]
+                out.add(_address_key(":".join(raw[i:i + 4] for i in range(0, 32, 4))))
+    except (OSError, ValueError, IndexError):
+        pass
+    return out
 
 
 def resolve_public(hostname: str, port: int) -> list[str]:

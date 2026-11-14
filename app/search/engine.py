@@ -225,7 +225,18 @@ def _host_header(hostname: str, port: int) -> str:
     return host if port == 443 else f"{host}:{port}"
 
 
+# Each worker may take PDF_MAX_BYTES of input and a large address space; a
+# burst of read_url calls on PDFs must not fork one per call on a host whose
+# MariaDB has been OOM-killed before.
+_PDF_SLOTS = asyncio.Semaphore(2)
+
+
 async def _pdf_text(raw_bytes: bytes) -> str:
+    async with _PDF_SLOTS:
+        return await _pdf_worker(raw_bytes)
+
+
+async def _pdf_worker(raw_bytes: bytes) -> str:
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-I", str(Path(__file__).with_name("pdf_worker.py")), str(PDF_MAX_BYTES),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,

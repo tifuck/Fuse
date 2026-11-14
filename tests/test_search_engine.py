@@ -1428,3 +1428,24 @@ class RateLimitMessageTest(unittest.TestCase):
         msg = engine._limited(user, "search")
         self.assertRegex(msg, r"^Search rate limit reached .*Try again in about ([1-9]|[1-5][0-9]|60) seconds\.$")
         self.assertEqual(limiter.retry_after(f"chat-fetch:{user}", engine.FETCH_PER_MIN, 60), 0.0)
+
+
+def test_pdf_extraction_runs_at_most_two_workers_at_once():
+    from app.search import engine
+
+    running = peak = 0
+
+    async def worker(raw):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.01)
+        running -= 1
+        return "text"
+
+    async def burst():
+        return await asyncio.gather(*(engine._pdf_text(b"%PDF") for _ in range(6)))
+
+    with patch.object(engine, "_pdf_worker", worker), patch.object(engine, "_PDF_SLOTS", asyncio.Semaphore(2)):
+        assert asyncio.run(burst()) == ["text"] * 6
+    assert peak == 2

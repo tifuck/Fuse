@@ -71,6 +71,26 @@ def test_self_addresses_match_ipv4_mapped_ipv6(own, target):
         ssh_pool._self_addresses.cache_clear()
 
 
+def test_self_addresses_include_every_interface_address():
+    # The hostname resolves to 127.0.1.1 here while sshd listens on the LAN
+    # address too: that one must count as this server.
+    tables = {
+        "/proc/net/fib_trie": "Main:\n  +-- 0.0.0.0/0 3 0 5\n     |-- 10.0.0.131\n        /32 host LOCAL\n"
+                              "     |-- 10.0.0.255\n        /32 link BROADCAST\n",
+        "/proc/net/if_inet6": "fd000000000000000000000000000131 02 40 00 80 eth0\n",
+    }
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if path in tables:
+            import io
+            return io.StringIO(tables[path])
+        return real_open(path, *args, **kwargs)
+
+    with patch("builtins.open", side_effect=fake_open):
+        assert ssh_pool._interface_addresses() == {"10.0.0.131", "fd00::131"}
+
+
 def test_reaper_closes_idle_sessions_but_never_busy_ones():
     _reset()
     idle, busy, fresh = _Conn(), _Conn(channels=["chan"]), _Conn()
