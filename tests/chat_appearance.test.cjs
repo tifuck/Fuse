@@ -7,6 +7,11 @@ const { readdirSync } = require('node:fs');
 const themeStyles = readdirSync(resolve(__dirname, '../static/themes/console/styles')).filter(name => name.endsWith('.css')).map(name => readFileSync(resolve(__dirname, '../static/themes/console/styles', name), 'utf8')).join('\n');
 
 const source = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
+// What base.html renders as #fuse-chat-themes: every theme.json, in Layout order.
+const themeMeta = readdirSync(resolve(__dirname, '../static/themes'), { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => JSON.parse(readFileSync(resolve(__dirname, '../static/themes', d.name, 'theme.json'), 'utf8')))
+  .sort((a, b) => a.order - b.order);
 
 function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
   const storage = new Map(Object.entries(saved));
@@ -18,6 +23,7 @@ function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
     document: {
       cookie,
       documentElement: html,
+      getElementById: (id) => (id === 'fuse-chat-themes' ? { textContent: JSON.stringify(themeMeta) } : null),
       querySelector(selector) {
         if (selector === '[data-chat]') return root;
         if (selector === 'meta[name="color-scheme"]' || selector === 'meta[name="theme-color"]') {

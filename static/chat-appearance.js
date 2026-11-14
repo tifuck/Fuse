@@ -129,17 +129,28 @@
     addStylesheet("font:preview", `https://fonts.googleapis.com/css2?${families}&text=${encodeURIComponent(FONT_SUBSET)}&display=swap`);
   }
   // The page draws with one theme: the server stamps html[data-chat-view] from
-  // the fuse_chat_view cookie (settings pages always console). The cookie is
-  // the choice the Layout control shows; each view keeps its own font.
-  const VIEWS = ["console", "combined"];
+  // the fuse_chat_view cookie (settings pages always the first theme). The
+  // cookie is the choice the Layout control shows. Every theme's metadata
+  // (static/themes/*/theme.json) arrives as #fuse-chat-themes; the first
+  // entry is the default.
+  let THEME_META = [];
+  try {
+    THEME_META = JSON.parse(document.getElementById?.("fuse-chat-themes")?.textContent || "[]");
+  } catch (_) {}
+  if (!Array.isArray(THEME_META) || !THEME_META.length) {
+    THEME_META = [{ id: "console", label: "Console", font: "redhat", wallpaper: "none", scheme: "dark" }];
+  }
+  const VIEWS = THEME_META.map((meta) => meta.id);
+  const VIEW_META = Object.fromEntries(THEME_META.map((meta) => [meta.id, meta]));
   const VIEW_COOKIE = "fuse_chat_view";
-  const renderedView = document.documentElement.dataset.chatView === "combined" ? "combined" : "console";
-  let chosenView = "console";
+  const stampedView = document.documentElement.dataset.chatView;
+  const renderedView = VIEWS.includes(stampedView) ? stampedView : VIEWS[0];
+  let chosenView = VIEWS[0];
   try {
     const match = new RegExp(`(?:^|;\\s*)${VIEW_COOKIE}=([a-z]+)`).exec(document.cookie || "");
     if (match && VIEWS.includes(match[1])) chosenView = match[1];
   } catch (_) {}
-  const DEFAULT_FONT = renderedView === "combined" ? "bricolage" : "redhat";
+  const DEFAULT_FONT = FONTS[VIEW_META[renderedView].font] ? VIEW_META[renderedView].font : "redhat";
   const THEME_VARS = {
     ink: "--ink",
     panel: "--panel",

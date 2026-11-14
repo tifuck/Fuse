@@ -8,11 +8,13 @@
     <p>How chats are drawn. Switching reloads the page.</p>
   </div>
   <div class="ap-body">
+    {#- One button per theme, from static/themes/*/theme.json. -#}
     <div class="ap-filters" role="group" aria-label="Layout">
-      <button type="button" data-chat-view-choice="console" aria-pressed="true">Console</button>
-      <button type="button" data-chat-view-choice="combined" aria-pressed="false">Combined</button>
+      {%- for t in chat_themes() %}
+      <button type="button" data-chat-view-choice="{{ t.id }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ t.label }}</button>
+      {%- endfor %}
     </div>
-    <p class="ap-note">Console is dense and terminal-like. Combined reads like a chat: a centered column, one-line steps, and a side rail for running agents.</p>
+    <p class="ap-note">{{ chat_themes() | map(attribute='description') | join(' ') }}</p>
   </div>
 </section>
 <section class="ap-section" aria-label="Thinking">

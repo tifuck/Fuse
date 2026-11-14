@@ -80,9 +80,13 @@ change: each pool merges its live catalog into its seed list.
   and other pages); each theme's copy lives in `themes/<t>/styles/base/`.
   Palettes, backdrop and text size stay shared in `chat-design.css`.
   `tests/chat_theme_css.test.cjs` and `tests/chat_theme_markup.test.cjs`
-  pin this; a new theme is its two folders plus a `registry.js` entry.
-  `FUSE_CHAT_VIEW=combined scripts/run_browser_tests.sh …` runs browser
-  suites under Combined.
+  pin this. A new theme is its two folders plus a `registry.js` entry: its
+  `static/themes/<t>/theme.json` (id, order, label, description, default
+  font, wallpaper and scheme) is the one list the `fuse_chat_view` cookie
+  check (`app/chat_themes.py`), the Appearance › Layout buttons,
+  `chat-appearance.js` and `registry.js` read (`tests/test_chat_themes.py`).
+  `FUSE_CHAT_VIEW=<theme> scripts/run_browser_tests.sh …` runs browser
+  suites under that theme.
 
 ## Stored transcripts
 
