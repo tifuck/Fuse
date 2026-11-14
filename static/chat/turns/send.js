@@ -4,7 +4,7 @@ import { escapeHtml } from '../core.js';
 import { newSession } from '../state.js';
 
 // These commands are dispatched locally, never queued as model input.
-const LOCAL_SLASH = new Set(["thinking", "help", "permissions", "undo", "artifacts"]);
+const LOCAL_SLASH = new Set(["thinking", "help", "permissions", "undo", "artifacts", "prompts"]);
 
 export function createSend(ctx) {
   const { composer, context, net, overlays, panels, picker, queue, sidebar, sync, traces, transcript } = ctx;

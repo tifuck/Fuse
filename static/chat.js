@@ -1270,6 +1270,9 @@ import { createDictation } from './chat/dictation.js';
     }
   });
 
+    // After the keydown handler above: the library's Tab and Escape only see keys it left alone.
+    composer.mountLibrary();
+
     if (S.searchChip) {
     S.searchChip.addEventListener("click", (event) => {
       event.preventDefault();

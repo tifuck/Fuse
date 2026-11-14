@@ -32,7 +32,7 @@ function slashValue(cmd, extra) {
 }
 
 export function createSlash(ctx) {
-  const { context, input, net, panels, perms, picker, sidebar, sync, turns } = ctx;
+  const { context, input, library, net, panels, perms, picker, sidebar, sync, turns } = ctx;
     function skillsOn() {
     return Boolean(S.config.coding) || Boolean(sidebar.sessionProject());
   }
@@ -436,11 +436,15 @@ export function createSlash(ctx) {
       return;
     }
     if (name === "help") {
-      picker.setHint("/undo, /retry, /redo, /rewind, /title, /recap, /permissions, /artifacts, /compact, /thinking, /init. Skills: type / then a name. Manage on Skills.");
+      picker.setHint("/prompts, /undo, /retry, /redo, /rewind, /title, /recap, /permissions, /artifacts, /compact, /thinking, /init. Skills: type / then a name. Manage on Skills.");
       return;
     }
     if (name === "permissions") {
       perms.setPermsOpen(true);
+      return;
+    }
+    if (name === "prompts") {
+      library.openLibrary(rest.trim(), S.input);
       return;
     }
     if (name === "artifacts") {
