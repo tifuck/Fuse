@@ -494,6 +494,11 @@ def patch_host(user_id: int, host_id: int, raw: dict) -> dict:
                 if not isinstance(raw["passphrase"], str) or len(raw["passphrase"]) > 1024:
                     raise HostError("invalid passphrase")
                 passphrase = encrypt_with_dek(raw["passphrase"], dek) if raw["passphrase"] else ""
+        if ("secret" in raw or auth != row["auth_type"]) and "passphrase" not in raw:
+            # The old passphrase belongs to the old key: carried over it can
+            # never unlock the new one (and after a password reset it is
+            # undecryptable, so secret_plain would fail forever).
+            passphrase = ""
         key_algo = row["key_algo"]
         fingerprint = row["fingerprint"]
         if clear_pin:

@@ -294,6 +294,12 @@ def reset_password(email: str, new_password: str) -> list[str]:
             (hash_password(new_password), row["id"]),
         )
         conn.execute("DELETE FROM push_subscriptions WHERE user_id=?", (row["id"],))
+        # Their DEK is gone with the vault, so this ciphertext can never be
+        # decrypted again; an old passphrase left behind would otherwise ride
+        # along with the secret entered next.
+        conn.execute(
+            "UPDATE user_hosts SET secret='', passphrase='' WHERE user_id=? AND auth_type<>'agent'", (row["id"],)
+        )
         hosts = conn.execute(
             "SELECT alias FROM user_hosts WHERE user_id=? AND auth_type<>'agent' ORDER BY alias", (row["id"],)
         ).fetchall()
