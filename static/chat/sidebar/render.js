@@ -303,7 +303,7 @@ export function createRender(ctx) {
         // Drafts sit directly under the pinned section, above every group.
         blocks.push(...rest.filter((item) => item.draft !== undefined).map((item) => sessionBlock(item)));
         projects.groupedProjectSessions(rest.filter((item) => item.draft === undefined)).forEach((group) => {
-          blocks.push({ type: "group", name: group.name, host: group.host, icon: projects.projectIcon(group.icon) });
+          blocks.push({ type: "group", name: group.name, host: group.host, color: group.icon.color, icon: projects.projectIcon(group.icon) });
           blocks.push(...group.items.map((item) => sessionBlock(item, true)));
         });
       } else {

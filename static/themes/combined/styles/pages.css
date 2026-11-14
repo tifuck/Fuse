@@ -12,7 +12,7 @@
 
 /* —— Hard corners: one rule, like chat's. Spinners keep their circle. —— */
 html[data-chat-view="combined"] body.is-settings :is(.settings-shell, .settings-shell *):not(.spin):not([class*="spinner"]):not(.chat-run-spin),
-html[data-chat-view="combined"] body:is(.is-settings, .is-chat) :is(dialog.modal, dialog.modal *, .fp-dialog, .fp-dialog *, .fuse-toast, .fuse-toast *, .fuse-vault, .fuse-vault *):not(.spin),
+html[data-chat-view="combined"] body.is-settings :is(dialog.modal, dialog.modal *, .fp-dialog, .fp-dialog *, .fuse-toast, .fuse-toast *, .fuse-vault, .fuse-vault *):not(.spin),
 html[data-chat-view="combined"] body.is-settings .user-dock-menu,
 html[data-chat-view="combined"] body.is-settings .user-dock-menu * {
   border-radius: 0;

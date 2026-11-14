@@ -21,6 +21,7 @@ import { create as createTranscript } from './transcript.js';
 import { create as createWorkPanels } from './work-panels.js';
 import { create as createSidebar } from './sidebar.js';
 import { create as createTurnExtras } from './turn-extras.js';
+import { create as createChrome } from './chrome.js';
 import { create as createProviderError } from './provider-error.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
@@ -463,6 +464,21 @@ export function createCombinedTheme(runtime) {
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createChrome({
+    get activeRun() { return runtime.activeRun; },
+    get agentLive() { return runtime.agentLive; },
+    get agentsRows() { return runtime.agentsRows; },
+    get formatActivityClock() { return theme.formatActivityClock; },
+    get jobsRows() { return runtime.jobsRows; },
+    get liveElapsedSeconds() { return runtime.liveElapsedSeconds; },
+    get liveMeter() { return runtime.liveMeter; },
+    get messages() { return runtime.messages; },
+    get root() { return runtime.root; },
+    get runIsActive() { return runtime.runIsActive; },
+    get streaming() { return runtime.streaming; },
+  }));
+  // The status pill and rail follow every live-dock and work-clock sync.
+  const withChrome = (fn) => (...args) => { const out = fn(...args); theme.syncChrome(); return out; };
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,
@@ -501,8 +517,8 @@ export function createCombinedTheme(runtime) {
     syncActivityElapsed: theme.syncActivityElapsed,
     syncActivitySpin: theme.syncActivitySpin,
     syncConsoleClocks: theme.syncConsoleClocks,
-    syncLiveDock: theme.syncLiveDock,
-    syncWorkClocks: theme.syncWorkClocks,
+    syncLiveDock: withChrome(theme.syncLiveDock),
+    syncWorkClocks: withChrome(theme.syncWorkClocks),
     thinkingPosition: theme.thinkingPosition,
     todoBarHtml: theme.todoBarHtml,
     todoRowsHtml: theme.todoRowsHtml,

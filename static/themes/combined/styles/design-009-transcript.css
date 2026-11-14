@@ -78,20 +78,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-t
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-tool-md.chat-md::before { content: none; }
 
-html:is( [data-chat-view="combined"]) .chat-view-menu { --ap-ui: var(--mono); }
+html:is( [data-chat-view="combined"]) .chat-view-menu { --ap-ui: var(--sans); }
 
-/* Appearance is a Console sheet like Context and Skills: hard corners on the
-   sheet and on every card, swatch, switch and slider inside it. Pseudo-
-   elements cannot sit inside :is(), and an unknown vendor one drops its
-   whole rule, so each family gets its own. */
-html:is( [data-chat-view="combined"]) :is(.chat-view-menu, .chat-view-menu *),
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-switch input[type="checkbox"]::after { border-radius: 0; }
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-color input[type="color"]::-webkit-color-swatch,
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-webkit-slider-runnable-track,
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-webkit-slider-thumb { border-radius: 0; }
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-track,
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-progress,
-html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-thumb { border-radius: 0; }
 /* Same head, ground and edge as the Context and Skills sheets. */
 html:is( [data-chat-view="combined"]) .chat-view-menu { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
 html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-head { min-height: 3.25rem; padding: 0.7rem 0.85rem 0.7rem 1.15rem; }
