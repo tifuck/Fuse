@@ -2,10 +2,13 @@
 
 Scope (per host): /tmp (posix) / %TEMP% (windows) plus the working root — the
 bound project path on the bound host, else the host's default_cwd, else the
-home directory. Anything else, and reads of secret-named files anywhere, raise
-an interactive ask: Allow once / Allow always (session = this chat, host =
-this user+host forever) / Deny. Unattended runs (scheduled/auto) never ask:
-gated actions deny with an explanatory error. Bypass is live per-thread state
+home directory. Anything else raises an interactive ask: Allow once / Allow
+always (session = this chat, host = this user+host forever) / Deny. A
+secret-named file (.env, id_rsa, *.pem) inside an approved dir is an ordinary
+read; outside the roots, or inside a credential directory (.ssh, .aws, ...),
+it asks, and Allow always grants that one file, never its directory.
+Unattended runs (scheduled/auto) never ask: gated actions deny with an
+explanatory error. Bypass is live per-thread state
 read at gate time, so toggling it applies instantly to running subagents.
 Auto-approve (Jev) sits next to bypass, also read live: every call that would
 ask, shell commands included, goes to Jev first when the user has an
@@ -182,8 +185,19 @@ def _destructive_command(command: str) -> bool:
     return bool(_DESTRUCTIVE_SHELL.search(text))
 
 
+def _ntfs_name(part: str) -> str:
+    """The file NTFS opens for a name: trailing dots and spaces are dropped
+    (`id_rsa.`) and `name:stream` reads a stream of name (`.env::$DATA`)."""
+    return part.split(":", 1)[0].rstrip(". ")
+
+
 def is_secret_name(name: str) -> bool:
     low = str(name or "").strip().lower()
+    # The raw name is judged too: on POSIX `x:server.pem` is its own file.
+    return _is_secret_name(low) or _is_secret_name(_ntfs_name(low))
+
+
+def _is_secret_name(low: str) -> bool:
     if not low or low in _TEMPLATE_OK:
         return False
     if low.endswith(".pub"):
@@ -198,13 +212,36 @@ def is_secret_name(name: str) -> bool:
 _SECRET_DIRS = {".aws", ".docker", ".kube", ".ssh", ".gnupg"}
 
 
-# A Windows 8.3 short name drops the leading dot: SSH~1 is .ssh, ENV~1 .env.
-_SHORT_NAME = re.compile(r"^([a-z0-9_-]{1,6})~\d+$")
+# A Windows 8.3 short name drops the leading dot: SSH~1 is .ssh, ENV~1 .env,
+# MY~1.CNF .my.cnf. Longer names keep their first six characters and three
+# of the extension (CREDEN~1.JSO is credentials.json), so those map back
+# through the short names Windows derives for the known secret names.
+_SHORT_NAME = re.compile(r"^([a-z0-9_-]{1,6})~\d+(?:\.([a-z0-9_-]{1,3}))?$")
+
+
+def _short_key(name: str) -> tuple[str, str]:
+    stem, dot, ext = name.lstrip(".").rpartition(".")
+    return (stem.replace(".", "")[:6], ext[:3]) if dot else (ext[:6], "")
+
+
+_SHORT_SECRETS = {_short_key(name): name for name in sorted(_SECRET_EXACT | _SECRET_DIRS)}
+
+
+def _long_name(part: str) -> str:
+    m = _SHORT_NAME.match(_ntfs_name(part))
+    if not m:
+        return part
+    stem, ext = m.group(1), m.group(2) or ""
+    return _SHORT_SECRETS.get((stem, ext)) or "." + stem + ("." + ext if ext else "")
 
 
 def _path_parts(path: str) -> list[str]:
     parts = [part for part in str(path or "").replace("\\", "/").lower().split("/") if part not in ("", ".")]
-    return ["." + m.group(1) if (m := _SHORT_NAME.match(part)) else part for part in parts]
+    return [_long_name(part) for part in parts]
+
+
+def _secret_dir_part(part: str) -> bool:
+    return part in _SECRET_DIRS or _ntfs_name(part) in _SECRET_DIRS
 
 
 def is_secret_path(path: str) -> bool:
@@ -213,13 +250,13 @@ def is_secret_path(path: str) -> bool:
         return False
     if is_secret_name(parts[-1]):
         return True
-    return any(part in _SECRET_DIRS for part in parts[:-1])
+    return any(_secret_dir_part(part) for part in parts[:-1])
 
 
 def is_secret_dir(path: str) -> bool:
     """The path is a credential directory itself (`~/.ssh`, `~/.aws/`)."""
     parts = _path_parts(path)
-    return bool(parts) and parts[-1] in _SECRET_DIRS
+    return bool(parts) and _secret_dir_part(parts[-1])
 
 
 def secret_dir_in_path(path: str) -> bool:
@@ -227,7 +264,7 @@ def secret_dir_in_path(path: str) -> bool:
 
     A secret-named file inside an approved dir is an ordinary in-scope read,
     but naming `.aws/credentials` reaches a store of secrets, so it still asks."""
-    return any(part in _SECRET_DIRS for part in _path_parts(path)[:-1])
+    return any(_secret_dir_part(part) for part in _path_parts(path)[:-1])
 
 
 def _norm(path: str, windows: bool) -> str:
@@ -609,6 +646,30 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
             seen.append(cand)
             resolved.append((cand, is_dir))
     return resolved
+
+
+def _bare_shell_words(command: str) -> list[str]:
+    """Plain words extract_shell_paths does not list (`cat link`, `git status`).
+    Any of them may name a symlink in the cwd that points out of the roots, so
+    review probes where they really resolve (POSIX hosts only)."""
+    try:
+        tokens = _shell_tokens(_without_data_heredocs(str(command or "")), False)
+    except ValueError:
+        return []
+    out: list[str] = []
+    for tok in tokens:
+        for piece in _REDIR_TOKENS.split(tok):
+            piece = piece.strip("'\"")
+            if _REDIR_TOKENS.fullmatch(piece):
+                continue
+            if _ASSIGNED_VALUE.match(piece):
+                piece = piece.split("=", 1)[1]
+            for word in piece.split():
+                word = word.strip("'\"(){}[];,")
+                if (word and word[0] not in "-+&|;" and "://" not in word and word not in out
+                        and not _token_paths(word, False)):
+                    out.append(word)
+    return out
 
 
 # --- persistence ---
@@ -1479,6 +1540,14 @@ async def review(*, tool: str, args: dict, user_id: int,
                     if not grant_value:
                         grant_kind, grant_value = need
         unresolved: list[str] = []
+        # `cat link` names no path, yet link may be a symlink out of the roots.
+        # A plain word that does not resolve (`status`) is no file: it never asks.
+        named = len(probe)
+        if realpath is not None and not windows and paths is not None:
+            for word in _bare_shell_words(command):
+                lexical = _resolve_for_scope(word, base, windows, normalize=False)
+                if (lexical, False) not in probe:
+                    probe.append((lexical, False))
         if realpath is not None and not windows and probe:
             # As for file tools below: a symlink inside a root can point out
             # of it, and an unresolved target or root fails closed.
@@ -1487,6 +1556,8 @@ async def review(*, tool: str, args: dict, user_id: int,
             roots_ok = len(real_roots) == len(roots) and all(real_roots)
             for i, (lexical, is_dir) in enumerate(probe):
                 real = reals[i] if roots_ok and i < len(reals) else None
+                if not real and i >= named:
+                    continue
                 if not real:
                     unresolved.append(lexical)
                     reasons.append(f"cannot resolve where {lexical} points")
