@@ -396,3 +396,89 @@ class AuthFailureTest(unittest.TestCase):
                           "metadata": {"flagged_input": "why is my api unauthorized"}}}
         self.assertFalse(or_mod._is_auth_failure(403, body))
         self.assertTrue(or_mod._is_auth_failure(403, {"error": {"message": "Invalid API key"}}))
+
+
+class PerUserIsolationTest(unittest.TestCase):
+    """Real credential rows: each user's OpenRouter gating reads only the key
+    that user donated. Only the upstream catalog is stubbed."""
+
+    CATALOG = {
+        "by_id": {
+            "x/y": {"id": "x/y", "free": False},
+            "x/z": {"id": "x/z", "free": False},
+            "z-ai/glm-5.3": {"id": "z-ai/glm-5.3", "free": False},
+            "v/m:free": {"id": "v/m:free", "free": True},
+        },
+        "free_ids": ["v/m:free"],
+        "paid_ids": ["x/y", "x/z", "z-ai/glm-5.3"],
+        "all_ids": ["v/m:free", "x/y", "x/z", "z-ai/glm-5.3"],
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        from app import accounts
+
+        cls.sid = or_mod.ensure_openrouter_source()
+        cls.a, cls.b, cls.c = (
+            accounts.create_user(f"or-iso-{name}@test.invalid", "password12")["id"] for name in "abc"
+        )
+        cls.key_a = accounts.add_credential(
+            cls.sid, "a", "sk-or-test-a", donated_by=cls.a,
+            extra={"role": "user", "paid_models": {"all": False, "enabled": ["x/y"]}},
+        )
+        cls.key_b = accounts.add_credential(
+            cls.sid, "b", "sk-or-test-b", donated_by=cls.b, extra={"role": "user", "free_models": False},
+        )
+
+    def _catalog(self):
+        return (
+            patch.object(or_mod, "fetch_catalog", return_value=self.CATALOG),
+            patch.object(or_mod, "cached_catalog", return_value=self.CATALOG),
+        )
+
+    def test_each_user_gets_only_their_own_key(self):
+        a, b, c = (pick_key_for(uid, self.sid) for uid in (self.a, self.b, self.c))
+        self.assertEqual((a[0]["id"], a[2]), (self.key_a, "sk-or-test-a"))
+        self.assertEqual((b[0]["id"], b[2]), (self.key_b, "sk-or-test-b"))
+        self.assertIsNone(c)
+        self.assertEqual(or_mod.user_credential(self.a, self.sid)[0]["id"], self.key_a)
+        self.assertEqual(or_mod.user_credential(self.b, self.sid)[0]["id"], self.key_b)
+        self.assertIsNone(or_mod.user_credential(self.c, self.sid))
+
+    def test_listing_follows_each_users_own_toggles(self):
+        a = models_for_user(self.a, self.CATALOG)
+        b = models_for_user(self.b, self.CATALOG)
+        self.assertEqual(a, ["openrouter/v/m:free", "openrouter/x/y"])
+        self.assertNotIn("openrouter/v/m:free", b)
+        self.assertEqual(b, ["openrouter/x/y", "openrouter/x/z", "openrouter/z-ai/glm-5.3"])
+        self.assertEqual(models_for_user(self.c, self.CATALOG), [])
+
+    def test_resolve_and_routing_obey_the_callers_own_key(self):
+        import app.sources as sources
+
+        fetch, cached = self._catalog()
+
+        async def run():
+            with fetch, cached:
+                return (
+                    await resolve("openrouter/x/y", self.a),
+                    await resolve("openrouter/x/z", self.a),
+                    await resolve("openrouter/x/z", self.b),
+                    await resolve("openrouter/v/m:free", self.b),
+                    await resolve("openrouter/x/y", self.c),
+                    await resolve("glm-5.3", self.b),
+                    await sources.pick("openrouter/z-ai/glm-5.3", user_id=self.b),
+                    await sources.pick("glm-5.3", user_id=self.b),
+                )
+
+        a_y, a_z, b_z, b_free, c_y, bare, explicit, bare_pick = asyncio.run(run())
+        self.assertEqual(a_y, ("x/y", False))
+        self.assertIsNone(a_z)
+        self.assertEqual(b_z, ("x/z", False))
+        self.assertIsNone(b_free)
+        self.assertIsNone(c_y)
+        # A bare pool id never runs on a personal OpenRouter key, even one
+        # whose paid list includes the matching z-ai SKU.
+        self.assertIsNone(bare)
+        self.assertEqual((explicit[0].type_id, explicit[1]), ("openrouter", "z-ai/glm-5.3"))
+        self.assertTrue(bare_pick is None or bare_pick[0].type_id != "openrouter")
