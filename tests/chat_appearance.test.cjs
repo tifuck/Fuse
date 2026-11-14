@@ -150,14 +150,16 @@ test('each view keeps its own font', () => {
 });
 
 test('console and combined are independent theme folders', () => {
-  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
-  const consoleFiles = read(resolve(__dirname, '../static/themes/console'));
-  const combinedFiles = read(resolve(__dirname, '../static/themes/combined'));
+  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
+  // A theme is its static folder plus its template folder.
+  const consoleFiles = [...read(resolve(__dirname, '../static/themes/console')), ...read(resolve(__dirname, '../templates/themes/console'))];
+  const combinedFiles = [...read(resolve(__dirname, '../static/themes/combined')), ...read(resolve(__dirname, '../templates/themes/combined'))];
   for (const [name, text] of consoleFiles) assert.doesNotMatch(text, /combined/, `console/${name}`);
   for (const [name, text] of combinedFiles) {
-    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\//, `combined/${name}`);
+    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//, `combined/${name}`);
   }
   assert.ok(combinedFiles.some(([name]) => name === 'index.js'));
+  assert.ok(consoleFiles.some(([name]) => name === '_chat.html') && combinedFiles.some(([name]) => name === '_chat.html'));
 });
 
 test('retired backdrops migrate to their replacement', () => {
@@ -179,13 +181,18 @@ test('only chat draws the backdrop; other pages keep a solid theme ground', () =
 });
 
 test('backdrop wallpaper is a scene layer, not an opaque plate', () => {
+  // The scene layer is shared Appearance; each theme makes its own surfaces see-through.
   const css = readFileSync(resolve(__dirname, '../static/chat-design.css'), 'utf8');
   const js = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
   assert.match(css, /\.chat-scene\[data-kind\] \[data-chat-scene-wash\]/);
-  assert.match(css, /html\[data-chat-backdrop\]:not\(\[data-chat-backdrop="none"\]\) body\.is-chat :is\(\.stage, \.stage-inner, main, \.chat, \.chat-stage, \.chat-thread\)[^{]*\{\s*background:\s*transparent/);
-  assert.match(css, /html\[data-chat-backdrop\]:not\(\[data-chat-backdrop="none"\]\) body\.is-chat \.chat \.chat-dock \{\s*background:\s*transparent/);
-  assert.doesNotMatch(css, /chat-stage, \.chat-thread\) \{\s*background:\s*color-mix\(in srgb, var\(--ink\) 82%/);
   assert.doesNotMatch(css, /chat-scene-bubbles/);
+  for (const theme of ['console', 'combined']) {
+    const own = readFileSync(resolve(__dirname, `../static/themes/${theme}/styles/base/chat-design.css`), 'utf8');
+    const html = `html:where\\(\\.is-chat-root\\[data-chat-view="${theme}"\\]\\)\\[data-chat-backdrop\\]:not\\(\\[data-chat-backdrop="none"\\]\\) body\\.is-chat`;
+    assert.match(own, new RegExp(html + ' :is\\(\\.stage, \\.stage-inner, main, \\.chat, \\.chat-stage, \\.chat-thread\\)[^{]*\\{\\s*background:\\s*transparent'), theme);
+    assert.match(own, new RegExp(html + ' \\.chat \\.chat-dock \\{\\s*background:\\s*transparent'), theme);
+    assert.doesNotMatch(own, /chat-stage, \.chat-thread\) \{\s*background:\s*color-mix\(in srgb, var\(--ink\) 82%/);
+  }
   assert.match(js, /canvas data-chat-scene-fx/);
   assert.match(js, /signal: \{ label: "Signal"/);
   for (const kind of ['orbit', 'galaxy', 'eclipse', 'belt', 'contact', 'koi']) assert.match(js, new RegExp(`\\n    ${kind}: \\{ label`));

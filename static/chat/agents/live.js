@@ -186,10 +186,10 @@ export function createLive(ctx) {
         if (seen.has(id)) return;
         seen.add(id);
         const last = index === list.length - 1;
-        // One connector per level: a line on through an ancestor that has
-        // later siblings, blank after a last one, then this row's tee or elbow.
-        out.push({ row, tree: [...prefix, last ? "elbow" : "tee"] });
-        walk(id, [...prefix, last ? "blank" : "pipe"]);
+        // Tree data, not glyphs: for each ancestor level whether that ancestor
+        // was the last of its siblings, and whether this row is. The theme draws it.
+        out.push({ row, ancestors: prefix, last });
+        walk(id, [...prefix, last]);
       });
     };
     walk("", []);
@@ -237,8 +237,9 @@ export function createLive(ctx) {
     // Folded, live subagents and the viewed one still show under main.
     const shown = expanded ? tree : tree.filter((item) => agentLive(item.row.status) || String(item.row.id) === viewing);
     shown.forEach((item, index) => {
-      const glyphs = expanded ? item.tree : [index === shown.length - 1 ? "elbow" : "tee"];
-      html += ui.agentRowHtml(item.row, { tree: glyphs, selected: String(item.row.id) === viewing });
+      // Folded, the rows shown are one flat level under main.
+      const tree = expanded ? { ancestors: item.ancestors, last: item.last } : { ancestors: [], last: index === shown.length - 1 };
+      html += ui.agentRowHtml(item.row, { tree, selected: String(item.row.id) === viewing });
     });
     FuseChatDOM.reconcile(S.agentsListEl, html);
     S.agentsListEl.hidden = false;
@@ -248,8 +249,8 @@ export function createLive(ctx) {
       S.agentsListEl._shown = viewing;
       const current = S.agentsListEl.querySelector('[aria-current="true"]');
       if (current && S.agentsListEl.scrollHeight > S.agentsListEl.clientHeight) {
-        // The main row (always first) stays pinned over the top of the list.
-        const main = S.agentsListEl.firstElementChild;
+        // The main row stays pinned over the top of the list.
+        const main = S.agentsListEl.querySelector('[data-agent-row="main"]');
         const pinned = main && main !== current ? main.offsetHeight : 0;
         const top = current.offsetTop - S.agentsListEl.offsetTop;
         if (top < S.agentsListEl.scrollTop + pinned || top + current.offsetHeight > S.agentsListEl.scrollTop + S.agentsListEl.clientHeight) {
@@ -293,7 +294,7 @@ export function createLive(ctx) {
     S.agentLiveDock.hidden = false;
     S.agentLiveDock.setAttribute("aria-hidden", "false");
     if (S.agentLiveSpin) S.agentLiveSpin.hidden = !live;
-    const shimmer = S.agentLiveDock.querySelector(".chat-status-shimmer");
+    const shimmer = S.agentLiveDock.querySelector("[data-dock-status]");
     if (shimmer) shimmer.hidden = !live && !stalled;
     if (stalled) {
       ui.setLivePhase(S.agentLiveDock, "stalled");

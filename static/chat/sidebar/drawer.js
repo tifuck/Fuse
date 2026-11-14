@@ -21,7 +21,7 @@ export function createDrawer(ctx) {
 
     const historyBackdrop = S.root.querySelector("[data-history-backdrop]");
 
-    const historyBackground = S.root.querySelectorAll(".chat-thread, .chat-dock, .chat-latest, .chat-bar > :not([data-history-toggle])");
+    const historyBackground = S.root.querySelectorAll("[data-chat-thread], [data-agent-view], [data-chat-form], [data-chat-latest], [data-chat-bar] > :not([data-history-toggle])");
 
     const historyEdge = S.root.querySelector("[data-history-edge]");
 

@@ -15,7 +15,7 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `app/search/` | Fuse-hosted web search: one file per provider under `providers/`. |
 | `app/workspace_ops/` | Workspace tool families used by `app/workspace.py`. |
 | `agent/` | `fuse-agent` connector: C binary (`src/`, `make`) and Windows Go EXE (`windows/`). |
-| `templates/`, `static/` | Pages and assets. Chat UI: `static/chat.js` + `static/chat/`, rendering in `static/themes/console/`. Vendored code: `static/vendor/`, `static/dict/`. |
+| `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `combined`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. |
 | `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
 | `tests/` | pytest suites, Node unit suites (`*.test.cjs`) and Playwright browser suites (`*.browser.cjs`). |
@@ -71,6 +71,18 @@ change: each pool merges its live catalog into its seed list.
   the URL, or storage.
 - `static/app.css` is an ordered import list; keep its order (cascade).
   Design tokens live in `static/styles/tokens/root.css`.
+- /chat is drawn only by its theme. The runtime (`static/chat.js`,
+  `static/chat/**`) owns behaviour and data, finds elements by `data-*`
+  hooks, and asks the theme for markup (`static/themes/<t>/index.js` returns
+  one surface for every theme). `chat.html` includes
+  `templates/themes/<t>/_chat.html`. Shared chat stylesheets are gated off
+  /chat with `:where(html:not(.is-chat-root))` (they still style settings
+  and other pages); each theme's copy lives in `themes/<t>/styles/base/`.
+  Palettes, backdrop and text size stay shared in `chat-design.css`.
+  `tests/chat_theme_css.test.cjs` and `tests/chat_theme_markup.test.cjs`
+  pin this; a new theme is its two folders plus a `registry.js` entry.
+  `FUSE_CHAT_VIEW=combined scripts/run_browser_tests.sh …` runs browser
+  suites under Combined.
 
 ## Stored transcripts
 

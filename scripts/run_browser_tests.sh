@@ -8,6 +8,9 @@
 # Needs the Node "playwright" package (npm install playwright, or on
 # NODE_PATH) and its Chromium (npx playwright install chromium).
 # Logs go to $LOG_DIR (default /tmp/fuse-browser-tests).
+# FUSE_CHAT_VIEW=combined runs the suites under the Combined chat theme (the
+# fixture's login sets the fuse_chat_view cookie Appearance › Layout writes);
+# unset, they run under Console, the default.
 set -u
 cd "$(dirname "$0")/.."
 LOG_DIR=${LOG_DIR:-/tmp/fuse-browser-tests}

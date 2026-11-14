@@ -1,13 +1,13 @@
-.chat-artifact-backdrop[hidden],
-.chat-artifact[hidden] { display: none !important; }
-.chat-artifact {
+:where(html:not(.is-chat-root)) .chat-artifact-backdrop[hidden],
+:where(html:not(.is-chat-root)) .chat-artifact[hidden] { display: none !important; }
+:where(html:not(.is-chat-root)) .chat-artifact {
   display: none;
   flex-direction: column;
   min-height: 0;
   background: var(--ink);
   border-left: 1px solid var(--line);
 }
-.chat.is-artifact .chat-artifact {
+:where(html:not(.is-chat-root)) .chat.is-artifact .chat-artifact {
   display: flex;
   grid-column: 3;
   grid-row: 1 / -1;
@@ -15,16 +15,16 @@
 }
 @media (min-width: 801px) {
   /* The thread keeps 24rem; a pane width saved on a wider window gives way. */
-  .chat.is-artifact {
+  :where(html:not(.is-chat-root)) .chat.is-artifact {
     grid-template-columns: clamp(14rem, var(--chat-history), 100% - 24rem) minmax(min(24rem, 100%), 1fr) minmax(0, var(--chat-artifact));
   }
-  .chat.is-artifact.history-collapsed {
+  :where(html:not(.is-chat-root)) .chat.is-artifact.history-collapsed {
     grid-template-columns: 0 minmax(min(24rem, 100%), 1fr) minmax(0, var(--chat-artifact));
   }
 }
 /* The head is the chat bar's twin: same height, padding, ground, title type
    and ghost buttons, one row at every width (the title gives way first). */
-.chat-artifact-head {
+:where(html:not(.is-chat-root)) .chat-artifact-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -33,20 +33,20 @@
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
-.chat-artifact-copy {
+:where(html:not(.is-chat-root)) .chat-artifact-copy {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex: 1 1 0;
   min-width: 5rem;
 }
-.chat-artifact-copy .badge {
+:where(html:not(.is-chat-root)) .chat-artifact-copy .badge {
   flex-shrink: 0;
   height: 1.1rem;
   padding: 0 0.35rem;
   font-size: 0.62rem;
 }
-.chat-artifact-building-label {
+:where(html:not(.is-chat-root)) .chat-artifact-building-label {
   min-width: 0;
   overflow: hidden;
   color: var(--chat-secondary);
@@ -54,15 +54,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-artifact-tools {
+:where(html:not(.is-chat-root)) .chat-artifact-tools {
   display: flex;
   align-items: center;
   gap: 0.125rem;
   min-width: 0;
 }
 /* Only the version picker gives way when the pane is narrow. */
-.chat-artifact-version { display: inline-flex; flex: 0 1 auto; min-width: 3rem; max-width: 7.5rem; margin: 0 0.125rem; }
-.chat-artifact-version select {
+:where(html:not(.is-chat-root)) .chat-artifact-version { display: inline-flex; flex: 0 1 auto; min-width: 3rem; max-width: 7.5rem; margin: 0 0.125rem; }
+:where(html:not(.is-chat-root)) .chat-artifact-version select {
   width: 100%;
   height: var(--chat-bar-btn);
   min-height: 0;
@@ -76,9 +76,9 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.chat-artifact-version select:hover { background-color: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
-.chat-artifact-tool,
-.chat-artifact-head .chat-menu-close {
+:where(html:not(.is-chat-root)) .chat-artifact-version select:hover { background-color: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+:where(html:not(.is-chat-root)) .chat-artifact-tool,
+:where(html:not(.is-chat-root)) .chat-artifact-head .chat-menu-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -95,28 +95,28 @@
   white-space: nowrap;
   transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
 }
-.chat-artifact-tool.is-icon,
-.chat-artifact-head .chat-menu-close { width: var(--chat-bar-btn); min-width: var(--chat-bar-btn); padding: 0; }
-.chat-artifact-tool:hover,
-.chat-artifact-head .chat-menu-close:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
-.chat-artifact-tool:is([aria-pressed="true"], [aria-expanded="true"]) {
+:where(html:not(.is-chat-root)) .chat-artifact-tool.is-icon,
+:where(html:not(.is-chat-root)) .chat-artifact-head .chat-menu-close { width: var(--chat-bar-btn); min-width: var(--chat-bar-btn); padding: 0; }
+:where(html:not(.is-chat-root)) .chat-artifact-tool:hover,
+:where(html:not(.is-chat-root)) .chat-artifact-head .chat-menu-close:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+:where(html:not(.is-chat-root)) .chat-artifact-tool:is([aria-pressed="true"], [aria-expanded="true"]) {
   background: color-mix(in srgb, var(--mist) 11%, transparent);
   color: var(--mist);
 }
-.chat-artifact-body {
+:where(html:not(.is-chat-root)) .chat-artifact-body {
   flex: 1;
   min-height: 0;
   display: flex;
   background: var(--ink);
 }
-.chat-artifact-frame {
+:where(html:not(.is-chat-root)) .chat-artifact-frame {
   flex: 1;
   width: 100%;
   height: 100%;
   border: 0;
   background: #fff;
 }
-.chat-artifact-source {
+:where(html:not(.is-chat-root)) .chat-artifact-source {
   flex: 1;
   margin: 0;
   padding: 0.85rem;
@@ -128,15 +128,15 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.chat-artifact-building {
+:where(html:not(.is-chat-root)) .chat-artifact-building {
   margin: auto;
   color: var(--mute);
   font-size: 0.88rem;
 }
-.chat-artifact { position: relative; }
-.art-icon,
-.artifact-icon { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
-.chat-artifact-resize {
+:where(html:not(.is-chat-root)) .chat-artifact { position: relative; }
+:where(html:not(.is-chat-root)) .art-icon,
+:where(html:not(.is-chat-root)) .artifact-icon { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+:where(html:not(.is-chat-root)) .chat-artifact-resize {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -145,14 +145,14 @@
   width: 7px;
   cursor: col-resize;
 }
-.chat-artifact-resize:hover,
-.chat-artifact-resize:focus-visible { background: color-mix(in srgb, var(--brass) 45%, transparent); outline: 0; }
-.chat.is-artifact-resizing { cursor: col-resize; user-select: none; }
-.chat.is-artifact-resizing .chat-artifact-frame { pointer-events: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-resize:hover,
+:where(html:not(.is-chat-root)) .chat-artifact-resize:focus-visible { background: color-mix(in srgb, var(--brass) 45%, transparent); outline: 0; }
+:where(html:not(.is-chat-root)) .chat.is-artifact-resizing { cursor: col-resize; user-select: none; }
+:where(html:not(.is-chat-root)) .chat.is-artifact-resizing .chat-artifact-frame { pointer-events: none; }
 @media (min-width: 801px) {
-  .chat.is-artifact.is-artifact-wide { --chat-artifact: max(36rem, calc(100% - var(--chat-history) - 26rem)) !important; }
+  :where(html:not(.is-chat-root)) .chat.is-artifact.is-artifact-wide { --chat-artifact: max(36rem, calc(100% - var(--chat-history) - 26rem)) !important; }
 }
-.chat-artifact-pick {
+:where(html:not(.is-chat-root)) .chat-artifact-pick {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -169,18 +169,18 @@
   font-weight: 400;
   letter-spacing: -0.015em;
 }
-.chat-artifact-pick:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); }
-.chat-artifact-pick svg { flex-shrink: 0; color: var(--chat-secondary); }
-.chat-artifact-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-artifact-tool[hidden] { display: none; }
-.chat-artifact-more { position: relative; display: inline-flex; }
-.chat-artifact-menu {
+:where(html:not(.is-chat-root)) .chat-artifact-pick:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); }
+:where(html:not(.is-chat-root)) .chat-artifact-pick svg { flex-shrink: 0; color: var(--chat-secondary); }
+:where(html:not(.is-chat-root)) .chat-artifact-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html:not(.is-chat-root)) .chat-artifact-tool[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-more { position: relative; display: inline-flex; }
+:where(html:not(.is-chat-root)) .chat-artifact-menu {
   position: absolute;
   top: calc(100% + 0.3rem);
   right: 0;
   width: 17rem;
 }
-.chat-artifact-menu a {
+:where(html:not(.is-chat-root)) .chat-artifact-menu a {
   display: block;
   height: 2rem;
   padding: 0 0.65rem;
@@ -190,9 +190,9 @@
   line-height: 2rem;
   text-decoration: none;
 }
-.chat-artifact-menu a:hover { background: var(--raise); }
-.chat-artifact-menu [hidden] { display: none; }
-.chat-artifact-menu-check {
+:where(html:not(.is-chat-root)) .chat-artifact-menu a:hover { background: var(--raise); }
+:where(html:not(.is-chat-root)) .chat-artifact-menu [hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-menu-check {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -202,8 +202,8 @@
   flex-direction: row;
   cursor: pointer;
 }
-.chat-artifact-menu-check input { flex: none; width: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: var(--brass); }
-.chat-artifact-alert {
+:where(html:not(.is-chat-root)) .chat-artifact-menu-check input { flex: none; width: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: var(--brass); }
+:where(html:not(.is-chat-root)) .chat-artifact-alert {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -213,20 +213,20 @@
   color: var(--mist);
   font-size: 0.8rem;
 }
-.chat-artifact-alert.is-error { background: color-mix(in srgb, var(--fault) 12%, var(--panel)); }
-.chat-artifact-alert[hidden] { display: none; }
-.chat-artifact-alert > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.chat-artifact-alert-close { display: inline-flex; padding: 0.35rem; border-radius: 6px; color: var(--chat-secondary); }
-.chat-artifact-alert-close:hover { background: var(--raise); color: var(--mist); }
-.chat-artifact-source.is-diff .is-add { color: var(--ok, #6ee7a0); }
-.chat-artifact-source.is-diff .is-del { color: var(--fault); }
-.chat-artifact-source.is-diff .is-hunk { color: var(--chat-secondary); }
-.chat-artifact-list { flex: 1; overflow: auto; padding: 0.6rem 0.85rem 1rem; }
-.chat-artifact-list[hidden] { display: none; }
-.chat-artifact-list-head { margin: 0.65rem 0 0.35rem; color: var(--mute); font: 0.66rem/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
-.chat-artifact-rows { margin: 0; padding: 0; list-style: none; }
-.chat-artifact-row { display: flex; align-items: center; gap: 0.35rem; }
-.chat-artifact-row-open {
+:where(html:not(.is-chat-root)) .chat-artifact-alert.is-error { background: color-mix(in srgb, var(--fault) 12%, var(--panel)); }
+:where(html:not(.is-chat-root)) .chat-artifact-alert[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-alert > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+:where(html:not(.is-chat-root)) .chat-artifact-alert-close { display: inline-flex; padding: 0.35rem; border-radius: 6px; color: var(--chat-secondary); }
+:where(html:not(.is-chat-root)) .chat-artifact-alert-close:hover { background: var(--raise); color: var(--mist); }
+:where(html:not(.is-chat-root)) .chat-artifact-source.is-diff .is-add { color: var(--ok, #6ee7a0); }
+:where(html:not(.is-chat-root)) .chat-artifact-source.is-diff .is-del { color: var(--fault); }
+:where(html:not(.is-chat-root)) .chat-artifact-source.is-diff .is-hunk { color: var(--chat-secondary); }
+:where(html:not(.is-chat-root)) .chat-artifact-list { flex: 1; overflow: auto; padding: 0.6rem 0.85rem 1rem; }
+:where(html:not(.is-chat-root)) .chat-artifact-list[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-list-head { margin: 0.65rem 0 0.35rem; color: var(--mute); font: 0.66rem/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+:where(html:not(.is-chat-root)) .chat-artifact-rows { margin: 0; padding: 0; list-style: none; }
+:where(html:not(.is-chat-root)) .chat-artifact-row { display: flex; align-items: center; gap: 0.35rem; }
+:where(html:not(.is-chat-root)) .chat-artifact-row-open {
   flex: 1;
   display: flex;
   align-items: center;
@@ -237,20 +237,20 @@
   color: var(--mist);
   text-align: left;
 }
-.chat-artifact-row-open:hover,
-.chat-artifact-row-open:focus-visible { background: var(--raise); }
-.chat-artifact-row-icon { display: inline-flex; justify-content: center; flex-shrink: 0; width: 1.4rem; color: var(--chat-secondary); }
-.chat-artifact-row-copy { display: flex; flex-direction: column; min-width: 0; }
-.chat-artifact-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.88rem; }
-.chat-artifact-row-copy small { color: var(--mute); font: 0.7rem/1.3 var(--mono); }
-.chat-artifact-list-empty,
-.chat-artifact-list-foot { color: var(--mute); font-size: 0.8rem; }
-.chat-artifact-list-foot { margin-top: 1rem; }
-[data-artifact-toggle].is-busy svg { animation: chat-artifact-busy 1.2s ease-in-out infinite; }
-[data-artifact-toggle].is-fresh { color: var(--brass); }
+:where(html:not(.is-chat-root)) .chat-artifact-row-open:hover,
+:where(html:not(.is-chat-root)) .chat-artifact-row-open:focus-visible { background: var(--raise); }
+:where(html:not(.is-chat-root)) .chat-artifact-row-icon { display: inline-flex; justify-content: center; flex-shrink: 0; width: 1.4rem; color: var(--chat-secondary); }
+:where(html:not(.is-chat-root)) .chat-artifact-row-copy { display: flex; flex-direction: column; min-width: 0; }
+:where(html:not(.is-chat-root)) .chat-artifact-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.88rem; }
+:where(html:not(.is-chat-root)) .chat-artifact-row-copy small { color: var(--mute); font: 0.7rem/1.3 var(--mono); }
+:where(html:not(.is-chat-root)) .chat-artifact-list-empty,
+:where(html:not(.is-chat-root)) .chat-artifact-list-foot { color: var(--mute); font-size: 0.8rem; }
+:where(html:not(.is-chat-root)) .chat-artifact-list-foot { margin-top: 1rem; }
+:where(html:not(.is-chat-root)) [data-artifact-toggle].is-busy svg { animation: chat-artifact-busy 1.2s ease-in-out infinite; }
+:where(html:not(.is-chat-root)) [data-artifact-toggle].is-fresh { color: var(--brass); }
 @keyframes chat-artifact-busy { 50% { opacity: 0.35; } }
-@media (prefers-reduced-motion: reduce) { [data-artifact-toggle].is-busy svg { animation: none; } }
-.chat-artifact-backdrop {
+@media (prefers-reduced-motion: reduce) { :where(html:not(.is-chat-root)) [data-artifact-toggle].is-busy svg { animation: none; } }
+:where(html:not(.is-chat-root)) .chat-artifact-backdrop {
   position: absolute;
   inset: 0;
   grid-column: 1 / -1;
@@ -261,7 +261,7 @@
   background: rgb(8 10 9 / 42%);
   cursor: pointer;
 }
-.chat-md a.chat-md-cite {
+:where(html:not(.is-chat-root)) .chat-md a.chat-md-cite {
   font-family: var(--mono);
   font-size: 0.78em;
   color: var(--chat-secondary);
@@ -269,14 +269,14 @@
   border-bottom: 1px solid color-mix(in srgb, var(--mute) 50%, transparent);
   margin: 0 0.12em;
 }
-.chat-md a.chat-md-cite:hover {
+:where(html:not(.is-chat-root)) .chat-md a.chat-md-cite:hover {
   color: var(--mist);
   text-decoration: none;
   border-bottom-color: var(--steel);
 }
 /* A link to an artifact inside a sentence is text: the reply's card under
    it is the button (templates: the [data-artifact-cards] slot). */
-.chat .chat-md a.chat-md-artifact {
+:where(html:not(.is-chat-root)) .chat .chat-md a.chat-md-artifact {
   display: inline;
   padding: 0;
   border: 0;
@@ -288,15 +288,15 @@
   text-underline-offset: 0.2em;
   white-space: normal;
 }
-.chat .chat-md a.chat-md-artifact:hover { color: var(--mist); }
-.chat-artifact-cards {
+:where(html:not(.is-chat-root)) .chat .chat-md a.chat-md-artifact:hover { color: var(--mist); }
+:where(html:not(.is-chat-root)) .chat-artifact-cards {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.65rem 0 0.15rem;
 }
-.chat-artifact-cards[hidden] { display: none; }
-.chat .chat-artifact-card {
+:where(html:not(.is-chat-root)) .chat-artifact-cards[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat .chat-artifact-card {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -311,11 +311,11 @@
   text-align: left;
   cursor: pointer;
 }
-.chat .chat-artifact-card:hover,
-.chat .chat-artifact-card:focus-visible { border-color: color-mix(in srgb, var(--brass) 55%, var(--line)); background: var(--raise); }
-.chat .chat-artifact-card.is-gone,
-.chat .chat-artifact-card.is-gone:hover { border-style: dashed; border-color: var(--line); background: transparent; color: var(--mute); cursor: default; }
-.chat-artifact-card-icon {
+:where(html:not(.is-chat-root)) .chat .chat-artifact-card:hover,
+:where(html:not(.is-chat-root)) .chat .chat-artifact-card:focus-visible { border-color: color-mix(in srgb, var(--brass) 55%, var(--line)); background: var(--raise); }
+:where(html:not(.is-chat-root)) .chat .chat-artifact-card.is-gone,
+:where(html:not(.is-chat-root)) .chat .chat-artifact-card.is-gone:hover { border-style: dashed; border-color: var(--line); background: transparent; color: var(--mute); cursor: default; }
+:where(html:not(.is-chat-root)) .chat-artifact-card-icon {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -328,18 +328,19 @@
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   font-size: 1.1rem;
 }
-.chat-artifact-card-copy { display: flex; flex: 1; flex-direction: column; gap: 0.1rem; min-width: 0; }
-.chat-artifact-card-title { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.chat-artifact-card-meta { color: var(--mute); font-size: 0.78em; }
-.chat-artifact-card-open { flex-shrink: 0; color: var(--brass); font-size: 0.8em; }
+:where(html:not(.is-chat-root)) .chat-artifact-card-copy { display: flex; flex: 1; flex-direction: column; gap: 0.1rem; min-width: 0; }
+:where(html:not(.is-chat-root)) .chat-artifact-card-title { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+:where(html:not(.is-chat-root)) .chat-artifact-card-meta { color: var(--mute); font-size: 0.78em; }
+:where(html:not(.is-chat-root)) .chat-artifact-card-open { flex-shrink: 0; color: var(--brass); font-size: 0.8em; }
 /* Console: cards line up with the reply text, past its bullet column. */
-html[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-cards { padding-left: calc(var(--console-col) + 0.45rem); }
-html[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-card { border-radius: 0; font: var(--console-type)/var(--console-leading) var(--mono); }
-html[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-card-icon { border-radius: 0; }
+html:where(:not(.is-chat-root))[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-cards { padding-left: calc(var(--console-col) + 0.45rem); }
+html:where(:not(.is-chat-root))[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-card { border-radius: 0; font: var(--console-type)/var(--console-leading) var(--mono); }
+html:where(:not(.is-chat-root))[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-card-icon { border-radius: 0; }
 
 @media (max-width: 800px) {
-  .chat-bar, .chat-stage { grid-column: 1; }
-  .chat.is-artifact .chat-artifact {
+  :where(html:not(.is-chat-root)) .chat-bar,
+:where(html:not(.is-chat-root)) .chat-stage { grid-column: 1; }
+  :where(html:not(.is-chat-root)) .chat.is-artifact .chat-artifact {
     position: absolute;
     inset: 0;
     z-index: 16;
@@ -349,19 +350,19 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-artifact-card-ic
     width: auto;
   }
   /* Full screen: one row under the status bar, touch-size buttons. */
-  .chat-artifact-head {
+  :where(html:not(.is-chat-root)) .chat-artifact-head {
     height: calc(3rem + var(--safe-top));
     padding: var(--safe-top) max(0.5rem, var(--safe-right)) 0 max(0.75rem, var(--safe-left));
     gap: 0.25rem;
   }
-  .chat-artifact-head { --chat-bar-btn: 2.25rem; }
-  .chat-artifact-menu a { height: 44px; line-height: 44px; }
-  .chat-artifact-resize,
-  .chat-artifact-expand { display: none; }
-  .chat-artifact-body { padding-bottom: var(--safe-bottom); }
+  :where(html:not(.is-chat-root)) .chat-artifact-head { --chat-bar-btn: 2.25rem; }
+  :where(html:not(.is-chat-root)) .chat-artifact-menu a { height: 44px; line-height: 44px; }
+  :where(html:not(.is-chat-root)) .chat-artifact-resize,
+:where(html:not(.is-chat-root)) .chat-artifact-expand { display: none; }
+  :where(html:not(.is-chat-root)) .chat-artifact-body { padding-bottom: var(--safe-bottom); }
 }
 
 @media (max-width: 520px) {
-  .artifact-banner-actions { width: 100%; }
+  :where(html:not(.is-chat-root)) .artifact-banner-actions { width: 100%; }
 }
 

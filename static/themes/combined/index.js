@@ -19,6 +19,9 @@ import { create as createCallProgress } from './call-progress.js';
 import { create as createActivityGroups } from './activity-groups.js';
 import { create as createTranscript } from './transcript.js';
 import { create as createWorkPanels } from './work-panels.js';
+import { create as createSidebar } from './sidebar.js';
+import { create as createTurnExtras } from './turn-extras.js';
+import { create as createChrome } from './chrome.js';
 import { create as createProviderError } from './provider-error.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
@@ -450,8 +453,32 @@ export function createCombinedTheme(runtime) {
     get jobElapsedMs() { return runtime.jobElapsedMs; },
     get jobsFor() { return runtime.jobsFor; },
     get renderMarkdown() { return theme.renderMarkdown; },
+    get toolDetailHtml() { return theme.toolDetailHtml; },
     get toolText() { return theme.toolText; },
   }));
+  Object.assign(theme, createSidebar({
+    get consoleSpinGlyph() { return theme.consoleSpinGlyph; },
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
+  Object.assign(theme, createTurnExtras({
+    get compactionMarkHtml() { return theme.compactionMarkHtml; },
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
+  Object.assign(theme, createChrome({
+    get activeRun() { return runtime.activeRun; },
+    get agentLive() { return runtime.agentLive; },
+    get agentsRows() { return runtime.agentsRows; },
+    get formatActivityClock() { return theme.formatActivityClock; },
+    get jobsRows() { return runtime.jobsRows; },
+    get liveElapsedSeconds() { return runtime.liveElapsedSeconds; },
+    get liveMeter() { return runtime.liveMeter; },
+    get messages() { return runtime.messages; },
+    get root() { return runtime.root; },
+    get runIsActive() { return runtime.runIsActive; },
+    get streaming() { return runtime.streaming; },
+  }));
+  // The status pill and rail follow every live-dock and work-clock sync.
+  const withChrome = (fn) => (...args) => { const out = fn(...args); theme.syncChrome(); return out; };
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,
@@ -460,6 +487,7 @@ export function createCombinedTheme(runtime) {
     compactionMarkHtml: theme.compactionMarkHtml,
     consoleSpinGlyph: theme.consoleSpinGlyph,
     currentActivity: theme.currentActivity,
+    deferredShellHtml: theme.deferredShellHtml,
     displayCommand: theme.displayCommand,
     disposeThinking: theme.disposeThinking,
     fillUserFiles: theme.fillUserFiles,
@@ -468,12 +496,19 @@ export function createCombinedTheme(runtime) {
     formatActivityClock: theme.formatActivityClock,
     formatConsoleLiveStatus: theme.formatConsoleLiveStatus,
     groupTraces: theme.groupTraces,
+    historyListHtml: theme.historyListHtml,
+    jobDetailHtml: theme.jobDetailHtml,
     jobRowHtml: theme.jobRowHtml,
+    markerTurnHtml: theme.markerTurnHtml,
     parseProviderError: theme.parseProviderError,
     patchMarkdown: theme.patchMarkdown,
+    pendingSendHtml: theme.pendingSendHtml,
     permQueueCardHtml: theme.permQueueCardHtml,
+    queueItemHtml: theme.queueItemHtml,
+    recapHtml: theme.recapHtml,
     renderAssistant: theme.renderAssistant,
     renderUser: theme.renderUser,
+    rewindListHtml: theme.rewindListHtml,
     setConsoleSpin: theme.setConsoleSpin,
     setLiveLabelText: theme.setLiveLabelText,
     setLivePhase: theme.setLivePhase,
@@ -482,8 +517,8 @@ export function createCombinedTheme(runtime) {
     syncActivityElapsed: theme.syncActivityElapsed,
     syncActivitySpin: theme.syncActivitySpin,
     syncConsoleClocks: theme.syncConsoleClocks,
-    syncLiveDock: theme.syncLiveDock,
-    syncWorkClocks: theme.syncWorkClocks,
+    syncLiveDock: withChrome(theme.syncLiveDock),
+    syncWorkClocks: withChrome(theme.syncWorkClocks),
     thinkingPosition: theme.thinkingPosition,
     todoBarHtml: theme.todoBarHtml,
     todoRowsHtml: theme.todoRowsHtml,

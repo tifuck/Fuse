@@ -18,7 +18,7 @@ export function createStatus(ctx) {
 
     function syncStatus() {
     const el = S.root.querySelector("[data-sync-label]");
-    const bar = S.root.querySelector(".chat-sync");
+    const bar = S.root.querySelector("[data-sync-state]");
     const live = net.isLive();
     let text = S.syncLabel;
     let state = live ? "live" : S.syncState;

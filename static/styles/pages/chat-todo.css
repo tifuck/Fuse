@@ -5,9 +5,9 @@
    list up over the transcript, five rows tall, scrolled so the item in
    progress is on top. The section itself is a zero-height anchor line; the
    drawer hangs above it. */
-.chat-live-todos,
-.chat-agent-live-todos { display: none; }
-.chat :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) {
+:where(html:not(.is-chat-root)) .chat-live-todos,
+:where(html:not(.is-chat-root)) .chat-agent-live-todos { display: none; }
+:where(html:not(.is-chat-root)) .chat :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) {
   --todo-row: calc(var(--console-row, 1.1rem) + 0.24rem);
   --todo-edge: color-mix(in srgb, var(--mist) 16%, var(--line));
   --todo-surface: color-mix(in srgb, var(--ink) 88%, var(--panel));
@@ -21,27 +21,27 @@
 }
 /* Both trays hang off the composer's top edge; the one for the transcript
    on screen shows (the main agent's, or the open subagent's). */
-.chat .chat-dock > :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) {
+:where(html:not(.is-chat-root)) .chat .chat-dock > :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;
 }
-.chat.is-agent-view .chat-dock > .chat-live-todos { display: none !important; }
+:where(html:not(.is-chat-root)) .chat.is-agent-view .chat-dock > .chat-live-todos { display: none !important; }
 /* The composer's own popovers (model picker, permissions, context) open
    upward over the list, never under it. */
-.chat .chat-dock > .chat-box { z-index: 7; }
+:where(html:not(.is-chat-root)) .chat .chat-dock > .chat-box { z-index: 7; }
 /* What floats above the composer stacks bottom-up and never overlaps: the
    open list of the transcript on screen (--todo-lift is its height), the
    dictation strip, the sync badge, then "Jump to latest". */
-.chat:not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) { --todo-lift: var(--todo-push, 0px); }
-.chat.is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
-.chat:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 3.3rem; }
-.chat:has(.chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
-.chat .chat-dock > .chat-sync { bottom: calc(100% + 0.35rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px)); }
-.chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
+:where(html:not(.is-chat-root)) .chat:not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) { --todo-lift: var(--todo-push, 0px); }
+:where(html:not(.is-chat-root)) .chat.is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
+:where(html:not(.is-chat-root)) .chat:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 3.3rem; }
+:where(html:not(.is-chat-root)) .chat:has(.chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
+:where(html:not(.is-chat-root)) .chat .chat-dock > .chat-sync { bottom: calc(100% + 0.35rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px)); }
+:where(html:not(.is-chat-root)) .chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
 @media (max-width: 800px) {
-  .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.2rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
+  :where(html:not(.is-chat-root)) .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.2rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
 }
 /* Open, the transcript makes room for the drawer's page (todos.js measures
    it into --todo-push), so the chat ends where the list begins. The console
@@ -49,8 +49,8 @@
 
 /* The header button: hidden while there is no list, a count of the open
    items on the icon's corner. */
-.chat .chat-bar-btn[hidden] { display: none; }
-.chat .chat-todo-badge {
+:where(html:not(.is-chat-root)) .chat .chat-bar-btn[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-badge {
   position: absolute;
   top: calc(50% - 0.85rem);
   left: calc(50% + 0.2rem);
@@ -66,10 +66,10 @@
   text-align: center;
   pointer-events: none;
 }
-.chat .chat-todo-badge:empty { display: none; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-badge:empty { display: none; }
 
 /* The sheet: hangs from the anchor line. */
-.chat .chat-todo-sheet {
+:where(html:not(.is-chat-root)) .chat .chat-todo-sheet {
   position: absolute;
   left: 0;
   right: 0;
@@ -78,10 +78,10 @@
   flex-direction: column;
   pointer-events: none;
 }
-.chat .chat-todo-sheet > * { pointer-events: auto; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-sheet > * { pointer-events: auto; }
 
 /* The head line on top of the page: "Todos done/total" and the dismiss. */
-.chat .chat-todo-bar {
+:where(html:not(.is-chat-root)) .chat .chat-todo-bar {
   --todo-done: 0%;
   position: relative;
   display: flex;
@@ -91,7 +91,7 @@
   padding-left: 0.5rem;
 }
 /* Progress: a hairline on the page's top rule, as wide as the finished share. */
-.chat .chat-todo-bar::after {
+:where(html:not(.is-chat-root)) .chat .chat-todo-bar::after {
   content: "";
   position: absolute;
   left: 0;
@@ -102,25 +102,25 @@
   transition: width 600ms var(--ease-glide);
 }
 /* An update: the new count rolls in; the hairline above grows to match. */
-.chat .chat-todo-bar.is-updated .chat-todo-count { animation: chat-todo-count 280ms ease-out; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-bar.is-updated .chat-todo-count { animation: chat-todo-count 280ms ease-out; }
 @keyframes chat-todo-count {
   from { opacity: 0; transform: translateY(0.35em); }
   to { opacity: 1; transform: none; }
 }
 
-.chat .chat-todo-head {
+:where(html:not(.is-chat-root)) .chat .chat-todo-head {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   white-space: nowrap;
 }
-.chat .chat-todo-title { font-weight: 600; }
-.chat .chat-todo-count {
+:where(html:not(.is-chat-root)) .chat .chat-todo-title { font-weight: 600; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-count {
   display: inline-block;
   color: var(--brass);
   font-variant-numeric: tabular-nums;
 }
-.chat .chat-todo-dismiss {
+:where(html:not(.is-chat-root)) .chat .chat-todo-dismiss {
   display: grid;
   place-items: center;
   width: 1.4rem;
@@ -134,35 +134,35 @@
   font: 0.95rem/1 var(--sans);
   cursor: pointer;
 }
-.chat .chat-todo-dismiss:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
-.chat .chat-todo-dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-dismiss:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 
 /* The page: full width, it opens up out of the composer. The transcript
    makes room for it in the same frame, so the page does not slide (a sliding
    page fought the transcript's jump); its rows fade up into place instead.
    Closed, it is zero tall. */
-.chat .chat-todo-drawer {
+:where(html:not(.is-chat-root)) .chat .chat-todo-drawer {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
 }
-.chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-drawer {
+:where(html:not(.is-chat-root)) .chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-drawer {
   grid-template-rows: 1fr;
   visibility: visible;
   box-shadow: 0 -12px 24px -14px rgb(0 0 0 / 50%);
 }
-.chat .chat-todo-clip { min-height: 0; overflow: hidden; }
-.chat .chat-todo-page {
+:where(html:not(.is-chat-root)) .chat .chat-todo-clip { min-height: 0; overflow: hidden; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-page {
   padding: 0 0.35rem 0.25rem;
   border-top: 1px solid var(--todo-edge);
   background: var(--todo-surface);
 }
-.chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-rows { animation: chat-todo-rows-in 160ms ease-out both; }
+:where(html:not(.is-chat-root)) .chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-rows { animation: chat-todo-rows-in 160ms ease-out both; }
 @keyframes chat-todo-rows-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
-.chat .chat-todo-rows {
+:where(html:not(.is-chat-root)) .chat .chat-todo-rows {
   position: relative;
   display: block;
   max-height: calc(5 * var(--todo-row));
@@ -175,7 +175,7 @@
 }
 /* A row is its text plus an even sliver above and below; wrapped items grow
    by whole lines. */
-.chat .chat-todo-row {
+:where(html:not(.is-chat-root)) .chat .chat-todo-row {
   display: grid;
   grid-template-columns: var(--console-col, 0.7rem) minmax(0, 1fr);
   column-gap: 0.6rem;
@@ -184,19 +184,19 @@
   border-radius: 5px;
   transition: background var(--dur-2) ease;
 }
-.chat .chat-todo-row.is-in-progress { background: color-mix(in srgb, var(--brass) 9%, transparent); }
-.chat .chat-todo-text {
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-in-progress { background: color-mix(in srgb, var(--brass) 9%, transparent); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-text {
   min-width: 0;
   color: color-mix(in srgb, var(--mute) 30%, var(--mist));
   overflow-wrap: anywhere;
 }
-.chat .chat-todo-row.is-in-progress .chat-todo-text { color: var(--mist); font-weight: 600; }
-.chat .chat-todo-row:is(.is-completed, .is-cancelled) .chat-todo-text { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--mute) 60%, transparent); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-in-progress .chat-todo-text { color: var(--mist); font-weight: 600; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row:is(.is-completed, .is-cancelled) .chat-todo-text { color: var(--mute); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--mute) 60%, transparent); }
 /* Marks are drawn, not typed: a glyph like ☒ is missing from many fonts and
    prints as a broken box. A ring for open, brass for in progress, a dim dot
    once done. */
-.chat .chat-todo-box { display: grid; place-items: center; height: var(--console-row, 1.1rem); }
-.chat .chat-todo-box::before {
+:where(html:not(.is-chat-root)) .chat .chat-todo-box { display: grid; place-items: center; height: var(--console-row, 1.1rem); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-box::before {
   content: "";
   box-sizing: border-box;
   width: var(--console-dot, 0.38rem);
@@ -204,18 +204,18 @@
   border-radius: 50%;
   background: var(--mute);
 }
-.chat .chat-todo-row.is-pending .chat-todo-box::before { background: none; border: 1px solid var(--mute); }
-.chat .chat-todo-row.is-in-progress .chat-todo-box::before { background: var(--brass); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent); }
-.chat .chat-todo-row.is-completed .chat-todo-box::before { background: var(--call-done, var(--ok)); opacity: 0.7; }
-.chat .chat-todo-row.is-cancelled .chat-todo-box::before { opacity: 0.45; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-pending .chat-todo-box::before { background: none; border: 1px solid var(--mute); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-in-progress .chat-todo-box::before { background: var(--brass); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent); }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-completed .chat-todo-box::before { background: var(--call-done, var(--ok)); opacity: 0.7; }
+:where(html:not(.is-chat-root)) .chat .chat-todo-row.is-cancelled .chat-todo-box::before { opacity: 0.45; }
 
 @media (max-width: 800px) {
-  .chat :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) { --todo-row: 1.75rem; }
-  .chat .chat-todo-row { padding-block: 0.18rem; }
-  .chat .chat-todo-dismiss { width: 2rem; height: 2rem; }
+  :where(html:not(.is-chat-root)) .chat :is(.chat-live-todos, .chat-agent-live-todos):not([hidden]) { --todo-row: 1.75rem; }
+  :where(html:not(.is-chat-root)) .chat .chat-todo-row { padding-block: 0.18rem; }
+  :where(html:not(.is-chat-root)) .chat .chat-todo-dismiss { width: 2rem; height: 2rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat .chat-todo-bar.is-updated .chat-todo-count,
-  .chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-rows { animation: none; }
-  .chat .chat-todo-bar::after { transition: none; }
+  :where(html:not(.is-chat-root)) .chat .chat-todo-bar.is-updated .chat-todo-count,
+:where(html:not(.is-chat-root)) .chat :is(.chat-live-todos, .chat-agent-live-todos).is-open .chat-todo-rows { animation: none; }
+  :where(html:not(.is-chat-root)) .chat .chat-todo-bar::after { transition: none; }
 }

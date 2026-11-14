@@ -1,7 +1,7 @@
 /* Mobile model picker: a full-screen sheet. It is portaled to the .chat root so
    the glass dock's transform and backdrop-filter cannot contain or clip it, and
    it opens without focusing the search field, so the keyboard stays closed. */
-.chat-picker-menu.is-sheet {
+:where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet {
   position: fixed;
   inset: 0;
   z-index: 68;
@@ -17,17 +17,17 @@
 /* Full-screen sheets (model picker, view menu) share one motion: rise in,
    fall away on close (display transitions discretely; older engines close
    instantly), and follow a downward drag on the head. */
-.chat-picker-menu.is-sheet,
-.chat-perms-menu.is-sheet,
-.chat-view-menu.is-sheet-motion {
+:where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet,
+:where(html:not(.is-chat-root)) .chat-perms-menu.is-sheet,
+:where(html:not(.is-chat-root)) .chat-view-menu.is-sheet-motion {
   transition:
     opacity var(--dur-3) var(--ease-glide),
     translate var(--dur-3) var(--ease-glide),
     display var(--dur-3) allow-discrete;
 }
-.chat-picker-menu.is-sheet[hidden],
-.chat-perms-menu.is-sheet[hidden],
-.chat-view-menu.is-sheet-motion[hidden] {
+:where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet[hidden],
+:where(html:not(.is-chat-root)) .chat-perms-menu.is-sheet[hidden],
+:where(html:not(.is-chat-root)) .chat-view-menu.is-sheet-motion[hidden] {
   opacity: 0;
   translate: 0 1.5rem;
   transition-duration: var(--dur-2);
@@ -37,18 +37,18 @@
   .chat-perms-menu.is-sheet:not([hidden]),
   .chat-view-menu.is-sheet-motion:not([hidden]) { opacity: 0; translate: 0 1.5rem; }
 }
-:is(.chat-picker-menu.is-sheet, .chat-perms-menu.is-sheet, .chat-view-menu.is-sheet-motion).is-dragging { transition: none; }
-:is(.chat-picker-menu.is-sheet .chat-picker-head, .chat-perms-menu.is-sheet .chat-picker-head, .chat-view-menu.is-sheet-motion .chat-view-sheet-head) { touch-action: none; }
+:where(html:not(.is-chat-root)) :is(.chat-picker-menu.is-sheet, .chat-perms-menu.is-sheet, .chat-view-menu.is-sheet-motion).is-dragging { transition: none; }
+:where(html:not(.is-chat-root)) :is(.chat-picker-menu.is-sheet .chat-picker-head, .chat-perms-menu.is-sheet .chat-picker-head, .chat-view-menu.is-sheet-motion .chat-view-sheet-head) { touch-action: none; }
 @keyframes chat-picker-sheet-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 @media (max-width: 800px) {
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head {
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head {
     padding: calc(0.6rem + var(--safe-top)) 1rem 0.6rem;
     border-bottom: 1px solid var(--line);
   }
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head p {
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head p {
     font-family: var(--sans);
     font-size: 1rem;
     font-weight: 600;
@@ -56,29 +56,29 @@
     text-transform: none;
     color: var(--mist);
   }
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head {
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head {
     min-height: calc(3.5rem + var(--safe-top));
   }
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-searchrow { height: 3rem; padding: 0 1rem; }
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-search { font-size: 16px; }
-  :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-kbd { display: none; }
-  .chat-picker-menu.is-sheet .chat-picker-list {
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-searchrow { height: 3rem; padding: 0 1rem; }
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-search { font-size: 16px; }
+  :where(html:not(.is-chat-root)) :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-kbd { display: none; }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-list {
     padding: 0.2rem 0.5rem calc(0.8rem + var(--safe-bottom));
   }
-  .chat-picker-menu.is-sheet .chat-picker-group > p { padding: 0.75rem 0.55rem 0.3rem calc((var(--star-col) - 0.8rem) / 2); }
-  .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] {
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-group > p { padding: 0.75rem 0.55rem 0.3rem calc((var(--star-col) - 0.8rem) / 2); }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] {
     min-height: 2.75rem;
     padding: 0.35rem 0.6rem 0.35rem var(--star-col);
     border-radius: 9px;
     font-size: 0.95rem;
   }
-  .chat-picker-menu.is-sheet .chat-picker-meta { font-size: 0.72rem; }
-  .chat-picker-menu.is-sheet .chat-picker-thinking-host {
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-meta { font-size: 0.72rem; }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-thinking-host {
     padding-bottom: var(--safe-bottom);
   }
-  .chat-picker-menu.is-sheet .chat-picker-thinking { min-height: 3.25rem; padding: 0 1rem; }
-  .chat-picker-menu.is-sheet .chat-picker-efforts { --effort-thumb: 1.15rem; --effort-track: 0.22rem; }
-  .chat-picker-menu.is-sheet .chat-picker-efforts-slider { height: 2.75rem; }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-thinking { min-height: 3.25rem; padding: 0 1rem; }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-efforts { --effort-thumb: 1.15rem; --effort-track: 0.22rem; }
+  :where(html:not(.is-chat-root)) .chat-picker-menu.is-sheet .chat-picker-efforts-slider { height: 2.75rem; }
 }
 @keyframes chat-drawer-enter {
   from { transform: translateX(-100%); }

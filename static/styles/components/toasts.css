@@ -3,7 +3,7 @@
    composer and above every panel and sheet; while a modal dialog is open the
    stack lives inside it. Tone is the left rule and the first line: brass for
    a limit or a guardrail, red for a fault. */
-.fuse-toasts {
+:where(html:not(.is-chat-root)) .fuse-toasts {
   position: fixed;
   top: max(var(--toast-top, 0px), env(safe-area-inset-top, 0px));
   right: max(1rem, env(safe-area-inset-right, 0px));
@@ -15,8 +15,8 @@
   margin-top: 0.5rem;
   pointer-events: none;
 }
-.fuse-toasts:empty { display: none; }
-.fuse-toast {
+:where(html:not(.is-chat-root)) .fuse-toasts:empty { display: none; }
+:where(html:not(.is-chat-root)) .fuse-toast {
   --toast-tone: var(--line);
   --toast-ink: var(--mist);
   display: flex;
@@ -32,34 +32,34 @@
   pointer-events: auto;
   animation: fuse-toast-in var(--dur-2, 180ms) var(--ease-snap, ease-out);
 }
-.fuse-toast.is-ok { --toast-tone: var(--ok); }
-.fuse-toast.is-warn { --toast-tone: var(--brass); --toast-ink: var(--brass); }
-.fuse-toast.is-err { --toast-tone: var(--fault); --toast-ink: var(--fault); }
-.fuse-toast-body {
+:where(html:not(.is-chat-root)) .fuse-toast.is-ok { --toast-tone: var(--ok); }
+:where(html:not(.is-chat-root)) .fuse-toast.is-warn { --toast-tone: var(--brass); --toast-ink: var(--brass); }
+:where(html:not(.is-chat-root)) .fuse-toast.is-err { --toast-tone: var(--fault); --toast-ink: var(--fault); }
+:where(html:not(.is-chat-root)) .fuse-toast-body {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
 }
-.fuse-toast-body b {
+:where(html:not(.is-chat-root)) .fuse-toast-body b {
   color: var(--toast-ink);
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
-.fuse-toast-body b:empty { display: none; }
-.fuse-toast-body span {
+:where(html:not(.is-chat-root)) .fuse-toast-body b:empty { display: none; }
+:where(html:not(.is-chat-root)) .fuse-toast-body span {
   color: var(--mute);
   font-size: 0.8rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.fuse-toast-body b:empty + span { color: var(--toast-ink); }
-.fuse-toast-act { display: flex; flex: 0 0 auto; }
-.fuse-toast-act:empty { display: none; }
-.fuse-toast-x {
+:where(html:not(.is-chat-root)) .fuse-toast-body b:empty + span { color: var(--toast-ink); }
+:where(html:not(.is-chat-root)) .fuse-toast-act { display: flex; flex: 0 0 auto; }
+:where(html:not(.is-chat-root)) .fuse-toast-act:empty { display: none; }
+:where(html:not(.is-chat-root)) .fuse-toast-x {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -72,29 +72,29 @@
   color: var(--mute);
   cursor: pointer;
 }
-.fuse-toast-x:hover { color: var(--mist); background: var(--raise); }
+:where(html:not(.is-chat-root)) .fuse-toast-x:hover { color: var(--mist); background: var(--raise); }
 @keyframes fuse-toast-in {
   from { opacity: 0; transform: translateY(-6px); }
 }
 @media (max-width: 800px) {
-  .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
-  .fuse-toast-x { width: 2.25rem; height: 2.25rem; }
+  :where(html:not(.is-chat-root)) .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
+  :where(html:not(.is-chat-root)) .fuse-toast-x { width: 2.25rem; height: 2.25rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .fuse-toast { animation: none; }
+  :where(html:not(.is-chat-root)) .fuse-toast { animation: none; }
 }
 
 /* Vault unlock prompt: a modal dialog (.modal.modal-confirm). */
-.fuse-vault-why {
+:where(html:not(.is-chat-root)) .fuse-vault-why {
   margin: 0 0 0.7rem;
   color: var(--mist);
   font-size: 0.85rem;
   line-height: 1.45;
 }
-.fuse-vault form { display: flex; flex-direction: column; gap: 0.6rem; }
-.fuse-vault-field input { min-height: var(--control); }
-.fuse-vault .fuse-vault-err { margin: 0.55rem 0 0; font-size: 0.8rem; }
-.fuse-vault-dismiss {
+:where(html:not(.is-chat-root)) .fuse-vault form { display: flex; flex-direction: column; gap: 0.6rem; }
+:where(html:not(.is-chat-root)) .fuse-vault-field input { min-height: var(--control); }
+:where(html:not(.is-chat-root)) .fuse-vault .fuse-vault-err { margin: 0.55rem 0 0; font-size: 0.8rem; }
+:where(html:not(.is-chat-root)) .fuse-vault-dismiss {
   margin: 0.75rem 0 0;
   padding: 0;
   color: var(--mute);
@@ -102,4 +102,4 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.fuse-vault-dismiss:hover { color: var(--mist); }
+:where(html:not(.is-chat-root)) .fuse-vault-dismiss:hover { color: var(--mist); }

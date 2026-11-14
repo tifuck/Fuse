@@ -168,7 +168,7 @@ export function createSheet(ctx) {
     // Flush with the composer's right edge (the send button), wherever the
     // model button sits in the row.
     function placePicker() {
-    const edge = S.form?.querySelector(".chat-send") || S.pickerHost.querySelector(".chat-picker-btn");
+    const edge = S.form?.querySelector("[data-chat-send]") || S.pickerHost.querySelector(".chat-picker-btn");
     composer.placeComposerPop(S.pickerMenuEl, edge, 26 * 16, true);
   }
 

@@ -1,5 +1,6 @@
 // Agent detail view: show, poll, meter, scroll pinning.
 import { S } from '../state.js';
+import { fromHtml } from '../core.js';
 
 let _agentViewQueued = false;
 
@@ -18,10 +19,7 @@ export function createView(ctx) {
     // Same renderers as the main chat so every styling/behavior tweak
     // (tool timelines, themes, bubbles) applies here automatically.
     if (item.role === "marker" || item.kind === "compaction" || item.compaction) {
-      const article = document.createElement("article");
-      article.className = "chat-turn is-marker";
-      article.innerHTML = ui.compactionMarkHtml("Context compacted", item.summary || item.content || "");
-      return article;
+      return fromHtml(ui.markerTurnHtml("Context compacted", item.summary || item.content || ""));
     }
     if (item.role === "user") {
       // The negative index keeps its attachment buttons from addressing a

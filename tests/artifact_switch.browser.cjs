@@ -38,7 +38,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.waitForFunction(() => !new URL(location.href).searchParams.get('t'));
     };
     const openChat = async (id) => {
-      await page.locator(`[data-history-list]:visible [data-thread="${id}"] button.open`).click();
+      await page.locator(`[data-history-list]:visible [data-thread="${id}"] [data-row-open]`).click();
       await page.waitForFunction((id) => new URL(location.href).searchParams.get('t') === id && document.querySelector('[data-chat-log]')._threadId === id, id);
     };
     const artifactOf = () => page.evaluate(() => fuseToolFixture.artifactState().current?.identifier || '');

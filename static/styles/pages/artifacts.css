@@ -34,19 +34,19 @@
 .artifact-card.is-archived { opacity: 0.62; }
 .artifact-card.is-archived .artifact-card-title { color: var(--mute); }
 
-body.is-artifact-page {
+:where(html:not(.is-chat-root)) body.is-artifact-page {
   min-height: 0;
   height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-body.is-artifact-page .stage {
+:where(html:not(.is-chat-root)) body.is-artifact-page .stage {
   min-height: 0;
   height: 100%;
   overflow: hidden;
 }
-body.is-artifact-page .stage-inner {
+:where(html:not(.is-chat-root)) body.is-artifact-page .stage-inner {
   max-width: none;
   margin: 0;
   padding: 0;
@@ -55,13 +55,13 @@ body.is-artifact-page .stage-inner {
   flex-direction: column;
   min-height: 0;
 }
-body.is-artifact-page main {
+:where(html:not(.is-chat-root)) body.is-artifact-page main {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
+:where(html:not(.is-chat-root)) body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
 
 .artifact-shell {
   flex: 1;
@@ -72,7 +72,7 @@ body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
 }
 .artifact-shell > .artifact-frame { flex: 1; min-height: 0; }
 .artifact-callout { margin: 0; border-radius: 0; }
-.artifact-callout[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .artifact-callout[hidden] { display: none; }
 .artifact-icon { margin-right: 0.4rem; }
 .artifact-live { color: var(--brass); font: 0.72rem/1.3 var(--mono); }
 .artifact-version select { height: 2rem; min-height: 0; padding: 0 1.4rem 0 0.45rem; font-size: 0.75rem; }
@@ -159,10 +159,11 @@ body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
   font-size: 0.8rem;
 }
 
-.chat { --chat-artifact: min(36rem, 42vw); }
-.chat-bar, .chat-stage { grid-column: 2; }
+:where(html:not(.is-chat-root)) .chat { --chat-artifact: min(36rem, 42vw); }
+:where(html:not(.is-chat-root)) .chat-bar,
+:where(html:not(.is-chat-root)) .chat-stage { grid-column: 2; }
 
-.chat-welcome {
+:where(html:not(.is-chat-root)) .chat-welcome {
   max-height: 3.5rem;
   margin: 0 0 1.15rem;
   overflow: hidden;
@@ -175,13 +176,13 @@ body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
   opacity: 1;
   transition: opacity 0.28s ease, margin calc(var(--dur-3) + 80ms) var(--ease-glide), max-height calc(var(--dur-3) + 80ms) var(--ease-glide);
 }
-.chat:not(.is-empty) .chat-welcome {
+:where(html:not(.is-chat-root)) .chat:not(.is-empty) .chat-welcome {
   max-height: 0;
   margin: 0;
   opacity: 0;
   pointer-events: none;
 }
-.chat.is-empty .chat-thread {
+:where(html:not(.is-chat-root)) .chat.is-empty .chat-thread {
   flex-grow: 0;
   margin-top: 0;
   padding-top: 0;
@@ -189,11 +190,11 @@ body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
   visibility: hidden;
   pointer-events: none;
 }
-.chat.is-empty .chat-sync:not(.is-fault):not(:has(button:not([hidden]))) {
+:where(html:not(.is-chat-root)) .chat.is-empty .chat-sync:not(.is-fault):not(:has(button:not([hidden]))) {
   color: color-mix(in srgb, var(--steel) 72%, transparent);
 }
-.chat.is-empty .chat-latest { display: none; }
-.chat.is-empty .chat-dock {
+:where(html:not(.is-chat-root)) .chat.is-empty .chat-latest { display: none; }
+:where(html:not(.is-chat-root)) .chat.is-empty .chat-dock {
   align-self: center;
   width: min(var(--chat-col), calc(100% - 4rem));
   max-width: 100%;
@@ -203,44 +204,44 @@ body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
   padding-bottom: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-stage::before,
-  .chat-stage::after,
-  .chat-thread,
-  .chat-welcome { transition: none; }
+  :where(html:not(.is-chat-root)) .chat-stage::before,
+:where(html:not(.is-chat-root)) .chat-stage::after,
+:where(html:not(.is-chat-root)) .chat-thread,
+:where(html:not(.is-chat-root)) .chat-welcome { transition: none; }
 }
 @media (max-width: 800px) {
-  .chat-welcome { font-size: 1.35rem; }
-  .chat.is-empty .chat-dock {
+  :where(html:not(.is-chat-root)) .chat-welcome { font-size: 1.35rem; }
+  :where(html:not(.is-chat-root)) .chat.is-empty .chat-dock {
     width: min(var(--chat-col), calc(100% - 1.5rem));
   }
 }
-body.is-chat.is-keyboard .chat.is-empty .chat-stage::before,
-body.is-chat.is-keyboard .chat.is-empty .chat-stage::after {
+:where(html:not(.is-chat-root)) body.is-chat.is-keyboard .chat.is-empty .chat-stage::before,
+:where(html:not(.is-chat-root)) body.is-chat.is-keyboard .chat.is-empty .chat-stage::after {
   flex-grow: 0;
 }
-body.is-chat.is-keyboard .chat-welcome {
+:where(html:not(.is-chat-root)) body.is-chat.is-keyboard .chat-welcome {
   display: none;
 }
-body.is-chat.is-keyboard .chat-dock {
+:where(html:not(.is-chat-root)) body.is-chat.is-keyboard .chat-dock {
   margin-top: auto;
 }
 
-.chat {
+:where(html:not(.is-chat-root)) .chat {
   --chat-col: 54rem;
   --chat-bar-h: 3.2rem;
   grid-template-rows: minmax(0, 1fr);
 }
 @media (min-width: 1440px) {
-  .chat { --chat-col: 58rem; }
+  :where(html:not(.is-chat-root)) .chat { --chat-col: 58rem; }
 }
-.chat-stage {
+:where(html:not(.is-chat-root)) .chat-stage {
   grid-column: 2;
   grid-row: 1;
   position: relative;
   z-index: 0;
 }
 /* Top bar: overlays the thread; the fade edge below it separates content. */
-.chat-bar {
+:where(html:not(.is-chat-root)) .chat-bar {
   position: absolute;
   top: 0;
   left: 0;
@@ -257,33 +258,33 @@ body.is-chat.is-keyboard .chat-dock {
   border-right: var(--chat-scroll-gutter, 0px) solid transparent;
   pointer-events: none;
 }
-.chat-bar > * { pointer-events: auto; }
-.chat-bar .chat-bar-title { flex: 1 1 auto; }
+:where(html:not(.is-chat-root)) .chat-bar > * { pointer-events: auto; }
+:where(html:not(.is-chat-root)) .chat-bar .chat-bar-title { flex: 1 1 auto; }
 @media (min-width: 801px) {
-  .chat:not(.is-untitled) .chat-bar-title { min-width: 5rem; }
+  :where(html:not(.is-chat-root)) .chat:not(.is-untitled) .chat-bar-title { min-width: 5rem; }
 }
 /* The scroll box starts under the bar, so its scrollbar never runs beneath it. */
-.chat-thread {
+:where(html:not(.is-chat-root)) .chat-thread {
   margin-top: var(--chat-bar-h);
   padding-top: 0.45rem;
   scroll-padding-top: 0.4rem;
 }
-.chat-log,
-.chat-live-dock,
-.chat-dock,
-.chat-empty {
+:where(html:not(.is-chat-root)) .chat-log,
+:where(html:not(.is-chat-root)) .chat-live-dock,
+:where(html:not(.is-chat-root)) .chat-dock,
+:where(html:not(.is-chat-root)) .chat-empty {
   width: min(var(--chat-col), calc(100% - 2.75rem));
 }
-.chat-log {
+:where(html:not(.is-chat-root)) .chat-log {
   gap: 1.25rem;
   padding: 0.55rem 0 0.75rem;
 }
-.chat-dock {
+:where(html:not(.is-chat-root)) .chat-dock {
   z-index: 6;
   padding-top: 0.1rem;
   padding-bottom: max(0.55rem, var(--safe-bottom));
 }
-.chat-sync {
+:where(html:not(.is-chat-root)) .chat-sync {
   padding: 0.02rem 0.15rem 0.12rem 0.55rem;
 }
 
@@ -291,13 +292,14 @@ body.is-chat.is-keyboard .chat-dock {
    One ruled list like Projects: name and version, who can see it, when it
    changed, then its actions. Archived items fold away below. */
 .art-page { display: flex; flex-direction: column; gap: 0.85rem; }
-.art-page > .callout { margin: 0; }
+:where(html:not(.is-chat-root)) .art-page > .callout { margin: 0; }
 .art-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); background: var(--panel); }
 .art-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
 .art-quota { margin-left: auto; color: var(--mute); font: 0.72rem/1.3 var(--mono); }
 .art-icon { margin-right: 0.4rem; }
 .art-empty-filter { margin: 0; color: var(--mute); font-size: 0.8rem; }
-.art-empty-filter[hidden], .art-row[hidden] { display: none; }
+:where(html:not(.is-chat-root)) .art-empty-filter[hidden],
+:where(html:not(.is-chat-root)) .art-row[hidden] { display: none; }
 .art-row {
   display: grid;
   /* Definite tracks keep every row's columns aligned; the actions wrap

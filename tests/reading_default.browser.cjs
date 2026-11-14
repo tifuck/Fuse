@@ -18,6 +18,9 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
         } catch (_) { /* sandboxed frames have no storage */ }
       }, legacy);
       await page.goto(origin);
+      // No layout preference: the fixture's login may set one (FUSE_CHAT_VIEW); drop it.
+      await page.context().clearCookies({ name: 'fuse_chat_view' });
+      await page.goto(origin + '/chat');
       await page.waitForFunction(() => Boolean(window.fuseToolFixture));
       assert.equal(await page.locator('[data-chat]').getAttribute('data-view'), 'console');
       assert.equal(await page.locator('html').getAttribute('data-chat-font'), 'redhat');
@@ -43,6 +46,8 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     await page.goto(origin);
+    await page.context().clearCookies({ name: 'fuse_chat_view' });
+    await page.goto(origin + '/chat');
     await page.waitForFunction(() => Boolean(window.fuseToolFixture));
     const pick = async (view) => {
       await page.getByRole('button', { name: 'Appearance', exact: true }).click();
@@ -59,7 +64,10 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.equal(await page.locator('link[rel=stylesheet][href*="themes/console/"]').count(), 0);
     assert.equal(await page.locator('link[rel=stylesheet][href*="themes/combined/"]').count(), 2);
     assert.equal(await page.locator('html').getAttribute('data-chat-font'), 'bricolage');
+    // The whole page flips, not just the transcript: Combined's own shell (its status pill).
+    assert.equal(await page.locator('[data-chat-bar] [data-theme-pill]').count(), 1);
     await pick('console');
+    assert.equal(await page.locator('[data-theme-pill]').count(), 0);
     assert.equal(await page.locator('[data-chat]').getAttribute('data-view'), 'console');
     assert.equal(await page.locator('html').getAttribute('data-chat-console'), 'true');
     assert.equal(await page.locator('link[rel=stylesheet][href*="themes/combined/"]').count(), 0);

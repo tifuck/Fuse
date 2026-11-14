@@ -64,7 +64,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       heroText: welcome.textContent.trim(),
       dockShown: document.querySelector('[data-live-dock]').checkVisibility(),
       latestShown: document.querySelector('[data-chat-latest]').checkVisibility(),
-      skeleton: document.querySelectorAll('.chat-history-loading').length,
+      skeleton: document.querySelectorAll('[data-history-loading]').length,
       spins: [...document.querySelectorAll('[data-run-spin]')].filter(el => !el.hidden).length,
     };
   });
@@ -322,8 +322,8 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await p.evaluate(async ({ id, revision }) => fuseToolFixture.api('/chat/threads/' + id, {
         method: 'PATCH', body: JSON.stringify({ pinned: true, expected_revision: revision, command_id: crypto.randomUUID() }),
       }), { id: b.id, revision: b.revision });
-      await p.waitForFunction(tid => document.querySelector('[data-history-list] .chat-history-item')?.getAttribute('data-thread') === tid, b.id);
-      const order = await p.evaluate(() => [...document.querySelectorAll('[data-history-list] .chat-history-item')]
+      await p.waitForFunction(tid => document.querySelector('[data-history-list] [data-history-item]')?.getAttribute('data-thread') === tid, b.id);
+      const order = await p.evaluate(() => [...document.querySelectorAll('[data-history-list] [data-history-item]')]
         .map(el => el.getAttribute('data-thread') ?? `draft:${el.getAttribute('data-draft')}`));
       assert.equal(order[0], b.id, 'the pinned chat leads');
       assert.equal(order[1], 'draft:', 'the draft sits directly under the pinned section');
@@ -338,7 +338,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       assert.equal((await emptyState(p)).empty, true);
       assert.equal(await draftRow.evaluate(el => el.classList.contains('is-on')), true, 'the open draft is the current row');
       await openRow(p, b.id);
-      await draftRow.locator('button.open').click();
+      await draftRow.locator('[data-row-open]').click();
       await p.waitForFunction(() => !new URL(location.href).searchParams.get('t'));
       assert.equal(await input(p).inputValue(), draft, 'the draft row reopens the unsent chat');
 
@@ -387,7 +387,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await p.unroute('**/chat/sync');
       await p.evaluate(() => window.dispatchEvent(new Event('online')));
       await live(p);
-      await p.waitForFunction(() => !document.querySelector('.chat-history-loading'), null, { timeout: 15000 });
+      await p.waitForFunction(() => !document.querySelector('[data-history-loading]'), null, { timeout: 15000 });
       const ids = await p.evaluate(() => [...document.querySelectorAll('[data-thread]')].map(el => el.dataset.thread));
       assert.ok(ids.length >= 2, `recovered rows are present: ${ids.length}`);
       assert.equal(ids.length, new Set(ids).size, `retry does not duplicate rows: ${ids.join(',')}`);

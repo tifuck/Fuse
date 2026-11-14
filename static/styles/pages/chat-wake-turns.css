@@ -1,5 +1,5 @@
 /* Jump to latest: anchored to the thread's grid area above the dock. */
-.chat-latest {
+:where(html:not(.is-chat-root)) .chat-latest {
   position: absolute;
   left: 50%;
   bottom: calc(var(--dock-h, 6.5rem) + 0.3rem);
@@ -24,24 +24,24 @@
     background-color var(--dur-1) ease,
     display var(--dur-2) allow-discrete;
 }
-.chat-latest:hover { background: var(--raise); }
-.chat-latest:active { scale: 0.96; }
-.chat-latest[hidden] { display: none; opacity: 0; translate: 0 0.5rem; }
+:where(html:not(.is-chat-root)) .chat-latest:hover { background: var(--raise); }
+:where(html:not(.is-chat-root)) .chat-latest:active { scale: 0.96; }
+:where(html:not(.is-chat-root)) .chat-latest[hidden] { display: none; opacity: 0; translate: 0 0.5rem; }
 @starting-style { .chat-latest:not([hidden]) { opacity: 0; translate: 0 0.5rem; } }
 /* Leading mark: an arrow, or the view's own spinner while a reply runs. */
-.chat-latest-arrow { color: var(--brass); font: 0.8rem/1 var(--mono); }
-.chat-latest .chat-activity-spin {
+:where(html:not(.is-chat-root)) .chat-latest-arrow { color: var(--brass); font: 0.8rem/1 var(--mono); }
+:where(html:not(.is-chat-root)) .chat-latest .chat-activity-spin {
   flex: 0 0 0.95rem;
   width: 0.95rem;
   height: 0.95rem;
   overflow: visible;
   color: var(--brass);
 }
-.chat-latest.is-live .chat-activity-spin { display: grid; }
-.chat-latest.is-live .chat-latest-arrow { display: none; }
+:where(html:not(.is-chat-root)) .chat-latest.is-live .chat-activity-spin { display: grid; }
+:where(html:not(.is-chat-root)) .chat-latest.is-live .chat-latest-arrow { display: none; }
 /* Automated (wake) injections: collapsed chip instead of a user bubble. */
-.chat-turn.is-auto { align-items: flex-start; }
-.chat-auto-chip {
+:where(html:not(.is-chat-root)) .chat-turn.is-auto { align-items: flex-start; }
+:where(html:not(.is-chat-root)) .chat-auto-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -54,31 +54,31 @@
   font-size: 0.72rem;
   text-align: left;
 }
-.chat-auto-chip:hover { background: var(--raise); color: var(--mist); }
-.chat-auto-chip .chat-step-chevron { margin-left: 0.1rem; transform: rotate(-90deg); transition: transform 200ms ease; }
-.chat-turn.is-auto.is-open .chat-auto-chip .chat-step-chevron { transform: rotate(0deg); }
-.chat-auto-dot {
+:where(html:not(.is-chat-root)) .chat-auto-chip:hover { background: var(--raise); color: var(--mist); }
+:where(html:not(.is-chat-root)) .chat-auto-chip .chat-step-chevron { margin-left: 0.1rem; transform: rotate(-90deg); transition: transform 200ms ease; }
+:where(html:not(.is-chat-root)) .chat-turn.is-auto.is-open .chat-auto-chip .chat-step-chevron { transform: rotate(0deg); }
+:where(html:not(.is-chat-root)) .chat-auto-dot {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
   background: var(--brass);
   flex-shrink: 0;
 }
-.chat-auto-label {
+:where(html:not(.is-chat-root)) .chat-auto-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-auto-reveal {
+:where(html:not(.is-chat-root)) .chat-auto-reveal {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
   width: 100%;
 }
-.chat-turn.is-auto.is-open .chat-auto-reveal { grid-template-rows: 1fr; }
-.chat-auto-reveal-inner { overflow: hidden; min-height: 0; }
-.chat-auto-reveal-inner pre {
+:where(html:not(.is-chat-root)) .chat-turn.is-auto.is-open .chat-auto-reveal { grid-template-rows: 1fr; }
+:where(html:not(.is-chat-root)) .chat-auto-reveal-inner { overflow: hidden; min-height: 0; }
+:where(html:not(.is-chat-root)) .chat-auto-reveal-inner pre {
   margin: 0.45rem 0 0;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
@@ -92,13 +92,13 @@
   overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-auto-reveal { transition: none; }
+  :where(html:not(.is-chat-root)) .chat-auto-reveal { transition: none; }
 }
 
 /* Wake-delivered command results render as native tool steps. */
-.chat-turn.is-user.is-auto-steps { align-items: stretch; }
+:where(html:not(.is-chat-root)) .chat-turn.is-user.is-auto-steps { align-items: stretch; }
 /* A parent follow-up in a subagent panel: a user bubble with a caption. */
-.chat-turn.is-from-agent .chat-agent-note {
+:where(html:not(.is-chat-root)) .chat-turn.is-from-agent .chat-agent-note {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -107,7 +107,7 @@
   letter-spacing: 0.01em;
   color: var(--chat-secondary);
 }
-.chat-turn.is-from-agent .chat-agent-note::before {
+:where(html:not(.is-chat-root)) .chat-turn.is-from-agent .chat-agent-note::before {
   content: "";
   width: 0.45rem;
   height: 0.45rem;
@@ -115,7 +115,7 @@
   background: var(--brass);
   flex-shrink: 0;
 }
-.chat-auto-steps {
+:where(html:not(.is-chat-root)) .chat-auto-steps {
   --node: calc(14px * var(--chat-text-scale, 1));
   --row: calc(1.7rem * var(--chat-text-scale, 1));
   --gap: calc(0.5rem * var(--chat-text-scale, 1));
@@ -123,19 +123,19 @@
   padding: 0;
   margin: -0.5rem 0;
 }
-.chat-auto-steps .chat-timeline {
+:where(html:not(.is-chat-root)) .chat-auto-steps .chat-timeline {
   width: 100%;
   margin: 0;
   padding: 0.28rem 0;
 }
 
 /* A command running past its turn keeps a live affordance. */
-.chat-step.is-bg-running .chat-step-state {
+:where(html:not(.is-chat-root)) .chat-step.is-bg-running .chat-step-state {
   display: inline-flex;
   align-items: center;
   gap: 0.32rem;
 }
-.chat-step.is-bg-running .chat-step-state::before {
+:where(html:not(.is-chat-root)) .chat-step.is-bg-running .chat-step-state::before {
   content: "";
   width: 8px;
   height: 8px;
@@ -145,41 +145,44 @@
   animation: chat-spin 0.9s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-step.is-bg-running .chat-step-state::before { animation: none; }
+  :where(html:not(.is-chat-root)) .chat-step.is-bg-running .chat-step-state::before { animation: none; }
 }
 
 @media (max-width: 800px) {
-  .chat { --chat-bar-h: 3.6rem; }
-  .chat-bar {
+  :where(html:not(.is-chat-root)) .chat { --chat-bar-h: 3.6rem; }
+  :where(html:not(.is-chat-root)) .chat-bar {
     padding: 0 0.55rem;
     flex-wrap: wrap;
     align-content: center;
     row-gap: 0;
     container-type: normal;
   }
-  .chat-bar-actions {
+  :where(html:not(.is-chat-root)) .chat-bar-actions {
     flex: 0 1 auto;
     min-width: 0;
   }
-  .chat:not(.is-untitled) .chat-bar-title { min-width: 0; }
-  .chat-bar::after { content: ""; order: 5; flex: 1 1 100%; height: 0; }
-  .chat-project-chip { order: 6; }
-  .chat-bar .chat-bar-title { order: 7; flex: 1 1 0; }
-  .chat-log, .chat-live-dock, .chat-dock, .chat-empty {
+  :where(html:not(.is-chat-root)) .chat:not(.is-untitled) .chat-bar-title { min-width: 0; }
+  :where(html:not(.is-chat-root)) .chat-bar::after { content: ""; order: 5; flex: 1 1 100%; height: 0; }
+  :where(html:not(.is-chat-root)) .chat-project-chip { order: 6; }
+  :where(html:not(.is-chat-root)) .chat-bar .chat-bar-title { order: 7; flex: 1 1 0; }
+  :where(html:not(.is-chat-root)) .chat-log,
+:where(html:not(.is-chat-root)) .chat-live-dock,
+:where(html:not(.is-chat-root)) .chat-dock,
+:where(html:not(.is-chat-root)) .chat-empty {
     width: min(var(--chat-col), calc(100% - 1.15rem));
   }
-  .chat-log { gap: 1rem; padding: 0.35rem 0 0.6rem; }
-  .chat-dock {
+  :where(html:not(.is-chat-root)) .chat-log { gap: 1rem; padding: 0.35rem 0 0.6rem; }
+  :where(html:not(.is-chat-root)) .chat-dock {
     padding-top: 0.05rem;
     padding-bottom: max(0.35rem, var(--safe-bottom));
   }
-  .chat-sync { padding: 0 0.1rem 0.1rem 0.55rem; font-size: 0.56rem; }
-  .chat-latest {
+  :where(html:not(.is-chat-root)) .chat-sync { padding: 0 0.1rem 0.1rem 0.55rem; font-size: 0.56rem; }
+  :where(html:not(.is-chat-root)) .chat-latest {
     min-height: 1.7rem;
     padding: 0.22rem 0.7rem;
     bottom: calc(var(--dock-h, 6rem) + 0.2rem);
   }
-  .chat-bubble { padding: 0.5rem 0.75rem; }
-  .chat-md p { margin: calc(0.5rem * var(--chat-text-scale, 1)) 0; }
-  .chat-assistant { gap: 0.2rem; }
+  :where(html:not(.is-chat-root)) .chat-bubble { padding: 0.5rem 0.75rem; }
+  :where(html:not(.is-chat-root)) .chat-md p { margin: calc(0.5rem * var(--chat-text-scale, 1)) 0; }
+  :where(html:not(.is-chat-root)) .chat-assistant { gap: 0.2rem; }
 }

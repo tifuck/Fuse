@@ -16,7 +16,7 @@
   text-decoration: none;
   font-size: 0.84rem;
 }
-.hosts-tabs a.on {
+:where(html:not(.is-chat-root)) .hosts-tabs a.on {
   background: color-mix(in srgb, var(--mist) 10%, transparent);
   color: var(--mist);
 }
@@ -72,9 +72,9 @@
 .sched-table:not([data-sched-table]) th:nth-child(3),
 .sched-table:not([data-sched-table]) td:nth-child(3) { width: 26%; }
 .sched-table tbody tr { cursor: pointer; }
-.sched-table tbody tr:hover,
-.sched-table tbody tr.is-open { background: color-mix(in srgb, var(--raise) 80%, transparent); }
-.sched-table tbody tr.is-fault td:first-child { box-shadow: inset 2px 0 0 var(--fault, #c45b4a); }
+:where(html:not(.is-chat-root)) .sched-table tbody tr:hover,
+:where(html:not(.is-chat-root)) .sched-table tbody tr.is-open { background: color-mix(in srgb, var(--raise) 80%, transparent); }
+:where(html:not(.is-chat-root)) .sched-table tbody tr.is-fault td:first-child { box-shadow: inset 2px 0 0 var(--fault, #c45b4a); }
 .sched-line {
   display: flex;
   align-items: center;
@@ -132,8 +132,9 @@
   font-size: 0.68rem;
 }
 .sched-status { flex: none; font-weight: 500; }
-.sched-status.is-running { color: var(--brass); }
-.sched-status.is-failed, .sched-status.is-vault_locked { color: var(--fault, #c45b4a); }
+:where(html:not(.is-chat-root)) .sched-status.is-running { color: var(--brass); }
+:where(html:not(.is-chat-root)) .sched-status.is-failed,
+:where(html:not(.is-chat-root)) .sched-status.is-vault_locked { color: var(--fault, #c45b4a); }
 .sched-status.is-completed { color: var(--mist); }
 .sched-status.is-interrupted, .sched-status.is-cancelled { color: var(--steel); }
 .sched-open { flex: none; font-size: 0.75rem; }
@@ -145,11 +146,11 @@
   font-size: 0.82rem;
 }
 .sched-dows label { flex-direction: row; align-items: center; }
-.sched-page [hidden],
-dialog[data-sched-modal] [hidden] {
+:where(html:not(.is-chat-root)) .sched-page [hidden],
+:where(html:not(.is-chat-root)) dialog[data-sched-modal] [hidden] {
   display: none !important;
 }
-dialog[data-sched-modal] input[type="checkbox"] {
+:where(html:not(.is-chat-root)) dialog[data-sched-modal] input[type="checkbox"] {
   width: 1rem;
   height: 1rem;
   margin-right: 0.4rem;
@@ -218,8 +219,8 @@ html[data-chat-console="true"] body.is-settings .settings-shell .panel.sched-tab
   .sched-table[data-sched-table] td:nth-child(3)::before { content: "When"; }
   .sched-table[data-sched-table] td:nth-child(4)::before { content: "Last run"; }
   .sched-table[data-sched-table] td:nth-child(5)::before { content: "Next run"; }
-  .sched-table[data-sched-table] tbody tr.is-fault td:first-child { box-shadow: none; }
-  .sched-table[data-sched-table] tbody tr.is-fault { box-shadow: inset 2px 0 0 var(--fault); }
+  :where(html:not(.is-chat-root)) .sched-table[data-sched-table] tbody tr.is-fault td:first-child { box-shadow: none; }
+  :where(html:not(.is-chat-root)) .sched-table[data-sched-table] tbody tr.is-fault { box-shadow: inset 2px 0 0 var(--fault); }
   .sched-table:not([data-sched-table]) { min-width: 0; }
   .sched-table:not([data-sched-table]) td:nth-child(2) { white-space: normal; }
 }

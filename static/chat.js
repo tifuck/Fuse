@@ -35,6 +35,7 @@ import { createDictation } from './chat/dictation.js';
     compactionMarkHtml,
     consoleSpinGlyph,
     currentActivity,
+    deferredShellHtml,
     disposeThinking,
     fillUserFiles,
     followLiveDockSlide,
@@ -42,12 +43,19 @@ import { createDictation } from './chat/dictation.js';
     formatActivityClock,
     formatConsoleLiveStatus,
     groupTraces,
+    historyListHtml,
+    jobDetailHtml,
     jobRowHtml,
+    markerTurnHtml,
     parseProviderError,
     patchMarkdown,
+    pendingSendHtml,
     permQueueCardHtml,
+    queueItemHtml,
+    recapHtml,
     renderAssistant,
     renderUser,
+    rewindListHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -184,6 +192,7 @@ import { createDictation } from './chat/dictation.js';
     compactionMarkHtml,
     consoleSpinGlyph,
     currentActivity,
+    deferredShellHtml,
     disposeThinking,
     fillUserFiles,
     followLiveDockSlide,
@@ -191,12 +200,19 @@ import { createDictation } from './chat/dictation.js';
     formatActivityClock,
     formatConsoleLiveStatus,
     groupTraces,
+    historyListHtml,
+    jobDetailHtml,
     jobRowHtml,
+    markerTurnHtml,
     parseProviderError,
     patchMarkdown,
+    pendingSendHtml,
     permQueueCardHtml,
+    queueItemHtml,
+    recapHtml,
     renderAssistant,
     renderUser,
+    rewindListHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -477,7 +493,7 @@ import { createDictation } from './chat/dictation.js';
       sync.setPendingTurn(S.pendingTurn);
       sync.syncStatus();
     });
-    S.root.querySelector('.chat-sync')?.append(discardPending);
+    S.root.querySelector('[data-sync-state]')?.append(discardPending);
 
     window.addEventListener("online", () => sync.connectSync());
 
@@ -1152,8 +1168,8 @@ import { createDictation } from './chat/dictation.js';
     const field = "textarea, input, [contenteditable='true']";
     const moved =
       Boolean(target?.matches(field) || related?.matches(field) ||
-        target?.closest(".chat-sheet, .chat-view-menu") ||
-        related?.closest(".chat-sheet, .chat-view-menu"));
+        target?.closest("[data-chat-sheet]") ||
+        related?.closest("[data-chat-sheet]"));
     if (!moved) return;
     composer.pinVisualViewport();
     window.setTimeout(composer.pinVisualViewport, 100);
@@ -1495,7 +1511,7 @@ import { createDictation } from './chat/dictation.js';
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.defaultPrevented || !S.agentsOpen) return;
       if (S.pickerOpen || S.permsOpen || S.memoryOpen || S.skillsOpen || S.artifactOpen) return;
-      if (document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
+      if (document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
       if (event.target === S.input && S.input.value) return;
       agents.closeAgentView();
     });
@@ -1513,7 +1529,7 @@ import { createDictation } from './chat/dictation.js';
       if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
       if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
       if (window.FuseComposerSpell && FuseComposerSpell.isOpen()) return true;
-      return Boolean(document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
+      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
     };
     const disarmEscStop = () => {
       if (!escArmed) return;
@@ -1896,7 +1912,7 @@ import { createDictation } from './chat/dictation.js';
 
     if (S.historyList) {
     S.historyList.addEventListener("contextmenu", (event) => {
-      const row = event.target.closest(".chat-history-item");
+      const row = event.target.closest("[data-history-item]");
       if (!row || !S.historyList.contains(row)) return;
       event.preventDefault();
       const at = { x: event.clientX, y: event.clientY };
@@ -1911,7 +1927,7 @@ import { createDictation } from './chat/dictation.js';
       if (row.dataset.thread) sidebar.threadMenu(row, row.dataset.thread, at);
     });
 
-    const pinnedRowEls = () => [...S.historyList.querySelectorAll(".chat-history-item.is-pinned")];
+    const pinnedRowEls = () => [...S.historyList.querySelectorAll("[data-history-item][data-pinned]")];
 
     function endPinDrag(commit) {
       const drag = S.pinDrag;
@@ -1964,8 +1980,8 @@ import { createDictation } from './chat/dictation.js';
       // view and a project filter each hide rows, so a drop there would write
       // an order the hidden rows never voted on.
       if (S.historyQuery.trim() || S.showArchived || (S.historyTab === "projects" && S.projectFilter)) return;
-      const row = event.target.closest(".chat-history-item.is-pinned");
-      if (!row || event.target.closest("button.more")) return;
+      const row = event.target.closest("[data-history-item][data-pinned]");
+      if (!row || event.target.closest("[data-row-more]")) return;
       const touch = event.pointerType !== "mouse";
       S.pinDrag = {
         row,
@@ -2013,7 +2029,7 @@ import { createDictation } from './chat/dictation.js';
         event.stopPropagation();
         return;
       }
-      const more = event.target.closest("button.more");
+      const more = event.target.closest("[data-row-more]");
       if (more) {
         event.preventDefault();
         event.stopPropagation();
@@ -2030,7 +2046,7 @@ import { createDictation } from './chat/dictation.js';
         if (id) sidebar.threadMenu(more, id);
         return;
       }
-      const open = event.target.closest("button.open");
+      const open = event.target.closest("[data-row-open]");
       if (open) {
         const row = open.closest("[data-project], [data-thread], [data-draft]");
         const draft = row?.dataset.draft;
@@ -2065,7 +2081,7 @@ import { createDictation } from './chat/dictation.js';
         !(S.spellPop && S.spellPop.contains(t))) composer.closeSlash();
     if (S.rewindPanel && !S.rewindPanel.hidden && !S.rewindPanel.contains(event.target)) turns.closeRewind();
     if (S.contextPop && !S.contextPop.hidden && S.contextWrap && !S.contextWrap.contains(event.target)) context.closeContextPop();
-    if (S.pop && !S.pop.contains(event.target) && !event.target.closest(".more")) {
+    if (S.pop && !S.pop.contains(event.target) && !event.target.closest("[data-row-more]")) {
       overlays.closePop();
     }
     if (S.root.classList.contains("is-history") && S.historyToggle && !sidebar.historyPanel.contains(event.target) && !S.historyToggle.contains(event.target) && !event.target.closest(".chat-pop, dialog")) {
@@ -2193,7 +2209,7 @@ import { createDictation } from './chat/dictation.js';
       // where the new content sits below the view.
       [S.log, S.liveDock, S.todoSections.main.el].forEach((el) => el && threadResizeObserver.observe(el));
     }
-    const chatBar = S.root.querySelector(".chat-bar");
+    const chatBar = S.root.querySelector("[data-chat-bar]");
     if (chatBar) new ResizeObserver(() => composer.scheduleFitChatBar()).observe(chatBar);
     if (S.agentBodyEl) {
       const agentResizeObserver = new ResizeObserver(() => { if (S.agentStick) agents.pinAgentLog(); });

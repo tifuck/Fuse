@@ -48,7 +48,8 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
     }),
   });
   const live = page => page.locator('[data-sync-label]').filter({ hasText: 'Live sync' }).waitFor({ state: 'attached' });
-  const toggles = page => page.locator('[data-history-toggle]').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-expanded')));
+  // Every history toggle (a theme has two or more) reports the same state.
+  const toggles = page => page.locator('[data-history-toggle]').evaluateAll(nodes => nodes.length >= 2 ? [...new Set(nodes.map(node => node.getAttribute('aria-expanded')))] : ['fewer than two toggles']);
   const drawerOpen = page => page.evaluate(() => document.querySelector('[data-chat]').classList.contains('is-history'));
   const openSidebar = async page => {
     if (!(await page.locator('[data-history-list]').isVisible())) {
@@ -64,7 +65,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
   const rowMenu = async (page, id) => {
     const row = page.locator(`[data-thread="${id}"]`);
     await row.hover();
-    await row.locator('button.more').click();
+    await row.locator('[data-row-more]').click();
     await page.locator(ROW_MENU).waitFor();
   };
   try {
@@ -72,22 +73,22 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
     {
       const page = await makePage(1440);
       assert.equal(await page.locator('[data-history-list]').isVisible(), false, 'harness views start with the sidebar collapsed');
-      assert.deepEqual(await toggles(page), ['false', 'false', 'false']);
+      assert.deepEqual(await toggles(page), ['false']);
       await page.locator('.chat-bar [data-history-toggle]').click();
       await page.locator('[data-history-list]').waitFor();
-      assert.deepEqual(await toggles(page), ['true', 'true', 'true'], 'every toggle reflects the open sidebar');
+      assert.deepEqual(await toggles(page), ['true'], 'every toggle reflects the open sidebar');
       assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('fuse.chat.historyCollapsed.v1') || '{}'))).console, false, 'the open state is remembered');
       assert.equal(await noOverflow(page), true, 'an open sidebar never overflows the window');
-      await page.locator('.chat-history-head [data-history-toggle]').click();
+      await page.locator('[data-history-head] [data-history-toggle]').click();
       await page.locator('[data-history-list]').waitFor({ state: 'hidden' });
-      assert.deepEqual(await toggles(page), ['false', 'false', 'false'], 'the head toggle collapses the sidebar');
+      assert.deepEqual(await toggles(page), ['false'], 'the head toggle collapses the sidebar');
       assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('fuse.chat.historyCollapsed.v1') || '{}'))).console, true, 'the collapsed state is remembered too');
       await page.locator('.chat-bar [data-history-toggle]').click();
       await page.locator('[data-history-list]').waitFor();
       await page.reload();
       await live(page);
       await page.locator('[data-history-list]').waitFor();
-      assert.deepEqual(await toggles(page), ['true', 'true', 'true'], 'the open sidebar survives a reload');
+      assert.deepEqual(await toggles(page), ['true'], 'the open sidebar survives a reload');
       console.log('PASS desktop sidebar toggle, aria-expanded, and collapsed-state persistence');
       await page.context().close();
     }
@@ -109,7 +110,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       const stageX = await page.locator('.chat-stage').evaluate(el => el.getBoundingClientRect().x);
       const reach = await page.evaluate(() => ({
         edge: document.querySelector('[data-history-edge]').getBoundingClientRect().right,
-        controls: ['.chat-bar [data-history-toggle]', '.chat-attach-btn'].map(sel => document.querySelector(sel).getBoundingClientRect().left),
+        controls: ['.chat-bar [data-history-toggle]', '[data-chat-attach]'].map(sel => document.querySelector(sel).getBoundingClientRect().left),
       }));
       assert.ok(reach.edge >= 12 && reach.controls.every(left => left >= reach.edge), `the edge zone is wide but covers no control: ${JSON.stringify(reach)}`);
       await page.mouse.move(900, 500);
@@ -121,7 +122,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await edge();
       assert.deepEqual(await state(), { collapsed: true, peek: true, inert: false }, 'the edge peeks without unpinning, and the list takes input');
       assert.equal(await page.locator('[data-history-list]').isVisible(), true);
-      assert.deepEqual(await toggles(page), ['false', 'false', 'false'], 'toggles keep reporting the collapsed sidebar');
+      assert.deepEqual(await toggles(page), ['false'], 'toggles keep reporting the collapsed sidebar');
       assert.equal(await page.locator('.chat-stage').evaluate(el => el.getBoundingClientRect().x), stageX, 'the peek overlays the chat instead of pushing it');
       await page.mouse.move(150, 500);
       await page.waitForTimeout(1300);
@@ -165,15 +166,15 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.mouse.move(tx, ty);
       await peekOpen();
       await page.evaluate(() => Promise.all(document.querySelector('[data-history]').getAnimations().map(a => a.finished)));
-      assert.equal(await page.evaluate(([x, y]) => Boolean(document.elementFromPoint(x, y).closest('.chat-history-head [data-history-toggle]')), [tx, ty]), true, 'the peek puts its own toggle where the bar toggle was, not the brand link');
+      assert.equal(await page.evaluate(([x, y]) => Boolean(document.elementFromPoint(x, y).closest('[data-history-head] [data-history-toggle]')), [tx, ty]), true, 'the peek puts its own toggle where the bar toggle was, not the brand link');
       await page.mouse.click(tx, ty);
       await peekShut();
       assert.deepEqual(await state(), { collapsed: false, peek: false, inert: false }, 'clicking the hovered toggle pins the list');
-      await page.locator('.chat-history-head [data-history-toggle]').click();
+      await page.locator('[data-history-head] [data-history-toggle]').click();
       await page.locator('[data-history-list]').waitFor({ state: 'hidden' });
 
       await edge();
-      await page.locator('.chat-history-head [data-history-toggle]').click();
+      await page.locator('[data-history-head] [data-history-toggle]').click();
       await peekShut();
       assert.deepEqual(await state(), { collapsed: false, peek: false, inert: false }, 'the head toggle pins the peeked list');
       assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('fuse.chat.historyCollapsed.v1') || '{}'))).console, false, 'pinning is remembered');
@@ -199,7 +200,8 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       assert.deepEqual([layout.scrim, layout.drawer], [true, false], 'the toggle pins the sidebar instead of opening the phone drawer');
       assert.equal(await noOverflow(page), true);
       // The app's title bar replaces the history head; its toggle moves into the history bar.
-      await page.locator('.chat-history-dock-toggle').click();
+      // Each theme puts its own pin toggle in the history column.
+      await page.locator('[data-history] [data-history-toggle]:visible').first().click();
       await page.locator('[data-history-list]').waitFor({ state: 'hidden' });
       assert.equal(await page.locator('[data-history-edge]').isVisible(), true, 'the desktop edge peek stays');
       console.log('PASS Fuse Desktop keeps the desktop sidebar under the phone breakpoint');
@@ -216,8 +218,8 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
         tab: el.getAttribute('data-history-tab'), selected: el.getAttribute('aria-selected'), on: el.classList.contains('is-on'),
       })));
       const rows = () => page.locator('[data-history-list] [data-thread]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-thread')));
-      await page.locator('.chat-history-empty').waitFor();
-      assert.equal(await page.locator('.chat-history-empty').innerText(), 'No chats yet.');
+      await page.locator('[data-history-empty]').waitFor();
+      assert.equal(await page.locator('[data-history-empty]').innerText(), 'No chats yet.');
       assert.deepEqual(await tabState(), [
         { tab: 'chats', selected: 'true', on: true },
         { tab: 'projects', selected: 'false', on: false },
@@ -227,7 +229,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
         { tab: 'chats', selected: 'false', on: false },
         { tab: 'projects', selected: 'true', on: true },
       ]);
-      assert.equal(await page.locator('.chat-history-empty').innerText(), 'No project sessions yet. Use New project to start one.');
+      assert.equal(await page.locator('[data-history-empty]').innerText(), 'No project sessions yet. Use New project to start one.');
       assert.equal(await page.locator('[data-chat-new-label]').textContent(), 'New project', 'the new action renames per tab');
       assert.equal(await page.locator('[data-chat-new]').getAttribute('aria-label'), 'New project session');
       assert.equal(await page.locator('[data-project-filters]').isHidden(), false, 'project filters show on the Projects tab');
@@ -327,12 +329,12 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
         fuseToolFixture.sidebar.update(threads.short);
         fuseToolFixture.sidebar.update(threads.project);
       }, threads);
-      const name = page.locator('[data-thread="long-title"] .chat-history-name');
+      const name = page.locator('[data-thread="long-title"] [data-row-name]');
       assert.deepEqual(await truncation(page, name), { wrap: 'nowrap', over: 'ellipsis', clip: 'hidden', clipped: true }, 'the long title is one ellipsized line');
-      assert.equal(await page.locator('[data-thread="long-title"] button.open').getAttribute('title'), LONG_TITLE, 'the full title stays available as a tooltip');
+      assert.equal(await page.locator('[data-thread="long-title"] [data-row-open]').getAttribute('title'), LONG_TITLE, 'the full title stays available as a tooltip');
       const heights = await page.evaluate(() => ({
-        longName: document.querySelector('[data-thread="long-title"] .chat-history-name').getBoundingClientRect().height,
-        shortName: document.querySelector('[data-thread="short-title"] .chat-history-name').getBoundingClientRect().height,
+        longName: document.querySelector('[data-thread="long-title"] [data-row-name]').getBoundingClientRect().height,
+        shortName: document.querySelector('[data-thread="short-title"] [data-row-name]').getBoundingClientRect().height,
         long: document.querySelector('[data-thread="long-title"]').getBoundingClientRect().height,
         short: document.querySelector('[data-thread="short-title"]').getBoundingClientRect().height,
       }));
@@ -343,14 +345,14 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.locator('[data-thread="long-project"]').waitFor();
       const projectHeight = await page.locator('[data-thread="long-project"]').evaluate(el => el.getBoundingClientRect().height);
       assert.ok(projectHeight < 76, `the two-line project row stays two lines at ${width}: ${projectHeight}`);
-      const meta = page.locator('[data-thread="long-project"] .chat-history-project').first();
+      const meta = page.locator('[data-thread="long-project"] [data-row-meta]').first();
       assert.deepEqual(await truncation(page, meta), { wrap: 'nowrap', over: 'ellipsis', clip: 'hidden', clipped: true }, 'a long project name truncates on the meta line');
       await page.evaluate(() => {
         const select = document.querySelector('[data-project-sort]');
         select.value = 'project';
         select.dispatchEvent(new Event('change'));
       });
-      const headName = page.locator('.chat-history-project-head .chat-history-project');
+      const headName = page.locator('[data-history-group] [data-group-name]');
       assert.equal((await truncation(page, headName)).over, 'ellipsis', 'group headings truncate a long project name');
       assert.equal((await truncation(page, headName)).clipped, true);
       assert.ok(await headName.evaluate(el => el.parentElement.getBoundingClientRect().height < 48), 'the group heading stays one line');
@@ -370,25 +372,25 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       assert.equal(await drawerOpen(page), true, 'a phone opens on the chat list');
       assert.equal(await page.locator('[data-history]').isVisible(), true);
       assert.equal(await page.locator('[data-history-backdrop]').isHidden(), false, 'the scrim is shown behind the drawer');
-      assert.deepEqual(await toggles(page), ['true', 'true', 'true']);
+      assert.deepEqual(await toggles(page), ['true']);
       const box = await page.locator('[data-history]').boundingBox();
       assert.ok(box.x >= -1 && box.x + box.width <= 391 && box.y >= -1 && box.y + box.height <= 845, `the drawer fits the viewport: ${JSON.stringify(box)}`);
       assert.equal(await noOverflow(page), true);
       const rowBox = await page.locator(`[data-thread="${b.id}"]`).boundingBox();
       assert.ok(rowBox.x >= box.x - 1 && rowBox.x + rowBox.width <= box.x + box.width + 1, `rows sit inside the drawer: ${JSON.stringify(rowBox)}`);
-      assert.equal(await page.locator(`[data-thread="${b.id}"] button.open`).evaluate(el => el.getBoundingClientRect().height >= 44), true, 'rows are tap-sized');
+      assert.equal(await page.locator(`[data-thread="${b.id}"] [data-row-open]`).evaluate(el => el.getBoundingClientRect().height >= 44), true, 'rows are tap-sized');
       const tabHeights = await page.locator('[data-history-tab]').evaluateAll(els => els.map(el => el.getBoundingClientRect().height));
       assert.ok(tabHeights.every(h => h >= 28 && h <= 36), `the Chats and Projects tabs are compact buttons, not 44px slabs: ${tabHeights}`);
 
-      await page.locator('.chat-history-head [data-history-toggle]').click();
+      await page.locator('[data-history-head] [data-history-toggle]').click();
       await page.waitForFunction(() => !document.querySelector('[data-chat]').classList.contains('is-history'));
       assert.equal(await page.locator('[data-history]').isVisible(), false);
       assert.equal(await page.locator('[data-history-backdrop]').isHidden(), true, 'the scrim goes away with the drawer');
-      assert.deepEqual(await toggles(page), ['false', 'false', 'false'], 'toggles reflect the closed drawer');
+      assert.deepEqual(await toggles(page), ['false'], 'toggles reflect the closed drawer');
 
       await page.locator('.chat-bar [data-history-toggle]').click();
       await page.waitForFunction(() => document.querySelector('[data-chat]').classList.contains('is-history'));
-      assert.deepEqual(await toggles(page), ['true', 'true', 'true']);
+      assert.deepEqual(await toggles(page), ['true']);
       // The scrim sits under the full-width drawer once it settles, so the
       // close click is dispatched on the element itself (its handler is the
       // contract under test).
@@ -400,7 +402,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.waitForFunction(() => document.querySelector('[data-chat]').classList.contains('is-history'));
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !document.querySelector('[data-chat]').classList.contains('is-history'));
-      assert.deepEqual(await toggles(page), ['false', 'false', 'false'], 'escape closes the drawer');
+      assert.deepEqual(await toggles(page), ['false'], 'escape closes the drawer');
       console.log('PASS mobile drawer toggles, scrim, escape, and viewport fit');
       await page.context().close();
     }
@@ -412,7 +414,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.reload();
       await live(page);
       await page.locator(`[data-thread="${created.id}"]`).waitFor();
-      await page.locator(`[data-thread="${created.id}"] button.open`).click();
+      await page.locator(`[data-thread="${created.id}"] [data-row-open]`).click();
       await page.waitForFunction(id => new URL(location.href).searchParams.get('t') === id, created.id);
       await page.waitForFunction(() => !document.querySelector('[data-chat]').classList.contains('is-history'));
       assert.equal(await page.locator(`[data-thread="${created.id}"].is-on`).count(), 1, 'the opened chat is the selected row');
@@ -429,13 +431,13 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.reload();
       await live(page);
       await page.locator(`[data-thread="${created.id}"]`).waitFor();
-      await page.locator(`[data-thread="${created.id}"] button.open`).click();
+      await page.locator(`[data-thread="${created.id}"] [data-row-open]`).click();
       await page.waitForFunction(id => new URL(location.href).searchParams.get('t') === id, created.id);
       await page.waitForFunction(() => !document.querySelector('[data-chat]').classList.contains('is-history'));
       await page.goBack();
       await page.waitForFunction(() => document.querySelector('[data-chat]').classList.contains('is-history'));
       assert.equal(new URL(page.url()).searchParams.get('t'), null, 'back returns to the list address');
-      assert.deepEqual(await toggles(page), ['true', 'true', 'true']);
+      assert.deepEqual(await toggles(page), ['true']);
       console.log('PASS back navigation from a chat reveals the chat list');
       await page.context().close();
     }
@@ -450,15 +452,15 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.reload();
       await live(page);
       await openSidebar(page);
-      await page.locator(`[data-thread="${a.id}"] button.open`).click();
+      await page.locator(`[data-thread="${a.id}"] [data-row-open]`).click();
       await page.waitForFunction(id => new URL(location.href).searchParams.get('t') === id, a.id);
       await page.waitForFunction(id => document.querySelector(`[data-thread="${id}"]`)?.classList.contains('is-on'), a.id);
-      assert.equal(await page.locator('[data-history-list] .chat-history-item.is-on').count(), 1, 'exactly one selected row');
+      assert.equal(await page.locator('[data-history-list] [data-history-item].is-on').count(), 1, 'exactly one selected row');
 
       await page.mouse.move(900, 500);
-      assert.equal(await page.locator(`[data-thread="${b.id}"] button.more`).evaluate(el => getComputedStyle(el).opacity), '0', 'row actions hide at rest');
+      assert.equal(await page.locator(`[data-thread="${b.id}"] [data-row-more]`).evaluate(el => getComputedStyle(el).opacity), '0', 'row actions hide at rest');
       await page.locator(`[data-thread="${b.id}"]`).hover();
-      await page.waitForFunction(id => getComputedStyle(document.querySelector(`[data-thread="${id}"] button.more`)).opacity === '1', b.id);
+      await page.waitForFunction(id => getComputedStyle(document.querySelector(`[data-thread="${id}"] [data-row-more]`)).opacity === '1', b.id);
 
       // The menu pop anchors under its row's ⋯ button and can cover the rows
       // below it, so open the lower row first (its menu drops into free
@@ -469,7 +471,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       const upper = boxA.y > boxB.y ? b : a;
       await rowMenu(page, lower.id);
       assert.deepEqual(await page.locator(`${ROW_MENU} button`).allTextContents(), ['Pin to top', 'Rename', 'Fork', 'Archive', 'Move to project', 'Delete'], 'the chat menu labels match the row state');
-      assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the open menu flags its row');
+      assert.equal(await page.locator('[data-history-item].is-menu').count(), 1, 'the open menu flags its row');
       assert.equal(await page.locator(`[data-thread="${lower.id}"].is-menu`).count(), 1);
       // The flag alone must hold the row's ⋯ button once the pointer leaves
       // and focus is gone (:hover and :focus-within no longer apply).
@@ -478,25 +480,25 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       // The hover fade that opened the menu may still be settling on 1.
       await page.waitForFunction(id => {
         const row = document.querySelector(`[data-thread="${id}"]`);
-        return row?.classList.contains('is-menu') && getComputedStyle(row.querySelector('button.more')).opacity === '1';
+        return row?.classList.contains('is-menu') && getComputedStyle(row.querySelector('[data-row-more]')).opacity === '1';
       }, lower.id);
-      assert.equal(await page.locator(`[data-thread="${lower.id}"] button.more`).evaluate(el => getComputedStyle(el).opacity), '1', "the ⋯ button stays while the row's menu is open");
+      assert.equal(await page.locator(`[data-thread="${lower.id}"] [data-row-more]`).evaluate(el => getComputedStyle(el).opacity), '1', "the ⋯ button stays while the row's menu is open");
       // A repaint replaces the row nodes; the flag must follow the menu.
       await page.evaluate(fresh => fuseToolFixture.sidebar.update({ ...fresh, revision: fresh.revision + 1 }), freshB);
-      assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the flag survives a list repaint');
+      assert.equal(await page.locator('[data-history-item].is-menu').count(), 1, 'the flag survives a list repaint');
       assert.equal(await page.locator(`[data-thread="${lower.id}"].is-menu`).count(), 1);
       await rowMenu(page, upper.id);
       assert.equal(await page.locator(ROW_MENU).count(), 1, 'opening another row replaces the menu: only one is open');
-      assert.equal(await page.locator('.chat-history-item.is-menu').count(), 1, 'the flag follows the replaced menu');
+      assert.equal(await page.locator('[data-history-item].is-menu').count(), 1, 'the flag follows the replaced menu');
       assert.equal(await page.locator(`[data-thread="${upper.id}"].is-menu`).count(), 1);
       await page.keyboard.press('Escape');
       await page.locator(ROW_MENU).waitFor({ state: 'detached' });
       assert.equal(await page.locator(ROW_MENU).count(), 0, 'escape closes the row menu');
-      assert.equal(await page.locator('.chat-history-item.is-menu').count(), 0, 'closing the menu clears the row flag');
+      assert.equal(await page.locator('[data-history-item].is-menu').count(), 0, 'closing the menu clears the row flag');
 
       // Keyboard: Enter on ⋯ opens a menu with focus on its first item, arrows
       // walk it, and Escape hands focus back to the ⋯ button.
-      const moreBtn = page.locator(`[data-thread="${a.id}"] button.more`);
+      const moreBtn = page.locator(`[data-thread="${a.id}"] [data-row-more]`);
       await moreBtn.focus();
       await page.keyboard.press('Enter');
       await page.locator(`${ROW_MENU}[role="menu"]`).waitFor();
@@ -530,22 +532,22 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       assert.equal(await rename.count(), 1, 'an incoming update does not destroy the rename box');
       await rename.press('Escape');
       assert.equal(await page.locator(`[data-thread="${a.id}"] input.rename`).count(), 0, 'escape leaves the rename box');
-      assert.equal(await page.locator(`[data-thread="${a.id}"] .chat-history-name`).innerText(), 'Rename target thread', 'escape keeps the old title');
-      assert.equal(await page.locator(`[data-thread="${b.id}"] .chat-history-name`).innerText(), 'Delete target thread, retitled', 'the parked update lands once the rename ends');
+      assert.equal(await page.locator(`[data-thread="${a.id}"] [data-row-name]`).innerText(), 'Rename target thread', 'escape keeps the old title');
+      assert.equal(await page.locator(`[data-thread="${b.id}"] [data-row-name]`).innerText(), 'Delete target thread, retitled', 'the parked update lands once the rename ends');
 
       await rowMenu(page, a.id);
       await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
       await rename.fill('');
       await rename.press('Enter');
       await page.waitForFunction(id => !document.querySelector(`[data-thread="${id}"] input.rename`), a.id);
-      assert.equal(await page.locator(`[data-thread="${a.id}"] .chat-history-name`).innerText(), 'Rename target thread', 'an empty rename is ignored');
+      assert.equal(await page.locator(`[data-thread="${a.id}"] [data-row-name]`).innerText(), 'Rename target thread', 'an empty rename is ignored');
       assert.equal((await api(page, '/chat/threads/' + a.id)).title, 'Rename target thread', 'the server keeps the old title');
 
       await rowMenu(page, a.id);
       await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
       await rename.fill('Renamed from the row menu');
       await rename.press('Enter');
-      await page.waitForFunction(() => document.querySelector('[data-thread] input.rename') === null && [...document.querySelectorAll('[data-thread] .chat-history-name')].some(el => el.textContent === 'Renamed from the row menu'));
+      await page.waitForFunction(() => document.querySelector('[data-thread] input.rename') === null && [...document.querySelectorAll('[data-thread] [data-row-name]')].some(el => el.textContent === 'Renamed from the row menu'));
       assert.equal((await api(page, '/chat/threads/' + a.id)).title, 'Renamed from the row menu', 'a saved rename reaches the server');
 
       await rowMenu(page, b.id);
@@ -572,12 +574,12 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await desktop.reload();
       await live(desktop);
       await openSidebar(desktop);
-      await desktop.locator(`[data-thread="${created.id}"] button.open`).click();
+      await desktop.locator(`[data-thread="${created.id}"] [data-row-open]`).click();
       await desktop.waitForFunction(id => new URL(location.href).searchParams.get('t') === id, created.id);
       await desktop.locator('[data-chat-new]').click();
       await desktop.waitForFunction(() => !new URL(location.href).searchParams.get('t'));
       assert.equal(await desktop.locator('[data-chat-input]').inputValue(), '', 'new chat starts with an empty composer');
-      assert.equal(await desktop.locator('[data-history-list] .chat-history-item.is-on').count(), 0, 'no stale selection');
+      assert.equal(await desktop.locator('[data-history-list] [data-history-item].is-on').count(), 0, 'no stale selection');
       assert.equal(await desktop.locator('[data-chat-title]').innerText(), '', 'no stale title');
       await desktop.context().close();
 
@@ -585,7 +587,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       const onPhone = await seed(phone, 'New chat phone fixture');
       await phone.reload();
       await live(phone);
-      await phone.locator(`[data-thread="${onPhone.id}"] button.open`).click();
+      await phone.locator(`[data-thread="${onPhone.id}"] [data-row-open]`).click();
       await phone.waitForFunction(id => new URL(location.href).searchParams.get('t') === id, onPhone.id);
       await phone.locator('.chat-bar [data-history-toggle]').click();
       await phone.waitForFunction(() => document.querySelector('[data-chat]').classList.contains('is-history'));
@@ -593,7 +595,7 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await phone.waitForFunction(() => !document.querySelector('[data-chat]').classList.contains('is-history') && !new URL(location.href).searchParams.get('t'));
       assert.equal(await phone.locator('[data-chat-input]').inputValue(), '', 'the phone composer is empty after New chat');
       assert.equal(await phone.locator('[data-chat-input]').isVisible(), true);
-      assert.equal(await phone.locator('[data-history-list] .chat-history-item.is-on').count(), 0, 'no stale selection on the phone');
+      assert.equal(await phone.locator('[data-history-list] [data-history-item].is-on').count(), 0, 'no stale selection on the phone');
       console.log('PASS new chat clears the composer, selection, title, and the drawer');
       await phone.context().close();
     }

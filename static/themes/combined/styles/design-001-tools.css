@@ -131,11 +131,7 @@ html[data-chat-view="combined"] .chat[data-view="combined"] { --chat-col: 100%; 
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] { letter-spacing: 0; }
 
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"],
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] *:not(.chat-view-menu):not(.chat-view-menu *):not(.chat-view-backdrop):not(.chat-box):not(.chat-dock-dots):not(.chat-dock-dots *):not(.chat-activity-spin):not(.chat-activity-spin *) {
-  border-radius: 0;
-  box-shadow: none;
-}
+/* Combined keeps rounded corners and soft shadows (styles/shell.css); Console squares everything. */
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-bar { border-bottom: 1px solid var(--line); font: 0.75rem/1.4 var(--mono); }
 

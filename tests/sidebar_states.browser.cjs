@@ -48,10 +48,10 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     // Nothing is named before the first send, and an empty project list never
     // renders a Projects section of its own.
     assert.equal(await page.locator('[data-chat-title]').innerText(), '');
-    assert.equal(await page.locator('.chat-history-kicker', { hasText: 'Projects' }).count(), 0, 'no empty project list on the Chats tab');
+    assert.equal(await page.locator('[data-history-section]', { hasText: 'Projects' }).count(), 0, 'no empty project list on the Chats tab');
     await page.locator('[data-history-tab="projects"]').click();
-    await page.locator('.chat-history-empty').waitFor();
-    assert.equal(await page.locator('.chat-history-project-head, [data-project]').count(), 0, 'the Projects tab lists sessions, not an empty project list');
+    await page.locator('[data-history-empty]').waitFor();
+    assert.equal(await page.locator('[data-history-group], [data-project]').count(), 0, 'the Projects tab lists sessions, not an empty project list');
     await page.locator('[data-history-tab="chats"]').click();
 
     // The preview title lands once, during the first turn, and the spinner
@@ -64,7 +64,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     let truth = await threads();
     assert.equal(truth.threads.find(item => item.id === id).title, PREVIEW, 'server: titled from the first prompt while the turn runs');
     assert.equal(truth.threads.find(item => item.id === id).running, true);
-    assert.equal(await row(id).locator('.chat-history-name').innerText(), PREVIEW);
+    assert.equal(await row(id).locator('[data-row-name]').innerText(), PREVIEW);
     assert.equal(await page.locator('[data-chat-title]').innerText(), PREVIEW, 'the bar shows that one title, not a second rewrite');
     assert.equal(await row(id).getAttribute('aria-busy'), 'true');
     let spin = await spins();
@@ -152,7 +152,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
       // Archiving the open chat closes it, so a restore of a closed chat is not
       // selected. Reopening it must select exactly that row.
       if (new URL(page.url()).searchParams.get('t') !== id) {
-        await row(id).locator('.open').click();
+        await row(id).locator('[data-row-open]').click();
         await page.waitForFunction(thread => new URL(location.href).searchParams.get('t') === thread, id);
       }
       assert.equal(await page.locator('[data-history-list]:visible .is-on').getAttribute('data-thread'), id, `${label}: the open chat is the selected row`);
@@ -162,7 +162,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     };
     await openHistory();
     await row(id).hover();
-    await row(id).locator('button.more').click();
+    await row(id).locator('[data-row-more]').click();
     await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
     await page.waitForFunction(() => !new URL(location.href).searchParams.get('t'));
     truth = await threads();
@@ -279,7 +279,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     await send('Hold this turn while the menu moves it');
     await openHistory();
     await row(id).hover();
-    await row(id).locator('button.more').click();
+    await row(id).locator('[data-row-more]').click();
     const menu = page.locator('.chat-pop:not([data-artifact-menu])');
     await menu.waitFor();
     assert.equal(await page.evaluate(() => document.body.classList.contains('is-streaming')), true);
@@ -308,7 +308,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     truth = await threads();
     assert.equal(truth.projects.find(entry => entry.id === workspace.project_id).archived, false, 'the project is back in the sidebar payload');
     assert.equal(await page.locator('[data-history-list]:visible [data-thread]').count() > 0, true);
-    assert.equal(await page.locator('.chat-history-empty').count(), 0, 'a project with a session renders no empty-project list');
+    assert.equal(await page.locator('[data-history-empty]').count(), 0, 'a project with a session renders no empty-project list');
     const projectOrder = await names();
     assert.deepEqual(projectOrder, truth.threads.filter(entry => entry.kind === 'project').map(entry => entry.id), 'project sessions follow the server order');
     console.log('PASS a mid-turn move is offered, refused, then restores the project');
@@ -340,19 +340,19 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     await pop.waitFor({ state: 'detached' });
 
     await row(secondPin).hover();
-    await row(secondPin).locator('button.more').click();
+    await row(secondPin).locator('[data-row-more]').click();
     await page.getByRole('menuitem', { name: 'Pin to top', exact: true }).click();
     await page.waitForFunction(thread => document.querySelector(`[data-thread="${thread}"]`)?.classList.contains('is-pinned'), secondPin, { timeout: 10000 });
-    assert.equal(await page.locator('[data-history-list] .chat-history-kicker', { hasText: 'Pinned' }).count(), 1, 'a Pinned section exists');
+    assert.equal(await page.locator('[data-history-list] [data-history-section]', { hasText: 'Pinned' }).count(), 1, 'a Pinned section exists');
     truth = await threads();
     assert.equal(truth.threads.find(entry => entry.id === secondPin).pinned, true, 'server: the pin round-trips');
 
     // A later pin takes the top of the section.
     await row(firstPin).hover();
-    await row(firstPin).locator('button.more').click();
+    await row(firstPin).locator('[data-row-more]').click();
     await page.getByRole('menuitem', { name: 'Pin to top', exact: true }).click();
     await page.waitForFunction(
-      thread => document.querySelector('[data-history-list] .chat-history-item')?.getAttribute('data-thread') === thread,
+      thread => document.querySelector('[data-history-list] [data-history-item]')?.getAttribute('data-thread') === thread,
       firstPin,
       { timeout: 10000 },
     );
@@ -365,7 +365,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 8 });
     await page.mouse.up();
     await page.waitForFunction(ids => {
-      const rows = [...document.querySelectorAll('[data-history-list] .chat-history-item.is-pinned')];
+      const rows = [...document.querySelectorAll('[data-history-list] [data-history-item].is-pinned')];
       return rows.length === 2 && rows[0].getAttribute('data-thread') === ids[1] && rows[1].getAttribute('data-thread') === ids[0];
     }, chatIds, { timeout: 10000 });
     for (let i = 0; i < 40; i++) {
@@ -378,7 +378,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     // The keyboard alternative: Move down on the top pin swaps them back, and
     // the top/bottom pins only offer the move that exists.
     await page.waitForTimeout(500);
-    await row(secondPin).locator('button.more').focus();
+    await row(secondPin).locator('[data-row-more]').focus();
     await page.keyboard.press('Enter');
     pop = page.locator('.chat-pop:not([data-artifact-menu])');
     await pop.waitFor();
@@ -392,14 +392,14 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
       await page.waitForTimeout(250);
       if (i === 39) assert.fail('server: the Move down order never landed');
     }
-    assert.equal(await page.locator('[data-history-list] .chat-history-item.is-pinned').first().getAttribute('data-thread'), firstPin, 'Move down reorders the section');
+    assert.equal(await page.locator('[data-history-list] [data-history-item].is-pinned').first().getAttribute('data-thread'), firstPin, 'Move down reorders the section');
     console.log('PASS right-click menu, pin section, drag and keyboard reorder');
 
     // A turn that finishes on an unopened chat badges its row and the tab.
     // The drag's 400ms ghost-click guard is still armed here; a real user is
     // never this fast, so settle before clicking the pinned row open.
     await page.waitForTimeout(500);
-    await row(firstPin).locator('.open').click();
+    await row(firstPin).locator('[data-row-open]').click();
     await page.waitForFunction(thread => new URL(location.href).searchParams.get('t') === thread, firstPin);
     const rawApi = (path, opts) => page.evaluate(async ({ path, opts }) => {
       try { return { status: 200, data: await fuseToolFixture.api(path, opts) }; }
@@ -431,7 +431,7 @@ const PREVIEW = 'Name this sidebar fixture chat from…';
     await page.locator('[data-history-tab="projects"]').click();
     assert.equal(await page.locator('[data-history-tab="chats"] [data-history-unread]').innerText(), '1', 'the inactive chats tab carries the unread count');
     await page.locator('[data-history-tab="chats"]').click();
-    await row(secondPin).locator('.open').click();
+    await row(secondPin).locator('[data-row-open]').click();
     await page.waitForFunction(thread => {
       const el = document.querySelector(`[data-thread="${thread}"]`);
       return el && !el.classList.contains('is-unread');

@@ -145,3 +145,32 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
   /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row.is-main .chat-agents-state { display: none; }
 }
+/* An opened background command: its output under its row (never inside the
+   one-line row), the strip growing to hold it and the output scrolling on
+   its own. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs:has(> .chat-jobs-detail.is-open) { max-height: min(50vh, calc(5 * var(--work-row) + 15rem)); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail {
+  padding: 0 var(--work-pad-r) 0.3rem calc(var(--work-pad-l) + var(--console-dot, 0.4rem) + 0.55rem);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail .chat-tool-section-head {
+  display: flex;
+  gap: 0.9rem;
+  color: var(--mute);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail .chat-tool-copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  cursor: pointer;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail .chat-tool-copy:hover { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail .chat-tool-out {
+  max-height: 12rem;
+  margin: 0;
+  font: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-detail .chat-tool-context { display: flex; gap: 0.75rem; color: var(--mute); }

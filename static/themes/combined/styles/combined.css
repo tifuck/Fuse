@@ -53,7 +53,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
   height: 0.78rem;
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call.is-done > .chat-step-node { color: var(--combined-dim); }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-paren { display: none; }
+/* Call arguments keep their parentheses: Verb(argument), as the row reads aloud. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-paren { color: var(--combined-dim); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-call .chat-tool-action { font-weight: 600; margin-right: 0.6ch; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-call .chat-console-val {
   font-family: var(--code);

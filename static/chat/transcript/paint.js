@@ -1,6 +1,6 @@
 // Message hydration, paint scheduling, recaps.
 import { S } from '../state.js';
-import { messageRunLive } from '../core.js';
+import { fromHtml, messageRunLive } from '../core.js';
 
 let dockTimer = 0;
 
@@ -150,16 +150,9 @@ export function createPaint(ctx) {
     if (msg.role === "marker" || msg.kind === "compaction" || msg.compaction) return agents.agentSeedArticle(msg, index);
     if (historyObserver && msg.role === "assistant" && !live && older &&
         (msg.content || msg.reasoning || msg.tools?.length || msg.permissions?.length || ui.visibleAssistantError(msg))) {
-      const shell = document.createElement("article");
-      shell.className = "chat-turn is-assistant chat-deferred-message";
+      const shell = fromHtml(ui.deferredShellHtml());
       shell.dataset.messageId = msg.id;
-      shell.setAttribute("data-deferred-message", "");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "btn ghost sm";
-      button.textContent = "Load earlier response";
-      button.addEventListener("click", () => hydrateHistoricalMessage(shell));
-      shell.append(button);
+      shell.querySelector("[data-load-earlier]")?.addEventListener("click", () => hydrateHistoricalMessage(shell));
       historyObserver.observe(shell);
       return shell;
     }
@@ -189,29 +182,19 @@ export function createPaint(ctx) {
       S.dismissedRecapAnchors.set(S.currentId, dismissed);
     }
     S.threadRecaps = [];
-    S.log.querySelectorAll(".chat-recap").forEach(node => node.remove());
+    S.log.querySelectorAll("[data-recap]").forEach(node => node.remove());
   }
 
     function paintRecaps(target = null) {
     const byAnchor = new Map(S.threadRecaps.map(row => [String(row.anchor_id), String(row.text || "")]));
     for (const article of target ? [target] : S.log.children) {
       const text = byAnchor.get(article.dataset.messageId);
-      let node = article.querySelector(":scope > .chat-recap");
+      let node = article.querySelector(":scope > [data-recap]");
       if (!text || article.hasAttribute("data-deferred-message")) { node?.remove(); continue; }
-      if (!node) {
-        node = document.createElement("p");
-        node.className = "chat-recap";
-        node.setAttribute("aria-label", "Work recap");
-        article.appendChild(node);
-      }
-      if (node.dataset.text !== text) {
-        const copy = document.createElement("span");
-        copy.className = "chat-recap-copy";
-        const label = Object.assign(document.createElement("span"), { className: "chat-recap-label", textContent: "Recap: " });
-        const summary = Object.assign(document.createElement("em"), { className: "chat-recap-text", textContent: text });
-        copy.append(label, summary);
-        node.replaceChildren(copy);
-        node.dataset.text = text;
+      if (node?.dataset.text !== text) {
+        const fresh = fromHtml(ui.recapHtml(text));
+        fresh.dataset.text = text;
+        if (node) node.replaceWith(fresh); else article.appendChild(fresh);
       }
     }
   }

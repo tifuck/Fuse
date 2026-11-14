@@ -1,0 +1,5 @@
+/* combined theme copy of static/styles/pages/desktop.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+@media (max-width: 720px) {
+  :where(html.is-chat-root[data-chat-view="combined"]) .dl-hero-action .btn { width: 100%; }
+}

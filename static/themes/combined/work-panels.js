@@ -3,7 +3,7 @@ const TREE_GLYPHS = { pipe: "│", tee: "├─", elbow: "└─" };
 
 export function create(deps) {
 // The work strip under the header prints agents the way Claude Code's agent
-// tree does: one thin line each, tree connectors (opts.tree: one of pipe,
+// tree does: one thin line each, tree connectors (opts.tree: {ancestors, last}, drawn as pipe,
 // blank, tee or elbow per level), a status dot, the task,
 // what it is doing, its clock, and at most one action. The whole line but the
 // action opens that agent's transcript in place of the main one.
@@ -33,6 +33,9 @@ function agentRowHtml(row, opts = {}) {
     ].filter(Boolean).join(" · ");
     const id = deps.escapeHtml(row.id);
     const who = deps.escapeHtml(row.description || "subagent");
+    // One connector per level: a line on through an ancestor with later
+    // siblings, blank after a last one, then this row's tee or elbow.
+    const glyphs = opts.tree ? [...opts.tree.ancestors.map((last) => last ? "blank" : "pipe"), opts.tree.last ? "elbow" : "tee"] : [];
     const stamp = Date.parse(row.cancel_requested_at || "");
     const wedged = row.cancel_requested && Number.isFinite(stamp) && Date.now() - stamp >= 15000;
     const action = live && wedged
@@ -43,10 +46,10 @@ function agentRowHtml(row, opts = {}) {
           ? `<button type="button" class="chat-agents-act is-resume" data-agent-resume="${id}" aria-label="Resume ${who}" title="Resume from where it stopped">↻</button>`
           : '<span class="chat-agents-act" aria-hidden="true"></span>';
     return (
-      `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}${live && row.cancel_requested ? " is-stopping" : ""}" role="listitem"${opts.selected ? ' aria-current="true"' : ""}>` +
+      `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}${live && row.cancel_requested ? " is-stopping" : ""}" role="listitem" data-agent-row="${id}"${opts.selected ? ' aria-current="true"' : ""}>` +
       `<button type="button" class="chat-agents-pick" data-agent-id="${id}" title="${deps.escapeHtml(title)}">` +
       '<span class="chat-agents-head">' +
-      (opts.tree && opts.tree.length ? `<span class="chat-agents-tree" aria-hidden="true">${opts.tree.map((kind) => `<i class="is-${deps.escapeHtml(kind)}">${TREE_GLYPHS[kind] || ""}</i>`).join("")}</span>` : "") +
+      (glyphs.length ? `<span class="chat-agents-tree" aria-hidden="true">${glyphs.map((kind) => `<i class="is-${kind}">${TREE_GLYPHS[kind] || ""}</i>`).join("")}</span>` : "") +
       '<span class="chat-agents-dot" aria-hidden="true"></span>' +
       `<span class="chat-agents-name">${deps.escapeHtml(row.description || "Subagent")}</span></span>` +
       `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(status)}</span>` +
@@ -65,7 +68,7 @@ function agentMainRowHtml({ state, live, selected, total, expanded }) {
     const fold = `${total} agent${total === 1 ? "" : "s"}`;
     const doing = live ? `${live} <span class="chat-agents-noun">subagent${live === 1 ? "" : "s"} </span>running` : "";
     return (
-      `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem"${selected ? ' aria-current="true"' : ""}>` +
+      `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem" data-agent-row="main"${selected ? ' aria-current="true"' : ""}>` +
       '<button type="button" class="chat-agents-pick" data-agent-main title="Main agent">' +
       '<span class="chat-agents-head"><span class="chat-agents-dot" aria-hidden="true"></span>' +
       '<span class="chat-agents-name">main</span></span>' +
@@ -118,7 +121,7 @@ function jobRowHtml(job, nowMs) {
     ].filter(Boolean).join(" · ");
     const id = deps.escapeHtml(job.command_id || job.id);
     return (
-      `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem">` +
+      `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem" data-job-row="${id}">` +
       `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(deps.toolText(title))}${meta ? " · " + deps.escapeHtml(meta) : ""}">` +
       '<span class="chat-agents-dot" aria-hidden="true"></span>' +
       `<span class="chat-jobs-cmd">${deps.escapeHtml(deps.toolText(title))}</span>` +
@@ -130,5 +133,14 @@ function jobRowHtml(job, nowMs) {
     );
   }
 
-  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml };
+// A background command's output, opened from its row. The runtime mounts it
+// right after that row in the list (data-job-detail), never inside it: the row
+// is one fixed-height line.
+function jobDetailHtml(job) {
+    const trace = { ...job, name: job.name === "monitor" || job.kind === "monitor" ? "monitor" : "run_terminal_command", status: "running" };
+    return `<div class="chat-jobs-detail chat-step-reveal" role="listitem" data-job-detail="${deps.escapeHtml(job.command_id || job.id)}">` +
+      `<div class="chat-step-reveal-inner">${deps.toolDetailHtml(trace, false, true)}</div></div>`;
+  }
+
+  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml, jobDetailHtml };
 }
