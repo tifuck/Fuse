@@ -168,6 +168,20 @@ def test_auth_rejection_still_rotates(upstream):
     assert len(seen) == 2
 
 
+def test_auth_rejected_key_is_not_tried_first_next_request(upstream):
+    source, _, seen, replies, _ = upstream
+    replies.append(httpx.Response(401, json={"error": "revoked"}))
+
+    async def run():
+        first = await source().chat({"model": "m"})
+        second = await source().chat({"model": "m"})
+        assert first.status == second.status == 200
+        assert first.credential_id == second.credential_id == 2
+
+    asyncio.run(run())
+    assert [auth for auth, _ in seen] == ["Bearer test-key-1", "Bearer test-key-2", "Bearer test-key-2"]
+
+
 def test_failed_response_does_not_bind_or_fail_over(upstream):
     source, pins, seen, replies, _ = upstream
     replies.append(httpx.Response(429, json={"error": "busy"}))

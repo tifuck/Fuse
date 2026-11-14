@@ -180,16 +180,85 @@ def test_only_the_database_that_owns_the_tokens_refreshes_them():
         assert token_store.claim_refresh_ownership() is False
 
 
-@pytest.mark.parametrize("module", ["chatgpt", "claude", "grok", "kimi"])
+@pytest.mark.parametrize("module", ["chatgpt", "claude", "cursor", "grok", "kimi"])
 def test_oauth_refresh_is_off_where_the_instance_does_not_own_the_tokens(module):
     import importlib
+    from contextlib import ExitStack
 
     from app.config import settings
 
     mod = importlib.import_module(f"app.sources.{module}")
-    with patch.object(settings, "oauth_refresh_enabled", False), \
-            patch.object(mod.db, "fetchone", side_effect=AssertionError("must not read the credential")):
-        assert asyncio.run(mod._refresh_one_unlocked({"id": 1})) is False
+    blocked = AssertionError("must not refresh")
+    with ExitStack() as stack:
+        if module == "cursor":
+            # Cursor gates after reading the row: a dashboard key re-exchanges
+            # ungated, so the sentinel is the OAuth token POST.
+            stack.enter_context(patch.object(mod.db, "fetchone", return_value={"id": 1, "disabled": 0, "extra": "{}"}))
+            stack.enter_context(patch.object(mod.accounts, "cred_extra", return_value={"refresh_token": "rt"}))
+            stack.enter_context(patch.object(mod.httpx, "AsyncClient", side_effect=blocked))
+        else:
+            stack.enter_context(patch.object(mod.db, "fetchone", side_effect=blocked))
+        with patch.object(settings, "oauth_refresh_enabled", False):
+            assert asyncio.run(mod._refresh_one_unlocked({"id": 1})) is False
+        # The owner (conftest forces the flag on) gets past the gate.
+        with patch.object(settings, "oauth_refresh_enabled", True), pytest.raises(AssertionError, match="must not refresh"):
+            asyncio.run(mod._refresh_one_unlocked({"id": 1}))
+
+
+def test_lifespan_claims_refresh_ownership_before_pools_and_refresh_loops(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+
+    import app.main as main
+    from app import chat_runs
+    from app.sources import token_store
+
+    order = []
+
+    class _Stop(Exception):
+        pass
+
+    def claim():
+        order.append("claim")
+        raise _Stop
+
+    def started(name):
+        def record(*_args, **_kwargs):
+            order.append(name)
+            return asyncio.sleep(0)
+        return record
+
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    monkeypatch.setattr(main.settings, "database_url", "mysql://fixture@127.0.0.1/fuse_lifespan_order")
+    for owner, name in ((main.static_assets, "warm"), (main.static_assets, "build_id"), (main.static_assets, "freeze"),
+                        (main.db, "connect"), (main.db, "close"), (main.accounts, "validate_credential_encryption")):
+        monkeypatch.setattr(owner, name, Mock())
+    monkeypatch.setattr(main.accounts, "ensure_setup_token", Mock(return_value=None))
+    monkeypatch.setattr(token_store, "claim_refresh_ownership", claim)
+    monkeypatch.setattr(main, "start_pools", started("pools"))
+    monkeypatch.setattr(main, "warm_catalogs", started("catalogs"))
+    monkeypatch.setattr(main, "bootstrap", started("bootstrap"))
+    monkeypatch.setattr(main, "_refresh_loop", started("refresh"))
+    monkeypatch.setattr(main, "_usage_walk_loop", started("walk"))
+    # Shutdown runs after the stop: keep it off real subsystems.
+    for owner, name in ((main.chat_events, "stop"), (main.host_events, "stop"), (main.chat_titles, "drain"),
+                        (main.chat_recaps, "drain"), (main.chat_runs, "stop"), (main.chat_store, "stop_publisher")):
+        monkeypatch.setattr(owner, name, AsyncMock())
+    from app import agent_hub, ssh_pool, vault
+    from app.search import client as search_client
+
+    for owner, name in ((agent_hub, "drain"), (ssh_pool, "drain"), (search_client, "stop_client")):
+        monkeypatch.setattr(owner, name, AsyncMock())
+    monkeypatch.setattr(vault, "lock_all", Mock())
+    monkeypatch.setattr(main.sources_module, "stop_pools", Mock())
+    monkeypatch.setattr(chat_runs, "_stopping", chat_runs._stopping)
+
+    async def run():
+        async with main.lifespan(main.app):
+            pass
+
+    with pytest.raises(_Stop):
+        asyncio.run(run())
+    assert order == ["claim"]
 
 
 def test_prefixed_pool_outage_does_not_mark_a_bare_id_unavailable():

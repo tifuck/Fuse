@@ -8,7 +8,7 @@ import httpx
 from .. import accounts, db
 from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
-from .pool_pick import Failover, cooling_down
+from .pool_pick import AUTH_RECHECK_SECONDS, Failover, cooling_down, note_failure
 from .pool_session import bind, lookup
 
 # Rotation cursors must survive source reconstruction: routing builds a fresh
@@ -190,6 +190,9 @@ class OpenAICompatSource:
             # fails over to at most FAILOVER_SERVER_ERRORS keys, so one
             # poisonous request cannot walk (and bill) every key.
             if status == 401 or (status in (500, 502, 503) and failover.server_error(cred["id"], status, 30)):
+                if status == 401:
+                    # Cool the rejected key so later requests start on another.
+                    note_failure(cred["id"], cooldown_seconds=AUTH_RECHECK_SECONDS)
                 attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                 continue
             failover.failed(10)

@@ -25,14 +25,16 @@ USAGE_BUSY = 98.0
 MAX_IN_FLIGHT = 8
 
 _failure_lock = threading.Lock()
-# (until, affinity_safe, limit): an affinity_safe cooldown (dead-stream blip,
-# provider outage) may be bypassed to keep a pinned conversation on the
-# account that holds its warm cache; a hard one (auth, quota, 429) must
-# never be bypassed by affinity. A limit cooldown (spent plan, credits, 429)
-# only steers picks elsewhere: when nothing else can serve, pick_account
-# still hands the account back, so a limit is always the provider's live
-# answer and never one Fuse kept.
-_cooldown_until: dict[int, tuple[float, bool, bool]] = {}
+# Deadline per cooldown kind, each expiring on its own: an affinity_safe
+# cooldown (dead-stream blip, provider outage) may be bypassed to keep a
+# pinned conversation on the account that holds its warm cache; a hard one
+# (auth, quota, 429) must never be bypassed by affinity. A limit cooldown
+# (spent plan, credits, 429) only steers picks elsewhere: when nothing else
+# can serve, pick_account still hands the account back, so a limit is always
+# the provider's live answer and never one Fuse kept. A live hard cooldown
+# outranks a limit, and a limit outranks an affinity_safe blip.
+_COOLDOWN_KINDS = ("hard", "safe", "limit")
+_cooldown_until: dict[int, dict[str, float]] = {}
 _in_flight: dict[int, int] = {}
 # The classified upstream error that last failed each account: (status, body,
 # reset_at). A request that finds every account benched reports it instead of
@@ -50,11 +52,10 @@ def note_failure(cred_id: int, *, cooldown_seconds: float = 30.0, affinity_safe:
     if cooldown_seconds <= 0:
         return
     until = time.time() + cooldown_seconds
+    kind = "limit" if limit else "safe" if affinity_safe else "hard"
     with _failure_lock:
-        prev_until, prev_safe, prev_limit = _cooldown_until.get(int(cred_id), (0.0, True, True))
-        if prev_until <= time.time():
-            prev_safe = prev_limit = True
-        _cooldown_until[int(cred_id)] = (max(prev_until, until), prev_safe and affinity_safe, prev_limit and limit)
+        deadlines = _cooldown_until.setdefault(int(cred_id), {})
+        deadlines[kind] = max(deadlines.get(kind, 0.0), until)
 
 
 # A 401 disables a credential only when it repeats within this window, after
@@ -134,21 +135,22 @@ def reset_health() -> None:
         _bench_errors.clear()
 
 
-def _cooling_down(cid: int) -> bool:
+def _deadline(cid: int, *kinds: str) -> float:
     with _failure_lock:
-        until = _cooldown_until.get(cid, (0.0, True, False))[0]
-    return until > time.time()
+        deadlines = _cooldown_until.get(cid, {})
+        return max((deadlines.get(kind, 0.0) for kind in kinds or _COOLDOWN_KINDS), default=0.0)
+
+
+def _cooling_down(cid: int) -> bool:
+    return _deadline(cid) > time.time()
 
 
 def _cooldown_end(cid: int) -> float:
-    with _failure_lock:
-        return _cooldown_until.get(cid, (0.0, True, False))[0]
+    return _deadline(cid)
 
 
 def _limit_cooldown(cid: int) -> bool:
-    with _failure_lock:
-        until, _safe, limit = _cooldown_until.get(cid, (0.0, True, False))
-    return until > time.time() and limit
+    return _deadline(cid, "limit") > time.time() and not _hard_cooldown(cid)
 
 
 # Kinds that bench an account. Request-specific rejections (context, content,
@@ -192,9 +194,7 @@ def cooling_down(cid: int) -> bool:
 
 
 def _hard_cooldown(cid: int) -> bool:
-    with _failure_lock:
-        until, safe, _limit = _cooldown_until.get(cid, (0.0, True, False))
-    return until > time.time() and not safe
+    return _deadline(cid, "hard") > time.time()
 
 
 def reserve(cid: int) -> None:
@@ -598,7 +598,12 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
     timed = []
     for cred, reason in why:
         cid = int(cred["id"])
-        until = _cooldown_end(cid) if reason == "cooling" else _held_until(cred) if reason == "held" else None
+        # A benched account is back once its hard/blip cooldown ends: a limit
+        # still running then only makes it a last resort.
+        if reason == "cooling":
+            until = _deadline(cid, "hard", "safe") or _cooldown_end(cid)
+        else:
+            until = _held_until(cred) if reason == "held" else None
         if until:
             timed.append((until, cid, reason))
     if timed:
