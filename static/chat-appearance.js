@@ -120,7 +120,18 @@
       .map((font) => "family=" + encodeURIComponent(font.label).replace(/%20/g, "+")).join("&");
     addStylesheet("font:preview", `https://fonts.googleapis.com/css2?${families}&text=${encodeURIComponent(FONT_SUBSET)}&display=swap`);
   }
-  const DEFAULT_FONT = "redhat";
+  // The page draws with one theme: the server stamps html[data-chat-view] from
+  // the fuse_chat_view cookie (settings pages always console). The cookie is
+  // the choice the Layout control shows; each view keeps its own font.
+  const VIEWS = ["console", "combined"];
+  const VIEW_COOKIE = "fuse_chat_view";
+  const renderedView = document.documentElement.dataset.chatView === "combined" ? "combined" : "console";
+  let chosenView = "console";
+  try {
+    const match = new RegExp(`(?:^|;\\s*)${VIEW_COOKIE}=([a-z]+)`).exec(document.cookie || "");
+    if (match && VIEWS.includes(match[1])) chosenView = match[1];
+  } catch (_) {}
+  const DEFAULT_FONT = renderedView === "combined" ? "bricolage" : "redhat";
   const THEME_VARS = {
     ink: "--ink",
     panel: "--panel",
@@ -226,7 +237,7 @@
     if (Number.isFinite(storedSize) && storedSize >= SIZE_MIN && storedSize <= SIZE_MAX) textScale = Math.round(storedSize / 5) * 5;
     const storedFonts = JSON.parse(localStorage.getItem(STORE_FONTS) || "{}");
     if (storedFonts && typeof storedFonts === "object") {
-      const id = LEGACY_FONTS[storedFonts.console] || storedFonts.console;
+      const id = LEGACY_FONTS[storedFonts[renderedView]] || storedFonts[renderedView];
       if (FONTS[id]) selectedFont = id;
     }
     const storedCustom = JSON.parse(localStorage.getItem(STORE_CUSTOM) || "null");
@@ -290,9 +301,9 @@
   function apply() {
     const spec = specFor(theme);
     html.dataset.chatTheme = theme;
-    html.dataset.chatConsole = "true";
+    if (renderedView === "console") html.dataset.chatConsole = "true";
     html.dataset.chatBackdrop = backdrop;
-    html.dataset.chatView = "console";
+    html.dataset.chatView = renderedView;
     ensureFont(fontFor());
     html.style.setProperty("--chat-text-scale", String(textScale / 100));
     // The reading font is the site font: it drives the --sans and --mono
@@ -371,7 +382,23 @@
   }
 
   function persistFonts() {
-    try { localStorage.setItem(STORE_FONTS, JSON.stringify({ console: selectedFont })); } catch (_) {}
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORE_FONTS) || "{}") || {};
+      const fonts = {};
+      for (const id of VIEWS) if (typeof stored[id] === "string") fonts[id] = stored[id];
+      fonts[renderedView] = selectedFont;
+      localStorage.setItem(STORE_FONTS, JSON.stringify(fonts));
+    } catch (_) {}
+  }
+
+  // The server links the theme, so a switch saves the cookie and reloads.
+  function setView(next) {
+    if (!VIEWS.includes(next) || next === chosenView) return;
+    if (typeof window.fuseUnsaved === "function" && window.fuseUnsaved()
+      && !window.confirm("Switching the layout reloads the page. Unsaved work on it will be lost.")) return;
+    const secure = location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `${VIEW_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure}`;
+    location.reload();
   }
   function persistTheme() {
     try { localStorage.setItem(STORE_THEME, theme); } catch (_) {}
@@ -467,6 +494,9 @@
       btn.setAttribute("aria-pressed", String(id === backdrop));
       btn.classList.toggle("is-on", id === backdrop);
     });
+    document.querySelectorAll("[data-chat-view-choice]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.chatViewChoice === chosenView));
+    });
     const customBox = document.querySelector("[data-chat-custom]");
     if (customBox) customBox.hidden = theme !== "custom";
     const ink = document.querySelector("[data-chat-custom-ink]");
@@ -538,6 +568,8 @@
     syncUi,
     get artifactTheme() { return artifactTheme(); },
     get size() { return textScale; },
+    get layout() { return chosenView; },
+    setLayout: setView,
     setSize(next) {
       const value = Math.round(Number(next));
       if (!Number.isFinite(value)) return;
@@ -577,6 +609,9 @@
       const btn = event.target.closest("[data-chat-theme]");
       if (!btn) return;
       setTheme(btn.dataset.chatTheme);
+    });
+    document.querySelectorAll("[data-chat-view-choice]").forEach((btn) => {
+      btn.addEventListener("click", () => setView(btn.dataset.chatViewChoice));
     });
     document.querySelector("[data-chat-backdrop-swatches]")?.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-chat-backdrop]");

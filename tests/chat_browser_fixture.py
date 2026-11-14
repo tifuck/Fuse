@@ -405,7 +405,7 @@ async def instrumented_chat():
     # public surface here so the hooks can reach them without widening the
     # production runtime's own wiring.
     seam = "  displayCommand,\n  shortToolPath,\n  toolRowLabel,\n"
-    anchor = "  } = createConsoleTheme("
+    anchor = "  } = createTheme("
     if anchor not in head:
         raise RuntimeError("chat.js theme destructuring seam not found")
     head = head.replace(anchor, seam + anchor, 1)

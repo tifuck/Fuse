@@ -25,7 +25,9 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       await page.getByRole('button', { name: 'Appearance', exact: true }).click();
       const menu = page.getByRole('dialog', { name: 'Appearance', exact: true });
       assert.equal(await menu.locator('[data-view]').count(), 0);
-      assert.doesNotMatch(await menu.innerText(), /Reading mode|Terminal|Compact|Mainframe|Console/);
+      assert.doesNotMatch(await menu.innerText(), /Reading mode|Terminal|Compact|Mainframe/);
+      assert.equal(await menu.locator('[data-chat-view-choice="console"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('link[rel=stylesheet][href*="themes/combined/"]').count(), 0);
       const thinking = menu.locator('[data-thinking-toggle]');
       assert.equal(await thinking.count(), 1);
       await thinking.uncheck();
@@ -35,5 +37,33 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       assert.deepEqual(errors, []);
       await page.close();
     }
+    // Layout › Combined: a cookie and a reload; the page then draws only with the combined theme.
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+    await page.goto(origin);
+    await page.waitForFunction(() => Boolean(window.fuseToolFixture));
+    const pick = async (view) => {
+      await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+      await Promise.all([
+        page.waitForNavigation(),
+        page.getByRole('dialog', { name: 'Appearance', exact: true }).locator(`[data-chat-view-choice="${view}"]`).click(),
+      ]);
+      await page.waitForFunction(() => Boolean(window.fuseToolFixture));
+    };
+    await pick('combined');
+    assert.equal(await page.locator('[data-chat]').getAttribute('data-view'), 'combined');
+    assert.equal(await page.locator('html').getAttribute('data-chat-view'), 'combined');
+    assert.equal(await page.locator('html').getAttribute('data-chat-console'), null);
+    assert.equal(await page.locator('link[rel=stylesheet][href*="themes/console/"]').count(), 0);
+    assert.equal(await page.locator('link[rel=stylesheet][href*="themes/combined/"]').count(), 2);
+    assert.equal(await page.locator('html').getAttribute('data-chat-font'), 'bricolage');
+    await pick('console');
+    assert.equal(await page.locator('[data-chat]').getAttribute('data-view'), 'console');
+    assert.equal(await page.locator('html').getAttribute('data-chat-console'), 'true');
+    assert.equal(await page.locator('link[rel=stylesheet][href*="themes/combined/"]').count(), 0);
+    assert.deepEqual(errors, []);
+    await page.close();
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

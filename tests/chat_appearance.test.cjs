@@ -8,14 +8,15 @@ const themeStyles = readdirSync(resolve(__dirname, '../static/themes/console/sty
 
 const source = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
 
-function boot(saved = {}, blocked = false) {
+function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
   const storage = new Map(Object.entries(saved));
   const meta = {};
-  const html = { dataset: {}, style: { setProperty() {}, removeProperty() {} }, removeAttribute(name) { delete this.dataset[name.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]; } };
+  const html = { dataset: view ? { chatView: view } : {}, style: { setProperty() {}, removeProperty() {} }, removeAttribute(name) { delete this.dataset[name.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]; } };
   const root = { dataset: { view: 'console' } };
   let ready;
   const world = {
     document: {
+      cookie,
       documentElement: html,
       querySelector(selector) {
         if (selector === '[data-chat]') return root;
@@ -123,6 +124,40 @@ test('only the saved console font is restored; legacy view fonts cannot change i
   ui.appearance.setFont(null);
   assert.equal(ui.html.dataset.chatFont, 'redhat');
   assert.equal(boot({ 'fuse.chat.fonts.v1': JSON.stringify({ cli: 'geist', prism: 'serif' }) }).html.dataset.chatFont, 'redhat');
+});
+
+test('the server-stamped view draws; the cookie is the Layout choice', () => {
+  const ui = boot({}, false, { cookie: 'x=1; fuse_chat_view=combined', view: 'combined' });
+  assert.equal(ui.html.dataset.chatView, 'combined');
+  assert.equal(ui.html.dataset.chatConsole, undefined);
+  assert.equal(ui.html.dataset.chatFont, 'bricolage');
+  assert.equal(ui.appearance.layout, 'combined');
+  // Settings pages always draw console, whatever the chat layout is.
+  const settings = boot({}, false, { cookie: 'fuse_chat_view=combined' });
+  assert.equal(settings.html.dataset.chatView, 'console');
+  assert.equal(settings.html.dataset.chatConsole, 'true');
+  assert.equal(settings.appearance.layout, 'combined');
+  for (const cookie of ['', 'fuse_chat_view=prism']) assert.equal(boot({}, false, { cookie }).appearance.layout, 'console');
+});
+
+test('each view keeps its own font', () => {
+  const saved = { 'fuse.chat.fonts.v1': JSON.stringify({ console: 'jetbrains', combined: 'geist', cli: 'serif' }) };
+  assert.equal(boot(saved).html.dataset.chatFont, 'jetbrains');
+  const ui = boot(saved, false, { view: 'combined' });
+  assert.equal(ui.html.dataset.chatFont, 'geist');
+  ui.appearance.setFont('fraunces');
+  assert.deepEqual(JSON.parse(ui.storage.get('fuse.chat.fonts.v1')), { console: 'jetbrains', combined: 'fraunces' });
+});
+
+test('console and combined are independent theme folders', () => {
+  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
+  const consoleFiles = read(resolve(__dirname, '../static/themes/console'));
+  const combinedFiles = read(resolve(__dirname, '../static/themes/combined'));
+  for (const [name, text] of consoleFiles) assert.doesNotMatch(text, /combined/, `console/${name}`);
+  for (const [name, text] of combinedFiles) {
+    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\//, `combined/${name}`);
+  }
+  assert.ok(combinedFiles.some(([name]) => name === 'index.js'));
 });
 
 test('retired backdrops migrate to their replacement', () => {

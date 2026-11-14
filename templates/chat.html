@@ -2,20 +2,22 @@
 {% block title %}Chat · Fuse{% endblock %}
 {% block page_title %}Chat{% endblock %}
 {% block head_extra %}
+{%- set chat_view = 'combined' if request.cookies.get('fuse_chat_view') == 'combined' else 'console' %}
 {#- The whole module graph, fetched in parallel instead of one import level
     per round trip. (Stylesheet @imports are inlined by the server.) #}
 {% for url in asset_preloads('chat.js') + asset_preloads('chat-backdrop.js') %}<link rel="modulepreload" href="{{ url }}">{% endfor %}
 <script src="{{ asset('chat-boot.js') }}"></script>
 <script src="{{ asset('chat-appearance.js') }}"></script>
 <script type="module" src="{{ asset('chat-backdrop.js') }}"></script>
-  <link rel="stylesheet" href="{{ asset('themes/console/theme.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/theme.css') }}">
   <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
-  <link rel="stylesheet" href="{{ asset('themes/console/styles/design.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
 <link rel="stylesheet" href="{{ asset('spinner-next.css') }}">
 <link rel="stylesheet" href="{{ asset('spinner-future.css') }}">
 {% endblock %}
 {% block body %}
-<div class="chat is-empty" data-chat data-view="console">
+{%- set chat_view = 'combined' if request.cookies.get('fuse_chat_view') == 'combined' else 'console' %}
+<div class="chat is-empty" data-chat data-view="{{ chat_view }}">
   <aside class="chat-history" id="chat-history" data-history aria-label="Chat history">
     <div class="chat-history-head">
       <a class="chat-brand" href="/chat" aria-label="Fuse home">

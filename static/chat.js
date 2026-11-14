@@ -1,4 +1,4 @@
-import { createConsoleTheme } from './themes/console/index.js';
+import { VIEW, createTheme } from './themes/registry.js';
 import { S, draftKey, newSession } from './chat/state.js';
 import { escapeHtml, formatTurnDuration, formatTurnMeta, humanMs, runIsStopping, safeUrl, usageInOut } from './chat/core.js';
 import { createOverlays } from './chat/overlays.js';
@@ -19,7 +19,7 @@ import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
-// the theme seam (createConsoleTheme destructuring with its fixture anchor),
+// the theme seam (createTheme destructuring with its fixture anchor),
 // feature construction in dependency order, event-listener wiring for DOM that
 // several features share, FuseChatActions, and reset. Domain logic lives in
 // static/chat/**; boot.js owns the startup sequence.
@@ -67,7 +67,7 @@ import { createDictation } from './chat/dictation.js';
     visibleAssistantError,
     workClocksLive,
     workHeadHtml,
-  } = createConsoleTheme({
+  } = createTheme({
     get PERM_TOTAL_S() { return perms.PERM_TOTAL_S; },
     get REVEAL_CALM() { return S.REVEAL_CALM; },
     get REVEAL_FIRST() { return S.REVEAL_FIRST; },
@@ -1644,9 +1644,9 @@ import { createDictation } from './chat/dictation.js';
     S.viewBackdrop?.addEventListener("click", () => panels.setViewMenuOpen(false));
   }
 
-    S.root.setAttribute("data-view", "console");
+    S.root.setAttribute("data-view", VIEW);
 
-    document.documentElement.dataset.chatConsole = "true";
+    if (VIEW === "console") document.documentElement.dataset.chatConsole = "true";
 
     document.documentElement.removeAttribute("data-chat-terminal");
 

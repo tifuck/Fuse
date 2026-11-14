@@ -1,0 +1,465 @@
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md {
+  display: grid;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: start;
+  margin: 0.12rem 0;
+  font: var(--console-type)/var(--console-leading) var(--mono);
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md::before {
+  width: var(--console-dot);
+  height: var(--console-dot);
+  margin-top: calc((var(--console-row) - var(--console-dot)) / 2);
+  justify-self: center;
+}
+
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-card {
+  border-radius: 0;
+  border-color: color-mix(in srgb, var(--perm-color, var(--brass)) 45%, var(--line));
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: none;
+  font-family: var(--mono, var(--font-mono, monospace));
+}
+
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-act {
+  border-radius: 0;
+  font-family: var(--mono, var(--font-mono, monospace));
+  font-size: 0.72rem;
+}
+
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-always .is-allow { border-radius: 0; }
+
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-act.is-split { border-radius: 0; }
+
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-card-cmd,
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-perm-card-grant { border-radius: 0; }
+
+.chat .chat-console-lines {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  font: calc(0.75rem * var(--chat-text-scale, 1))/1.55 var(--mono);
+}
+
+.chat .chat-console-lines .chat-console-stdout { white-space: pre; }
+
+.chat .chat-console-nline { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 0.75rem; }
+
+.chat .chat-console-nline:has(.chat-console-mark) { grid-template-columns: max-content max-content minmax(0, 1fr); column-gap: 0.4rem; }
+
+.chat .chat-console-n { color: color-mix(in srgb, var(--mute) 70%, transparent); font-variant-numeric: tabular-nums; text-align: right; user-select: none; white-space: pre; }
+
+.chat .chat-console-nbody { min-width: 0; color: var(--mist); white-space: pre; }
+
+.chat .chat-console-nline.is-add { background: color-mix(in srgb, var(--diff-add) 16%, transparent); }
+
+.chat .chat-console-nline.is-del { background: color-mix(in srgb, var(--diff-del) 16%, transparent); }
+
+.chat .chat-console-nline.is-add .chat-console-mark { color: var(--diff-add); }
+
+.chat .chat-console-nline.is-del .chat-console-mark { color: var(--diff-del); }
+
+.chat :is(.chat-console-more, .chat-tool-truncated) { color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.5 var(--mono); }
+
+.chat .chat-console-nline.is-bare,
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-nline.is-bare { grid-template-columns: max-content minmax(0, 1fr); }
+
+.chat .chat-console-nline.is-file .chat-console-nbody { color: var(--mute); }
+
+.chat .chat-console-nline.is-file,
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-nline.is-file { grid-template-columns: minmax(0, 1fr); }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-out.is-structured .chat-kv-row { font: var(--console-type)/var(--console-leading) var(--mono); padding: 0; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-tool-md.chat-md { display: block; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-tool-md.chat-md::before { content: none; }
+
+html:is( [data-chat-view="combined"]) .chat-view-menu { --ap-ui: var(--mono); }
+
+/* Appearance is a Console sheet like Context and Skills: hard corners on the
+   sheet and on every card, swatch, switch and slider inside it. Pseudo-
+   elements cannot sit inside :is(), and an unknown vendor one drops its
+   whole rule, so each family gets its own. */
+html:is( [data-chat-view="combined"]) :is(.chat-view-menu, .chat-view-menu *),
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-switch input[type="checkbox"]::after { border-radius: 0; }
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-color input[type="color"]::-webkit-color-swatch,
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-webkit-slider-runnable-track,
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-webkit-slider-thumb { border-radius: 0; }
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-track,
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-progress,
+html:is( [data-chat-view="combined"]) .chat-view-menu .ap-range::-moz-range-thumb { border-radius: 0; }
+/* Same head, ground and edge as the Context and Skills sheets. */
+html:is( [data-chat-view="combined"]) .chat-view-menu { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
+html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-head { min-height: 3.25rem; padding: 0.7rem 0.85rem 0.7rem 1.15rem; }
+html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-heading { min-width: 0; }
+html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-title { font: 600 1rem/1.5 var(--ap-ui); letter-spacing: -0.02em; }
+html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-sub { display: block; margin-top: 0.2rem; color: var(--mute); font-size: 0.78rem; line-height: 1.4; }
+@media (max-width: 800px) {
+  html:is( [data-chat-view="combined"]) .chat-view-menu .chat-view-sheet-sub { display: none; }
+}
+
+.chat .chat-step:not(.is-console-expanded) .chat-console-val wbr { display: none; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group {
+  display: grid !important;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: start;
+  width: 100%;
+  min-height: var(--console-row);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-node {
+  display: grid !important;
+  grid-column: 1;
+  grid-row: 1;
+  width: var(--console-col);
+  height: var(--console-row);
+  place-items: center;
+  color: transparent;
+  background: none;
+  animation: none;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-running > .chat-step-node::after {
+  content: "" !important;
+  display: block;
+  width: var(--console-dot);
+  height: var(--console-dot);
+  border-radius: 50%;
+  background: var(--call-live);
+  animation: console-dot-blink 2s steps(1, end) infinite;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-errored > .chat-step-node::after { background: var(--call-fail); }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main {
+  display: block;
+  grid-column: 2;
+  min-width: 0;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head {
+  display: block !important;
+  min-height: var(--console-row);
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle {
+  display: block !important;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  /* The label's own type: an inherited larger strut sat it below the dot. */
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group .chat-step-label {
+  display: inline !important;
+  color: var(--mist);
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-done .chat-step-label,
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group :is(.chat-console-dim, .chat-console-hint-line, .chat-console-thinkhint, .chat-console-branch, .chat-console-result-text) {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group .chat-step-label b { font-weight: 700; }
+
+/* Touch screens keep :hover on the last tapped line, which then stayed bright
+   after it folded. */
+@media (hover: hover) {
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-done:hover .chat-step-label { color: var(--mist); }
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-console-hang {
+  margin: 0;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group .chat-console-hint-line {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group .chat-console-thinkhint {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  overflow: hidden;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { display: none; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-node,
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-main > .chat-console-hang {
+  display: none !important;
+}
+
+/* The opened line hides its header, as Claude Code does, but its toggle stays
+   focusable (clipped, aria-expanded=true) so activating it never drops focus;
+   keyboard focus brings it back into view. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-main > .chat-step-head:not(:has(:focus-visible)) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-main {
+  grid-column: 1;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-main > .chat-console-bundle {
+  display: block;
+  cursor: pointer;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-console-bundle > .chat-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--console-stack);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-verbose .chat-step-label {
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+/* Printed in full, but a long line still scrolls sideways instead of being
+   clipped by the reveal. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-verbose .chat-console-hang.is-expanded .chat-console-out {
+  max-height: none;
+  overflow-y: visible;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-thought {
+  display: grid !important;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-thought > .chat-step-node {
+  display: grid !important;
+  width: var(--console-col);
+  height: var(--console-row);
+  place-items: center;
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: italic var(--console-type)/var(--console-leading) var(--mono);
+  animation: none;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-thought > .chat-step-main { display: block; min-width: 0; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought :is(p, ul, ol) { margin: 0; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought :is(p + p, ul + p, ol + p, p + ul, p + ol) { margin-top: 0.5em; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought code { color: inherit; }
+
+/* Live thinking: the line toggles a window capped at ten lines that follows the stream. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-live-think > .chat-step-main > .chat-think-window { display: none; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-live-think[data-think-mode="expanded"] > .chat-step-main > .chat-think-window {
+  display: block;
+  margin: 0.2rem 0 0.1rem;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-think-peek {
+  max-height: calc(var(--console-row) * 10);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* A thought is not a call: no running dot, and the settled lines' grey. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-live-think > .chat-step-node::after { content: none !important; }
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-live-think .chat-step-label {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+
+@media (hover: hover) {
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover .chat-step-label { color: var(--mist); }
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .chat-step-label {
+  padding-left: var(--console-hang, 0);
+  text-indent: calc(-1 * var(--console-hang, 0));
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-notice {
+  display: grid !important;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+}
+
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-notice > .chat-step-node {
+  display: grid !important;
+  width: var(--console-col);
+  height: var(--console-row);
+  place-items: center;
+  color: transparent;
+  animation: none;
+}
+
+
+/* Fuse status (a resume after restart, provider retries, cut-off tool calls,
+   limits, end-of-turn status): server notices, not model tool calls. Each
+   line sits on the tool-row grid with a hollow ring in the dot column, so it
+   lines up with the calls around it but never reads as one. The newest line
+   stays bright while the turn is live. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: var(--console-type)/var(--console-leading) var(--mono);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice[hidden],
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-actions[hidden] {
+  display: none !important;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice-line {
+  display: grid;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  min-height: var(--console-row);
+  margin: 0 0 0.12rem;
+  overflow-wrap: anywhere;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice-line::before {
+  content: "";
+  box-sizing: border-box;
+  justify-self: center;
+  width: var(--console-dot);
+  height: var(--console-dot);
+  margin-top: calc((var(--console-row) - var(--console-dot)) / 2);
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice.is-live .chat-notice-line:not(.is-current) {
+  opacity: 0.7;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice-line.is-current {
+  color: var(--mist);
+}
+/* A provider failure, one card for every provider: "<Provider> · <what
+   happened>" with its reset beside it, then the provider's own words dimmed.
+   Limits (spent usage, credits, plan, rate) are brass: nothing broke, the
+   account needs time or money. Faults are red. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--fault) 32%, var(--line));
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fault) 5%, transparent);
+  color: var(--fault);
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  overflow-wrap: anywhere;
+}
+/* A subagent transcript that could not be opened is the same fault card. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-agent-error:not([hidden]) {
+  display: grid;
+  justify-items: start;
+  gap: 0.45rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--fault) 32%, var(--line));
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fault) 5%, transparent);
+  color: var(--fault);
+  font: var(--console-type)/var(--console-leading) var(--mono);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-agent-error p { margin: 0; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error[data-tone="limit"] {
+  border-color: color-mix(in srgb, var(--brass) 38%, var(--line));
+  background: color-mix(in srgb, var(--brass) 6%, transparent);
+  color: var(--brass);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.9rem;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-title {
+  font-weight: 600;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-sep {
+  opacity: 0.55;
+  font-weight: 400;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-reset {
+  color: var(--mist);
+  font-size: 0.92em;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-detail {
+  color: color-mix(in srgb, var(--mist) 62%, var(--ink));
+  font-size: 0.92em;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-notice + .chat-error:not([hidden]) {
+  margin-top: 0.45rem;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-continue {
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mist);
+  font: inherit;
+  font-size: calc(0.84rem * var(--chat-text-scale, 1));
+  cursor: pointer;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-continue:hover {
+  border-color: color-mix(in srgb, var(--mist) 35%, var(--line));
+}

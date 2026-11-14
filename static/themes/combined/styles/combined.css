@@ -1,0 +1,211 @@
+/* Combined look: a calmer, denser chat. Centered column, one-line steps,
+   quiet reasoning, a rounded composer, and a rail for running agents.
+   Last in design.css, so it settles every earlier rule of this theme. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
+  --chat-col: 47.5rem;
+  --console-type: calc(0.82rem * var(--chat-text-scale, 1));
+  --console-leading: 1.55;
+  --console-stack: 0.05rem;
+  --console-col: 0.85rem;
+  --console-user: transparent;
+  --combined-dim: color-mix(in srgb, var(--mist) 52%, var(--ink));
+}
+
+/* Turns sit close; the user bubble is the separator. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-log { gap: 0.45rem; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-assistant { gap: 0.3rem; }
+
+/* You: a compact bubble on the right. Wake turns keep their rows. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-user:not(.is-auto-steps) {
+  align-self: flex-end;
+  width: auto;
+  max-width: min(80%, 36rem);
+  margin-block: 0.5rem 0.15rem;
+  padding: 0.22rem 0.7rem;
+  border-radius: 0.75rem 0.75rem 0.2rem 0.75rem;
+  background: var(--raise);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-user .chat-bubble {
+  display: block;
+  color: var(--mist);
+  font-size: calc(0.9rem * var(--chat-text-scale, 1));
+  line-height: 1.5;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-user .chat-bubble::before { content: none; }
+
+/* Replies: plain prose, no bullet column. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md {
+  display: block;
+  font-size: calc(0.92rem * var(--chat-text-scale, 1));
+  line-height: 1.6;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md::before { content: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :first-child { margin-top: 0; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :last-child { margin-bottom: 0; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md p { margin: 0 0 0.55em; }
+
+/* Calls: one line. Icon, verb, argument in code type, result after a dot. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step:is(.is-console-call, .is-console-notice) > .chat-step-node::after { display: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call.is-running > .chat-step-node svg { animation: console-dot-blink 2s steps(1, end) infinite; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-node svg {
+  display: block;
+  width: 0.78rem;
+  height: 0.78rem;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call.is-done > .chat-step-node { color: var(--combined-dim); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-paren { display: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-call .chat-tool-action { font-weight: 600; margin-right: 0.6ch; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-call .chat-console-val {
+  font-family: var(--code);
+  font-size: 0.92em;
+  color: color-mix(in srgb, var(--mist) 72%, var(--ink));
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.6ch;
+  min-width: 0;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main > .chat-step-head { flex: 0 1 auto; width: auto; min-width: 0; max-width: 100%; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main > .chat-step-reveal { flex: 1 1 12ch; min-width: 0; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main > .chat-step-reveal:has(.chat-console-hang.is-expanded .chat-console-hang-body > :not(.chat-console-result-text), .chat-console-preview, .chat-console-progress) { flex-basis: 100%; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-agent-step { font-family: var(--sans); color: var(--combined-dim); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-branch { display: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-hang {
+  display: block;
+  margin: 0;
+  color: var(--combined-dim);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call .chat-console-result-text::before { content: "· "; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-out,
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-hang-body > .chat-console-lines {
+  margin: 0.15rem 0 0.25rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--chat-code-bg, var(--panel));
+  font-family: var(--code);
+  font-size: 0.92em;
+  color: var(--mist);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-hang.is-expanded .chat-console-out { max-height: min(16rem, 40vh); }
+
+/* Folded work: one line with a chevron. Unfolded: a ruled column, no band. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-node { visibility: hidden; overflow: hidden; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group {
+  grid-template-columns: 0 minmax(0, 1fr);
+  column-gap: 0;
+  padding-block: 0;
+  background: none;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-toggle { color: var(--combined-dim); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label::before {
+  content: "";
+  display: inline-block;
+  width: 0.34rem;
+  height: 0.34rem;
+  margin: 0 0.55rem 0.12em 0.1rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-1, 120ms) ease;
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-toggle[aria-expanded="true"] .chat-step-label::before { transform: rotate(45deg); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-toggle:hover { color: var(--mist); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--mist); font-weight: 600; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-bundle {
+  margin: 0.05rem 0 0.2rem 0.18rem;
+  padding-left: 0.7rem;
+  border-left: 1px solid var(--line);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call.is-console-expanded:not(.is-console-verbose) { background: none; padding-block: 0; }
+
+/* Reasoning: a quiet italic line between steps. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-thought > .chat-step-main > .chat-step-head { display: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-thought > .chat-step-node { display: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought {
+  font-size: 0.95em;
+  font-style: italic;
+  color: var(--combined-dim);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-thought p { margin: 0; }
+
+/* The turn line: small and quiet, no glyph. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-turn { display: inline-flex; gap: 0.5ch; font-size: calc(0.72rem * var(--chat-text-scale, 1)); color: var(--combined-dim); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-turn-mark { display: none; }
+
+/* Composer: a rounded card the width of the column. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-box,
+html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] .chat-dock .chat-box {
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-box::before { content: none; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-box:focus-within { border-color: color-mix(in srgb, var(--brass) 45%, var(--line)); }
+
+/* An unfolded group keeps its line: the chevron folds it back. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-expanded > .chat-step-main > .chat-step-head:not(:has(:focus-visible)) {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+/* A result over its own output block starts the line: no joining dot. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call .chat-console-hang:is(.is-expanded:has(.chat-console-hang-body > :not(.chat-console-result-text)), :has(.chat-console-preview)) .chat-console-result-text::before { content: none; }
+
+/* Wide screens: while an agent or background command runs, the work strip
+   leaves the transcript for a rail on the right. Idle, it stays the one-line
+   strip under the header; phones always keep the strip. */
+@media (min-width: 1200px) {
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) { padding-right: 16.5rem; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) > .chat-work {
+    position: absolute;
+    top: 2.25rem;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: 16.5rem;
+    margin: 0;
+    padding: 0.35rem 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--line);
+    background: var(--panel);
+    font: calc(0.8rem * var(--chat-text-scale, 1))/1.4 var(--sans);
+  }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-work-agents, .chat-work-jobs) { display: block; max-height: none; overflow: visible; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-row, .chat-jobs-row) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto;
+    align-items: start;
+    column-gap: 0.4rem;
+    height: auto;
+    min-height: 0;
+    padding: 0.2rem 0.4rem 0.2rem 0.75rem;
+  }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-row, .chat-jobs-row) > * { grid-column: auto; grid-row: 1; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-work-agents > .chat-agents-row.is-main { height: auto; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-pick { display: flex; flex-direction: column; align-items: stretch; height: auto; min-width: 0; text-align: left; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-head { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-name { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-meta { display: block; flex: none; height: auto; line-height: 1.35; padding-left: 0.9rem; font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-row:not(.is-main) .chat-agents-meta .chat-agents-state { display: none; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-tree, .chat-agents-model) { display: none; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-time, .chat-agents-fold) { font: 0.9em/1.4 var(--code); white-space: nowrap; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) { margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid var(--line); }
+}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* The agent tree under its launch line keeps an indent instead of glyphs. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-agents > .chat-step-main > .chat-console-hang { padding-left: 1.05rem; }
