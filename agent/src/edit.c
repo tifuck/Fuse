@@ -324,10 +324,15 @@ int apply_edit(char **bufp, size_t *lenp, const char *old, const char *newv, int
     size_t crlfn = new_crlf ? strlen(new_crlf) : newn;
     long count = 0, final = (long)len;
     size_t m = oldn;
+    const char *first = NULL;
     for (const char *p = buf; (p = eol ? next_match(p, end, old, k, &m) : strstr(p, old)); p += m) {
+        if (!first) first = p;
         count++;
         if (count == 1 || all) final += (long)(eol && match_crlf(p, m, end) ? crlfn : newn) - (long)m;
     }
+    /* Overlapping occurrences (`aa` in `aaa`) are ambiguous too. */
+    if (count == 1 && !all && (eol ? next_match(first + 1, end, old, k, &m) : strstr(first + 1, old)))
+        count = 2;
     if (count == 0) {
         free(new_crlf);
         snprintf(why, whylen, "old_string not found");
