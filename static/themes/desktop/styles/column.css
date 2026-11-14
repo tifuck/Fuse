@@ -243,3 +243,5 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-act-btn { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { margin-left: 0.4rem; color: var(--dk-dim, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-result-text .dk-plus { color: var(--dk-add, var(--ok)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-result-text .dk-minus { color: var(--dk-del, var(--fault)); }

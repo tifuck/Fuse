@@ -267,10 +267,13 @@ function consoleFold(trace, presentation, verbose) {
 
 function consoleStatusHtml(text) {
     return deps.escapeHtml(text)
-      .replace(/^(Read|Wrote|Added|Removed|Found|Listed) (\d[\d,]*)/, "$1 <b>$2</b>")
+      // Edits colour their counts: added green, removed red.
+      .replace(/^(Added) (\d[\d,]*)/, '$1 <b class="dk-plus">$2</b>')
+      .replace(/^(Removed) (\d[\d,]*)/, '$1 <b class="dk-minus">$2</b>')
+      .replace(/^(Read|Wrote|Found|Listed) (\d[\d,]*)/, "$1 <b>$2</b>")
       .replace(/^(Received) (\S+)/, "$1 <b>$2</b>")
       .replace(/( across )(\d[\d,]*)/, "$1<b>$2</b>")
-      .replace(/(, removed )(\d[\d,]*)/, "$1<b>$2</b>")
+      .replace(/(, removed )(\d[\d,]*)/, '$1<b class="dk-minus">$2</b>')
       .replace(/^(Wrote <b>[^<]*<\/b> lines? to )(.+)$/, "$1<b>$2</b>");
   }
 
