@@ -512,6 +512,44 @@ class ProjectsRetentionTest(unittest.TestCase):
             self.assertEqual(retention.sweep_user(1)["archived_chats"], 0)
         self.assertFalse(chats.get_thread(1, stale["id"])["archived"])
 
+    def _stale_chat(self, user_id, when):
+        thread = chats.create_thread(user_id, model="offline")
+        db.execute("UPDATE chat_threads SET active_at=?, updated_at=?, created_at=? WHERE public_id=?",
+                   (when, when, when, thread["id"]))
+        return thread
+
+    def test_sweep_does_not_archive_a_chat_with_a_running_command(self):
+        retention.set_settings(1, {"archive_hours": 72})
+        thread = self._stale_chat(1, ago(days=5))
+        db.execute(
+            """INSERT INTO command_jobs(id, user_id, host_id, thread_id, command, timeout_ms, status, created_at, started_at)
+               VALUES('job-live', 1, 7, ?, 'sleep 1000', 1000, 'running', ?, ?)""",
+            (chats.resolve_thread_pk(1, thread["id"]), ago(days=5), ago(days=5)),
+        )
+        self.assertEqual(retention.sweep_user(1)["archived_chats"], 0)
+        self.assertFalse(chats.get_thread(1, thread["id"])["archived"])
+        db.execute("UPDATE command_jobs SET status='completed', finished_at=? WHERE id='job-live'", (ago(days=5),))
+        self.assertEqual(retention.sweep_user(1)["archived_chats"], 1)
+
+    def test_sweep_only_touches_the_swept_user(self):
+        db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(2,'other@invalid','unused',?)", (db.now(),))
+        for uid in (1, 2):
+            retention.set_settings(uid, {"archive_hours": 72})
+        theirs = self._stale_chat(2, ago(days=5))
+        self.assertEqual(retention.sweep_user(1)["archived_chats"], 0)
+        self.assertFalse(chats.get_thread(2, theirs["id"])["archived"])
+        self.assertEqual(retention.sweep_user(2)["archived_chats"], 1)
+
+    def test_sweep_archives_only_chats_idle_longer_than_the_window(self):
+        retention.set_settings(1, {"archive_hours": 72})
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        cutoff = now - timedelta(hours=72)
+        at_cutoff = self._stale_chat(1, retention._iso(cutoff))
+        older = self._stale_chat(1, retention._iso(cutoff - timedelta(seconds=1)))
+        self.assertEqual(retention.sweep_user(1, now=now)["archived_chats"], 1)
+        self.assertFalse(chats.get_thread(1, at_cutoff["id"])["archived"])
+        self.assertTrue(chats.get_thread(1, older["id"])["archived"])
+
     def test_instance_ceiling_applies_when_user_has_none(self):
         prefs = retention.get_settings(1)
         prefs["limits"] = {"archive_days": 90, "delete_days": 0}

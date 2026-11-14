@@ -17,3 +17,18 @@ def test_half_a_pair_falls_back_to_file(tmp_path):
             mock.patch.object(push.settings, "vapid_public_key", ""), \
             mock.patch.object(push, "_KEY_PATH", tmp_path / "vapid.json"):
         assert push._load_keys() is None
+
+
+def test_corrupt_key_file_disables_push_and_is_never_replaced(tmp_path):
+    path = tmp_path / "vapid.json"
+    path.write_text('{"x":1}')
+    before = path.read_bytes()
+    with mock.patch.object(push.settings, "vapid_private_key", ""), \
+            mock.patch.object(push.settings, "vapid_public_key", ""), \
+            mock.patch.object(push, "_KEY_PATH", path), \
+            mock.patch.object(push, "_keys", None), \
+            mock.patch.object(push, "_generate_keys") as generate:
+        assert push.vapid_public_key() == ""
+        assert push.ready() is False
+        generate.assert_not_called()
+    assert path.read_bytes() == before
