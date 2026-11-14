@@ -165,6 +165,25 @@ func TestReplaceMixedLineEndings(t *testing.T) {
 	}
 }
 
+func TestReplaceOverlappingNotUnique(t *testing.T) {
+	// Overlapping occurrences are ambiguous too (as on the server).
+	cases := []struct{ text, old string }{
+		{"}\n}\n}\n", "}\n}\n"},
+		{"}\r\n}\r\n}\r\n", "}\n}\n"},
+		{"aaa", "aa"},
+	}
+	for _, c := range cases {
+		if _, _, err := applyEdit(c.text, fileEdit{c.old, "x", false}); err == nil || !strings.Contains(err.Error(), "not unique (2") {
+			t.Fatalf("%q in %q: err %v", c.old, c.text, err)
+		}
+	}
+	// replace_all keeps non-overlapping, left-to-right semantics.
+	got, n, err := applyEdit("aaa", fileEdit{"aa", "x", true})
+	if err != nil || n != 1 || got != "xa" {
+		t.Fatalf("all: %q %d %v", got, n, err)
+	}
+}
+
 func TestReplaceTooLargeNamesLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "big.txt")
@@ -177,10 +196,10 @@ func TestReplaceTooLargeNamesLimit(t *testing.T) {
 	}
 	// A file inside the edit ceiling is editable.
 	path2 := filepath.Join(dir, "mid.txt")
-	if err := os.WriteFile(path2, []byte(strings.Repeat("x", 400001)), 0644); err != nil {
+	if err := os.WriteFile(path2, []byte("y"+strings.Repeat("x", 400000)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replaceFile(path2, strings.Repeat("x", 400000), "z", false); err != nil {
+	if _, err := replaceFile(path2, "y"+strings.Repeat("x", 399999), "z", false); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := os.ReadFile(path2)

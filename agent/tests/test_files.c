@@ -120,6 +120,23 @@ int main(void) {
         assert(apply_edit(&t, &tl, "a\nb", "x", 0, &reps, why, sizeof(why)) != 0);
         assert(strstr(why, "not unique (2"));
         free(t);
+        /* Overlapping occurrences are ambiguous too (as on the server);
+         * replace_all keeps non-overlapping, left-to-right semantics. */
+        const char *texts[] = {"}\n}\n}\n", "}\r\n}\r\n}\r\n", "aaa"};
+        const char *olds[] = {"}\n}\n", "}\n}\n", "aa"};
+        for (int i = 0; i < 3; i++) {
+            t = strdup(texts[i]);
+            tl = strlen(t);
+            assert(apply_edit(&t, &tl, olds[i], "x", 0, &reps, why, sizeof(why)) != 0);
+            assert(strstr(why, "not unique (2"));
+            assert(strcmp(t, texts[i]) == 0);
+            free(t);
+        }
+        t = strdup("aaa");
+        tl = strlen(t);
+        assert(apply_edit(&t, &tl, "aa", "x", 1, &reps, why, sizeof(why)) == 0);
+        assert(strcmp(t, "xa") == 0 && reps == 1);
+        free(t);
     }
     /* crlf_expand: deterministic LF -> CRLF, embedded CR untouched. */
     {

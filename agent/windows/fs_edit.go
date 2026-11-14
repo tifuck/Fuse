@@ -201,30 +201,42 @@ func applyEditEOL(text string, e fileEdit) (string, int, error) {
 	if k < 0 {
 		k = len(e.Old)
 	}
-	type hit struct{ at, n int }
-	var hits []hit
-	for i := 0; i < len(text); {
-		var j int
-		if k > 0 {
-			j = strings.Index(text[i:], e.Old[:k])
-		} else {
-			j = strings.IndexAny(text[i:], "\r\n")
-		}
-		if j < 0 {
-			break
-		}
-		if n := eolMatch(text, i+j, e.Old); n > 0 {
-			hits = append(hits, hit{i + j, n})
-			i += j + n
-		} else {
+	// next is the first match at or after i (position, length), or -1.
+	next := func(i int) (int, int) {
+		for i < len(text) {
+			var j int
+			if k > 0 {
+				j = strings.Index(text[i:], e.Old[:k])
+			} else {
+				j = strings.IndexAny(text[i:], "\r\n")
+			}
+			if j < 0 {
+				break
+			}
+			if n := eolMatch(text, i+j, e.Old); n > 0 {
+				return i + j, n
+			}
 			i += j + 1
 		}
+		return -1, 0
 	}
-	if len(hits) == 0 {
+	type hit struct{ at, n int }
+	var hits []hit
+	for at, n := next(0); at >= 0; at, n = next(at + n) {
+		hits = append(hits, hit{at, n})
+	}
+	count := len(hits)
+	// Overlapping occurrences (`aa` in `aaa`) are ambiguous too.
+	if count == 1 && !e.All {
+		if at, _ := next(hits[0].at + 1); at >= 0 {
+			count = 2
+		}
+	}
+	if count == 0 {
 		return "", 0, fmt.Errorf("old_string not found")
 	}
-	if len(hits) > 1 && !e.All {
-		return "", 0, fmt.Errorf("old_string is not unique (%d occurrences)", len(hits))
+	if count > 1 && !e.All {
+		return "", 0, fmt.Errorf("old_string is not unique (%d occurrences)", count)
 	}
 	if !e.All {
 		hits = hits[:1]
@@ -272,6 +284,9 @@ func applyEdit(text string, e fileEdit) (string, int, error) {
 	}
 	oldUse, newUse := e.Old, e.New
 	count := strings.Count(text, oldUse)
+	if count == 1 && !e.All && strings.Contains(text[strings.Index(text, oldUse)+1:], oldUse) {
+		count = 2 // overlapping occurrences (`aa` in `aaa`) are ambiguous too
+	}
 	if count == 0 {
 		return "", 0, fmt.Errorf("old_string not found")
 	}
