@@ -9,6 +9,7 @@ from scripts import check_schema
 SCHEMA = check_schema.expected_columns(check_schema.SCHEMA_SQL.read_text(encoding="utf-8"))
 FULL = check_schema.expected_schema(check_schema.SCHEMA_SQL.read_text(encoding="utf-8"))
 KEYS = {table: set(spec["keys"]) for table, spec in FULL.items()}
+FKS = {table: set(spec["constraints"]) for table, spec in FULL.items()}
 
 
 def _live(expected, *drop):
@@ -64,15 +65,51 @@ def test_additions_only_add_what_is_missing():
     columns["bug_reports"] = {"id"}
     keys = {table: set(names) for table, names in KEYS.items()}
     keys["command_jobs"].discard("command_jobs_thread")
-    sql = check_schema.additions(FULL, columns, keys)
+    sql = check_schema.additions(FULL, columns, keys, FKS)
     assert sql == [
         FULL["artifacts"]["create"],
         "ALTER TABLE `command_jobs` ADD KEY `command_jobs_thread` (`thread_id`)",
         "ALTER TABLE `user_projects` ADD COLUMN " + FULL["user_projects"]["columns"]["default_permissions"],
     ]
     assert not any(word in s for s in sql for word in ("DROP", "MODIFY", "CHANGE", "bug_reports"))
-    assert check_schema.additions(FULL, _live(SCHEMA), KEYS) == []
-    assert check_schema.missing_keys(FULL, columns, keys) == ["command_jobs.command_jobs_thread"]
+    assert check_schema.additions(FULL, _live(SCHEMA), KEYS, FKS) == []
+    assert check_schema.missing_keys(FULL, columns, keys, FKS) == ["command_jobs.command_jobs_thread"]
+
+
+def test_additions_add_a_new_column_with_its_foreign_key():
+    columns = _live(SCHEMA, "chat_schedules.thread_id")
+    keys = {table: set(names) for table, names in KEYS.items()}
+    keys["chat_schedules"].discard("fk_chat_schedules_0")
+    fks = {table: set(names) for table, names in FKS.items()}
+    fks["chat_schedules"].discard("fk_chat_schedules_0")
+    assert check_schema.additions(FULL, columns, keys, fks) == [
+        "ALTER TABLE `chat_schedules` ADD COLUMN `thread_id` bigint(20) DEFAULT NULL, "
+        "ADD KEY `fk_chat_schedules_0` (`thread_id`), "
+        "ADD CONSTRAINT `fk_chat_schedules_0` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) "
+        "ON DELETE SET NULL ON UPDATE NO ACTION",
+    ]
+
+
+def test_foreign_key_only_drift_is_reported_and_applied(monkeypatch, capsys):
+    monkeypatch.setattr(settings, "database_url", "mysql://u:p@db/fuse_example")
+    state = {table: set(names) for table, names in FKS.items()}
+    state["chat_schedules"].discard("fk_chat_schedules_0")
+    applied = []
+
+    def fake_apply(url, statements):
+        applied.extend(statements)
+        state["chat_schedules"].add("fk_chat_schedules_0")
+
+    monkeypatch.setattr(check_schema, "live_columns", lambda url: _live(SCHEMA))
+    monkeypatch.setattr(check_schema, "live_keys", lambda url: KEYS)
+    monkeypatch.setattr(check_schema, "live_constraints", lambda url: state)
+    monkeypatch.setattr(check_schema, "apply", fake_apply)
+    assert check_schema.main([]) == 1
+    err = capsys.readouterr().err
+    assert "'fuse_example' is missing 1" in err
+    assert "  chat_schedules.fk_chat_schedules_0\n" in err
+    assert check_schema.main(["--apply"]) == 0
+    assert applied == ["ALTER TABLE `chat_schedules` ADD " + FULL["chat_schedules"]["constraints"]["fk_chat_schedules_0"]]
 
 
 def test_main_apply_adds_then_passes(monkeypatch, capsys):
@@ -87,6 +124,7 @@ def test_main_apply_adds_then_passes(monkeypatch, capsys):
 
     monkeypatch.setattr(check_schema, "live_columns", lambda url: _live(SCHEMA))
     monkeypatch.setattr(check_schema, "live_keys", lambda url: state["keys"])
+    monkeypatch.setattr(check_schema, "live_constraints", lambda url: FKS)
     monkeypatch.setattr(check_schema, "apply", fake_apply)
     assert check_schema.main([]) == 1
     assert "  command_jobs.command_jobs_thread\n" in capsys.readouterr().err
@@ -99,6 +137,7 @@ def test_main_apply_adds_then_passes(monkeypatch, capsys):
 def test_main_exits_1_and_names_what_is_missing(monkeypatch, capsys):
     monkeypatch.setattr(settings, "database_url", "mysql://u:p@db/fuse_example")
     monkeypatch.setattr(check_schema, "live_keys", lambda url: KEYS)
+    monkeypatch.setattr(check_schema, "live_constraints", lambda url: FKS)
     monkeypatch.setattr(check_schema, "live_columns", lambda url: _live(SCHEMA, "user_projects.default_permissions"))
     assert check_schema.main([]) == 1
     err = capsys.readouterr().err

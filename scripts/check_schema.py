@@ -1,16 +1,16 @@
-"""Refuse code whose tables, columns or indexes the connected schema lacks.
+"""Refuse code whose tables, columns, indexes or foreign keys the connected schema lacks.
 
 Usage: python -m scripts.check_schema [--apply] [schema.sql]   (DATABASE_URL from .env or the environment)
 
 schema.sql (default scripts/sql/schema.sql) is dumped from fuse_dev after every
-schema change, so it lists every table, column and index the code at that
+schema change, so it lists every table, column, index and foreign key the code at that
 commit may use. Exits 1 and names each missing one; extra ones in the database
 (a table a pending migration drops) are fine. Run the new commit's copy against
 production before deploying it: on MariaDB db._init never adds columns, and
 boot refuses a missing index.
 
 --apply adds what is missing first, taken verbatim from schema.sql: whole
-tables, columns, and indexes. It only ever adds, so the code still running
+tables, columns, indexes and foreign keys. It only ever adds, so the code still running
 keeps working. It never drops, renames, retypes or backfills; a migration
 that does (scripts/sql/) is still its own step.
 """
@@ -24,16 +24,19 @@ SCHEMA_SQL = Path(__file__).resolve().parent / "sql" / "schema.sql"
 _TABLE = re.compile(r"^CREATE TABLE `([^`]+)` \($")
 _COLUMN = re.compile(r"^\s+`([^`]+)` ")
 _KEY = re.compile(r"^\s+((?:UNIQUE |FULLTEXT |SPATIAL )?KEY `([^`]+)` .*?),?$")
+_CONSTRAINT = re.compile(r"^\s+(CONSTRAINT `([^`]+)` FOREIGN KEY .*?),?$")
 
 
 def expected_schema(text):
-    """{table: {"create": sql, "columns": {name: definition}, "keys": {name: definition}}}
-    from a dump_schema.sh file, in file order."""
+    """{table: {"create": sql, "columns": {name: definition}, "keys": {name: definition},
+    "constraints": {name: definition}}} (constraints are foreign keys) from a dump_schema.sh
+    file, in file order."""
     tables, current, lines = {}, None, []
     for line in text.splitlines():
         match = _TABLE.match(line)
         if match:
-            current = tables.setdefault(match.group(1), {"create": "", "columns": {}, "keys": {}})
+            current = tables.setdefault(match.group(1), {"create": "", "columns": {}, "keys": {},
+                                                          "constraints": {}})
             lines = [line]
         elif current is not None:
             lines.append(line)
@@ -44,6 +47,8 @@ def expected_schema(text):
                 current["columns"][match.group(1)] = line.strip().rstrip(",")
             elif match := _KEY.match(line):
                 current["keys"][match.group(2)] = match.group(1)
+            elif match := _CONSTRAINT.match(line):
+                current["constraints"][match.group(2)] = match.group(1)
     return tables
 
 
@@ -60,14 +65,16 @@ def missing(expected, actual):
     return gone
 
 
-def missing_keys(expected, actual_columns, actual_keys):
-    """table.key (index) names schema.sql has that a present table lacks."""
-    return [f"{table}.{key}" for table, spec in expected.items() if table in actual_columns
-            for key in spec["keys"] if key not in actual_keys.get(table, set())]
+def missing_keys(expected, actual_columns, actual_keys, actual_constraints):
+    """table.key (index) and table.constraint (foreign key) names schema.sql has that a
+    present table lacks."""
+    return [f"{table}.{name}" for table, spec in expected.items() if table in actual_columns
+            for kind, actual in (("keys", actual_keys), ("constraints", actual_constraints))
+            for name in spec[kind] if name not in actual.get(table, set())]
 
 
-def additions(expected, actual_columns, actual_keys):
-    """The statements that add every missing table, column and index."""
+def additions(expected, actual_columns, actual_keys, actual_constraints):
+    """The statements that add every missing table, column, index and foreign key."""
     sql = []
     for table, spec in expected.items():
         if table not in actual_columns:
@@ -77,6 +84,9 @@ def additions(expected, actual_columns, actual_keys):
                  if column not in actual_columns[table]]
         parts += [f"ADD {definition}" for key, definition in spec["keys"].items()
                   if key not in actual_keys.get(table, set())]
+        # Foreign keys last, after the columns and indexes they use.
+        parts += [f"ADD {definition}" for name, definition in spec["constraints"].items()
+                  if name not in actual_constraints.get(table, set())]
         if parts:
             sql.append(f"ALTER TABLE `{table}` " + ", ".join(parts))
     return sql
@@ -114,6 +124,14 @@ def live_keys(url):
     return actual
 
 
+def live_constraints(url):
+    actual = {}
+    for table, name in _query(url, "SELECT table_name, constraint_name FROM information_schema.table_constraints "
+                                   "WHERE table_schema=DATABASE() AND constraint_type='FOREIGN KEY'"):
+        actual.setdefault(table, set()).add(name)
+    return actual
+
+
 def apply(url, statements):
     conn = _connect(url)
     try:
@@ -142,24 +160,24 @@ def main(argv=None):
     if not expected:
         sys.exit(f"check_schema: no CREATE TABLE in {path}")
     schema = urlsplit(url).path.strip("/")
-    columns, keys = live_columns(url), live_keys(url)
+    columns, keys, constraints = live_columns(url), live_keys(url), live_constraints(url)
     if do_apply:
-        statements = additions(expected, columns, keys)
+        statements = additions(expected, columns, keys, constraints)
         if statements:
             print(f"check_schema: adding to {schema!r}:")
             for sql in statements:
                 print("  " + sql.splitlines()[0] + (" ..." if "\n" in sql else ""))
             apply(url, statements)
-            columns, keys = live_columns(url), live_keys(url)
+            columns, keys, constraints = live_columns(url), live_keys(url), live_constraints(url)
     gone = missing({table: spec["columns"] for table, spec in expected.items()}, columns)
-    gone += missing_keys(expected, columns, keys)
+    gone += missing_keys(expected, columns, keys, constraints)
     if gone:
         print(f"check_schema: {schema!r} is missing {len(gone)} of what the code expects:", file=sys.stderr)
         for name in gone:
             print(f"  {name}", file=sys.stderr)
         print("Apply the pending migration from scripts/sql/ to it first, or rerun with --apply.", file=sys.stderr)
         return 1
-    print(f"check_schema: {schema!r} has all {len(expected)} tables, their columns and indexes")
+    print(f"check_schema: {schema!r} has all {len(expected)} tables, their columns, indexes and foreign keys")
     return 0
 
 
