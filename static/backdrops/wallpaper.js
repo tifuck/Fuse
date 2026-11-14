@@ -140,7 +140,9 @@ function motionFor(m, R, cell, para) {
 
 function build(s, spec) {
   const k = s.k || 1;
-  const cell = Math.max(3, spec.cell * k);
+  // A phone gets smaller tiles so a sprite keeps its share of the screen.
+  const fit = k < 1 ? 1 : Math.max(0.6, Math.min(1, Math.min(s.w, s.h) / 700));
+  const cell = Math.max(3, spec.cell * k * fit);
   s.cell = cell;
   s.cols = Math.ceil(s.w / cell);
   s.rows = Math.ceil(s.h / cell);
@@ -353,6 +355,8 @@ export function wallpaperScene(spec) {
     fps: spec.fps || 12,
     scheme: spec.scheme,
     spec,
+    // Picker cards draw at a third of the size so a whole scene fits.
+    previewK: 0.32,
     setup() {},
     resize(s) {
       build(s, spec);
