@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="{{ asset('themes/console/theme.css') }}">
   <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
   <link rel="stylesheet" href="{{ asset('themes/console/styles/design.css') }}">
+  {#- Opt-in layout over the console renderer; chat-appearance.js reads the same cookie. -#}
+  {% if request.cookies.get('fuse_chat_layout') == 'combined' %}<link rel="stylesheet" href="{{ asset('themes/combined/theme.css') }}">{% endif %}
 <link rel="stylesheet" href="{{ asset('spinner-next.css') }}">
 <link rel="stylesheet" href="{{ asset('spinner-future.css') }}">
 {% endblock %}

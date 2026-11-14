@@ -2,6 +2,19 @@
     Settings › Appearance tab; chat-appearance.js binds them by their data
     attributes wherever they are. Set appearance_recaps=false where recaps
     already have their own control (Settings › Chat defaults). -#}
+<section class="ap-section" aria-labelledby="ap-h-layout">
+  <div class="ap-intro">
+    <h2 id="ap-h-layout">Layout</h2>
+    <p>How chats are drawn. Switching reloads the page.</p>
+  </div>
+  <div class="ap-body">
+    <div class="ap-filters" role="group" aria-label="Layout">
+      <button type="button" data-chat-layout-choice="console" aria-pressed="true">Console</button>
+      <button type="button" data-chat-layout-choice="combined" aria-pressed="false">Combined</button>
+    </div>
+    <p class="ap-note">Console is dense and terminal-like. Combined reads like a chat: a centered column, one-line steps, and a side rail for running agents.</p>
+  </div>
+</section>
 <section class="ap-section" aria-label="Thinking">
   <div class="ap-body ap-switches">
     <label class="ap-switch">

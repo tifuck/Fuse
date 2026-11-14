@@ -120,7 +120,16 @@
       .map((font) => "family=" + encodeURIComponent(font.label).replace(/%20/g, "+")).join("&");
     addStylesheet("font:preview", `https://fonts.googleapis.com/css2?${families}&text=${encodeURIComponent(FONT_SUBSET)}&display=swap`);
   }
-  const DEFAULT_FONT = "redhat";
+  // Layout: console (the default) or combined, a calmer layer over the same
+  // renderer. A cookie, so chat.html can link the layer's stylesheet.
+  const LAYOUTS = ["console", "combined"];
+  const LAYOUT_COOKIE = "fuse_chat_layout";
+  let layout = "console";
+  try {
+    const match = new RegExp(`(?:^|;\\s*)${LAYOUT_COOKIE}=([a-z]+)`).exec(document.cookie || "");
+    if (match && LAYOUTS.includes(match[1])) layout = match[1];
+  } catch (_) {}
+  const DEFAULT_FONT = layout === "combined" ? "bricolage" : "redhat";
   const THEME_VARS = {
     ink: "--ink",
     panel: "--panel",
@@ -226,7 +235,7 @@
     if (Number.isFinite(storedSize) && storedSize >= SIZE_MIN && storedSize <= SIZE_MAX) textScale = Math.round(storedSize / 5) * 5;
     const storedFonts = JSON.parse(localStorage.getItem(STORE_FONTS) || "{}");
     if (storedFonts && typeof storedFonts === "object") {
-      const id = LEGACY_FONTS[storedFonts.console] || storedFonts.console;
+      const id = LEGACY_FONTS[storedFonts[layout]] || storedFonts[layout];
       if (FONTS[id]) selectedFont = id;
     }
     const storedCustom = JSON.parse(localStorage.getItem(STORE_CUSTOM) || "null");
@@ -293,6 +302,7 @@
     html.dataset.chatConsole = "true";
     html.dataset.chatBackdrop = backdrop;
     html.dataset.chatView = "console";
+    html.dataset.chatLayout = layout;
     ensureFont(fontFor());
     html.style.setProperty("--chat-text-scale", String(textScale / 100));
     // The reading font is the site font: it drives the --sans and --mono
@@ -371,7 +381,23 @@
   }
 
   function persistFonts() {
-    try { localStorage.setItem(STORE_FONTS, JSON.stringify({ console: selectedFont })); } catch (_) {}
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORE_FONTS) || "{}") || {};
+      const fonts = {};
+      for (const id of LAYOUTS) if (typeof stored[id] === "string") fonts[id] = stored[id];
+      fonts[layout] = selectedFont;
+      localStorage.setItem(STORE_FONTS, JSON.stringify(fonts));
+    } catch (_) {}
+  }
+
+  // The stylesheet is linked by the server, so a switch reloads the page.
+  function setLayout(next) {
+    if (!LAYOUTS.includes(next) || next === layout) return;
+    if (typeof window.fuseUnsaved === "function" && window.fuseUnsaved()
+      && !window.confirm("Switching the layout reloads the page. Unsaved work on it will be lost.")) return;
+    const secure = location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `${LAYOUT_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax${secure}`;
+    location.reload();
   }
   function persistTheme() {
     try { localStorage.setItem(STORE_THEME, theme); } catch (_) {}
@@ -467,6 +493,9 @@
       btn.setAttribute("aria-pressed", String(id === backdrop));
       btn.classList.toggle("is-on", id === backdrop);
     });
+    document.querySelectorAll("[data-chat-layout-choice]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.chatLayoutChoice === layout));
+    });
     const customBox = document.querySelector("[data-chat-custom]");
     if (customBox) customBox.hidden = theme !== "custom";
     const ink = document.querySelector("[data-chat-custom-ink]");
@@ -538,6 +567,8 @@
     syncUi,
     get artifactTheme() { return artifactTheme(); },
     get size() { return textScale; },
+    get layout() { return layout; },
+    setLayout,
     setSize(next) {
       const value = Math.round(Number(next));
       if (!Number.isFinite(value)) return;
@@ -577,6 +608,9 @@
       const btn = event.target.closest("[data-chat-theme]");
       if (!btn) return;
       setTheme(btn.dataset.chatTheme);
+    });
+    document.querySelectorAll("[data-chat-layout-choice]").forEach((btn) => {
+      btn.addEventListener("click", () => setLayout(btn.dataset.chatLayoutChoice));
     });
     document.querySelector("[data-chat-backdrop-swatches]")?.addEventListener("click", (event) => {
       const btn = event.target.closest("[data-chat-backdrop]");

@@ -15,7 +15,7 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `app/search/` | Fuse-hosted web search: one file per provider under `providers/`. |
 | `app/workspace_ops/` | Workspace tool families used by `app/workspace.py`. |
 | `agent/` | `fuse-agent` connector: C binary (`src/`, `make`) and Windows Go EXE (`windows/`). |
-| `templates/`, `static/` | Pages and assets. Chat UI: `static/chat.js` + `static/chat/`, rendering in `static/themes/console/`. Vendored code: `static/vendor/`, `static/dict/`. |
+| `templates/`, `static/` | Pages and assets. Chat UI: `static/chat.js` + `static/chat/`, rendering in `static/themes/console/` (the opt-in Combined layout is a stylesheet layer in `static/themes/combined/`). Vendored code: `static/vendor/`, `static/dict/`. |
 | `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
 | `tests/` | pytest suites, Node unit suites (`*.test.cjs`) and Playwright browser suites (`*.browser.cjs`). |
