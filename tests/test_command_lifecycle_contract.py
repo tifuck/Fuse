@@ -489,6 +489,7 @@ class LifecycleContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rec["status"], "interrupted")
 
     async def test_old_schema_migration_preserves_unknown_counts(self):
+        self.conn.execute("DROP TABLE IF EXISTS command_jobs")
         self.conn.execute("CREATE TABLE command_jobs(id TEXT PRIMARY KEY, thread_id INTEGER, out TEXT, out_bytes INTEGER)")
         self.conn.execute("INSERT INTO command_jobs (id, out, out_bytes) VALUES('old','€€',2)")
         self.conn.commit()

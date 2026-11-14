@@ -148,7 +148,8 @@ class BackendContinuationTest(unittest.TestCase):
         self.assertEqual([s["id"] for s in stored["segments"]], ["first", "second"])
 
     def make_jobs(self):
-        self.conn.execute("""CREATE TABLE IF NOT EXISTS command_jobs (
+        self.conn.execute("DROP TABLE IF EXISTS command_jobs")  # a legacy table shape, not the bootstrap's
+        self.conn.execute("""CREATE TABLE command_jobs (
             id TEXT PRIMARY KEY, user_id INTEGER, thread_id INTEGER, status TEXT,
             host TEXT, command TEXT, cwd TEXT, out TEXT, out_bytes INTEGER,
             exit_code INTEGER, duration_ms INTEGER, timeout_ms INTEGER, error TEXT, background INTEGER)""")

@@ -68,51 +68,55 @@ def ensure_schema() -> None:
     if _schema_ready:
         return
     with db.tx() as conn:
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS command_jobs (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                host_id INTEGER NOT NULL,
-                host TEXT NOT NULL DEFAULT '',
-                thread_id INTEGER,
-                run_id TEXT,
-                command TEXT NOT NULL,
-                cwd TEXT NOT NULL DEFAULT '',
-                background INTEGER NOT NULL DEFAULT 0,
-                timeout_ms INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                exit_code INTEGER,
-                error TEXT NOT NULL DEFAULT '',
-                out TEXT NOT NULL DEFAULT '',
-                out_bytes INTEGER NOT NULL DEFAULT 0,
-                duration_ms INTEGER,
-                notify INTEGER NOT NULL DEFAULT 0,
-                delivered INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL,
-                started_at TEXT,
-                finished_at TEXT
-            )"""
-        )
-        columns = {row[1] for row in conn.execute("PRAGMA table_info(command_jobs)")}
-        for name, declaration in (
-            ("out_chars", "INTEGER"),
-            ("output_incomplete", "INTEGER NOT NULL DEFAULT 0"),
-            ("termination_confirmed", "INTEGER"),
-            ("kind", "TEXT NOT NULL DEFAULT 'command'"),
-            ("source", "TEXT NOT NULL DEFAULT ''"),
-            ("url", "TEXT NOT NULL DEFAULT ''"),
-            ("pattern", "TEXT NOT NULL DEFAULT ''"),
-            ("event_count", "INTEGER NOT NULL DEFAULT 0"),
-            ("max_events", "INTEGER NOT NULL DEFAULT 1"),
-            ("delivered_event_seq", "INTEGER NOT NULL DEFAULT 0"),
-            ("description", "TEXT NOT NULL DEFAULT ''"),
-        ):
-            if name not in columns:
-                conn.execute(f"ALTER TABLE command_jobs ADD COLUMN {name} {declaration}")
-        # Every thread list row checks its live background jobs; without this
-        # each row scanned the whole table (seconds for a few hundred threads).
-        conn.execute("CREATE INDEX IF NOT EXISTS command_jobs_thread ON command_jobs (thread_id)")
+        create_schema(conn)
     _schema_ready = True
+
+
+def create_schema(conn) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS command_jobs (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            host_id INTEGER NOT NULL,
+            host TEXT NOT NULL DEFAULT '',
+            thread_id INTEGER,
+            run_id TEXT,
+            command TEXT NOT NULL,
+            cwd TEXT NOT NULL DEFAULT '',
+            background INTEGER NOT NULL DEFAULT 0,
+            timeout_ms INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            exit_code INTEGER,
+            error TEXT NOT NULL DEFAULT '',
+            out TEXT NOT NULL DEFAULT '',
+            out_bytes INTEGER NOT NULL DEFAULT 0,
+            duration_ms INTEGER,
+            notify INTEGER NOT NULL DEFAULT 0,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT
+        )"""
+    )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(command_jobs)")}
+    for name, declaration in (
+        ("out_chars", "INTEGER"),
+        ("output_incomplete", "INTEGER NOT NULL DEFAULT 0"),
+        ("termination_confirmed", "INTEGER"),
+        ("kind", "TEXT NOT NULL DEFAULT 'command'"),
+        ("source", "TEXT NOT NULL DEFAULT ''"),
+        ("url", "TEXT NOT NULL DEFAULT ''"),
+        ("pattern", "TEXT NOT NULL DEFAULT ''"),
+        ("event_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("max_events", "INTEGER NOT NULL DEFAULT 1"),
+        ("delivered_event_seq", "INTEGER NOT NULL DEFAULT 0"),
+        ("description", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        if name not in columns:
+            conn.execute(f"ALTER TABLE command_jobs ADD COLUMN {name} {declaration}")
+    # Every thread list row checks its live background jobs; without this
+    # each row scanned the whole table (seconds for a few hundred threads).
+    conn.execute("CREATE INDEX IF NOT EXISTS command_jobs_thread ON command_jobs (thread_id)")
 
 
 def recover() -> None:
