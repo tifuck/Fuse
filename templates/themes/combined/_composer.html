@@ -9,7 +9,7 @@
       <button type="button" data-sync-retry hidden>Retry send</button>
     </div>
     <div class="chat-slash" data-chat-slash hidden>
-      <p class="chat-slash-kicker">Commands <span>Tab to complete · Enter to select</span></p>
+      <p class="chat-slash-kicker" data-slash-kicker>Commands <span>Tab to complete · Enter to select</span></p>
       <div class="chat-slash-list" id="chat-slash-list" data-chat-slash-list role="listbox" aria-label="Slash commands"></div>
     </div>
     <div class="chat-spell-pop" id="chat-spell-pop" data-chat-spell-pop hidden role="listbox" aria-label="Spelling"></div>
@@ -36,7 +36,7 @@
     </div>
     <div class="chat-live-todos" data-live-todos hidden role="region" aria-label="Todo list"></div>
     <div class="chat-agent-live-todos" data-agent-live-todos hidden role="region" aria-label="Subagent todo list"></div>
-    <div class="chat-box">
+    <div class="chat-box" data-chat-box>
       <div class="chat-attach-list" data-chat-attach-list hidden></div>
       <label class="visually-hidden" for="chat-input">Message</label>
       <div class="chat-compose" data-chat-compose>
@@ -44,7 +44,7 @@
         <textarea id="chat-input" data-chat-input data-reload-safe rows="1" placeholder="Ask anything or type /" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Message"></textarea>
       </div>
       <div class="chat-box-bar">
-        <div class="chat-box-left">
+        <div class="chat-box-left" data-box-group>
           <input id="chat-file" data-chat-file type="file" hidden multiple accept="image/jpeg,image/png,image/gif,image/webp,image/*,application/pdf,text/plain,text/markdown,text/csv,text/html,application/json,.md,.txt,.csv,.json,.py,.js,.ts,.css,.html">
           <button type="button" class="chat-attach-btn" data-chat-attach aria-label="Add image or file" title="Add image or file">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -68,7 +68,7 @@
             </button>
           </div>
         </div>
-        <div class="chat-box-right">
+        <div class="chat-box-right" data-box-group>
           <div class="chat-context-wrap" data-context-wrap hidden>
             <button type="button" class="chat-context" data-chat-context aria-label="Context usage" aria-expanded="false" aria-controls="chat-context-pop" title="Context usage">
               <svg viewBox="0 0 32 32" aria-hidden="true">

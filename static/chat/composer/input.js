@@ -44,7 +44,7 @@ export function createInput(ctx) {
     const originRight = menu.getBoundingClientRect().right;
     menu.style.removeProperty("transform");
     const b = anchor.getBoundingClientRect();
-    const box = anchor.closest(".chat-box");
+    const box = anchor.closest("[data-chat-box]");
     const top = (box ? box.getBoundingClientRect().top : b.top) - 6;
     menu.style.maxHeight = Math.max(200, Math.min(maxHeight, Math.round(top - 48))) + "px";
     const width = menu.offsetWidth;
@@ -136,9 +136,9 @@ export function createInput(ctx) {
 
     function composerFlipTargets() {
     if (S.reduceMotion.matches || !S.form) return [];
-    const box = S.form.querySelector(".chat-box");
+    const box = S.form.querySelector("[data-chat-box]");
     if (!box) return [];
-    return [box.querySelector(".chat-compose"), ...box.querySelectorAll(".chat-box-left > *, .chat-box-right > *")]
+    return [box.querySelector("[data-chat-compose]"), ...box.querySelectorAll("[data-box-group] > *")]
       .filter((el) => el && el.offsetParent !== null);
   }
 
@@ -176,7 +176,7 @@ export function createInput(ctx) {
         document.activeElement.matches("textarea, input, [contenteditable='true']");
       const mobile = window.matchMedia("(max-width: 800px)").matches;
       const sheetFocus = document.activeElement instanceof Element &&
-        Boolean(document.activeElement.closest(".chat-sheet, .chat-view-menu, .fp-dialog"));
+        Boolean(document.activeElement.closest("[data-chat-sheet], .fp-dialog"));
       const editing = composerFocus || sheetFocus;
       if (Math.abs(window.innerWidth - viewportWidth) > 1) {
         viewportWidth = window.innerWidth;
@@ -263,7 +263,7 @@ export function createInput(ctx) {
     // Mobile wraps the bar onto extra rows; publish its measured height so the
   // thread clears it. Desktop is a fixed single row.
   function fitChatBar() {
-    const bar = S.root.querySelector(".chat-bar");
+    const bar = S.root.querySelector("[data-chat-bar]");
     if (!bar) return;
     const beforeH = S.root.style.getPropertyValue("--chat-bar-h");
     const mobile = window.matchMedia("(max-width: 800px)").matches;

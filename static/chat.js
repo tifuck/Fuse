@@ -493,7 +493,7 @@ import { createDictation } from './chat/dictation.js';
       sync.setPendingTurn(S.pendingTurn);
       sync.syncStatus();
     });
-    S.root.querySelector('.chat-sync')?.append(discardPending);
+    S.root.querySelector('[data-sync-state]')?.append(discardPending);
 
     window.addEventListener("online", () => sync.connectSync());
 
@@ -1168,8 +1168,8 @@ import { createDictation } from './chat/dictation.js';
     const field = "textarea, input, [contenteditable='true']";
     const moved =
       Boolean(target?.matches(field) || related?.matches(field) ||
-        target?.closest(".chat-sheet, .chat-view-menu") ||
-        related?.closest(".chat-sheet, .chat-view-menu"));
+        target?.closest("[data-chat-sheet]") ||
+        related?.closest("[data-chat-sheet]"));
     if (!moved) return;
     composer.pinVisualViewport();
     window.setTimeout(composer.pinVisualViewport, 100);
@@ -1511,7 +1511,7 @@ import { createDictation } from './chat/dictation.js';
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.defaultPrevented || !S.agentsOpen) return;
       if (S.pickerOpen || S.permsOpen || S.memoryOpen || S.skillsOpen || S.artifactOpen) return;
-      if (document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
+      if (document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
       if (event.target === S.input && S.input.value) return;
       agents.closeAgentView();
     });
@@ -1529,7 +1529,7 @@ import { createDictation } from './chat/dictation.js';
       if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
       if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
       if (window.FuseComposerSpell && FuseComposerSpell.isOpen()) return true;
-      return Boolean(document.querySelector(".chat-slash:not([hidden]), .chat-rewind:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
+      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
     };
     const disarmEscStop = () => {
       if (!escArmed) return;
@@ -2209,7 +2209,7 @@ import { createDictation } from './chat/dictation.js';
       // where the new content sits below the view.
       [S.log, S.liveDock, S.todoSections.main.el].forEach((el) => el && threadResizeObserver.observe(el));
     }
-    const chatBar = S.root.querySelector(".chat-bar");
+    const chatBar = S.root.querySelector("[data-chat-bar]");
     if (chatBar) new ResizeObserver(() => composer.scheduleFitChatBar()).observe(chatBar);
     if (S.agentBodyEl) {
       const agentResizeObserver = new ResizeObserver(() => { if (S.agentStick) agents.pinAgentLog(); });

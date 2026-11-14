@@ -377,7 +377,13 @@ async def login(request: Request):
     # Stamped like a real login: unstamped sessions are refused.
     accounts.start_session(request.session, accounts.get_user(1))
     request.session["csrf"] = "browser-test-csrf"
-    return RedirectResponse("/chat")
+    response = RedirectResponse("/chat")
+    # FUSE_CHAT_VIEW=combined runs a suite under that theme, as Appearance ›
+    # Layout would (the fuse_chat_view cookie). Unset: no cookie, Console.
+    view = os.environ.get("FUSE_CHAT_VIEW", "")
+    if view:
+        response.set_cookie("fuse_chat_view", view, path="/", samesite="lax")
+    return response
 
 
 @app.get("/chat")

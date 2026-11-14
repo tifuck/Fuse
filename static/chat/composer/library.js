@@ -157,7 +157,7 @@ export function createLibrary(ctx) {
       return;
     }
     // Over the tiles when they show (same left edge), else over the composer.
-    const box = (S.root.querySelector(".chat-box") || S.form).getBoundingClientRect();
+    const box = (S.root.querySelector("[data-chat-box]") || S.form).getBoundingClientRect();
     const grid = host?.querySelector(".chat-library-tiles");
     const tiles = grid && grid.offsetParent ? grid.getBoundingClientRect() : box;
     sheet.style.setProperty("--library-left", tiles.left + "px");

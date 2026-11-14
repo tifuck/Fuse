@@ -41,14 +41,14 @@ function initState() {
   S.stashBtn = S.root.querySelector("[data-chat-stash]");
   S.fileInput = S.root.querySelector("[data-chat-file]");
   S.attachList = S.root.querySelector("[data-chat-attach-list]");
-  S.chatBox = S.root.querySelector(".chat-box");
+  S.chatBox = S.root.querySelector("[data-chat-box]");
   S.historyList = S.root.querySelector("[data-history-list]");
   S.historyKicker = S.root.querySelector("[data-history-kicker]");
   S.historySearch = S.root.querySelector("[data-history-search]");
   S.archivedBtn = S.root.querySelector("[data-history-archived]");
   S.slashMenu = S.root.querySelector("[data-chat-slash]");
   S.slashList = S.root.querySelector("[data-chat-slash-list]");
-  S.slashKicker = S.slashMenu ? S.slashMenu.querySelector(".chat-slash-kicker") : null;
+  S.slashKicker = S.slashMenu ? S.slashMenu.querySelector("[data-slash-kicker]") : null;
   S.spellPop = S.root.querySelector("[data-chat-spell-pop]");
   S.composeMirror = S.root.querySelector("[data-chat-compose-mirror]");
   S.rewindPanel = S.root.querySelector("[data-chat-rewind]");
