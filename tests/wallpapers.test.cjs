@@ -48,6 +48,13 @@ test('every preset passes the validator and stays inside the frame budget', asyn
   assert.equal(WALLPAPERS.moonlit.scheme, 'dark');
 });
 
+test('the example in docs/wallpapers.md is a valid spec', async () => {
+  const { validateWallpaper } = await spec();
+  const doc = readFileSync(resolve(__dirname, '../docs/wallpapers.md'), 'utf8');
+  const example = JSON.parse(doc.split('## Example')[1].match(/```json\n([\s\S]+?)\n```/)[1]);
+  assert.deepEqual(validateWallpaper(example), { ok: true, errors: [] });
+});
+
 test('the validator rejects unsafe or malformed specs', async () => {
   const { validateWallpaper, LIMITS } = await spec();
   const { HONULAGOON } = await presets();
