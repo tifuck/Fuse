@@ -135,7 +135,7 @@ def _chat_revision(raw):
 
 def _chat_command(raw):
     command = raw.get("command_id")
-    if not isinstance(command, str) or not command.strip() or len(command) > 200:
+    if not isinstance(command, str) or not command.strip() or len(command) > 128:
         raise HTTPException(422, "A command_id is required for safe retries.")
     return command
 

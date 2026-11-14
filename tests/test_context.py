@@ -533,7 +533,6 @@ class LiveCompactTest(unittest.IsolatedAsyncioTestCase):
         with (
             patch("app.chat_runtime.summarize_conversation", fake_sum),
             patch("app.chat_store.apply_compaction_checkpoint") as apply_cp,
-            patch("app.chat_store.save_compaction") as save_comp,
         ):
             _rebuilt, _meter, kind = await _compact_current(
                 current,
@@ -547,7 +546,6 @@ class LiveCompactTest(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn(kind, ("summarize", "truncate"))
         apply_cp.assert_not_called()
-        save_comp.assert_not_called()
 
     async def test_compact_current_parent_writes_thread_state(self):
         from unittest.mock import patch

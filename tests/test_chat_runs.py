@@ -162,12 +162,13 @@ class RunsTest(unittest.IsolatedAsyncioTestCase):
         store.finish_run(run["id"], {"content": "Stopped"}, "completed")
         store.finish_run(child["id"], {"content": "Undelivered report"}, "cancelled")
         with patch.object(runs, "schedule_wake") as wake, \
-             patch.object(store, "wake_candidates", wraps=store.wake_candidates) as candidates, \
+             patch.object(store, "thread_root_run", wraps=store.thread_root_run) as roots, \
              patch.object(db, "fetchall", wraps=db.fetchall) as fetch:
             for _ in range(5):
                 runs.sweep_wakes()
             wake.assert_not_called()
-            candidates.assert_not_called()
+            # The pending report did match the sweep; the Stop is what held it.
+            roots.assert_called_with(1, run["thread_id"], include_request=False)
             self.assertFalse(any("message," in str(call.args[0]) for call in fetch.call_args_list))
         self.assertEqual(store.wake_candidates(1, run["thread_id"])[0]["id"], child["id"])
         self.assertEqual(store.get_run(1, child["id"])["message"]["content"], "Undelivered report")

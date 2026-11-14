@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from uuid import uuid4
 
 from . import db, chat_images, chat_schema, chat_tx, chat_views, chat_checkpoint
@@ -422,6 +423,7 @@ def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
 
 
 BOOT_RESUME_BATCH = 8
+_reap_resume_lock = threading.Lock()
 
 
 def _check_resume_admission(row, user_id, is_child):
@@ -530,8 +532,11 @@ def resume_run(user_id, run_id):
     return updated
 
 
-def recover_one(row, allow_resume=True):
-    """Recover a single active run. Never raises to the caller."""
+def recover_one(row, allow_resume=True, capped=False):
+    """Recover a single active run. Never raises to the caller.
+
+    capped (the reaper): the resume drains the boot overflow, so it waits
+    while BOOT_RESUME_BATCH runs are already queued to start."""
     try:
         if row["cancel_requested"]:
             abort_active(row["id"], "cancelled")
@@ -560,6 +565,13 @@ def recover_one(row, allow_resume=True):
             if not allow_resume:
                 # Boot batch cap: leave ACTIVE; the 60s reaper requeues the
                 # overflow gradually once generation capacity frees up.
+                return
+            if capped:
+                # Counted and requeued under one lock: the page-load reaper
+                # runs beside the 60s one.
+                with _reap_resume_lock:
+                    if int(db.fetchone("SELECT COUNT(*) AS n FROM chat_runs WHERE status='queued'")["n"]) < BOOT_RESUME_BATCH:
+                        _requeue_for_resume(row, messages)
                 return
             _requeue_for_resume(row, messages)
             return
