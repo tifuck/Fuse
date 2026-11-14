@@ -85,7 +85,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
     if (!await desktop.locator(`[data-thread="${id}"]`).isVisible()) await desktop.locator('.chat-bar [data-history-toggle]').click();
     await desktop.locator(`[data-thread="${id}"]`).hover();
-    await desktop.locator(`[data-thread="${id}"] .more`).click();
+    await desktop.locator(`[data-thread="${id}"] [data-row-more]`).click();
     await desktop.getByRole('menuitem', { name: 'Rename', exact: true }).click();
     await desktop.locator('.rename').fill('Renamed on desktop');
     await desktop.locator('.rename').press('Enter');
@@ -113,7 +113,7 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     await Promise.all([finish(desktop), finish(phone)]);
     const threadId = new URL(desktop.url()).searchParams.get('t');
     await desktop.locator(`[data-thread="${threadId}"]`).hover();
-    await desktop.locator(`[data-thread="${threadId}"] .more`).click();
+    await desktop.locator(`[data-thread="${threadId}"] [data-row-more]`).click();
     await desktop.getByRole('menuitem', { name: 'Delete', exact: true }).click();
     await desktop.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
     await desktop.waitForFunction(() => !new URL(location.href).searchParams.get('t'));

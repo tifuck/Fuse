@@ -687,13 +687,15 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     & .cb-new { height: 40px; }
   }
   @media (max-width: 760px) {
-    & .cb-head { gap: 2px; padding: 0 4px; }
+    /* Notched phones: the header, the drawer's head and foot and the composer clear the insets. */
+    & .cb-head { gap: 2px; height: auto; min-height: calc(2.5rem + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 4px 0; }
+    & .cb-side { padding-top: calc(6px + var(--safe-top, 0px)); padding-bottom: calc(6px + var(--safe-bottom, 0px)); }
     & .cb-head .cb-chip,
     & .cb-hb span,
     & .cb-pill em,
     & .cb-tb.is-lab span { display: none; }
     & .cb-pill { margin-right: 2px; padding: 0 9px; }
-    & .chat-dock { padding: 4px 8px 8px; }
+    & .chat-dock { padding: 4px 8px calc(8px + var(--safe-bottom, 0px)); }
     & .cb-model .chat-picker-btn { max-width: 8.5rem; }
     & .cb-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .cb-model .chat-picker-btn small { display: none; }
