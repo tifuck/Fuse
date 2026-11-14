@@ -33,12 +33,13 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-t
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-user .chat-bubble::before { content: none; }
 
-/* Replies: plain prose, no bullet column. */
+/* Replies: plain prose, no bullet column. The recap reads at the reply's size. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md {
   display: block;
   font-size: calc(0.92rem * var(--chat-text-scale, 1));
   line-height: 1.6;
 }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-recap { font-size: calc(0.92rem * var(--chat-text-scale, 1)); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md::before { content: none; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :first-child { margin-top: 0; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :last-child { margin-bottom: 0; }
