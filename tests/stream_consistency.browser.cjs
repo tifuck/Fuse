@@ -8,25 +8,27 @@ const frames=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>re
 
 // A grouped run of shell calls opens and folds back. The opened calls print
 // in place of the summary line, as Claude Code does, and a click on the
-// printed calls folds them back.
+// printed calls folds them back. Desktop and Combined keep the summary line
+// above the member rows it lists (docs/themes/*.md, Collapse); it folds them.
+const KEEPS_SUMMARY=['desktop','combined'].includes(process.env.FUSE_CHAT_VIEW);
 async function checkGroup(page,scope){
   const group=page.locator(`${scope} .is-stack, ${scope} .is-console-group`).first();
   const toggle=group.locator(':scope > .chat-step-main > .chat-step-head [data-step-toggle]').first();
-  if(await toggle.getAttribute('aria-expanded')==='true'){
-    await group.locator(':scope > .chat-step-main > .chat-console-bundle .chat-step-node').first().click({force:true});
-  }
+  const fold=()=>KEEPS_SUMMARY?toggle.click():group.locator(':scope > .chat-step-main > .chat-console-bundle .chat-step-node').first().click({force:true});
+  if(await toggle.getAttribute('aria-expanded')==='true')await fold();
   assert.equal(await toggle.getAttribute('aria-expanded'),'false',`${scope} group starts folded`);
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-expanded'),'true',`${scope} group opens`);
   {
     assert.equal(await group.locator(':scope > .chat-step-main > .chat-console-bundle').isVisible(),true,`opened calls are printed`);
-    assert.equal(await toggle.isVisible(),false,`the summary line gives way to its calls`);
-    await group.locator(':scope > .chat-step-main > .chat-console-bundle .chat-step-node').first().click({force:true});
-    assert.equal(await toggle.getAttribute('aria-expanded'),'false',`a click on the printed calls folds them back`);
+    if(KEEPS_SUMMARY)assert.equal(await toggle.isVisible(),true,`the summary line stays above the calls it lists`);
+    else assert.equal(await toggle.isVisible(),false,`the summary line gives way to its calls`);
+    await fold();
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false',`a click on the ${KEEPS_SUMMARY?'summary line':'printed calls'} folds them back`);
     assert.equal(await toggle.isVisible(),true,`the summary line returns`);
     await toggle.focus();await page.keyboard.press('Enter');
     assert.equal(await toggle.getAttribute('aria-expanded'),'true',`Enter opens the summary line`);
-    await group.locator(':scope > .chat-step-main > .chat-console-bundle .chat-step-node').first().click({force:true});
+    await fold();
   }
   assert.equal(await toggle.getAttribute('aria-expanded'),'false',`${scope} group folds`);
 }
