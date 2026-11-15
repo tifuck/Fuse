@@ -133,6 +133,8 @@ function ccToolClass(trace) {
     if (name === "list_dir") return { kind: "list" };
     if (name === "search_tools") return { kind: "silent" };
     if (name === "todo_write") return { kind: "todo" };
+    if (name === "search_replace") return { kind: "edit" };
+    if (name === "write_file") return { kind: "write" };
     if (name === "run_terminal_command") {
       if (trace.platform === "windows") return { kind: "bash" };
       const kind = ccShellKind(deps.displayCommand(trace));

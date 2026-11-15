@@ -245,26 +245,28 @@ function scenarios() {
   });
 
   // —— search_replace locates the edit ——
+  // Desktop folds finished edits into the summary line: open it to read them.
+  const FOLDS_EDITS = process.env.FUSE_CHAT_VIEW === 'desktop';
   add('an edit locates its hunk by the real start line, not line 1', () => {
     const diff = '@@ -240,2 +240,2 @@\n-retries = 3\n+retries = 5\n';
     const edit = tool('search_replace', { path: '/srv/qa/app/config.py', preview: diff, output: 'updated' });
     return { rows: [user('Go.'), turn([say('Editing.\n\n'), T(edit)], [edit], ended)],
       truth: { call: { [edit.id]: 'done' } },
-      has: ['Update(app/config.py)', 'Added 1 line, removed 1 line'], diffStart: 240, lacks: ['@@'] };
+      has: ['Update(app/config.py)', 'Added 1 line, removed 1 line'], diffStart: 240, lacks: ['@@'], open: FOLDS_EDITS };
   });
   add('an edit with no known location shows the change and no fabricated line number', () => {
     const diff = '-retries = 3\n+retries = 5\n';
     const edit = tool('search_replace', { path: '/root/fuse-dev/app/config.py', preview: diff, output: 'updated' });
     return { rows: [user('Go.'), turn([say('Editing.\n\n'), T(edit)], [edit], ended)],
       truth: { call: { [edit.id]: 'done' } },
-      has: ['Update(/root/fuse-dev/app/config.py)', 'retries = 5'], bareDiff: true };
+      has: ['Update(/root/fuse-dev/app/config.py)', 'retries = 5'], bareDiff: true, open: FOLDS_EDITS };
   });
   add('an unanchored one-line deletion counts its removed lines, not a bare "Updated"', () => {
     const context = tool('search_replace', { path: '/root/fuse-dev/app/config.py', preview: '    load()\n-    retries = 3', output: 'updated' });
     const blank = tool('search_replace', { path: '/root/fuse-dev/app/other.py', preview: '-\n-    timeout = 9', output: 'updated' });
     return { rows: [user('Go.'), turn([say('Editing.\n\n'), T(context), T(blank)], [context, blank], ended)],
       truth: { call: { [context.id]: 'done', [blank.id]: 'done' } },
-      has: ['Removed 1 line', 'Removed 2 lines', 'retries = 3', 'timeout = 9'], lacks: ['Updated'] };
+      has: ['Removed 1 line', 'Removed 2 lines', 'retries = 3', 'timeout = 9'], lacks: ['Updated'], open: FOLDS_EDITS };
   });
   add('a failed edit is red and keeps the error, with no diff', () => {
     const edit = tool('search_replace', { path: '/srv/qa/app/missing.py', status: 'error', error: 'old_string not found', preview: '' });

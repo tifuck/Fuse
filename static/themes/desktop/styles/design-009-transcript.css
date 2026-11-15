@@ -135,13 +135,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head {
-  display: block !important;
+  display: flow-root !important;
   min-height: var(--console-row);
 }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle {
-  display: block !important;
+  display: flex !important;
+  align-items: center;
   width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
@@ -153,18 +155,24 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   cursor: pointer;
 }
 
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label {
-  display: inline !important;
+/* One line: the summary ends in an ellipsis, its chevron (on the toggle) stays,
+   open or folded. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label,
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label {
+  display: block !important;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
   color: var(--mist);
   font: var(--console-type)/var(--console-leading) var(--mono);
-  white-space: normal;
-  overflow: visible;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group.is-done .chat-step-label,
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group :is(.chat-console-dim, .chat-console-hint-line, .chat-console-thinkhint, .chat-console-branch, .chat-console-result-text) {
-  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  color: var(--dk-mute, color-mix(in srgb, var(--mist) 58%, var(--ink)));
 }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label b { font-weight: 700; }

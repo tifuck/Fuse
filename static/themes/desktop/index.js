@@ -373,6 +373,7 @@ export function createDesktopTheme(runtime) {
     get ccStillRunningText() { return theme.ccStillRunningText; },
     get ccToolClass() { return theme.ccToolClass; },
     get ccTurnVerb() { return theme.ccTurnVerb; },
+    get consoleEditCounts() { return theme.consoleEditCounts; },
     get consoleFreezeThoughtTimes() { return theme.consoleFreezeThoughtTimes; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },

@@ -66,7 +66,8 @@
 
 .chat[data-view="desktop"] .chat-activity { padding: 0; }
 
-.chat[data-view="desktop"] .chat-activity-panel { display: block; }
+/* Clip with room for the focus rings of the rows inside. */
+.chat[data-view="desktop"] .chat-activity-panel { display: block; overflow: clip; overflow-clip-margin: 4px; }
 
 .chat[data-view="desktop"] .chat-activity-panel-inner { overflow: visible; }
 

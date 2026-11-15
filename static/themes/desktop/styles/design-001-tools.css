@@ -18,22 +18,21 @@
   object-fit: contain;
 }
 
-/* The recap sits on the tool-row grid: an empty dot column, then the text
-   where every call's text starts. */
+/* The recap reads like the prose it sums up, quieter: same edge and face,
+   right under the reply and above its action row. */
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) { display: flex; flex-direction: column; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) > .chat-assistant { display: contents; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) [data-foot] { order: 2; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant > [data-recap] { order: 1; }
+
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap {
-  display: grid;
-  grid-template-columns: var(--console-col) minmax(0, 1fr);
-  column-gap: 0.45rem;
-  margin: 0.6rem 0 0.2rem;
-  color: color-mix(in srgb, var(--mute) 85%, var(--ink));
-  font: 400 var(--console-type, calc(0.78rem * var(--chat-text-scale, 1)))/var(--console-leading, 1.4) var(--mono);
+  display: block;
+  margin: 0.5rem 0 0.2rem;
+  color: var(--dk-mute, var(--mute));
+  font: 400 calc(0.8625rem * var(--chat-text-scale, 1))/1.6 var(--sans);
 }
 
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap-copy { grid-column: 2; min-width: 0; }
-
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap-label { font-weight: 650; }
-
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap-text { font-style: italic; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap-label { font-weight: 600; }
 
 html[data-chat-font] :is(
   .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),

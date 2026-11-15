@@ -141,7 +141,8 @@ function renderAssistant(msg, live) {
       // An opened summary line has no header in Console (as in a terminal agent):
       // a click on its printed calls folds it back.
       const openGroup = (event.target.closest(".chat-step.is-console-group.is-console-expanded"));
-      if (openGroup && !event.target.closest("a, button, input, textarea, [data-copy-tool]") && !String(window.getSelection() || "").trim()) {
+      // Desktop: an opened member's output and an agent row are not the line.
+      if (openGroup && !event.target.closest("a, button, input, textarea, [data-copy-tool], [data-open-agent], .chat-console-bundle .chat-console-hang.is-expanded") && !String(window.getSelection() || "").trim()) {
         event.preventDefault();
         collapseConsoleGroup(openGroup, msg);
         return;
@@ -179,7 +180,7 @@ function renderAssistant(msg, live) {
       li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", String(open)));
       if (!msg.stepOpen) msg.stepOpen = {};
       msg.stepOpen[li.dataset.step] = open;
-      if (isConsoleGroup) {
+      if (isConsoleGroup && !li.classList.contains("is-console-agents")) {
         consoleGroupOpenKeys(li, msg).forEach((key) => { msg.stepOpen[key] = open; });
       }
       if (isThink) {
@@ -198,6 +199,12 @@ function renderAssistant(msg, live) {
       }
       if (open) tailConsoleOutput(li);
       deps.saveDisclosures(msg);
+    });
+    // Agent tree rows are role=button: Enter and Space open the agent.
+    article.addEventListener("keydown", (event) => {
+      if ((event.key !== "Enter" && event.key !== " ") || !event.target.matches?.("li.chat-console-agent[data-open-agent]")) return;
+      event.preventDefault();
+      event.target.click();
     });
     deps.updateAssistant(article, msg, live);
     return article;

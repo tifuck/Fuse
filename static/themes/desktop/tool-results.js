@@ -103,6 +103,17 @@ function consoleDiffCounts(diff) {
     };
   }
 
+// An edit's line counts: the server's when it sent them, else the diff's; a
+// write without a diff adds its whole body.
+function consoleEditCounts(trace) {
+    const diff = consoleEditDiff(trace);
+    const body = typeof trace.content === "string" ? trace.content.replace(/\s+$/, "") : "";
+    const counted = diff ? consoleDiffCounts(diff) : { added: trace.name === "write_file" && body ? body.split("\n").length : 0, removed: 0 };
+    const added = Number(trace.added ?? trace.lines_added);
+    const removed = Number(trace.removed ?? trace.lines_removed);
+    return { added: Number.isFinite(added) ? added : counted.added, removed: Number.isFinite(removed) ? removed : counted.removed };
+  }
+
 function consoleStdoutHtml(lines) {
     return `<div class="chat-console-lines is-stdout">${lines.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
   }
@@ -188,10 +199,8 @@ function consoleFold(trace, presentation, verbose) {
     if (name === "search_replace" || name === "write_file") {
       const diff = consoleEditDiff(trace);
       if (diff) {
-        const counted = consoleDiffCounts(diff);
-        const added = Number(trace.added ?? trace.lines_added);
-        const removed = Number(trace.removed ?? trace.lines_removed);
-        const text = consoleChangeText(Number.isFinite(added) ? added : counted.added, Number.isFinite(removed) ? removed : counted.removed);
+        const { added, removed } = consoleEditCounts(trace);
+        const text = consoleChangeText(added, removed);
         return { status: text || (name === "write_file" ? status : "Updated"), preview: consoleDiffHtml(diff, { numbers: name !== "search_replace" || /^@@\s+-\d+/.test(diff) }), full: "" };
       }
       if (name === "search_replace") return { status, preview: "", full: "" };
@@ -379,10 +388,8 @@ function consoleResultLine(trace, presentation) {
       return path ? `Wrote ${path}` : "Wrote file";
     }
     if (name === "search_replace") {
-      const added = Number(trace.added ?? trace.lines_added);
-      const removed = Number(trace.removed ?? trace.lines_removed);
-      const counted = consoleDiffCounts(consoleEditDiff(trace) || "");
-      return consoleChangeText(Number.isFinite(added) ? added : counted.added, Number.isFinite(removed) ? removed : counted.removed) || "Updated";
+      const { added, removed } = consoleEditCounts(trace);
+      return consoleChangeText(added, removed) || "Updated";
     }
     if (name === "todo_write") {
       const todos = deps.normalizeTodos(trace.todos);
@@ -486,5 +493,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleEditCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

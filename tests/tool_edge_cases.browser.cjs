@@ -479,6 +479,9 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       const summary = page.locator('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle');
       if (await summary.count() && await summary.getAttribute('aria-expanded') !== 'true') await summary.click();
       const goneRow = page.locator(`[data-step="tool-${gone.id}"]`);
+      // Desktop's opened summary lists one-line rows: the row opens its own preview.
+      const goneToggle = goneRow.locator(':scope > .chat-step-main > .chat-step-head > .chat-step-toggle[data-step-toggle]');
+      if (process.env.FUSE_CHAT_VIEW === 'desktop' && await goneToggle.count()) await goneToggle.click();
       await goneRow.locator('.chat-tool-image img').evaluate((img) => { img.decode().catch(() => {}); }).catch(() => {});
       await page.waitForFunction(() => {
         const li = document.querySelector('[data-step^="tool-"]');
@@ -611,7 +614,8 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([doneTw, errTw], [T(doneTw), T(errTw)])]);
       await frame();
       const lines = await page.evaluate(() => [...document.querySelectorAll('.chat-log .is-console-group > .chat-step-main > .chat-step-head .chat-step-label')].map((el) => el.textContent.trim()));
-      eq(JSON.stringify(lines), JSON.stringify(['Updated todos 2 times']), 'settled todo_write calls fold into one summary line');
+      // Desktop keeps a failed call on its own row, so only the finished one folds.
+      eq(JSON.stringify(lines), JSON.stringify([process.env.FUSE_CHAT_VIEW === 'desktop' ? 'Updated todos' : 'Updated todos 2 times']), 'settled todo_write calls fold into one summary line');
       eq(await countSel('[data-todo-line]'), 0, 'no separate settle line');
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
