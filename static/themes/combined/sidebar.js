@@ -7,6 +7,7 @@
 export function create(deps) {
   const esc = (value) => deps.escapeHtml(value);
   const HEX = /^#[0-9a-f]{3,8}$/i;
+  const MORE = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor"/></svg>';
 
   // A run spinner slot; the runtime fills [data-run-spin] (setConsoleSpin).
   // Combined shows it as a pulsing dot (styles/shell.css).
@@ -37,7 +38,7 @@ export function create(deps) {
   function rowHtml({ cls, attrs, title, label, lead, extra = "", when = "", menu, on, working = "" }) {
     return `<div class="cb-row${cls}" data-history-item${attrs}>` +
       `<button type="button" class="cb-open" data-row-open title="${title}"${on ? ' aria-current="true"' : ""}>${working}<span class="cb-lead">${lead}</span><span class="cb-name" data-row-name>${label}</span>${extra}${when}</button>` +
-      `<button type="button" class="cb-more" data-row-more aria-label="${menu}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
+      `<button type="button" class="cb-more" data-row-more aria-label="${menu}" aria-haspopup="menu" aria-expanded="false">${MORE}</button></div>`;
   }
 
   function threadRowHtml(item, row) {

@@ -102,11 +102,12 @@ export function create(deps) {
     });
     q("[data-theme-agent-back]")?.addEventListener("click", () => q("[data-agent-main]")?.click());
     q("[data-theme-more]")?.addEventListener("click", () => setMenu(!q("[data-theme-menu]")?.classList.contains("is-open")));
+    // An item shuts the menu once its own handler (which may stop the click) has run.
     q("[data-theme-menu]")?.addEventListener("click", (event) => {
       if (!event.target.closest("button") || !q("[data-theme-menu]").classList.contains("is-open")) return;
       menuUsed = true;
-      setMenu(false);
-    });
+      setTimeout(() => setMenu(false));
+    }, true);
     q("[data-theme-menu]")?.addEventListener("keydown", (event) => {
       if (!q("[data-theme-menu]").classList.contains("is-open")) return;
       const list = menuItems();
@@ -242,13 +243,29 @@ export function create(deps) {
     if (head && head.title !== text) head.title = text;
   }
 
+  // The runtime sizes the todo list to five rows (from the in-progress one)
+  // when it paints; painted inside a closed rail, that measured nothing.
+  function fitTodos() {
+    const list = q("[data-live-todos] [data-todo-list]");
+    const rows = [...(list?.children || [])];
+    if (!rows.length) return;
+    const current = rows.findIndex((row) => row.classList.contains("is-in-progress"));
+    const at = current >= 0 ? current : Math.max(0, rows.findIndex((row) => row.classList.contains("is-pending")));
+    const start = Math.max(0, Math.min(at, rows.length - 5));
+    list.style.maxHeight = `${rows.slice(start, start + 5).reduce((sum, row) => sum + row.offsetHeight, 0)}px`;
+    list.scrollTop = rows[at].offsetTop;
+  }
+
   function syncChrome() {
     if (!deps.root) return;
     bind();
     if (railOpen === null) railOpen = wide() && saved();
     const state = busy();
     const next = railOpen ? "open" : "closed";
-    if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
+    if (deps.root.dataset.themeRailState !== next) {
+      deps.root.dataset.themeRailState = next;
+      if (railOpen) fitTodos();
+    }
     syncNews(state);
     syncPill(state);
     syncContext();

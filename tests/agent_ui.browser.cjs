@@ -44,7 +44,10 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       assert.equal(requests, 1, 'Open action makes exactly one request');
       assert.equal(await main.isVisible(), false, 'the main transcript steps aside for the child');
       assert.equal(await view.locator('[data-agent-live-dock]').isVisible(), false, 'finished child has no empty status row');
-      assert.equal(await page.locator('[data-agents-list] [data-agent-main]').isVisible(), true, 'the agent tree offers the way back to main');
+      // The way back to main: the agent tree's main row, or a theme's own
+      // always-visible control when its tree sits in a closed panel (Combined).
+      const wayBack = page.locator('[data-theme-agent-back]:visible, [data-agents-list] [data-agent-main]:visible').first();
+      assert.equal(await wayBack.isVisible(), true, 'a way back to main is on screen');
       const box = await view.boundingBox();
       console.log(width, 'view bounds', box);
       assert.ok(box.width > (width === 390 ? 350 : 600), 'the child transcript uses the main column');
@@ -53,14 +56,14 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
         return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + 40));
       }), true, 'the child transcript is not covered');
       await page.screenshot({ path: `/tmp/opencode/agent-ui-artifacts/open-${width}.png` });
-      await page.locator('[data-agents-list] [data-agent-main]').click();
+      await wayBack.click();
       await view.waitFor({ state: 'hidden' });
       assert.equal(await main.isVisible(), true, 'main returns');
       const beforeReopen = requests;
       await page.evaluate(() => fuseToolFixture.todo.openAgent('fixture-child'));
       await view.getByText('Existing child transcript loaded.', { exact: true }).waitFor();
       assert.ok(requests > beforeReopen, 're-opening fetches the child again');
-      await page.locator('[data-agents-list] [data-agent-main]').click();
+      await wayBack.click();
       await view.waitFor({ state: 'hidden' });
       missing = true;
       await page.evaluate(() => fuseToolFixture.todo.openAgent('fixture-child'));
