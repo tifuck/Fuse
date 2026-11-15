@@ -348,7 +348,9 @@ while ((node = walker.nextNode())) {
     if (cut) {
       const vis = clipTo(p, cut);
       const byAncestor = vis && (vis.right < Math.min(cut.right, W) - 1 || vis.left > Math.max(cut.left, 0) + 1);
-      if (!byAncestor && !p.closest('pre, table') && !checkedBoxes.has(p)) { checkedBoxes.add(p); add('clipped-text', 'fail', p, cut, 'text runs off the viewport edge'); }
+      let scroller = false;
+      for (let a = p.parentElement; a && !scroller; a = a.parentElement) scroller = /auto|scroll/.test(cs(a).overflowX);
+      if (!byAncestor && !scroller && !p.closest('pre, table') && !checkedBoxes.has(p)) { checkedBoxes.add(p); add('clipped-text', 'fail', p, cut, 'text runs off the viewport edge'); }
     }
   }
   // contrast samples
@@ -1383,8 +1385,9 @@ async def escape_check(env, s):
 
 async def new_context(env, browser, job):
     w, h = job.size
+    # Phones are touch devices ((hover: none), (pointer: coarse)); Console keeps its baseline's mouse.
     ctx = await browser.new_context(ignore_https_errors=True, viewport={"width": w, "height": h}, device_scale_factor=1,
-                                    reduced_motion="reduce", color_scheme=job.scheme if job.scheme in ("light", "dark") else "dark",
+                                    has_touch=w <= 480 and job.theme != "console", reduced_motion="reduce", color_scheme=job.scheme if job.scheme in ("light", "dark") else "dark",
                                     storage_state=env.storage)
     domain = env.base.split("://", 1)[1].split(":")[0].split("/")[0]
     await ctx.add_cookies([{"name": "fuse_chat_view", "value": job.theme, "domain": domain, "path": "/"}])
