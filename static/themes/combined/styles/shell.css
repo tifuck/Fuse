@@ -4,7 +4,7 @@
    earlier rule of this theme. Nested under one scope (same specificity as
    the theme's other rules, plus each selector's own). */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
-  --chat-bar-h: 2.5rem;
+  --chat-bar-h: 36px;
   --chat-history: 15rem;
   --cb-rail-w: 14.75rem;
   --cb-dim: color-mix(in srgb, var(--mist) 46%, var(--ink));
@@ -54,15 +54,17 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     color: var(--mist);
     font-size: 13.5px;
   }
+  /* The header's twin: same height, same hairline, edge to edge. */
   & .cb-brand-row {
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 36px;
+    height: var(--chat-bar-h);
     min-height: 0;
-    margin: 0;
-    padding: 0 0 0 2px;
+    margin: 0 -6px 4px;
+    padding: 0 6px 0 8px;
     border: 0;
+    border-bottom: 1px solid var(--line);
     background: none;
   }
   & .cb-brand {
@@ -305,7 +307,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-foot .user-dock-btn .user-dock-copy span { display: none; }
   & .cb-foot .user-dock-btn .user-dock-caret { color: var(--mute); }
 
-  /* ---- Header: 40px ---- */
+  /* ---- Header: 36px, Console's height ---- */
   /* One row: toggle · ← Main · project · title on the left, the pill and
      square icons on the right. The bar's own width picks what shows. */
   & .cb-head {
@@ -316,7 +318,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     gap: 2px;
     height: var(--chat-bar-h);
     min-height: 0;
-    padding: 0 8px 0 12px;
+    padding: 0 8px;
     border-bottom: 1px solid var(--line);
     background: var(--ink);
     container: cb-head / inline-size;
@@ -898,16 +900,15 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     & :is(.cb-archived, .cb-foot .user-dock-btn) { height: 44px; }
     & :is(.cb-agents .chat-agents-row, .cb-jobs .chat-jobs-row) { min-height: 40px; }
     & :is(.cb-agents .chat-agents-pick, .cb-jobs .chat-jobs-output-link) { min-height: 32px; }
-    /* Notched phones: the drawer's head and foot clear the insets. Its close
-       takes the spot of the header toggle that opened it. */
+    /* Notched phones: the header and the drawer's head and foot clear the
+       insets. Both heads are a 44px row plus the hairline. */
+    & { --chat-bar-h: 45px; }
     & .cb-side { padding-bottom: calc(6px + var(--safe-bottom, 0px)); }
-    & .cb-brand-row { height: auto; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 0 0; }
-    & .cb-brand-row .chat-history-collapse { order: -1; width: 44px; height: 44px; }
+    & :is(.cb-head, .cb-brand-row) { height: calc(45px + var(--safe-top, 0px)); padding-top: var(--safe-top, 0px); }
+    & .cb-head { padding-inline: 4px 6px; }
+    & :is(.cb-head .chat-history-toggle, .cb-brand-row .chat-history-collapse) { width: 44px; height: 44px; margin-right: 0; }
   }
   @media (max-width: 480px) {
-    & { --chat-bar-h: 2.75rem; }
-    & .cb-head { height: auto; min-height: calc(var(--chat-bar-h) + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 6px 0 4px; }
-    & .cb-head .chat-history-toggle { width: 44px; height: 44px; margin-right: 0; }
     & .cb-brand { height: 36px; }
   }
   @media (max-width: 760px) {
