@@ -1,6 +1,6 @@
 {#- Combined theme: the sidebar. A brand row, a New chat row, the list in
-    Today / Earlier groups of 26px rows, projects as coloured squares and a
-    30px account footer. Every data-* hook is a runtime contract; the other
+    Today / Earlier groups of 28px rows, projects as coloured squares, a
+    quiet Archived row and the account footer. Every data-* hook is a runtime contract; the other
     themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
   <aside class="chat-history cb-side" id="chat-history" data-history aria-label="Chat history">
     <div class="chat-history-head cb-brand-row" data-history-head>
@@ -54,16 +54,18 @@
         </label>
       </div>
     </div>
-    <h5 class="cb-group" data-history-kicker hidden>Chats</h5>
+    <h2 class="cb-group" data-history-kicker hidden>Chats</h2>
     <div class="cb-list" id="chat-history-panel" data-history-list><div class="cb-loading" data-history-loading role="img" aria-label="Loading chats"><span></span><span></span><span></span></div></div>
     <div class="cb-foot" data-history-footer>
       <button type="button" class="cb-archived" data-history-archived aria-pressed="false" hidden>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.5 3.5h11v3h-11zM3.5 6.5v6h9v-6M6.5 9h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        <svg class="cb-back-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13 8H3.5M7.5 4L3.5 8l4 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span data-history-archived-label>Archived</span>
         <span class="cb-count" data-history-archived-count></span>
       </button>
       {% include "_account.html" %}
     </div>
-    <button type="button" class="chat-history-resize" data-history-resize role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-controls="chat-history" aria-valuemin="224" aria-valuemax="480" aria-valuenow="304" title="Drag or use arrow keys to resize · double-click or Enter to reset"></button>
+    <button type="button" class="chat-history-resize" data-history-resize role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-controls="chat-history" aria-valuemin="224" aria-valuemax="480" aria-valuenow="240" title="Drag or use arrow keys to resize · double-click or Enter to reset"></button>
   </aside>
   <div class="chat-history-edge" data-history-edge aria-hidden="true"></div>
   <button type="button" class="chat-history-backdrop" data-history-backdrop aria-label="Close chat history" tabindex="-1" hidden></button>

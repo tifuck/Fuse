@@ -150,8 +150,9 @@
     opacity: 0;
     transition: opacity 140ms ease;
   }
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-resize:is(:hover, :focus-visible, .is-dragging)::after { opacity: 0.7; }
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-resize:focus-visible { outline: none; }
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-resize:is(:hover, .is-dragging)::after { opacity: 0.7; }
+  /* Keyboard focus: a solid 2px bar down the edge. */
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-resize:focus-visible { outline: none; background: linear-gradient(var(--brass), var(--brass)) center / 2px 100% no-repeat; }
 }
 /* Account: a slim row that opens a menu above it. */
 :where(html.is-chat-root[data-chat-view="combined"]) .user-dock { position: relative; z-index: 24; overflow: visible; }
