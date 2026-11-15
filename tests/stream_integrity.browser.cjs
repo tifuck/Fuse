@@ -419,8 +419,10 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       for (const part of ['body', 'recap', 'status', 'meta']) {
         check(Math.abs(ratio(part) - 1.3) < 0.02, tag(`${part} follows the reading scale (x${ratio(part).toFixed(3)})`));
       }
-      check(Math.abs(scaled.base.recap - scaled.base.body) < 0.6, tag(`recap matches the answer text (${scaled.base.recap}px vs ${scaled.base.body}px)`));
-      check(Math.abs(scaled.up.recap - scaled.up.body) < 0.6, tag(`recap still matches the answer text when scaled (${scaled.up.recap}px vs ${scaled.up.body}px)`));
+      // Desktop and Combined set the recap at 0.92em of the prose (docs/themes/*.md, Transcript).
+      const recapEm = ['desktop', 'combined'].includes(process.env.FUSE_CHAT_VIEW) ? 0.92 : 1;
+      check(Math.abs(scaled.base.recap - scaled.base.body * recapEm) < 0.6, tag(`recap matches the answer text (${scaled.base.recap}px vs ${scaled.base.body}px x${recapEm})`));
+      check(Math.abs(scaled.up.recap - scaled.up.body * recapEm) < 0.6, tag(`recap still matches the answer text when scaled (${scaled.up.recap}px vs ${scaled.up.body}px x${recapEm})`));
     }
 
     assert.deepEqual(errors, [], `page errors: ${errors.join('; ')}`);
