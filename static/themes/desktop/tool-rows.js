@@ -168,10 +168,10 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     {
       const verbose = Boolean(opts.verbose);
       const fold = deps.consoleFold(trace, presentation, verbose);
-      // An opened summary line prints a call the way an expanded row reads.
-      const preview = verbose ? "" : fold.preview;
-      inner = verbose ? fold.full || fold.preview : fold.full;
-      const expandable = !verbose && openKind !== "agent" && Boolean(fold.full);
+      // An opened summary line lists one-line rows: each opens its own output.
+      const preview = verbose || opts.oneLine ? "" : fold.preview;
+      inner = verbose || opts.oneLine ? fold.full || fold.preview : fold.full;
+      const expandable = !verbose && openKind !== "agent" && Boolean(inner);
       const head = deps.toolHeadHtml({
         ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",

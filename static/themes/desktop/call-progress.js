@@ -406,7 +406,7 @@ function consoleAutoStepsHtml(msg) {
     return out.join("");
   }
 
-function ccAgentsGroupHtml(agents, live) {
+function ccAgentsGroupHtml(agents, live, openMap) {
     const rows = agents.map(({ entry }) => {
       const trace = entry.trace;
       const presentation = deps.toolPresentation(trace, live);
@@ -456,16 +456,19 @@ function ccAgentsGroupHtml(agents, live) {
       const sub = resolvedBackground ? "" :
         `<div class="chat-console-agent-sub"><span class="chat-console-branch${last ? " is-blank" : ""}" aria-hidden="true">│</span><span class="chat-console-dim"><span aria-hidden="true">└ </span>${deps.escapeHtml(status)}</span></div>`;
       return (
-        `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}">` +
+        `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}" role="button" tabindex="0">` +
         `<div class="chat-console-agent-line"><span class="chat-console-branch" aria-hidden="true">${last ? "└─" : "├─"}</span>` +
         `<span class="chat-console-agent-name${presentation.running ? " is-dim" : ""}">${label}${stats}</span></div>${sub}</li>`
       );
     }).join("");
     const state = unresolved ? `is-running${errored ? " is-errored" : ""}` : errored ? "is-error" : "is-done";
+    // The block starts open; its line folds the tree away.
+    const key = `agents-${deps.executionIdentity(rows[0].trace)}`;
+    const open = openMap?.[key] !== false;
     return (
-      `<li class="chat-step is-console-group is-console-agents ${state}" data-step="agents-${deps.escapeHtml(deps.executionIdentity(rows[0].trace))}">` +
+      `<li class="chat-step is-console-group is-console-agents ${state}${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
-      `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">${head}</span></div>` +
+      `<div class="chat-step-main"><div class="chat-step-head"><button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open}"><span class="chat-step-label">${head}</span></button></div>` +
       `<ul class="chat-console-agent-tree">${items}</ul></div></li>`
     );
   }

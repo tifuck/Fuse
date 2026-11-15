@@ -1,7 +1,7 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
 function ccTurnLineHtml(msg, latest) {
-    if (msg.elapsedMs == null) return "";
+    if (msg.elapsedMs == null) return turnActionsHtml(msg, latest);
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
@@ -12,13 +12,15 @@ function ccTurnLineHtml(msg, latest) {
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
-    return `${turnActionsHtml(msg)}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
+    return `${turnActionsHtml(msg, latest)}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
       `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
       `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
   }
 
 // A finished reply's action row: copy, fork, pin, read aloud, then when it
 // ended ("Just now", "5m ago"). Desktop's chrome.js runs the buttons.
+// Fork copies the whole chat, so it sits only under the last reply; a
+// subagent's replies (noActions) can be copied and read, not forked or pinned.
 const TURN_ACTIONS = [
   ["copy", "Copy reply", '<rect x="5.2" y="5.2" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.8 5V3.8a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.6A1.2 1.2 0 0 0 4 10.6h1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
   ["fork", "Fork this chat", '<circle cx="4.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="12.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5v1.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V5M8 8.5V11" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
@@ -34,11 +36,14 @@ function agoText(at) {
     if (s < 86400) return `${Math.round(s / 3600)}h ago`;
     return when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
-function turnActionsHtml(msg) {
-    const buttons = TURN_ACTIONS.map(([kind, label, icon]) =>
+function turnActionsHtml(msg, latest) {
+    const shown = TURN_ACTIONS.filter(([kind]) => kind === "copy" || (kind === "speak" ? "speechSynthesis" in window
+      : !msg.noActions && (kind !== "fork" || latest)));
+    const buttons = shown.map(([kind, label, icon]) =>
       `<button type="button" class="dk-act-btn" data-theme-turn-act="${kind}" aria-label="${label}" title="${label}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${icon}</svg></button>`).join("");
     const ago = agoText(msg.endedAt);
-    return `<span class="dk-acts">${buttons}${ago ? `<time class="dk-ago">${deps.escapeHtml(ago)}</time>` : ""}</span>`;
+    const when = ago ? new Date(msg.endedAt) : null;
+    return `<span class="dk-acts">${buttons}${ago ? `<time class="dk-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString())}">${deps.escapeHtml(ago)}</time>` : ""}</span>`;
   }
 
 function ccShellHint(trace) {
@@ -155,6 +160,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let bash = 0;
     let todos = 0;
     let gitOpBash = 0;
+    let plus = 0;
+    let minus = 0;
     let thoughtMs = 0;
     let thought = false;
     let latestThought;
@@ -164,6 +171,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let shell = null;
     const readPaths = new Set();
     const imagePaths = new Set();
+    const edited = new Set();
+    const wrote = new Set();
     const searchArgs = [];
     const commits = [];
     const pushes = [];
@@ -192,6 +201,13 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       if (cls.kind === "silent") return;
       if (cls.kind === "todo") {
         todos += 1;
+        return;
+      }
+      if (cls.kind === "edit" || cls.kind === "write") {
+        (cls.kind === "edit" ? edited : wrote).add(String(trace.path || trace.id));
+        const counts = deps.consoleEditCounts(trace);
+        plus += counts.added;
+        minus += counts.removed;
         return;
       }
       if (cls.kind === "bash") {
@@ -233,7 +249,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     const reads = readPaths.size + readOps;
     const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos) return "";
+    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size) return "";
 
     const parts = [];
     if (thought) {
@@ -260,12 +276,16 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (images) add(active ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
     if (list) add(active ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
     if (shells) add(active ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
+    if (edited.size) add(active ? "editing" : "edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
+    if (wrote.size) add(active ? "writing" : "wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
     if (todos) add(active ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
 
     const headline = active ? ccHeadline(group.items, msg) : "";
     const elapsed = active && runningSince
       ? `<span class="chat-console-dim" data-cc-clock="elapsed" data-since="${runningSince}">${ccElapsedText(runningSince)}</span>` : "";
-    const label = (headline ? deps.escapeHtml(headline) : parts.join(", ")) + elapsed + (active && !headline ? "…" : "");
+    const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
+    const label = (headline ? deps.escapeHtml(headline) : parts.join(", ") + stat) + elapsed + (active && !headline ? "…" : "");
+    const title = label.replace(/<[^>]*>/g, "");
 
     let hintHtml = "";
     if (active && latestThought !== undefined) {
@@ -285,7 +305,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         `<span class="chat-step-node" aria-hidden="true"></span>` +
         `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">Thought for ${deps.escapeHtml(ccThinkClock(item.ms, 0))}</span></div>` +
         `<div class="chat-console-thought chat-think-markdown">${deps.renderMarkdown(item.text, false)}</div></div></li>`
-      : deps.toolStepHtml(item.entry.trace, item.key, live, true, openMap, { verbose: true })).join("");
+      : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     const state = active ? `is-running${errored ? " is-errored" : ""}` : "is-done";
     // A streaming thought: the transcript fills [data-reason-preview] and
     // keeps it pinned to the newest line (thinking-disclosure.js).
@@ -304,8 +324,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
       `<div class="chat-step-head">` + (group.items.length
-        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}"><span class="chat-step-label">${label}</span></button>`
-        : `<div class="chat-step-toggle"><span class="chat-step-label">${label}</span></div>`) + `</div>` +
+        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${title}"><span class="chat-step-label">${label}</span></button>`
+        : `<div class="chat-step-toggle" title="${title}"><span class="chat-step-label">${label}</span></div>`) + `</div>` +
       // A failed or interrupted member says so on its own row once the line
       // is opened; the folded line is only its summary.
       (hintHtml ? hang(hintHtml, " is-group-hint") : "") +
@@ -343,8 +363,9 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     }
     // A silent call (search_tools) stays hidden unless it was cut short: an
     // interrupted one prints on its own row, saying what the run was doing.
+    // Desktop: a failed call stays on its own row too.
     const holds = (entry, at, cls) => cls.kind === "silent" ? deps.toolPresentation(entry.trace, live).interrupted
-      : at === newest || deps.toolPresentation(entry.trace, live).running;
+      : at === newest || deps.toolPresentation(entry.trace, live).running || deps.toolPresentation(entry.trace, live).failed;
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];
@@ -411,7 +432,7 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     flush();
     const lastRow = rows[rows.length - 1];
     return rows.map((row) => {
-      if (row.agents) return deps.ccAgentsGroupHtml(row.agents, live);
+      if (row.agents) return deps.ccAgentsGroupHtml(row.agents, live, stepOpen);
       if (!row.items) return deps.toolStepHtml(row.entry.trace, row.key, live, deps.stepOpenAt(stepOpen, row.key), stepOpen);
       const current = row === lastRow && !row.endedByThought;
       // Console keeps calls off a live line, so only a thought makes it live.

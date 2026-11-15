@@ -214,14 +214,17 @@ const groupGrid = () => {
       await mount(rows, false);
       const s = await snap();
       const sig = s.tops.map((t) => (t.kind === 'md' ? `md:${t.text}` : t.kind === 'group' ? `group:${t.label}` : `${t.kind}:${t.step}`));
+      // Desktop folds the edit into the line with the command.
+      const DESKTOP = process.env.FUSE_CHAT_VIEW === 'desktop';
       check(JSON.stringify(sig) === JSON.stringify([
-        'group:Read 2 files', 'md:Prose one.', 'row:tool-mix-edit', 'group:Ran 1 shell command',
+        'group:Read 2 files', 'md:Prose one.', ...(DESKTOP ? ['group:Ran 1 shell command, edited 1 file +1 −1'] : ['row:tool-mix-edit', 'group:Ran 1 shell command']),
         'md:Prose two.', 'group:Read 1 file', 'group:Thought for 12s', 'md:Done.',
       ]), `rows keep their order:\n  saw  ${JSON.stringify(sig)}`);
       check(s.groups[0].members.join() === 'tool-mix-a,tool-mix-b', `the first group holds exactly its two reads: ${s.groups[0].members.join()}`);
       check(s.groups[2].members.join() === 'tool-mix-d', `the read after the prose is its own line, not swallowed above: ${s.groups[2].members.join()}`);
       check(s.groups[3].members.length === 1 && !s.groups[3].members.some((m) => m.startsWith('tool-')), 'the thought line holds only the thought');
-      check(s.rows.filter((r) => r.step === 'tool-mix-edit').length === 1, 'the lone edit is one standalone row');
+      if (DESKTOP) check(s.groups[1].members.join() === 'tool-mix-edit,tool-mix-cmd', `the edit joins the command's line: ${s.groups[1].members.join()}`);
+      else check(s.rows.filter((r) => r.step === 'tool-mix-edit').length === 1, 'the lone edit is one standalone row');
       check(!s.dupes.length && !s.placeholders && s.overflow <= 0, `audit: ${JSON.stringify(s.dupes)} overflow ${s.overflow}`);
       pass('mixed transcript keeps order; lone calls and thoughts stay out of the wrong group', from);
     }
@@ -301,6 +304,8 @@ const groupGrid = () => {
       check(!s.groups[0].expanded && (await groupState()).aria === 'false', 'a late call does not re-open a collapsed summary');
       check(s.groups[0].members.join() === 'tool-s1,tool-s2,tool-s3', `the late call joined the group: ${s.groups[0].members.join()}`);
       await groupToggle().click();
+      // Desktop's opened summary lists one-line rows: open the member to read it.
+      if (process.env.FUSE_CHAT_VIEW === 'desktop') await page.locator('[data-step="tool-s2"] > .chat-step-main > .chat-step-head > .chat-step-toggle').click();
       await page.evaluate(() => fuseToolFixture.update('s2', { output: '1: y\n2: STREAMED_THREE\n' }, true));
       s = await snap();
       check(s.groups[0].expanded, 'more output keeps an open summary open');
@@ -421,6 +426,11 @@ const groupGrid = () => {
       await frame();
       await page.locator('.chat-log li.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head > .chat-step-toggle').nth(2).click();
       await frame();
+      // Desktop's opened summary lists one-line rows; the command opens its own output.
+      if (process.env.FUSE_CHAT_VIEW === 'desktop') {
+        await page.locator('[data-step="tool-wh-c2"] > .chat-step-main > .chat-step-head > .chat-step-toggle').click();
+        await frame();
+      }
       const text = page.locator('[data-step="tool-wh-c2"] pre.chat-console-out .chat-console-stdout').first();
       await text.scrollIntoViewIfNeeded();
       const b = await text.boundingBox();
@@ -445,6 +455,10 @@ const groupGrid = () => {
       await frame();
       await groupToggle().click();
       await frame();
+      if (process.env.FUSE_CHAT_VIEW === 'desktop') {
+        for (const id of ['wide-read', 'wide-cmd']) await page.locator(`[data-step="tool-${id}"] > .chat-step-main > .chat-step-head > .chat-step-toggle`).click();
+        await frame();
+      }
       const grid = await page.evaluate(groupGrid);
       check(!grid.missing, 'the summary is open for the probe');
       check(grid.overflow <= 0, `390px page overflow ${grid.overflow}px`);

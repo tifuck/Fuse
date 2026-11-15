@@ -628,9 +628,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .chat-live-dock .chat-activity-spin > * { display: none; }
   & .chat-live-dock :is(.chat-status-verb, .chat-status-shimmer) { color: var(--dk-mute); font: inherit; background: none; -webkit-text-fill-color: currentColor; animation: none; }
-  & .chat-live-dock .chat-status-meta { margin-left: 6px; color: var(--dk-dim); font: 12px var(--sans); }
+  & .chat-live-dock .chat-status-meta { margin-left: 6px; color: var(--dk-mute); font: 12px var(--sans); }
   & .chat-live-dock .chat-dock-dots { display: none; }
-  & .chat-latest { border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); }
+  & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
+  @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
+  @media (prefers-reduced-motion: reduce) { & .chat-live-dock .chat-activity-spin { animation: none; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
