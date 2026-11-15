@@ -39,6 +39,13 @@ const check = (value, message) => { assert.ok(value, message); checks++; };
     await page.addStyleTag({ content: '* { animation: none !important; transition: none !important; }' });
 
     const row = () => page.locator('[data-step="tool-row"]');
+    // Combined lists an opened summary's calls as one-line rows that open on
+    // their own, and keeps a failed call out of the summary on its own row.
+    const combined = process.env.FUSE_CHAT_VIEW === 'combined';
+    const openMember = async (r) => {
+      const own = r.locator(':scope > .chat-step-main > .chat-step-head > .chat-step-toggle[data-step-toggle]');
+      if (await own.count() && await own.getAttribute('aria-expanded') !== 'true') await own.click();
+    };
     // A folded console call's own toggle only exists once its summary line is open.
     const openSummary = async () => {
       const summary = page.locator('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle');
@@ -101,12 +108,27 @@ const check = (value, message) => { assert.ok(value, message); checks++; };
           // Inside an opened console summary a settled call is printed in full,
           // so the disclosure is the summary line, not the call.
           {
+            const want = status === 'interrupted' || status === 'cancelled' ? 'Interrupted' : status === 'error' ? 'boom' : 'line five';
+            if (combined && status === 'error') {
+              check(await r.evaluate((el) => !el.closest('.is-console-group')), `${tag} a failed call stands on its own row`);
+              check((await r.innerText()).includes(want), `${tag} its row shows ${want}`);
+              continue;
+            }
             const summary = page.locator('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle');
             check(await summary.getAttribute('aria-expanded') === 'false', `${tag} ${status} summary line starts collapsed`);
             await summary.click();
-            check(await r.evaluate((el) => el.classList.contains('is-console-verbose')), `${tag} ${status} opened summary prints the call in full`);
+            if (combined) {
+              check(await r.evaluate((el) => !el.classList.contains('is-console-verbose')), `${tag} ${status} opened summary lists the call on one line`);
+              await openMember(r);
+            } else check(await r.evaluate((el) => el.classList.contains('is-console-verbose')), `${tag} ${status} opened summary prints the call in full`);
             const shown = await r.innerText();
             check(shown.includes(want), `${tag} ${status} opened summary shows ${want}`);
+            if (combined) {
+              // The summary keeps its line; its caret folds it back.
+              await summary.click();
+              check(await page.locator('.is-console-group.is-console-expanded').count() === 0, `${tag} ${status} the summary line folds it back`);
+              continue;
+            }
             // An opened summary hides its header; a click on the printed calls
             // folds it back.
             const box = await r.locator('.chat-console-call').boundingBox();
@@ -130,8 +152,9 @@ const check = (value, message) => { assert.ok(value, message); checks++; };
           check(summary.includes('ran') && summary.includes('shell command') && !summary.includes('line five'), `${tag} collapsed summary names the command without its output`);
         }
         await openSummary();
-        // Desktop's opened summary lists one-line rows: the row opens its own body.
+        // Desktop and Combined list one-line rows in an opened summary: the row opens its own body.
         if (DESKTOP) await flow.locator(':scope > .chat-step-main > .chat-step-head > .chat-step-toggle').click();
+        if (combined) await openMember(flow);
         await page.evaluate(() => fuseToolFixture.update('flow', { output: 'line one\nline two\nline three\nline four\nline five\nline six\nline seven' }, false));
         const openText = await flowBody();
         check(openText.includes('line seven'), `${tag} streamed output reaches the open body`);
@@ -144,8 +167,8 @@ const check = (value, message) => { assert.ok(value, message); checks++; };
 
         // A terminal status arriving while expanded rewrites the header too.
         await page.evaluate(() => fuseToolFixture.update('flow', { status: 'error', state: 'failed', execution_status: 'failed', error: 'tests failed', output: 'line one\nline two\nline three\nline four\nline five\nline six\nFAIL' }, false));
-        // Desktop moves a failed call out of the summary onto its own row, which prints its failure whole.
-        if (DESKTOP) check(await flow.evaluate((li) => !li.closest('.is-console-group')), `${tag} the failure leaves the summary for its own row`);
+        // Desktop and Combined move a failed call out of the summary onto its own row, which prints its failure whole.
+        if (DESKTOP || combined) check(await flow.evaluate((li) => !li.closest('.is-console-group')), `${tag} the failure leaves the summary for its own row`);
         else check(await flowOpen() === 'true', `${tag} stays open across the failure`);
         check(await flow.getAttribute('data-state') === 'error', `${tag} expanded row takes the error state`);
         check((await flow.innerText()).includes('Error'), `${tag} row reads the failure while open`);

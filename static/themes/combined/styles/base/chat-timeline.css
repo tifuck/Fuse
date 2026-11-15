@@ -14,6 +14,8 @@
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-activity.is-waiting .chat-activity-panel { display: none; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-activity:not(.is-open) .chat-activity-panel-inner { padding: 0; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-activity-panel-inner { overflow: hidden; min-height: 0; }
+/* Open, the panel clips only past a focus ring's reach. */
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-activity.is-open :is(.chat-activity-panel, .chat-activity-panel-inner) { overflow: clip; overflow-clip-margin: 4px; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-timeline {
   --rail: color-mix(in srgb, var(--mute) 38%, transparent);
   --rail-cap: calc(var(--row) / 2);

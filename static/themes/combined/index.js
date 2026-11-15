@@ -373,6 +373,8 @@ export function createCombinedTheme(runtime) {
     get ccStillRunningText() { return theme.ccStillRunningText; },
     get ccToolClass() { return theme.ccToolClass; },
     get ccTurnVerb() { return theme.ccTurnVerb; },
+    get consoleDiffCounts() { return theme.consoleDiffCounts; },
+    get consoleEditDiff() { return theme.consoleEditDiff; },
     get consoleFreezeThoughtTimes() { return theme.consoleFreezeThoughtTimes; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -438,6 +440,7 @@ export function createCombinedTheme(runtime) {
     get toolPresentation() { return runtime.toolPresentation; },
     get tracesSig() { return runtime.tracesSig; },
     get transcriptDomOptions() { return runtime.transcriptDomOptions; },
+    get turnActionsHtml() { return theme.turnActionsHtml; },
   }));
   Object.assign(theme, createWorkPanels({
     get agentActivitySummary() { return runtime.agentActivitySummary; },

@@ -458,7 +458,7 @@ function ccAgentsGroupHtml(agents, live) {
       return (
         `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}">` +
         `<div class="chat-console-agent-line"><span class="chat-console-branch" aria-hidden="true">${last ? "└─" : "├─"}</span>` +
-        `<span class="chat-console-agent-name${presentation.running ? " is-dim" : ""}">${label}${stats}</span></div>${sub}</li>`
+        `<button type="button" class="chat-console-agent-name${presentation.running ? " is-dim" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}" aria-haspopup="dialog">${label}${stats}</button></div>${sub}</li>`
       );
     }).join("");
     const state = unresolved ? `is-running${errored ? " is-errored" : ""}` : errored ? "is-error" : "is-done";

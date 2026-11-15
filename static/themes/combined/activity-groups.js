@@ -3,19 +3,103 @@ export function create(deps) {
 function ccTurnLineHtml(msg, latest) {
     if (msg.elapsedMs == null) return "";
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
-    const head = `<span class="chat-console-turn-mark" aria-hidden="true">✻</span> `;
     if (pendingAgents) {
-      return `${head}<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
+      return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
     // A stopped or failed turn never finished, so it says so instead of "done".
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
-    const done = outcome ? "" : deps.ccDoneAt(msg.endedAt);
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
-    return `${head}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
+    return `${turnActionsHtml(msg)}<span class="cb-work">${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
       `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+  }
+
+// A settled reply's action row: copy, fork, pin, read aloud, then when it
+// ended ("Just now", full time in the title). A subagent's reply keeps copy
+// and read aloud. The buttons run through window.FuseChatActions.
+const TURN_ACTIONS = [
+  ["copy", "Copy reply", '<rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/>'],
+  ["fork", "Fork this chat", '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="11.5" cy="3.5" r="1.5"/><circle cx="8" cy="12.5" r="1.5"/><path d="M4.5 5v1a2.5 2.5 0 0 0 2.5 2.5h2A2.5 2.5 0 0 0 11.5 6V5M8 8.5V11"/>'],
+  ["pin", "Pin this chat", '<path d="M6 2.5h4l-.5 3.8 2.2 2.4H4.3l2.2-2.4zM8 8.7v4.8"/>'],
+  ["speak", "Read aloud", '<path d="M2.5 6.2h2.3l3.2-2.7v9l-3.2-2.7H2.5z"/><path d="M10.6 5.8a3 3 0 0 1 0 4.4M12.4 4a5.6 5.6 0 0 1 0 8"/>'],
+];
+let speakingBtn = null;
+let actionsBound = false;
+
+function agoText(when) {
+    const s = (Date.now() - when.getTime()) / 1000;
+    if (s < 90) return "Just now";
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
+    if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+    return when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+function turnActionsHtml(msg) {
+    bindTurnActions();
+    const speech = typeof window !== "undefined" && "speechSynthesis" in window;
+    const buttons = TURN_ACTIONS
+      .filter(([kind]) => (kind !== "speak" || speech) && (!msg.noActions || kind === "copy" || kind === "speak"))
+      .map(([kind, label, icon]) => `<button type="button" class="cb-act" data-theme-turn-act="${kind}" aria-label="${label}" title="${label}"${kind === "speak" ? ' aria-pressed="false"' : ""}>` +
+        `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></button>`).join("");
+    const when = new Date(msg.endedAt || "");
+    const ago = msg.endedAt && !Number.isNaN(when.getTime())
+      ? `<time class="cb-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}">${deps.escapeHtml(agoText(when))}</time>` : "";
+    return `<span class="cb-acts">${buttons}${ago}</span>`;
+  }
+
+function replyText(turn) {
+    const content = turn?._message?.content;
+    if (typeof content === "string" && content.trim()) return content.trim();
+    return [...(turn?.querySelectorAll("[data-flow] > [data-content-block]") || [])].map((el) => el.innerText.trim()).filter(Boolean).join("\n\n");
+  }
+
+function setSpeaking(btn) {
+    if (speakingBtn) {
+      speakingBtn.setAttribute("aria-pressed", "false");
+      speakingBtn.setAttribute("aria-label", "Read aloud");
+      speakingBtn.title = "Read aloud";
+    }
+    speakingBtn = btn;
+    if (btn) {
+      btn.setAttribute("aria-pressed", "true");
+      btn.setAttribute("aria-label", "Stop reading");
+      btn.title = "Stop reading";
+    }
+  }
+
+async function turnAction(btn) {
+    const kind = btn.dataset.themeTurnAct;
+    const turn = btn.closest(".chat-turn");
+    if (kind === "copy") {
+      try {
+        await navigator.clipboard.writeText(replyText(turn));
+        window.FuseChatActions?.hint?.("Copied to clipboard.");
+      } catch (_) {
+        window.FuseChatActions?.hint?.("Clipboard copy failed.");
+      }
+    } else if (kind === "fork" || kind === "pin") {
+      window.FuseChatActions?.run?.(kind);
+    } else if (kind === "speak" && window.speechSynthesis) {
+      const again = speakingBtn === btn;
+      window.speechSynthesis.cancel();
+      setSpeaking(null);
+      if (again) return;
+      const utterance = new SpeechSynthesisUtterance(replyText(turn));
+      utterance.onend = utterance.onerror = () => { if (speakingBtn === btn) setSpeaking(null); };
+      setSpeaking(btn);
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+function bindTurnActions() {
+    if (actionsBound || typeof document === "undefined") return;
+    actionsBound = true;
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest?.("[data-theme-turn-act]");
+      if (btn) turnAction(btn);
+    });
   }
 
 function ccShellHint(trace) {
@@ -139,6 +223,10 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let errored = false;
     let runningSince = 0;
     let shell = null;
+    let added = 0;
+    let removed = 0;
+    const editPaths = new Set();
+    const createdPaths = new Set();
     const readPaths = new Set();
     const imagePaths = new Set();
     const searchArgs = [];
@@ -169,6 +257,19 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       if (cls.kind === "silent") return;
       if (cls.kind === "todo") {
         todos += 1;
+        return;
+      }
+      if (cls.kind === "edit" || cls.kind === "write") {
+        const diff = deps.consoleEditDiff(trace);
+        const counted = diff ? deps.consoleDiffCounts(diff)
+          : { added: typeof trace.content === "string" && trace.content.trim() ? trace.content.replace(/\s+$/, "").split("\n").length : 0, removed: 0 };
+        const plus = Number(trace.added ?? trace.lines_added);
+        const minus = Number(trace.removed ?? trace.lines_removed);
+        added += Number.isFinite(plus) ? plus : counted.added;
+        removed += Number.isFinite(minus) ? minus : counted.removed;
+        const created = cls.kind === "write" && typeof trace.output === "string" && /^created /i.test(trace.output.trim());
+        (created ? createdPaths : editPaths).add(String(trace.path || trace.id));
+        hint = ccPathHint(trace) || hint;
         return;
       }
       if (cls.kind === "bash") {
@@ -210,7 +311,9 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     const reads = readPaths.size + readOps;
     const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos) return "";
+    const edits = editPaths.size;
+    const creates = createdPaths.size;
+    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edits && !creates) return "";
 
     const parts = [];
     if (thought) {
@@ -237,12 +340,16 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (images) add(active ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
     if (list) add(active ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
     if (shells) add(active ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
+    if (edits) add(active ? "editing" : "edited", `<b>${edits}</b> ${edits === 1 ? "file" : "files"}`);
+    if (creates) add(active ? "creating" : "created", `<b>${creates}</b> ${creates === 1 ? "file" : "files"}`);
     if (todos) add(active ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
+    const counts = [added ? `<span class="cb-plus">+${added}</span>` : "", removed ? `<span class="cb-minus">−${removed}</span>` : ""].filter(Boolean).join(" ");
 
     const headline = active ? ccHeadline(group.items, msg) : "";
     const elapsed = active && runningSince
       ? `<span class="chat-console-dim" data-cc-clock="elapsed" data-since="${runningSince}">${ccElapsedText(runningSince)}</span>` : "";
-    const label = (headline ? deps.escapeHtml(headline) : parts.join(", ")) + elapsed + (active && !headline ? "…" : "");
+    const label = (headline ? deps.escapeHtml(headline) : parts.join(", ") + (counts ? ` ${counts}` : "")) + elapsed + (active && !headline ? "…" : "");
+    const plain = label.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 
     let hintHtml = "";
     if (active && latestThought !== undefined) {
@@ -262,7 +369,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         `<span class="chat-step-node" aria-hidden="true"></span>` +
         `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">Thought for ${deps.escapeHtml(ccThinkClock(item.ms, 0))}</span></div>` +
         `<div class="chat-console-thought chat-think-markdown">${deps.renderMarkdown(item.text, false)}</div></div></li>`
-      : deps.toolStepHtml(item.entry.trace, item.key, live, true, openMap, { verbose: true })).join("");
+      : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { tuck: true })).join("");
     const state = active ? `is-running${errored ? " is-errored" : ""}` : "is-done";
     // A streaming thought: the transcript fills [data-reason-preview] and
     // keeps it pinned to the newest line (thinking-disclosure.js).
@@ -281,7 +388,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
       `<div class="chat-step-head">` + (group.items.length
-        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}"><span class="chat-step-label">${label}</span></button>`
+        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${deps.escapeHtml(plain)}"><span class="chat-step-label">${label}</span></button>`
         : `<div class="chat-step-toggle"><span class="chat-step-label">${label}</span></div>`) + `</div>` +
       // A failed or interrupted member says so on its own row once the line
       // is opened; the folded line is only its summary.
@@ -320,8 +427,9 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     }
     // A silent call (search_tools) stays hidden unless it was cut short: an
     // interrupted one prints on its own row, saying what the run was doing.
+    // Combined also keeps failures on their own row.
     const holds = (entry, at, cls) => cls.kind === "silent" ? deps.toolPresentation(entry.trace, live).interrupted
-      : at === newest || deps.toolPresentation(entry.trace, live).running;
+      : at === newest || deps.toolPresentation(entry.trace, live).running || deps.toolPresentation(entry.trace, live).failed;
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];
@@ -403,5 +511,5 @@ const CC_PR_VERBS = { created: "created", edited: "edited", merged: "merged", co
 
 const CC_LIVE_TOOLS = new Set(["run_terminal_command", "read_file", "grep", "glob", "list_dir"]);
 
-  return { ccTurnLineHtml, ccShellHint, ccPathHint, ccActivityText, ccRunning, ccSince, ccHeadline, ccLiveText, ccElapsedText, ccShellSuffix, ccThinkClock, syncConsoleClocks, workClocksLive, syncWorkClocks, ccGroupHtml, consoleActivityEntriesHtml, CC_PR_VERBS, CC_LIVE_TOOLS };
+  return { ccTurnLineHtml, turnActionsHtml, ccShellHint, ccPathHint, ccActivityText, ccRunning, ccSince, ccHeadline, ccLiveText, ccElapsedText, ccShellSuffix, ccThinkClock, syncConsoleClocks, workClocksLive, syncWorkClocks, ccGroupHtml, consoleActivityEntriesHtml, CC_PR_VERBS, CC_LIVE_TOOLS };
 }

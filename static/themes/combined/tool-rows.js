@@ -168,16 +168,19 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     {
       const verbose = Boolean(opts.verbose);
       const fold = deps.consoleFold(trace, presentation, verbose);
+      // Combined lists a summary's settled calls on one line each: output,
+      // diff or file body opens from the row. Failed and kept rows print theirs.
+      const tucked = Boolean(opts.tuck) && !verbose && !running && !failed && !fold.keep && Boolean(fold.preview) && !(trace.name === "read_file" && trace.image);
       // An opened summary line prints a call the way an expanded row reads.
-      const preview = verbose ? "" : fold.preview;
-      inner = verbose ? fold.full || fold.preview : fold.full;
-      const expandable = !verbose && openKind !== "agent" && Boolean(fold.full);
+      const preview = verbose || tucked ? "" : fold.preview;
+      inner = verbose || tucked ? fold.full || fold.preview : fold.full;
+      const expandable = !verbose && openKind !== "agent" && Boolean(inner);
       const head = deps.toolHeadHtml({
         ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
       });
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
-      const status = fold.status;
+      const status = fold.status || (tucked && /^(run_terminal_command|get_command_output)$/.test(trace.name) ? outputLines(trace) : "");
       // A pending call names its deadline at the end of the line under it
       // ("Waiting for output… (timeout: 2m)"), and that line exists even when
       // the call has nothing else to say yet. A fold that already printed the
@@ -201,7 +204,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang${running ? " is-running" : ""}${failed ? " is-error" : ""}${fold.keep ? " is-kept" : ""}${bodyOnly ? " is-body-only" : ""}${hangOpen ? " is-expanded" : ""}">` +
             `<span class="chat-console-branch" aria-hidden="true">└</span>` +
             `<div class="chat-console-hang-body">` +
-            (status || timeout ? `<span class="chat-console-result-text">${deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
+            (status || timeout ? `<span class="chat-console-result-text"${status ? ` title="${deps.escapeHtml(status)}"` : ""}>${deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
             (inner ? inner : "") +
             `</div></div></div></div>`
@@ -210,6 +213,12 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       );
     }
 
+  }
+
+function outputLines(trace) {
+    const out = typeof trace.output === "string" ? trace.output.replace(/\s+$/, "") : "";
+    const n = out ? out.split("\n").length : 0;
+    return n ? `${n} ${n === 1 ? "line" : "lines"} of output` : "";
   }
 
 const TOOL_KIND = {

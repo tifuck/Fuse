@@ -289,7 +289,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-c
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-lines { grid-template-columns: minmax(0, 1fr); }
 
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-lines .chat-console-stdout { width: max-content; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-lines:not(.is-error) .chat-console-stdout { width: max-content; }
 
 /* A truncation notice reads like the "… +N lines" marker: its own quiet line. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] :is(.chat-console-more, .chat-tool-truncated) {

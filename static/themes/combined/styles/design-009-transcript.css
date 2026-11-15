@@ -164,7 +164,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-done .chat-step-label,
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group :is(.chat-console-dim, .chat-console-hint-line, .chat-console-thinkhint, .chat-console-branch, .chat-console-result-text) {
-  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  color: var(--mute);
 }
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group .chat-step-label b { font-weight: 700; }
@@ -302,7 +302,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-c
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group.is-console-live-think > .chat-step-node::after { content: none !important; }
 
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-live-think .chat-step-label {
-  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  color: var(--mute);
 }
 
 @media (hover: hover) {

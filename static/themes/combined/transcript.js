@@ -449,16 +449,17 @@ function updateAssistant(article, msg, live) {
     }
     const usageBits = deps.formatTurnMeta(msg);
     const turnLine = (!live) && hasOutput ? deps.ccTurnLineHtml(msg, msg === deps.messages[deps.messages.length - 1]) : "";
-    if (turnLine) {
-      foot.hidden = false;
-      meta.innerHTML = `<span class="chat-console-turn">${turnLine}</span>`;
-    } else if (!live && hasOutput) {
-      foot.hidden = false;
-      meta.innerHTML = usageBits
+    // Every settled reply gets the action row; the work time follows when known.
+    const footHtml = turnLine ? `<span class="chat-console-turn">${turnLine}</span>`
+      : !live && hasOutput ? `<span class="chat-console-turn">${deps.turnActionsHtml(msg)}` + (usageBits.length ? `<span class="cb-work">${usageBits
         .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
-        .join('<span class="chat-foot-dot" aria-hidden="true">·</span>');
-    } else {
-      foot.hidden = true;
+        .join('<span class="chat-foot-dot" aria-hidden="true">·</span>')}</span>` : "") + "</span>"
+      : "";
+    foot.hidden = !footHtml;
+    // Unchanged rows keep their buttons (and focus, and a pressed Read aloud).
+    if (footHtml && meta._html !== footHtml) {
+      meta._html = footHtml;
+      meta.innerHTML = footHtml;
     }
   }
 

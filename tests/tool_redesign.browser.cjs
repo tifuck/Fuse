@@ -86,8 +86,9 @@ const out = process.env.TOOL_UI_ARTIFACTS || '/tmp/opencode/tool-redesign';
       assert.ok(Math.max(...heads.map(h => h.stateRight)) - Math.min(...heads.map(h => h.stateRight)) < 2, 'all top-level statuses share the right alignment');
       await page.locator('.chat-flow').screenshot({ path: `${out}/${width}-collapsed.png` });
       const toggle = group.locator(':scope > .chat-step-main > .chat-step-head > .chat-step-toggle');
-      // Desktop folds edits into the summary too, so the reads share a line with them.
-      assert.match(await toggle.textContent(), process.env.FUSE_CHAT_VIEW === 'desktop' ? /read 2 files, listed 1 directory, edited 1 file/ : /Read 2 files/);
+      // Desktop and Combined fold edits into the summary too; Console prints them on their own rows.
+      const foldsEdits = Boolean(process.env.FUSE_CHAT_VIEW) && process.env.FUSE_CHAT_VIEW !== 'console';
+      assert.match(await toggle.textContent(), foldsEdits ? /read 2 files.*edited 1 file/ : /Read 2 files/);
       await toggle.click();
       const openText = await group.innerText();
       assert.ok(openText.includes('client/config.ts') && openText.includes('server/config.ts'), `the open summary prints its members: ${openText.slice(0, 200)}`);
