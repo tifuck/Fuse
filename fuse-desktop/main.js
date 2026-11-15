@@ -90,10 +90,12 @@ let site = null;
 // (the bar taking focus as the page closes) still fire then.
 const alive = (view) => Boolean(view && view.webContents && !view.webContents.isDestroyed());
 
-// The bar takes the site's active theme (Paper, Sand, Midnight, ...). The site
-// publishes its background in <meta name="theme-color"> on every theme change;
-// the other tokens are read from the page. The last theme is remembered so
-// the next launch opens in the right colours instead of flashing dark.
+// The bar takes the site's active theme (Paper, Sand, Midnight, ...): its
+// background is the colour the page paints along its top edge, so it runs on
+// into the page's own top bar whatever the theme, palette or wallpaper glass
+// (<meta name="theme-color"> until the page has painted); the other tokens are
+// read from the page. The last theme is remembered so the next launch opens
+// in the right colours instead of flashing dark.
 const THEME_FILE = () => path.join(app.getPath("userData"), "frame-theme.json");
 const HEX = /^#[0-9a-f]{3,8}$/i;
 let frameTheme = null;
@@ -103,6 +105,36 @@ function loadFrameTheme() {
     const saved = JSON.parse(readFileSync(THEME_FILE(), "utf8"));
     if (HEX.test(saved.ink)) frameTheme = saved;
   } catch {}
+}
+
+// The per-channel median of the page's second pixel row: the bar's icons and
+// text never reach it, and one odd pixel cannot tint the result.
+async function pageTopColor() {
+  const { width } = site.getBounds();
+  if (width < 2) return null;
+  let image;
+  try {
+    image = await site.webContents.capturePage({ x: 0, y: 1, width, height: 1 });
+  } catch {
+    return null;
+  }
+  if (image.isEmpty()) return null;
+  const px = image.toBitmap(); // BGRA
+  const median = (offset) => {
+    const values = [];
+    for (let i = offset; i < px.length; i += 4) values.push(px[i]);
+    values.sort((a, b) => a - b);
+    return values[values.length >> 1].toString(16).padStart(2, "0");
+  };
+  return `#${median(2)}${median(1)}${median(0)}`;
+}
+
+// Again once the page has painted and once its wallpaper has faded in.
+let frameSyncTimers = [];
+function scheduleFrameSync() {
+  frameSyncTimers.forEach(clearTimeout);
+  syncFrameTheme();
+  frameSyncTimers = [400, 2000].map((ms) => setTimeout(syncFrameTheme, ms));
 }
 
 async function syncFrameTheme() {
@@ -124,7 +156,10 @@ async function syncFrameTheme() {
   } catch {
     return;
   }
-  if (!theme || !HEX.test(theme.ink) || !win) return;
+  if (!theme || !alive(site)) return;
+  const top = await pageTopColor();
+  if (top) theme.ink = top;
+  if (!HEX.test(theme.ink) || !win) return;
   if (JSON.stringify(theme) === JSON.stringify(frameTheme)) return;
   frameTheme = theme;
   win.setBackgroundColor(theme.ink);
@@ -283,8 +318,8 @@ function createWindow() {
     bar.webContents.on("did-finish-load", sendFrameState);
     bar.webContents.on("before-input-event", handleShortcuts);
     for (const name of ["maximize", "unmaximize", "focus", "blur"]) win.on(name, sendFrameState);
-    site.webContents.on("did-change-theme-color", syncFrameTheme);
-    site.webContents.on("dom-ready", syncFrameTheme);
+    site.webContents.on("did-change-theme-color", scheduleFrameSync);
+    site.webContents.on("dom-ready", scheduleFrameSync);
   }
 
   // bounds-changed fires after the new size is laid out; the window events
@@ -404,7 +439,7 @@ ipcMain.on("titlebar", (event, action) => {
 });
 
 ipcMain.on("site-theme", (event) => {
-  if (site && event.sender === site.webContents) syncFrameTheme();
+  if (site && event.sender === site.webContents) scheduleFrameSync();
 });
 
 ipcMain.on("site-raise", (event) => {

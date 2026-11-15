@@ -291,7 +291,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The collapse toggle is a plain icon, not a pressed mode. */
   & .dk-ib:is(.chat-history-collapse, .chat-history-toggle)[aria-expanded="true"]:not(:hover) { background: none; color: var(--dk-mute); }
 
-  /* ---- Top bar: 36px, Console's height ---- */
+  /* ---- Top bar: 36px, Console's height ----
+     The sidebar's colour, like the inspector: one band across the window. */
   & .dk-head {
     z-index: 5;
     display: flex;
@@ -302,7 +303,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     min-height: 0;
     padding: 0 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
-    background: var(--dk-canvas);
+    background: var(--dk-side);
+    box-shadow: none;
     container: dk-head / inline-size;
   }
   & .dk-head::after { content: none; }
@@ -397,17 +399,36 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     grid-column: 3;
     grid-row: 1 / -1;
     flex-direction: column;
-    gap: 8px;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-left: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
+    background: var(--dk-side);
+  }
+  /* The top bar's twin, like the sidebar head; the header's toggle closes it. */
+  & .dk-insp-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--chat-bar-h);
+    padding: 0 4px 0 20px;
+    border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
+    color: var(--dk-mute);
+    font: 500 13px var(--sans);
+  }
+  @media (min-width: 1040px) { & .dk-insp-bar [data-theme-inspector-close] { display: none; } }
+  & .dk-insp-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
     min-height: 0;
     padding: 8px 8px 10px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border-left: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
-    background: var(--dk-canvas);
     scrollbar-width: thin;
   }
-  & .dk-insp-bar { display: none; }
   & .dk-insp-empty { margin: 0; padding: 12px; color: var(--dk-mute); font: 12.5px var(--sans); text-align: center; }
   & .dk-insp-empty[hidden] { display: none; }
   & .dk-card {
@@ -668,8 +689,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.dk-running .dk-ring svg { animation: dk-spin 1.4s linear infinite; }
   /* Above the card at its width: queue, permission requests, the slash menu and the context alert. */
   & :is(.chat-queue, .chat-perm-queue, .chat-slash, .chat-context-alert) { box-sizing: border-box; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
-  & .chat-queue { margin-block: 0 6px; padding: 6px 10px; border: 1px solid var(--dk-card-line); border-radius: 10px; background: var(--dk-card); }
-  & .chat-queue-kicker { position: static; margin: 0 0 2px; padding: 0; color: var(--dk-mute); font: 500 12px var(--sans); writing-mode: horizontal-tb; transform: none; text-transform: none; }
+  /* The label over the list, not Console's side rail. */
+  & .chat-queue { --queue-bg: var(--dk-card); display: block; margin-block: 0 6px; padding: 6px 10px; border: 1px solid var(--dk-card-line); border-radius: 10px; background: var(--dk-card); }
+  & .chat-queue-kicker { position: static; display: block; margin: 0 0 2px; padding: 0; contain: none; color: var(--dk-mute); font: 500 12px var(--sans); writing-mode: horizontal-tb; transform: none; text-transform: none; }
   & .chat-queue-kicker::before, & .chat-queue-kicker::after { display: none; }
   & .chat-context-alert-dismiss { min-height: 28px; padding: 0 8px; }
   & .chat-perm-card { border-radius: 12px; background: var(--dk-card); font-family: var(--sans); }
@@ -815,7 +837,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     &[data-theme-rail-state="open"] .dk-scrim { position: fixed; inset: var(--chat-bar-h) 0 0 var(--dk-side-w); z-index: 13; display: block; background: rgb(0 0 0 / 0.35); }
   }
   @media (max-width: 1039.98px) {
-    & .dk-insp-bar { display: flex; flex: none; align-items: center; justify-content: space-between; min-height: 36px; padding: 0 0 0 6px; color: var(--dk-text); font: 600 15px var(--sans); }
+    & .dk-insp-bar { padding-left: 14px; color: var(--dk-text); font: 600 15px var(--sans); }
   }
   /* ---- Phones: the inspector is a full-screen sheet, the sidebar a drawer ---- */
   @media (max-width: 800px) {
@@ -824,12 +846,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
       position: fixed;
       inset: 0;
       z-index: 60;
-      padding: var(--safe-top, 0px) 8px calc(10px + var(--safe-bottom, 0px));
+      padding-top: var(--safe-top, 0px);
       border: 0;
     }
+    & .dk-insp-body { padding-bottom: calc(10px + var(--safe-bottom, 0px)); }
     /* The sheet's head is the bar it covers: a 44px row plus the same hairline. */
-    & .dk-insp-bar { height: var(--chat-bar-h); min-height: 0; margin: 0 -8px 6px; padding: 0 0 0 14px;
-      border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent); }
+    & .dk-insp-bar { padding-right: 0; }
     & .dk-insp-bar .dk-ib { width: 44px; height: 44px; }
     & .dk-card-preview { flex: 1 0 60dvh; }
     & .dk-card-preview .chat-artifact { position: relative; inset: auto; z-index: auto; width: auto; }
@@ -923,9 +945,10 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
    One full-height pane behind the transcript column and the dock: a strong
    blur, the palette's canvas at 55% under the text (30% in light, mostly
-   blur), fading out over a long gutter toward the sides with no edge. Bars
-   and the sidebar are lighter glass (78%, light 62%), cards and popovers
-   denser (88%, light 80%). */
+   blur), fading out over a long gutter toward the sides with no edge. The
+   top bar, sidebar and inspector are one lighter glass (78%, light 62%) over
+   the bare wallpaper, so the pane starts under the bar; cards and popovers
+   are denser (88%, light 80%). */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
   --dk-veil-a: 55%;
   --dk-chrome-a: 78%;
@@ -938,7 +961,7 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
     position: absolute;
-    inset: 0 max(0px, calc(50% - var(--chat-col) / 2 - 15rem));
+    inset: var(--chat-bar-h) max(0px, calc(50% - var(--chat-col) / 2 - 15rem)) 0;
     z-index: -1;
     flex: none;
     background:
@@ -950,13 +973,13 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     mask-image: var(--dk-glass-mask);
     --dk-glass-mask: linear-gradient(90deg, transparent, rgb(0 0 0 / 0.16) calc(var(--f) * 0.25), rgb(0 0 0 / 0.5) calc(var(--f) * 0.5), rgb(0 0 0 / 0.84) calc(var(--f) * 0.75), #000 var(--f), #000 calc(100% - var(--f)), rgb(0 0 0 / 0.84) calc(100% - var(--f) * 0.75), rgb(0 0 0 / 0.5) calc(100% - var(--f) * 0.5), rgb(0 0 0 / 0.16) calc(100% - var(--f) * 0.25), transparent);
   }
-  & .dk-side { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & .dk-head { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-side, .dk-head) { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .dk-head { box-shadow: none; }
   & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.chat-dock .dk-box, .dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Secondary text leans a fifth toward the body colour so it holds AA on
      the glass, and still reads as secondary. */
   & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--dk-mute) 80%, var(--dk-text)); }

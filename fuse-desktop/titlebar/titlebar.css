@@ -27,7 +27,6 @@ html, body {
   align-items: stretch;
   justify-content: space-between;
   height: 100%;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   -webkit-app-region: drag;
 }
 
