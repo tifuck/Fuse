@@ -29,11 +29,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-shadow: none;
   --dk-pop-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
   --chat-bar-h: 36px;
-  /* The bottom band: the account row, the composer's controls and the
-     inspector's foot share it, under one hairline. */
+  /* The bottom row: the account row and the composer's controls share its
+     height, with no rule or fill. */
   --dk-band-h: 36px;
-  --dk-band-bg: transparent;
-  --dk-hair: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
   --chat-history: 13.5rem;
   --chat-col: 40rem;
   --dk-side-w: clamp(12.5rem, var(--chat-history), 100% - 24rem);
@@ -257,7 +255,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-loading { display: grid; gap: 6px; padding: 8px; }
   & .dk-loading span { height: 10px; border-radius: 3px; background: var(--dk-raise); }
   & .dk-foot { position: relative; display: flex; flex-direction: column; gap: 1px; margin-top: auto; padding-top: 6px; }
-  & .dk-foot-row { display: flex; flex: none; align-items: center; gap: 2px; height: var(--dk-band-h); margin: 0 -8px; padding: 0 8px; border-top: var(--dk-hair); }
+  & .dk-foot-row { display: flex; flex: none; align-items: center; gap: 2px; height: var(--dk-band-h); }
   /* The account menu anchors to the whole footer and opens upward. No z-index:
      a flex item keeps base's 24 even when static and floats over a sheet's backdrop. */
   & .dk-foot-row .user-dock { position: static; z-index: auto; flex: 1; min-width: 0; }
@@ -416,9 +414,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     overflow: hidden;
     border-left: 0;
     background: var(--dk-side);
-  }
-  @media (min-width: 1040px) {
-    &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp::after { content: ""; flex: none; height: var(--dk-band-h); border-top: var(--dk-hair); }
   }
   /* The top bar's twin, like the sidebar head, its title set like the chat's
      at every width; wide, the header's toggle closes it. */
@@ -597,8 +592,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      then the controls row in the bottom band (mode left; model, context
      and stash right) ---- */
   & .chat-dock { padding: 4px 16px 0; background: none; }
-  /* The bottom band across the stage, under the controls row. */
-  & .chat-stage::after { position: absolute; inset: auto 0 0; z-index: -1; height: calc(var(--dk-band-h) + var(--safe-bottom, 0px)); border-top: var(--dk-hair); background: var(--dk-band-bg); }
   & .dk-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; max-width: var(--chat-col); margin: 0 auto 8px; }
   & .dk-chips:not(:has(> :not([hidden]))) { display: none; }
   & .dk-cchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--dk-text) 7%, transparent); color: var(--dk-mute); font: 12.5px var(--sans); }
@@ -983,15 +976,14 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
    The wallpaper stays sharp. The reading column is a darker pane, the
    palette's canvas at 68% (light 66%; text holds AA over every
-   wallpaper), that fades in over 6rem at its sides, so the gutters show
-   the wallpaper as it is. The top bar, sidebar
-   and inspector are frosted glass (a 14px blur with some saturation so the
+   wallpaper), that eases in across the whole gutter, so the wallpaper
+   shows as it is at the gutter's outer edge. The top bar, sidebar and
+   inspector are frosted glass (a 14px blur with some saturation so the
    colours survive, then 74%, light 62%); a backdrop blur has nothing past
    the window to sample, so each darkens a little toward the window edge it
-   sits on, which hides the smear there. The bottom band is the bare
-   wallpaper under one hairline. Cards, the composer and popovers float on
-   the same glass (78%, light 80%) with a hairline edge and a specular top
-   rim. */
+   sits on, which hides the smear there. The bottom row is bare wallpaper.
+   Cards, the composer and popovers float on the same glass (78%, light
+   80%) with a hairline edge and a specular top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
   --dk-veil-a: 68%;
   --dk-chrome-a: 74%;
@@ -1004,21 +996,28 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
   /* The stage's spacer: out of the flow, the reading pane under the bar,
-     at full strength from 1rem outside the column, eased in over 6rem. */
+     at full strength from 1rem outside the column and eased (slow, then
+     quicker) across the whole gutter. */
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
-    --e: min(6rem, var(--f));
+    --v: var(--dk-canvas);
     position: absolute;
     inset: var(--chat-bar-h) 0 0;
     z-index: -1;
     flex: none;
     background: linear-gradient(90deg,
-      transparent calc(var(--f) - var(--e)),
-      color-mix(in srgb, var(--dk-canvas) calc(var(--dk-veil-a) * 0.5), transparent) calc(var(--f) - var(--e) * 0.45),
-      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) var(--f),
-      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) calc(100% - var(--f)),
-      color-mix(in srgb, var(--dk-canvas) calc(var(--dk-veil-a) * 0.5), transparent) calc(100% - var(--f) + var(--e) * 0.45),
-      transparent calc(100% - var(--f) + var(--e)));
+      transparent,
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.04), transparent) calc(var(--f) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.14), transparent) calc(var(--f) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.33), transparent) calc(var(--f) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.62), transparent) calc(var(--f) * 0.8),
+      color-mix(in srgb, var(--v) var(--dk-veil-a), transparent) var(--f),
+      color-mix(in srgb, var(--v) var(--dk-veil-a), transparent) calc(100% - var(--f)),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.62), transparent) calc(100% - var(--f) * 0.8),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.33), transparent) calc(100% - var(--f) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.14), transparent) calc(100% - var(--f) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.04), transparent) calc(100% - var(--f) * 0.2),
+      transparent);
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Darker toward the window edge each pane sits on. */
