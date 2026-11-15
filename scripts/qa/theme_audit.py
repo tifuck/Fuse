@@ -174,8 +174,10 @@ const clipRect = (el) => clipTo(el, el.getBoundingClientRect());
 const isBackdrop = (el) => [...el.attributes].some((a) => /^data-.*backdrop$/.test(a.name));
 const LAYER = '[aria-modal="true"], [role=dialog], [role=menu], [role=listbox], dialog, [popover], [data-wallpaper-picker], [data-chat-slash]';
 // Whatever an open trigger controls (aria-expanded + aria-controls) is a popup layer too.
+// A docked panel in the page flow (the pinned sidebar, a docked inspector) is not one.
 const POPUPS = [...document.querySelectorAll('[aria-expanded="true"][aria-controls]')]
-  .flatMap((b) => [...document.querySelectorAll('#' + CSS.escape(b.getAttribute('aria-controls')))]).filter((e) => !e.hidden && e.getClientRects().length);
+  .flatMap((b) => [...document.querySelectorAll('#' + CSS.escape(b.getAttribute('aria-controls')))])
+  .filter((e) => !e.hidden && e.getClientRects().length && /fixed|absolute/.test(getComputedStyle(e).position));
 function layerOf(el) {
   const own = el.closest(LAYER);
   // the innermost layer wins: a menu inside the sidebar drawer is its own layer
@@ -347,7 +349,8 @@ while ((node = walker.nextNode())) {
     const cut = rects.find((r) => (r.left < -1 && r.right > 0) || (r.right > W + 1 && r.left < W));
     if (cut) {
       const vis = clipTo(p, cut);
-      const byAncestor = vis && (vis.right < Math.min(cut.right, W) - 1 || vis.left > Math.max(cut.left, 0) + 1);
+      // vis null: an ancestor already hides all of it (an ellipsized label), so the viewport is not what cuts it.
+      const byAncestor = !vis || (vis.right < Math.min(cut.right, W) - 1 || vis.left > Math.max(cut.left, 0) + 1);
       let scroller = false;
       for (let a = p.parentElement; a && !scroller; a = a.parentElement) scroller = /auto|scroll/.test(cs(a).overflowX);
       if (!byAncestor && !scroller && !p.closest('pre, table') && !checkedBoxes.has(p)) { checkedBoxes.add(p); add('clipped-text', 'fail', p, cut, 'text runs off the viewport edge'); }
@@ -606,8 +609,26 @@ class Page:
                 return loc.nth(i)
         return None
 
-    async def need(self, sel, why=""):
+    async def need(self, sel, why="", proxy=True):
+        self.via_menu = None
         loc = await self.visible(sel)
+        if loc is None and proxy and await self.page.locator(f"[data-theme-proxy='{sel}']").count():
+            # A narrow bar hides the control and a menu item stands in for it.
+            try:
+                return await self.need(f"[data-theme-proxy='{sel}']", why, proxy=False)
+            except Skip:
+                pass
+        if loc is None:
+            # A control that lives in a closed menu (a theme's ⋯): open the menu first.
+            menu = await self.page.evaluate("""(sel) => { for (const e of document.querySelectorAll(sel)) { const m = e.closest('[role=menu][id], [data-theme-menu][id]');
+                if (m) return m.id; } return ''; }""", sel)
+            opener = menu and await self.visible(f'[aria-controls="{menu}"]')
+            if opener:
+                await opener.click()
+                await self.page.wait_for_timeout(200)
+                loc = await self.visible(sel)
+                if loc is not None:
+                    self.via_menu = await opener.element_handle()
         if loc is None:
             raise Skip(f"{sel} absent or hidden{(' (' + why + ')') if why else ''}")
         return loc
@@ -629,7 +650,8 @@ class Page:
         await loc.focus()
         await self._press(loc, trigger)
         await self.page.wait_for_timeout(wait)
-        self.escape = await loc.element_handle()
+        # Opened from a menu item: focus goes back to the menu's own trigger.
+        self.escape = self.via_menu or await loc.element_handle()
 
     async def thread_scroll(self, frac):
         await self.page.evaluate("""(f) => { const t = [...document.querySelectorAll('[data-chat-thread], [data-agent-view]')].find((e) => !e.hidden);
@@ -1217,9 +1239,11 @@ async def _insp_tasks(s):
 
 @state("inspector-terminal", themes=("desktop",))
 async def _insp_term(s):
-    async def term(s):
-        await s.click("[data-theme-terminal]", 600)
-    await _inspector(s, TOOLS, "terminal", live=True, before=term)
+    # Terminal opens the inspector at its card (on a phone the open sheet would cover the ⋯ menu).
+    await s.open(TOOLS, live=True)
+    await s.click("[data-theme-terminal]", 600)
+    target = await s.need('[data-theme-card="terminal"]', "no terminal card for this thread")
+    await target.scroll_into_view_if_needed()
 
 
 @state("inspector-diff", themes=("desktop",))
