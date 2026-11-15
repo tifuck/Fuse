@@ -28,8 +28,8 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--toast-tone);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
   color: var(--mist);
   pointer-events: auto;
   animation: fuse-toast-in var(--dur-2, 180ms) var(--ease-snap, ease-out);
@@ -65,8 +65,8 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: 6px;

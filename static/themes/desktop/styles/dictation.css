@@ -18,8 +18,9 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn {
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn:hover { color: var(--mist); }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn:active { scale: 0.92; }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn svg { display: block; }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn.is-live { color: var(--brass); }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn.is-live::after {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-tb[data-chat-mic] { position: relative; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-mic-btn, .dk-tb[data-chat-mic]).is-live { color: var(--fault); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-mic-btn, .dk-tb[data-chat-mic]).is-live::after {
   content: "";
   position: absolute;
   top: 0.2rem;
@@ -27,7 +28,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn.is-live:
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--brass);
+  background: var(--fault);
   animation: dictation-blink 1.2s ease-in-out infinite;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box.is-dictating::before { color: var(--brass); }

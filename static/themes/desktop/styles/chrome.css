@@ -134,13 +134,32 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-sta
 
 
 /* —— Sheets —— */
-/* Appearance switches match the Skills switches: square, brass when on. */
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"],
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { border-radius: 0; }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { width: 2rem; height: 1.1rem; background: var(--ink); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { left: 0.15rem; width: 0.62rem; height: 0.62rem; background: var(--mute); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked { background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::after { background: var(--brass); }
+/* Appearance controls: 36x20 switches with a round knob drawn inside a 28px
+   hit area (the whole row is the label), 28px segments, 28px ranges with a
+   14px round thumb. Monochrome: on is the text colour. */
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch { min-height: 32px; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { width: 36px; height: 28px; border: 0; border-radius: 0; background: none; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  inset: 4px 0;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mute) 28%, var(--ink));
+}
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { z-index: 1; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::before { border-color: var(--mist); background: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::after { background: var(--ink); transform: translate(16px, -50%); }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--steel); outline-offset: 0; border-radius: 12px; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-filters button { min-height: 28px; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-range { height: 28px; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-step { min-width: 28px; min-height: 28px; }
+@media (max-width: 480px) {
+  html[data-chat-view="desktop"] body.is-chat .chat-view-menu :is(.ap-filters button, .ap-step) { min-height: 36px; }
+  html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { height: 32px; }
+  html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::before { inset: 6px 0; }
+}
 
 /* Cards in a row share a height; their text starts at the top, not centred. */
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu :is(.ap-theme, .ap-backdrop, .ap-font) { align-content: start; }

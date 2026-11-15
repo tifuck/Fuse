@@ -72,13 +72,43 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-send:hover:not(:
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-send:active { transform: none; }
 
-/* The repeated class keeps the specificity of the old body:has(.chat[data-view])
-   anchor; a :has() on body re-ran over the whole page on every DOM change. */
-html[data-chat-view="desktop"] body.is-chat.is-chat.is-chat :is(.chat-pop, .chat-picker-menu, .chat-context-pop, .chat-perms-menu) { border-radius: 0; box-shadow: none; background: var(--ink); }
-
-html[data-chat-view="desktop"] body.is-chat.is-chat.is-chat :is(.chat-perms-row, .chat-perms-x, .chat-perms-modes, .chat-perms-modes button) { border-radius: 0; }
-
-html[data-chat-view="desktop"] body.is-chat.is-chat.is-chat .chat-view-menu { background: var(--panel); }
+/* Overlays the runtime moves to <body> (row and title menus, Appearance,
+   Projects) sit outside .chat, so they carry the theme's card surfaces
+   themselves: menus are the popover card, Appearance and Projects the sheet. */
+html[data-chat-view="desktop"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) {
+  --dk-card: color-mix(in srgb, var(--ink) 92%, var(--mist));
+  --dk-card-line: color-mix(in srgb, var(--ink) 86%, var(--mist));
+  --dk-hover: color-mix(in srgb, var(--mist) 6%, transparent);
+  border: 1px solid var(--dk-card-line);
+  background: var(--dk-card);
+  color: var(--mist);
+  font-family: var(--sans);
+  letter-spacing: 0;
+}
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) { --dk-card: var(--ink); }
+html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) { --dk-card: #141414; --dk-card-line: #252525; }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop { padding: 4px; border-radius: 12px; box-shadow: 0 14px 36px rgb(0 0 0 / 0.4); }
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat > .chat-pop { box-shadow: 0 10px 28px rgb(0 0 0 / 0.12); }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a) { min-height: 32px; border-radius: 8px; }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a):is(:hover, :focus-visible) { background: var(--dk-hover); }
+html[data-chat-view="desktop"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) { --fp-radius: 14px; border-radius: 14px; box-shadow: 0 20px 52px rgb(0 0 0 / 0.45); }
+html[data-chat-view="desktop"] body.is-chat > .chat-view-backdrop,
+html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog::backdrop { background: rgb(0 0 0 / 0.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-title,
+html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog .fp-head h2 { color: var(--mist); font: 600 14px/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
+html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-sub { color: var(--mute); font: 12.5px/1.4 var(--sans); }
+html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog .fp-kicker { display: none; }
+html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-close,
+html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog :is(.fp-close, .fp-back) { display: grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; border-radius: 8px; }
+@media (max-width: 800px) {
+  html[data-chat-view="desktop"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) { border: 0; border-radius: 0; box-shadow: none; }
+}
+@media (max-width: 480px) {
+  html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a) { min-height: 40px; }
+  html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-close,
+  html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog :is(.fp-close, .fp-back) { width: 40px; height: 40px; }
+  html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog :is(.btn, .fp-search, .fp-search input) { min-height: 40px; }
+}
 
 @media (max-width: 800px) {
   .chat[data-view="desktop"] .chat-md { font-size: calc(0.86rem * var(--chat-text-scale, 1)); line-height: 1.6; }
@@ -86,10 +116,6 @@ html[data-chat-view="desktop"] body.is-chat.is-chat.is-chat .chat-view-menu { ba
 
 @media (max-width: 800px) {
   .chat[data-view="desktop"] :is(.chat-think-body, .chat-tool-command, .chat-tool-out) { font-size: calc(0.74rem * var(--chat-text-scale, 1)); line-height: 1.6; }
-}
-
-@media (max-width: 800px) {
-  html[data-chat-view="desktop"] body.is-chat.is-chat.is-chat .chat-view-menu { border-radius: 0; }
 }
 
 @media (max-width: 800px) {

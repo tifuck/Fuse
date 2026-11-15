@@ -335,7 +335,7 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-card-copy { display: flex; flex: 1; flex-direction: column; gap: 0.1rem; min-width: 0; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-card-title { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-card-meta { color: var(--mute); font-size: 0.78em; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-card-open { flex-shrink: 0; color: var(--brass); font-size: 0.8em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-card-open { flex-shrink: 0; color: color-mix(in srgb, var(--brass) 78%, var(--mist)); font-size: 0.8em; }
 /* Console: cards line up with the reply text, past its bullet column. */
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-bar,

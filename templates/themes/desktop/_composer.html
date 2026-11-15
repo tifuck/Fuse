@@ -1,8 +1,8 @@
-{#- Desktop theme: the composer. A chips row (machine, project), the input
-    card (+, message, mic, send/stop) and a footer row: the permission mode
-    pill and attach on the left; the model and effort and the context ring on
-    the right. Popovers sit above it. Every data-* hook but data-theme-* is a
-    runtime contract (tests/chat_theme_markup.test.cjs). -#}
+{#- Desktop theme: the composer. A chips row (machine, project), then one
+    card: the message on top, the controls row under it (+ and the permission
+    mode on the left; model and effort, the context ring, stash, mic and
+    send/stop on the right). Popovers sit above the card. Every data-* hook
+    but data-theme-* is a runtime contract (tests/chat_theme_markup.test.cjs). -#}
   <form class="chat-dock" data-chat-form>
     <h2 class="dk-welcome" data-chat-welcome>What are we building?</h2>
     <div class="chat-sync" role="group" aria-label="Chat synchronization" data-sync-state="connecting">
@@ -51,17 +51,35 @@
       <div class="chat-attach-list" data-chat-attach-list hidden></div>
       <div class="dk-row1">
         <input id="chat-file" data-chat-file type="file" hidden multiple accept="image/jpeg,image/png,image/gif,image/webp,image/*,application/pdf,text/plain,text/markdown,text/csv,text/html,application/json,.md,.txt,.csv,.json,.py,.js,.ts,.css,.html">
-        <div class="dk-group-l" data-box-group>
-          <button type="button" class="dk-tb is-icon" data-chat-attach aria-label="Add image or file" title="Add image or file">
-            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          </button>
-        </div>
         <label class="visually-hidden" for="chat-input">Message</label>
         <div class="chat-compose dk-compose" data-chat-compose>
           <div class="chat-compose-mirror" data-chat-compose-mirror aria-hidden="true"></div>
           <textarea id="chat-input" data-chat-input data-reload-safe rows="1" placeholder="Type / for commands" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Message"></textarea>
         </div>
+      </div>
+      <div class="dk-row2">
+        <div class="dk-group-l" data-box-group>
+          <button type="button" class="dk-tb is-icon" data-chat-attach aria-label="Add image or file" title="Add image or file">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <div class="dk-perm" data-perm-host>
+            <button type="button" class="dk-tb is-lab" data-perm-chip aria-haspopup="dialog" aria-expanded="false" aria-label="Bypass, permissions: prompts on" title="Permission prompts on">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 1.8l4.6 1.7v3.9c0 2.9-1.9 5.4-4.6 6.4-2.7-1-4.6-3.5-4.6-6.4V3.5L8 1.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span data-perm-chip-label>Bypass</span>
+            </button>
+          </div>
+        </div>
         <div class="dk-group-r" data-box-group>
+          <div class="chat-model dk-model" data-chat-picker></div>
+          <div class="dk-ring-wrap" data-context-wrap hidden>
+            <button type="button" class="dk-ring" data-chat-context aria-label="Context usage" aria-expanded="false" aria-controls="chat-context-pop" title="Context usage">
+              <svg viewBox="0 0 32 32" aria-hidden="true">
+                <circle class="dk-ring-track" cx="16" cy="16" r="12" fill="none"></circle>
+                <circle class="dk-ring-fill" data-context-fill cx="16" cy="16" r="12" fill="none"></circle>
+              </svg>
+            </button>
+            <div class="chat-context-pop" id="chat-context-pop" data-context-pop role="dialog" aria-label="Context usage" hidden></div>
+          </div>
           <button type="button" class="dk-tb is-icon" data-chat-stash hidden aria-label="Stash prompt" title="Stash prompt (Ctrl+S)">
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 9.5v3.3h11V9.5M8 2.8v6.4M5.3 6.6L8 9.3l2.7-2.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -73,31 +91,6 @@
           <button type="submit" class="dk-send chat-send" data-chat-send disabled aria-label="Send">
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M12.5 3.5v5.2a1.5 1.5 0 0 1-1.5 1.5H3.8M6.6 7.2L3.5 10.2l3.1 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-        </div>
-      </div>
-    </div>
-    <div class="dk-under">
-      <div class="dk-under-l">
-        <div class="dk-perm" data-perm-host>
-          <button type="button" class="dk-tb is-lab" data-perm-chip aria-haspopup="dialog" aria-expanded="false" aria-label="Bypass, permissions: prompts on" title="Permission prompts on">
-            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 1.8l4.6 1.7v3.9c0 2.9-1.9 5.4-4.6 6.4-2.7-1-4.6-3.5-4.6-6.4V3.5L8 1.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-            <span data-perm-chip-label>Bypass</span>
-          </button>
-        </div>
-        <button type="button" class="dk-tb is-icon" data-theme-attach aria-label="Attach a file" title="Attach a file">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10.6 4.6L5.4 9.8a1.4 1.4 0 0 0 2 2l5.4-5.4a2.6 2.6 0 0 0-3.7-3.7L3.7 8.1a3.8 3.8 0 0 0 5.4 5.4l4.1-4.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-      <div class="dk-under-r">
-        <div class="chat-model dk-model" data-chat-picker></div>
-        <div class="dk-ring-wrap" data-context-wrap hidden>
-          <button type="button" class="dk-ring" data-chat-context aria-label="Context usage" aria-expanded="false" aria-controls="chat-context-pop" title="Context usage">
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <circle class="dk-ring-track" cx="16" cy="16" r="12" fill="none"></circle>
-              <circle class="dk-ring-fill" data-context-fill cx="16" cy="16" r="12" fill="none"></circle>
-            </svg>
-          </button>
-          <div class="chat-context-pop" id="chat-context-pop" data-context-pop role="dialog" aria-label="Context usage" hidden></div>
         </div>
       </div>
     </div>
