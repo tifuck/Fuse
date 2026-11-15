@@ -228,6 +228,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-c
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-notice > .chat-step-main > .chat-step-head > button:is(.chat-step-toggle, .chat-step-open) { display: inline-flex; align-items: center; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-agent + .chat-console-agent { margin-top: calc(var(--cb-hit) - var(--console-row)); }
+/* An opened body starts below those targets, so its first line never sits on Open or the caret. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step:is(.is-console-call, .is-console-notice) > .chat-step-main > .chat-step-head + .chat-console-hang.is-expanded { margin-top: calc((var(--cb-hit) - var(--console-row)) / 2); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-plus { color: var(--cb-add); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-minus { color: var(--cb-del); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-agent-step { font-family: var(--code); color: var(--mute); }
