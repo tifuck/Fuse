@@ -111,8 +111,13 @@ const EXAMPLE = JSON.parse(readFileSync(resolve(__dirname, '../docs/wallpapers.m
     await page.evaluate(() => { FuseChatAppearance.setBackdrop('jellyfish'); FuseChatAppearance.setTheme('ember'); });
     const others = (await page.locator('[data-chat-view-choice]').evaluateAll((els) => els.map((el) => el.dataset.chatViewChoice))).filter((view) => view !== VIEW);
     assert.ok(others.length >= 1, 'Layout lists the other themes');
-    const layout = async (view) => {
+    // A theme may keep Appearance in its overflow menu (Desktop's ⋯, Combined's phone ⋯).
+    const appearance = async () => {
+      if (!await page.locator('[data-view-toggle]').isVisible()) await page.locator('[data-theme-more]').click();
       await page.locator('[data-view-toggle]').click();
+    };
+    const layout = async (view) => {
+      await appearance();
       await Promise.all([
         page.waitForNavigation(),
         page.getByRole('dialog', { name: 'Appearance', exact: true }).locator(`[data-chat-view-choice="${view}"]`).click(),
@@ -127,7 +132,7 @@ const EXAMPLE = JSON.parse(readFileSync(resolve(__dirname, '../docs/wallpapers.m
       assert.notDeepEqual(there, { backdrop: 'jellyfish', theme: 'ember' }, `${view} keeps its own look`);
       await page.evaluate((v) => FuseChatAppearance.setBackdrop(v === 'desktop' ? 'moonlit' : 'rain'), view);
       // The Appearance sheet says which theme the edit is saved for.
-      await page.locator('[data-view-toggle]').click();
+      await appearance();
       assert.match(await page.getByRole('dialog', { name: 'Appearance', exact: true }).innerText(), new RegExp(`Saved for this theme \\(${view[0].toUpperCase()}${view.slice(1)}\\)`));
       await page.keyboard.press('Escape');
     }
