@@ -732,7 +732,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-picker-row > .chat-picker-star { position: static; grid-area: 1 / 1; width: auto; min-height: 0; }
   & .chat-picker-meta { color: var(--dk-mute); font: 11.5px/1 var(--sans); }
   & .chat-picker-menu.is-sheet .chat-picker-list { --star-col: 40px; }
-  & .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] { min-height: 44px; padding-left: 0; font-size: 15px; }
+  & .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] { min-height: 44px; padding-left: 0; font-size: 14px; }
   & .chat-picker-thinking-value { color: var(--dk-text); font: 12px/1 var(--sans); letter-spacing: 0; }
   & .chat-picker-kbd { border-radius: 4px; }
   /* Ranges: a 28px hit area, a 4px track and a 14px round thumb. */

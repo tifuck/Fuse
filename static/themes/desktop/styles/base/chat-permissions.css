@@ -209,9 +209,9 @@
   flex-shrink: 0;
   padding: 0.08rem 0.38rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--steel) 14%, transparent);
-  color: var(--steel);
-  font-size: 0.62rem;
+  background: color-mix(in srgb, var(--mist) 8%, transparent);
+  color: var(--mist);
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.05em;
   text-transform: uppercase;
