@@ -178,8 +178,9 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :not(:first-child) { grid-column: 3; grid-row: 1; justify-self: end; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main :is(.chat-step-reveal, .chat-step-reveal-inner, .chat-console-hang, .chat-console-hang-body) { display: contents; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-branch { display: none; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > :not(.chat-console-result-text) { grid-column: 1 / -1; min-width: 0; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > .chat-console-result-text {
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > :is(:not(.chat-console-result-text), .is-full-note) { grid-column: 1 / -1; min-width: 0; }
+/* The opened body's own copy (.is-full-note) sits under its output and hides while folded. */
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > .chat-console-result-text:not(.is-full-note) {
   display: block !important;
   grid-column: 2;
   grid-row: 1;
@@ -400,7 +401,7 @@ html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[dat
   /* Phones: the result drops under its call; the host badge waits for the
      open; output that scrolls sideways fades at the edge it runs past. */
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main { grid-template-columns: minmax(0, 1fr) 0 auto; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > .chat-console-result-text { grid-column: 1 / -1; grid-row: 2; justify-self: start; max-width: 100%; text-align: left; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call > .chat-step-main .chat-console-hang-body > .chat-console-result-text:not(.is-full-note) { grid-column: 1 / -1; grid-row: 2; justify-self: start; max-width: 100%; text-align: left; }
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-call .chat-tool-host { display: none; }
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step :is(.chat-console-lines, pre.chat-console-out) { mask-image: linear-gradient(to left, transparent, #000 1.25rem); }
 }
