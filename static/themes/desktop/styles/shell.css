@@ -561,6 +561,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     position: relative;
     display: flex;
     flex-direction: column;
+    /* One line: a wrapping column sizes its rows to their content, not the card. */
+    flex-wrap: nowrap;
     align-items: stretch;
     gap: 0;
     width: 100%;
