@@ -881,6 +881,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   /* Touch: 36px controls, 44px rows; the row ⋯ always shows. */
   @media (max-width: 800px), (pointer: coarse) {
+    /* The phone's 45px bar on any touch screen, so its 36px controls clear the hairline. */
+    & { --chat-bar-h: 45px; }
     & :is(.cb-head, .cb-brand-row, .cb-search) .cb-ib { width: 36px; height: 36px; }
     & [data-todo-header]:not([hidden]) { min-width: 36px; }
     & .cb-pill { height: 32px; border-radius: 16px; }

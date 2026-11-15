@@ -824,9 +824,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
       position: fixed;
       inset: 0;
       z-index: 60;
-      padding: calc(6px + var(--safe-top, 0px)) 8px calc(10px + var(--safe-bottom, 0px));
+      padding: var(--safe-top, 0px) 8px calc(10px + var(--safe-bottom, 0px));
       border: 0;
     }
+    /* The sheet's head is the bar it covers: a 44px row plus the same hairline. */
+    & .dk-insp-bar { height: var(--chat-bar-h); min-height: 0; margin: 0 -8px 6px; padding: 0 0 0 14px;
+      border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent); }
     & .dk-insp-bar .dk-ib { width: 44px; height: 44px; }
     & .dk-card-preview { flex: 1 0 60dvh; }
     & .dk-card-preview .chat-artifact { position: relative; inset: auto; z-index: auto; width: auto; }
@@ -851,6 +854,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   /* Touch: every control at least 36px; the row ⋯ always shows. */
   @media (max-width: 800px), (pointer: coarse) {
+    /* The phone's 45px bar on any touch screen, so its 36px controls clear the hairline. */
+    & { --chat-bar-h: 45px; }
     & .dk-head :is(.dk-ib, .dk-back, .dk-title-btn) { height: 36px; }
     & .dk-head .dk-ib { width: 36px; }
     & .dk-head [data-todo-header]:not([hidden]) { width: auto; min-width: 36px; }
