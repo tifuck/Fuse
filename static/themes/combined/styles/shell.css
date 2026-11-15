@@ -923,40 +923,57 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] :is(.cb-live, .cb-pill-dot, .chat-live-dock .chat-activity-spin) { animation: none; }
 }
 
-/* ---- Over a wallpaper: one frosted reading surface, no text shadows ----
-   The transcript column, the prompt library and the composer dock (welcome
-   text included) sit on the palette's ink at 92%; chrome and popovers at
-   96%. Both values hold when the palette's scheme differs from the
-   wallpaper's, so text and icons pass over every wallpaper. */
+/* ---- Over a wallpaper: liquid glass, no text shadows ----
+   One full-height pane behind the transcript column, the prompt library and
+   the composer dock (welcome text included): a strong blur, the palette's
+   ink at 55% under the text (30% in light, mostly blur), fading out over a
+   long gutter toward the sides with no edge. The header and sidebar are
+   lighter glass (78%, light 62%), the rail, composer card and cards denser
+   (88%, light 80%). */
 html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
-  --cb-veil-a: 92%;
-  --cb-chrome-a: 96%;
-  --cb-glass: blur(24px) saturate(1.1);
-  & :is(.chat-log, .chat-library) { position: relative; }
-  /* The veil's side overhang never makes a narrow thread scroll sideways. */
-  & .chat-thread { overflow-x: hidden; }
-  & :is(.chat-log, .chat-library, .chat-dock)::before {
-    content: "";
+  --cb-veil-a: 55%;
+  --cb-chrome-a: 78%;
+  --cb-card-a: 88%;
+  --cb-glass: blur(40px) saturate(1.5);
+  /* Whatever the rail or work strip takes from the stage's right side. */
+  --cb-glass-end: 0px;
+  /* The stage's spacer: out of the flow, a pane centred on the column. The
+     fade spans the gutter up to 1rem outside the column, eased. */
+  & .chat-stage::before {
+    --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
+    --cb-side: max(0px, calc((100% - var(--cb-glass-end)) / 2 - var(--chat-col) / 2 - 15rem));
     position: absolute;
+    inset: 0 calc(var(--cb-side) + var(--cb-glass-end)) 0 var(--cb-side);
     z-index: -1;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--ink) var(--cb-veil-a), transparent);
+    flex: none;
+    background:
+      linear-gradient(rgb(255 255 255 / 0.05), transparent 9rem),
+      color-mix(in srgb, var(--ink) var(--cb-veil-a), transparent);
     -webkit-backdrop-filter: var(--cb-glass);
     backdrop-filter: var(--cb-glass);
+    -webkit-mask-image: var(--cb-glass-mask);
+    mask-image: var(--cb-glass-mask);
+    --cb-glass-mask: linear-gradient(90deg, transparent, rgb(0 0 0 / 0.16) calc(var(--f) * 0.25), rgb(0 0 0 / 0.5) calc(var(--f) * 0.5), rgb(0 0 0 / 0.84) calc(var(--f) * 0.75), #000 var(--f), #000 calc(100% - var(--f)), rgb(0 0 0 / 0.84) calc(100% - var(--f) * 0.75), rgb(0 0 0 / 0.5) calc(100% - var(--f) * 0.5), rgb(0 0 0 / 0.16) calc(100% - var(--f) * 0.25), transparent);
   }
-  & :is(.chat-log, .chat-library)::before { inset: -14px -12px -28px; border-radius: 14px; }
-  & .chat-dock::before { inset: -6px -12px 0; border-radius: 14px 14px 0 0; }
-  & :is(.cb-side, .cb-rail, .chat-dock .cb-box, .chat-latest) {
-    background: color-mix(in srgb, var(--panel) var(--cb-chrome-a), transparent);
-    -webkit-backdrop-filter: var(--cb-glass);
-    backdrop-filter: var(--cb-glass);
+  &[data-theme-rail-state="open"] { --cb-glass-end: var(--cb-rail-w); }
+  @media (min-width: 1200px) {
+    &:has(.chat-stage > .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) { --cb-glass-end: 16.5rem; }
   }
+  @media (max-width: 1039.98px) { &[data-theme-rail-state="open"] { --cb-glass-end: 0px; } }
+  & .cb-side { background: color-mix(in srgb, var(--panel) var(--cb-chrome-a), transparent); -webkit-backdrop-filter: var(--cb-glass); backdrop-filter: var(--cb-glass); }
   & .cb-head { background: color-mix(in srgb, var(--ink) var(--cb-chrome-a), transparent); -webkit-backdrop-filter: var(--cb-glass); backdrop-filter: var(--cb-glass); }
-  @media (max-width: 1100px) {
-    & :is(.chat-log, .chat-library)::before { inset-inline: 0; }
-    & .chat-dock::before { inset-inline: 4px; }
+  & :is(.cb-rail, .chat-dock .cb-box, .chat-latest) {
+    background: color-mix(in srgb, var(--panel) var(--cb-card-a), transparent);
+    -webkit-backdrop-filter: var(--cb-glass);
+    backdrop-filter: var(--cb-glass);
   }
 }
+html[data-chat-view="combined"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
+  --cb-veil-a: 30%;
+  --cb-chrome-a: 62%;
+  --cb-card-a: 80%;
+}
 @media (prefers-reduced-transparency: reduce) {
-  html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] { --cb-veil-a: 100%; --cb-chrome-a: 100%; }
+  html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"],
+  html[data-chat-view="combined"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] { --cb-veil-a: 100%; --cb-chrome-a: 100%; --cb-card-a: 100%; }
 }

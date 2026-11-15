@@ -910,38 +910,52 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
   --dk-del: #f85149;
 }
 
-/* ---- Over a wallpaper: one frosted layer, no text shadows ----
-   The transcript column and the dock sit on the palette's canvas at 92%;
-   the chrome at 96%. The wallpaper shows in the gutters. Both values hold
-   when the palette's scheme differs from the wallpaper's. */
+/* ---- Over a wallpaper: liquid glass, no text shadows ----
+   One full-height pane behind the transcript column and the dock: a strong
+   blur, the palette's canvas at 55% under the text (30% in light, mostly
+   blur), fading out over a long gutter toward the sides with no edge. Bars
+   and the sidebar are lighter glass (78%, light 62%), cards and popovers
+   denser (88%, light 80%). */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 92%;
-  --dk-chrome-a: 96%;
-  --dk-veil: color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent);
+  --dk-veil-a: 55%;
+  --dk-chrome-a: 78%;
+  --dk-card-a: 88%;
+  --dk-glass: blur(40px) saturate(1.5);
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
-  & .chat-log { position: relative; }
-  & :is(.chat-log, .chat-dock)::before {
-    content: "";
+  /* The stage's spacer: out of the flow, a pane centred on the column. The
+     fade spans the gutter up to 1rem outside the column, eased. */
+  & .chat-stage::before {
+    --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
     position: absolute;
+    inset: 0 max(0px, calc(50% - var(--chat-col) / 2 - 15rem));
     z-index: -1;
-    pointer-events: none;
-    background: var(--dk-veil);
+    flex: none;
+    background:
+      linear-gradient(rgb(255 255 255 / 0.05), transparent 9rem),
+      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent);
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);
+    -webkit-mask-image: var(--dk-glass-mask);
+    mask-image: var(--dk-glass-mask);
+    --dk-glass-mask: linear-gradient(90deg, transparent, rgb(0 0 0 / 0.16) calc(var(--f) * 0.25), rgb(0 0 0 / 0.5) calc(var(--f) * 0.5), rgb(0 0 0 / 0.84) calc(var(--f) * 0.75), #000 var(--f), #000 calc(100% - var(--f)), rgb(0 0 0 / 0.84) calc(100% - var(--f) * 0.75), rgb(0 0 0 / 0.5) calc(100% - var(--f) * 0.5), rgb(0 0 0 / 0.16) calc(100% - var(--f) * 0.25), transparent);
   }
-  & .chat-log::before { inset: -14px -12px -28px; border-radius: 14px; }
-  & .chat-dock::before { inset: -6px -12px 0; border-radius: 14px 14px 0 0; }
-  @media (max-width: 1100px) { & :is(.chat-log, .chat-dock)::before { inset-inline: 0; } }
   & .dk-side { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-head { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.chat-dock .dk-box, .dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-chrome-a), transparent); }
-  & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.chat-dock .dk-box, .dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
+  & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
 }
+html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
+  --dk-veil-a: 30%;
+  --dk-chrome-a: 62%;
+  --dk-card-a: 80%;
+}
 @media (prefers-reduced-transparency: reduce) {
-  html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; }
+  html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
+  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
