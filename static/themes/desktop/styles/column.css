@@ -183,6 +183,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   transition: transform var(--dur-1, 120ms) ease;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[aria-expanded="true"]::after { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle, html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[data-step-toggle]::after { transition: none; }
+}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-plus { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-minus { color: var(--dk-del, var(--fault)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle {

@@ -99,14 +99,23 @@ function bump(id, patch) {
         close: box('[data-agents-list] [data-agent-main]'),
       };
     });
+    // A theme may keep the agent tree in a panel that opens only on a user
+    // action (Desktop's inspector, Combined's rail): open it the way a user
+    // would. It stays open across subagent navigation.
+    const showTree = async () => {
+      const opener = page.locator('[data-theme-pill], [data-theme-inspector]');
+      if (await opener.count() && !(await page.locator('[data-agents-list]').isVisible())) await opener.first().click();
+    };
     const open = async (id) => {
       await page.evaluate((agent) => fuseToolFixture.todo.openAgent(agent), id);
       await page.locator('[data-agent-log-body]').waitFor({ state: 'visible' });
+      await showTree();
       await page.locator(`[data-agents-list] .chat-agents-row[aria-current="true"] [data-agent-id="${id}"]`).waitFor();
     };
     const stateIs = (want) => page.waitForFunction((want) => (document.querySelector('[data-agents-list] .chat-agents-row[aria-current="true"]:not(.is-main) .chat-agents-state')?.textContent || '') === want, want);
     // Back to the main transcript: the tree's main row.
     const back = async () => {
+      await showTree();
       await page.locator('[data-agents-list] [data-agent-main]').click();
       await page.locator('[data-agent-view]').waitFor({ state: 'hidden' });
     };
@@ -383,6 +392,8 @@ function bump(id, patch) {
     for (const [width, height] of [[390, 844], [1440, 1000]]) {
       await page.setViewportSize({ width, height });
       await page.locator('[data-agent-view]').waitFor({ state: 'visible' });
+      // Narrow, Combined's rail is a dropdown that starts shut after a breakpoint change.
+      await showTree();
       ui = await pane();
       assert.ok(ui.panel, `${width}: the child transcript has a box`);
       assert.ok(ui.close, `${width}: the main row is shown`);

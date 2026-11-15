@@ -59,7 +59,9 @@ const shots = process.env.LOG_DIR || '/tmp/fuse-browser-tests';
             display: style.display,
             border: parseFloat(style.borderTopWidth) || 0,
             padding: parseFloat(style.paddingTop) || 0,
-            tall: a.getBoundingClientRect().height / lineHeight,
+            // Per line box: a link that wraps on a narrow column spans two lines
+            // without stretching either.
+            tall: Math.max(...[...a.getClientRects()].map((r) => r.height)) / lineHeight,
             alone: p.textContent.trim() === a.textContent.trim(),
           };
         });

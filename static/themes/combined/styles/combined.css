@@ -282,6 +282,9 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
   transition: transform var(--dur-1, 120ms) ease;
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-toggle[aria-expanded="true"]::after { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head button.chat-step-toggle, html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head button.chat-step-toggle::after { transition: none; }
+}
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-toggle:hover { color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label b { color: inherit; font-weight: 600; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-bundle {
