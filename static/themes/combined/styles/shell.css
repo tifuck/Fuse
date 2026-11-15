@@ -711,7 +711,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & :is(.chat-sheet-head span, .chat-context-desc) { color: var(--mute); font: 12.5px/1.4 var(--sans); }
   & :is(.chat-sheet, .chat-picker-menu, .chat-perms-menu) .chat-menu-close { width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 8px; }
   /* Group labels inside lists: small sentence case, never a kicker. */
-  & :is(.chat-slash-kicker, .chat-context-pop-kicker, .chat-picker-group > p, .chat-picker-thinking-label, .chat-perms-mode-label) {
+  & :is(.chat-slash, .chat-context-pop, .chat-picker-menu, .chat-perms-menu) :is(.chat-slash-kicker, .chat-context-pop-kicker, .chat-picker-group > p, .chat-picker-thinking-label, .chat-perms-mode-label) {
     color: var(--mute);
     font: 500 11px/1.2 var(--sans);
     letter-spacing: 0;
@@ -728,7 +728,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & :is(.chat-picker-row > [role="option"].is-selected > span, .chat-picker-thinking-value, .chat-slash-item kbd, .chat-perm-act.is-allow, .chat-perm-card-agent.is-sub) { color: var(--cb-accent-text); }
   & .chat-perm-card-kind { color: color-mix(in srgb, var(--steel) 78%, var(--mist)); font-size: 11px; }
   & .chat-slash-item.is-off { opacity: 1; }
-  & .chat-slash-item.is-off kbd { color: var(--mute); font-weight: 500; }
+  & .chat-slash .chat-slash-item.is-off kbd { color: var(--mute); font-weight: 500; }
   & .chat-picker-efforts { --effort-thumb: 14px; --effort-track: 4px; }
   & .chat-picker-efforts-slider { height: 28px; }
   & .chat-picker-menu.is-sheet .chat-picker-efforts-slider { height: 44px; }

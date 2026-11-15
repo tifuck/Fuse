@@ -16,6 +16,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     gap: 8px;
     padding: 6px 28px 10px 12px;
     overflow-x: auto;
+    scroll-padding-inline: 12px 28px;
     scrollbar-width: thin;
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
     mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
@@ -29,4 +30,5 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-wp-name { display: -webkit-box; max-width: 100%; overflow: hidden; text-align: center; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   & .cb-wp-check { margin-right: 3px; color: var(--mist); }
   @media (hover: none) { & .cb-wp-keys { display: none; } }
+  @media (max-width: 480px) { & .cb-wp-x { width: 40px; height: 40px; } }
 }
