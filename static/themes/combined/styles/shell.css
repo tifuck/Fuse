@@ -967,6 +967,11 @@ html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="non
     -webkit-backdrop-filter: var(--cb-glass);
     backdrop-filter: var(--cb-glass);
   }
+  /* Secondary text leans a fifth toward the body colour so it holds AA on
+     the glass, and still reads as secondary. */
+  & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--mute) 80%, var(--mist)); }
+  & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--steel) 85%, var(--mist)); }
+  & .chat-md :not(pre) > code { color: color-mix(in srgb, var(--steel) 55%, var(--mist)); }
 }
 html[data-chat-view="combined"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
   --cb-veil-a: 30%;
