@@ -623,6 +623,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     position: absolute;
     z-index: 0;
     inset: 0 0 calc(var(--dk-band-h) + 6px);
+    /* The old prompt glyph's margins would pull the card in under the buttons. */
+    margin: 0;
     pointer-events: none;
     border: 1px solid var(--dk-comp-line);
     border-radius: 12px;
@@ -662,6 +664,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     flex: none;
     width: 28px;
     height: 28px;
+    margin: 0;
     padding: 0;
     border: 0;
     border-radius: 50%;
@@ -734,11 +737,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-perm-act.is-split { border-radius: 0 8px 8px 0; }
   @media (max-width: 800px), (pointer: coarse) {
     & { --dk-band-h: 44px; }
-    & .dk-compose :is(textarea, .chat-compose-mirror) { padding-inline: 44px 76px; font-size: 16px; }
-    & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + 8px); }
-    & .dk-row2 [data-chat-attach] { left: 4px; }
-    & .dk-row2 [data-chat-send] { right: 4px; bottom: calc(100% + 10px); }
-    & .dk-row2 [data-chat-mic] { right: 38px; }
+    /* A taller card, so the larger touch buttons keep an even gap inside it:
+       6px around + and the mic, 8px around send. */
+    & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 44px; padding: 10px 88px 10px 46px; font-size: 16px; }
+    & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + 12px); }
+    & .dk-row2 [data-chat-attach] { left: 6px; }
+    & .dk-row2 [data-chat-send] { right: 8px; bottom: calc(100% + 14px); }
+    & .dk-row2 [data-chat-mic] { right: 44px; }
     & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
     & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
     & .dk-send { width: 32px; height: 32px; }
