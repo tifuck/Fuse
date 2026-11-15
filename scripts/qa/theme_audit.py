@@ -645,6 +645,7 @@ class Page:
     async def type(self, text):
         box = await self.need("[data-chat-input]")
         await box.click()  # the slash menu opens on input after a pointer focus, not on .focus() alone
+        await box.fill("")  # a draft kept from an earlier state would prefix this text
         lines = text.split("\n")
         for i, line in enumerate(lines):
             await box.type(line, delay=0)
