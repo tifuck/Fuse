@@ -219,6 +219,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   /* A search hit's snippet takes a second 12px line under the title. */
   & .cb-row.has-snip { height: auto; min-height: 28px; }
   & .has-snip .cb-open { flex-wrap: wrap; row-gap: 0; padding-block: 4px; }
+  & .has-snip .cb-name { flex: 1 1 0; }
   & .has-snip .cb-snip { order: 1; flex: 1 0 100%; max-width: none; padding-left: 21px; font-size: 12px; white-space: nowrap; }
   & .cb-chip { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; font: 10.5px var(--mono); }
   & .cb-when { flex: none; margin-left: auto; padding-left: 4px; color: var(--mute); font: 11px var(--mono); }
