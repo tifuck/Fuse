@@ -15,6 +15,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   --cb-hit: 24px;
 }
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] { --cb-link: #2459b8; --cb-add: #1f7a3c; --cb-del: #b23a30; }
+/* Light palettes' own mute misses AA on raised and selected rows; muted text comes from the text colour instead (body, so menus moved there follow). */
+html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat { --mute: color-mix(in srgb, var(--mist) 70%, var(--ink)); }
 
 /* Turns sit close; the user bubble is the separator. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-log { gap: 0.45rem; }

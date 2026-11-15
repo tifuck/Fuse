@@ -693,6 +693,11 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-model .chat-picker-btn svg { flex: none; }
   & .cb-ring-wrap { position: relative; display: flex; }
   & .cb-ring-wrap[hidden] { display: none; }
+  /* A phone has no room to hang the popover off the ring: it rises from the card's right edge. */
+  @media (max-width: 480px) {
+    & .cb-box { position: relative; }
+    & .cb-ring-wrap { position: static; }
+  }
   & .cb-ring { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
   & .cb-ring:hover { background: var(--cb-hover); }
   & .cb-ring:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
