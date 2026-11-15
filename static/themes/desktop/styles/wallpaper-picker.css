@@ -27,6 +27,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     gap: 8px;
     padding: 6px 12px 12px;
     overflow-x: auto;
+    scroll-padding-inline: 12px 32px;
     scrollbar-width: thin;
     scrollbar-color: var(--dk-card-line) transparent;
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
@@ -44,4 +45,5 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-wp-name { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-align: center; overflow-wrap: anywhere; }
   & .dk-wp-check { margin-right: 3px; color: var(--dk-text); }
   @media (hover: none) { & .dk-wp-keys { display: none; } }
+  @media (max-width: 800px), (pointer: coarse) { & .dk-wp-x { width: 36px; height: 36px; } }
 }
