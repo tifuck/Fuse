@@ -31,6 +31,12 @@ const MODELS = JSON.stringify({ models: [
 ] });
 const SLOTS = JSON.stringify({ slots: { brief: 1200, notes: 40 } });
 
+// Heads are written in Console's verbs; Combined and Desktop name some calls in
+// plainer words (their tool-headers.js). Same line, its theme's verb.
+const PLAIN = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW);
+const SEARCH_VERB = PLAIN ? 'Web search' : 'Web Search';
+const TODO_VERB = PLAIN ? 'Todos' : 'Update Todos';
+
 const turn = (trace, live) => ({
   role: 'assistant', model: 'qa/model', elapsedMs: live ? null : 4000,
   content: 'Checked.', segments: [{ type: 'content', text: 'Checked.' }, { type: 'tool', id: trace.id }],
@@ -139,12 +145,12 @@ const turn = (trace, live) => ({
       const tag = `${width}px`;
 
       await life('web_search', {
-        head: /Web Search\(?"fuse console rows" \+1\)?/, queries: ['fuse console rows', 'tool row lifecycle'], query: 'fuse console rows',
+        head: new RegExp(`${SEARCH_VERB}\\(?"fuse console rows" \\+1\\)?`), queries: ['fuse console rows', 'tool row lifecycle'], query: 'fuse console rows',
       }, [
-        { event: SEARCH_DONE, head: /Web Search\(?"fuse console rows" \+1\)?/, live: ['Did 2 searches in 840ms'], keptHas: ['Console row guide', 'Lifecycle notes', 'example.com'], lacks: ['Running…'], dot: 'done' },
-        { event: { status: 'error', error: 'Search failed. Try again shortly.', queries: ['fuse console rows', 'tool row lifecycle'], results: [] }, head: /Web Search/, live: ['Error: Search failed. Try again shortly.'], lacks: ['Did 2 searches', 'Running…'], dot: 'error' },
+        { event: SEARCH_DONE, head: new RegExp(`${SEARCH_VERB}\\(?"fuse console rows" \\+1\\)?`), live: ['Did 2 searches in 840ms'], keptHas: ['Console row guide', 'Lifecycle notes', 'example.com'], lacks: ['Running…'], dot: 'done' },
+        { event: { status: 'error', error: 'Search failed. Try again shortly.', queries: ['fuse console rows', 'tool row lifecycle'], results: [] }, head: new RegExp(SEARCH_VERB), live: ['Error: Search failed. Try again shortly.'], lacks: ['Did 2 searches', 'Running…'], dot: 'error' },
         // The interrupted line names why it stopped and still counts the query.
-        { event: { status: 'interrupted', error: 'Tool interrupted.', queries: ['fuse console rows'] }, head: /Web Search/, live: ['Interrupted · the run ended before it finished', 'Did 1 search'], lacks: ['Running…', 'Did 2 searches'], dot: 'interrupted' },
+        { event: { status: 'interrupted', error: 'Tool interrupted.', queries: ['fuse console rows'] }, head: new RegExp(SEARCH_VERB), live: ['Interrupted · the run ended before it finished', 'Did 1 search'], lacks: ['Running…', 'Did 2 searches'], dot: 'interrupted' },
       ]);
 
       await life('read_url', { head: new RegExp(`Fetch\\(${PAGE.replace(/[.]/g, '\\.')}\\)`), url: PAGE }, [
@@ -263,7 +269,7 @@ const turn = (trace, live) => ({
       await page.evaluate(() => fuseToolFixture.todo.reset());
       await mount({ id: 'm-todo', name: 'todo_write', status: 'running', todos: [{ id: '1', content: 'Pin the meta rows', status: 'in_progress' }] }, true);
       let todo = await read('m-todo');
-      assert.equal(todo.head, 'Update Todos', `${tag} running todo head: ${todo.head}`);
+      assert.equal(todo.head, TODO_VERB, `${tag} running todo head: ${todo.head}`);
       assert.match(todo.result, /Running…/, `${tag} running todo result: ${todo.result}`);
       expectDot(todo.dot, 'running', `${tag} todo running`);
       await page.locator('[data-live-todos]').filter({ hasText: 'Pin the meta rows' }).waitFor({ state: 'attached' });
@@ -272,7 +278,7 @@ const turn = (trace, live) => ({
       await send({ event: 'tool', id: 'm-todo', name: 'todo_write', status: 'done', todos: [{ id: '1', content: 'Pin the meta rows', status: 'completed' }] });
       await paint();
       todo = await read('m-todo');
-      assert.equal(todo.head, 'Update Todos', `${tag} settled todo head: ${todo.head}`);
+      assert.equal(todo.head, TODO_VERB, `${tag} settled todo head: ${todo.head}`);
       assert.equal(todo.body, '1 todo · 1/1 done', `${tag} settled todo is two lines: ${JSON.stringify(todo.body)}`);
       assert.equal(await rowOf('m-todo').locator('[data-step-toggle]').count(), 0, `${tag} a todo row has nothing to open`);
       assert.equal(await rowOf('m-todo').evaluate((el) => el.textContent.includes('Pin the meta rows')), false, `${tag} the row printed a todo item`);

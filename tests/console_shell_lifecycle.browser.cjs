@@ -220,7 +220,8 @@ const seen = (snap) => snap.rows.map((r) => r.text).join('\n');
       assert.doesNotMatch(killed.text, /Running in the background/, `the killed row still says it is running`);
       assert.equal(killed.clocks.filter((c) => c.trim()).length, 0, `the killed row's clock still ticks: ${killed.clocks}`);
       assert.ok(kill, `the Stop Task row never appeared`);
-      assert.match(kill.head, /Stop Task/, `kill header: ${kill.head}`);
+      // Combined and Desktop name the kill in a plainer word (their tool-headers.js).
+      assert.match(kill.head, ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW) ? /^Stop\(/ : /Stop Task/, `kill header: ${kill.head}`);
       assert.equal(kill.state, 'done', `the kill call itself looks interrupted: ${kill.cls}`);
       console.log('PASS kill mid-output keeps the output');
     }

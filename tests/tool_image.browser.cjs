@@ -55,7 +55,10 @@ const message = { id: 'image-message', role: 'assistant', content: '', tools: [t
         await check(page.locator('[data-chat-log]'));
         await page.evaluate(() => fuseToolFixture.todo.openAgent('image-child'));
         await check(page.locator('[data-agent-log-body]'));
-        await page.locator('[data-agents-list] [data-agent-main]').click();
+        // Combined's rail and Desktop's inspector (closed by default) hold the
+        // agent list; their always-visible "← Main" is the way back there.
+        const main = page.locator('[data-agents-list] [data-agent-main]');
+        await (await main.isVisible() ? main : page.locator('[data-theme-agent-back]')).click();
         await page.locator('[data-agent-view]').waitFor({ state: 'hidden' });
       }
     }
@@ -70,8 +73,11 @@ const message = { id: 'image-message', role: 'assistant', content: '', tools: [t
     }
     await page.route('**/chat/runs/image-child/images/ts_9_0', route => route.fulfill({ status: 404, body: '' }));
     await page.evaluate(trace => fuseToolFixture.mount([{ tools: [trace] }]), { ...trace, image: { ...previewImage, preview_url: '/chat/runs/image-child/images/ts_9_0' } });
+    // Open the summary, and on a theme whose opened summary lists one-line
+    // members (Desktop) the member too: the lazy image only loads once shown.
     const closed = page.locator('[data-chat-log] .chat-step-toggle[aria-expanded="false"]');
-    if (await closed.count()) await closed.first().click();
+    const shown = () => page.locator('[data-chat-log] .chat-tool-image').first().isVisible();
+    for (let i = 0; i < 4 && !(await shown()) && await closed.count(); i++) await closed.first().click();
     await page.locator('[data-chat-log] .chat-tool-image .chat-tool-truncated').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-chat-log] [data-image-preview]').count(), 0);
     assert.deepEqual(errors, []);

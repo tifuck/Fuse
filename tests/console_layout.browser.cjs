@@ -15,6 +15,9 @@ const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
 assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
 const SIZES = [[1440, 1000], [390, 844]];
+// Combined and Desktop fold finished edits and writes into the summary line too
+// (docs/themes/*.md, "Collapse"); Console prints them on their own rows.
+const EDITS_FOLD = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW);
 const ROOT = { host: 'qa-box', cwd: '/srv/qa', platform: 'posix', project_root: '/srv/qa' };
 const TOKEN = 'dispatcher_backoff_and_retries_integration_test_fixture_payload_0123456789abcdef';
 const DEEPDIR = `/srv/qa/integration/backoff/retries/${TOKEN}_directory`;
@@ -43,8 +46,8 @@ const sh = (id, command, fields = {}) => t('run_terminal_command', {
 // their own row.
 const kinds = () => [
   { trace: t('read_file', { id: 'k-read', path: DEEP, output: `1: retries = 3\n2: backoff = ${'x'.repeat(200)}\n3: done\n` }), folds: true },
-  { trace: t('write_file', { id: 'k-write', path: DEEP.replace('module', 'generated'), content: `print("${'x'.repeat(200)}")\n` }) },
-  { trace: t('search_replace', { id: 'k-edit', path: DEEP, preview: DIFF, output: `updated ${DEEP}`, added: 1, removed: 1 }) },
+  { trace: t('write_file', { id: 'k-write', path: DEEP.replace('module', 'generated'), content: `print("${'x'.repeat(200)}")\n` }), folds: EDITS_FOLD },
+  { trace: t('search_replace', { id: 'k-edit', path: DEEP, preview: DIFF, output: `updated ${DEEP}`, added: 1, removed: 1 }), folds: EDITS_FOLD },
   { trace: t('list_dir', { id: 'k-list', path: DEEPDIR, output: `${TOKEN}_a.py\n${TOKEN}_b.py\n` }), folds: true },
   { trace: t('glob', { id: 'k-glob', pattern: `**/*${TOKEN}{,_fixture,_config}.py`, path: '/srv/qa', output: `tests/${TOKEN}_fixture.py\n` }), folds: true },
   { trace: t('grep', { id: 'k-grep', pattern: PATTERN, path: DEEPDIR, output: `${DEEP}:12:${PATTERN}\n` }), folds: true },
@@ -241,6 +244,11 @@ const kindsThread = (list) => {
           const found = before.rows.filter((r) => r.step === `tool-${kind.trace.id}`);
           check(found.length === 1, `${where} ${kind.trace.id}: ${found.length} rows after opening every summary (want 1)`);
           for (const row of found) rowHeader(before, row, `${where} opened`, true);
+          // Where edits and writes fold, their title check moves to the opened member row.
+          if (EDITS_FOLD && ['k-write', 'k-edit'].includes(kind.trace.id) && found[0]?.label) {
+            const raw = kind.trace.id === 'k-write' ? DEEP.replace('module', 'generated') : DEEP;
+            check(found[0].label.title === raw, `${where} ${kind.trace.id}: opened row title carries the full value (got ${JSON.stringify(found[0].label.title)})`);
+          }
         }
         const opened = before.rows.filter((r) => !r.group && r.label);
         if (opened.length >= 4) {
@@ -300,8 +308,12 @@ const kindsThread = (list) => {
         await frame();
         const live1 = await layout();
         if (process.env.DEBUG) console.log(where, 'TURN', JSON.stringify(live1));
-        const target = (p) => p.rows.find((r) => r.step === 'tool-turnrow' || r.step === 'cgroup-tool-turnrow');
-        const steadyBefore = live1.rows.find((r) => r.step === 'tool-steady');
+        // Where edits fold, the settled command joins the write's summary line (cgroup-tool-steady).
+        const target = (p) => p.rows.find((r) => r.step === 'tool-turnrow' || r.step === 'cgroup-tool-turnrow')
+          || (EDITS_FOLD ? p.rows.find((r) => r.step === 'cgroup-tool-steady' && /ran 1 shell command/i.test(r.text)) : undefined);
+        // A finished write: its own row, or its summary line where edits fold.
+        const steady = (p) => p.rows.find((r) => r.step === 'tool-steady' || r.step === 'cgroup-tool-steady');
+        const steadyBefore = steady(live1);
         const turnBefore = target(live1);
         check(Boolean(steadyBefore && turnBefore), `${where}: running->done rows present (${live1.rows.map((r) => r.step).join(',')})`);
         if (turnBefore && turnBefore.took) check(turnBefore.took.r <= turnBefore.label.r + 1, `${where}: ticking clock spills the running header "${turnBefore.text}"`);
@@ -313,7 +325,7 @@ const kindsThread = (list) => {
         const live2 = await layout();
         if (process.env.DEBUG) console.log(where, 'DONE', JSON.stringify(live2));
         check(live2.overflowX <= 1, `${where}: done page overflows horizontally by ${live2.overflowX}px`);
-        const steadyAfter = live2.rows.find((r) => r.step === 'tool-steady');
+        const steadyAfter = steady(live2);
         const turnAfter = target(live2);
         check(Boolean(steadyAfter && turnAfter), `${where}: rows after settling (${live2.rows.map((r) => r.step).join(',')})`);
         if (steadyBefore && steadyAfter) {

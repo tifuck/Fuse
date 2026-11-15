@@ -190,7 +190,9 @@ const taskEnvelope = (id, body) => [
     let wait = await readRow('[data-step="tool-wait-aw1"]');
     assert.equal(wait.state, 'running', `await running state | ${JSON.stringify(wait)}`);
     assert.equal(wait.title, 'Waiting', `await dot says Waiting | ${JSON.stringify(wait)}`);
-    assert.equal(wait.head, 'Await(Audit the connection pool)', `await names its child | ${JSON.stringify(wait)}`);
+    // Combined and Desktop name the call in a plainer word (their tool-headers.js).
+    const awaitVerb = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW) ? 'Wait' : 'Await';
+    assert.equal(wait.head, `${awaitVerb}(Audit the connection pool)`, `await names its child | ${JSON.stringify(wait)}`);
     assert.ok(!/· \d/.test(wait.head), `an await under 2s shows no clock yet | ${JSON.stringify(wait)}`);
 
     // The server stamps the call. A reload 40s later resumes the clock
