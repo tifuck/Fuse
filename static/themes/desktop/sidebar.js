@@ -34,6 +34,9 @@ export function create(deps) {
       `<button type="button" class="dk-more" data-row-more aria-label="${menu}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
   }
 
+  // The tooltip carries what the quiet row leaves out: the date and a search hit.
+  const tip = (title, row, item) => esc([title, row.age?.title, item.snippet].filter(Boolean).join(" · "));
+
   function threadRowHtml(item, row) {
     const title = esc(row.title);
     const lead = !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : codeIcon(item.project_color);
@@ -44,7 +47,7 @@ export function create(deps) {
       (item.pinned ? " is-pinned" : "") + (item.schedule_id ? " is-task" : "") + (row.grouped ? " is-grouped" : "") + (snip ? " has-snip" : "");
     const attrs = (item.pinned ? " data-pinned" : "") + ` data-thread="${esc(String(item.id))}"` + (row.running ? ' aria-busy="true"' : "");
     const working = row.running ? '<span class="visually-hidden">Working</span>' : "";
-    return rowHtml({ cls, attrs, title, label: title, working, lead, extra: where + chip + snip, when: whenHtml(row), menu: `Actions for ${title}`, on: row.on });
+    return rowHtml({ cls, attrs, title: tip(row.title, row, item), label: title, working, lead, extra: where + chip + snip, when: whenHtml(row), menu: `Actions for ${title}`, on: row.on });
   }
 
   function draftRowHtml(item, row) {
@@ -66,7 +69,7 @@ export function create(deps) {
     return rowHtml({
       cls: " is-project" + (row.on ? " is-on" : "") + (row.running ? " is-running" : ""),
       attrs: ` data-project="${item.host_id}:${item.id}"` + (item.thread_id ? ` data-thread="${esc(String(item.thread_id))}"` : "") + (row.running ? ' aria-busy="true"' : ""),
-      title: name, label: name, lead: item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
+      title: tip(item.name || "Project", row, item), label: name, lead: item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
       menu: `Actions for project ${name}`, on: row.on,
     });
   }
@@ -79,7 +82,7 @@ export function create(deps) {
     for (const block of blocks) {
       switch (block.type) {
         case "kicker":
-          out += `<h5 class="dk-group" data-history-section>${esc(block.text)}${block.text === "Pinned" ? ' <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ""}</h5>`;
+          out += `<h2 class="dk-group" data-history-section>${esc(block.text)}</h2>`;
           // Rows under a named section (Pinned, Projects, Sessions) are not dated.
           heading = block.text;
           timeline = false;
@@ -89,13 +92,13 @@ export function create(deps) {
           heading = "";
           break;
         case "group":
-          out += `<h5 class="dk-group is-project" data-history-group data-project-color="${esc(block.color || "")}">${/fp-logo/.test(block.icon) ? block.icon : square(block.color)}<span data-group-name>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h5>`;
+          out += `<h2 class="dk-group is-project" data-history-group data-project-color="${esc(block.color || "")}">${/fp-logo/.test(block.icon) ? block.icon : square(block.color)}<span data-group-name>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h2>`;
           timeline = false;
           break;
         case "thread":
         case "draft":
           if (timeline && !block.row.grouped && heading !== "Recents") {
-            out += '<h5 class="dk-group" data-history-section>Recents</h5>';
+            out += '<h2 class="dk-group" data-history-section>Recents</h2>';
             heading = "Recents";
           }
           out += block.type === "thread" ? threadRowHtml(block.item, block.row) : draftRowHtml(block.item, block.row);

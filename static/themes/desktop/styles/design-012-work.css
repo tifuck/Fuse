@@ -133,15 +133,3 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-model { max-width: 16ch; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-provider { display: none; }
 }
-/* Narrow phones: a subagent row is its task and dot (the dot carries its
-   state, the full line is in its tooltip); a command row is its command.
-   Main says "2 running": the fold beside it counts agents. */
-@media (max-width: 520px) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row:not(.is-main) .chat-agents-meta,
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-jobs-meta,
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-noun { display: none; }
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r)); }
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-model { max-width: 10ch; }
-  /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-agents-row.is-main .chat-agents-state { display: none; }
-}
