@@ -72,13 +72,40 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-send:hover:not
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-send:active { transform: none; }
 
-/* The repeated class keeps the specificity of the old body:has(.chat[data-view])
-   anchor; a :has() on body re-ran over the whole page on every DOM change. */
-html[data-chat-view="combined"] body.is-chat.is-chat.is-chat :is(.chat-pop, .chat-picker-menu, .chat-context-pop, .chat-perms-menu) { border-radius: 0; box-shadow: none; background: var(--ink); }
-
-html[data-chat-view="combined"] body.is-chat.is-chat.is-chat :is(.chat-perms-row, .chat-perms-x, .chat-perms-modes, .chat-perms-modes button) { border-radius: 0; }
-
-html[data-chat-view="combined"] body.is-chat.is-chat.is-chat .chat-view-menu { background: var(--panel); }
+/* Menus and sheets the runtime moves to <body> (row and title menus,
+   Appearance, Projects) get the same cards as the ones inside the chat
+   (shell.css, Popovers and sheets). */
+html[data-chat-view="combined"] body.is-chat > .chat-pop {
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  font-family: var(--sans);
+}
+html[data-chat-view="combined"] body.is-chat > .chat-pop > :is(button, a) { min-height: 32px; padding: 0 10px; border-radius: 8px; }
+html[data-chat-view="combined"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) {
+  width: min(720px, calc(100vw - 48px));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.4);
+}
+html[data-chat-view="combined"] body.is-chat > .chat-view-backdrop,
+html[data-chat-view="combined"] body.is-chat > dialog.fp-dialog::backdrop { background: color-mix(in srgb, var(--ink) 55%, transparent); }
+html[data-chat-view="combined"] body.is-chat > .chat-view-menu .chat-view-sheet-title,
+html[data-chat-view="combined"] body.is-chat > dialog.fp-dialog .fp-head h2 { margin: 0; color: var(--mist); font: 600 14px/1.3 var(--sans); letter-spacing: 0; }
+html[data-chat-view="combined"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) :is(.chat-menu-close, .fp-close, .fp-back) { width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 8px; }
+html[data-chat-view="combined"] body.is-chat > dialog.fp-dialog .fp-kicker { display: none; }
+html[data-chat-view="combined"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog):focus-visible { outline: none; }
+@media (max-width: 800px) {
+  html[data-chat-view="combined"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) { width: 100%; border: 0; border-radius: 0; box-shadow: none; }
+}
+@media (max-width: 480px) {
+  html[data-chat-view="combined"] body.is-chat > .chat-pop > :is(button, a),
+  html[data-chat-view="combined"] body.is-chat > dialog.fp-dialog :is(.btn, button, input:not([type="checkbox"])) { min-height: 40px; }
+  html[data-chat-view="combined"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) :is(.chat-menu-close, .fp-close, .fp-back) { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+}
 
 @media (max-width: 800px) {
   .chat[data-view="combined"] .chat-md { font-size: calc(0.86rem * var(--chat-text-scale, 1)); line-height: 1.6; }
@@ -86,10 +113,6 @@ html[data-chat-view="combined"] body.is-chat.is-chat.is-chat .chat-view-menu { b
 
 @media (max-width: 800px) {
   .chat[data-view="combined"] :is(.chat-think-body, .chat-tool-command, .chat-tool-out) { font-size: calc(0.74rem * var(--chat-text-scale, 1)); line-height: 1.6; }
-}
-
-@media (max-width: 800px) {
-  html[data-chat-view="combined"] body.is-chat.is-chat.is-chat .chat-view-menu { border-radius: 0; }
 }
 
 @media (max-width: 800px) {

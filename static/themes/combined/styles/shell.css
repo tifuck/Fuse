@@ -11,6 +11,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   --cb-hover: color-mix(in srgb, var(--mist) 7%, transparent);
   --cb-on: var(--raise);
   --cb-accent-text: color-mix(in srgb, var(--brass) 78%, var(--mist));
+  --cb-pop-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  &:is([data-chat-scheme="light"] *) { --cb-pop-shadow: 0 12px 32px rgb(0 0 0 / 0.12); }
 
   & :is(.cb-side, .cb-head, .cb-rail, .chat-dock, .chat-live-dock, .chat-sheet, .chat-view-menu, .chat-pop, .chat-picker-menu,
     .chat-perms-menu, .chat-context-pop, .chat-slash, .chat-library, .chat-library-sheet, .chat-artifact, .chat-latest) {
@@ -578,7 +580,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-model .chat-picker-btn:hover { background: var(--cb-hover); color: var(--mist); }
   & .cb-model .chat-picker-btn > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   & .cb-box .cb-model .chat-picker-btn small { display: inline; flex: none; color: var(--mute); font: 12px var(--sans); letter-spacing: 0; text-transform: none; }
-  & .cb-model .chat-picker-btn small:empty { display: none; }
+  & .cb-box .cb-model .chat-picker-btn small:empty { display: none; }
+  & .cb-box .cb-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) small { color: inherit; }
   & .cb-model .chat-picker-btn small::before { content: "· "; }
   & .cb-model .chat-picker-btn .provider-logo { display: none; }
   & .cb-model .chat-picker-btn svg { flex: none; }
@@ -686,21 +689,67 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   /* ---- Popovers and sheets: rounded cards in the panel colour ---- */
   & :is(.chat-picker-menu, .chat-perms-menu, .chat-context-pop, .chat-slash, .chat-pop) {
     border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--panel);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
-  }
-  & :is(.chat-sheet, .chat-view-menu, .chat-library-sheet) {
-    border: 1px solid var(--line);
     border-radius: 12px;
+    background: var(--panel);
+    box-shadow: var(--cb-pop-shadow);
+  }
+  & :is(.chat-picker-menu, .chat-perms-menu).is-sheet { border-radius: 0; box-shadow: none; }
+  /* Focus lands on these containers only from script; Tab moves into their items. */
+  & :is(.chat-picker-menu, .chat-perms-menu, .chat-context-pop, .chat-sheet):focus-visible { outline: none; }
+  & .chat-pop { padding: 4px; }
+  & .chat-pop > :is(button, a) { min-height: 32px; padding: 0 10px; border-radius: 8px; }
+  & :is(.chat-sheet, .chat-library-sheet) {
+    border: 1px solid var(--line);
+    border-radius: 14px;
     background: var(--panel);
     box-shadow: 0 18px 48px rgb(0 0 0 / 0.4);
   }
-  & :is(.chat-sheet-head p, .chat-view-sheet-title) { color: var(--mist); font: 600 15px var(--sans); letter-spacing: 0; text-transform: none; }
-  & :is(.chat-sheet-head span, .chat-view-sheet-sub, .chat-context-desc) { color: var(--mute); font: 12.5px var(--sans); }
+  & .chat-sheet:is(.chat-memory, .chat-skills) { width: min(720px, calc(100vw - 48px)); }
+  & .chat-sheet-backdrop { background: color-mix(in srgb, var(--ink) 55%, transparent); }
+  & :is(.chat-sheet-head p, .chat-picker-head p) { color: var(--mist); font: 600 14px/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
+  & :is(.chat-sheet-head span, .chat-context-desc) { color: var(--mute); font: 12.5px/1.4 var(--sans); }
+  & :is(.chat-sheet, .chat-picker-menu, .chat-perms-menu) .chat-menu-close { width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 8px; }
+  /* Group labels inside lists: small sentence case, never a kicker. */
+  & :is(.chat-slash-kicker, .chat-context-pop-kicker, .chat-picker-group > p, .chat-picker-thinking-label, .chat-perms-mode-label) {
+    color: var(--mute);
+    font: 500 11px/1.2 var(--sans);
+    letter-spacing: 0;
+    text-transform: none;
+  }
   & .chat-context-tab { border-radius: 6px; font: 500 12.5px var(--sans); }
   & .chat-memory-field textarea { border-radius: 8px; font: 13.5px/1.5 var(--sans); }
-  & :is(.chat-slash-item, .chat-picker-row, .chat-perms-row) { border-radius: 6px; font-family: var(--sans); }
+  & :is(.chat-slash-item, .chat-picker-row > [role="option"], .chat-perms-row) { min-height: 32px; border-radius: 8px; font-family: var(--sans); }
+  & .chat-picker-row > [role="option"] { padding: 4px 10px 4px var(--star-col); box-shadow: none; font: 13px/1.3 var(--sans); }
+  & .chat-picker-row > [role="option"]:is(:hover, .is-active) { background: var(--cb-hover); box-shadow: none; }
+  & .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] { min-height: 44px; }
+  & .chat-picker-menu.is-sheet .chat-picker-list { --star-col: 2.75rem; }
+  /* Accent text keeps 4.5:1 in light palettes too. */
+  & :is(.chat-picker-row > [role="option"].is-selected > span, .chat-picker-thinking-value, .chat-slash-item kbd, .chat-perm-act.is-allow) { color: var(--cb-accent-text); }
+  & .chat-perm-card-kind { color: color-mix(in srgb, var(--steel) 78%, var(--mist)); font-size: 11px; }
+  & .chat-slash-item.is-off { opacity: 1; }
+  & .chat-slash-item.is-off kbd { color: var(--mute); font-weight: 500; }
+  & .chat-picker-efforts { --effort-thumb: 14px; --effort-track: 4px; }
+  & .chat-picker-efforts-slider { height: 28px; }
+  & .chat-picker-menu.is-sheet .chat-picker-efforts-slider { height: 44px; }
+  & .chat-picker-efforts-slider::-webkit-slider-runnable-track { border-radius: 2px; }
+  & .chat-picker-efforts-slider::-webkit-slider-thumb { border-radius: 50%; }
+  & .chat-picker-efforts-slider::-moz-range-thumb { border-radius: 50%; }
+  & .chat-picker-kbd { border-radius: 4px; }
+  & .chat-context-pop-foot .btn { min-height: 28px; }
+  & .chat-context-alert-dismiss { min-height: 28px; padding: 0 8px; }
+  /* The permission request card matches the rounded composer under it. */
+  & .chat-perm-card { border-radius: 12px; font: 13px/1.4 var(--sans); }
+  & :is(.chat-perm-act, .chat-perm-act.is-split, .chat-perm-always .is-allow) { min-height: 32px; border-radius: 8px; font: 500 12.5px var(--sans); }
+  & .chat-perm-always .is-allow:has(+ .is-split) { border-radius: 8px 0 0 8px; }
+  & .chat-perm-act.is-split { border-radius: 0 8px 8px 0; }
+  & :is(.chat-perm-card-cmd, .chat-perm-card-grant) { border-radius: 8px; }
+  @media (max-width: 480px) {
+    & .chat-pop > :is(button, a),
+    & :is(.chat-context-pop, .chat-skills, .chat-perm-card, .chat-library) :is(button, a, input:not([type="checkbox"])),
+    & .chat-library-tile { min-height: 40px; }
+    & .chat-context-alert button { min-height: 36px; }
+    & :is(.chat-sheet, .chat-picker-menu, .chat-perms-menu) .chat-menu-close { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
+  }
 
   /* ---- Narrow: the rail is a dropdown, labels fold into icons ---- */
   @media (max-width: 1039.98px) {
