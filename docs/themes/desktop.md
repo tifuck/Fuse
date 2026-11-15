@@ -12,7 +12,9 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 - **Breakpoints** (one set, every file): ≥1040 docked panels; 801–1039 the inspector is a viewport-anchored overlay; ≤800 sidebar drawer + inspector modal sheet; ≤480 phone. The top bar adapts to its own width (container query), not the viewport.
 - **Never:** horizontal page scroll; text past the viewport (code, diff and stdout scroll inside their block, with a visible edge); a panel opening by itself.
 
-## Top bar (38–40px, one row)
+## Top bar (36px, one row)
+
+- Bar geometry (shared by both new themes and matching Console): 36px tall with its hairline at y=35 (45px on phones, a 44px row plus the line). The sidebar head has the same height and continues the same hairline, and its controls sit at the bar's control line. While the sidebar is open its collapse control sits at the head's right edge; collapsed, the expand control is the bar's first control at the left edge, on the spot the sidebar's own toggle uses.
 
 - Left: sidebar toggle (only while the sidebar is collapsed or a drawer) · breadcrumb: folder icon, project or "Chats" (`--dk-mute`), "/", title ▾ (`--dk-text`, 500, 13.5px).
 - The title is the only flexible item: `flex: 1 1 auto; min-width: 6rem`, ellipsis, full title in `title`. Crumb pieces clip their own overflow; nothing paints over the icons.
@@ -23,7 +25,7 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 
 ## Sidebar
 
-- Head 36px: Chats | Projects segmented tabs (28px, selected = subtle fill), then search and collapse pushed right.
+- Head (the bar's height and hairline): Chats | Projects segmented tabs (28px, selected = subtle fill), then search and collapse pushed right.
 - Action rows 28px, 14px icons, 13.5px text: New session · Scheduled · Customize.
 - Search opens as a 30px field with one × (no native cancel button); first Esc clears, second closes.
 - Projects-tab filters: one 28px quiet text row ("Recent ▾ · All projects ▾"), transparent, `--dk-mute`, chevron, no border or black fill.

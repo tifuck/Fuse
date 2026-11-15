@@ -12,7 +12,9 @@ A flat, dark reading view: a centred column, one-line work summaries, a pill com
 - **Breakpoints** (one set): ≥1040 docked rail; <1040 the rail is a dropdown card under the status pill; ≤800 sidebar drawer; ≤480 phone. The header adapts to its own width (container query).
 - **Never:** horizontal page scroll; text past the viewport; a panel opening by itself.
 
-## Header (40px, one row)
+## Header (36px, one row)
+
+- Bar geometry (shared by both new themes and matching Console): 36px tall with its hairline at y=35 (45px on phones, a 44px row plus the line). The sidebar head has the same height and continues the same hairline, and its controls sit at the bar's control line. While the sidebar is open its collapse control sits at the head's right edge; collapsed, the expand control is the bar's first control at the left edge, on the spot the sidebar's own toggle uses.
 
 - Left: sidebar toggle (while collapsed or a drawer) · project chip (bar ≥640px) · title (600 14px, ellipsis, full title in `title`). Same order at every width; the title is the only flexible item (`min-width: 6rem`).
 - Right: the status pill (dot + "Working 2s" / "Done"; meta only when the bar is ≥900px; it toggles the rail, `aria-expanded`), then at most five equal square icon buttons: Context · Artifacts · Todos (only while a list exists) · Skills · Appearance. Alerts only when push is supported.
@@ -20,7 +22,7 @@ A flat, dark reading view: a centred column, one-line work summaries, a pill com
 
 ## Sidebar
 
-- Head 36px: brand (14px mark + "Fuse") left; search and collapse icons right (28px).
+- Head (the bar's height and hairline): brand (14px mark + "Fuse") left; search and collapse icons right (28px).
 - "New chat" / "New project" row (follows the tab), then the Chats | Projects segmented control (28px, inset 2px, each tab ≥24px tall). Tab badges are a 6px dot, never a number.
 - Search: a 30px field with one ×; first Esc clears, second closes.
 - Projects filters: one 28px quiet text row with chevrons, transparent, `--mute`, no border or black fill.
