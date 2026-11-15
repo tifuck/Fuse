@@ -16,6 +16,11 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 const ROOT = { host: 'qa-box', cwd: '/srv/qa', platform: 'posix', project_root: '/srv/qa' };
 // Combined folds settled edits into the summary line: their rows read once it opens.
 const EDITS_FOLD = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW);
+// Expectations are written in Console's call verbs; Combined and Desktop name
+// some calls in plainer words (their tool-headers.js). Same line, its theme's verb.
+const THEME_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
+const verbFor = (text) => !EDITS_FOLD ? text
+  : text.replace(/^(Update Todos|Web Search|Stop Task|Await|Update|Bash)(?=\(|$)/, (m) => THEME_VERBS[m]);
 let seq = 0;
 const tool = (name, fields = {}) => ({
   id: `r${++seq}`, name, status: 'done', error: '', results: [], output: '',
@@ -46,7 +51,10 @@ const env = (tag, id, attrs, meta, body = '') => `<${tag} id="${id}"${attrs ? ` 
 
 function scenarios() {
   const list = [];
-  const add = (name, build) => list.push({ name, ...build() });
+  const add = (name, build) => {
+    const sc = build();
+    list.push({ name, ...sc, has: (sc.has || []).map(verbFor), lacks: (sc.lacks || []).map(verbFor) });
+  };
 
   // —— Call states the generator never pairs ——
   add('a queued command reads as queued, not as a running command', () => {

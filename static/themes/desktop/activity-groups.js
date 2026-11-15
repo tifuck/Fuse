@@ -6,15 +6,15 @@ function ccTurnLineHtml(msg, latest) {
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
-    // A stopped or failed turn never finished, so it says so instead of "done".
+    // A stopped or failed turn never finished, so it says so. When it ended is
+    // the action row's "Just now" (full time in its title), not repeated here.
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
-    const done = outcome ? "" : deps.ccDoneAt(msg.endedAt);
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
     return `${turnActionsHtml(msg, latest)}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
       `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
   }
 
 // A finished reply's action row: copy, fork, pin, read aloud, then when it

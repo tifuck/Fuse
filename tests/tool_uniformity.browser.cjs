@@ -29,6 +29,11 @@ const ROOT = { host: 'qa-box', cwd: '/srv/qa', platform: 'posix', project_root: 
 // Combined: settled edits fold into the summary line, a failed call keeps its
 // own row, and every expandable call row shows its caret (docs/themes/combined.md).
 const COMBINED = process.env.FUSE_CHAT_VIEW === 'combined';
+const NEW_THEME = COMBINED || process.env.FUSE_CHAT_VIEW === 'desktop';
+// Verbs are written in Console's words; Combined and Desktop name some calls in
+// plainer words (their tool-headers.js). Same line, its theme's verb.
+const THEME_VERBS = { 'Update Todos': 'Todos', 'Web Search': 'Web search', 'Stop Task': 'Stop', Await: 'Wait', Update: 'Edit', Bash: 'Run' };
+const verbFor = (verb) => (NEW_THEME && THEME_VERBS[verb]) || verb;
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
 const HITS = [
   { title: 'Console row guide', url: 'https://example.com/guide', snippet: 'How a row settles.' },
@@ -125,6 +130,15 @@ const traceOf = (t) => ({ ...ROOT, id: idOf(t), name: nameOf(t), ...t.trace });
 const COLLECT = () => {
   const flat = (el) => (el ? el.innerText.replace(/\s+/g, ' ').trim() : '');
   const all = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+  // All text minus decorations a theme does not draw (an aria-hidden glyph
+  // such as the branch mark that is not rendered withholds nothing).
+  const withheld = (el) => {
+    if (!el) return '';
+    const copy = el.cloneNode(true);
+    const marks = [...copy.querySelectorAll('[aria-hidden="true"]')];
+    [...el.querySelectorAll('[aria-hidden="true"]')].forEach((mark, i) => { if (!mark.getClientRects().length) marks[i].remove(); });
+    return all(copy);
+  };
   return [...document.querySelectorAll('.chat-log li.chat-step')].map((li) => {
     const head = li.querySelector(':scope > .chat-step-main > .chat-step-head');
     const hang = li.querySelector(':scope > .chat-step-main .chat-console-hang');
@@ -157,6 +171,7 @@ const COLLECT = () => {
       expanded: li.classList.contains('is-console-expanded'),
       bodyText: flat(hang),
       bodyAll: all(hang),
+      bodyWithheld: withheld(hang),
       more: [...li.querySelectorAll('.chat-console-more')].map((el) => ({ text: el.textContent.trim(), visible: el.getClientRects().length > 0 })),
       trunc: [...li.querySelectorAll('.chat-tool-truncated')].map((el) => ({ text: el.textContent.trim(), visible: el.getClientRects().length > 0 })),
       node: nrect ? { w: Math.round(nrect.width * 10) / 10, h: Math.round(nrect.height * 10) / 10, svg: Boolean(svg), svgW: svg ? Number(svg.getAttribute('width')) : 0, svgH: svg ? Number(svg.getAttribute('height')) : 0 } : null,
@@ -217,7 +232,7 @@ const COLLECT = () => {
       if (!r0) continue;
       settled[t.name] = r0;
       // (a) settled/default: final status, default disclosure state.
-      ok(r0.call.startsWith(t.verb), `${t.name}: call reads "${t.verb}(…)", got "${r0.call}"`);
+      ok(r0.call.startsWith(verbFor(t.verb)), `${t.name}: call reads "${verbFor(t.verb)}(…)", got "${r0.call}"`);
       // Bare-verb rows carry their subject on the result line instead.
       const said = t.bare ? r0.headText + ' ' + r0.result : r0.call;
       ok(said.includes(t.subject), `${t.name}: row names "${t.subject}", got "${said}"`);
@@ -309,7 +324,7 @@ const COLLECT = () => {
       // The Await report rides its row for Open agent (pinned by
       // console_subagent_rows.browser.cjs), not behind a disclosure.
       if (t.name === 'get_subagent_output' || t.name === 'spawn_subagent') continue;
-      ok((r.bodyAll.length > r.bodyText.length) === t.disclosure, `${t.name}: hidden body without a disclosure (visible ${r.bodyText.length}, all ${r.bodyAll.length}, disclosure=${t.disclosure})`);
+      ok((r.bodyWithheld.length > r.bodyText.length) === t.disclosure, `${t.name}: hidden body without a disclosure (visible ${r.bodyText.length}, all ${r.bodyWithheld.length}, disclosure=${t.disclosure})`);
     }
     // Truncation: a fold counter or a truncation note marks everything the row
     // withholds; permanent loss always carries counts.
@@ -383,7 +398,11 @@ const COLLECT = () => {
       if (v.key === 'error') {
         ok(v.state === 'error' && v.title === 'Failed', `${v.name}: a failure reads "${v.title}"/${v.state}`);
         // One failure vocabulary across families: the red "Error: " fold.
-        ok(say(v).startsWith('Error: boom from the fixture'), `${v.name}: failure reads "Error: …", got "${say(v)}"`);
+        // Combined and Desktop print a failed command's error line under its
+        // output, once, as a terminal prints the exit status last (4da96f04).
+        if (NEW_THEME && ['run_terminal_command', 'get_command_output'].includes(v.name)) {
+          ok(say(v).endsWith('Error: boom from the fixture') && say(v).split('Error: boom from the fixture').length === 2, `${v.name}: failure ends with one "Error: …" line, got "${say(v)}"`);
+        } else ok(say(v).startsWith('Error: boom from the fixture'), `${v.name}: failure reads "Error: …", got "${say(v)}"`);
       }
       if (v.key === 'interrupted') {
         ok(v.state === 'interrupted' && v.title === 'Stopped', `${v.name}: confirmed stop reads "${v.title}"/${v.state}`);

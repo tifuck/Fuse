@@ -241,13 +241,14 @@ function consoleFold(trace, presentation, verbose) {
       if (empty) return { status: head || (note ? "" : "(No output)"), preview: note, full: "", keep: nonzero || Boolean(note) };
       const tail = consoleTailHtml(lines);
       const clipped = tail.clipped;
-      const foot = nonzero || failed ? `<span class="chat-console-result-text">${consoleStatusHtml(head)}</span>` : "";
+      const foot = (extra = "") => nonzero || failed ? `<span class="chat-console-result-text${extra}">${consoleStatusHtml(head)}</span>` : "";
       return {
-        status: foot ? "" : head,
+        status: foot() ? "" : head,
         keep: nonzero || Boolean(note),
-        preview: tail.html + foot + note,
-        // The opened body hides the preview, so it repeats the exit and notice.
-        full: clipped ? consoleDetailHtml(trace, false, running) + foot + consoleTruncationNote(trace, " is-full-note") : "",
+        preview: tail.html + foot() + note,
+        // The opened body hides the preview, so it repeats the exit and notice;
+        // folded, only the preview's copy shows.
+        full: clipped ? consoleDetailHtml(trace, false, running) + foot(" is-full-note") + consoleTruncationNote(trace, " is-full-note") : "",
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {

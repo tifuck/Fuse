@@ -658,10 +658,26 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       let snap = await rowOf(counted.id);
       eq(snap.result, 'Monitor started · task m2', 'the settled monitor keeps its start receipt');
       const showJob = (id, trace) => page.evaluate(({ id, trace }) => fuseToolFixture.work([{ ...trace, command_id: undefined, id, kind: 'monitor', state: 'running' }]), { id, trace });
-      const detailChips = () => page.locator('.chat-jobs-detail .chat-tool-context').innerText();
+      // Combined's rail and Desktop's inspector hold the job list and start
+      // closed: open them the way a user would (the status pill, the Inspector).
+      const panel = page.locator('[data-theme-pill], [data-theme-inspector]').first();
+      let panelOpened = false;
+      // Desktop shows a job's output only in its Terminal card and hides the
+      // in-list detail, so the count reads from the job row's visible meta.
+      const desktop = process.env.FUSE_CHAT_VIEW === 'desktop';
+      let shownId = '';
+      const detailChips = () => desktop
+        ? page.locator(`[data-job-row="${shownId}"] .chat-jobs-meta`).innerText()
+        : page.locator('.chat-jobs-detail .chat-tool-context').innerText();
       const jobChips = async (id, trace) => {
         await showJob(id, trace);
+        if (!panelOpened && await panel.count() && !(await page.locator('[data-jobs-list]').isVisible())) {
+          await panel.click();
+          panelOpened = true;
+        }
         await page.locator(`[data-show-job="${id}"]`).click();
+        shownId = id;
+        if (desktop) check(await page.locator(`[data-job-row="${id}"] .chat-jobs-meta`).isVisible(), `the job row shows its meta: ${id}`);
         return detailChips();
       };
       let chips = await jobChips('watch-m2', counted);
@@ -684,6 +700,8 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       eq(snap.result, 'Monitor started', 'a watch with no count keeps its start receipt');
       chips = await jobChips('watch-idle', uncounted);
       check(!/\d+ events?/.test(chips), `a watch with no count carries no count chip: ${chips}`);
+      // Shut the panel again (the choice persists) so the jitter rows below see the default layout.
+      if (panelOpened) await panel.click();
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
     // ————————————————————————————————————————————————

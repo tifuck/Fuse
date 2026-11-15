@@ -454,7 +454,9 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-rail-h:has(+ [hidden]) { display: none; }
   & .cb-work[hidden],
   & .cb-rail-sec[hidden],
-  & .cb-rail-sec:has(> .chat-live-todos[hidden]) { display: none; }
+  & .cb-rail-sec:has(> .chat-live-todos[hidden]),
+  /* Inside a subagent its own list (the composer's) replaces the main one. */
+  &.is-agent-view .cb-rail-sec:has(> .chat-live-todos) { display: none; }
   & :is(.cb-agents, .cb-jobs) { display: flex; flex-direction: column; gap: 1px; max-height: none; overflow: visible; }
   & :is(.cb-agents, .cb-jobs)[hidden] { display: none; }
   & :is(.cb-agents .chat-agents-row, .cb-jobs .chat-jobs-row) {

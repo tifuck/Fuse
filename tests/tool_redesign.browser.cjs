@@ -133,7 +133,13 @@ const out = process.env.TOOL_UI_ARTIFACTS || '/tmp/opencode/tool-redesign';
     await page.evaluate(() => fuseToolFixture.work([{ id: 'job-child', command_id: 'job-child', state: 'running', host: 'workstation', cwd: '/repo', command: 'npm run build', output: 'Child command output', background: true }]));
     await page.locator('[data-show-job="job-child"]').click();
     const jobDetail = page.locator('.chat-jobs-detail', { hasText: 'Child command output' });
-    await jobDetail.waitFor();
+    if (process.env.FUSE_CHAT_VIEW === 'desktop') {
+      // Desktop's Terminal card is the one place for a command's output: the
+      // picked job's output shows there and the in-list detail stays hidden.
+      await jobDetail.waitFor({ state: 'attached' });
+      await page.locator('[data-theme-card="terminal"] [data-theme-term-out]', { hasText: 'Child command output' }).waitFor();
+      assert.match(await page.locator('[data-theme-card="terminal"] [data-theme-term-name]').innerText(), /npm run build/, 'the Terminal card names the picked child command');
+    } else await jobDetail.waitFor();
     assert.match(await jobDetail.getAttribute('class'), /is-open/, 'the job view opens the child command detail');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     // A rail or inspector opened over the phone transcript closes again with Escape.

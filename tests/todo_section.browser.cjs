@@ -79,10 +79,10 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
           row: document.querySelector('[data-tool="todo_write"]') ? 'row' : '', log: document.querySelector('.chat-log').textContent,
         };
       });
-      // A theme may dock the list in a side panel card (Desktop's Plan card)
-      // instead of the tray over the composer: there it is always unfolded,
-      // with the card head for its title, and the panel opens from the header button.
-      const docked = await page.evaluate(() => Boolean(document.querySelector('[data-live-todos]').closest('[data-theme-card]')));
+      // A theme may dock the list in a side panel (Desktop's Plan card,
+      // Combined's rail) instead of the tray over the composer: there it is
+      // always unfolded, and the panel opens from the header button.
+      const docked = await page.evaluate(() => Boolean(document.querySelector('[data-live-todos]').closest('[data-theme-card], [data-theme-rail]')));
       check(placed.dock && (placed.todos || docked), tag('status line and todo section are both shown'));
       if (placed.dock && placed.todos && !docked) {
         check(placed.todos[0] >= placed.dock[1] - 1, tag(`todo section sits under the status line (${placed.dock} / ${placed.todos})`));
@@ -174,7 +174,9 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
         rows: [...document.querySelectorAll('.chat-log [data-tool="todo_write"]')].map((li) => [li.querySelector('.chat-console-call').textContent.trim(), li.querySelector('.chat-console-result-text').textContent.trim()]),
       }));
       check(JSON.stringify(folded.lines) === JSON.stringify(['Updated todos', 'Updated todos 2 times']), tag(`finished calls fold into summary lines: ${JSON.stringify(folded.lines)}`));
-      check(JSON.stringify(folded.rows) === JSON.stringify([['Update Todos', '3 todos · 1/3 done'], ['Update Todos', '3 todos · 3/3 done'], ['Update Todos', '3 todos · 3/3 done']]), tag(`each call is a two-line row: ${JSON.stringify(folded.rows)}`));
+      // Combined and Desktop name the call in a plainer word (their tool-headers.js).
+      const verb = ['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW) ? 'Todos' : 'Update Todos';
+      check(JSON.stringify(folded.rows) === JSON.stringify([[verb, '3 todos · 1/3 done'], [verb, '3 todos · 3/3 done'], [verb, '3 todos · 3/3 done']]), tag(`each call is a two-line row: ${JSON.stringify(folded.rows)}`));
       check(!/Read the layout code/.test(await logText()), tag('the items never print in the transcript'));
       {
         await mount([user, turn([todo('m', [['Done', 'completed'], ['Doing', 'in_progress'], ['Next', 'pending'], ['Dropped', 'cancelled']])])], { live: false });
