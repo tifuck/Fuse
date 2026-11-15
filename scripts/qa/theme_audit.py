@@ -391,6 +391,9 @@ for (const el of document.querySelectorAll('textarea, input[type=search], input[
   box.right = Math.min(b.right - parseFloat(s.paddingRight), box.left + Math.max(40, (ph ? el.placeholder.length : 40) * parseFloat(s.fontSize) * 0.5)); box.bottom = box.top + lh;
   const vv = clipTo(el, box);
   if (!vv) continue;
+  // A field under a sheet or its backdrop is not what the reader sees: skip it, as text is.
+  const top = document.elementFromPoint((vv.left + vv.right) / 2, (vv.top + vv.bottom) / 2);
+  if (top && top !== el && !el.contains(top) && !top.contains(el) && !top.closest('[data-chat-compose-mirror]')) continue;
   (buckets.composer ||= []).push({ cat: el.closest('[data-chat-form]') ? 'composer' : 'field', rect: R(vv), fg: [rgba[0], rgba[1], rgba[2], rgba[3] * opacityOf(el)],
     large: parseFloat(s.fontSize) >= 24, selector: path(el), text: (ph ? 'placeholder: ' + el.placeholder : el.value).slice(0, 60), size: Math.round(parseFloat(s.fontSize)), icon: false });
 }

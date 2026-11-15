@@ -299,11 +299,15 @@ export function create(deps) {
     document.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") lastOpener = document.activeElement;
       if (event.key !== "Escape") return;
-      setTimeout(() => {
-        if (document.activeElement && document.activeElement !== document.body) return;
+      // The runtime may close its sheet a beat later: watch briefly for the focus landing on <body>.
+      const until = Date.now() + 600;
+      const check = () => {
+        const at = document.activeElement;
+        if (at && at !== document.body) { if (Date.now() < until) setTimeout(check, 50); return; }
         const back = lastOpener?.isConnected && visible(lastOpener) ? lastOpener : lastOpener?.closest?.("[data-theme-menu]") && q("[data-theme-more]");
         back?.focus?.({ preventScroll: true });
-      });
+      };
+      setTimeout(check);
     }, true);
     window.matchMedia(WIDE).addEventListener?.("change", () => syncChrome());
     window.matchMedia(PHONE).addEventListener?.("change", () => syncChrome());
