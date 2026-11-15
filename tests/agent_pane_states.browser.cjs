@@ -205,6 +205,11 @@ function agent(id, patch) {
     if (await panel.count() && !(await page.locator('[data-work-strip]').isVisible())) await panel.click();
     // The tree opens folded: main and only the live children.
     await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 4);
+    // A theme may keep the tree in a panel that opens only on request (Combined's
+    // rail, data-theme-pill): open it the way a user would. It stays open.
+    const opener = page.locator('[data-theme-pill]');
+    if (await opener.count() && !(await page.locator('[data-work-strip]').isVisible())) await opener.click();
+    await page.locator('[data-agents-list]').waitFor({ state: 'visible' });
     let ui = await read();
     assert.deepEqual(ui.rows.map((row) => row.id).sort(), ['kilo', 'nov', 'que', 'tate'], `folded by default, live children only: ${JSON.stringify(ui.rows)}`);
     await page.locator('[data-agents-list] [data-agents-fold]').click();

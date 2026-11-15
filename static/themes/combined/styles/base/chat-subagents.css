@@ -237,6 +237,10 @@
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-agent-error { flex-shrink: 0; margin: 0 auto 0.6rem; width: min(var(--chat-col), calc(100% - 2rem)); padding: 0.5rem 0; color: var(--fault); border-bottom: 1px solid var(--line); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-agent-error[hidden] { display: none; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-agent-error p { margin: 0 0 0.4rem; overflow-wrap: anywhere; }
+@media (max-width: 800px) {
+  /* Phones stack toasts across the top: the card that reports the same failure starts below them. */
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat-agent-error { margin-top: 5rem; }
+}
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-agent-view-tool {
   padding: 0.15rem 0.5rem;
   border: 1px solid var(--line);

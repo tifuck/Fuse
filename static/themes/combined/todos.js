@@ -12,7 +12,7 @@ function todoBarHtml(state, { active }) {
     const items = state.items;
     const done = items.filter(deps.todoClosed).length;
     const dismiss = active ? "" : '<button type="button" class="chat-todo-dismiss" data-todo-dismiss aria-label="Dismiss todo list" title="Dismiss">×</button>';
-    return `<span class="chat-todo-head"><span class="chat-todo-title">Todos</span><span class="chat-todo-count" data-todo-count>${done}/${items.length}</span></span>${dismiss}`;
+    return `<span class="chat-todo-head"><span class="chat-todo-title" role="heading" aria-level="2">Todos</span><span class="chat-todo-count" data-todo-count>${done}/${items.length}</span></span>${dismiss}`;
   }
 
 function todoRowsHtml(items) {

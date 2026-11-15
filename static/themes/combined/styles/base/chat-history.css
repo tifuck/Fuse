@@ -64,6 +64,10 @@
   :where(html.is-chat-root[data-chat-view="combined"]) .chat.is-history.history-home .chat-history { transition: none; }
   :where(html.is-chat-root[data-chat-view="combined"]) body.is-keyboard .chat .chat-history { padding-bottom: 0; }
 }
+/* Tablets: a side drawer over a tappable scrim; phones keep it full screen. */
+@media (min-width: 481px) and (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-history { right: auto; width: min(20rem, 86vw); box-shadow: 8px 0 28px rgb(0 0 0 / 24%); }
+}
 /* Head: brand + collapse. Same height as the chat bar beside it. */
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-head {
   display: flex;
