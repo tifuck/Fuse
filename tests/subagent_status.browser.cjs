@@ -145,6 +145,11 @@ function bump(id, patch) {
     }
     let ui = await read();
     assert.deepEqual(ui.rows.map((row) => row.id), ['delta', 'echo'], 'the tree opens folded to its live children');
+    // A theme may keep the tree in a panel that opens only on a user action
+    // (Desktop's inspector, Combined's rail): open it the way a user would.
+    // The choice is kept, so it stays open for the rest of the suite.
+    const panel = page.locator('[data-theme-pill], [data-theme-inspector]');
+    if (await panel.count() && !(await page.locator('[data-agents-list]').isVisible())) await panel.first().click();
     await page.locator('[data-agents-list] [data-agents-fold]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 5);
     ui = await read();
