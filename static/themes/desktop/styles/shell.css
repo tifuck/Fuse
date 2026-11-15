@@ -32,7 +32,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The bottom band: the account row, the composer's controls and the
      inspector's foot share it, under one hairline. */
   --dk-band-h: 36px;
-  --dk-band-bg: var(--dk-side);
+  --dk-band-bg: transparent;
   --dk-hair: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
   --chat-history: 13.5rem;
   --chat-col: 40rem;
@@ -981,47 +981,50 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 }
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
-   One glass everywhere: a light blur that keeps the wallpaper's shapes, and
-   some saturation so its colours survive the tint. Every part of the
-   wallpaper sits under that glass, so the wallpaper itself is blurred once,
-   drawn past the window's edges so the blur is as strong there as anywhere
-   (a backdrop-filter has nothing past the edge to sample and went sharp in
-   bands there). The panes over bare wallpaper then only tint: the stage
-   under the bar, from the palette's canvas at 62% under the text (36% in
-   light) to 48% (20%) at the sides, and the top bar, sidebar and inspector
-   (74%, light 62%). Whatever floats over text keeps its own blur: cards and
-   the composer (78%, light 80%, with a hairline edge and a specular top
-   rim), popovers, and the drawer and inspector sheets on small screens. */
-html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) {
-  --dk-wall-glass: blur(14px) saturate(1.35);
-  & body.is-chat .chat-scene { inset: -48px; filter: var(--dk-wall-glass); }
-}
+   The wallpaper stays sharp. The reading column is a darker pane, the
+   palette's canvas at 68% (light 66%; text holds AA over every
+   wallpaper), that fades in over 6rem at its sides, so the gutters show
+   the wallpaper as it is. The top bar, sidebar
+   and inspector are frosted glass (a 14px blur with some saturation so the
+   colours survive, then 74%, light 62%); a backdrop blur has nothing past
+   the window to sample, so each darkens a little toward the window edge it
+   sits on, which hides the smear there. The bottom band is the bare
+   wallpaper under one hairline. Cards, the composer and popovers float on
+   the same glass (78%, light 80%) with a hairline edge and a specular top
+   rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 62%;
-  --dk-gutter-a: 48%;
+  --dk-veil-a: 68%;
   --dk-chrome-a: 74%;
   --dk-card-a: 78%;
-  --dk-glass: var(--dk-wall-glass);
-  --dk-band-bg: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent);
+  --dk-glass: blur(14px) saturate(1.35);
+  --dk-chrome-bg: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent);
+  --dk-edge-dim: color-mix(in srgb, var(--dk-side) 60%, transparent);
   --dk-glass-edge: color-mix(in srgb, var(--dk-text) 10%, transparent);
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.08);
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
-  /* The stage's spacer: out of the flow, a pane under the bar. The tint
-     reaches full strength 1rem outside the column. */
+  /* The stage's spacer: out of the flow, the reading pane under the bar,
+     at full strength from 1rem outside the column, eased in over 6rem. */
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
+    --e: min(6rem, var(--f));
     position: absolute;
-    inset: var(--chat-bar-h) 0 calc(var(--dk-band-h) + var(--safe-bottom, 0px));
+    inset: var(--chat-bar-h) 0 0;
     z-index: -1;
     flex: none;
     background: linear-gradient(90deg,
-      color-mix(in srgb, var(--dk-canvas) var(--dk-gutter-a), transparent),
+      transparent calc(var(--f) - var(--e)),
+      color-mix(in srgb, var(--dk-canvas) calc(var(--dk-veil-a) * 0.5), transparent) calc(var(--f) - var(--e) * 0.45),
       color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) var(--f),
       color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) calc(100% - var(--f)),
-      color-mix(in srgb, var(--dk-canvas) var(--dk-gutter-a), transparent));
+      color-mix(in srgb, var(--dk-canvas) calc(var(--dk-veil-a) * 0.5), transparent) calc(100% - var(--f) + var(--e) * 0.45),
+      transparent calc(100% - var(--f) + var(--e)));
   }
-  & :is(.dk-side, .dk-head) { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  /* Darker toward the window edge each pane sits on. */
+  & .dk-side { background: linear-gradient(90deg, var(--dk-edge-dim), transparent 48px), var(--dk-chrome-bg); }
+  & .dk-head { background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); }
+  & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
   & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -1031,28 +1034,22 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); }
-  @media (max-width: 1039.98px) {
-    &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  }
-  @media (max-width: 800px) {
-    & .dk-side { -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  }
+  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Secondary text leans a fifth toward the body colour so it holds AA on
      the glass, and still reads as secondary. */
   & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--dk-mute) 80%, var(--dk-text)); }
   & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--dk-link) 80%, var(--dk-text)); }
 }
 html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 36%;
-  --dk-gutter-a: 20%;
+  --dk-veil-a: 66%;
   --dk-chrome-a: 62%;
+  --dk-edge-dim: color-mix(in srgb, var(--dk-side) 50%, transparent);
   --dk-card-a: 80%;
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.5);
 }
 @media (prefers-reduced-transparency: reduce) {
   html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
-  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-gutter-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
+  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
