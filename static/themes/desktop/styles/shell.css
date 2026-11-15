@@ -28,7 +28,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-glass: blur(24px) saturate(1.1);
   --dk-shadow: none;
   --dk-pop-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
-  --chat-bar-h: 38px;
+  --chat-bar-h: 36px;
   --chat-history: 13.5rem;
   --chat-col: 44rem;
   --dk-side-w: clamp(12.5rem, var(--chat-history), 100% - 24rem);
@@ -89,21 +89,23 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-side {
     flex-direction: column;
     gap: 1px;
-    padding: 6px 8px 6px;
+    padding: 0 8px 6px;
     border-right: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: var(--dk-side);
     color: var(--dk-text);
     font-size: 13.5px;
   }
+  /* The top bar's twin: same height, same hairline, edge to edge. */
   & .dk-side-head {
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 36px;
+    height: var(--chat-bar-h);
     min-height: 0;
-    margin: 0 0 4px;
-    padding: 0;
+    margin: 0 -8px 6px;
+    padding: 0 8px;
     border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: none;
   }
   & .dk-tabs { display: flex; gap: 2px; margin-right: auto; padding: 0; border-radius: 0; background: none; }
@@ -289,7 +291,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The collapse toggle is a plain icon, not a pressed mode. */
   & .dk-ib:is(.chat-history-collapse, .chat-history-toggle)[aria-expanded="true"]:not(:hover) { background: none; color: var(--dk-mute); }
 
-  /* ---- Top bar: 38px ---- */
+  /* ---- Top bar: 36px, Console's height ---- */
   & .dk-head {
     z-index: 5;
     display: flex;
@@ -298,7 +300,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     gap: 2px;
     height: var(--chat-bar-h);
     min-height: 0;
-    padding: 0 8px 0 12px;
+    padding: 0 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: var(--dk-canvas);
     container: dk-head / inline-size;
@@ -308,6 +310,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The sidebar owns its toggle while it is open. */
   @media (min-width: 801px) {
     &:not(.history-collapsed) .dk-head .chat-history-toggle { display: none; }
+    /* ⋯ leaves out what the open sidebar already shows. */
+    &:not(.history-collapsed) .dk-menu :is([data-theme-new], [data-theme-customize], [data-theme-scheme], [href="/schedules"]) { display: none; }
   }
   & .dk-head svg { flex: none; }
   & .dk-back {
@@ -804,6 +808,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
       grid-column: auto;
       width: min(27rem, 88vw);
       box-shadow: -12px 0 32px rgb(0 0 0 / 0.35);
+      /* The shadow falls on the stage only, never over the top bar. */
+      clip-path: inset(0 0 0 -48px);
     }
     /* The scrim dims the stage; the pinned sidebar stays usable beside it. */
     &[data-theme-rail-state="open"] .dk-scrim { position: fixed; inset: var(--chat-bar-h) 0 0 var(--dk-side-w); z-index: 13; display: block; background: rgb(0 0 0 / 0.35); }
@@ -825,19 +831,18 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-card-preview { flex: 1 0 60dvh; }
     & .dk-card-preview .chat-artifact { position: relative; inset: auto; z-index: auto; width: auto; }
     & .dk-card-preview .chat-artifact-head { height: 44px; padding: 0 4px 0 10px; }
-    & .dk-head { height: auto; min-height: calc(40px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 4px 0; }
-    & .dk-side { padding-top: calc(6px + var(--safe-top, 0px)); padding-bottom: calc(6px + var(--safe-bottom, 0px)); }
+    /* A 44px row plus the hairline, the bar and the drawer's head alike. */
+    & { --chat-bar-h: 45px; }
+    & :is(.dk-head, .dk-side-head) { height: calc(45px + var(--safe-top, 0px)); min-height: 0; padding: var(--safe-top, 0px) 4px 0; }
+    & .dk-side { padding-bottom: calc(6px + var(--safe-bottom, 0px)); }
     & .chat-dock { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
     & .chat-dock { padding-inline: 8px; padding-top: 4px; }
     & .dk-model .chat-picker-btn { max-width: 10rem; }
     & .dk-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .dk-row { height: 44px; }
     & .dk-act { height: 40px; }
-    /* The drawer's close sits where the toggle that opened it was. */
-    & .dk-side-head { height: 44px; }
-    & .dk-side-head .chat-history-collapse { order: -1; }
-    & .dk-tab { width: 36px; height: 36px; }
-    & .dk-side-head .dk-ib, & .dk-sun { width: 40px; height: 40px; }
+    & :is(.dk-tab, .dk-side-head .dk-ib) { width: 36px; height: 36px; }
+    & .dk-sun { width: 40px; height: 40px; }
     & .dk-search { height: 40px; }
     & .dk-search input { font-size: 16px; }
     & .dk-search .dk-ib { width: 36px; height: 36px; }
