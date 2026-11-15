@@ -319,6 +319,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .dk-head::after { content: none; }
   & .dk-head .chat-history-toggle { width: 28px; height: 28px; }
+  /* Collapsed, the toggle clears the 12px edge that peeks the sidebar. */
+  &.history-collapsed .dk-head { padding-left: 12px; }
   /* The sidebar owns its toggle while it is open. */
   @media (min-width: 801px) {
     &:not(.history-collapsed) .dk-head .chat-history-toggle { display: none; }
