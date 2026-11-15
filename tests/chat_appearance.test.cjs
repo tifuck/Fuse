@@ -7,8 +7,13 @@ const { readdirSync } = require('node:fs');
 const themeStyles = readdirSync(resolve(__dirname, '../static/themes/console/styles')).filter(name => name.endsWith('.css')).map(name => readFileSync(resolve(__dirname, '../static/themes/console/styles', name), 'utf8')).join('\n');
 
 const source = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
+// What base.html renders as #fuse-chat-themes: every theme.json, in Layout order.
+const themeMeta = readdirSync(resolve(__dirname, '../static/themes'), { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => JSON.parse(readFileSync(resolve(__dirname, '../static/themes', d.name, 'theme.json'), 'utf8')))
+  .sort((a, b) => a.order - b.order);
 
-function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
+function boot(saved = {}, blocked = false, { cookie = '', view, backdrop } = {}) {
   const storage = new Map(Object.entries(saved));
   const meta = {};
   const html = { dataset: view ? { chatView: view } : {}, style: { setProperty() {}, removeProperty() {} }, removeAttribute(name) { delete this.dataset[name.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())]; } };
@@ -18,6 +23,7 @@ function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
     document: {
       cookie,
       documentElement: html,
+      getElementById: (id) => (id === 'fuse-chat-themes' ? { textContent: JSON.stringify(themeMeta) } : null),
       querySelector(selector) {
         if (selector === '[data-chat]') return root;
         if (selector === 'meta[name="color-scheme"]' || selector === 'meta[name="theme-color"]') {
@@ -36,10 +42,12 @@ function boot(saved = {}, blocked = false, { cookie = '', view } = {}) {
     },
     MutationObserver: class { constructor(fn) {} observe() {} },
   };
+  if (backdrop) world.FuseBackdrop = backdrop;
   world.window = world;
   vm.runInNewContext(source, world);
   return {
     html, root, meta, storage, ready, appearance: world.FuseChatAppearance,
+    views: () => JSON.parse(storage.get('fuse.chat.views.v1')),
     change(theme) { world.FuseChatAppearance.setTheme(theme); },
   };
 }
@@ -74,7 +82,8 @@ test('theme choice persists with its meta colors', () => {
   const ui = boot();
   ui.ready();
   ui.change('midnight');
-  assert.equal(ui.storage.get('fuse.chat.theme.v1'), 'midnight');
+  // Palettes are saved per theme now (fuse.chat.views.v1), not in the global key.
+  assert.equal(ui.views().console.palette, 'midnight');
   assert.equal(ui.meta['meta[name="theme-color"]'], '#0a1018');
   assert.equal(ui.html.dataset.chatTheme, 'midnight');
   assert.equal(ui.meta['meta[name="theme-color"]'], '#0a1018');
@@ -110,7 +119,8 @@ test('backdrop kind persists independently of theme', () => {
   ui.ready();
   ui.appearance.setBackdrop('orbit');
   assert.equal(ui.html.dataset.chatBackdrop, 'orbit');
-  assert.equal(ui.storage.get('fuse.chat.backdrop.v1'), 'orbit');
+  assert.equal(ui.views().console.backdrop, 'orbit');
+  assert.equal(ui.views().console.strength, 40);
   ui.change('void');
   assert.equal(ui.html.dataset.chatBackdrop, 'orbit');
 });
@@ -149,17 +159,32 @@ test('each view keeps its own font', () => {
   assert.deepEqual(JSON.parse(ui.storage.get('fuse.chat.fonts.v1')), { console: 'jetbrains', combined: 'fraunces' });
 });
 
-test('console and combined are independent theme folders', () => {
-  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
+test('theme folders are independent of each other', () => {
+  const read = (dir) => readdirSync(dir, { recursive: true }).filter(name => /\.(css|js|html|json)$/.test(name)).map(name => [name, readFileSync(resolve(dir, name), 'utf8')]);
   // A theme is its static folder plus its template folder.
-  const consoleFiles = [...read(resolve(__dirname, '../static/themes/console')), ...read(resolve(__dirname, '../templates/themes/console'))];
-  const combinedFiles = [...read(resolve(__dirname, '../static/themes/combined')), ...read(resolve(__dirname, '../templates/themes/combined'))];
-  for (const [name, text] of consoleFiles) assert.doesNotMatch(text, /combined/, `console/${name}`);
-  for (const [name, text] of combinedFiles) {
-    assert.doesNotMatch(text, /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//, `combined/${name}`);
+  const files = (theme) => [...read(resolve(__dirname, `../static/themes/${theme}`)), ...read(resolve(__dirname, `../templates/themes/${theme}`))];
+  const consoleFiles = files('console');
+  const combinedFiles = files('combined');
+  const desktopFiles = files('desktop');
+  // "desktop" alone also names the Fuse Desktop app (data-desktop-app, desktop.css), so the
+  // Desktop theme is matched by its own references: its folder, its view and its factory.
+  const desktopRef = /themes\/desktop\/|\.\.\/desktop\/|data-chat-view="desktop"|data-view="desktop"|createDesktopTheme|\bdk-/;
+  const consoleRef = /data-chat-console|data-view="console"|\.\.\/console\/|themes\/console\//;
+  for (const [name, text] of consoleFiles) {
+    assert.doesNotMatch(text, /combined/, `console/${name}`);
+    assert.doesNotMatch(text, desktopRef, `console/${name}`);
   }
-  assert.ok(combinedFiles.some(([name]) => name === 'index.js'));
-  assert.ok(consoleFiles.some(([name]) => name === '_chat.html') && combinedFiles.some(([name]) => name === '_chat.html'));
+  for (const [name, text] of combinedFiles) {
+    assert.doesNotMatch(text, consoleRef, `combined/${name}`);
+    assert.doesNotMatch(text, desktopRef, `combined/${name}`);
+  }
+  for (const [name, text] of desktopFiles) {
+    assert.doesNotMatch(text, consoleRef, `desktop/${name}`);
+    assert.doesNotMatch(text, /combined|Combined|\bcb-/, `desktop/${name}`);
+  }
+  for (const list of [consoleFiles, combinedFiles, desktopFiles]) {
+    assert.ok(list.some(([name]) => name === 'index.js') && list.some(([name]) => name === '_chat.html'));
+  }
 });
 
 test('retired backdrops migrate to their replacement', () => {
@@ -186,7 +211,7 @@ test('backdrop wallpaper is a scene layer, not an opaque plate', () => {
   const js = readFileSync(resolve(__dirname, '../static/chat-appearance.js'), 'utf8');
   assert.match(css, /\.chat-scene\[data-kind\] \[data-chat-scene-wash\]/);
   assert.doesNotMatch(css, /chat-scene-bubbles/);
-  for (const theme of ['console', 'combined']) {
+  for (const theme of ['console', 'combined', 'desktop']) {
     const own = readFileSync(resolve(__dirname, `../static/themes/${theme}/styles/base/chat-design.css`), 'utf8');
     const html = `html:where\\(\\.is-chat-root\\[data-chat-view="${theme}"\\]\\)\\[data-chat-backdrop\\]:not\\(\\[data-chat-backdrop="none"\\]\\) body\\.is-chat`;
     assert.match(own, new RegExp(html + ' :is\\(\\.stage, \\.stage-inner, main, \\.chat, \\.chat-stage, \\.chat-thread\\)[^{]*\\{\\s*background:\\s*transparent'), theme);
@@ -226,4 +251,92 @@ test('tool rows collapse to one line; thinking unwraps in place', () => {
   assert.match(js, /function syncThinkingMode\(/);
   assert.match(js, /windowEl\.inert = mode === "collapsed"/);
   assert.match(js, /mode === "collapsed" \? -1 : 0/);
+});
+
+test('each theme keeps its own palette, backdrop and strength, starting from the old global values', () => {
+  const legacy = { 'fuse.chat.theme.v1': 'midnight', 'fuse.chat.backdrop.v1': 'garden', 'fuse.chat.backdrop.strength.v1': '40' };
+  const ui = boot(legacy, false, { view: 'combined' });
+  // Migration: every theme starts from the global values, once.
+  for (const meta of themeMeta) assert.deepEqual(ui.views()[meta.id], { palette: 'midnight', backdrop: 'garden', strength: 40, restore: '' }, meta.id);
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  ui.ready();
+  ui.change('ember');
+  ui.appearance.setBackdrop('rain');
+  ui.appearance.setStrength(20);
+  const saved = Object.fromEntries(ui.storage);
+  // Console is untouched by Combined's edits, and the global keys no longer decide.
+  const consoleUi = boot(saved);
+  assert.equal(consoleUi.html.dataset.chatTheme, 'midnight');
+  assert.equal(consoleUi.html.dataset.chatBackdrop, 'garden');
+  const combinedUi = boot(saved, false, { view: 'combined' });
+  assert.equal(combinedUi.html.dataset.chatTheme, 'ember');
+  assert.equal(combinedUi.html.dataset.chatBackdrop, 'rain');
+  assert.equal(combinedUi.views().combined.strength, 20);
+  // A later edit of a global key does not move a migrated theme.
+  const again = boot({ ...saved, 'fuse.chat.theme.v1': 'paper' });
+  assert.equal(again.html.dataset.chatTheme, 'midnight');
+});
+
+test('with no saved look each theme takes its metadata defaults', () => {
+  for (const meta of themeMeta) {
+    const ui = boot({}, false, { view: meta.id });
+    assert.equal(ui.html.dataset.chatScheme, meta.scheme, meta.id);
+    assert.equal(ui.html.dataset.chatBackdrop, meta.wallpaper, meta.id);
+    assert.equal(ui.html.dataset.chatFont, meta.font, meta.id);
+    assert.equal(ui.appearance.themeId, meta.id);
+  }
+  // Console and Combined keep today's look exactly.
+  for (const view of ['console', 'combined']) {
+    const ui = boot({}, false, { view });
+    assert.equal(ui.html.dataset.chatTheme, 'fuse');
+    assert.equal(ui.html.dataset.chatBackdrop, 'none');
+  }
+  // A theme added after migration starts from its own defaults, not the old globals.
+  const views = { console: { palette: 'ember', backdrop: 'rain', strength: 30 } };
+  const fresh = boot({ 'fuse.chat.views.v1': JSON.stringify(views), 'fuse.chat.theme.v1': 'midnight' }, false, { view: 'combined' });
+  assert.equal(fresh.html.dataset.chatTheme, 'fuse');
+  assert.equal(fresh.views().console.palette, 'ember');
+  // Garbage in the store falls back per field.
+  const junk = boot({ 'fuse.chat.views.v1': JSON.stringify({ console: { palette: 'nope', backdrop: '<b>', strength: 999, restore: 1 } }) });
+  assert.equal(junk.html.dataset.chatTheme, 'fuse');
+  assert.equal(junk.html.dataset.chatBackdrop, 'none');
+  junk.appearance.setStrength(30);
+  assert.deepEqual(junk.views().console, { palette: 'fuse', backdrop: 'none', strength: 30, restore: '' });
+});
+
+test('a light wallpaper switches a dark palette to light; None brings it back', () => {
+  const schemes = { clouddrift: 'light', honulagoon: 'dark' };
+  const backdrop = { sync() {}, previews() {}, isWallpaper: (k) => k in schemes, scheme: (k) => schemes[k] || '' };
+  const ui = boot({ 'fuse.chat.theme.v1': 'midnight' }, false, { backdrop });
+  ui.ready();
+  ui.appearance.setBackdrop('clouddrift');
+  assert.equal(ui.html.dataset.chatScheme, 'light');
+  assert.equal(ui.html.dataset.chatTheme, 'paper');
+  assert.equal(ui.views().console.restore, 'midnight');
+  ui.appearance.setBackdrop('none');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  assert.equal(ui.views().console.restore, '');
+  // Dark wallpapers leave the palette alone; leaving light for one restores it.
+  ui.appearance.setBackdrop('honulagoon');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  ui.appearance.setBackdrop('clouddrift');
+  ui.appearance.setBackdrop('honulagoon');
+  assert.equal(ui.html.dataset.chatTheme, 'midnight');
+  // A palette the user picks over a light wallpaper is kept.
+  ui.appearance.setBackdrop('clouddrift');
+  ui.change('frost');
+  ui.appearance.setBackdrop('none');
+  assert.equal(ui.html.dataset.chatTheme, 'frost');
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.appearance.wallpapers.map((w) => [w.id, w.scheme]))), [['clouddrift', 'light'], ['honulagoon', 'dark']]);
+});
+
+test('the sun toggle flips the scheme per theme and comes back to the dark palette', () => {
+  const ui = boot({ 'fuse.chat.theme.v1': 'ember' }, false, { view: 'combined' });
+  ui.ready();
+  ui.appearance.setScheme('light');
+  assert.equal(ui.html.dataset.chatScheme, 'light');
+  assert.equal(ui.appearance.scheme, 'light');
+  ui.appearance.setScheme('dark');
+  assert.equal(ui.html.dataset.chatTheme, 'ember');
+  assert.equal(boot(Object.fromEntries(ui.storage)).html.dataset.chatTheme, 'ember');
 });

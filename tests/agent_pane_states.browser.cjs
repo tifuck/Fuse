@@ -530,8 +530,9 @@ function agent(id, patch) {
     await page.locator('[data-agents-list]').waitFor({ state: 'visible' });
     await page.setViewportSize({ width: 390, height: 844 });
     // A theme may keep the tree behind its status pill on a phone (Combined's
-    // rail dropdown, data-theme-pill): open it the way a user would.
-    const pill = page.locator('[data-theme-pill]');
+    // rail dropdown, data-theme-pill) or in its inspector (Desktop's panel
+    // button, data-theme-inspector): open it the way a user would.
+    const pill = page.locator('[data-theme-pill], [data-theme-inspector]');
     if (await pill.count() && !(await page.locator('[data-work-strip]').isVisible())) await pill.click();
     await page.locator('[data-work-strip]').waitFor({ state: 'visible' });
     ui = await read();

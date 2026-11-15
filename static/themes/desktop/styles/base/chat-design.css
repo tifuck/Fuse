@@ -1,0 +1,1038 @@
+/* desktop theme copy of static/chat-design.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
+  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output),
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
+  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output) * {
+  font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
+}
+/* A code block's language label and copy button are chrome, not code. */
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-font] .chat-code .chat-code-head,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-font] .chat-code .chat-code-head * { font-family: var(--mono) !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat,
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-settings { background: var(--ink); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat { --chat-secondary: color-mix(in srgb, var(--mist) 76%, var(--mute)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-stage, .chat-thread) { background: var(--ink); }
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .stage,
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-settings .stage { position: relative; z-index: 1; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar { background: var(--ink); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-untitled .chat-bar-title {
+  display: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-title { font-size: 0.95rem; letter-spacing: -0.015em; }
+/* —— Top bar actions: one icon-button system at every width and view.
+   Names live in aria-label/title; the inline <span> labels are kept for
+   screen readers only. Pressed = neutral plate; accent is reserved for
+   state badges (context notes, live work). —— */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 0.125rem; min-width: 0; margin-left: auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-manage { display: contents; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-view { position: relative; flex: 0 0 auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar .chat-history-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--chat-bar-btn);
+  min-width: var(--chat-bar-btn);
+  height: var(--chat-bar-btn);
+  min-height: var(--chat-bar-btn);
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--chat-secondary);
+  transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn svg { width: 1.0625rem; height: 1.0625rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-bar-btn, .chat-bar .chat-history-toggle):hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn:is([aria-expanded="true"], [aria-pressed="true"], .is-on) { background: color-mix(in srgb, var(--mist) 11%, transparent); color: var(--mist); }
+/* Alerts is a standing setting, not an open panel: on is a lit bell, not a held-down pill. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn[data-notif-toggle]:is([aria-pressed="true"], .is-on) { background: transparent; color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn[data-notif-toggle]:is([aria-pressed="true"], .is-on):hover { background: color-mix(in srgb, var(--mist) 7%, transparent); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn[data-notif-toggle]:is([aria-pressed="true"], .is-on) svg path:first-child { fill: currentColor; fill-opacity: 0.3; }
+/* Artifact appears once the thread has one. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn:is(:disabled, [aria-disabled="true"]) { display: none; }
+/* Badges anchor to the icon's corner (button centre), not the button's, so
+   they sit right on the glyph at every button size. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn.has-notes::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 0.7rem);
+  left: calc(50% + 0.28rem);
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+/* Desktop: the brand row is the same height as the chat bar next to it, so the
+   collapse control sits exactly where the bar buttons sit when it swaps sides. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome-kicker {
+  margin: 0 0 0.85rem;
+  color: var(--brass);
+  font: 0.7rem/1.5 var(--mono);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-welcome { color: var(--mist); font-size: clamp(1.8rem, 3.5vw, 2.8rem); letter-spacing: -0.055em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome-note { margin: -0.3rem 0 1.75rem; color: var(--mute); text-align: center; font-size: 0.95rem; line-height: 1.6; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) :is(.chat-welcome-kicker, .chat-welcome-note) { display: none; }
+/* Dock stays clear so the composer can blur the transcript behind it. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-dock { background: transparent; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box textarea { color: var(--mist); font-size: 1rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box textarea::placeholder { color: var(--mute); opacity: 1; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-sync {
+  position: absolute;
+  right: 0.85rem;
+  bottom: calc(100% + 0.35rem);
+  z-index: 7;
+  margin: 0;
+  padding: 0.2rem 0.45rem;
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  border: 1px solid var(--line);
+  color: var(--fault);
+  pointer-events: auto;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-sync:not(.is-fault) { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-sync[hidden] { display: none !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-dock { position: relative; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-send { background: var(--brass); color: var(--on-brass, var(--ink)); border-radius: 6px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-dock {
+  display: none;
+  position: relative;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-inline: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--mute) 58%, var(--mist) 42%);
+  font: italic calc(0.95rem * var(--chat-text-scale, 1))/1.4 var(--sans);
+  letter-spacing: -0.012em;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--dur-1) ease, transform var(--dur-3) var(--ease-glide);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue {
+  margin: 0 0.75rem 0.45rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue[hidden] { display: none !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-kicker {
+  margin: 0 0 0.3rem 0.1rem;
+  font: 600 0.68rem/1.2 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--mute) 62%, var(--mist) 38%);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-kicker span { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.45rem 0.6rem 0.5rem 0.7rem;
+  display: grid;
+  gap: 0.25rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--raise) 70%, var(--panel));
+  max-height: 12rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item {
+  display: grid;
+  grid-template-columns: 0.35rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-dot {
+  width: 0.34rem;
+  height: 0.34rem;
+  flex: 0 0 0.34rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mute) 45%, var(--mist));
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item.is-immediate .chat-queue-dot { background: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item.is-sending .chat-queue-dot {
+  background: var(--brass);
+  animation: dock-dots 1.44s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 0.86rem/1.5 var(--sans);
+  color: var(--mist);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-actions { display: inline-flex; flex: 0 0 auto; gap: 0.15rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-state { color: var(--mute); font: 0.65rem/1.5 var(--mono); white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item + .chat-queue-item {
+  border-top: 1px dashed color-mix(in srgb, var(--mist) 55%, transparent);
+  padding-top: 0.28rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-action {
+  border: 0;
+  background: transparent;
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  font: 600 0.72rem/1.4 var(--mono);
+  color: color-mix(in srgb, var(--mute) 66%, var(--mist) 34%);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-action:hover { color: var(--ink); background: color-mix(in srgb, var(--mist) 70%, var(--panel)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-action[data-queue-send] { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-action[data-queue-send]:hover { color: var(--on-brass, var(--ink)); background: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item.is-sending .chat-queue-action { pointer-events: none; opacity: 0.4; }
+@media (max-width: 600px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-item { grid-template-columns: 0.35rem minmax(0, 1fr) auto; row-gap: 0.2rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-dot { grid-column: 1; grid-row: 1; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-text { grid-column: 2 / -1; grid-row: 1; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-state { grid-column: 2; grid-row: 2; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-actions { grid-column: 3; grid-row: 2; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-queue-action { min-height: 1.8rem; }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-dock:not([hidden]) { display: flex; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-live-dock .chat-live-dock {
+  opacity: 1;
+  transform: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-dock .chat-activity-spin {
+  display: grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 1.15rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-dock .chat-status-shimmer {
+  --status-ink: color-mix(in srgb, var(--mute) 42%, var(--mist) 58%);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-status-shimmer .chat-dock-dots { display: inline-flex; align-items: baseline; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-status-shimmer .chat-dock-dots i {
+  display: inline-block;
+  width: 0.2em;
+  height: 0.2em;
+  margin-left: 0.17em;
+  border-radius: 50%;
+  background: var(--status-gleam, currentColor);
+  animation: dock-dots calc(var(--status-tempo, 2.4s) * 0.6) cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-status-shimmer .chat-dock-dots i:nth-child(2) { animation-delay: calc(var(--status-tempo, 2.4s) * 0.066); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-status-shimmer .chat-dock-dots i:nth-child(3) { animation-delay: calc(var(--status-tempo, 2.4s) * 0.133); }
+@keyframes dock-dots {
+  0%, 60%, 100% { opacity: 0.26; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-0.12em); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-status-shimmer .chat-dock-dots i { animation: none; opacity: 0.6; }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-send:disabled { background: var(--raise); color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-attach-btn, .chat-search-btn, .chat-picker-btn) { border-radius: 5px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-search-btn.is-on { color: var(--brass); background: transparent; }
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat :is(.chat-pop, .chat-picker-menu, .chat-perms-menu, .chat-context-pop,
+  .chat-slash, .chat-rewind, .chat-sheet, .chat-latest) {
+  background: var(--panel);
+  color: var(--mist);
+  border-color: var(--line);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat :is(.chat-pop, .chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop,
+  .chat-slash, .chat-rewind) {
+  border-radius: 12px;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-view-menu {
+  background: var(--panel);
+  color: var(--mist);
+  border-color: var(--line);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  border: 0;
+  padding: 0;
+  background: color-mix(in srgb, var(--ink) 62%, transparent);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-backdrop[hidden] { display: none !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(42rem, calc(100vw - 2.5rem));
+  max-height: min(46rem, calc(100dvh - 3.5rem));
+  overflow: hidden;
+  padding: 0;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px color-mix(in srgb, #000 46%, transparent);
+  transform: translate(-50%, -50%);
+  animation: chat-view-panel-in var(--dur-2) var(--ease-snap);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu[hidden] { display: none !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.9rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-grip { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-title {
+  margin: 0;
+  color: var(--mist);
+  font: 600 1rem/1.3 var(--sans);
+  letter-spacing: -0.02em;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-close {
+  display: grid;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0.85rem 1rem 1.15rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview {
+  width: 100%;
+  height: 1.15rem;
+  border-radius: 3px;
+  background: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview[data-kind="none"] { background: var(--ink); }
+/* Every other card holds a canvas: chat-backdrop.js paints a real frame of
+   the scene into it and runs it while the card is hovered. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview > canvas { display: block; width: 100%; height: 100%; }
+@keyframes chat-view-panel-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="paper"] ::selection,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="sand"] ::selection,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="frost"] ::selection,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="matcha"] ::selection,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="ivory"] ::selection {
+  background: color-mix(in srgb, var(--brass) 28%, transparent);
+  color: var(--mist);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code { background: var(--chat-code-bg, var(--ink)); border-radius: 5px; border-color: var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code-head { background: var(--panel); color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code pre { color: var(--mist); padding: calc(0.9rem * var(--chat-text-scale, 1)) calc(1rem * var(--chat-text-scale, 1)); line-height: 1.65; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code :is(.hljs-keyword, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-doctag, .hljs-operator) { color: var(--reason); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code :is(.hljs-title, .hljs-name, .hljs-selector-class, .hljs-selector-id) { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-code, .hljs-link) { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code .hljs-addition,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-out.is-diff .hljs-addition { color: var(--diff-add); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code .hljs-deletion,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-out.is-diff .hljs-deletion { color: var(--diff-del); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code :is(.hljs-number, .hljs-literal, .hljs-built_in, .hljs-type, .hljs-variable.constant_, .hljs-variable.language_, .hljs-template-tag) { color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-code :is(.hljs-attr, .hljs-property, .hljs-selector-attr, .hljs-variable, .hljs-template-variable) { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md :is(img, video) { max-width: 100%; height: auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md table { display: block; max-width: 100%; overflow-x: auto; }
+/* Cells wrap between words only: "anywhere" (inherited from prose) collapses
+   the column minimum to one glyph, splitting "Size" into "Siz/e" on phones.
+   Narrow viewports scroll the table instead. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md :is(th, td) { overflow-wrap: break-word; word-break: normal; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md pre { max-width: 100%; overflow-x: auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md :is(h1, h2, h3) { text-wrap: balance; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md a { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-md a:hover { color: var(--brass); }
+/* Collapsed tool rows and thinking stay one line. Expand to read the rest. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-shell .chat-step-kind { color: var(--brass); }
+/* Top only: the bottom padding is the dock clearance (app.css). *//* Desktop: actions for your own message sit beside the bubble and appear on
+   hover, so they cost no vertical space. Turns with attachments or an open
+   editor keep the stacked layout. *//* —— Header height system — both views, every theme. The ghost buttons'
+   boxes (not their ink) set the header height, so the boxes shrink to hug
+   their content: 28px boxes on desktop, 40px touch boxes on mobile. The
+   top bar and both panel heads share one height per breakpoint. —— */
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat { --chat-bar-h: 2.25rem; --chat-bar-btn: 1.75rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat .chat-history-collapse,
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-history-head :is(.btn, .chat-menu-close) {
+  height: 1.75rem;
+  min-height: 1.75rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-history-head {
+  height: 2.8rem;
+  min-height: 2.8rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+@media (min-width: 801px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-history-head {
+    height: 2.25rem;
+    min-height: 2.25rem;
+  }
+}
+/* A landscape phone or tablet is wider than 800px but still a finger. */
+@media (pointer: coarse) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat { --chat-bar-btn: 2rem; }
+}
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat { --chat-bar-h: 3.6rem; --chat-bar-min-h: 3.6rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat.is-untitled { --chat-bar-h: 2rem; --chat-bar-min-h: 2rem; }
+  /* Edge to edge on iOS (viewport-fit=cover, black-translucent): the bar and
+     the drawer head start under the status bar, so they pad past it. */
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat .chat-bar {
+    padding-top: var(--safe-top);
+    padding-bottom: 0;
+    row-gap: 0;
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-history-head {
+    height: calc(2.8rem + var(--safe-top));
+    min-height: calc(2.8rem + var(--safe-top));
+    padding-top: var(--safe-top);
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat { --chat-bar-btn: 2rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat .chat-history-collapse,
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-history-head :is(.btn, .chat-menu-close) {
+    height: 2.5rem;
+    min-height: 2.5rem;
+  }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-status { display: none !important; }
+/* Local output branches, not a timeline rail. The branch starts at the
+   command's text column so output visibly hangs off its own label. *//* Dock stays in the flex layout so transcript clips at a hard edge above it.
+   The dock plate stays transparent — only the composer is opaque. *//* Attachments (drag/drop or picker) take their own full-width line above. *//* The narrow-viewport model sheet is a full-screen overlay: no side gaps. *//* Wrapped input: the prompt and attach stay on line one, the controls ride
+   the last line so a two- or three-row composer still reads as one unit. *//* Wrapped input: the field takes its own full-width row and the controls
+   drop to the line under it, [+] first, context and send held right. Idle
+   and single-line input stay the one TUI row. chat.js sets the class from
+   content alone (see syncComposerExpanded). display:contents on the bar means
+   the compose box itself is the flex item that breaks the row. */
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="paper"] .chat .chat-code,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="sand"] .chat .chat-code,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="frost"] .chat .chat-code,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="matcha"] .chat .chat-code,
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-theme="ivory"] .chat .chat-code { border-color: var(--line); }
+@keyframes chat-view-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@media (max-width: 800px) {
+  /* Two rows (icons, then the title) with no spare band above or below.
+     Untitled chats drop the title row. The bar, thread offset and top fade
+     all key off this variable; fitChatBar replaces it with the measured height. */
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat { --chat-bar-h: 3.6rem; --chat-bar-min-h: 3.6rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-untitled { --chat-bar-h: 2rem; --chat-bar-min-h: 2rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-untitled .chat-bar {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-untitled .chat-bar::after { content: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-untitled .chat-project-chip {
+    order: 0;
+    max-width: min(9.5rem, 34%);
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar { gap: 0 0.25rem; padding-inline: 0.5rem; align-content: center; }
+  /* A zero basis keeps a long title on the project chip's row, ellipsized,
+     instead of wrapping to a row of its own. */
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-untitled) .chat-bar-title {
+    flex: 1 1 0;
+    height: auto;
+    line-height: 1.15;
+  }
+  /* Controls retain their touch targets; extra rows grow the bar. The runtime
+     measures its height for transcript clearance rather than guessing rows. */
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.chat .chat-bar { height: auto; min-height: calc(var(--chat-bar-min-h) + var(--safe-top)); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-actions { gap: 0; flex: 1 1 0; flex-wrap: wrap; justify-content: flex-end; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-history-bar :is(.chat-new, .chat-history-iconbtn),
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-history-collapse, .chat-send, .chat-attach-btn, .chat-search-btn, .chat-context),
+  :where(html.is-chat-root[data-chat-view="desktop"]) .settings-shell .chat-history-toggle,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .settings-shell .chat-history-collapse { min-width: 44px; min-height: 44px; }
+  /* The chat bar's own buttons hug the glyph. A 44px box around a 20px icon
+     reads as padding above and below the top row; the rest of the page keeps
+     the touch size. */
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar :is(.chat-bar-btn, .chat-history-toggle) { min-width: 2rem; min-height: 2rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-history-item > button.open,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-picker-btn),
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat :is(.chat-pop button, .chat-picker-list button) { min-height: 44px; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-history-item > button.more { opacity: 1; width: 44px; height: 44px; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box { padding: 0.7rem 0.55rem 0.55rem 0.45rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box-bar { gap: 0.3rem; align-items: center; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box-left { gap: 0.3rem; flex: 1; flex-wrap: nowrap; min-width: 0; justify-content: flex-start; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box-right { gap: 0.2rem; padding-right: 0.1rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-attach-btn,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-search-btn { width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-model { flex: 0 1 auto; min-width: 0; max-width: min(12rem, 52%); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-picker-btn { max-width: 100%; padding-inline: 0.55rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-send { width: 44px; min-width: 44px; margin: 0; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box textarea { font-size: 16px; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-sync { font-size: 0.65rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-welcome { font-size: 1.8rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome-note { font-size: 0.88rem; margin-bottom: 1.25rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-backdrop { z-index: 80; background: color-mix(in srgb, var(--ink) 42%, transparent); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu {
+    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 81;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    height: var(--vv-height, 100dvh);
+    padding: 0;
+    padding-bottom: var(--safe-bottom);
+    border: 0;
+    border-bottom: 0;
+    border-radius: 0 !important;
+    overscroll-behavior: contain;
+    transform: none;
+    animation: none;
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu.is-dragging { transition: none; animation: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-head {
+    min-height: calc(3.5rem + var(--safe-top));
+    padding: max(0.55rem, var(--safe-top)) 0.85rem 0.55rem;
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-grip { display: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-title { grid-column: 1; font-size: 1rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-close {
+    grid-column: 2;
+    grid-row: 1;
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-sheet-body { padding: 0.65rem 0.85rem 1.35rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.view-sheet-open .chat-thread { overflow: hidden; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat :is(.chat-pop, .chat-context-pop, .chat-picker-menu:not(.is-sheet)) { max-width: calc(100vw - 1rem); }
+}
+/* Per-view reading font: chat-appearance.js resolves --chat-view-font from the
+   user's saved choice or each view's own default before first paint. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-turn > .chat-bubble { font-family: var(--chat-view-font, inherit); }
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat :is(.stage, .stage-inner, main, .chat, .chat-stage, .chat-thread) {
+  background: transparent;
+}
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-bar {
+  background: color-mix(in srgb, var(--panel) 56%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--line) 70%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(124%);
+  backdrop-filter: blur(18px) saturate(124%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mist) 16%, transparent);
+}
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-dock {
+  background: transparent;
+}
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-history {
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
+}
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-box {
+  background: color-mix(in srgb, var(--panel) 56%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(124%);
+  backdrop-filter: blur(18px) saturate(124%);
+}
+@media (max-width: 800px) {
+  html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-history {
+    background: color-mix(in srgb, var(--ink) 88%, transparent);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-box,
+  html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-bar,
+  html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat .chat-history {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: color-mix(in srgb, var(--panel) 94%, var(--ink));
+  }
+}
+/* Shared tool contract: status and disclosure have the same meaning in both
+   views. Grouped children use the exact same row and detail markup. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step:not(.is-think) .chat-step-state {
+  width: auto;
+  max-width: 16rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-open.is-empty { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-warning > .chat-step-main > .chat-step-head .chat-step-state { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-done > .chat-step-main > .chat-step-head .chat-step-state { color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-error > .chat-step-main > .chat-step-head .chat-step-state { color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-running > .chat-step-main > .chat-step-head .chat-step-state { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-interrupted > .chat-step-main > .chat-step-head .chat-step-state { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step:not(.is-think) .chat-step-reveal:not(.is-open) { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0 0.25rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step::before { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step.is-done > .chat-step-node { color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step.is-error > .chat-step-node { color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step.is-running > .chat-step-node { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step:is(.is-warning, .is-interrupted) > .chat-step-node { color: var(--brass); }
+/* Keep live reasoning bounded while exposing the newest paragraph. Expanding
+   increases reading room without allowing every token to move the composer. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action:disabled { opacity: 0.45; cursor: default; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error { padding: 0.75rem 1rem; color: var(--fault); border-bottom: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error p { margin: 0 0 0.5rem; overflow-wrap: anywhere; }
+/* Keep group outcomes legible without squeezing every child target into a
+   sliver. A group's summary is its own line; individual states stay adjacent. */
+/* Scope state colors to the row itself, never to descendants of a mixed group. */
+@media (max-width: 600px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step:not(.is-think) .chat-step-state { max-width: 6.5rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children { padding-left: 0; }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat { --tool-row: calc(1.5rem * var(--chat-text-scale,1)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-action { flex: 0 0 4.6rem; color: var(--steel); font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-subject { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-subject.is-path { display: flex; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-path-parent { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-path-leaf { flex: 0 0 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-command-prompt { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-host { flex: 0 1 auto; max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); font: calc(0.65rem * var(--chat-text-scale, 1))/1.5 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-host::before { content: "@"; opacity: 0.65; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-host { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-preview { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-preview::before { content: "— "; opacity: 0.5; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-caret .chat-step-chevron { transition: transform var(--dur-2) ease; transform: rotate(-90deg); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-caret[aria-expanded="true"] .chat-step-chevron { transform: rotate(0); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children { gap: 0; padding: 0 0.45rem 0.2rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children > .chat-step { margin: 0; padding: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-running > .chat-step-node svg { animation: tool-working 1.8s ease-in-out infinite; }
+@keyframes tool-working { 50% { opacity: 0.45; } }
+/* Groups are ordinary ledger rows: no boxed plate. The rail-mask disc and the
+   rail itself are timeline-view furniture; on ledger rows (hover tint, row
+   rules) the disc read as a dark blob behind each icon and the rail cut
+   through icons and expanded thinking. *//* Think's kind column is exactly as wide as a tool's action column, so the
+   preview starts where every tool subject starts. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-work-counts { font: calc(0.65rem * var(--chat-text-scale, 1))/1.4 var(--mono); color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-mark { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; margin: 0.7rem 0; padding: 0.35rem 0; border-top: 1px solid color-mix(in srgb, var(--steel) 35%, transparent); color: var(--steel); font: calc(0.72rem * var(--chat-text-scale, 1))/1.45 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-mark strong { color: var(--brass); font-weight: 560; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner { margin: 0.7rem 0; border-top: 1px solid color-mix(in srgb, var(--steel) 35%, transparent); color: var(--steel); font: calc(0.72rem * var(--chat-text-scale, 1))/1.45 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner > summary { display: flex; flex-wrap: wrap; gap: 0.35rem 0.6rem; align-items: baseline; padding: 0.45rem 0; cursor: pointer; list-style: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner > summary::-webkit-details-marker { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner > summary::before { content: "▸"; color: var(--brass); font-size: 0.65rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner[open] > summary::before { content: "▾"; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-banner > summary strong { color: var(--brass); font-weight: 560; letter-spacing: 0.04em; text-transform: uppercase; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-compact-handoff { margin: 0 0 0.6rem; }
+/* A row the work strip jumped to: one accent sweep across its call text. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call {
+  background: linear-gradient(100deg, currentColor 35%, var(--brass) 50%, currentColor 65%) no-repeat;
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: chat-work-gleam 1.2s cubic-bezier(0.45, 0, 0.2, 1) both;
+}
+@keyframes chat-work-gleam { from { background-position: 100% 0; } to { background-position: 0% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-work-highlight > .chat-step-main > .chat-step-head .chat-console-call { animation: none; background: none; -webkit-text-fill-color: var(--brass); }
+}
+@media (max-width: 600px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-preview { display: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-preview::before { content: ""; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-open-target { display: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-host { display: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-action { flex-basis: 3.5rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-children { padding-inline: 0.15rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step-caret .chat-step-chevron { transition: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-running > .chat-step-node svg { animation: none; }
+}
+/* Thinking has one shared disclosure contract in both views: a single-line
+   Markdown summary, an automatic live five-line tail, or an explicit reader. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat { --think-leading: calc(1.092rem * var(--chat-text-scale,1)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-size { grid-column: 2; grid-row: 1; padding: 0; border: 0; color: var(--mute); background: none; cursor: pointer; font: calc(0.65rem * var(--chat-text-scale, 1))/var(--tool-row) var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-size:hover { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-size[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown { margin: 0; padding: 0; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,pre) { margin-block: 0; font-size: inherit; line-height: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(h1,h2,h3,h4,h5,h6,strong) { font-weight: 500; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(p + p,ul + p,ol + p) { margin-top: 0.1em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(ul,ol) { padding-left: 1.2em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown blockquote { margin-inline: 0; padding-left: 0.5em; border-left: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown a { color: var(--steel); text-decoration: underline; text-underline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(code,pre,.chat-code-head) { font-style: normal; font-family: var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat :is(.chat-think-markdown, .chat-think-summary) code { font-size: 0.9em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown .chat-code { margin: 0.15em 0; max-width: 100%; border-radius: 3px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown .chat-code-head { min-height: 0; padding: calc(0.1rem * var(--chat-text-scale, 1)) calc(0.4rem * var(--chat-text-scale, 1)); font-size: calc(0.65rem * var(--chat-text-scale, 1)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown .chat-code pre { padding: calc(0.2rem * var(--chat-text-scale, 1)) calc(0.4rem * var(--chat-text-scale, 1)); max-height: none; font-size: inherit; line-height: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(td,th) { padding: calc(0.1rem * var(--chat-text-scale, 1)) calc(0.35rem * var(--chat-text-scale, 1)); border: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown hr { margin: 0.25em 0; border: 0; border-top: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-preview:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-thread,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-agent-scroll { overflow-anchor: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-thread { scrollbar-gutter: stable; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-turn[hidden],
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action[hidden] { display: none !important; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-deferred-message {
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-pending-send small {
+  display: block;
+  color: var(--steel);
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 6px;
+}
+/* The fold's "… +N lines" marker stays visible while the row is folded: it
+   is the disclosure that says how much output is hidden, and the row's
+   expander. The expanded state hides the whole preview instead. *//* A fold whose only content is its hidden body (the settled skill load)
+   prints one line: no branch glyph and no hang margins until it opens. *//* The status line ends the transcript on the log's own column and gutter. *//* A subagent has a status line, not a placeholder composer. *//* The dot is centred on the reply's first line box; a top margin on the first
+   block would push that line below the dot (grid margins don't collapse). *//* Expanded rows print in place, like a terminal agent's transcript: no band,
+   no extra padding, so nothing below them shifts. *//* The reply's last block carries no trailing margin, like its first (see
+   :first-child above): otherwise the gap under prose is 0.28em larger than
+   the gap above it. *//* —— One rhythm: tool / think / group / expand —— *//* A running call's header is a terminal agent's live line: plain ink, no Tool(…). *//* A call's time (" · 12s") follows its header; a clipped command gives way
+   so the time stays in view. *//* The box a call runs on sits just before the dot that leads its time. *//* A pending call's deadline, on the line under the call. It is dimmer than
+   the line it sits on and gone once the call settles. Never breaks inside
+   itself: too-long lines move the whole note, not "(timeout:" alone. *//* Phone TUI composer, idle (one row): the model picker shows its provider
+   logo only so the prompt keeps usable width; the name returns once the
+   composer expands onto its own row. *//* Touch has no hover: Copy is always shown, so it takes its own right-aligned
+   line above the block instead of sitting on top of the first output line. *//* Shell, match and listing output keeps its columns: scroll, don't wrap. *//* Provider logos ship as light monochrome (#E8EBE8) marks. On light palettes
+   they would vanish into the surface, so they flip to a dark mark there. */
+html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .provider-logo { filter: invert(1) brightness(0.9); }
+/* File bodies and diffs: a numbered gutter in every view. Code never wraps:
+   a wrapped line loses its indentation and reads as a different line. The
+   block scrolls sideways instead, and its one grid track is as wide as the
+   longest line so every add/del tint spans the whole scrolled width. *//* Web results: title, then domain; one line each. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-web-list { display: grid; gap: 0.05rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-web-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.12rem 0;
+  color: var(--mist);
+  font-size: calc(0.78rem * var(--chat-text-scale, 1));
+  text-decoration: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-web-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-web-domain { flex-shrink: 0; color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.4 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-web-row:hover .chat-web-title { color: var(--brass); text-decoration: underline; text-underline-offset: 2px; }
+/* Group toolbar: just the expand-all switch, right-aligned. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-toolbar { display: flex; justify-content: flex-end; padding: 0 0.25rem 0.1rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-toolbar button {
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: calc(0.625rem * var(--chat-text-scale, 1))/1.5 var(--mono);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-group-toolbar button:hover { color: var(--mist); }
+/* Snippet diffs (search_replace) carry no real line numbers: marks only. *//* Completed is the default state: don't print "Done" on every row. The box
+   and text stay (status column alignment, assistive tech); running, failed
+   and stopped remain visible. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-step.is-done > .chat-step-main > .chat-step-head > .chat-step-state { color: transparent; }
+/* Structured tool bodies: key/value rows, notes, rendered markdown. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-list { display: grid; gap: 0.05rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-row { display: flex; align-items: baseline; gap: 0.6rem; min-width: 0; padding: 0.1rem 0; font-size: calc(0.8125rem * var(--chat-text-scale, 1)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-title { min-width: 0; overflow: hidden; color: var(--mist); text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-detail { flex-shrink: 0; color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.4 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-dot { flex-shrink: 0; align-self: center; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-dot.is-live { background: var(--status-live); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-dot.is-done { background: var(--ok); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-kv-dot.is-fail { background: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-note { margin: 0; color: var(--mute); font: calc(0.75rem * var(--chat-text-scale, 1))/1.5 var(--mono); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-md > :first-child { margin-top: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-md > :last-child { margin-bottom: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-tool-md :is(h1, h2, h3) { font-size: 1em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu {
+  --ap-ui: var(--sans);
+  --ap-card: color-mix(in srgb, var(--ink) 55%, var(--panel));
+  --ap-hover: color-mix(in srgb, var(--mist) 5%, var(--ap-card));
+  --ap-ring: color-mix(in srgb, var(--brass) 70%, var(--line));
+  width: min(54rem, calc(100vw - 2.5rem));
+  max-height: min(50rem, calc(100dvh - 3rem));
+  font-family: var(--ap-ui);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .chat-view-menu { border-color: var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu .chat-view-sheet-title { font: 600 1rem/1.3 var(--ap-ui); letter-spacing: -0.01em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu .chat-view-sheet-body.ap { gap: 0; padding: 0 1.25rem 1.25rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu :is(button, input, label) { font-family: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-section {
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
+  column-gap: 1.5rem;
+  padding: 1.15rem 0;
+  border-top: 1px solid var(--line);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-section:first-child { border-top: 0; }
+/* A section with no intro (Thinking) puts its body straight in column 1; span it. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-section > .ap-body:first-child { grid-column: 1 / -1; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-intro h2 { margin: 0; color: var(--mist); font: 600 0.875rem/1.35 var(--ap-ui); letter-spacing: -0.005em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-intro p { margin: 0.3rem 0 0; color: var(--mute); font: 0.75rem/1.5 var(--ap-ui); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-body { display: grid; gap: 0.85rem; min-width: 0; }
+/* Shared card chrome for modes, themes, backdrops and fonts. */
+:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font) {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ap-card);
+  color: var(--mist);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-1, 120ms) ease, background-color var(--dur-1, 120ms) ease;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):hover { background: var(--ap-hover); border-color: color-mix(in srgb, var(--mist) 22%, var(--line)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme[aria-pressed="true"], .ap-backdrop[aria-pressed="true"], .ap-font[aria-checked="true"]) {
+  border-color: var(--brass);
+  box-shadow: inset 0 0 0 1px var(--brass);
+}
+/* Themes: each card is a small window painted in that theme's colors. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr)); gap: 0.5rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme { gap: 0.4rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art {
+  position: relative;
+  display: block;
+  height: 2.9rem;
+  border-radius: 4px;
+  background: var(--t-ink);
+  box-shadow: inset 0 0 0 1px var(--t-line);
+  overflow: hidden;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art b { position: absolute; inset: 0 0 auto; height: 0.6rem; background: var(--t-panel); border-bottom: 1px solid var(--t-line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art i { position: absolute; left: 0.5rem; height: 3px; border-radius: 2px; background: var(--t-mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art i:nth-of-type(1) { top: 1.05rem; width: 55%; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art i:nth-of-type(2) { top: 1.55rem; width: 38%; background: var(--t-mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art em { position: absolute; left: 0.5rem; bottom: 0.4rem; width: 0.4rem; height: 0.55rem; background: var(--t-brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-art em::after { content: ""; position: absolute; left: 0.65rem; top: 0.2rem; width: 2.2rem; height: 2px; border-radius: 2px; background: color-mix(in srgb, var(--t-mist) 55%, var(--t-ink)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-theme-name { font: 550 0.75rem/1.2 var(--ap-ui); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-custom { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.75rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-custom[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-color {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ap-card);
+  color: var(--mist);
+  font: 0.8125rem/1.3 var(--ap-ui);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-color input[type="color"] {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-color input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-color input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-color input[type="color"]::-moz-color-swatch { border: 0; border-radius: 4px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-note { grid-column: 1 / -1; margin: 0; color: var(--mute); font: 0.75rem/1.5 var(--ap-ui); }
+/* Backdrops reuse the preview art above. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrops { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.6rem, 1fr)); gap: 0.5rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop { gap: 0.2rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop .chat-backdrop-preview { display: block; height: 2.6rem; margin-bottom: 0.2rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop span { font: 550 0.75rem/1.2 var(--ap-ui); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop small { color: var(--mute); font: 0.6875rem/1.3 var(--ap-ui); }
+/* Sliders: label · track · value on one line. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider {
+  --ap-step: 1.75rem;
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr) 3rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider > label { display: block; color: var(--mist); font: 0.8125rem/1.3 var(--ap-ui); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider output { color: var(--brass); font: 0.75rem/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+/* A bare track (Intensity) lines up with the stepped one (Text size). */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider > .ap-range { width: auto; margin-inline: calc(var(--ap-step) + 0.5rem); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-stepper { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-step {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--ap-step);
+  height: var(--ap-step);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ap-card);
+  color: var(--mist);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-step:hover { border-color: var(--brass); color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range:focus { border: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range:focus-visible { outline: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--mute) 35%, var(--ink)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: calc((4px - 1rem) / 2);
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--brass);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range::-moz-range-track { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--mute) 35%, var(--ink)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-range::-moz-range-thumb { width: 0.8rem; height: 0.8rem; border: 2px solid var(--panel); border-radius: 50%; background: var(--brass); }
+/* Fonts: filter, a live sample line, then a specimen grid set in each face. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-fontbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-scope { margin: 0; color: var(--mute); font: 0.8125rem/1.3 var(--ap-ui); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-scope strong { color: var(--mist); font-weight: 600; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--ink); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button {
+  padding: 0.25rem 0.65rem;
+  border-radius: 6px;
+  color: var(--mute);
+  font: 0.75rem/1.3 var(--ap-ui);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button:hover { color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button[aria-pressed="true"] { background: var(--raise); color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-sample {
+  position: relative;
+  margin: 0;
+  padding: 0.75rem 0.9rem 1.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--mist);
+  font-size: calc(0.95rem * var(--chat-text-scale, 1));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-sample::after {
+  content: attr(data-font-label);
+  position: absolute;
+  left: 0.9rem;
+  bottom: 0.45rem;
+  color: var(--mute);
+  font: 0.6875rem/1 var(--ap-ui);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-fonts { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.4rem, 1fr)); gap: 0.5rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font { grid-template-rows: auto auto auto; gap: 0.1rem; padding: 0.5rem 0.6rem 0.55rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font-glyph { color: var(--mist); font: 500 1.65rem/1.1 var(--ap-face); letter-spacing: -0.01em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font-name {
+  overflow: hidden;
+  color: var(--mist);
+  font: 0.8125rem/1.3 var(--ap-face);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font small { color: var(--mute); font: 0.6875rem/1.3 var(--ap-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-font[data-font-kind="default"]:not([aria-checked="true"]) { border-style: dashed; }
+/* Composer switches. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switches { gap: 0.25rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.45rem 0;
+  color: var(--mist);
+  font: 0.8125rem/1.35 var(--ap-ui);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch-copy { display: grid; gap: 0.1rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch-copy small { color: var(--mute); font-size: 0.75rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"] {
+  position: relative;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 1.2rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mute) 28%, var(--ink));
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color var(--dur-1, 120ms) ease, border-color var(--dur-1, 120ms) ease;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--mist);
+  transform: translateY(-50%);
+  transition: transform var(--dur-1, 120ms) ease;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:checked { border-color: var(--brass); background: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:checked::after { background: var(--on-brass, var(--ink)); transform: translate(0.88rem, -50%); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu { width: auto; max-height: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu .chat-view-sheet-body.ap { padding: 0 1rem 1.5rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-section { grid-template-columns: minmax(0, 1fr); row-gap: 0.75rem; padding: 1rem 0; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-themes { grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-fonts { grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr)); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider { grid-template-columns: minmax(0, 1fr) auto; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider > :is(.ap-range, .ap-stepper) { grid-column: 1 / -1; grid-row: 2; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-custom { grid-template-columns: minmax(0, 1fr); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font, .ap-filters button) { min-height: 44px; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider { --ap-step: 2.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu * { transition: none !important; }
+}

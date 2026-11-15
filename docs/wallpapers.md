@@ -13,6 +13,7 @@ trusting it.
 | `static/backdrops/wallpapers.js` | The eight presets as spec data, each turned into a scene. |
 | `static/backdrops/scenes.js`, `static/chat-appearance.js` | Registration (`SCENES`) and the Appearance catalog (`BACKDROPS`). |
 | `tests/wallpapers.test.cjs` | Presets validate, bad specs are refused, the interpreter is bounded and deterministic. |
+| `static/chat-backdrop.js` | `FuseBackdrop.register(key, spec)`, behind `FuseChatAppearance.addWallpaper`. |
 
 Because a wallpaper is an ordinary scene, the engine's runner, the picker
 previews, the hidden-tab pause and the reduced-motion still frame apply
@@ -161,12 +162,32 @@ millisecond per frame at 1440×900 in headless Chromium.
 
 ## Display strength
 
-Wallpapers paint an opaque, full-colour background of their own. The shared
-backdrop CSS (`chat-design.css`) dims every scene canvas to
-`strength × gain` (about 35 % at the default Intensity), masks it through the
-centre column and lays a scanline veil on top, which suits the theme-tinted
-scenes but leaves a wallpaper murky. Showing wallpapers at full colour needs a
-CSS rule for them; that change is not part of this format.
+Wallpapers paint an opaque, full-colour background of their own. `engine.js`
+`sync()` stamps `data-wallpaper` on the scene whenever the active kind has a
+`spec`, and `chat-design.css` shows `.chat-scene[data-wallpaper]` canvases at
+`0.45 + Intensity` (0.57–1 over the 12–55 % range) with no centre mask and no
+veil, so no CSS lists wallpaper keys.
+
+## Scheme and themes
+
+Each chat theme keeps its own backdrop, strength and palette
+(`fuse.chat.views.v1` in `chat-appearance.js`). Choosing a wallpaper whose
+`scheme` is `"light"` (Cloud Drift) moves that theme from a dark palette to
+Paper and remembers the old one; None, or a dark wallpaper, brings it back.
+Picking a palette by hand while a light wallpaper is on keeps the hand pick.
+
+## Registering a new wallpaper
+
+`FuseChatAppearance.addWallpaper(key, spec)` is the hook for model-made
+wallpapers: it hands the spec to `FuseBackdrop.register` (`chat-backdrop.js`),
+which checks the key (`[a-z][a-z0-9-]{0,31}`, not a built-in), runs
+`validateWallpaper` and sets `SCENES[key] = wallpaperScene(spec)` inside
+try/catch; then it adds a catalog entry, repaints the Appearance cards and
+fires `fuse-wallpapers` so an open `/theme` picker refreshes. It returns
+`{ ok, errors }`; nothing is registered on failure
+(`tests/chat_wallpaper_register.test.cjs`). Registrations live for the page
+only; a theme whose saved backdrop names one draws nothing until it is
+registered again.
 
 ## Example
 

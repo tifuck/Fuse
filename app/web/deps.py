@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from .. import accounts, chats, hosts, skills, static_assets, vault
+from .. import accounts, chat_themes, chats, hosts, skills, static_assets, vault
 from ..config import ROOT, settings
 from ..crypto import decrypt, encrypt
 from ..security import client_ip, ensure_csrf, limiter
@@ -46,6 +46,8 @@ templates.env.globals["provider_logo_url"] = provider_logo_url
 templates.env.globals["asset"] = static_assets.asset_url
 templates.env.globals["asset_preloads"] = static_assets.preloads
 templates.env.globals["build_id"] = static_assets.build_id
+templates.env.globals["chat_themes"] = chat_themes.chat_themes
+templates.env.globals["chat_view_for"] = chat_themes.chat_view
 logger = logging.getLogger("app.web")
 _pending: dict[int, dict] = {}
 _chatgpt_pending: dict[int, dict] = {}

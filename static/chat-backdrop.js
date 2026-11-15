@@ -15,9 +15,38 @@
 import { html } from "./backdrops/env.js";
 import { SCENES } from "./backdrops/scenes.js";
 import { sync, scanPreviews } from "./backdrops/engine.js";
+import { validateWallpaper } from "./backdrops/wallpaper-spec.js";
+import { wallpaperScene } from "./backdrops/wallpaper.js";
 
-window.FuseBackdrop = { sync, previews: scanPreviews, animated: (kind) => Boolean(SCENES[kind]) };
+// A data-only wallpaper spec (docs/wallpapers.md) becomes a scene under `key`.
+// Built-in scenes cannot be replaced; an invalid spec is refused with its errors.
+const BUILTIN = new Set(Object.keys(SCENES));
+function register(key, spec) {
+  if (typeof key !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(key) || key === "none") {
+    return { ok: false, errors: ["key: lowercase letters, digits and dashes, at most 32"] };
+  }
+  if (BUILTIN.has(key)) return { ok: false, errors: [`key: "${key}" is a built-in backdrop`] };
+  const checked = validateWallpaper(spec);
+  if (!checked.ok) return { ok: false, errors: checked.errors };
+  try {
+    SCENES[key] = wallpaperScene(spec);
+  } catch (error) {
+    delete SCENES[key];
+    return { ok: false, errors: [String(error && error.message || error)] };
+  }
+  return { ok: true, errors: [] };
+}
+
+window.FuseBackdrop = {
+  sync,
+  previews: scanPreviews,
+  animated: (kind) => Boolean(SCENES[kind]),
+  isWallpaper: (kind) => Boolean(SCENES[kind]?.spec),
+  scheme: (kind) => SCENES[kind]?.spec?.scheme || "",
+  register,
+};
 scanPreviews();
 // chat-appearance.js may have applied a backdrop before this file loaded.
 const scene = document.querySelector("[data-chat-scene]");
 if (scene) sync(scene, html.dataset.chatBackdrop);
+document.dispatchEvent(new CustomEvent("fuse-backdrop-ready"));

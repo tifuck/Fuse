@@ -1,0 +1,160 @@
+/* desktop theme copy of static/styles/pages/artifacts.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-artifact-page {
+  min-height: 0;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-artifact-page .stage {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-artifact-page .stage-inner {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-artifact-page main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-artifact-page main > .panel { margin: 1.25rem auto; max-width: 28rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .artifact-callout[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat { --chat-artifact: min(36rem, 42vw); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-bar,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-stage { grid-column: 2; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome {
+  max-height: 3.5rem;
+  margin: 0 0 1.15rem;
+  overflow: hidden;
+  text-align: center;
+  color: var(--mist);
+  font-size: 1.65rem;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+  opacity: 1;
+  transition: opacity 0.28s ease, margin calc(var(--dur-3) + 80ms) var(--ease-glide), max-height calc(var(--dur-3) + 80ms) var(--ease-glide);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-welcome {
+  max-height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty .chat-thread {
+  flex-grow: 0;
+  margin-top: 0;
+  padding-top: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty .chat-sync:not(.is-fault):not(:has(button:not([hidden]))) {
+  color: color-mix(in srgb, var(--steel) 72%, transparent);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty .chat-latest { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty .chat-dock {
+  align-self: center;
+  width: min(var(--chat-col), calc(100% - 4rem));
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-stage::before,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-stage::after,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-thread,
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome { transition: none; }
+}
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-welcome { font-size: 1.35rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty .chat-dock {
+    width: min(var(--chat-col), calc(100% - 1.5rem));
+  }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat.is-keyboard .chat.is-empty .chat-stage::before,
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat.is-keyboard .chat.is-empty .chat-stage::after {
+  flex-grow: 0;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat.is-keyboard .chat-welcome {
+  display: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat.is-keyboard .chat-dock {
+  margin-top: auto;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat {
+  --chat-col: 54rem;
+  --chat-bar-h: 3.2rem;
+  grid-template-rows: minmax(0, 1fr);
+}
+@media (min-width: 1440px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat { --chat-col: 58rem; }
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-stage {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  z-index: 0;
+}
+/* Top bar: overlays the thread; the fade edge below it separates content. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  height: var(--chat-bar-h);
+  padding: 0 0.75rem 0 1rem;
+  background: transparent;
+  border: 0;
+  border-right: var(--chat-scroll-gutter, 0px) solid transparent;
+  pointer-events: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-bar > * { pointer-events: auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-bar .chat-bar-title { flex: 1 1 auto; }
+@media (min-width: 801px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-untitled) .chat-bar-title { min-width: 5rem; }
+}
+/* The scroll box starts under the bar, so its scrollbar never runs beneath it. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-thread {
+  margin-top: var(--chat-bar-h);
+  padding-top: 0.45rem;
+  scroll-padding-top: 0.4rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-log,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-live-dock,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-dock,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-empty {
+  width: min(var(--chat-col), calc(100% - 2.75rem));
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-log {
+  gap: 1.25rem;
+  padding: 0.55rem 0 0.75rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-dock {
+  z-index: 6;
+  padding-top: 0.1rem;
+  padding-bottom: max(0.55rem, var(--safe-bottom));
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-sync {
+  padding: 0.02rem 0.15rem 0.12rem 0.55rem;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .art-page > .callout { margin: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .art-empty-filter[hidden],
+:where(html.is-chat-root[data-chat-view="desktop"]) .art-row[hidden] { display: none; }

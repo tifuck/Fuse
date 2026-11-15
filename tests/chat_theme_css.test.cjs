@@ -80,7 +80,9 @@ test('no other shared stylesheet reaches chat markup', () => {
 });
 
 test('each theme copy is gated to its own chat page', () => {
-  for (const theme of ['console', 'combined']) {
+  const themes = readdirSync(resolve(STATIC, 'themes'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  assert.ok(themes.includes('console') && themes.includes('combined') && themes.includes('desktop'));
+  for (const theme of themes) {
     const dir = resolve(STATIC, `themes/${theme}/styles/base`);
     const files = readdirSync(dir).filter((n) => n.endsWith('.css'));
     assert.ok(files.includes('chat-history.css') && files.includes('chat-design.css'), theme);

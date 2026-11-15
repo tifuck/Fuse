@@ -8,18 +8,20 @@
     <p>How chats are drawn. Switching reloads the page.</p>
   </div>
   <div class="ap-body">
+    {#- One button per theme, from static/themes/*/theme.json. -#}
     <div class="ap-filters" role="group" aria-label="Layout">
-      <button type="button" data-chat-view-choice="console" aria-pressed="true">Console</button>
-      <button type="button" data-chat-view-choice="combined" aria-pressed="false">Combined</button>
+      {%- for t in chat_themes() %}
+      <button type="button" data-chat-view-choice="{{ t.id }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ t.label }}</button>
+      {%- endfor %}
     </div>
-    <p class="ap-note">Console is dense and terminal-like. Combined reads like a chat: a centered column, one-line steps, and a side rail for running agents.</p>
+    <p class="ap-note">{{ chat_themes() | map(attribute='description') | join(' ') }}</p>
   </div>
 </section>
 <section class="ap-section" aria-label="Thinking">
   <div class="ap-body ap-switches">
     <label class="ap-switch">
       <input type="checkbox" role="switch" data-thinking-toggle>
-      <span class="ap-switch-copy"><span>Show thinking</span><small>Off hides thoughts, as Claude Code does; the status line still says when it is thinking. Also /thinking.</small></span>
+      <span class="ap-switch-copy"><span>Show thinking</span><small>Off hides thoughts; the status line still says when it is thinking. Also /thinking.</small></span>
     </label>
     <label class="ap-switch">
       <input type="checkbox" role="switch" data-effort-cache-warn-toggle>
@@ -30,7 +32,7 @@
 <section class="ap-section" aria-labelledby="ap-h-theme">
   <div class="ap-intro">
     <h2 id="ap-h-theme">Theme</h2>
-    <p>Every surface follows it, this window included.</p>
+    <p>Every surface follows it, this window included. <span data-appearance-scope>Saved for this theme.</span></p>
   </div>
   <div class="ap-body">
     <div class="ap-themes" data-chat-theme-swatches></div>
@@ -50,7 +52,7 @@
 <section class="ap-section" aria-labelledby="ap-h-backdrop">
   <div class="ap-intro">
     <h2 id="ap-h-backdrop">Backdrop</h2>
-    <p>A moving field behind the transcript.</p>
+    <p>A moving field behind the transcript. <span data-appearance-scope>Saved for this theme.</span></p>
   </div>
   <div class="ap-body">
     <div class="ap-backdrops" data-chat-backdrop-swatches></div>

@@ -405,6 +405,7 @@ function initState() {
     { name: "init", hint: "Create or update AGENTS.md", needs: "project", args: true },
     { name: "compact", hint: "Compress conversation context", needs: "messages", args: true },
     { name: "thinking", hint: "Show or hide thinking in every view" },
+    { name: "theme", hint: "Pick a wallpaper for this theme" },
     { name: "help", hint: "List slash commands" },
   ];
   S.activitySeq = 0;

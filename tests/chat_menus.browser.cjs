@@ -208,7 +208,7 @@ const FAMILIES = [
       assert.deepEqual(await optionIds(), ['offline', 'grok-short', 'grok-long'], 'a starred model leads the list');
       assert.equal(await page.locator('.chat-picker-group.is-favorites [data-id="offline"]').count(), 1, 'in its own Favorites group');
       assert.equal(await page.locator('[data-star="offline"]').getAttribute('aria-pressed'), 'true');
-      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.chat-picker-search')), true, 'starring leaves focus in the search');
+      assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.chat-picker-menu .chat-picker-search')), true, 'starring leaves focus in the search');
       await page.keyboard.press('Escape');
       await page.reload();
       await live();
@@ -348,11 +348,11 @@ const FAMILIES = [
 
       await pickerBtn().click();
       await picker().waitFor();
-      const pick = await active('.chat-picker-search');
+      const pick = await active('.chat-picker-menu .chat-picker-search');
       assert.ok(pick.focused && pick.role === 'option', `the picker search names the highlighted model: ${JSON.stringify(pick)}`);
       assert.equal(await page.locator('.chat-picker-list > [role="group"][aria-labelledby]').count() > 0, true, 'models are grouped by provider inside the listbox');
       await page.keyboard.press('ArrowDown');
-      assert.notEqual((await active('.chat-picker-search')).id, pick.id, 'ArrowDown moves the picker highlight');
+      assert.notEqual((await active('.chat-picker-menu .chat-picker-search')).id, pick.id, 'ArrowDown moves the picker highlight');
       await page.keyboard.press('Escape');
       await picker().waitFor({ state: 'hidden' });
 

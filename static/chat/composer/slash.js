@@ -421,6 +421,11 @@ export function createSlash(ctx) {
       return sidebar.undoConversation(times);
     }
     S.input.value = "";
+    // A command is not a draft: the unsent chat's sidebar row goes with it.
+    if (S.drafts.has(draftKey())) {
+      S.drafts.delete(draftKey());
+      if (!S.currentId) sidebar.renderHistory();
+    }
     input.resizeInput();
     input.syncComposer();
     if (name === "retry") {
@@ -436,7 +441,7 @@ export function createSlash(ctx) {
       return;
     }
     if (name === "help") {
-      picker.setHint("/prompts, /undo, /retry, /redo, /rewind, /title, /recap, /permissions, /artifacts, /compact, /thinking, /init. Skills: type / then a name. Manage on Skills.");
+      picker.setHint("/prompts, /undo, /retry, /redo, /rewind, /title, /recap, /permissions, /artifacts, /compact, /thinking, /theme, /init. Skills: type / then a name. Manage on Skills.");
       return;
     }
     if (name === "permissions") {
@@ -460,6 +465,10 @@ export function createSlash(ctx) {
       const want = rest.trim().toLowerCase();
       panels.setShowThinking(/^(on|show|shown|yes|true)$/.test(want) ? true : /^(off|hide|hidden|no|false)$/.test(want) ? false : !S.showThinking);
       picker.setHint(S.showThinking ? "Thinking is shown." : "Thinking is hidden. The status line still says when the model is thinking.");
+      return;
+    }
+    if (name === "theme") {
+      ctx.wallpapers.openWallpaperPicker();
       return;
     }
     if (name === "compact") {

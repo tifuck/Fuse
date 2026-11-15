@@ -111,10 +111,18 @@ const out = process.env.TOOL_UI_ARTIFACTS || '/tmp/opencode/tool-redesign';
       fuseToolFixture.mount([{ tools: [{ id: 'work-job', name: 'run_terminal_command', command_id: 'job-linked', status: 'running', state: 'running', background: true, command: 'npm test', output: 'Parent command output' }] }]);
       fuseToolFixture.work([{ id: 'job-linked', command_id: 'job-linked', state: 'running', command: 'npm test', output: 'Parent command output', background: true }]);
     });
+    // A theme may keep the strip behind its status pill on a phone (Combined's
+    // rail dropdown, data-theme-pill) or in its inspector (Desktop's panel
+    // button, data-theme-inspector): open it the way a user would.
+    const opener = page.locator('[data-theme-pill], [data-theme-inspector]');
+    const opened = await opener.count() > 0 && !(await page.locator('[data-jobs-list]').isVisible());
+    if (opened) await opener.first().click();
     // Without subagents the strip holds only the command: no agent tree.
     assert.equal(await page.locator('[data-agents-list]').isVisible(), false, 'no agent tree without subagents');
     assert.equal(await page.locator('[data-jobs-list]').isVisible(), true, 'the running command shows in the strip');
-    assert.equal(await page.locator('[data-jobs-list]').evaluate(el => el.closest('[data-work-strip]').nextElementSibling.matches('[data-chat-thread]')), true, 'commands stay outside the scrolling transcript');
+    // Each theme places the strip itself (Console above the thread, Combined in
+    // its rail, Desktop in its inspector); none puts it inside the transcript.
+    assert.equal(await page.locator('[data-jobs-list]').evaluate(el => Boolean(el.closest('[data-work-strip]')) && !el.closest('[data-chat-thread]')), true, 'commands stay outside the scrolling transcript');
     await page.locator('[data-show-job="job-linked"]').click();
     const workRow = page.locator('[data-execution="job-linked"]');
     await workRow.waitFor();
@@ -126,6 +134,11 @@ const out = process.env.TOOL_UI_ARTIFACTS || '/tmp/opencode/tool-redesign';
     await jobDetail.waitFor();
     assert.match(await jobDetail.getAttribute('class'), /is-open/, 'the job view opens the child command detail');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    // A rail or inspector opened over the phone transcript closes again with Escape.
+    if (opened) {
+      await page.keyboard.press('Escape');
+      await page.locator('[data-jobs-list]').waitFor({ state: 'hidden' });
+    }
 
     // A completion arriving while the disclosure is in play retains the
     // disclosure and paints the final state rather than dropping the update.

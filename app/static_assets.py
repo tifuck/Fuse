@@ -293,7 +293,7 @@ def build_id() -> str:
     digest = hashlib.sha256()
     for root in (ROOT, ROOT.parent / "templates"):
         for path in sorted(root.rglob("*")):
-            if path.suffix in (*_TEXT, ".html") and path.is_file():
+            if path.suffix in (*_TEXT, ".html", ".json") and path.is_file():
                 digest.update(path.relative_to(root.parent).as_posix().encode())
                 digest.update(path.read_bytes())
     return digest.hexdigest()[:12]

@@ -73,6 +73,7 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
+    wallpaperPickerHtml,
     workClocksLive,
     workHeadHtml,
   } = createTheme({
@@ -139,6 +140,7 @@ import { createDictation } from './chat/dictation.js';
     get liveMeter() { return S.liveMeter; },
     get log() { return S.log; },
     get messages() { return S.messages; },
+    get openWallpaperPicker() { return composer.openWallpaperPicker; },
     get motionPaints() { return transcript.motionPaints; },
     get normalizeTodos() { return transcript.normalizeTodos; },
     get pauseThreadFollow() { return transcript.pauseThreadFollow; },
@@ -230,6 +232,7 @@ import { createDictation } from './chat/dictation.js';
     toolImage,
     updateAssistant,
     visibleAssistantError,
+    wallpaperPickerHtml,
     workClocksLive,
     workHeadHtml,
   };
@@ -1713,7 +1716,13 @@ import { createDictation } from './chat/dictation.js';
         if (!S.messages.length) picker.setHint("Nothing to rewind.");
         else turns.openRewind();
       } else if (action === "agents") agents.setAgentsOpen(true);
-      else if (action === "new") {
+      else if (action === "fork" || action === "pin") {
+        if (!S.currentId) picker.setHint("Nothing to " + action + " yet.");
+        else (action === "fork" ? sidebar.forkThread(S.currentId) : sidebar.togglePin(S.currentId))
+          .catch((error) => sync.showFailure(action === "fork" ? "Could not fork" : "Could not pin", error));
+      } else if (action === "project") {
+        sidebar.openProjectPicker().catch((error) => sync.showFailure("Could not start a project", error));
+      } else if (action === "new") {
         const project = sidebar.sessionProject();
         const start = project ? sidebar.startProjectThread(project.host_id, project.project_id) : resetChat();
         Promise.resolve(start).catch((error) => sync.showFailure("Could not start a new chat", error));

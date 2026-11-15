@@ -1,0 +1,9 @@
+{
+  "id": "console",
+  "order": 0,
+  "label": "Console",
+  "description": "Console is dense and terminal-like.",
+  "font": "redhat",
+  "wallpaper": "none",
+  "scheme": "dark"
+}

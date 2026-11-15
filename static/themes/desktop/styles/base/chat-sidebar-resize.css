@@ -1,0 +1,27 @@
+/* desktop theme copy of static/styles/pages/chat-sidebar-resize.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+/* —— Sidebar redesign: brand mark, tabs-first header, contextual +, uniform rows,
+      user-resizable width. Loaded last so it wins the cascade. —— */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat { --chat-history: 19rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) body.is-resizing-history {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Brand head: fuse mark on every layout, close button stays mobile-only.
+   On desktop the collapse control lives here, right-aligned next to the brand. */
+
+/* Mobile drawer: the head toggle mirrors the desktop collapse control and
+   closes the full-screen list. Size comes from the shared 44px touch rule. */
+
+/* Tabs-first toolbar: [Chats | Projects] [+] [search] on a single row.
+   The [+] and search buttons stretch to exactly the tabs-box height. */
+
+/* Uniform rows: every item is title-first; a session shows the project · host
+   sub-line exactly where a chat shows its snippet, so line counts match. */
+
+/* Mobile drawer: same header as desktop, larger touch targets. */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-resize::after { transition: none; }
+}

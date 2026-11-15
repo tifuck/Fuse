@@ -2,7 +2,7 @@
 {% block title %}Chat · Fuse{% endblock %}
 {% block page_title %}Chat{% endblock %}
 {% block head_extra %}
-{%- set chat_view = 'combined' if request.cookies.get('fuse_chat_view') == 'combined' else 'console' %}
+{%- set chat_view = chat_view_for(request) %}
 {#- The whole module graph, fetched in parallel instead of one import level
     per round trip. (Stylesheet @imports are inlined by the server.) #}
 {% for url in asset_preloads('chat.js') + asset_preloads('chat-backdrop.js') %}<link rel="modulepreload" href="{{ url }}">{% endfor %}
@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
 {% endblock %}
 {% block body %}
-{%- set chat_view = 'combined' if request.cookies.get('fuse_chat_view') == 'combined' else 'console' %}
+{%- set chat_view = chat_view_for(request) %}
 <div class="chat is-empty" data-chat data-view="{{ chat_view }}">
 {% include "themes/" ~ chat_view ~ "/_chat.html" %}
 </div>

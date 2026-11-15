@@ -78,11 +78,23 @@ change: each pool merges its live catalog into its seed list.
   `templates/themes/<t>/_chat.html`. Shared chat stylesheets are gated off
   /chat with `:where(html:not(.is-chat-root))` (they still style settings
   and other pages); each theme's copy lives in `themes/<t>/styles/base/`.
-  Palettes, backdrop and text size stay shared in `chat-design.css`.
+  Palettes, backdrop and text size stay shared in `chat-design.css`; each
+  theme saves its own palette, backdrop and strength (`chat-appearance.js`,
+  `fuse.chat.views.v1`, first filled from the old global keys) and its font.
   `tests/chat_theme_css.test.cjs` and `tests/chat_theme_markup.test.cjs`
-  pin this; a new theme is its two folders plus a `registry.js` entry.
-  `FUSE_CHAT_VIEW=combined scripts/run_browser_tests.sh …` runs browser
-  suites under Combined.
+  pin this. A new theme is its two folders plus a `registry.js` entry: its
+  `static/themes/<t>/theme.json` (id, order, label, description, default
+  font, wallpaper and scheme) is the one list the `fuse_chat_view` cookie
+  check (`app/chat_themes.py`), the Appearance › Layout buttons,
+  `chat-appearance.js` and `registry.js` read (`tests/test_chat_themes.py`).
+  `FUSE_CHAT_VIEW=<theme> scripts/run_browser_tests.sh …` runs browser
+  suites under that theme. The themes are `console` (default), `combined`
+  and `desktop` (a native coding-app window: top bar, sidebar, inspector).
+- `/theme` (every theme) opens a strip of wallpaper cards above the
+  composer: `static/chat/composer/wallpapers.js` owns the data, keys
+  (arrows, Enter, Esc) and the choice; each theme draws the strip with
+  `wallpaperPickerHtml` and keeps the `data-wallpaper-*` hooks. Desktop
+  also opens it from Sidebar › Customize.
 
 ## Stored transcripts
 

@@ -454,6 +454,35 @@ export function createThreads(ctx) {
       });
   }
 
+  // Shared by the row menu and FuseChatActions (a theme's reply actions).
+  async function togglePin(id) {
+    if (!net.requireLive()) return;
+    const latest = threadById(id);
+    if (!latest) return;
+    const updated = await net.api("/chat/threads/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({
+        pinned: !latest.pinned,
+        expected_revision: latest.revision,
+        command_id: newSession(),
+      }),
+    });
+    upsertLocal(updated);
+    render.renderHistory();
+  }
+
+  async function forkThread(id) {
+    if (!net.requireLive()) return;
+    const nav = S.navigation;
+    await sync.flushPending();
+    if (nav !== S.navigation) return;
+    const copy = await net.api("/chat/threads/" + id + "/fork", { method: "POST", body: JSON.stringify({ expected_revision: threadById(id)?.revision, command_id: newSession() }) });
+    upsertLocal(copy);
+    render.renderHistory();
+    picker.setHint("Forked. The copy runs on its own: new chat, subagent and command ids.");
+    if (nav === S.navigation) await openThread(copy.id);
+  }
+
     function threadMenu(anchor, id, at) {
     const thread = threadById(id);
     if (!thread) return;
@@ -473,20 +502,7 @@ export function createThreads(ctx) {
     const items = [
       {
         label: thread.pinned ? "Unpin" : "Pin to top",
-        run: async () => {
-          if (!net.requireLive()) return;
-          const latest = threadById(id) || thread;
-          const updated = await net.api("/chat/threads/" + id, {
-            method: "PATCH",
-            body: JSON.stringify({
-              pinned: !latest.pinned,
-              expected_revision: latest.revision,
-              command_id: newSession(),
-            }),
-          });
-          upsertLocal(updated);
-          render.renderHistory();
-        },
+        run: () => togglePin(id),
       },
       ...moves,
       {
@@ -496,17 +512,7 @@ export function createThreads(ctx) {
       },
       {
         label: "Fork",
-        run: async () => {
-          if (!net.requireLive()) return;
-          const nav = S.navigation;
-          await sync.flushPending();
-          if (nav !== S.navigation) return;
-          const copy = await net.api("/chat/threads/" + id + "/fork", { method: "POST", body: JSON.stringify({ expected_revision: threadById(id)?.revision, command_id: newSession() }) });
-          upsertLocal(copy);
-          render.renderHistory();
-          picker.setHint("Forked. The copy runs on its own: new chat, subagent and command ids.");
-          if (nav === S.navigation) await openThread(copy.id);
-        },
+        run: () => forkThread(id),
       },
       {
         label: thread.archived ? "Unarchive" : "Archive",
@@ -595,6 +601,8 @@ export function createThreads(ctx) {
     threadById,
     threadGone,
     threadMenu,
+    togglePin,
+    forkThread,
     upsertLocal,
     isUntitledThread,
   };
