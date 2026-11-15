@@ -373,6 +373,7 @@ export function createCombinedTheme(runtime) {
     get ccStillRunningText() { return theme.ccStillRunningText; },
     get ccToolClass() { return theme.ccToolClass; },
     get ccTurnVerb() { return theme.ccTurnVerb; },
+    get cleanToolOutput() { return theme.cleanToolOutput; },
     get consoleDiffCounts() { return theme.consoleDiffCounts; },
     get consoleEditDiff() { return theme.consoleEditDiff; },
     get consoleFreezeThoughtTimes() { return theme.consoleFreezeThoughtTimes; },

@@ -267,7 +267,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         const minus = Number(trace.removed ?? trace.lines_removed);
         added += Number.isFinite(plus) ? plus : counted.added;
         removed += Number.isFinite(minus) ? minus : counted.removed;
-        const created = cls.kind === "write" && typeof trace.output === "string" && /^created /i.test(trace.output.trim());
+        // The receipt as the result line reads it: without the "From host …:" header.
+        const created = cls.kind === "write" && typeof trace.output === "string" && /^created /i.test(deps.cleanToolOutput(trace, trace.output).trim());
         (created ? createdPaths : editPaths).add(String(trace.path || trace.id));
         hint = ccPathHint(trace) || hint;
         return;

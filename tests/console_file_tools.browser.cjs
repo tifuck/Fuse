@@ -34,10 +34,23 @@ const ended = { endedAt: '2026-10-03T20:00:00Z' };
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
 const DEEP = 'integration/replication/backoff_and_retry_policies/module_with_a_long_name.py';
 const lines = (from, n) => Array.from({ length: n }, (_, i) => `${from + i}: line ${from + i}`).join('\n');
+// Combined and Desktop (docs/themes/*.md): finished edits and writes fold into
+// the summary line, a failed call keeps its own row, and some calls take a
+// plainer verb (their tool-headers.js). Console keeps its own expectations.
+const VIEW = process.env.FUSE_CHAT_VIEW || 'console';
+const PLAIN = ['combined', 'desktop'].includes(VIEW);
+const THEME_VERBS = { Update: 'Edit' };
+const verbFor = (text) => !PLAIN ? text : text.replace(/^(Update)(?=\()/, (m) => THEME_VERBS[m]);
+
+const WRITE_LINE = { desktop: ['Wrote 1 file', 'Wrote 2 files'], combined: ['Created 1 file', 'Edited 1 file, created 1 file'] };
 
 function scenarios() {
   const list = [];
-  const add = (name, build) => list.push({ name, ...build() });
+  const add = (name, build) => {
+    const sc = build();
+    const map = (step) => ({ ...step, has: step.has && step.has.map(verbFor), lacks: step.lacks && step.lacks.map(verbFor) });
+    list.push({ name, ...sc, steps: sc.steps.map(map) });
+  };
 
   // —— read_file: a text range via offset/limit ——
   add('read range: running line, then done values, then a settle that keeps them', () => {
@@ -83,7 +96,9 @@ function scenarios() {
       { name: 'denied', event: { event: 'tool', id: r.id, status: 'error', error: 'permission denied: /root/secrets/id_rsa (read)' },
         has: ['Read(/root/secrets/id_rsa)', 'Error: permission denied: /root/secrets/id_rsa (read)'],
         lacks: ['Reading /root/secrets'], running: [], states: { [r.id]: 'error' } },
-      { name: 'settled', remount: { live: false }, has: ['Read 1 file'], states: {} },
+      // Console folds the failed read into the line; the new themes keep it on its own row.
+      PLAIN ? { name: 'settled', remount: { live: false }, has: ['Read(/root/secrets/id_rsa)', 'Error: permission denied: /root/secrets/id_rsa (read)'], lacks: ['Read 1 file'], states: { [r.id]: 'error' } }
+        : { name: 'settled', remount: { live: false }, has: ['Read 1 file'], states: {} },
       { name: 'settled open', open: true, has: ['Error: permission denied: /root/secrets/id_rsa (read)'], states: {} },
     ] };
   });
@@ -99,11 +114,18 @@ function scenarios() {
       // "Created <path> (N bytes)", overwrite "Wrote <path> (N bytes)".
       { name: 'created', event: { event: 'tool', id: w.id, status: 'done', output: 'From host qa-box:\ncreated /srv/qa/app/new.py (28 bytes)', call_duration_ms: 2600 },
         has: ['Write(app/new.py)', 'qa-box', '· 2s', 'Created app/new.py (28 bytes)'], lacks: ['created /srv/qa/app/new.py', 'Running…'], running: [] },
+      // The new themes fold the finished write into the summary line while the
+      // next one runs; Desktop counts written files, Combined created ones.
       { name: 'second write running', event: { event: 'tool', id: v.id, name: 'write_file', status: 'running', path: '/srv/qa/app/config.py', host: 'qa-box', cwd: '/srv/qa', project_root: '/srv/qa', platform: 'posix' },
-        has: ['Created app/new.py (28 bytes)', 'Write(app/config.py)'], running: [v.id] },
+        has: [PLAIN ? WRITE_LINE[VIEW][0] : 'Created app/new.py (28 bytes)', 'Write(app/config.py)'], running: [v.id] },
       { name: 'overwritten', event: { event: 'tool', id: v.id, status: 'done', output: 'From host qa-box:\nwrote /srv/qa/app/config.py (512 bytes)', call_duration_ms: 1400 },
         has: ['Wrote app/config.py (512 bytes)'], lacks: ['wrote /srv/qa/app/config.py'], running: [] },
-      { name: 'settled', remount: { live: false }, has: ['Write(app/new.py)', 'Created app/new.py (28 bytes)', 'Wrote app/config.py (512 bytes)'] },
+      ...(PLAIN ? [
+        { name: 'settled', remount: { live: false }, has: [WRITE_LINE[VIEW][1]], lacks: ['Running…'] },
+        { name: 'settled open', open: true, has: ['Write(app/new.py)', 'Created app/new.py (28 bytes)', 'Wrote app/config.py (512 bytes)'] },
+      ] : [
+        { name: 'settled', remount: { live: false }, has: ['Write(app/new.py)', 'Created app/new.py (28 bytes)', 'Wrote app/config.py (512 bytes)'] },
+      ]),
     ] };
   });
 
@@ -120,8 +142,10 @@ function scenarios() {
         lacks: ['@@', 'Running…'], running: [], diffRows: 4 },
       // Server-sent counts win over the diff's own.
       { name: 'reconcile', remount: { live: true, phase: 'tools' }, labelsSame: true, diffRows: 4 },
-      { name: 'counts win', remount: { live: false, patch: { [e.id]: { lines_added: 7, lines_removed: 5 } } },
-        has: ['Added 7 lines, removed 5 lines', 'retries = 5'], diffRows: 4 },
+      // Settled, the new themes fold the edit into the summary line with its
+      // counts; its diff opens from the member row.
+      { name: 'counts win', remount: { live: false, patch: { [e.id]: { lines_added: 7, lines_removed: 5 } } }, open: PLAIN,
+        has: [...(PLAIN ? ['Edited 1 file +7 −5'] : []), 'Added 7 lines, removed 5 lines', 'retries = 5'], diffRows: 4 },
       // A later edit that cannot find its text fails red, with no diff.
       { name: 'not found', remount: { live: true, phase: 'tools', patch: { [e.id]: { status: 'error', error: 'old_string not found. It must match the file exactly.', preview: '', lines_added: undefined, lines_removed: undefined } } },
         has: ['Error: old_string not found'], lacks: ['Added', 'retries = 5'], states: { [e.id]: 'error' } },
@@ -196,7 +220,9 @@ function scenarios() {
     const b = tool('grep', { path: '/srv/qa', pattern: 'needle', status: 'error', error: 'No such file or directory' });
     const c = tool('read_file', { path: '/srv/qa/app/b.py', output: '1: y\n' });
     return { rows: [user('Go.'), turn([say('Working.\n\n'), T(a), T(b), T(c)], [a, b, c], ended)], steps: [
-      { name: 'folded', has: ['Searched for 1 pattern, read 2 files'], states: { [b.id]: 'error' } },
+      // The new themes keep the failed search on its own row, which ends the line.
+      PLAIN ? { name: 'folded', has: ['Read 1 file', 'Search(pattern: "needle", path: ".")', 'Error: No such file or directory'], lacks: ['Searched for 1 pattern'], states: { [b.id]: 'error' } }
+        : { name: 'folded', has: ['Searched for 1 pattern, read 2 files'], states: { [b.id]: 'error' } },
       { name: 'open', open: true, has: ['Read(app/a.py)', 'No such file or directory', 'Read(app/b.py)'], states: { [b.id]: 'error' } },
       // A reload of the same states keeps the line, its open rows and the
       // error exactly as they were.

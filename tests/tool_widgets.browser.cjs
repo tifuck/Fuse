@@ -21,7 +21,10 @@ const LOCATED = [
   ' ',
 ].join('\n');
 const UNLOCATED = ['-    return retries', '+    return attempts'].join('\n');
-const LONG = 'const value = ' + 'x'.repeat(180) + ';';
+// Wider than any column (Console's transcript spans the viewport since
+// 7f8b83fd, where 195 characters fit on one line at 1440px), and under the
+// 400-character cut a folded output line gets (consoleTailHtml).
+const LONG = 'const value = ' + 'x'.repeat(380) + ';';
 
 const read = (extra = {}) => ({ id: 'read', name: 'read_file', status: 'done', path: '/srv/qa/src/app.py', offset: 12, limit: 2, output: '12: const a = 1;\n13: const b = 2;', ...ROOT, ...extra });
 const edit = (extra = {}) => ({ id: 'edit', name: 'search_replace', status: 'done', path: '/srv/qa/src/app.py', preview: LOCATED, output: 'updated /srv/qa/src/app.py (1 replacement)', ...ROOT, ...extra });
@@ -70,6 +73,12 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
     check(tokens.done !== tokens.accent && tokens.fail !== tokens.accent && doneColor !== accentColor && failColor !== accentColor, `state marks must not be the accent (${JSON.stringify(tokens)})`);
     check(tokens.done === 'var(--diff-add)' || tokens.done === tokens.diffAdd, `done mark is the diff green, not a theme color: ${tokens.done}`);
 
+    // Combined and Desktop fold finished edits, writes and reads into a summary
+    // line; a member's own toggle opens once the summary is open.
+    const openSummaries = async () => {
+      const closed = page.locator('.chat-log .is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle[aria-expanded="false"]');
+      while (await closed.count()) await closed.first().click();
+    };
     const mount = (tools, opts = {}) => page.evaluate(([tools, opts]) => {
       fuseToolFixture.todo.reset();
       fuseToolFixture.mountThread([{ role: 'user', content: 'Go.' }, { id: 'turn', role: 'assistant', content: '', tools, segments: tools.map((tool) => ({ type: 'tool', id: tool.id })) }], opts);
@@ -144,8 +153,7 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
           { id: 'wrong', name: 'search_replace', status: 'done', path: '/srv/qa/src/other.py', preview: LOCATED.replaceAll('src/app.py', 'src/nope.py'), output: 'updated', ...ROOT },
         ]);
         await frame();
-        const groupToggle = page.locator('[data-step^="group-tool-"] > .chat-step-main > .chat-step-head > .chat-step-toggle');
-        if (await groupToggle.count()) await groupToggle.click();
+        await openSummaries();
         for (const id of ['edit', 'multi', 'noloc', 'wrong']) {
           const toggle = page.locator(`[data-step="tool-${id}"] .chat-step-toggle`).first();
           if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -176,6 +184,7 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
         // 4. Read and write rows.
         await mount([read(), wrote()]);
         await frame();
+        await openSummaries();
         for (const id of ['read', 'wrote']) {
           const toggle = page.locator(`[data-step="tool-${id}"] .chat-step-toggle`);
           if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -290,10 +299,13 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
             status: status && [status.top, status.bottom], todos: todos && [todos.top, todos.bottom],
             verb: document.querySelector('[data-live-dock-label]').textContent,
             spinning: Boolean(spin && !spin.hidden && spin.childElementCount),
+            // A theme may dock the list in a side panel (Desktop's Plan card,
+            // Combined's rail) instead of the tray under the status line.
+            docked: Boolean(document.querySelector('[data-live-todos]')?.closest('[data-theme-card], [data-theme-rail]')),
             log: document.querySelector('.chat-log').textContent,
           };
         });
-        check(dock.status && dock.todos && dock.todos[0] >= dock.status[1] - 1, tag(`todos sit under the status line (${JSON.stringify(dock)})`));
+        check(dock.status && dock.todos && (dock.docked || dock.todos[0] >= dock.status[1] - 1), tag(`todos sit under the status line (${JSON.stringify(dock)})`));
         check(!/Pin the tool rows/.test(dock.verb), tag(`the spinner keeps its own words: ${dock.verb}`));
         check(dock.spinning, tag('the run spinner is still spinning'));
         check(/Updated todos/.test(dock.log) && !/Pin the tool rows/.test(dock.log), tag('todo_write folds into the summary line, without its items'));
@@ -303,6 +315,7 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
         const kept = whole.slice(0, 120);
         await mount([{ id: 'out', name: 'run_terminal_command', status: 'done', command: 'cat big', exit_code: 0, output: kept, output_chars: whole.length, output_retained_chars: kept.length, truncated: true, output_mode: 'full', output_chars_exact: true, termination_confirmed: true, ...ROOT }]);
         await frame();
+        await openSummaries();
         const toggle = page.locator('[data-step="tool-out"] .chat-step-toggle');
         if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
         await frame();
@@ -330,6 +343,7 @@ const wrote = (extra = {}) => ({ id: 'wrote', name: 'write_file', status: 'done'
       fuseToolFixture.mount([{ tools: [{ id: 'shot', name: 'read_file', status: 'done', path: 'tiny.png', image }] }]);
     }, IMAGE);
     const open = async () => {
+      await openSummaries();
       const toggle = page.locator('[data-step="tool-shot"] .chat-step-toggle');
       if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
     };

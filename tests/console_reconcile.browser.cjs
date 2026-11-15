@@ -172,6 +172,12 @@ function readDom() {
       check(opened.open.length === 1, `${tag} one summary is open, saw ${opened.open.join(',')}`);
       check(opened.rows.bash.state === 'done' && opened.rows.read.state === 'running', `${tag} the open summary shows the finished shell beside the still-running read`);
       check(/Found 2 lines|timeout_for/.test(opened.rows.grep?.text || ''), `${tag} the open summary still shows the grep result: ${opened.rows.grep?.text}`);
+      // Combined and Desktop list one-line members: a member's output opens
+      // from its own row (docs/themes/*.md, "Collapse").
+      if (['combined', 'desktop'].includes(process.env.FUSE_CHAT_VIEW)) {
+        await page.locator('[data-step="tool-bash"] > .chat-step-main > .chat-step-head > .chat-step-toggle').click();
+        Object.assign(opened, await dom());
+      }
       check((opened.rows.bash.text.match(/2 passed/g) || []).length === 1, `${tag} the open summary shows the shell output once: ${opened.rows.bash.text}`);
       check(opened.overflow <= 0, `${tag} the open summary does not overflow sideways by ${opened.overflow}px`);
       console.log(`PASS reconcile ${tag} (${checks} checks)`);
