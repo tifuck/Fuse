@@ -253,8 +253,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step.is-running 
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-open { grid-row: 1; border: 0; text-transform: none; font-size: calc(0.75rem * var(--chat-text-scale, 1)); color: var(--cli-secondary); }
 
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head:has(:focus-visible) { outline: 1px solid var(--brass); outline-offset: 3px; }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head :focus-visible { outline: none; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head :focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; border-radius: 4px; }
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step :is(.chat-step-toggle, .chat-step-static) { background: none; }
 

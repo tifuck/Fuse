@@ -157,8 +157,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 
 /* One line: the summary ends in an ellipsis, its chevron (on the toggle) stays,
    open or folded. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label,
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label {
   display: block !important;
   flex: 0 1 auto;
   width: auto;
@@ -169,6 +168,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   overflow: hidden;
   text-overflow: ellipsis;
 }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label { white-space: nowrap; }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group.is-done .chat-step-label,
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group :is(.chat-console-dim, .chat-console-hint-line, .chat-console-thinkhint, .chat-console-branch, .chat-console-result-text) {
