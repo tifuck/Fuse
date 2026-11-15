@@ -356,6 +356,9 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-theme="ivory"] ::
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-tool-out.is-diff .hljs-deletion { color: var(--diff-del); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-code :is(.hljs-number, .hljs-literal, .hljs-built_in, .hljs-type, .hljs-variable.constant_, .hljs-variable.language_, .hljs-template-tag) { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-code :is(.hljs-attr, .hljs-property, .hljs-selector-attr, .hljs-variable, .hljs-template-variable) { color: var(--steel); }
+/* Light grounds: the accent and fault hues darken to reach 4.5:1. */
+:where(html.is-chat-root[data-chat-view="combined"][data-chat-scheme="light"]) .chat .chat-code :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-code, .hljs-link) { color: color-mix(in srgb, var(--brass) 80%, #000); }
+:where(html.is-chat-root[data-chat-view="combined"][data-chat-scheme="light"]) .chat .chat-code :is(.hljs-number, .hljs-literal, .hljs-built_in, .hljs-type, .hljs-variable.constant_, .hljs-variable.language_, .hljs-template-tag) { color: color-mix(in srgb, var(--fault) 85%, #000); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-md :is(img, video) { max-width: 100%; height: auto; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-md table { display: block; max-width: 100%; overflow-x: auto; }
 /* Cells wrap between words only: "anywhere" (inherited from prose) collapses

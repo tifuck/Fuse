@@ -130,26 +130,6 @@ html[data-chat-view="combined"] .chat[data-view="combined"].is-empty .chat-dock 
 .chat[data-view="combined"] .chat-md,
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-md { font-family: var(--chat-view-font, inherit); }
 
-html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-view="combined"] body.is-chat .chat .chat-history {
-  background: color-mix(in srgb, var(--ink) 78%, transparent);
-}
-
-html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-box {
-  background: var(--glass-bg, color-mix(in srgb, var(--panel) 56%, transparent));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 124%));
-  backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 124%));
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .chat[data-view="combined"] .chat-box,
-html[data-chat-view="combined"] .chat[data-view="combined"] .chat-box,
-html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-box {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    background: color-mix(in srgb, var(--panel) 94%, var(--ink));
-  }
-}
-
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step.is-think:not(.is-live-think) .chat-step-toggle[aria-expanded="true"] .chat-think-preview,
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step.is-think.is-live-think .chat-step-toggle[aria-expanded="true"] .chat-think-preview {
   max-height: min(18rem, 40vh);

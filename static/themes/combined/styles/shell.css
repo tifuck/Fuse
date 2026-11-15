@@ -10,6 +10,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   --cb-dim: color-mix(in srgb, var(--mist) 46%, var(--ink));
   --cb-hover: color-mix(in srgb, var(--mist) 7%, transparent);
   --cb-on: var(--raise);
+  --cb-accent-text: color-mix(in srgb, var(--brass) 78%, var(--mist));
 
   & :is(.cb-side, .cb-head, .cb-rail, .chat-dock, .chat-live-dock, .chat-sheet, .chat-view-menu, .chat-pop, .chat-picker-menu,
     .chat-perms-menu, .chat-context-pop, .chat-slash, .chat-library, .chat-library-sheet, .chat-artifact, .chat-latest) {
@@ -485,104 +486,153 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-meter i { display: block; width: 0; height: 100%; background: var(--brass); }
   & .cb-cap { margin: 3px 4px 0; color: var(--cb-dim); font: 11px var(--mono); }
 
-  /* ---- Composer: one row in a rounded card ---- */
-  & .chat-dock { padding: 4px 16px 8px; }
-  & .cb-box {
+  /* ---- Composer: a pill card, the message on its own row, the controls under it ---- */
+  & .chat-dock { padding: 4px 16px 8px; container: composer / inline-size; }
+  & .chat-dock .cb-box {
+    --composer-row: 28px;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 2px;
     width: 100%;
     max-width: var(--chat-col, 47.5rem);
     margin: 0 auto;
-    padding: 4px;
+    padding: 4px 6px 6px;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--panel);
     box-shadow: none;
   }
   & .cb-box::before,
   & .cb-box::after { content: none; }
   & .cb-box:focus-within { border-color: color-mix(in srgb, var(--brass) 45%, var(--line)); }
-  & .cb-row1 { display: flex; flex-direction: row; align-items: flex-end; align-self: stretch; gap: 2px; width: 100%; min-width: 0; }
-  & :is(.cb-group-l, .cb-group-r) { display: flex; flex: none; align-items: center; gap: 2px; height: 30px; }
-  & :is(.cb-group-l, .cb-group-r) > * { order: 0; grid-area: auto; margin: 0; }
-  & .cb-compose { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
+  & .cb-box.is-drop { border-color: var(--brass); }
+  & .cb-compose { position: relative; width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
+  /* The spell mirror shares every metric with the field and paints only its squiggles. */
   & .cb-compose textarea,
   & .cb-compose .chat-compose-mirror {
-    min-height: 30px;
-    max-height: 12rem;
-    padding: 5px 6px;
-    color: var(--mist);
-    font: 14px/20px var(--sans);
+    min-height: 36px;
+    max-height: min(40dvh, 18rem);
+    padding: 6px 8px;
+    font: 14px/24px var(--sans);
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
   }
-  & .cb-compose textarea { width: 100%; border: 0; outline: 0; background: none; resize: none; }
-  & .cb-compose textarea::placeholder { color: var(--cb-dim); }
+  & .cb-compose textarea {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--mist);
+    resize: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  & .cb-compose .chat-compose-mirror { color: transparent; }
+  & .cb-compose textarea::placeholder { color: var(--mute); }
+  & .cb-row2 { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; height: 32px; }
+  & :is(.cb-group-l, .cb-group-r) { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  & .cb-group-l { flex: none; }
+  & .cb-group-r { flex: 0 1 auto; justify-content: flex-end; }
+  & :is(.cb-group-l, .cb-group-r) > * { order: 0; grid-area: auto; margin: 0; }
   & .cb-tb {
     display: inline-flex;
     flex: none;
     align-items: center;
+    justify-content: center;
     gap: 5px;
+    min-width: 28px;
     height: 28px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: 8px;
     color: var(--mute);
     font-size: 12.5px;
     white-space: nowrap;
   }
-  & .cb-tb.is-icon { justify-content: center; width: 28px; padding: 0; }
-  & .cb-tb[data-tool-search][aria-pressed="false"] { color: var(--cb-dim); }
+  & .cb-tb.is-icon { width: 28px; padding: 0; }
   & .cb-tb[data-tool-search][aria-pressed="false"] span { text-decoration: line-through; }
-  & .cb-tb[data-perm-chip].is-on { color: var(--brass); }
+  & .cb-tb[data-perm-chip].is-on { color: var(--cb-accent-text); }
   & .cb-tb[data-perm-chip].is-bypass { color: color-mix(in srgb, var(--fault) 70%, var(--mist)); }
+  & .cb-tb[data-chat-mic]:is(.is-live, [aria-pressed="true"]) { background: color-mix(in srgb, var(--fault) 14%, transparent); color: var(--fault); }
   & .cb-perm { position: relative; display: flex; }
-  & .cb-model { display: flex; min-width: 0; }
-  & .cb-model .chat-picker-btn {
+  /* The chip sits on the left, so its popover opens from the chip's left edge. */
+  & .cb-perm > .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }
+  & .cb-model { display: flex; flex: 0 1 auto; min-width: 0; max-width: none; }
+  & .cb-box .cb-model .chat-picker-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    min-width: 0;
+    max-width: 100%;
     height: 28px;
-    max-width: 14rem;
+    min-height: 0;
     padding: 0 8px;
+    overflow: hidden;
     border: 0;
-    border-radius: 7px;
+    border-radius: 8px;
     background: none;
     color: var(--mute);
     font: 500 12.5px var(--sans);
     white-space: nowrap;
   }
   & .cb-model .chat-picker-btn:hover { background: var(--cb-hover); color: var(--mist); }
-  & .cb-model .chat-picker-btn small { color: var(--cb-dim); font: 12px var(--sans); }
+  & .cb-model .chat-picker-btn > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .cb-box .cb-model .chat-picker-btn small { display: inline; flex: none; color: var(--mute); font: 12px var(--sans); letter-spacing: 0; text-transform: none; }
+  & .cb-model .chat-picker-btn small:empty { display: none; }
   & .cb-model .chat-picker-btn small::before { content: "· "; }
   & .cb-model .chat-picker-btn .provider-logo { display: none; }
+  & .cb-model .chat-picker-btn svg { flex: none; }
   & .cb-ring-wrap { position: relative; display: flex; }
   & .cb-ring-wrap[hidden] { display: none; }
-  & .cb-ring { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
+  & .cb-ring { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
   & .cb-ring:hover { background: var(--cb-hover); }
+  & .cb-ring:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
   & .cb-ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
-  & .cb-ring-track { stroke: var(--raise); stroke-width: 5; }
+  & .cb-ring-track { stroke: color-mix(in srgb, var(--mute) 40%, transparent); stroke-width: 5; }
   & .cb-ring-fill { stroke: var(--brass); stroke-width: 5; stroke-linecap: butt; }
   & .cb-send {
     display: grid;
     place-items: center;
     flex: none;
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     margin-left: 2px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: 50%;
     background: var(--mist);
     color: var(--ink);
     cursor: pointer;
   }
-  & .cb-send:disabled { background: var(--raise); color: var(--cb-dim); cursor: default; }
+  & .cb-send:disabled { background: color-mix(in srgb, var(--mist) 12%, transparent); color: var(--mute); cursor: default; }
   & .cb-send.is-stop { background: var(--mist); color: var(--ink); }
   & .cb-send.is-stop svg { display: none; }
   & .cb-send.is-stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
-  & .cb-welcome { margin: 0 0 4px; color: var(--mist); font: 600 22px/1.3 var(--sans); letter-spacing: -0.01em; text-align: center; }
-  & .cb-welcome-note { margin: 0 0 14px; color: var(--mute); font: 14px/1.5 var(--sans); text-align: center; }
+  & .chat-queue { width: 100%; max-width: var(--chat-col, 47.5rem); margin: 0 auto 6px; }
+  & .cb-welcome { position: relative; margin: 0 0 4px; color: var(--mist); font: 600 22px/1.3 var(--sans); letter-spacing: -0.01em; text-align: center; }
+  & .cb-welcome-note { position: relative; margin: 0 0 14px; color: var(--mute); font: 14px/1.5 var(--sans); text-align: center; }
   /* The hero steps aside once the chat has a message (opacity is the contract tests read). */
   &:not(.is-empty) :is(.cb-welcome, .cb-welcome-note) { display: none; opacity: 0; }
+  /* Labels fold into icons when the card is narrower than 720px. */
+  @container composer (max-width: 719.98px) {
+    & .cb-box .cb-tb.is-lab { width: 28px; padding: 0; }
+    & .cb-box .cb-tb.is-lab span { display: none; }
+  }
+  @container composer (min-width: 720px) {
+    & .cb-box .cb-tb.is-lab span { display: inline; }
+  }
+  @container composer (max-width: 479.98px) {
+    & .cb-box .cb-model .chat-picker-btn small { display: none; }
+  }
+  @media (max-width: 800px), (pointer: coarse) {
+    & .cb-row2 { height: 36px; }
+    & .cb-box :is(.cb-tb, .cb-ring, .cb-send, .cb-model .chat-picker-btn) { min-width: 36px; height: 36px; }
+    & .cb-box :is(.cb-tb.is-icon, .cb-ring, .cb-send) { width: 36px; }
+  }
+  @media (max-width: 800px) {
+    & .cb-compose textarea,
+    & .cb-compose .chat-compose-mirror { font-size: 16px; }
+  }
 
   /* ---- Live status line: a dot, plain words, the clock ---- */
   & .chat-live-dock {
@@ -704,4 +754,40 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
 @keyframes cb-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] :is(.cb-live, .cb-pill-dot, .chat-live-dock .chat-activity-spin) { animation: none; }
+}
+
+/* ---- Over a wallpaper: one frosted reading surface, no text shadows ----
+   The transcript column, the prompt library and the composer dock (welcome
+   text included) sit on the palette's ink at 92%; chrome and popovers at
+   96%. Both values hold when the palette's scheme differs from the
+   wallpaper's, so text and icons pass over every wallpaper. */
+html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
+  --cb-veil-a: 92%;
+  --cb-chrome-a: 96%;
+  --cb-glass: blur(24px) saturate(1.1);
+  & :is(.chat-log, .chat-library) { position: relative; }
+  & :is(.chat-log, .chat-library, .chat-dock)::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--ink) var(--cb-veil-a), transparent);
+    -webkit-backdrop-filter: var(--cb-glass);
+    backdrop-filter: var(--cb-glass);
+  }
+  & :is(.chat-log, .chat-library)::before { inset: -14px -12px -28px; border-radius: 14px; }
+  & .chat-dock::before { inset: -6px -12px 0; border-radius: 14px 14px 0 0; }
+  & :is(.cb-side, .cb-rail, .chat-dock .cb-box, .chat-latest) {
+    background: color-mix(in srgb, var(--panel) var(--cb-chrome-a), transparent);
+    -webkit-backdrop-filter: var(--cb-glass);
+    backdrop-filter: var(--cb-glass);
+  }
+  & .cb-head { background: color-mix(in srgb, var(--ink) var(--cb-chrome-a), transparent); -webkit-backdrop-filter: var(--cb-glass); backdrop-filter: var(--cb-glass); }
+  @media (max-width: 1100px) {
+    & :is(.chat-log, .chat-library)::before { inset-inline: 0; }
+    & .chat-dock::before { inset-inline: 4px; }
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] { --cb-veil-a: 100%; --cb-chrome-a: 100%; }
 }

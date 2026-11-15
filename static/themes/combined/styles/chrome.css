@@ -164,15 +164,5 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-skills :is(.skills-search, .skills-upload) .btn:hover { border-color: var(--brass); color: var(--brass); }
 
-/* —— Empty chat: a quiet greeting above the prompt, terminal style —— */
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] :is(.chat-welcome, .chat-welcome-note) {
-  display: block;
-  max-height: none;
-  margin: 0;
-  padding-left: 0.5rem;
-  text-align: left;
-  letter-spacing: 0;
-}
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] .chat-welcome { color: var(--mist); font: 500 0.875rem/1.5 var(--mono); }
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] .chat-welcome-note { margin-bottom: 0.75rem; color: var(--mute); font: 0.8125rem/1.5 var(--mono); }
-body.is-chat.is-keyboard .chat.is-empty[data-view="combined"] :is(.chat-welcome, .chat-welcome-note) { display: none; }
+/* —— Empty chat: the greeting steps aside while a phone keyboard is open —— */
+body.is-chat.is-keyboard .chat.is-empty[data-view="combined"] :is(.cb-welcome, .cb-welcome-note) { display: none; }
