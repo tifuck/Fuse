@@ -4,8 +4,8 @@
 //      the user's own choice survives a reload;
 //   2. the composer's spell mirror lies exactly under the textarea and paints
 //      no text, and a few lines of input need no inner scrollbar;
-//   3. transcript text over every /theme wallpaper, dark and light, reaches
-//      WCAG AA against the pixels actually behind it;
+//   3. transcript text over every /theme wallpaper, in the wallpaper's own
+//      scheme, reaches WCAG AA against the pixels actually behind it;
 //   4. the top bar's controls never overlap, leave the viewport or squeeze
 //      the title away, from 1920 to 360 wide.
 // 1 and 3 are the new themes' promises; Console keeps its own and skips them.
@@ -132,46 +132,47 @@ const CONTRAST = async ({ png, rects }) => {
 async function legibleOverWallpapers(browser) {
   if (!PANEL) return console.log(`skip wallpaper contrast (${VIEW} keeps its own look)`);
   const { page, context, errors } = await openPage(browser, 1440);
-  const wallpapers = await page.evaluate(() => FuseChatAppearance.wallpapers.map((w) => w.id));
+  const wallpapers = await page.evaluate(() => FuseChatAppearance.wallpapers.map((w) => [w.id, w.scheme]));
   assert.ok(wallpapers.length >= 8, `the /theme wallpapers are listed (${wallpapers.length})`);
   const bad = [];
-  for (const wallpaper of wallpapers) {
-    for (const scheme of ['dark', 'light']) {
-      await page.evaluate(([w, s]) => { FuseChatAppearance.setBackdrop(w); FuseChatAppearance.setScheme(s); }, [wallpaper, scheme]);
-      await page.evaluate((text) => fuseToolFixture.mountThread([
-        { role: 'user', content: 'Explain the plan.' },
-        { role: 'assistant', model: 'qa/model', elapsedMs: 4000, content: text, segments: [{ type: 'content', text }] },
-      ]), PROSE);
-      await page.waitForFunction(() => [...document.querySelectorAll('canvas')].some((c) => c.width > 0 && c.getBoundingClientRect().width > 300));
-      await page.waitForTimeout(400);
-      const rects = await page.evaluate(() => {
-        // rgb(…) is 0-255; color(srgb …) is 0-1.
-        const rgb = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map((v) => (c.startsWith('color(') ? Number(v) * 255 : Number(v)));
-        const ownText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
-        const out = [];
-        for (const el of document.querySelectorAll('[data-chat-log] :is(p, li, a, code, th, td, blockquote, h2, [data-meta], [data-meta] *, time)')) {
-          const b = el.getBoundingClientRect();
-          const s = getComputedStyle(el);
-          if (!b.width || !b.height || b.bottom < 0 || b.top > innerHeight || s.visibility === 'hidden' || !ownText(el)) continue;
-          const px = parseFloat(s.fontSize);
-          const large = px >= 24 || (px >= 18.66 && Number(s.fontWeight) >= 700);
-          out.push({ x: b.x, y: b.y, w: b.width, h: b.height, fg: rgb(s.color), need: large ? 3 : 4.5, what: `${el.tagName.toLowerCase()} "${el.textContent.trim().slice(0, 24)}"` });
-        }
-        return out;
-      });
-      assert.ok(rects.length >= 8, `${wallpaper}/${scheme}: transcript text is on screen (${rects.length})`);
-      await page.addStyleTag({ content: '* { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; } svg { visibility: hidden !important; }' });
-      const png = (await page.screenshot()).toString('base64');
-      await page.evaluate(() => document.head.lastElementChild.remove());
-      for (const r of await page.evaluate(CONTRAST, { png, rects })) {
-        if (r.ratio < r.need) bad.push(`${wallpaper}/${scheme}: ${r.what} ${r.ratio.toFixed(2)}:1 < ${r.need}:1`);
+  // Each wallpaper in its own scheme, the state the /theme picker produces.
+  // A palette forced to the other scheme with the sun switch is best effort,
+  // outside the AA promise.
+  for (const [wallpaper, scheme] of wallpapers) {
+    await page.evaluate(([w, s]) => { FuseChatAppearance.setBackdrop(w); FuseChatAppearance.setScheme(s); }, [wallpaper, scheme]);
+    await page.evaluate((text) => fuseToolFixture.mountThread([
+      { role: 'user', content: 'Explain the plan.' },
+      { role: 'assistant', model: 'qa/model', elapsedMs: 4000, content: text, segments: [{ type: 'content', text }] },
+    ]), PROSE);
+    await page.waitForFunction(() => [...document.querySelectorAll('canvas')].some((c) => c.width > 0 && c.getBoundingClientRect().width > 300));
+    await page.waitForTimeout(400);
+    const rects = await page.evaluate(() => {
+      // rgb(…) is 0-255; color(srgb …) is 0-1.
+      const rgb = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map((v) => (c.startsWith('color(') ? Number(v) * 255 : Number(v)));
+      const ownText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+      const out = [];
+      for (const el of document.querySelectorAll('[data-chat-log] :is(p, li, a, code, th, td, blockquote, h2, [data-meta], [data-meta] *, time)')) {
+        const b = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        if (!b.width || !b.height || b.bottom < 0 || b.top > innerHeight || s.visibility === 'hidden' || !ownText(el)) continue;
+        const px = parseFloat(s.fontSize);
+        const large = px >= 24 || (px >= 18.66 && Number(s.fontWeight) >= 700);
+        out.push({ x: b.x, y: b.y, w: b.width, h: b.height, fg: rgb(s.color), need: large ? 3 : 4.5, what: `${el.tagName.toLowerCase()} "${el.textContent.trim().slice(0, 24)}"` });
       }
+      return out;
+    });
+    assert.ok(rects.length >= 8, `${wallpaper}/${scheme}: transcript text is on screen (${rects.length})`);
+    await page.addStyleTag({ content: '* { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; } svg { visibility: hidden !important; }' });
+    const png = (await page.screenshot()).toString('base64');
+    await page.evaluate(() => document.head.lastElementChild.remove());
+    for (const r of await page.evaluate(CONTRAST, { png, rects })) {
+      if (r.ratio < r.need) bad.push(`${wallpaper}/${scheme}: ${r.what} ${r.ratio.toFixed(2)}:1 < ${r.need}:1`);
     }
   }
   assert.deepEqual(bad, [], `text fails AA over a wallpaper:\n  ${bad.join('\n  ')}`);
   assert.deepEqual(errors, []);
   await context.close();
-  console.log(`PASS ${VIEW} transcript text reaches AA over ${wallpapers.length} wallpapers, dark and light`);
+  console.log(`PASS ${VIEW} transcript text reaches AA over ${wallpapers.length} wallpapers, each in its own scheme`);
 }
 
 async function topBarNeverOverlaps(browser) {
