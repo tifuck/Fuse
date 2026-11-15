@@ -25,6 +25,10 @@
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fuse-back-cue.is-on { opacity: calc(0.35 + var(--p) * 0.65); }
 :where(html.is-chat-root[data-chat-view="combined"]) .fuse-back-cue.is-armed { background: var(--brass); color: var(--ink); border-color: transparent; }
+/* This theme draws no quick dial: it floated over the transcript, and its
+   actions are on the bar, the composer and the slash commands. */
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.fuse-dial, .fuse-dial-scrim),
+:where(html.is-chat-root[data-chat-view="combined"]) .ap-switch:has([data-composer-pref="dial"]) { display: none !important; }
 /* Phone quick dial (static/quick-dial.js): a movable hub on the edge that
    fans chat actions out on dashed spokes. Shown only at phone width. */
 :where(html.is-chat-root[data-chat-view="combined"]) .fuse-dial {

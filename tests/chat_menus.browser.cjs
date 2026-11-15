@@ -510,26 +510,34 @@ const FAMILIES = [
       await p.locator('[data-sync-label]').filter({ hasText: 'Live sync' }).waitFor({ state: 'attached' });
       if (await p.locator('[data-chat].is-history').count()) await p.locator('.chat-history [data-chat-new]').click();
       await p.locator('[data-chat-input]').blur();
-      await p.locator('[data-fuse-dial]').waitFor();
-      const hub = await phoneBox('[data-fuse-dial]');
-      phoneInside(hub, 'quick dial hub');
-      await p.locator('[data-dial-hub]').click();
-      await p.locator('[data-fuse-dial].is-open').waitFor();
-      const fan = await p.locator('.fuse-dial-sat').evaluateAll(nodes => nodes.map(node => ({
-        label: node.getAttribute('aria-label'),
-        off: node.getAttribute('aria-disabled'),
-        box: node.getBoundingClientRect().toJSON(),
-      })));
-      assert.deepEqual(fan.map(item => item.label), ['Retry', 'Undo', 'Redo', 'Rewind', 'Agents', 'New chat']);
-      for (const id of ['Retry', 'Undo', 'Redo', 'Rewind']) {
-        assert.equal(fan.find(item => item.label === id).off, 'true', `${id} is disabled on an empty chat`);
+      // Desktop and Combined draw no quick dial (its actions live on the bar, the
+      // composer and slash commands), and hide its Appearance switch with it.
+      if (['desktop', 'combined'].includes(process.env.FUSE_CHAT_VIEW)) {
+        await p.waitForTimeout(300);
+        assert.equal(await p.locator('[data-fuse-dial]').isVisible(), false, 'no quick dial in this theme');
+        assert.equal(await p.locator('[data-composer-pref="dial"]').evaluate((el) => el.closest('.ap-switch').getClientRects().length), 0, 'no quick dial switch in Appearance');
+      } else {
+        await p.locator('[data-fuse-dial]').waitFor();
+        const hub = await phoneBox('[data-fuse-dial]');
+        phoneInside(hub, 'quick dial hub');
+        await p.locator('[data-dial-hub]').click();
+        await p.locator('[data-fuse-dial].is-open').waitFor();
+        const fan = await p.locator('.fuse-dial-sat').evaluateAll(nodes => nodes.map(node => ({
+          label: node.getAttribute('aria-label'),
+          off: node.getAttribute('aria-disabled'),
+          box: node.getBoundingClientRect().toJSON(),
+        })));
+        assert.deepEqual(fan.map(item => item.label), ['Retry', 'Undo', 'Redo', 'Rewind', 'Agents', 'New chat']);
+        for (const id of ['Retry', 'Undo', 'Redo', 'Rewind']) {
+          assert.equal(fan.find(item => item.label === id).off, 'true', `${id} is disabled on an empty chat`);
+        }
+        assert.equal(fan.find(item => item.label === 'New chat').off, 'false');
+        for (const item of fan) phoneInside({ ...item.box, width: 390, height: 844, overflow: 0 }, item.label);
+        await p.locator('.fuse-dial-sat[data-action="retry"]').click({ force: true });
+        await p.locator('.fuse-toast[data-toast-key^="chat:"]').filter({ hasText: 'Nothing to retry' }).waitFor();
+        await p.locator('[data-fuse-dial].is-open').waitFor({ state: 'hidden' });
+        await p.keyboard.press('Escape');
       }
-      assert.equal(fan.find(item => item.label === 'New chat').off, 'false');
-      for (const item of fan) phoneInside({ ...item.box, width: 390, height: 844, overflow: 0 }, item.label);
-      await p.locator('.fuse-dial-sat[data-action="retry"]').click({ force: true });
-      await p.locator('.fuse-toast[data-toast-key^="chat:"]').filter({ hasText: 'Nothing to retry' }).waitFor();
-      await p.locator('[data-fuse-dial].is-open').waitFor({ state: 'hidden' });
-      await p.keyboard.press('Escape');
 
       await p.locator('.chat-picker-btn').click();
       await p.locator('.chat-picker-menu').waitFor();

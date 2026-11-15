@@ -156,6 +156,19 @@ export function create(deps) {
       event.stopImmediatePropagation();
       close();
     }, true);
+    // A layer the runtime closes on Escape (the phone model sheet, a sheet opened
+    // from ⋯) can drop the focus to <body>: give it back to what opened it.
+    let lastOpener = null;
+    document.addEventListener("pointerdown", (event) => { lastOpener = event.target.closest?.("button, [role=menuitem]") || lastOpener; }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") lastOpener = document.activeElement;
+      if (event.key !== "Escape") return;
+      setTimeout(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const back = shown(lastOpener) && lastOpener.isConnected ? lastOpener : lastOpener?.closest?.("[data-theme-menu]") && q("[data-theme-more]");
+        back?.focus?.({ preventScroll: true });
+      });
+    }, true);
     window.matchMedia(WIDE).addEventListener?.("change", () => {
       railOpen = wide() && saved();
       setMenu(false);

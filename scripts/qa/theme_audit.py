@@ -248,6 +248,8 @@ for (const it of items) {
   // Covered by an open popup above its own layer (a menu over the list it opened from) is intended.
   const hl = layerOf(hit);
   if (hl && hl !== it.layer && (!it.layer || it.layer.contains(hl))) continue;
+  // A menu or dialog the page moved to <body> sits above every layer, the one that opened it included.
+  if (hl && hl.parentElement === document.body && hl.matches(LAYER)) continue;
   if (!it.layer && overlayHit(hit)) continue;
   if (canScrollOut(el, cy) && !(it.scroll && it.scroll.contains(hit))) continue;
   add('covered', 'fail', el, vr, `centre covered by ${path(hit)} "${snippet(hit).slice(0, 40)}"`);
@@ -400,6 +402,9 @@ for (const { el } of items) {
   if (!svg || !rendered(svg, false)) continue;
   const v = clipRect(svg);
   if (!v || v.right - v.left < 4) continue;
+  // An icon hidden under a sheet, pane or popup is not drawn: skip it, as text is.
+  const over = document.elementFromPoint((v.left + v.right) / 2, (v.top + v.bottom) / 2);
+  if (over && over !== el && !el.contains(over) && !over.contains(el) && !over.closest('[data-chat-scene]')) continue;
   // Every distinct stroke/fill: an icon passes on its strongest colour (a faint track under a meter is fine).
   const cols = new Map();
   for (const shape of [...svg.querySelectorAll('path, circle, rect, ellipse, line, polyline, polygon')].slice(0, 12)) {

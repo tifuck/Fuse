@@ -173,6 +173,11 @@ export function create(deps) {
   function bind() {
     if (bound) return;
     bound = true;
+    // The runtime's own handler stops the Artifacts click, so note the opener on the way down.
+    deps.root.addEventListener("click", (event) => {
+      const t = event.target.closest?.("[data-artifact-toggle]");
+      if (t && visible(t)) opener = t;
+    }, true);
     deps.root.addEventListener("click", (event) => {
       const t = event.target.closest?.("button, a");
       if (!t || !deps.root.contains(t)) return;
@@ -211,6 +216,7 @@ export function create(deps) {
       } else if (t.matches("[data-theme-project]")) {
         act("project");
       } else if (t.matches("[data-theme-proxy]")) {
+        opener = q("[data-theme-more]");
         q(`.dk-actions > ${t.dataset.themeProxy}`)?.click();
       } else if (t.matches("[data-theme-attach]")) {
         q("[data-chat-attach]")?.click();
@@ -286,6 +292,19 @@ export function create(deps) {
       if ((inside || !window.matchMedia(WIDE).matches) && deps.root.dataset.themeRailState === "open" && !deps.root.classList.contains("is-artifact")
         && !document.querySelector("body > .chat-pop, dialog[open]")) setOpen(false);
     });
+    // A layer the runtime closes on Escape (the phone model sheet, a sheet opened
+    // from ⋯) can drop the focus to <body>: give it back to what opened it.
+    let lastOpener = null;
+    document.addEventListener("pointerdown", (event) => { lastOpener = event.target.closest?.("button, [role=menuitem]") || lastOpener; }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") lastOpener = document.activeElement;
+      if (event.key !== "Escape") return;
+      setTimeout(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const back = lastOpener?.isConnected && visible(lastOpener) ? lastOpener : lastOpener?.closest?.("[data-theme-menu]") && q("[data-theme-more]");
+        back?.focus?.({ preventScroll: true });
+      });
+    }, true);
     window.matchMedia(WIDE).addEventListener?.("change", () => syncChrome());
     window.matchMedia(PHONE).addEventListener?.("change", () => syncChrome());
     document.addEventListener("fuse-appearance", syncScheme);
@@ -529,7 +548,7 @@ export function create(deps) {
     const running = Boolean(deps.streaming || deps.runIsActive(deps.activeRun));
     const next = store.open ? "open" : "closed";
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
-    syncLayer(next);
+    syncLayer(artifact ? "open" : next);
     deps.root.classList.toggle("dk-has-term", terminal);
     deps.root.classList.toggle("dk-running", running);
     const toggle = q("[data-theme-inspector]");
