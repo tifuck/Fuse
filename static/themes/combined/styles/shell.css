@@ -600,7 +600,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   & .chat-live-dock .chat-activity-spin > * { display: none; }
   & .chat-live-dock :is(.chat-status-verb, .chat-status-shimmer) { color: var(--mute); font: inherit; background: none; -webkit-text-fill-color: currentColor; animation: none; }
-  & .chat-live-dock .chat-status-meta { margin-left: 6px; color: var(--cb-dim); font: 11.5px var(--mono); }
+  & .chat-live-dock .chat-status-meta { margin-left: 6px; color: var(--mute); font: 11.5px var(--mono); }
   & .chat-live-dock .chat-dock-dots { display: none; }
 
   /* ---- Prompt library: a short list of categories ---- */

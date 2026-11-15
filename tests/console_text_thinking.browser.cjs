@@ -25,6 +25,11 @@ const tool = (name, fields = {}) => ({ id: `tt${++seq}`, name, status: 'done', e
 const think = (text, ms) => ({ type: 'reasoning', text, ...(ms != null ? { ms } : {}) });
 const say = (text) => ({ type: 'content', text });
 const T = (t) => ({ type: 'tool', id: t.id });
+// Combined closes a reply with its action row: when it ended ("Oct 5", the
+// full time in its title), then the work time. Console prints the ✻ line.
+const COMBINED = process.env.FUSE_CHAT_VIEW === 'combined';
+const close = (text, done = '', ago = '') => COMBINED ? [ago, text].filter(Boolean).join(' ') : `✻ ${text}${done ? ` · ${done}` : ''}`;
+let agoAt = '';
 // ccTurnVerb: the closing line's word is fixed per message id (chat.js).
 const CC_TURN_VERBS = ['Baked', 'Brewed', 'Churned', 'Cogitated', 'Cooked', 'Crunched', 'Sautéed', 'Worked'];
 const turnVerb = (id) => {
@@ -180,6 +185,7 @@ function snap() {
     await finish(persisted);
     await page.waitForFunction(() => window.__tt.snap().dock.hidden, null, { timeout: 4000 });
     s = await snapNow();
+    agoAt = await page.evaluate(() => new Date('2026-10-05T09:42:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
     const doneAt = await page.evaluate(() => {
       const when = new Date('2026-10-05T09:42:00Z');
       const time = when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -190,7 +196,7 @@ function snap() {
       if (days > 0 && days < 7) return `${when.toLocaleDateString([], { weekday: 'long' })} ${time}`;
       return `${when.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}, ${time}`;
     });
-    check(s.foot === `✻ ${turnVerb('tt-turn-a')} for 2m 13s · done ${doneAt}`, `the closing line reports the persisted duration and end time: ${s.foot}`);
+    check(s.foot === close(`${turnVerb('tt-turn-a')} for 2m 13s`, `done ${doneAt}`, agoAt), `the closing line reports the persisted duration and end time: ${s.foot}`);
     check(JSON.stringify(s.blocks) === JSON.stringify(live.blocks), `the reconcile keeps the live render's blocks exactly: ${JSON.stringify(s.blocks)} vs ${JSON.stringify(live.blocks)}`);
     check(JSON.stringify(s.steps) === JSON.stringify(live.steps), `the reconcile keeps every row in order: ${s.steps} vs ${live.steps}`);
     check(JSON.stringify(s.prose) === JSON.stringify(live.prose), `the reconcile keeps the prose text exactly: ${s.prose}`);
@@ -346,7 +352,7 @@ function snap() {
       const stoppedState = await page.evaluate((id) => document.querySelector(`.chat-log > article:last-child [data-step="tool-${id}"]`)?.getAttribute('data-state'), cmd.id);
       check(stoppedState === 'interrupted', `a stopped turn settles its running call as interrupted: ${stoppedState} ${s.rows}`);
       check(s.clocks.length === 0, `a stopped turn leaves no ticking clock: ${s.clocks}`);
-      check(s.foot === `✻ Interrupted · ${turnVerb('tt-stop')} for 24s`, `a stopped close says Interrupted, never done: ${s.foot}`);
+      check(s.foot === close(`Interrupted · ${turnVerb('tt-stop')} for 24s`, '', agoAt), `a stopped close says Interrupted, never done: ${s.foot}`);
 
       await start('tt-fail', 30000);
       await finish({ id: 'tt-fail', role: 'assistant', model: 'qa/model', elapsedMs: 30000, endedAt: '2026-10-05T09:50:00Z', error: 'Upstream returned 502', content: '', reasoning: '', tools: [], segments: [] });
@@ -354,7 +360,7 @@ function snap() {
       const failed = await snapNow();
       check(failed.dock.hidden, `a failed run hides the status line: ${JSON.stringify(failed.dock)}`);
       check((await page.evaluate(() => document.querySelector('.chat-log > article:last-child [data-err]')?.innerText || '')).includes('Upstream returned 502'), 'the failure text shows on the turn');
-      check(failed.foot === `✻ Failed · ${turnVerb('tt-fail')} for 30s`, `a failed close says Failed, never done: ${failed.foot}`);
+      check(failed.foot === close(`Failed · ${turnVerb('tt-fail')} for 30s`, '', agoAt), `a failed close says Failed, never done: ${failed.foot}`);
     }
 
     // —— 5. The ✻ line's other values. ——
@@ -370,7 +376,7 @@ function snap() {
       }, { msg, extra });
       await start('tt-foot', 60000);
       await settle(footMsg(), { agents: [{ child_id: 'ag1', status: 'running', description: 'Audit retries' }, { child_id: 'ag2', status: 'running', description: 'Check timeouts' }] });
-      check((await snapNow()).foot === '✻ Waiting for 2 background agents to finish', `pending agents replace the close: ${(await snapNow()).foot}`);
+      check((await snapNow()).foot === close('Waiting for 2 background agents to finish'), `pending agents replace the close: ${(await snapNow()).foot}`);
       await page.evaluate(() => fuseToolFixture.todo.agents([]));
       await settle(footMsg(), { jobs: [{ id: 'sh1', command_id: 'sh1', state: 'running', command: 'npm run build' }] });
       check(/· 1 shell still running$/.test((await snapNow()).foot), `a running shell appends to the close: ${(await snapNow()).foot}`);

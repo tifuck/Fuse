@@ -141,7 +141,8 @@ function renderAssistant(msg, live) {
       // An opened summary line has no header in Console (as in Claude Code):
       // a click on its printed calls folds it back.
       const openGroup = (event.target.closest(".chat-step.is-console-group.is-console-expanded"));
-      if (openGroup && !event.target.closest("a, button, input, textarea, [data-copy-tool]") && !String(window.getSelection() || "").trim()) {
+      // Combined: a member's opened output is read, not a fold target.
+      if (openGroup && !event.target.closest("a, button, input, textarea, [data-copy-tool], .chat-console-bundle .chat-step-reveal") && !String(window.getSelection() || "").trim()) {
         event.preventDefault();
         collapseConsoleGroup(openGroup, msg);
         return;

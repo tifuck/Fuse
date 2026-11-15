@@ -86,7 +86,8 @@ const out = process.env.TOOL_UI_ARTIFACTS || '/tmp/opencode/tool-redesign';
       assert.ok(Math.max(...heads.map(h => h.stateRight)) - Math.min(...heads.map(h => h.stateRight)) < 2, 'all top-level statuses share the right alignment');
       await page.locator('.chat-flow').screenshot({ path: `${out}/${width}-collapsed.png` });
       const toggle = group.locator(':scope > .chat-step-main > .chat-step-head > .chat-step-toggle');
-      assert.match(await toggle.textContent(), /Read 2 files/);
+      // Combined folds the edit into the same summary line; Console prints it on its own row.
+      assert.match(await toggle.textContent(), process.env.FUSE_CHAT_VIEW === 'combined' ? /read 2 files.*edited 1 file/ : /Read 2 files/);
       await toggle.click();
       const openText = await group.innerText();
       assert.ok(openText.includes('client/config.ts') && openText.includes('server/config.ts'), `the open summary prints its members: ${openText.slice(0, 200)}`);

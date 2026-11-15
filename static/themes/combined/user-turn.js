@@ -106,8 +106,32 @@ function renderUser(msg, index) {
       bubble.dataset.userText = "";
       bubble.textContent = msg.content;
       article.appendChild(bubble);
+      if (msg.content.length > 160 || msg.content.split("\n").length > 6) clampBubble(article, bubble);
     }
     return article;
+  }
+
+// A long message folds to six lines with "Show more"; the button shows only
+// while the fold actually hides something.
+function clampBubble(article, bubble) {
+    article.classList.add("is-long");
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "cb-show-more";
+    more.dataset.themeExpand = "";
+    more.setAttribute("aria-expanded", "false");
+    more.textContent = "Show more";
+    more.addEventListener("click", () => {
+      const open = !article.classList.contains("is-expanded");
+      article.classList.toggle("is-expanded", open);
+      more.textContent = open ? "Show less" : "Show more";
+      more.setAttribute("aria-expanded", String(open));
+    });
+    article.appendChild(more);
+    if (typeof ResizeObserver !== "function") return;
+    new ResizeObserver(() => {
+      if (!article.classList.contains("is-expanded")) more.hidden = bubble.scrollHeight <= bubble.clientHeight + 1;
+    }).observe(bubble);
   }
 
 function fileExtLabel(name) {

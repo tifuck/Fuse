@@ -26,6 +26,9 @@ const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
 assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
 const ROOT = { host: 'qa-box', cwd: '/srv/qa', platform: 'posix', project_root: '/srv/qa' };
+// Combined: settled edits fold into the summary line, a failed call keeps its
+// own row, and every expandable call row shows its caret (docs/themes/combined.md).
+const COMBINED = process.env.FUSE_CHAT_VIEW === 'combined';
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
 const HITS = [
   { title: 'Console row guide', url: 'https://example.com/guide', snippet: 'How a row settles.' },
@@ -223,7 +226,8 @@ const COLLECT = () => {
       // Console hides the caret on every call row (chat-design.css:3150
       // display:none !important — deliberate), so the disclosure contract is
       // the label toggle itself; rows without one show all they have.
-      ok(r0.caretShown === false, `${t.name}: a chevron slipped into Console (${r0.caretCls})`);
+      if (COMBINED) ok(r0.caretShown === r0.toggles.length > 0, `${t.name}: the caret shows only on a row that opens (${r0.caretCls})`);
+      else ok(r0.caretShown === false, `${t.name}: a chevron slipped into Console (${r0.caretCls})`);
       ok(r0.toggles.length === (t.disclosure ? 2 : 0), `${t.name}: disclosure anatomy ${JSON.stringify(r0.toggles)} for disclosure=${t.disclosure}`);
       ok(r0.toggles.every((a) => a === 'false'), `${t.name}: arrives collapsed (${JSON.stringify(r0.toggles)})`);
       if (t.disclosure) ok(!r0.expanded, `${t.name}: arrives collapsed (is-console-expanded)`);
@@ -294,7 +298,8 @@ const COLLECT = () => {
     // Disclosure anatomy and chevron direction are one contract for all rows:
     // call rows uniformly hide the caret and rotate nothing (the
     // chevron rules in app.css:4713 target other rows' carets).
-    ok(callRows.every((r) => r.caretShown === false), `a Console call row grew a visible chevron: ${callRows.filter((r) => r.caretShown).map((r) => r.tool).join(', ')}`);
+    if (COMBINED) ok(callRows.every((r) => r.caretShown === r.toggles.length > 0), `a caret must show exactly on expandable call rows: ${callRows.filter((r) => r.caretShown !== r.toggles.length > 0).map((r) => r.tool).join(', ')}`);
+    else ok(callRows.every((r) => r.caretShown === false), `a Console call row grew a visible chevron: ${callRows.filter((r) => r.caretShown).map((r) => r.tool).join(', ')}`);
     // Hidden content always comes with a disclosure; rows without one show all they have.
     for (const t of TOOLS) {
       const r = settled[t.name];
@@ -495,7 +500,8 @@ const COLLECT = () => {
     ok(JSON.stringify(members.map((r) => r.tool)) === JSON.stringify(['read_file', 'read_file', 'grep', 'glob', 'list_dir', 'run_terminal_command', 'todo_write']),
       `members keep their order and names: ${members.map((r) => r.tool).join(', ')}`);
     ok(members.every((r) => r.title === 'Done'), 'every member of a settled summary reads Done');
-    ok(members.every((r) => r.toggles.length === 0), 'members of an opened summary print whole (no disclosure of their own)');
+    if (COMBINED) ok(members.every((r) => !r.cls.includes('is-console-verbose')), 'members of an opened summary list on one line, each opening on its own');
+    else ok(members.every((r) => r.toggles.length === 0), 'members of an opened summary print whole (no disclosure of their own)');
     ok(!members.some((r) => r.cls.includes('is-running')), 'a summary never folds a running call');
     // The group header counts and the members never duplicate each other.
     const groupHead = g.find((r) => r.cls.includes('is-console-group'));
@@ -503,7 +509,13 @@ const COLLECT = () => {
     ok(!groupHead.headText.includes('Read('), 'the summary header does not repeat member labels');
     // A click on any printed member folds the summary back — uniform for every
     // member family (read rows and shell rows alike).
-    for (const step of ['tool-g-read-a', 'tool-g-shell']) {
+    if (COMBINED) {
+      // The opened summary keeps its line; its caret folds it back.
+      await page.evaluate(() => document.querySelector('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle')?.click());
+      await raf();
+      ok(!(await groupRows()).find((r) => r.cls.includes('is-console-group')).expanded, 'the summary line folds its members back');
+    }
+    for (const step of COMBINED ? [] : ['tool-g-read-a', 'tool-g-shell']) {
       const openBefore = (await groupRows()).find((r) => r.cls.includes('is-console-group')).expanded;
       ok(openBefore, 'summary is open before the click');
       await page.evaluate((s) => {
@@ -532,10 +544,10 @@ const COLLECT = () => {
     ]);
     await raf();
     g = await groupRows();
-    ok(JSON.stringify(summaryLabels(g)) === JSON.stringify(['Read 1 file', 'Read 1 file']),
+    ok(JSON.stringify(summaryLabels(g)) === JSON.stringify(COMBINED ? ['Read 1 file, edited 1 file +1 −1', 'Read 1 file'] : ['Read 1 file', 'Read 1 file']),
       `every non-foldable call ends the line: ${JSON.stringify(summaryLabels(g))}`);
     const standalones = g.filter((r) => r.step.startsWith('tool-') && !r.inBundle);
-    ok(JSON.stringify(standalones.map((r) => r.tool)) === JSON.stringify(['search_replace', 'web_search']),
+    ok(JSON.stringify(standalones.map((r) => r.tool)) === JSON.stringify(COMBINED ? ['web_search'] : ['search_replace', 'web_search']),
       `edit and web stand on their own rows: ${standalones.map((r) => r.tool).join(', ')}`);
     ok(standalones.every((r) => !r.inBundle && !r.cls.includes('is-console-group')), 'standalone rows sit outside every bundle');
 
@@ -551,14 +563,16 @@ const COLLECT = () => {
     // The summary line is only its summary (f4b4635): members that ended
     // badly say so on their own rows once it opens (checked below).
     ok(failGroup.notes.length === 0, `the summary line carries no member note: ${JSON.stringify(failGroup.notes)}`);
-    ok(failGroup.headText === 'Read 2 files, ran 1 shell command', `the summary keeps its counts: "${failGroup.headText}"`);
-    await page.evaluate(() => {
-      const btn = document.querySelector('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle');
-      if (btn) btn.click();
-    });
+    // Combined: the failed read stands between two lines of its own.
+    ok(failGroup.headText === (COMBINED ? 'Read 1 file' : 'Read 2 files, ran 1 shell command'), `the summary keeps its counts: "${failGroup.headText}"`);
+    await page.evaluate((all) => {
+      const btns = [...document.querySelectorAll('.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle')];
+      (all ? btns : btns.slice(0, 1)).forEach((btn) => btn.click());
+    }, COMBINED);
     await raf();
     g = await groupRows();
-    const bad = g.filter((r) => r.inBundle);
+    const bad = g.filter((r) => r.inBundle || (COMBINED && r.step === 'tool-e-read-bad'));
+    if (COMBINED) ok(bad[1] && !bad[1].inBundle, 'the failed read keeps its own row');
     ok(JSON.stringify(bad.map((r) => r.state)) === JSON.stringify(['done', 'error', 'interrupted']),
       `member states surface on open: ${bad.map((r) => r.state).join(', ')}`);
     ok(bad[1].bodyText.replace(/^└\s*/, '').startsWith('Error: permission denied'), `the failure opens inside the line: "${bad[1].bodyText}"`);

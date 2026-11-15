@@ -271,6 +271,8 @@ function consoleStatusHtml(text) {
       .replace(/^(Received) (\S+)/, "$1 <b>$2</b>")
       .replace(/( across )(\d[\d,]*)/, "$1<b>$2</b>")
       .replace(/(, removed )(\d[\d,]*)/, "$1<b>$2</b>")
+      .replace(/^(Added|Removed) <b>/, (_, verb) => `${verb} <b class="${verb === "Added" ? "cb-plus" : "cb-minus"}">`)
+      .replace(/(, removed )<b>/, '$1<b class="cb-minus">')
       .replace(/^(Wrote <b>[^<]*<\/b> lines? to )(.+)$/, "$1<b>$2</b>");
   }
 
@@ -483,5 +485,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleEditDiff, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

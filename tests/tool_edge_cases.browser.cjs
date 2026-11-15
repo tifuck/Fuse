@@ -611,7 +611,9 @@ const hits = (n, prefix = 'Result') => Array.from({ length: n }, (_, i) => ({
       await mount([turn([doneTw, errTw], [T(doneTw), T(errTw)])]);
       await frame();
       const lines = await page.evaluate(() => [...document.querySelectorAll('.chat-log .is-console-group > .chat-step-main > .chat-step-head .chat-step-label')].map((el) => el.textContent.trim()));
-      eq(JSON.stringify(lines), JSON.stringify(['Updated todos 2 times']), 'settled todo_write calls fold into one summary line');
+      // Combined keeps a failed call on its own row; the settled one folds alone.
+      const failsStandAlone = process.env.FUSE_CHAT_VIEW === 'combined';
+      eq(JSON.stringify(lines), JSON.stringify([failsStandAlone ? 'Updated todos' : 'Updated todos 2 times']), 'settled todo_write calls fold into one summary line');
       eq(await countSel('[data-todo-line]'), 0, 'no separate settle line');
     } catch (error) { failures.push(`block threw: ${error.message}`); }
 
