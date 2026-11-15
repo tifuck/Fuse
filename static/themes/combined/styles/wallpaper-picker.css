@@ -2,18 +2,33 @@
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-wallpicker[hidden] { display: none; }
   & .cb-wallpicker { width: 100%; max-width: var(--chat-col, 47.5rem); margin: 0 auto 6px; }
-  & .cb-wp { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 0.3); font: 13px/1.4 var(--sans); }
-  & .cb-wp-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px 12px; color: var(--mute); }
+  & .cb-wp { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 32px rgb(0 0 0 / 0.35); font: 13px/1.4 var(--sans); }
+  & .cb-wp-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 2px 12px; color: var(--mute); }
   & .cb-wp-head b { color: var(--mist); font-weight: 600; }
   & .cb-wp-cmd { padding: 0 6px; border-radius: 5px; background: var(--raise); color: var(--mist); font: 12px var(--mono); }
   & .cb-wp-keys { margin-left: auto; font-size: 12px; }
-  & .cb-wp-x { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--mute); cursor: pointer; }
+  & .cb-wp-x { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--mute); font-size: 16px; cursor: pointer; }
   & .cb-wp-x:hover { background: var(--raise); color: var(--mist); }
-  & .cb-wp-row { display: flex; gap: 8px; padding: 6px 12px 10px; overflow-x: auto; scrollbar-width: thin; }
-  & .cb-wp-card { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; width: 78px; padding: 3px; border: 0; border-radius: 9px; background: none; color: var(--mute); font: 12px var(--sans); cursor: pointer; }
+  & .cb-wp-x:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+  /* The strip scrolls; its right edge fades so a cut-off card reads as more. */
+  & .cb-wp-row {
+    display: flex;
+    gap: 8px;
+    padding: 6px 28px 10px 12px;
+    overflow-x: auto;
+    scroll-padding-inline: 12px 28px;
+    scrollbar-width: thin;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  & .cb-wp-card { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; width: 84px; padding: 4px; border: 0; border-radius: 10px; background: none; color: var(--mute); font: 12px/1.25 var(--sans); cursor: pointer; }
+  & .cb-wp-card:hover { color: var(--mist); }
   & .cb-wp-card.is-active { background: var(--raise); color: var(--mist); }
-  & .cb-wp-thumb { display: block; width: 70px; height: 40px; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--ink); }
-  & .cb-wp-card.is-active .cb-wp-thumb { outline: 2px solid var(--brass); outline-offset: 1px; }
-  & .cb-wp-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  & .cb-wp-check { margin-right: 3px; color: var(--ok); }
+  & .cb-wp-card:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+  & .cb-wp-thumb { display: block; width: 76px; height: 44px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--ink); }
+  & .cb-wp-card.is-on .cb-wp-thumb { outline: 2px solid var(--mist); outline-offset: 1px; }
+  & .cb-wp-name { display: -webkit-box; max-width: 100%; overflow: hidden; text-align: center; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  & .cb-wp-check { margin-right: 3px; color: var(--mist); }
+  @media (hover: none) { & .cb-wp-keys { display: none; } }
+  @media (max-width: 480px) { & .cb-wp-x { width: 40px; height: 40px; } }
 }

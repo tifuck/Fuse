@@ -18,8 +18,9 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn {
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn:hover { color: var(--mist); }
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn:active { scale: 0.92; }
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn svg { display: block; }
-html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn.is-live { color: var(--brass); }
-html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn.is-live::after {
+html[data-chat-view="combined"] .chat[data-view="combined"] [data-chat-mic] { position: relative; }
+html[data-chat-view="combined"] .chat[data-view="combined"] [data-chat-mic].is-live { color: var(--fault); }
+html[data-chat-view="combined"] .chat[data-view="combined"] [data-chat-mic].is-live::after {
   content: "";
   position: absolute;
   top: 0.2rem;
@@ -27,10 +28,9 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn.is-liv
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--brass);
+  background: var(--fault);
   animation: dictation-blink 1.2s ease-in-out infinite;
 }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-box.is-dictating::before { color: var(--brass); }
 
 /* Hangs above the composer and its open todo list (chat-todo.css stacks the
    sync badge and "Jump to latest" above it); the composer's own popovers
@@ -133,5 +133,5 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .dictation.is-finish
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="combined"] .chat[data-view="combined"] .dictation,
   html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-mic,
-  html[data-chat-view="combined"] .chat[data-view="combined"] .chat-mic-btn.is-live::after { animation: none; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] [data-chat-mic].is-live::after { animation: none; }
 }

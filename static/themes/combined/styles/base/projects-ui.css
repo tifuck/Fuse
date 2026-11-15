@@ -112,7 +112,7 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-view="console"] b
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-off { color: var(--fault); text-transform: none; letter-spacing: 0; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-off { color: color-mix(in srgb, var(--fault) 80%, var(--mist)); text-transform: none; letter-spacing: 0; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-list,
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-dirs { margin: 0; padding: 0; list-style: none; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-row {

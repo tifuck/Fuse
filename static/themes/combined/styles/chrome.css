@@ -134,13 +134,24 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
 
 
 /* —— Sheets —— */
-/* Appearance switches match the Skills switches: square, brass when on. */
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"],
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { border-radius: 0; }
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { width: 2rem; height: 1.1rem; background: var(--ink); }
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { left: 0.15rem; width: 0.62rem; height: 0.62rem; background: var(--mute); }
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked { background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
-html[data-chat-view="combined"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::after { background: var(--brass); }
+/* Switches: a 36x20 track with a round knob, centred in a 24px target (the
+   whole row is the hit area too); segments are 28px. */
+html[data-chat-view="combined"] body.is-chat :is(.chat-view-menu, .chat-sheet) .ap-switch { min-height: 32px; }
+html[data-chat-view="combined"] body.is-chat :is(.chat-view-menu, .chat-sheet) .ap-switch input[type="checkbox"] {
+  width: 36px;
+  height: 24px;
+  border: solid transparent;
+  border-width: 2px 0;
+  border-radius: 12px / 12px;
+  background-clip: padding-box;
+}
+html[data-chat-view="combined"] body.is-chat :is(.chat-view-menu, .chat-sheet) .ap-switch input[type="checkbox"]::after { left: 3px; width: 14px; height: 14px; border-radius: 50%; }
+html[data-chat-view="combined"] body.is-chat :is(.chat-view-menu, .chat-sheet) .ap-switch input[type="checkbox"]:checked::after { transform: translate(16px, -50%); }
+html[data-chat-view="combined"] body.is-chat .chat-view-menu :is(.ap-filters button, [data-chat-view-choice]) { min-height: 28px; }
+@media (max-width: 480px) {
+  html[data-chat-view="combined"] body.is-chat :is(.chat-view-menu, .chat-sheet) .ap-switch input[type="checkbox"] { height: 32px; border-width: 6px 0; border-radius: 16px / 16px; }
+  html[data-chat-view="combined"] body.is-chat .chat-view-menu :is(.ap-filters button, [data-chat-view-choice]) { min-height: 36px; }
+}
 
 /* Cards in a row share a height; their text starts at the top, not centred. */
 html[data-chat-view="combined"] body.is-chat .chat-view-menu :is(.ap-theme, .ap-backdrop, .ap-font) { align-content: start; }
@@ -164,15 +175,5 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-s
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-skills :is(.skills-search, .skills-upload) .btn:hover { border-color: var(--brass); color: var(--brass); }
 
-/* —— Empty chat: a quiet greeting above the prompt, terminal style —— */
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] :is(.chat-welcome, .chat-welcome-note) {
-  display: block;
-  max-height: none;
-  margin: 0;
-  padding-left: 0.5rem;
-  text-align: left;
-  letter-spacing: 0;
-}
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] .chat-welcome { color: var(--mist); font: 500 0.875rem/1.5 var(--mono); }
-html[data-chat-view="combined"] body.is-chat .chat.is-empty[data-view="combined"] .chat-welcome-note { margin-bottom: 0.75rem; color: var(--mute); font: 0.8125rem/1.5 var(--mono); }
-body.is-chat.is-keyboard .chat.is-empty[data-view="combined"] :is(.chat-welcome, .chat-welcome-note) { display: none; }
+/* —— Empty chat: the greeting steps aside while a phone keyboard is open —— */
+body.is-chat.is-keyboard .chat.is-empty[data-view="combined"] :is(.cb-welcome, .cb-welcome-note) { display: none; }

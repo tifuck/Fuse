@@ -1,8 +1,14 @@
 // Combined's /theme picker: a rounded card of wallpaper thumbnails above the composer.
 // The runtime (chat/composer/wallpapers.js) owns the items, the keys and the
 // choice; every card carries data-wallpaper-card and a FuseBackdrop preview.
+// A click outside the open picker closes it through its own close button.
 export function create(deps) {
   const esc = (value) => deps.escapeHtml(String(value ?? ""));
+
+  document.addEventListener("pointerdown", (event) => {
+    const picker = document.querySelector("[data-wallpaper-picker]:not([hidden])");
+    if (picker && !picker.contains(event.target)) picker.querySelector("[data-wallpaper-close]")?.click();
+  }, true);
 
   function wallpaperPickerHtml({ items, index, current }) {
     const cards = items.map((item, i) => {
