@@ -157,7 +157,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 
 /* One line: the summary ends in an ellipsis, its chevron (on the toggle) stays,
    open or folded. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .chat-step-label {
+/* The summary line's own label only: its members are call rows with their own layout. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label {
   display: block !important;
   flex: 0 1 auto;
   width: auto;
