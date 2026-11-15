@@ -373,9 +373,11 @@ const FAMILIES = [
       // Right-click on the underlined word opens the same corrections and
       // keeps the native menu away; right-click elsewhere leaves it alone.
       await input.evaluate(el => { el.setSelectionRange(8, 8); window.FuseComposerSpell.refresh(); });
-      // The mirror repaints after refresh(); measure the underline once it is there.
-      await page.locator('[data-chat-compose-mirror] .chat-misspell').first().waitFor({ state: 'attached' });
-      const word = await page.locator('[data-chat-compose-mirror] .chat-misspell').first().boundingBox();
+      // The mirror repaints after refresh() (and may replace the span again); measure a laid-out underline.
+      const word = await (await page.waitForFunction(() => {
+        const r = document.querySelector('[data-chat-compose-mirror] .chat-misspell')?.getBoundingClientRect();
+        return r && r.width > 0 ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+      })).jsonValue();
       const rightClick = (x, y) => page.evaluate(([cx, cy]) => {
         const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 2 });
         document.querySelector('[data-chat-input]').dispatchEvent(event);
