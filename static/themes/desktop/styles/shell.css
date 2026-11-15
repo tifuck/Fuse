@@ -720,7 +720,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .dk-row { height: 44px; }
     & .dk-act { height: 40px; }
+    /* The drawer's close sits where the toggle that opened it was. */
     & .dk-side-head { height: 44px; }
+    & .dk-side-head .chat-history-collapse { order: -1; }
     & .dk-tab { width: 36px; height: 36px; }
     & .dk-side-head .dk-ib, & .dk-sun { width: 40px; height: 40px; }
     & .dk-search { height: 40px; }

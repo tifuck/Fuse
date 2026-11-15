@@ -229,6 +229,12 @@ export function create(deps) {
         syncChrome();
       } else if (t.matches("[data-theme-turn-act]")) {
         turnAction(t);
+      } else if (t.matches("[data-history-toggle]") && !window.matchMedia(PHONE).matches) {
+        // Collapsing or expanding hides the toggle just used: focus moves to the other one.
+        setTimeout(() => {
+          if (document.activeElement && document.activeElement !== document.body) return;
+          deps.root.querySelectorAll("[data-history-toggle]").forEach((btn) => { if (visible(btn) && btn !== t) btn.focus({ preventScroll: true }); });
+        });
       } else if (t.matches("[data-theme-diff-fold]")) {
         t.hidden = true;
         for (let row = t.nextElementSibling; row?.hidden; row = row.nextElementSibling) row.hidden = false;
@@ -302,6 +308,8 @@ export function create(deps) {
         });
       });
     }).observe(deps.root, { subtree: true, attributes: true, attributeFilter: ["aria-expanded"] });
+    const list = q("[data-history-list]");
+    if (list) new MutationObserver(syncPins).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-pinned", "aria-current"] });
     const picker = q("[data-wallpaper-picker]");
     if (picker) new MutationObserver(() => {
       if (!picker.hidden || !pickerReturn) return;
@@ -323,11 +331,18 @@ export function create(deps) {
   }
 
   // Reply actions under a finished turn: copy, fork, pin, read aloud.
+  let speaking = null;
+  function stopSpeaking() {
+    speaking?.setAttribute("aria-pressed", "false");
+    speaking = null;
+  }
+
   async function turnAction(btn) {
     const kind = btn.dataset.themeTurnAct;
     const turn = btn.closest(".chat-turn");
-    const body = turn?.querySelector(".chat-md, .chat-assistant-body, .chat-reply") || turn;
-    const text = (body?.innerText || "").trim();
+    // The whole reply's markdown, else every rendered block of it.
+    const text = (btn.closest("article")?._message?.content || "").trim()
+      || [...(turn?.querySelectorAll("[data-flow] > [data-content-block]") || [])].map((el) => el.innerText.trim()).join("\n\n");
     if (kind === "copy") {
       try {
         await navigator.clipboard.writeText(text);
@@ -338,9 +353,29 @@ export function create(deps) {
     } else if (kind === "fork" || kind === "pin") {
       act(kind);
     } else if (kind === "speak" && "speechSynthesis" in window) {
-      if (speechSynthesis.speaking) speechSynthesis.cancel();
-      else speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      const again = speaking === btn;
+      speechSynthesis.cancel();
+      stopSpeaking();
+      if (again || !text) return;
+      const say = new SpeechSynthesisUtterance(text);
+      say.onend = say.onerror = () => { if (speaking === btn) stopSpeaking(); };
+      speaking = btn;
+      btn.setAttribute("aria-pressed", "true");
+      speechSynthesis.speak(say);
     }
+  }
+
+  // Pin follows the open chat's row in the sidebar.
+  function syncPins() {
+    const row = q('[data-history-list] [data-row-open][aria-current="true"]')?.closest("[data-history-item]");
+    const pinned = Boolean(row?.hasAttribute("data-pinned"));
+    const label = pinned ? "Unpin" : "Pin";
+    deps.root.querySelectorAll('[data-theme-turn-act="pin"]').forEach((btn) => {
+      if (btn.getAttribute("aria-pressed") === String(pinned) && btn.title === label) return;
+      btn.setAttribute("aria-pressed", String(pinned));
+      btn.setAttribute("aria-label", label);
+      btn.title = label;
+    });
   }
 
   // —— Inspector cards ——
@@ -486,6 +521,7 @@ export function create(deps) {
     const diff = syncDiff(closed);
     syncChips();
     syncTitle();
+    syncPins();
     show(q("[data-theme-agent-back]"), deps.root.classList.contains("is-agent-view"));
     const artifact = deps.root.classList.contains("is-artifact");
     const cards = deps.root.querySelectorAll("[data-theme-rail] [data-theme-card]:not([data-theme-card=preview]):not([hidden])").length;
