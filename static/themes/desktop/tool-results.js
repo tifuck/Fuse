@@ -157,7 +157,7 @@ function consoleSameText(html, text) {
     return (plain === String(text || "").replace(/\s+/g, " ").trim());
   }
 
-function consoleFold(trace, presentation, verbose) {
+function consoleFold(trace, presentation, verbose, oneLine = false) {
     if (trace?.name === "read_file" && trace.image && !presentation.running && !presentation.failed) {
       // One line says what the image is (or why the run stopped), the image
       // sits under it.
@@ -243,7 +243,8 @@ function consoleFold(trace, presentation, verbose) {
       const clipped = tail.clipped;
       const foot = (extra = "") => nonzero || failed ? `<span class="chat-console-result-text${extra}">${consoleStatusHtml(head)}</span>` : "";
       return {
-        status: foot() ? "" : head,
+        // A one-line row keeps the exit or error on its line.
+        status: foot() && !oneLine ? "" : head,
         keep: nonzero || Boolean(note),
         preview: tail.html + foot() + note,
         // The opened body hides the preview, so it repeats the exit and notice;

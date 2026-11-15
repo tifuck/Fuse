@@ -78,16 +78,17 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
   font-size: 0.92em;
   color: color-mix(in srgb, var(--mist) 72%, var(--ink));
 }
-/* A call row is a grid: Verb(argument) | result | caret on one line, the
-   result right-aligned and capped so the argument keeps its room. The head
-   spans the row (subgrid); the reveal and hang are see-through, so the
-   result sits on line 1 whether or not the row is open and only the output
-   takes the rows below. */
+/* A call row is one sentence on one line: "Read config.py · 84 lines", the
+   caret at the far end. Verb and object, then the result right after them;
+   when the line is too long both give way, the result last. The head spans
+   the row (subgrid); the reveal and hang are see-through, so the result sits
+   on line 1 whether or not the row is open and only the body takes the rows
+   below. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(min(50%, 56ch)) auto;
+  grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(0, 1fr) auto;
   align-items: baseline;
-  column-gap: 1.2ch;
+  column-gap: 0;
   min-width: 0;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head {
@@ -100,7 +101,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   min-width: 0;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :first-child { grid-column: 1; min-width: 0; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :not(:first-child) { grid-column: 3; grid-row: 1; justify-self: end; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :not(:first-child) { grid-column: 4; grid-row: 1; justify-self: end; margin-left: 0.5rem; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret:not(.is-empty) {
   display: inline-grid !important;
   place-items: center;
@@ -123,21 +124,22 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang-body > .chat-console-result-text {
   grid-column: 2;
   grid-row: 1;
-  justify-self: end;
+  justify-self: start;
   max-width: 100%;
   overflow: hidden;
   color: var(--dk-mute, var(--mute));
-  text-align: right;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang-body > .chat-console-result-text::before { content: "·"; margin: 0 0.5ch; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang.is-error .chat-console-hang-body > .chat-console-result-text { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-hang .chat-console-branch { display: none; }
-/* An opened summary lists one-line rows: each opens its own output. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang:not(.is-expanded) .chat-console-hang-body > :not(.chat-console-result-text) { display: none; }
-@media (max-width: 480px) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang-body > .chat-console-result-text { grid-column: 1 / -1; grid-row: 2; justify-self: start; text-align: left; }
-}
+/* Every row is its one line until opened; the body then sits under it,
+   indented like every nested row. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang:not(.is-expanded) .chat-console-hang-body > :not(.chat-console-result-text) { display: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang.is-expanded .chat-console-hang-body > :not(.chat-console-result-text) { margin-left: 0.9rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang.is-expanded .chat-console-hang-body > :not(.chat-console-result-text):last-child { margin-bottom: 0.3rem; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-step { color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-branch { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-hang {
@@ -164,9 +166,22 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step:is(*, .is-console-call, .is-console-group, .is-console-thought, .is-console-notice) > .chat-step-node { display: none !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step > :not(.chat-step-node) { grid-column: 1 / -1 !important; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-running .chat-tool-action { color: var(--call-live); }
+/* A running line shimmers: a band of light crosses its own text, no fill
+   and no accent colour. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label {
+  background: linear-gradient(100deg, var(--dk-mute, var(--mute)) 40%, var(--dk-text, var(--mist)) 50%, var(--dk-mute, var(--mute)) 60%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: dk-shimmer 2.4s linear infinite;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label :is(*, *::before) { color: transparent !important; background: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label { color: transparent !important; }
+@keyframes dk-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label { animation: none; background-position: 50% 0; }
+}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-error .chat-tool-action { color: var(--call-fail); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call:is(.is-interrupted, .is-warning) .chat-tool-action { color: var(--call-idle); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-error .chat-console-hang-body > .chat-console-result-text { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-red .chat-console-notice-text { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-gold .chat-console-notice-text { color: var(--call-idle); }
 
@@ -253,16 +268,20 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md th { color: var(--dk-mute); font-weight: 500; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code { border-color: var(--dk-card-line, var(--line)); border-radius: 10px; background: var(--dk-card, var(--panel)); }
 
-/* Call rows: bold verb, the argument in a mono chip, diff rows in colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call .chat-tool-action { color: var(--dk-text, var(--mist)); font-weight: 600; }
+/* Call rows read as a quiet sentence: the verb muted, only the object
+   bright (paths and commands in code type), diff counts in colour. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call .chat-tool-action { color: var(--dk-mute, var(--mute)); font-weight: 500; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-paren { font-size: 0; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call .chat-console-val {
-  padding: 0.05em 0.4em;
-  border-radius: 5px;
-  background: var(--dk-raise, var(--raise));
-  color: color-mix(in srgb, var(--dk-text, var(--mist)) 85%, var(--dk-mute, var(--mute)));
-  font-size: 0.85em;
+  padding: 0;
+  background: none;
+  color: var(--dk-text, var(--mist));
+  font-size: 0.88em;
 }
+/* A thought: "Thought for 4s · its first words", opening to the text. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-thought .dk-think-first { font-style: italic; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-thought .dk-think-first::before { content: "·"; margin: 0 0.5ch 0 -0.1ch; font-style: normal; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-thought.is-console-expanded .dk-think-first { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call { color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-out, .chat-console-hang-body > .chat-console-lines) { border-color: var(--dk-card-line, var(--line)); border-radius: 8px; background: var(--dk-card, var(--panel)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-add { color: var(--dk-add, var(--ok)); }

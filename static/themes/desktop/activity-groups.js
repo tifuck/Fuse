@@ -162,42 +162,31 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let gitOpBash = 0;
     let plus = 0;
     let minus = 0;
-    let thoughtMs = 0;
     let thought = false;
-    let latestThought;
-    let hint;
     let errored = false;
     let runningSince = 0;
-    let shell = null;
     const readPaths = new Set();
     const imagePaths = new Set();
     const edited = new Set();
     const wrote = new Set();
-    const searchArgs = [];
     const commits = [];
     const pushes = [];
     const branches = [];
     const prs = [];
+    const others = new Map();
+    // The line counts calls only; thoughts sit among the rows, unnamed.
     group.items.forEach((item) => {
-      if (item.type === "think") {
-        thought = true;
-        thoughtMs += item.ms;
-        latestThought = item.text;
-        return;
-      }
-      latestThought = undefined;
+      if (item.type !== "tool") return;
       const trace = item.entry.trace;
       const presentation = deps.toolPresentation(trace, live);
       if (presentation.failed) errored = true;
-      if (presentation.running && !deps.toolBackground(trace)) {
-        const since = ccSince(trace);
-        runningSince = Math.max(runningSince, since);
-        if (trace.name === "run_terminal_command" && (!shell || since < shell.since)) {
-          const out = typeof trace.output === "string" ? trace.output.replace(/\s+$/, "") : "";
-          shell = { since, lines: out ? out.split("\n").length : 0 };
-        }
-      }
+      if (presentation.running && !deps.toolBackground(trace)) runningSince = Math.max(runningSince, ccSince(trace));
       const cls = item.cls;
+      if (!cls) {
+        const kind = deps.isSearchTool(trace.name) ? "web" : OTHER_KIND[trace.name] || "tool";
+        others.set(kind, (others.get(kind) || 0) + 1);
+        return;
+      }
       if (cls.kind === "silent") return;
       if (cls.kind === "todo") {
         todos += 1;
@@ -212,7 +201,6 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       }
       if (cls.kind === "bash") {
         bash += 1;
-        hint = ccShellHint(trace) || hint;
         const ops = !presentation.running && typeof trace.output === "string" ? deps.ccGitOps(deps.displayCommand(trace), trace.output) : null;
         if (ops) {
           gitOpBash += 1;
@@ -223,40 +211,34 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         }
       } else if (cls.kind === "list") {
         list += 1;
-        hint = (cls.shell ? ccShellHint(trace) : ccPathHint(trace)) || hint;
       } else if (cls.kind === "search") {
         search += 1;
-        const pattern = cls.shell ? "" : deps.ccClip(deps.ccFlat(trace.pattern || trace.query), 300);
-        if (pattern) {
-          searchArgs.push(pattern);
-          hint = `"${pattern}"`;
-        }
       } else if (cls.image) {
         imagePaths.add(String(trace.path));
-        hint = ccPathHint(trace) || hint;
       } else if (!cls.shell && trace.path) {
         readPaths.add(String(trace.path));
-        hint = ccPathHint(trace) || hint;
       } else {
         readOps += 1;
-        if (cls.shell) hint = ccShellHint(trace) || hint;
       }
     });
     if (active && thinking && !group.items.length) thought = true;
+    // The verbs are in the present only while a call still runs; the work
+    // clock is the status line's, so this line never ticks or shifts.
+    const working = active && runningSince > 0;
     // Path reads count distinct files (two reads of one path are one file);
     // shell reads (cat, head, …) have no path to dedupe and count their calls.
     // Both sides always count: a path read plus a shell read is two files.
     const reads = readPaths.size + readOps;
     const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size) return "";
+    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size && !others.size) return "";
 
     const parts = [];
     if (thought) {
       const since = active && thinking ? thinking.since : 0;
       const clock = since
-        ? `<b data-cc-clock="think" data-base="${Math.round(thoughtMs)}" data-since="${since}">${ccThinkClock(thoughtMs, since)}</b>`
-        : `<b>${ccThinkClock(thoughtMs, 0)}</b>`;
+        ? `<b data-cc-clock="think" data-base="0" data-since="${since}">${ccThinkClock(0, since)}</b>`
+        : `<b>${ccThinkClock(0, 0)}</b>`;
       parts.push(`${active ? "Thinking" : "Thought"} for ${clock}`);
     }
     const add = (verb, rest) => {
@@ -271,41 +253,28 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (pushes.length) add("pushed to", bold([...new Set(pushes)].join(", ")));
     branches.forEach((branch) => add(branch.action === "merged" ? "merged" : "rebased onto", bold(branch.ref)));
     prs.forEach((pr) => add(CC_PR_VERBS[pr.action] || pr.action, bold(pr.url && pr.url.includes("/-/merge_requests/") ? `MR !${pr.number}` : `PR #${pr.number}`)));
-    if (search) add(active ? "searching for" : "searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
-    if (reads) add(active ? "reading" : "read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
-    if (images) add(active ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
-    if (list) add(active ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
-    if (shells) add(active ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
-    if (edited.size) add(active ? "editing" : "edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
-    if (wrote.size) add(active ? "writing" : "wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
-    if (todos) add(active ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
-
-    const headline = active ? ccHeadline(group.items, msg) : "";
-    const elapsed = active && runningSince
-      ? `<span class="chat-console-dim" data-cc-clock="elapsed" data-since="${runningSince}">${ccElapsedText(runningSince)}</span>` : "";
-    const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
-    const label = (headline ? deps.escapeHtml(headline) : parts.join(", ") + stat) + elapsed + (active && !headline ? "…" : "");
-    const title = label.replace(/<[^>]*>/g, "");
-
-    let hintHtml = "";
-    if (active && latestThought !== undefined) {
-      hintHtml = `<span class="chat-console-thinkhint">${deps.escapeHtml(deps.ccClip(deps.ccFlat(latestThought), 3000))}</span>`;
-    } else if (active) {
-      const text = hint ?? (searchArgs.length ? `"${searchArgs[searchArgs.length - 1]}"` : "");
-      if (text) {
-        const lines = deps.ccClip(text, 700).split("\n");
-        const suffix = shell
-          ? `<span data-cc-clock="suffix" data-since="${shell.since}" data-lines="${shell.lines}">${ccShellSuffix(shell.since, shell.lines)}</span>` : "";
-        hintHtml = lines.map((line, i) => `<span class="chat-console-hint-line">${deps.escapeHtml(line)}${i === lines.length - 1 ? suffix : ""}</span>`).join("");
-      }
+    if (search) add(working ? "searching for" : "searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
+    if (reads) add(working ? "reading" : "read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
+    if (images) add(working ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
+    if (list) add(working ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
+    if (shells) add(working ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
+    if (edited.size) add(working ? "editing" : "edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
+    if (wrote.size) add(working ? "writing" : "wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
+    if (todos) add(working ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
+    for (const [kind, n] of others) {
+      const [past, ing, one, many] = OTHER_WORDS[kind];
+      add(working ? ing : past, `<b>${n}</b> ${n === 1 ? one : many}`);
     }
-    const hang = (body, cls = "") => `<div class="chat-console-hang${cls}"><span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${body}</div></div>`;
+
+    // Desktop: the line never names the newest call; it counts them.
+    const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
+    const label = parts.join(", ") + stat + (working || thought && active ? "…" : "");
+    const title = label.replace(/<[^>]*>/g, "");
     const rows = group.items.map((item) => item.type === "think"
-      ? `<li class="chat-step is-console-thought" data-thought="${item.segmentIndex}">` +
-        `<span class="chat-step-node" aria-hidden="true"></span>` +
-        `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">Thought for ${deps.escapeHtml(ccThinkClock(item.ms, 0))}</span></div>` +
-        `<div class="chat-console-thought chat-think-markdown">${deps.renderMarkdown(item.text, false)}</div></div></li>`
-      : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
+      ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
+      : item.type === "live-think"
+        ? ccGroupHtml({ items: [], liveThought: item.segmentIndex }, msg, live, active, openMap, thinking)
+        : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     const state = active ? `is-running${errored ? " is-errored" : ""}` : "is-done";
     // A streaming thought: the transcript fills [data-reason-preview] and
     // keeps it pinned to the newest line (thinking-disclosure.js).
@@ -328,12 +297,16 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         : `<div class="chat-step-toggle" title="${title}"><span class="chat-step-label">${label}</span></div>`) + `</div>` +
       // A failed or interrupted member says so on its own row once the line
       // is opened; the folded line is only its summary.
-      (hintHtml ? hang(hintHtml, " is-group-hint") : "") +
       `<div class="chat-console-bundle"><ol class="chat-timeline">${rows}</ol></div>` +
       `</div></li>`
     );
   }
 
+// Desktop: all the work between two stretches of reply text is one grey
+// summary line ("Ran 2 shell commands, read 1 file ›") that counts the calls,
+// the newest included; it opens to one line per call, thoughts among them.
+// Only reply text ends a line. Subagent calls stay out: the agents pane
+// shows them.
 function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     const stepOpen = msg.stepOpen || {};
     const times = deps.consoleFreezeThoughtTimes(msg, live);
@@ -342,104 +315,80 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     segs.forEach((seg, index) => { if (seg && seg.type === "reasoning") lastReasonIndex = index; });
     const phase = deps.runPhase(msg);
     const streamingLast = Boolean(live && lastReasonIndex >= 0 && !segs.some((seg, index) => index > lastReasonIndex) && phase !== "calling" && phase !== "tools");
-    const rows = [];
-
-    let group = null;
-    let thinking = null;
-    const flush = () => {
-      if (group) rows.push(group);
-      group = null;
-    };
-    // Console: a running call (a background command too, for as long as its
-    // process runs), and while the block is live its newest call, print on
-    // their own row; a call folds into the line once it has ended and
-    // something newer (a thought, a call, text) has arrived. a terminal agent
-    // folds both; Fuse never hides a command that is still running.
-    let newest = -1;
-    if ((blockLive)) {
-      for (let k = entries.length - 1; k >= 0 && newest < 0; k -= 1) {
-        if (!(entries[k].type === "tool" && deps.ccToolClass(entries[k].trace)?.kind === "silent")) newest = k;
-      }
-    }
-    // A silent call (search_tools) stays hidden unless it was cut short: an
-    // interrupted one prints on its own row, saying what the run was doing.
-    // Desktop: a failed call stays on its own row too.
-    const holds = (entry, at, cls) => cls.kind === "silent" ? deps.toolPresentation(entry.trace, live).interrupted
-      : at === newest || deps.toolPresentation(entry.trace, live).running || deps.toolPresentation(entry.trace, live).failed;
+    const items = [];
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];
-      // Thinking hidden: thoughts neither print nor end a line; the status
-      // line says when the model is thinking.
-      if (entry.type === "reasoning" && !deps.showThinking) {
-        i += 1;
-        continue;
-      }
       if (entry.type === "reasoning") {
         const run = [entry];
         let j = i + 1;
         while (j < entries.length && entries[j].type === "reasoning") run.push(entries[j++]);
         i = j;
+        // Thinking hidden: the status line says when the model is thinking.
+        if (!deps.showThinking) continue;
         const last = run[run.length - 1];
-        const streamingThought = streamingLast && last.segmentIndex === lastReasonIndex;
-        // Console: a thought after calls ends the line, where a terminal agent
-        // ends one at narration (the API marks such thinking as narration).
-        const endsLine = (group) && group.items.some((item) => item.type === "tool") &&
-          (streamingThought || run.some((item) => String(item.text || "").trim()));
-        if (endsLine) {
-          group.endedByThought = true;
-          flush();
-        }
-        if (streamingThought) {
-          const clock = msg._thoughtClock || { liveStart: 0 };
-          thinking = { since: Date.now() - Math.max(0, (deps.liveElapsedSeconds(msg, live) || 0) * 1000 - (clock.liveStart || 0)) };
-          // Console: the line it ended stays settled, so the thought's
-          // clock runs on a line of its own (a terminal agent runs it on the
-          // live line, which a thought does not end there).
-          // Also after a call on its own row (running, or the newest one).
-          if (endsLine || ((!group))) rows.push({ items: [], liveThought: last.segmentIndex });
+        const key = `think-${last.segmentIndex}`;
+        if (streamingLast && last.segmentIndex === lastReasonIndex) {
+          items.push({ type: "live-think", key, segmentIndex: last.segmentIndex });
           continue;
         }
         const text = run.map((item) => String(item.text || "").trim()).filter(Boolean).join("\n\n");
-        if (!text) continue;
-        const key = `think-${last.segmentIndex}`;
-        (group ||= { items: [] }).items.push({ type: "think", key, text, ms: times[key] || 1000, segmentIndex: last.segmentIndex });
+        if (text) items.push({ type: "think", key, text, ms: times[key] || 1000, segmentIndex: last.segmentIndex });
         continue;
       }
       i += 1;
-      if (entry.type !== "tool") continue;
-      const key = deps.toolKey(entry.trace, entry.index);
+      if (entry.type !== "tool" || AGENT_TOOLS.has(entry.trace.name)) continue;
       const cls = deps.ccToolClass(entry.trace);
-      if (cls && !holds(entry, i - 1, cls)) {
-        (group ||= { items: [] }).items.push({ type: "tool", entry, cls, key });
-        continue;
-      }
-      flush();
-      // Console: subagents started together print as one block.
-      if ((entry.trace.name === "spawn_subagent")) {
-        const agents = [{ entry, key }];
-        while (i < entries.length && entries[i].type === "tool" && entries[i].trace.name === "spawn_subagent") {
-          const next = entries[i++];
-          agents.push({ entry: next, key: deps.toolKey(next.trace, next.index) });
-        }
-        if (agents.length > 1) {
-          rows.push({ agents });
-          continue;
-        }
-      }
-      rows.push({ entry, key });
+      // A silent call (search_tools) stays hidden unless it was cut short: an
+      // interrupted one says what the run was doing.
+      if (cls?.kind === "silent" && !deps.toolPresentation(entry.trace, live).interrupted) continue;
+      items.push({ type: "tool", entry, cls, key: deps.toolKey(entry.trace, entry.index) });
     }
-    flush();
-    const lastRow = rows[rows.length - 1];
-    return rows.map((row) => {
-      if (row.agents) return deps.ccAgentsGroupHtml(row.agents, live, stepOpen);
-      if (!row.items) return deps.toolStepHtml(row.entry.trace, row.key, live, deps.stepOpenAt(stepOpen, row.key), stepOpen);
-      const current = row === lastRow && !row.endedByThought;
-      // Console keeps calls off a live line, so only a thought makes it live.
-      const active = Boolean(blockLive && current && ((row.liveThought !== undefined)));
-      return ccGroupHtml(row, msg, live, active, stepOpen, current ? thinking : null);
-    }).join("");
+    const clock = msg._thoughtClock || { liveStart: 0 };
+    const thinking = { since: Date.now() - Math.max(0, (deps.liveElapsedSeconds(msg, live) || 0) * 1000 - (clock.liveStart || 0)) };
+    // No call yet: a thought is its own line, since the summary counts calls.
+    if (!items.some((item) => item.type === "tool")) {
+      return items.map((item) => item.type === "live-think"
+        ? ccGroupHtml({ items: [], liveThought: item.segmentIndex }, msg, live, Boolean(blockLive), stepOpen, thinking)
+        : thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
+    }
+    return ccGroupHtml({ items }, msg, live, Boolean(blockLive), stepOpen, thinking);
   }
+
+// A settled thought: one line ("Thought for 4s" and its first words) that
+// opens to the whole text, like a call row.
+function thoughtRowHtml(key, text, ms, segmentIndex, open) {
+    const line = `<span class="chat-console-call"><span class="chat-tool-action">Thought for ${deps.escapeHtml(ccThinkClock(ms, 0))}</span>` +
+      `<span class="dk-think-first">${deps.escapeHtml(deps.ccClip(deps.ccFlat(text), 300))}</span></span>`;
+    return (
+      `<li class="chat-step is-console-call is-dk-thought is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}" data-thought="${segmentIndex}">` +
+      `<span class="chat-step-node" aria-hidden="true"></span>` +
+      `<div class="chat-step-main">${deps.toolHeadHtml({ line, title: "", expandable: true, open })}` +
+      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-body-only${open ? " is-expanded" : ""}">` +
+      `<span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">` +
+      `<div class="chat-console-thought chat-think-markdown">${deps.renderMarkdown(text, false)}</div></div></div></div></div></div></li>`
+    );
+  }
+
+const AGENT_TOOLS = new Set(["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"]);
+
+// Calls the shell classes do not cover, counted on the summary line.
+const OTHER_KIND = {
+    read_url: "fetch", monitor: "monitor", get_command_output: "wait", kill_command: "stop", load_skill: "skill",
+    propose_skill: "draft", create_artifact: "artifact", update_artifact: "artifact", edit_artifact: "artifact",
+    read_artifact: "artifact-read", remember: "remember", recall: "recall", forget: "forget", scratch: "scratch",
+    read_transcript: "transcript", search_models: "models",
+  };
+const OTHER_WORDS = {
+    fetch: ["fetched", "fetching", "page", "pages"], web: ["ran", "running", "web search", "web searches"],
+    monitor: ["started", "starting", "monitor", "monitors"], wait: ["waited on", "waiting on", "command", "commands"],
+    stop: ["stopped", "stopping", "command", "commands"], skill: ["loaded", "loading", "skill", "skills"],
+    draft: ["drafted", "drafting", "skill", "skills"], artifact: ["built", "building", "artifact", "artifacts"],
+    "artifact-read": ["read", "reading", "artifact", "artifacts"], remember: ["saved", "saving", "memory", "memories"],
+    recall: ["recalled", "recalling", "memory", "memories"], forget: ["forgot", "forgetting", "memory", "memories"],
+    scratch: ["used", "using", "scratch note", "scratch notes"], transcript: ["read", "reading", "transcript", "transcripts"],
+    models: ["searched", "searching", "model list", "model lists"], tool: ["used", "using", "tool", "tools"],
+  };
 
 const CC_PR_VERBS = { created: "created", edited: "edited", merged: "merged", commented: "commented on", closed: "closed",
     reopened: "reopened", ready: "marked ready", draft: "marked draft", "auto-merge-enabled": "enabled auto-merge on",

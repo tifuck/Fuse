@@ -378,10 +378,8 @@ function consoleAutoStepsHtml(msg) {
     const out = [];
     for (let i = 0; i < traces.length; i += 1) {
       const trace = traces[i];
-      if (trace.agentReport) {
-        out.push(consoleAgentNoticeHtml(trace, "wake-" + (msg.id || "") + "-" + i));
-        continue;
-      }
+      // Subagent reports and calls show in the agents pane, not as rows here.
+      if (trace.agentReport || ["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"].includes(trace.name)) continue;
       if (trace.name === "monitor" && trace.backgroundResult && trace.status === "running") {
         out.push(consoleMonitorEventHtml(trace, "wake-" + (msg.id || "") + "-" + i));
         continue;
@@ -401,7 +399,7 @@ function consoleAutoStepsHtml(msg) {
         out.push(deps.consoleWakeNoticeHtml(trace));
         continue;
       }
-      out.push(deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null));
+      out.push(deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null, { oneLine: true }));
     }
     return out.join("");
   }

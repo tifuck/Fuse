@@ -296,7 +296,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     if ((running) && name === "run_terminal_command" && pending) {
       return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;
     }
-    const verb = deps.consoleVerb(name, trace);
+    const verb = sentenceVerb(deps.consoleVerb(name, trace), name, presentation);
     if (["todo_write", "list_subagents"].includes(name) || (name === "scratch" && !scratchAction(trace))) {
       // A bare call keeps the shared tail too: one clock and one host badge
       // per call, like every other row.
@@ -320,10 +320,10 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else if (name === "monitor") {
       inner = consoleArgText(trace.description || trace.url || displayCommand(trace) || "watch", 100);
     } else if ((name === "grep" || name === "glob")) {
-      // a terminal agent: Search(pattern: "x", path: "src")
+      // Searched "x" in src
       const pattern = consoleArgText(trace.pattern || trace.query || "", 80);
       const where = String(trace.path || "").trim();
-      inner = `pattern: "${pattern}"` + (where ? `, path: "${consoleArgText(compactPath(where, trace, 60), 60)}"` : "");
+      inner = `"${pattern}"` + (where ? ` in ${consoleArgText(compactPath(where, trace, 60), 60)}` : "");
     } else if (name === "read_url") {
       inner = consoleArgText(trace.url || "page", 100);
     } else if (isSearchTool(name)) {
@@ -352,6 +352,27 @@ function consoleCallHtml(trace, presentation, full = false) {
       ? `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${path ? deps.escapeHtml(inner).replace(/\//g, "/<wbr>") : deps.escapeHtml(inner)}</span><span class="chat-console-paren">)</span></span>`
       : `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>`;
     return call + hostHtml + clock;
+  }
+
+// A row reads as a sentence: settled calls in the past ("Read config.py"),
+// running ones as they happen ("Searching the web for …"), and a failed
+// one by what it tried ("Edit config.py").
+const VERB_FORMS = {
+  Read: ["Read", "Reading"], View: ["Viewed", "Viewing"], List: ["Listed", "Listing"], Write: ["Wrote", "Writing"],
+  Edit: ["Edited", "Editing"], Run: ["Ran", "Running"], Monitor: ["Watched", "Watching"], Wait: ["Waited for", "Waiting for"],
+  Stop: ["Stopped", "Stopping"], Search: ["Searched", "Searching"], "Web search": ["Searched the web for", "Searching the web for"],
+  Fetch: ["Fetched", "Fetching"], Skill: ["Loaded skill", "Loading skill"], Draft: ["Drafted skill", "Drafting skill"],
+  Todos: ["Updated todos", "Updating todos"], Remember: ["Remembered", "Remembering"], Recall: ["Recalled", "Recalling"],
+  Forget: ["Forgot", "Forgetting"], Tools: ["Loaded tools", "Loading tools"], Transcript: ["Read transcript", "Reading transcript"],
+  Models: ["Searched models", "Searching models"],
+};
+const ARTIFACT_VERBS = { create_artifact: "Create", update_artifact: "Update", edit_artifact: "Edit", read_artifact: "Read" };
+const ARTIFACT_FORMS = { Create: ["Created", "Creating"], Update: ["Updated", "Updating"], Edit: ["Edited", "Editing"], Read: ["Read", "Reading"] };
+function sentenceVerb(verb, name, presentation) {
+    const artifact = ARTIFACT_VERBS[name];
+    const forms = artifact ? ARTIFACT_FORMS[artifact] : VERB_FORMS[verb];
+    const word = !forms || presentation?.failed ? (artifact || verb) : forms[presentation?.running ? 1 : 0];
+    return artifact ? `${word} artifact` : word;
   }
 
 function scratchAction(trace) {

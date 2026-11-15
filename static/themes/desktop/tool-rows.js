@@ -142,6 +142,17 @@ function detailSectionHtml(label, value, kind = "", cap = 4000, command = "") {
       (characters.length > cap ? `<span class="chat-tool-truncated">Output truncated · showing ${deps.ccTokens(cap)} of ${deps.ccTokens(characters.length)} chars</span>` : "") + "</section>";
   }
 
+// The result after a row's object, worded so it does not repeat the verb:
+// "84 lines", "3 lines across 2 files", "+2 −1".
+function resultHtml(status) {
+    const text = String(status || "");
+    const edit = text.match(/^(?:Added (\d[\d,]*) lines?)?(?:, )?(?:[Rr]emoved (\d[\d,]*) lines?)?$/);
+    if (edit && (edit[1] || edit[2])) {
+      return [edit[1] && `<span class="dk-plus">+${edit[1]}</span>`, edit[2] && `<span class="dk-minus">−${edit[2]}</span>`].filter(Boolean).join(" ");
+    }
+    return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, ""));
+  }
+
 function toolRowLabel(trace) {
     const subject = deps.toolSubject(trace);
     return `${deps.toolAction(trace)}${subject ? ` · ${subject}` : ""}`;
@@ -167,7 +178,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     const icon = (failed ? deps.STEP_ICONS.error : interrupted ? deps.STEP_ICONS.stop : artifact ? deps.STEP_ICONS.artifact : deps.toolIcon(trace.name, false, false));
     {
       const verbose = Boolean(opts.verbose);
-      const fold = deps.consoleFold(trace, presentation, verbose);
+      const fold = deps.consoleFold(trace, presentation, verbose, opts.oneLine);
       // An opened summary line lists one-line rows: each opens its own output.
       const preview = verbose || opts.oneLine ? "" : fold.preview;
       inner = verbose || opts.oneLine ? fold.full || fold.preview : fold.full;
@@ -177,7 +188,19 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
         contextHost: "",
       });
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
-      const status = fold.status;
+      // A running one-line row already says what it is doing; its result
+      // only adds where (the background) or that it is being stopped.
+      // A non-zero exit Console prints as an error ("Error: Exit code 1")
+      // gets the red dot too; exit 1 from grep and friends stays finished.
+      const dotState = (presentation.state === "warning") && trace.name === "run_terminal_command" &&
+        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError ? "error" : presentation.state;
+      // A failure keeps its reason on the line too.
+      const exit = deps.shellExitCode(trace);
+      const status = opts.oneLine && running
+        ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Cancelling" ? "Cancelling…" : "")
+        : fold.status || (opts.oneLine && (failed || dotState === "error")
+          ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : String(trace.error || trace.summary || "failed").split("\n").find((line) => line.trim()) || "failed")
+          : "");
       // A pending call names its deadline at the end of the line under it
       // ("Waiting for output… (timeout: 2m)"), and that line exists even when
       // the call has nothing else to say yet. A fold that already printed the
@@ -187,10 +210,6 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // A fold with only its hidden body prints one line: the branch glyph
       // and the hang's margins wait for the open.
       const bodyOnly = !status && !preview;
-      // A non-zero exit Console prints as an error ("Error: Exit code 1")
-      // gets the red dot too; exit 1 from grep and friends stays finished.
-      const dotState = (presentation.state === "warning") && trace.name === "run_terminal_command" &&
-        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError ? "error" : presentation.state;
       return (
         `<li class="chat-step is-console-call is-${kind} is-${dotState}${hangOpen || verbose ? " is-console-expanded" : ""}${verbose ? " is-console-verbose" : ""}" style="--console-hang: ${deps.consoleVerb(trace.name, trace).length + 1}ch" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}" data-tool="${deps.escapeHtml(trace.name)}" data-state="${presentation.state}" data-step="${deps.escapeHtml(index)}">` +
         `<span class="chat-step-node" aria-hidden="true">${icon}</span>` +
@@ -201,7 +220,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang${running ? " is-running" : ""}${failed ? " is-error" : ""}${fold.keep ? " is-kept" : ""}${bodyOnly ? " is-body-only" : ""}${hangOpen ? " is-expanded" : ""}">` +
             `<span class="chat-console-branch" aria-hidden="true">└</span>` +
             `<div class="chat-console-hang-body">` +
-            (status || timeout ? `<span class="chat-console-result-text">${deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
+            (status || timeout ? `<span class="chat-console-result-text">${resultHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
             (inner ? inner : "") +
             `</div></div></div></div>`

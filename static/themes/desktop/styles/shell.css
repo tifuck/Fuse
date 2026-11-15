@@ -758,26 +758,26 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.is-empty .dk-hero { position: absolute; inset: calc(var(--chat-bar-h) + 6vh) 0 auto; z-index: 1; display: grid; place-items: center; pointer-events: none; }
   & .dk-mark { display: block; width: 44px; height: 44px; background: var(--dk-dim); -webkit-mask: url("../../../icon.svg") center / contain no-repeat; mask: url("../../../icon.svg") center / contain no-repeat; opacity: 0.6; }
 
-  /* ---- Live status: a neutral spinner, the clock and tokens ---- */
+  /* ---- Live status: one shimmering line, no spinner. The status word
+     leads; the clock and counts sit at the far end in fixed-width digits,
+     so a tick never moves the word and moves nothing while the digit
+     count holds. ---- */
   & .chat-live-dock { min-height: 22px; color: var(--dk-mute); font: 13px/22px var(--sans); }
-  & .chat-live-dock .chat-activity-spin {
-    flex: none;
-    box-sizing: border-box;
-    width: var(--console-col, 0.85rem);
-    height: var(--console-col, 0.85rem);
-    border: 1.6px solid color-mix(in srgb, var(--dk-mute) 30%, transparent);
-    border-top-color: var(--dk-text);
-    border-radius: 50%;
-    background: none;
-    animation: dk-spin 0.9s linear infinite;
+  & .chat-live-dock .chat-activity-spin { display: none; }
+  & .chat-live-dock .chat-status-shimmer { display: flex; flex: 1 1 auto; min-width: 0; font: inherit; font-style: normal; }
+  & .chat-live-dock [data-live-dock-label], & .chat-live-dock [data-agent-live-label] {
+    flex: 1 1 auto;
+    background: linear-gradient(100deg, var(--dk-mute) 40%, var(--dk-text) 50%, var(--dk-mute) 60%) 0 0 / 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: dk-shimmer 2.4s linear infinite;
   }
-  & .chat-live-dock .chat-activity-spin > * { display: none; }
-  & .chat-live-dock :is(.chat-status-verb, .chat-status-shimmer) { color: var(--dk-mute); font: inherit; background: none; -webkit-text-fill-color: currentColor; animation: none; }
-  & .chat-live-dock .chat-status-meta { margin-left: 6px; color: var(--dk-mute); font: 12px var(--sans); }
+  & .chat-live-dock .chat-status-verb { color: transparent; font: inherit; background: none; -webkit-text-fill-color: transparent; animation: none; }
+  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 12px; color: transparent; -webkit-text-fill-color: transparent; font: 12px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .chat-live-dock .chat-dock-dots { display: none; }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
-  @media (prefers-reduced-motion: reduce) { & .chat-live-dock .chat-activity-spin { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { animation: none; background-position: 50% 0; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
