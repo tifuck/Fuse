@@ -162,10 +162,28 @@ async def fake_title(request, user, model, text):
     return " ".join(words) or "New chat"
 
 
+def seed_qa_threads():
+    """FUSE_FIXTURE_QA_SEED=1: the QA login's fixture threads (scripts.dev_qa_account)
+    for user 1, so scripts/qa/theme_audit.py --fixture can screenshot a worktree's
+    own code without a dev server. A side seeder that fails here is skipped."""
+    from scripts import dev_qa_account as qa
+
+    for name in ("_seed_artifacts", "_seed_projects", "_seed_memory"):
+        def tolerant(uid, real=getattr(qa, name), name=name):
+            try:
+                real(uid)
+            except Exception as error:
+                print(f"QA seed: {name} skipped: {error!r}", flush=True)
+        setattr(qa, name, tolerant)
+    qa._seed(1)
+
+
 @asynccontextmanager
 async def lifespan(app):
     with isolated_database():
         db.execute("INSERT INTO users(id,email,password_hash,created_at) VALUES(1,'browser@test.invalid','unused',?)", (db.now(),))
+        if os.environ.get("FUSE_FIXTURE_QA_SEED") == "1":
+            seed_qa_threads()
         chat_runtime.stream_dashboard_chat = fake_model
         chat_runtime.api.invoke_chat = scripted_invoke
         chat_runtime.api._safe_record_usage = lambda *a, **k: None
