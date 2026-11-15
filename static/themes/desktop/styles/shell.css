@@ -20,13 +20,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-hover: color-mix(in srgb, var(--mist) 6%, transparent);
   --dk-text: var(--mist);
   --dk-mute: var(--mute);
-  --dk-dim: color-mix(in srgb, var(--mute) 62%, var(--ink));
+  --dk-dim: color-mix(in srgb, var(--mute) 92%, var(--ink));
   --dk-link: var(--steel);
   --dk-add: var(--ok);
   --dk-del: var(--fault);
   --dk-warn: #e3b341;
-  --dk-glass: blur(22px) saturate(1.35);
+  --dk-glass: blur(24px) saturate(1.1);
   --dk-shadow: none;
+  --dk-pop-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
   --chat-bar-h: 38px;
   --chat-history: 13.5rem;
   --chat-col: 44rem;
@@ -520,46 +521,57 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-insp .chat-live-todos { position: static; inset: auto; width: auto; max-width: none; margin: 0; padding: 6px 8px; border: 0; background: none; box-shadow: none; transform: none; font: 13px/1.45 var(--sans); }
   & .dk-insp .chat-live-todos[hidden] { display: none; }
 
-  /* ---- Composer: chips, the card, the footer row ---- */
+  /* ---- Composer: chips, then one card: the text row over the controls row ---- */
   & .chat-dock { padding: 4px 16px 10px; background: none; }
   & .dk-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; max-width: var(--chat-col); margin: 0 auto 6px; }
   & .dk-chips:not(:has(> :not([hidden]))) { display: none; }
-  & .dk-cchip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--dk-comp-line); border-radius: 12px; background: color-mix(in srgb, var(--dk-comp) 70%, transparent); color: var(--dk-mute); font: 12.5px var(--sans); }
+  & .dk-cchip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--dk-comp-line); border-radius: 12px; background: var(--dk-comp); color: var(--dk-mute); font: 12.5px var(--sans); }
   & .dk-cchip[hidden] { display: none; }
   & .chat-dock .dk-box {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: stretch;
+    gap: 0;
     width: 100%;
     max-width: var(--chat-col);
     margin: 0 auto;
-    margin-inline: auto;
-    padding: 6px;
+    padding: 4px 6px 6px;
     border: 1px solid var(--dk-comp-line);
-    border-radius: 14px;
+    border-radius: 12px;
     background: var(--dk-comp);
     box-shadow: var(--dk-shadow);
+    /* No filter here: it would contain the popovers and sheets inside the card. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
   & .dk-box::before,
   & .dk-box::after { content: none; }
-  & .dk-box:focus-within { border-color: color-mix(in srgb, var(--dk-mute) 45%, var(--dk-comp-line)); }
-  & .dk-row1 { display: flex; flex-direction: row; align-items: flex-end; align-self: stretch; gap: 2px; width: 100%; min-width: 0; }
-  & :is(.dk-group-l, .dk-group-r) { display: flex; flex: none; align-items: center; gap: 2px; height: 32px; }
-  & :is(.dk-group-l, .dk-group-r) > * { order: 0; grid-area: auto; margin: 0; }
-  & .dk-compose { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
-  & .dk-compose textarea,
-  & .dk-compose .chat-compose-mirror { min-height: 32px; max-height: 12rem; padding: 6px 6px; color: var(--dk-text); font: 14.5px/20px var(--sans); }
-  & .dk-compose textarea { width: 100%; border: 0; outline: 0; background: none; resize: none; }
-  & .dk-compose textarea::placeholder { color: var(--dk-dim); }
+  & .dk-box:focus-within {
+    border-color: color-mix(in srgb, var(--dk-text) 40%, var(--dk-comp-line));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), var(--dk-shadow);
+  }
+  & .dk-row1 { display: block; min-width: 0; }
+  & .dk-compose { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
+  /* The spell mirror shares every metric with the textarea and paints only its marks. */
+  & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 36px; max-height: min(40dvh, 18rem); padding: 6px 8px; font: 14.5px/24px var(--sans); letter-spacing: 0; text-rendering: optimizeLegibility; }
+  & .dk-compose textarea { display: block; width: 100%; border: 0; outline: 0; background: none; resize: none; color: var(--dk-text); scrollbar-width: thin; scrollbar-color: var(--dk-comp-line) transparent; }
+  & .dk-compose .chat-compose-mirror { color: transparent; }
+  & .dk-compose textarea::placeholder { color: var(--dk-mute); opacity: 1; }
+  body.is-keyboard & .dk-compose :is(textarea, .chat-compose-mirror) { max-height: min(18rem, calc(var(--vv-height, 100dvh) * 0.24)); }
+  & .dk-row2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; min-width: 0; }
+  & :is(.dk-group-l, .dk-group-r) { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  & .dk-group-l { flex: 0 1 auto; }
+  & .dk-group-r { flex: 1 1 auto; justify-content: flex-end; }
+  & :is(.dk-group-l, .dk-group-r) > * { order: 0; grid-area: auto; align-self: center; margin: 0; }
   & .dk-tb { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border-radius: 7px; color: var(--dk-mute); font-size: 12.5px; white-space: nowrap; }
   & .dk-tb.is-icon { justify-content: center; width: 28px; padding: 0; }
   & .dk-send {
     display: grid;
     place-items: center;
     flex: none;
-    width: 30px;
-    height: 30px;
-    margin-left: 2px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: 0;
     border-radius: 50%;
@@ -567,24 +579,30 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-canvas);
     cursor: pointer;
   }
-  & .dk-send:disabled { background: color-mix(in srgb, var(--dk-text) 12%, transparent); color: var(--dk-dim); cursor: default; }
+  & .dk-send:disabled { background: color-mix(in srgb, var(--dk-text) 12%, transparent); color: var(--dk-mute); cursor: default; }
   & .dk-send.is-stop { background: var(--dk-text); color: var(--dk-canvas); }
   & .dk-send.is-stop svg { display: none; }
   & .dk-send.is-stop::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-  & .dk-under { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; max-width: var(--chat-col); min-width: 0; margin: 6px auto 0; }
-  & :is(.dk-under-l, .dk-under-r) { display: flex; align-items: center; gap: 2px; min-width: 0; }
-  & .dk-under-r { justify-content: flex-end; }
-  & .dk-perm { position: relative; display: flex; }
-  & .dk-tb[data-perm-chip] { height: 24px; padding: 0 10px; border: 1px solid var(--dk-comp-line); border-radius: 12px; color: var(--dk-mute); font: 500 12px var(--sans); }
+  /* The permission mode is quiet text naming the mode; Bypass alone takes the warn colour. */
+  & .dk-perm { position: static; display: flex; min-width: 0; }
+  & .dk-tb[data-perm-chip] { min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 12.5px var(--sans); }
   & .dk-tb[data-perm-chip] svg { display: none; }
-  & .dk-tb[data-perm-chip].is-on { border-color: color-mix(in srgb, var(--dk-warn) 45%, transparent); background: color-mix(in srgb, var(--dk-warn) 12%, transparent); color: var(--dk-warn); }
-  & .dk-model { display: flex; min-width: 0; }
+  & .dk-tb[data-perm-chip]:is(:not(.is-on), .is-auto) [data-perm-chip-label] { display: none; }
+  & .dk-tb[data-perm-chip]:not(.is-on)::after { content: "Ask"; }
+  & .dk-tb[data-perm-chip].is-auto::after { content: "Auto approve"; }
+  & .dk-tb[data-perm-chip].is-bypass { color: var(--dk-warn); }
+  & .dk-tb[data-perm-chip]:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
+  & .dk-tb[data-perm-chip].is-bypass:is(:hover, [aria-expanded="true"]) { color: var(--dk-warn); }
+  /* Popovers rise from the card top inside the column: perms from the card's left edge, context from its right. */
+  & .dk-perm .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }
+  & .dk-model { position: relative; flex: 0 1 auto; min-width: 0; max-width: none; margin: 0; }
   & .dk-model .chat-picker-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    height: 26px;
-    max-width: 18rem;
+    min-width: 0;
+    max-width: 100%;
+    height: 28px;
     padding: 0 8px;
     border: 0;
     border-radius: 7px;
@@ -593,17 +611,50 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 500 12.5px var(--sans);
     white-space: nowrap;
   }
-  & .dk-model .chat-picker-btn:hover { background: var(--dk-hover); color: var(--dk-text); }
-  & .dk-model .chat-picker-btn small { color: var(--dk-dim); font: 12.5px var(--sans); }
+  & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
+  & .dk-model .chat-picker-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
+  & .dk-model .chat-picker-btn > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .dk-model .chat-picker-btn > small { display: inline; flex: none; color: var(--dk-mute); font: 400 12.5px var(--sans); }
+  & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) > small { color: inherit; }
+  & .dk-model .chat-picker-btn > small:not(:empty)::before { content: "· "; }
+  & .dk-model .chat-picker-btn > svg { flex: none; }
   & .dk-model .chat-picker-btn .provider-logo { display: none; }
-  & .dk-ring-wrap { position: relative; display: flex; }
+  & .dk-ring-wrap { position: static; display: flex; flex: none; }
   & .dk-ring-wrap[hidden] { display: none; }
-  & .dk-ring { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; cursor: pointer; }
-  & .dk-ring:hover { background: var(--dk-hover); }
+  & .dk-ring-wrap .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
+  & .dk-ring { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); cursor: pointer; }
+  & .dk-ring:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); }
+  & .dk-ring:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .dk-ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
-  & .dk-ring-track { stroke: var(--dk-comp-line); stroke-width: 4; }
-  & .dk-ring-fill { stroke: var(--dk-mute); stroke-width: 4; stroke-linecap: round; }
+  & .dk-ring-track { stroke: color-mix(in srgb, var(--dk-mute) 35%, transparent); stroke-width: 4; }
+  & .dk-ring-fill { stroke: var(--dk-text); stroke-width: 4; stroke-linecap: round; }
   &.dk-running .dk-ring svg { animation: dk-spin 1.4s linear infinite; }
+  /* Above the card at its width: queue, permission requests, the slash menu and the context alert. */
+  & :is(.chat-queue, .chat-perm-queue, .chat-slash, .chat-context-alert) { box-sizing: border-box; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
+  & .chat-queue { margin-block: 0 6px; padding: 6px 10px; border: 1px solid var(--dk-card-line); border-radius: 10px; background: var(--dk-card); }
+  & .chat-queue-kicker { position: static; margin: 0 0 2px; padding: 0; color: var(--dk-mute); font: 500 12px var(--sans); writing-mode: horizontal-tb; transform: none; text-transform: none; }
+  & .chat-queue-kicker::before, & .chat-queue-kicker::after { display: none; }
+  & .chat-context-alert-dismiss { min-height: 28px; padding: 0 8px; }
+  & .chat-perm-card { border-radius: 12px; background: var(--dk-card); font-family: var(--sans); }
+  & :is(.chat-perm-card-cmd, .chat-perm-card-grant) { border-radius: 8px; }
+  & .chat-perm-act { min-height: 28px; border-radius: 8px; font: 500 12.5px var(--sans); }
+  & .chat-perm-always .is-allow { border-radius: 8px 0 0 8px; }
+  & .chat-perm-always .is-allow:only-child { border-radius: 8px; }
+  & .chat-perm-act.is-split { border-radius: 0 8px 8px 0; }
+  @media (max-width: 800px), (pointer: coarse) {
+    & .chat-dock .dk-box { padding-inline: 4px; }
+    & .dk-compose :is(textarea, .chat-compose-mirror) { font-size: 16px; }
+    & .dk-row2 { height: 36px; }
+    & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
+    & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
+    & .dk-send { width: 32px; height: 32px; }
+    & .chat-perm-act { min-height: 36px; }
+    & .chat-context-alert button { min-height: 36px; }
+  }
+  @media (max-width: 480px) {
+    & :is(.dk-group-l, .dk-group-r) { gap: 0; }
+    & .dk-model .chat-picker-btn { padding-inline: 4px; }
+  }
   /* Empty session: Fuse's mark, centered; the composer at the bottom. */
   & .dk-hero { display: none; }
   & .dk-welcome { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -634,21 +685,74 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
-  & .chat-library-tile { position: static; display: flex; flex-direction: row; align-items: center; gap: 8px; height: 30px; min-height: 0; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 13.5px var(--sans); text-align: left; }
+  & .chat-library-tile { position: static; display: flex; flex-direction: row; align-items: center; gap: 8px; height: 32px; min-height: 0; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 13.5px var(--sans); text-align: left; }
   & .chat-library-tile:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .chat-library-tile > * { position: static; margin: 0; }
   & .chat-library-tile svg { flex: none; width: 15px; height: 15px; color: var(--dk-dim); }
   & .chat-library-tile-name { flex: 1; font: inherit; text-align: left; }
-  & .chat-library-tile-count { align-self: center; margin: 0; padding: 0; color: var(--dk-dim); font: 11px/1 var(--mono); }
+  & .chat-library-tile-count { align-self: center; margin: 0; padding: 0; color: var(--dk-mute); font: 11.5px/1 var(--sans); }
+  @media (max-width: 480px) { & .chat-library-tile { height: 40px; } }
 
   /* ---- Popovers and sheets: rounded cards ---- */
-  & :is(.chat-picker-menu, .chat-perms-menu, .chat-context-pop, .chat-slash, .chat-pop) { border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); box-shadow: 0 14px 36px rgb(0 0 0 / 0.4); }
-  & :is(.chat-sheet, .chat-view-menu, .chat-library-sheet) { border: 1px solid var(--dk-card-line); border-radius: 14px; background: var(--dk-card); box-shadow: 0 20px 52px rgb(0 0 0 / 0.45); }
-  & :is(.chat-sheet-head p, .chat-view-sheet-title) { color: var(--dk-text); font: 600 15px var(--sans); letter-spacing: 0; text-transform: none; }
-  & :is(.chat-sheet-head span, .chat-view-sheet-sub, .chat-context-desc) { color: var(--dk-mute); font: 12.5px var(--sans); }
-  & .chat-context-tab { border-radius: 6px; font: 500 12.5px var(--sans); }
+  & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) {
+    border: 1px solid var(--dk-card-line);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--dk-card) 96%, transparent);
+    -webkit-backdrop-filter: var(--dk-glass);
+    backdrop-filter: var(--dk-glass);
+    box-shadow: var(--dk-pop-shadow);
+    color: var(--dk-text);
+  }
+  & :is(.chat-sheet, .chat-library-sheet) { border: 1px solid var(--dk-card-line); border-radius: 14px; background: var(--dk-card); box-shadow: 0 20px 52px rgb(0 0 0 / 0.45); }
+  & :is(.chat-picker-menu, .chat-perms-menu).is-sheet { border-color: var(--dk-card-line); background: var(--dk-card); color: var(--dk-text); }
+  & :is(.chat-sheet-head p, .chat-picker-head p, .chat-context-pop-kicker) { margin: 0; color: var(--dk-text); font: 600 14px/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
+  & :is(.chat-sheet-head span, .chat-context-desc) { color: var(--dk-mute); font: 12.5px var(--sans); }
+  & .chat-menu-close { display: grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--dk-mute); }
+  & .chat-menu-close:hover { background: var(--dk-hover); color: var(--dk-text); }
+  & .chat-context-tab { min-height: 28px; border-radius: 6px; font: 500 12.5px var(--sans); }
   & .chat-memory-field textarea { border-radius: 8px; font: 13.5px/1.5 var(--sans); }
-  & :is(.chat-slash-item, .chat-picker-row, .chat-perms-row) { border-radius: 7px; font-family: var(--sans); }
+  & .chat-context-pop.is-warn .chat-context-pop-pct { color: var(--dk-warn); }
+  & .chat-context-pop-foot .btn { min-height: 28px; }
+  /* Slash menu: the card's width; unavailable commands stay readable, the key carries the state. */
+  & .chat-slash-kicker { color: var(--dk-mute); font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; }
+  & .chat-slash-item { min-height: 32px; border-radius: 8px; box-shadow: none; font-family: var(--sans); }
+  & .chat-slash-item:is(:hover, .is-active) { background: var(--dk-sel); box-shadow: none; }
+  & .chat-slash-item kbd { color: var(--dk-text); font: 500 12.5px var(--mono); }
+  & .chat-slash-item span { color: var(--dk-mute); font-size: 12.5px; }
+  & .chat-slash-item.is-off { opacity: 1; }
+  & .chat-slash-item.is-off kbd { color: var(--dk-mute); font-weight: 400; }
+  /* Model picker: the star owns a column, the rows are 32px (44px in the sheet). */
+  & .chat-picker-group > p,
+  & .chat-picker-thinking-label { color: var(--dk-mute); font: 500 11px/1.2 var(--sans); letter-spacing: 0; text-transform: none; }
+  & .chat-picker-row { display: grid; grid-template-columns: var(--star-col) minmax(0, 1fr); border-radius: 8px; }
+  & .chat-picker-row:has(> [role="option"]:is(:hover, .is-active)) { background: var(--dk-hover); }
+  & .chat-picker-row > [role="option"] { grid-area: 1 / 2; min-height: 32px; padding: 4px 10px 4px 0; border-radius: 0 8px 8px 0; background: none; box-shadow: none; color: var(--dk-text); font: 13px/1.25 var(--sans); }
+  & .chat-picker-row > [role="option"]:is(:hover, .is-active) { background: none; box-shadow: none; }
+  & .chat-picker-row > [role="option"].is-selected > span { color: var(--dk-text); font-weight: 600; }
+  & .chat-picker-row > .chat-picker-star { position: static; grid-area: 1 / 1; width: auto; min-height: 0; }
+  & .chat-picker-meta { color: var(--dk-mute); font: 11.5px/1 var(--sans); }
+  & .chat-picker-menu.is-sheet .chat-picker-list { --star-col: 40px; }
+  & .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] { min-height: 44px; padding-left: 0; font-size: 15px; }
+  & .chat-picker-thinking-value { color: var(--dk-text); font: 12px/1 var(--sans); letter-spacing: 0; }
+  & .chat-picker-kbd { border-radius: 4px; }
+  /* Ranges: a 28px hit area, a 4px track and a 14px round thumb. */
+  & .chat-picker-efforts { --effort-thumb: 14px; --effort-track: 4px; }
+  & .chat-picker-efforts-slider { height: 28px; }
+  & .chat-picker-efforts-slider::-webkit-slider-runnable-track { border-radius: 2px; background: linear-gradient(to right, var(--dk-text) var(--effort-fill), var(--dk-card-line) var(--effort-fill)); }
+  & .chat-picker-efforts-slider::-moz-range-track { height: var(--effort-track); border-radius: 2px; background: var(--dk-card-line); }
+  & .chat-picker-efforts-slider::-moz-range-progress { height: var(--effort-track); border-radius: 2px; background: var(--dk-text); }
+  & .chat-picker-efforts-slider::-webkit-slider-thumb { border-radius: 50%; border-color: var(--dk-card); background: var(--dk-text); box-shadow: none; }
+  & .chat-picker-efforts-slider::-moz-range-thumb { border-radius: 50%; border-color: var(--dk-card); background: var(--dk-text); box-shadow: none; }
+  & .chat-picker-efforts-slider:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
+  & .chat-picker-menu.is-sheet .chat-picker-efforts-slider { height: 44px; }
+  & :is(.chat-perms-row, .chat-perms-x, .chat-perms-modes, .chat-perms-modes button) { border-radius: 8px; font-family: var(--sans); }
+  & .chat-perms-modes button { min-height: 28px; }
+  & .chat-perms-row { min-height: 32px; }
+  @media (max-width: 480px) {
+    & .chat-menu-close { width: 40px; height: 40px; }
+    & :is(.chat-slash-item, .chat-perms-row, .chat-context-pop-foot .btn, .chat-context-tab, .chat-perms-modes button) { min-height: 40px; }
+    & :is(.chat-skills, .chat-memory) :is(button, .btn, input:not([type="checkbox"])) { min-height: 40px; }
+  }
 
   /* ---- Inside a subagent on a narrow screen: the Tasks card inline under the top bar ---- */
   @media (max-width: 1039.98px) {
@@ -717,8 +821,10 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
   --dk-card-line: color-mix(in srgb, var(--ink) 86%, var(--mist));
   --dk-sel: color-mix(in srgb, var(--ink) 88%, var(--mist));
   --dk-hover: color-mix(in srgb, var(--mist) 6%, transparent);
-  --dk-dim: color-mix(in srgb, var(--mute) 70%, var(--ink));
+  --dk-mute: color-mix(in srgb, var(--mute) 85%, var(--mist));
+  --dk-dim: color-mix(in srgb, var(--mute) 92%, var(--ink));
   --dk-shadow: 0 2px 10px rgb(0 0 0 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.02);
+  --dk-pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12);
   --dk-warn: #9a6700;
   & .dk-sun .dk-sun-i { display: none; }
   & .dk-sun .dk-moon-i { display: block; }
@@ -737,43 +843,44 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
   --dk-card-line: #252525;
   --dk-sel: #232323;
   --dk-text: #e6e6e6;
-  --dk-mute: #8b8b8b;
-  --dk-dim: #5f5f5f;
+  --dk-mute: #959595;
+  --dk-dim: #8a8a8a;
   --dk-link: #4c9bff;
   --dk-add: #3fb950;
   --dk-del: #f85149;
 }
 
-/* ---- Over a wallpaper: the window goes see-through, the chrome frosted ---- */
-html[data-chat-view="desktop"]:is([data-chat-backdrop]):not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
+/* ---- Over a wallpaper: one frosted layer, no text shadows ----
+   The transcript column and the dock sit on the palette's canvas at 92%;
+   the chrome at 96%. The wallpaper shows in the gutters. Both values hold
+   when the palette's scheme differs from the wallpaper's. */
+html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
+  --dk-veil-a: 92%;
+  --dk-chrome-a: 96%;
+  --dk-veil: color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent);
   background: transparent;
-  & :is(.dk-head, .chat-dock, .chat-stage, .chat-thread) { background: transparent; }
-  & .dk-side {
-    background: color-mix(in srgb, var(--dk-side) 55%, transparent);
+  & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
+  & .chat-log { position: relative; }
+  & :is(.chat-log, .chat-dock)::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--dk-veil);
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);
   }
-  & .dk-head {
-    background: color-mix(in srgb, var(--dk-canvas) 38%, transparent);
-    -webkit-backdrop-filter: var(--dk-glass);
-    backdrop-filter: var(--dk-glass);
-  }
-  & :is(.dk-box, .dk-card, .chat-latest) {
-    background: color-mix(in srgb, var(--dk-comp) 62%, transparent);
-    -webkit-backdrop-filter: var(--dk-glass);
-    backdrop-filter: var(--dk-glass);
-  }
-  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-canvas) 30%, transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & .dk-cchip { background: color-mix(in srgb, var(--dk-comp) 55%, transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  /* Text over the art keeps a soft shadow so it reads. */
-  & :is(.chat-log, .chat-live-dock) { text-shadow: 0 1px 2px rgb(0 0 0 / 0.65), 0 0 12px rgb(0 0 0 / 0.35); }
-  & .chat-turn.is-user .chat-bubble, & .chat-code, & .chat-md code { text-shadow: none; }
+  & .chat-log::before { inset: -14px -12px -28px; border-radius: 14px; }
+  & .chat-dock::before { inset: -6px -12px 0; border-radius: 14px 14px 0 0; }
+  @media (max-width: 1100px) { & :is(.chat-log, .chat-dock)::before { inset-inline: 0; } }
+  & .dk-side { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .dk-head { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.chat-dock .dk-box, .dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-chrome-a), transparent); }
+  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-canvas) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
 }
-html[data-chat-view="desktop"][data-chat-scheme="light"]:is([data-chat-backdrop]):not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  & .dk-side { background: rgb(255 255 255 / 0.45); }
-  & .dk-head { background: rgb(255 255 255 / 0.3); }
-  & :is(.dk-box, .dk-card) { background: rgb(255 255 255 / 0.82); }
-  & :is(.chat-log, .chat-live-dock) { text-shadow: 0 0 2px rgb(255 255 255 / 0.9), 0 0 14px rgb(255 255 255 / 0.6); }
+@media (prefers-reduced-transparency: reduce) {
+  html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; }
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }

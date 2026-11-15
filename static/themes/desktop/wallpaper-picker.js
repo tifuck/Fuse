@@ -1,8 +1,22 @@
 // Desktop's /theme picker: a translucent rounded card above the composer with a /theme chip, the title, the keys on the right and a row of thumbnails with names and a check on the current one.
 // The runtime (chat/composer/wallpapers.js) owns the items, the keys and the
 // choice; every card carries data-wallpaper-card and a FuseBackdrop preview.
+let outsideBound = false;
+
+// A press outside the open strip closes it, through its own × so the runtime closes it as it does for that button.
+function bindOutsideClose() {
+  if (outsideBound || typeof document === "undefined") return;
+  outsideBound = true;
+  document.addEventListener("pointerdown", (event) => {
+    const host = document.querySelector("[data-wallpaper-picker]:not([hidden])");
+    if (!host || host.contains(event.target) || event.target.closest?.("[data-chat-input]")) return;
+    host.querySelector("[data-wallpaper-close]")?.click();
+  }, true);
+}
+
 export function create(deps) {
   const esc = (value) => deps.escapeHtml(String(value ?? ""));
+  bindOutsideClose();
 
   function wallpaperPickerHtml({ items, index, current }) {
     const cards = items.map((item, i) => {

@@ -35,7 +35,7 @@ function permQueueCardHtml(rec) {
       ? `<span class="chat-perm-card-agent is-sub">Subagent</span><span class="chat-perm-card-who">${deps.escapeHtml(rec.requester)}</span>`
       : `<span class="chat-perm-card-agent">Main</span>`;
     const bits = [copy.action, copy.host, copy.why].filter(Boolean);
-    const meta = bits.length ? `<span class="chat-perm-card-meta">${deps.escapeHtml(bits.join(" · "))}</span>` : "";
+    const meta = bits.length ? `<span class="chat-perm-card-meta" title="${deps.escapeHtml(bits.join(" · "))}">${deps.escapeHtml(bits.join(" · "))}</span>` : "";
     const grant = copy.path
       ? `<p class="chat-perm-card-grant"><span class="chat-perm-card-kind">${deps.escapeHtml(copy.noun)}</span><span class="mono chat-perm-card-path" title="${deps.escapeHtml(copy.path)}">${deps.escapeHtml(copy.path)}</span></p>`
       : "";

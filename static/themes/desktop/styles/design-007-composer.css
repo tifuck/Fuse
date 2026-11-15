@@ -195,18 +195,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box .chat-attach-icon { justify-content: center; width: 1.25rem; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box .chat-attach-chip [data-remove-attach] { position: static; flex: 0 0 auto; width: 1.25rem; height: 1.25rem; }
 
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-pop,
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-picker-menu,
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-context-pop {
-  border-radius: 0;
-  box-shadow: none;
-  background: var(--ink);
-  border: 1px solid var(--line);
-}
-
-/* Slash menu: as wide as its rows need, not the whole page; Tab means
-   nothing on a touch keyboard. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-slash { max-width: 42rem; }
+/* Tab means nothing on a touch keyboard. */
 
 @media (hover: none) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-slash-kicker span { display: none; }
