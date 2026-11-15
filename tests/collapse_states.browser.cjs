@@ -100,9 +100,9 @@ const check = (value, message) => { assert.ok(value, message); checks++; };
             if (status === 'done') check(!(await r.innerText()).includes(want), `${tag} ${status} the member row hides its output until opened`);
             if (await own.count()) await own.click();
             check((await r.innerText()).includes(want), `${tag} ${status} the opened member shows ${want}`);
-            const box = await r.locator(':scope > .chat-step-node').boundingBox();
-            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-            check(await page.locator('.is-console-group.is-console-expanded').count() === 0, `${tag} ${status} clicking the member's gutter folds the summary`);
+            const box = await page.locator('.is-console-group .chat-console-bundle').first().boundingBox();
+            await page.mouse.click(box.x + 2, box.y + 4);
+            check(await page.locator('.is-console-group.is-console-expanded').count() === 0, `${tag} ${status} clicking the members' rail folds the summary`);
             continue;
           }
           // Inside an opened console summary a settled call is printed in full,

@@ -250,7 +250,7 @@ const groupGrid = () => {
       await groupToggle().click();
       check((await groupState()).open, 'opening the summary');
       // The user folds it back with a click on its printed calls.
-      await page.locator('.chat-log li.is-console-group .chat-console-bundle .chat-step-node').first().click({ force: true });
+      await page.locator('.chat-log li.is-console-group .chat-console-bundle').first().click({ position: { x: 2, y: 4 } });
       check(!(await groupState()).open, 'a click on the printed calls folds the summary');
       await page.reload();
       await page.waitForFunction(() => window.fuseToolFixture);
@@ -289,7 +289,7 @@ const groupGrid = () => {
       let s = await snap();
       check(s.groups[0].expanded, 'output landing in an open summary leaves it open');
       check(s.groups[0].members.length === 2 && !s.dupes.length, `the update added no rows: ${s.groups[0].members.join()}`);
-      await page.locator('.chat-log li.is-console-group .chat-console-bundle .chat-step-node').first().click({ force: true });
+      await page.locator('.chat-log li.is-console-group .chat-console-bundle').first().click({ position: { x: 2, y: 4 } });
       check(!(await groupState()).open, 'folding it before more output arrives');
       await page.evaluate(() => fuseToolFixture.update('s2', { output: '1: y\n2: STREAMED_TWO\n' }, true));
       s = await snap();
@@ -337,7 +337,7 @@ const groupGrid = () => {
       await page.evaluate(() => fuseToolFixture.update('f1', { output: '1: x\n2: x2\n' }, true));
       let s = await snap();
       check(s.groups[0].members.join() === 'tool-f1', `the live block holds its newest call out: ${s.groups[0].members.join()}`);
-      await page.locator('.chat-log li.is-console-group .chat-console-bundle .chat-step-node').first().click({ force: true });
+      await page.locator('.chat-log li.is-console-group .chat-console-bundle').first().click({ position: { x: 2, y: 4 } });
       check(!(await groupState()).open, 'the user folds the summary');
       // The line settles again and the held-out call rejoins it.
       await page.evaluate(({ segments }) => fuseToolFixture.stream(1, { content: 'Done.', segments }), {

@@ -158,14 +158,21 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-hang.is-expanded .chat-console-out { max-height: min(16rem, 40vh); }
 
-/* Folded work: one muted line, the chevron after it ("Ran 2 commands ▸"),
-   its text on the call verbs' column. Unfolded: a ruled column, no band. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-node { visibility: hidden; overflow: hidden; }
+/* One left edge: no row carries a leading glyph or gutter, so every line
+   starts where the prose does. The bold verb names the call; its colour
+   carries the state the icon used to. Nested rows sit on one rail. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step:is(*, .is-console-call, .is-console-group, .is-console-thought, .is-console-notice) > .chat-step-node { display: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step > :not(.chat-step-node) { grid-column: 1 / -1 !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-running .chat-tool-action { color: var(--call-live); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-error .chat-tool-action { color: var(--call-fail); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call:is(.is-interrupted, .is-warning) .chat-tool-action { color: var(--call-idle); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-red .chat-console-notice-text { color: var(--call-fail); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-gold .chat-console-notice-text { color: var(--call-idle); }
+
+/* Folded work: one muted line, the chevron after it ("Ran 2 commands ▸").
+   Unfolded: a ruled column, no band. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group { padding-block: 0; background: none; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group.is-console-expanded { grid-template-columns: var(--console-col) minmax(0, 1fr); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group.is-console-expanded > .chat-step-main { grid-column: 2; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-agents > .chat-step-node { visibility: visible; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group.is-console-agents.is-console-expanded > .chat-step-node { display: grid !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-agents:not(.is-console-expanded) .chat-console-agent-tree { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle { color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle:hover { color: var(--dk-text, var(--mist)); }
@@ -188,8 +195,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-plus { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-minus { color: var(--dk-del, var(--fault)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle {
-  margin: 0.05rem 0 0.2rem 0.18rem;
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-bundle, .chat-console-agent-tree, .is-agent-report .chat-console-hang-body) {
+  margin: 0.05rem 0 0 0.18rem;
   padding-left: 0.7rem;
   border-left: 1px solid var(--line);
 }
@@ -246,7 +253,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md th { color: var(--dk-mute); font-weight: 500; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code { border-color: var(--dk-card-line, var(--line)); border-radius: 10px; background: var(--dk-card, var(--panel)); }
 
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle { border-left-color: var(--dk-card-line, var(--line)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-bundle, .chat-console-agent-tree, .is-agent-report .chat-console-hang-body) { border-left-color: var(--dk-card-line, var(--line)); }
 
 /* Call rows: bold verb, the argument in a mono chip, diff rows in colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call .chat-tool-action { color: var(--dk-text, var(--mist)); font-weight: 600; }
@@ -268,11 +275,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    them inherit the row's colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.15rem; font-size: calc(0.76rem * var(--chat-text-scale, 1)); color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 2px; }
+/* The first icon's glyph, not its button, starts on the prose edge. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn > .dk-acts:first-child { margin-left: -7px; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { margin-left: 0.4rem; color: var(--dk-mute, var(--mute)); }
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { width: 36px; height: 36px; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn > .dk-acts:first-child { margin-left: -11px; }
 }
 @media (max-width: 480px) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { flex-wrap: nowrap; min-width: 0; }
@@ -313,7 +323,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > button.chat-step-open:not(.is-empty):hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
 
 /* Agent trees: children quieter than their launch line, focusable. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-tree { padding-left: 1rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-sub .chat-console-dim > [aria-hidden] { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-name { color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-name b { color: var(--dk-text, var(--mist)); font-weight: 500; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent[data-open-agent]:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; border-radius: 4px; }

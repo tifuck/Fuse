@@ -207,17 +207,19 @@ function scenarios() {
             samples.push(targets.map((el) => parseFloat(getComputedStyle(el).fontSize)));
             // The status line is a row like the call above it: its glyph sits on
             // the dot column and its text starts where the call's text starts, in
-            // the same type, at every text size.
+            // the same type, at every text size. A theme whose rows have no dot
+            // column (Desktop) starts the glyph on the rows' edge, text after it.
             const row = document.querySelector(`.chat-step.is-console-call[data-step="tool-${call.id}"]`);
             const dot = row && row.querySelector(':scope > .chat-step-node');
             const head = row && (row.querySelector('.chat-console-call') || row.querySelector('.chat-step-label'));
             const glyph = dock.querySelector('.chat-activity-spin');
             const box = (el) => el.getBoundingClientRect();
+            const gutter = dot && dot.getClientRects().length > 0;
             if (row && dot && head && glyph) {
               aligned.push({
                 size,
-                glyph: Math.abs(box(glyph).left + box(glyph).width / 2 - (box(dot).left + box(dot).width / 2)),
-                text: Math.abs(box(label).left - box(head).left),
+                glyph: gutter ? Math.abs(box(glyph).left + box(glyph).width / 2 - (box(dot).left + box(dot).width / 2)) : Math.abs(box(glyph).left - box(head).left),
+                text: gutter ? Math.abs(box(label).left - box(head).left) : box(label).left > box(glyph).right ? 0 : box(glyph).right - box(label).left,
                 type: Math.abs(parseFloat(getComputedStyle(label).fontSize) - parseFloat(getComputedStyle(head).fontSize)),
                 at: head.className,
               });

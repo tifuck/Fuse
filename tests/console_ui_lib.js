@@ -164,7 +164,9 @@ window.ConsoleAudit = (() => {
       if (new Set(lefts).size > 1) add("agent-sub-column", null, lefts.join(", "));
     }
     for (const turn of log.querySelectorAll(".chat-console-turn")) {
-      const text = turn.querySelector(":scope > span:not(.chat-console-turn-mark)");
+      // An icon row starts where its first glyph does, not its padded button.
+      const lead = turn.querySelector(":scope > span:not(.chat-console-turn-mark)");
+      const text = lead && lead.matches(".dk-acts") ? lead.querySelector("svg") || lead : lead;
       // The text column: the answer's prose where there is one (in Console the
       // call labels share it; Combined indents them behind their icon).
       const column = log.querySelector(".chat-flow > .chat-md p") || log.querySelector(".chat-step:not(.is-think) .chat-step-label");
