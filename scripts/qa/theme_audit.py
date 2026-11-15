@@ -1406,7 +1406,10 @@ async def escape_check(env, s):
     await page.wait_for_timeout(350)
     res = await trigger.evaluate("""(t, id) => { const a = document.activeElement; const pop = id && document.getElementById(id);
         const open = Boolean(pop && !pop.hidden && pop.getClientRects().length);
-        return { back: Boolean(a && (a === t || t.contains(a))), active: a ? (a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + ' ' + String(a.getAttribute('aria-label') || a.innerText || '').trim().slice(0, 40)) : 'none', open,
+        // A trigger the page redrew is back when focus is on its replacement (same tag and name).
+        const name = (e) => e.tagName + '|' + String(e.getAttribute('aria-label') || e.title || e.innerText || '').trim();
+        const redrawn = !t.isConnected && a && a !== document.body && name(a) === name(t);
+        return { back: Boolean(a && (a === t || t.contains(a) || redrawn)), active: a ? (a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + ' ' + String(a.getAttribute('aria-label') || a.innerText || '').trim().slice(0, 40)) : 'none', open,
           label: String(t.getAttribute('aria-label') || t.title || t.innerText || '').trim().slice(0, 40), connected: t.isConnected }; }""", sel)
     if res["open"]:
         record(env, job, "escape-close", "fail", f"#{sel}", res["label"], None, "Escape did not close the popup")

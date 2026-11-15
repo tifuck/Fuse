@@ -312,6 +312,21 @@ export function create(deps) {
     window.matchMedia(WIDE).addEventListener?.("change", () => syncChrome());
     window.matchMedia(PHONE).addEventListener?.("change", () => syncChrome());
     document.addEventListener("fuse-appearance", syncScheme);
+    // The runtime redraws the chat list in place; keep the keyboard on the same row and control.
+    const rowKey = (item) => ["thread", "draft", "project"].map((k) => item.dataset[k] || "").join("|");
+    const rowControls = (item) => [...item.querySelectorAll("button, a, [tabindex]")];
+    let rowFocus = null;
+    document.addEventListener("focusin", (event) => {
+      const item = event.target.closest?.("[data-history-item]");
+      rowFocus = item ? { key: rowKey(item), at: rowControls(item).indexOf(event.target) } : null;
+    });
+    document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.("[data-history-item]")) rowFocus = null; }, true);
+    const historyList = q("[data-history-list]");
+    if (historyList) new MutationObserver(() => {
+      if (!rowFocus || (document.activeElement && document.activeElement !== document.body)) return;
+      const item = [...historyList.querySelectorAll("[data-history-item]")].find((el) => rowKey(el) === rowFocus.key);
+      if (item) rowControls(item)[rowFocus.at]?.focus({ preventScroll: true });
+    }).observe(historyList, { childList: true, subtree: true });
     // Rows, lists and the todo tray change outside the run clock.
     const watch = new MutationObserver(() => syncChrome());
     const rail = q("[data-theme-rail]");
