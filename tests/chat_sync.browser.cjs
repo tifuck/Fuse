@@ -96,6 +96,8 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 
     // Metadata changes must never upload the full conversation.
     const patchRequest = desktop.waitForRequest(request => request.method() === 'PATCH' && request.url().includes('/chat/threads/'));
+    // A theme may keep Web search in its overflow menu.
+    if (!await desktop.locator('[data-tool-search]').isVisible()) await desktop.locator('[data-theme-more]').click();
     await desktop.locator('[data-tool-search]').click();
     assert.equal(Object.hasOwn((await patchRequest).postDataJSON(), 'messages'), false);
     await phone.waitForFunction(() => document.querySelector('[data-tool-search]').getAttribute('aria-pressed') === 'false');
