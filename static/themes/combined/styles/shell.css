@@ -559,6 +559,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-perm { position: relative; display: flex; }
   /* The chip sits on the left, so its popover opens from the chip's left edge. */
   & .cb-perm > .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }
+  /* The ring sits on the right, so its popover ends at the ring and stays over the card. */
+  & .cb-ring-wrap > .chat-context-pop { right: 0 !important; left: auto !important; }
   & .cb-model { display: flex; flex: 0 1 auto; min-width: 0; max-width: none; }
   & .cb-box .cb-model .chat-picker-btn {
     display: inline-flex;
@@ -611,7 +613,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-send.is-stop { background: var(--mist); color: var(--ink); }
   & .cb-send.is-stop svg { display: none; }
   & .cb-send.is-stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
-  & .chat-queue { width: 100%; max-width: var(--chat-col, 47.5rem); margin: 0 auto 6px; }
   & .cb-welcome { position: relative; margin: 0 0 4px; color: var(--mist); font: 600 22px/1.3 var(--sans); letter-spacing: -0.01em; text-align: center; }
   & .cb-welcome-note { position: relative; margin: 0 0 14px; color: var(--mute); font: 14px/1.5 var(--sans); text-align: center; }
   /* The hero steps aside once the chat has a message (opacity is the contract tests read). */
@@ -724,7 +725,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .chat-picker-menu.is-sheet .chat-picker-row > [role="option"] { min-height: 44px; }
   & .chat-picker-menu.is-sheet .chat-picker-list { --star-col: 2.75rem; }
   /* Accent text keeps 4.5:1 in light palettes too. */
-  & :is(.chat-picker-row > [role="option"].is-selected > span, .chat-picker-thinking-value, .chat-slash-item kbd, .chat-perm-act.is-allow) { color: var(--cb-accent-text); }
+  & :is(.chat-picker-row > [role="option"].is-selected > span, .chat-picker-thinking-value, .chat-slash-item kbd, .chat-perm-act.is-allow, .chat-perm-card-agent.is-sub) { color: var(--cb-accent-text); }
   & .chat-perm-card-kind { color: color-mix(in srgb, var(--steel) 78%, var(--mist)); font-size: 11px; }
   & .chat-slash-item.is-off { opacity: 1; }
   & .chat-slash-item.is-off kbd { color: var(--mute); font-weight: 500; }
@@ -748,6 +749,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     & :is(.chat-context-pop, .chat-skills, .chat-perm-card, .chat-library) :is(button, a, input:not([type="checkbox"])),
     & .chat-library-tile { min-height: 40px; }
     & .chat-context-alert button { min-height: 36px; }
+    & .chat-perm-card-row { flex-wrap: wrap; }
+    & .chat-perm-card-actions { flex: 1 0 100%; justify-content: flex-end; }
     & :is(.chat-sheet, .chat-picker-menu, .chat-perms-menu) .chat-menu-close { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
   }
 
