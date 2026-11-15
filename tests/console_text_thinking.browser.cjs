@@ -25,10 +25,15 @@ const tool = (name, fields = {}) => ({ id: `tt${++seq}`, name, status: 'done', e
 const think = (text, ms) => ({ type: 'reasoning', text, ...(ms != null ? { ms } : {}) });
 const say = (text) => ({ type: 'content', text });
 const T = (t) => ({ type: 'tool', id: t.id });
-// Combined closes a reply with its action row: when it ended ("Oct 5", the
-// full time in its title), then the work time. Console prints the ✻ line.
+// Combined and Desktop close a reply with its action row: when it ended
+// ("Oct 5", the full time in its title), then the work time. Console prints
+// the ✻ line.
 const COMBINED = process.env.FUSE_CHAT_VIEW === 'combined';
-const close = (text, done = '', ago = '') => COMBINED ? [ago, text].filter(Boolean).join(' ') : `✻ ${text}${done ? ` · ${done}` : ''}`;
+const DESKTOP = process.env.FUSE_CHAT_VIEW === 'desktop';
+const close = (text, done = '', ago = '') => COMBINED || DESKTOP ? [ago, text].filter(Boolean).join(' ') : `✻ ${text}${done ? ` · ${done}` : ''}`;
+// The live dock's still frame under reduced motion: Desktop's spinner is the
+// braille set (live-dock.js), the others the ✻ star set.
+const SPIN_STILL = DESKTOP ? '⠿' : '✻';
 let agoAt = '';
 // ccTurnVerb: the closing line's word is fixed per message id (chat.js).
 const CC_TURN_VERBS = ['Baked', 'Brewed', 'Churned', 'Cogitated', 'Cooked', 'Crunched', 'Sautéed', 'Worked'];
@@ -121,7 +126,7 @@ function snap() {
     check(s.dock && !s.dock.hidden, `dock shown while thinking: ${JSON.stringify(s.dock)}`);
     check(/^\S+…$/.test(s.dock.verb), `spinner verb carries the ellipsis: ${s.dock.verb}`);
     check(s.dock.verb === 'Thinking…' && s.dock.meta.includes('↓ ') && !/thinking/i.test(s.dock.meta), `the status is the line's word, the counts follow it: ${JSON.stringify(s.dock)}`);
-    check(s.dock.glyph === '✻', `reduced-motion spin glyph is the still frame: ${s.dock.glyph}`);
+    check(s.dock.glyph === SPIN_STILL, `reduced-motion spin glyph is the still frame: ${s.dock.glyph}`);
     check(s.labels.join('|') === 'Thinking for 1s…', `a streaming thought is its own ticking line: ${s.labels}`);
     await page.waitForFunction(() => window.__tt.snap().clocks.some((c) => /^think:[2-9]s$/.test(c)), null, { timeout: 4500 });
     s = await snapNow();
