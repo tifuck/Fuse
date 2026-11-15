@@ -17,6 +17,14 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] { --cb-link: #2459b8; --cb-add: #1f7a3c; --cb-del: #b23a30; }
 /* Light palettes' own mute misses AA on raised and selected rows; muted text comes from the text colour instead (body, so menus moved there follow). */
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat { --mute: color-mix(in srgb, var(--mist) 70%, var(--ink)); }
+/* Light accents miss AA as text on panels, tints and code too; they lean toward the text colour, mixed from copies taken on html (a property cannot mix itself). */
+html[data-chat-view="combined"][data-chat-scheme="light"] { --cb-l-brass: var(--brass); --cb-l-fault: var(--fault); --cb-l-steel: var(--steel); --cb-l-reason: var(--reason); }
+html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat {
+  --brass: color-mix(in srgb, var(--cb-l-brass) 70%, var(--mist));
+  --fault: color-mix(in srgb, var(--cb-l-fault) 70%, var(--mist));
+  --steel: color-mix(in srgb, var(--cb-l-steel) 85%, var(--mist));
+  --reason: color-mix(in srgb, var(--cb-l-reason) 85%, var(--mist));
+}
 
 /* Turns sit close; the user bubble is the separator. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-log { gap: 0.45rem; }
@@ -93,8 +101,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-m
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md .chat-code-head { border-bottom: 1px solid var(--line); background: transparent; color: var(--mute); font: 11.5px var(--sans); text-transform: none; letter-spacing: 0; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-code-head .chat-icon-btn { width: 28px; height: 28px; color: var(--mute); }
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code .hljs-string { color: #8a4420; }
-html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code :is(.hljs-built_in, .hljs-number) { color: #a33a2f; }
-html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code .hljs-comment { color: #5e5950; }
+html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code :is(.hljs-built_in, .hljs-number) { color: color-mix(in srgb, var(--fault) 90%, var(--mist)); }
+html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code .hljs-comment { color: color-mix(in srgb, var(--mute) 80%, var(--mist)); }
 
 /* Under a settled reply: prose, then the recap, then the action row. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant { display: flex; flex-direction: column; gap: 0.3rem; }

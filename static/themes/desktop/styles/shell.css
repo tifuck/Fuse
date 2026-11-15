@@ -246,8 +246,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-loading span { height: 10px; border-radius: 3px; background: var(--dk-raise); }
   & .dk-foot { position: relative; display: flex; flex-direction: column; gap: 1px; margin-top: auto; padding-top: 6px; }
   & .dk-foot-row { display: flex; align-items: center; gap: 2px; }
-  /* The account menu anchors to the whole footer and opens upward. */
-  & .dk-foot-row .user-dock { position: static; flex: 1; min-width: 0; }
+  /* The account menu anchors to the whole footer and opens upward. No z-index:
+     a flex item keeps base's 24 even when static and floats over a sheet's backdrop. */
+  & .dk-foot-row .user-dock { position: static; z-index: auto; flex: 1; min-width: 0; }
   & .dk-archived { display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 8px; border-radius: 7px; color: var(--dk-mute); font-size: 13px; text-align: left; }
   & .dk-archived:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-archived[hidden] { display: none; }
@@ -861,6 +862,16 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 }
 
 /* ---- Light (a light palette or wallpaper, or the sun switch) ---- */
+/* Light palettes' muted and accent colours miss AA as text on cards, tints and
+   menus: they lean toward the text colour. Set on body (menus moved there
+   follow) from copies taken on html, since a property cannot mix itself. */
+html[data-chat-view="desktop"][data-chat-scheme="light"] { --dk-l-mute: var(--mute); --dk-l-brass: var(--brass); --dk-l-fault: var(--fault); --dk-l-ok: var(--ok); }
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat {
+  --mute: color-mix(in srgb, var(--dk-l-mute) 85%, var(--mist));
+  --brass: color-mix(in srgb, var(--dk-l-brass) 70%, var(--mist));
+  --fault: color-mix(in srgb, var(--dk-l-fault) 70%, var(--mist));
+  --ok: color-mix(in srgb, var(--dk-l-ok) 70%, var(--mist));
+}
 html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] {
   --dk-canvas: var(--ink);
   --dk-side: color-mix(in srgb, var(--ink) 94%, var(--mist));
@@ -871,7 +882,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
   --dk-card-line: color-mix(in srgb, var(--ink) 86%, var(--mist));
   --dk-sel: color-mix(in srgb, var(--ink) 88%, var(--mist));
   --dk-hover: color-mix(in srgb, var(--mist) 6%, transparent);
-  --dk-mute: color-mix(in srgb, var(--mute) 85%, var(--mist));
   --dk-dim: color-mix(in srgb, var(--mute) 92%, var(--ink));
   --dk-shadow: 0 2px 10px rgb(0 0 0 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.02);
   --dk-pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12);
