@@ -405,7 +405,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     border-left: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: var(--dk-side);
   }
-  /* The top bar's twin, like the sidebar head; the header's toggle closes it. */
+  /* The top bar's twin, like the sidebar head, its title set like the chat's
+     at every width; wide, the header's toggle closes it. */
   & .dk-insp-bar {
     display: flex;
     flex: none;
@@ -414,8 +415,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     height: var(--chat-bar-h);
     padding: 0 4px 0 20px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
-    color: var(--dk-mute);
-    font: 500 13px var(--sans);
+    color: var(--dk-text);
+    font: 500 13.5px var(--sans);
   }
   @media (min-width: 1040px) { & .dk-insp-bar [data-theme-inspector-close] { display: none; } }
   & .dk-insp-body {
@@ -561,7 +562,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The Terminal card is the one place for a command's output. */
   & .dk-jobs .chat-jobs-detail { display: none; }
   /* Plan: the todo list, inline and unfolded in its card. */
-  & .dk-insp .chat-live-todos { position: static; inset: auto; width: auto; max-width: none; margin: 0; padding: 6px 8px; border: 0; background: none; box-shadow: none; transform: none; font: 13px/1.45 var(--sans); }
+  & .dk-insp .chat-live-todos { position: static; inset: auto; width: auto; height: auto; max-width: none; margin: 0; padding: 6px 8px; border: 0; background: none; box-shadow: none; transform: none; font: 13px/1.45 var(--sans); }
   & .dk-insp .chat-live-todos[hidden] { display: none; }
   & .dk-insp .chat-todo-sheet { position: static; pointer-events: auto; }
   & .dk-insp .chat-todo-drawer { grid-template-rows: 1fr; visibility: visible; box-shadow: none; }
@@ -571,7 +572,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-insp .chat-todo-bar { display: contents; }
   & .dk-insp .chat-todo-bar .chat-todo-head,
   & .dk-insp .chat-todo-bar::after { display: none; }
-  & .dk-insp .chat-todo-dismiss { position: absolute; top: 3px; right: 3px; z-index: 1; width: 28px; height: 28px; border-radius: 6px; background: var(--dk-card); color: var(--dk-mute); font: 16px/1 var(--sans); }
+  & .dk-insp .chat-todo-dismiss { position: absolute; top: 3px; right: 3px; z-index: 1; width: 28px; height: 28px; border-radius: 6px; background: none; color: var(--dk-mute); font: 16px/1 var(--sans); }
   & .dk-insp .chat-todo-dismiss:hover { background: var(--dk-hover); color: var(--dk-text); }
   & [data-theme-card="plan"]:has([data-todo-dismiss]) [data-theme-card-close] { visibility: hidden; }
   /* The runtime sizes the list to five rows while it may be hidden (0px); the card shows them all. */
@@ -836,9 +837,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     /* The scrim dims the stage; the pinned sidebar stays usable beside it. */
     &[data-theme-rail-state="open"] .dk-scrim { position: fixed; inset: var(--chat-bar-h) 0 0 var(--dk-side-w); z-index: 13; display: block; background: rgb(0 0 0 / 0.35); }
   }
-  @media (max-width: 1039.98px) {
-    & .dk-insp-bar { padding-left: 14px; color: var(--dk-text); font: 600 15px var(--sans); }
-  }
   /* ---- Phones: the inspector is a full-screen sheet, the sidebar a drawer ---- */
   @media (max-width: 800px) {
     /* Notched phones: the top bar, the drawer's head and foot and the composer clear the insets. */
@@ -943,40 +941,46 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 }
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
-   One full-height pane behind the transcript column and the dock: a strong
-   blur, the palette's canvas at 55% under the text (30% in light, mostly
-   blur), fading out over a long gutter toward the sides with no edge. The
-   top bar, sidebar and inspector are one lighter glass (78%, light 62%) over
-   the bare wallpaper, so the pane starts under the bar; cards and popovers
-   are denser (88%, light 80%). */
+   One glass everywhere: a light blur that keeps the wallpaper's shapes, and
+   some saturation so its colours survive the tint. The stage is one pane
+   under the bar, blurred edge to edge; only its tint fades, from the
+   palette's canvas at 62% under the text (36% in light) to 48% (20%) at the
+   sides, so no sharp wallpaper ever cross-fades into blurred. The top bar,
+   sidebar and inspector are one glass (74%, light 62%); cards and the
+   composer float on it (78%, light 80%) with a hairline edge and a specular
+   top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 55%;
-  --dk-chrome-a: 78%;
-  --dk-card-a: 88%;
-  --dk-glass: blur(40px) saturate(1.5);
+  --dk-veil-a: 62%;
+  --dk-gutter-a: 48%;
+  --dk-chrome-a: 74%;
+  --dk-card-a: 78%;
+  --dk-glass: blur(14px) saturate(1.35);
+  --dk-glass-edge: color-mix(in srgb, var(--dk-text) 10%, transparent);
+  --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.08);
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
-  /* The stage's spacer: out of the flow, a pane centred on the column. The
-     fade spans the gutter up to 1rem outside the column, eased. */
+  /* The stage's spacer: out of the flow, a pane under the bar. The tint
+     reaches full strength 1rem outside the column. */
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
     position: absolute;
-    inset: var(--chat-bar-h) max(0px, calc(50% - var(--chat-col) / 2 - 15rem)) 0;
+    inset: var(--chat-bar-h) 0 0;
     z-index: -1;
     flex: none;
-    background:
-      linear-gradient(rgb(255 255 255 / 0.05), transparent 9rem),
-      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent);
+    background: linear-gradient(90deg,
+      color-mix(in srgb, var(--dk-canvas) var(--dk-gutter-a), transparent),
+      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) var(--f),
+      color-mix(in srgb, var(--dk-canvas) var(--dk-veil-a), transparent) calc(100% - var(--f)),
+      color-mix(in srgb, var(--dk-canvas) var(--dk-gutter-a), transparent));
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);
-    -webkit-mask-image: var(--dk-glass-mask);
-    mask-image: var(--dk-glass-mask);
-    --dk-glass-mask: linear-gradient(90deg, transparent, rgb(0 0 0 / 0.16) calc(var(--f) * 0.25), rgb(0 0 0 / 0.5) calc(var(--f) * 0.5), rgb(0 0 0 / 0.84) calc(var(--f) * 0.75), #000 var(--f), #000 calc(100% - var(--f)), rgb(0 0 0 / 0.84) calc(100% - var(--f) * 0.75), rgb(0 0 0 / 0.5) calc(100% - var(--f) * 0.5), rgb(0 0 0 / 0.16) calc(100% - var(--f) * 0.25), transparent);
   }
   & :is(.dk-side, .dk-head) { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-head { box-shadow: none; }
   & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.chat-dock .dk-box, .dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-card, .chat-dock .dk-box, .chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & .chat-dock .dk-box:focus-within { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -986,13 +990,15 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--dk-link) 80%, var(--dk-text)); }
 }
 html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 30%;
+  --dk-veil-a: 36%;
+  --dk-gutter-a: 20%;
   --dk-chrome-a: 62%;
   --dk-card-a: 80%;
+  --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.5);
 }
 @media (prefers-reduced-transparency: reduce) {
   html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
-  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
+  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-gutter-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }

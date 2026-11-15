@@ -336,16 +336,17 @@ export function create(deps) {
     new MutationObserver(() => { if (titleOpen && !document.querySelector("body > .chat-pop")) titleClosed(); })
       .observe(document.body, { childList: true });
     // A sheet whose toggle is out of sight (in ⋯, or folded off a narrow bar)
-    // hands focus back to ⋯ when it closes.
+    // hands focus back to ⋯ when it closes; the runtime's first "false" at
+    // load closes nothing.
     new MutationObserver((records) => {
-      records.forEach(({ target }) => {
-        if (!target.matches(SHEET_TOGGLES) || target.getAttribute("aria-expanded") !== "false" || visible(target)) return;
+      records.forEach(({ target, oldValue }) => {
+        if (oldValue !== "true" || !target.matches(SHEET_TOGGLES) || target.getAttribute("aria-expanded") !== "false" || visible(target)) return;
         setTimeout(() => {
           const active = document.activeElement;
           if (!active || active === document.body) q("[data-theme-more]")?.focus({ preventScroll: true });
         });
       });
-    }).observe(deps.root, { subtree: true, attributes: true, attributeFilter: ["aria-expanded"] });
+    }).observe(deps.root, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["aria-expanded"] });
     const list = q("[data-history-list]");
     if (list) new MutationObserver(syncPins).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-pinned", "aria-current"] });
     const picker = q("[data-wallpaper-picker]");
