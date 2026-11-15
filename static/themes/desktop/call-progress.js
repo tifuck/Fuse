@@ -445,15 +445,16 @@ function ccAgentsGroupHtml(agents, live, openMap) {
       const took = hasWork ? ` · ${deps.ccDuration(Math.max(1000, base))}` : "";
       const speed = presentation.running ? null : deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
       const rate = speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "";
+      // A settled child is one line: failed or stopped is said inline, and a
+      // finished one's stats say it. Only a running child keeps a live line.
+      const ended = presentation.failed ? " · failed" : presentation.interrupted ? " · stopped" : "";
       const stats = resolvedBackground
         ? ` · ${presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished"}${presentation.failed || presentation.interrupted ? "" : took}`
         : liveClock
           ? ` · <span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
-          : ` · ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` · ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
-      const status = presentation.running
-        ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…")
-        : presentation.failed ? "Failed" : presentation.interrupted ? "Interrupted" : "Done";
-      const sub = resolvedBackground ? "" :
+          : `${ended} · ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` · ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
+      const status = background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…";
+      const sub = !presentation.running ? "" :
         `<div class="chat-console-agent-sub"><span class="chat-console-branch${last ? " is-blank" : ""}" aria-hidden="true">│</span><span class="chat-console-dim"><span aria-hidden="true">└ </span>${deps.escapeHtml(status)}</span></div>`;
       return (
         `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}" role="button" tabindex="0">` +

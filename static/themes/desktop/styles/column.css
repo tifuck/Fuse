@@ -160,7 +160,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 
 /* One left edge: no row carries a leading glyph or gutter, so every line
    starts where the prose does. The bold verb names the call; its colour
-   carries the state the icon used to. Nested rows sit on one rail. */
+   carries the state the icon used to. Nested rows share one indent. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step:is(*, .is-console-call, .is-console-group, .is-console-thought, .is-console-notice) > .chat-step-node { display: none !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step > :not(.chat-step-node) { grid-column: 1 / -1 !important; }
@@ -171,7 +171,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-gold .chat-console-notice-text { color: var(--call-idle); }
 
 /* Folded work: one muted line, the chevron after it ("Ran 2 commands ▸").
-   Unfolded: a ruled column, no band. */
+   Unfolded: an indented column, no rule or band. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group { padding-block: 0; background: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-agents:not(.is-console-expanded) .chat-console-agent-tree { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle { color: var(--dk-mute, var(--mute)); }
@@ -196,9 +196,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-plus { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-minus { color: var(--dk-del, var(--fault)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-bundle, .chat-console-agent-tree, .is-agent-report .chat-console-hang-body) {
-  margin: 0.05rem 0 0 0.18rem;
-  padding-left: 0.7rem;
-  border-left: 1px solid var(--line);
+  margin: 0.05rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 0;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-console-expanded:not(.is-console-verbose) { background: none; padding-block: 0; }
 
@@ -252,8 +252,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md :is(th, td) { padding: 0.35rem 0.7rem; border: 0; border-bottom: 1px solid var(--dk-card-line, var(--line)); text-align: left; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md th { color: var(--dk-mute); font-weight: 500; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code { border-color: var(--dk-card-line, var(--line)); border-radius: 10px; background: var(--dk-card, var(--panel)); }
-
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-bundle, .chat-console-agent-tree, .is-agent-report .chat-console-hang-body) { border-left-color: var(--dk-card-line, var(--line)); }
 
 /* Call rows: bold verb, the argument in a mono chip, diff rows in colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call .chat-tool-action { color: var(--dk-text, var(--mist)); font-weight: 600; }
