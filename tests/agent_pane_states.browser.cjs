@@ -198,6 +198,11 @@ function agent(id, patch) {
 
     // --- 1. Multi-agent tree: counts, states and entries appear/disappear ---
     await page.evaluate(() => fuseToolFixture.refreshAgents());
+    // A theme whose agents panel starts shut (Desktop's inspector opens only
+    // on a user action) is opened the way a user would.
+    const panel = page.locator('[data-theme-pill], [data-theme-inspector]');
+    await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length > 0);
+    if (await panel.count() && !(await page.locator('[data-work-strip]').isVisible())) await panel.click();
     // The tree opens folded: main and only the live children.
     await page.waitForFunction(() => document.querySelectorAll('[data-agents-list] [data-agent-id]').length === 4);
     let ui = await read();

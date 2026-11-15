@@ -418,6 +418,10 @@ const FAMILIES = [
         ['[data-memory-toggle]', '[data-chat-memory]', '[data-memory-instructions]'],
         ['[data-view-toggle]', '[data-view-menu]', null],
       ]) {
+        // A theme may keep a sheet toggle in its overflow menu: then focus comes back to that menu's button.
+        const folded = !(await page.locator(toggle).isVisible());
+        if (folded) await page.locator('[data-theme-more]').click();
+        const back = folded ? '[data-theme-more]' : toggle;
         await page.locator(toggle).click();
         await page.locator(sheet).waitFor();
         if (inside) assert.equal(await activeIs(inside), true, `${sheet} takes focus`);
@@ -426,7 +430,8 @@ const FAMILIES = [
         await page.keyboard.press('Escape');
         await page.locator(sheet).waitFor({ state: 'hidden' });
         assert.equal(await stageInert(), false, `closing ${sheet} restores the page`);
-        assert.equal(await activeIs(toggle), true, `closing ${sheet} returns focus to its toggle`);
+        await page.waitForFunction(s => document.activeElement === document.querySelector(s), back, { timeout: 2000 }).catch(() => {});
+        assert.equal(await activeIs(back), true, `closing ${sheet} returns focus to its toggle`);
       }
     }
 

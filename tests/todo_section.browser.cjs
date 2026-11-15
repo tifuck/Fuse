@@ -79,8 +79,12 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
           row: document.querySelector('[data-tool="todo_write"]') ? 'row' : '', log: document.querySelector('.chat-log').textContent,
         };
       });
-      check(placed.dock && placed.todos, tag('status line and todo section are both shown'));
-      if (placed.dock && placed.todos) {
+      // A theme may dock the list in a side panel card (Desktop's Plan card)
+      // instead of the tray over the composer: there it is always unfolded,
+      // with the card head for its title, and the panel opens from the header button.
+      const docked = await page.evaluate(() => Boolean(document.querySelector('[data-live-todos]').closest('[data-theme-card]')));
+      check(placed.dock && (placed.todos || docked), tag('status line and todo section are both shown'));
+      if (placed.dock && placed.todos && !docked) {
         check(placed.todos[0] >= placed.dock[1] - 1, tag(`todo section sits under the status line (${placed.dock} / ${placed.todos})`));
         check(placed.todos[1] <= placed.composer + 1, tag(`todo section sits above the composer (${placed.todos[1]} vs ${placed.composer})`));
       }
@@ -102,7 +106,7 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
         const btn = document.querySelector('[data-todo-header]');
         return { open: el.classList.contains('is-open'), expanded: btn.getAttribute('aria-expanded'), drawer: getComputedStyle(el.querySelector('.chat-todo-drawer')).visibility, bar: el.querySelector('[data-todo-bar]').checkVisibility({ visibilityProperty: true }) };
       });
-      check(!closed.open && closed.expanded === 'false' && closed.drawer === 'hidden' && !closed.bar, tag(`the tray starts closed, with no tab over the transcript: ${JSON.stringify(closed)}`));
+      check(!closed.open && closed.expanded === 'false' && (docked || closed.drawer === 'hidden') && !closed.bar, tag(`the tray starts closed, with no tab over the transcript: ${JSON.stringify(closed)}`));
       const button = await page.evaluate(() => {
         const btn = document.querySelector('[data-todo-header]');
         const bell = document.querySelector('[data-notif-toggle]');
@@ -199,9 +203,13 @@ const DONE = OPEN.map(([text]) => [text, 'completed']);
         };
       });
       check(drawer.open && drawer.expanded === 'true', tag(`the header button opens the drawer: ${JSON.stringify(drawer)}`));
-      check(drawer.visible === 5 && drawer.scrolls, tag(`the drawer shows five rows and scrolls: ${JSON.stringify(drawer)}`));
-      check(drawer.first === 'Item 5', tag(`the item in progress is the top row: ${drawer.first}`));
-      check(drawer.head && drawer.full, tag(`the head line tops a full-width page: ${JSON.stringify(drawer)}`));
+      if (docked) {
+        check(drawer.visible >= 5 && await page.locator('[data-live-todos] [data-todo-list]').isVisible(), tag(`the header button shows the docked list: ${JSON.stringify(drawer)}`));
+      } else {
+        check(drawer.visible === 5 && drawer.scrolls, tag(`the drawer shows five rows and scrolls: ${JSON.stringify(drawer)}`));
+        check(drawer.first === 'Item 5', tag(`the item in progress is the top row: ${drawer.first}`));
+        check(drawer.head && drawer.full, tag(`the head line tops a full-width page: ${JSON.stringify(drawer)}`));
+      }
       // An update while open: the bar pulses, the count follows an added task,
       // and the list follows the item in progress.
       await page.evaluate(([next]) => fuseToolFixture.append(next, true), [todo('long2', [...long.map(([text], i) => [text, i < 5 ? 'completed' : i === 5 ? 'in_progress' : 'pending']), ['Item 13', 'pending']])]);

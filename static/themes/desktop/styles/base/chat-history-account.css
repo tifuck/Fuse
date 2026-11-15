@@ -151,7 +151,8 @@
     transition: opacity 140ms ease;
   }
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-resize:is(:hover, :focus-visible, .is-dragging)::after { opacity: 0.7; }
-  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-resize:focus-visible { outline: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-resize:focus-visible::after { width: 2px; background: var(--mist); opacity: 1; transition: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-resize:focus-visible { outline: none; background: color-mix(in srgb, var(--mist) 10%, transparent); }
 }
 /* Account: a slim row that opens a menu above it. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .user-dock { position: relative; z-index: 24; overflow: visible; }

@@ -4,11 +4,12 @@
     commands; Plan is the todo list. On phones it is a full-screen sheet.
     Every data-* hook but data-theme-* is a runtime contract
     (tests/chat_theme_markup.test.cjs). -#}
+  <div class="dk-scrim" data-theme-backdrop aria-hidden="true"></div>
   <aside class="dk-insp" id="dk-inspector" data-theme-rail aria-label="Inspector">
     <div class="dk-insp-bar">
-      <span>Inspector</span>
+      <span id="dk-inspector-title">Inspector</span>
       <button type="button" class="dk-ib" data-theme-inspector-close aria-label="Close inspector" title="Close inspector">
-        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </button>
     </div>
     <section class="dk-card dk-card-preview" data-theme-card="preview" aria-label="Preview">
@@ -78,25 +79,24 @@
       </div>
     </aside>
     </section>
-    <section class="dk-card" data-theme-card="diff" aria-label="Diff" hidden>
-      <header class="dk-card-head"><b>Diff</b><span class="dk-card-sub" data-theme-diff-file></span><span class="dk-stat" data-theme-diff-stat></span><button type="button" class="dk-card-x" data-theme-card-close="diff" aria-label="Hide diff">×</button></header>
-      <div class="dk-card-body dk-diff" data-theme-diff></div>
-    </section>
-    <section class="dk-card" data-theme-card="terminal" aria-label="Terminal" hidden>
-      <header class="dk-card-head"><b>Terminal</b><span class="dk-card-sub" data-theme-term-name></span><button type="button" class="dk-card-x" data-theme-card-close="terminal" aria-label="Hide terminal">×</button></header>
-      <pre class="dk-card-body dk-term" data-theme-term-out></pre>
-    </section>
-    <section class="dk-card dk-tasks" data-theme-card="tasks" aria-label="Tasks">
+    <section class="dk-card dk-tasks" data-theme-card="tasks" aria-label="Tasks" hidden>
       <header class="dk-card-head"><b>Tasks</b><span class="dk-card-sub" data-theme-tasks-count></span><button type="button" class="dk-card-x" data-theme-card-close="tasks" aria-label="Hide tasks">×</button></header>
       <div class="dk-card-body dk-work" data-work-strip hidden aria-label="Agents and background commands">
         <div class="dk-agents" data-agents-list role="list" aria-label="Agents" hidden></div>
         <div class="dk-jobs" data-jobs-list role="list" aria-label="Background commands" hidden></div>
       </div>
-      <p class="dk-card-empty" data-theme-tasks-empty>No agents or background commands.</p>
     </section>
-    <section class="dk-card" data-theme-card="plan" aria-label="Plan">
+    <section class="dk-card" data-theme-card="plan" aria-label="Plan" hidden>
       <header class="dk-card-head"><b>Plan</b><span class="dk-card-sub" data-theme-plan-count></span><button type="button" class="dk-card-x" data-theme-card-close="plan" aria-label="Hide plan">×</button></header>
-      <div class="dk-card-body chat-live-todos" data-live-todos hidden role="region" aria-label="Todo list"></div>
-      <p class="dk-card-empty" data-theme-plan-empty>No plan yet.</p>
+      <div class="dk-card-body chat-live-todos" data-live-todos hidden role="region" aria-label="Todo list" tabindex="-1"></div>
     </section>
+    <section class="dk-card" data-theme-card="terminal" aria-label="Terminal" hidden>
+      <header class="dk-card-head"><b>Terminal</b><span class="dk-card-sub" data-theme-term-name></span><button type="button" class="dk-card-x" data-theme-card-close="terminal" aria-label="Hide terminal">×</button></header>
+      <pre class="dk-card-body dk-term" data-theme-term-out></pre>
+    </section>
+    <section class="dk-card" data-theme-card="diff" aria-label="Diff" hidden>
+      <header class="dk-card-head"><b>Diff</b><span class="dk-card-sub" data-theme-diff-file></span><span class="dk-stat" data-theme-diff-stat></span><button type="button" class="dk-card-x" data-theme-card-close="diff" aria-label="Hide diff">×</button></header>
+      <div class="dk-card-body dk-diff" data-theme-diff></div>
+    </section>
+    <p class="dk-insp-empty" data-theme-insp-empty>Nothing running.</p>
   </aside>

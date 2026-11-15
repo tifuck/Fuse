@@ -331,7 +331,8 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       }, threads);
       const name = page.locator('[data-thread="long-title"] [data-row-name]');
       assert.deepEqual(await truncation(page, name), { wrap: 'nowrap', over: 'ellipsis', clip: 'hidden', clipped: true }, 'the long title is one ellipsized line');
-      assert.equal(await page.locator('[data-thread="long-title"] [data-row-open]').getAttribute('title'), LONG_TITLE, 'the full title stays available as a tooltip');
+      // A theme may add the date after the title.
+      assert.ok((await page.locator('[data-thread="long-title"] [data-row-open]').getAttribute('title')).startsWith(LONG_TITLE), 'the full title stays available as a tooltip');
       const heights = await page.evaluate(() => ({
         longName: document.querySelector('[data-thread="long-title"] [data-row-name]').getBoundingClientRect().height,
         shortName: document.querySelector('[data-thread="short-title"] [data-row-name]').getBoundingClientRect().height,
