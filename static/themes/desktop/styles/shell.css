@@ -22,7 +22,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-mute: var(--mute);
   --dk-dim: color-mix(in srgb, var(--mute) 92%, var(--ink));
   --dk-link: var(--steel);
-  --dk-add: var(--ok);
+  /* Diff counts: green and red in every palette (a palette's --ok can be blue). */
+  --dk-add: #56d364;
   --dk-del: var(--fault);
   --dk-warn: #e3b341;
   --dk-glass: blur(24px) saturate(1.1);
@@ -576,7 +577,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* ---- Composer: chips, a one-line card (+, the message, mic and send),
      then the controls row in the bottom band (mode left; model, context
      and stash right) ---- */
-  & .chat-dock { padding: 4px 16px 0; background: none; }
+  /* The card's edges are the transcript text's: the log's gutter, and the
+     log is centred left of the scrollbar's gutter. */
+  & .chat-dock { padding: 4px var(--console-gutter) 0; background: none; }
+  &:not(.is-empty) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
   & .dk-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; max-width: var(--chat-col); margin: 0 auto 8px; }
   & .dk-chips:not(:has(> :not([hidden]))) { display: none; }
   & .dk-cchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--dk-text) 7%, transparent); color: var(--dk-mute); font: 12.5px var(--sans); }
@@ -691,11 +695,23 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-model .chat-picker-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .dk-model .chat-picker-btn > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  & .dk-model .chat-picker-btn > small { display: inline; flex: none; color: var(--dk-mute); font: 400 12.5px var(--sans); }
-  & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) > small { color: inherit; }
-  & .dk-model .chat-picker-btn > small:not(:empty)::before { content: "· "; }
+  /* Thinking effort is a gauge: --effort-on lit segments of --effort-n (set by
+     the runtime). The word stays in the button for screen readers and the title. */
+  & .dk-model .chat-picker-btn > small {
+    display: inline-block;
+    flex: none;
+    width: calc(var(--effort-n, 3) * 5px - 2px);
+    height: 10px;
+    margin-left: 2px;
+    overflow: hidden;
+    font-size: 0;
+    background: linear-gradient(90deg, var(--dk-text) calc(var(--effort-on, 0) / var(--effort-n, 3) * 100%), color-mix(in srgb, var(--dk-mute) 35%, transparent) 0);
+    -webkit-mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 5px);
+    mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 5px);
+  }
+  & .dk-model .chat-picker-btn > small:empty { display: none; }
   & .dk-model .chat-picker-btn > svg { flex: none; }
-  & .dk-model .chat-picker-btn .provider-logo { display: none; }
+  & .dk-model .chat-picker-btn .provider-logo { display: block; flex: none; width: 14px; height: 14px; }
   & .dk-ring-wrap { position: static; display: flex; flex: none; }
   & .dk-ring-wrap[hidden] { display: none; }
   & .dk-ring-wrap .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
@@ -705,7 +721,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
   & .dk-ring-track { stroke: color-mix(in srgb, var(--dk-mute) 35%, transparent); stroke-width: 4; }
   & .dk-ring-fill { stroke: var(--dk-text); stroke-width: 4; stroke-linecap: round; }
-  &.dk-running .dk-ring svg { animation: dk-spin 1.4s linear infinite; }
   /* Above the card at its width: queue, permission requests, the slash menu and the context alert. */
   & :is(.chat-queue, .chat-perm-queue, .chat-slash, .chat-context-alert) { box-sizing: border-box; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
   /* The label over the list, not Console's side rail. */
@@ -973,6 +988,7 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
   --dk-shadow: 0 2px 10px rgb(0 0 0 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.02);
   --dk-pop-shadow: 0 10px 28px rgb(0 0 0 / 0.12);
   --dk-warn: #9a6700;
+  --dk-add: #1a7f37;
   & .dk-sun .dk-sun-i { display: none; }
   & .dk-sun .dk-moon-i { display: block; }
   & .dk-seg button[aria-pressed="true"] { box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
@@ -1076,9 +1092,7 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
-@keyframes dk-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .dk-st, .chat-agents-dot, .dk-ring svg),
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-row.is-running .dk-st, .chat-live-dock .chat-activity-spin, .dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot),
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].dk-running .dk-ring svg { animation: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .dk-st, .chat-agents-dot),
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-row.is-running .dk-st, .chat-live-dock .chat-activity-spin, .dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }

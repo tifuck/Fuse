@@ -55,6 +55,14 @@ export function createList(ctx) {
     return EFFORT_LABELS[effort] || effort;
   }
 
+    // Themes may draw the effort as a gauge: --effort-on lit of --effort-n levels ("none" lights none).
+    function paintEffort(small, effort, model = context.currentModel()) {
+    const efforts = (model && model.reasoning) || defaultReasoningFor(model && model.type);
+    const off = efforts[0] === "none" ? 1 : 0;
+    small.style.setProperty("--effort-n", String(Math.max(1, efforts.length - off)));
+    small.style.setProperty("--effort-on", String(Math.max(0, efforts.indexOf(effort) + 1 - off)));
+  }
+
     function setEffort(value) {
     const efforts = modelEfforts();
     if (!efforts.includes(value)) return;
@@ -68,7 +76,10 @@ export function createList(ctx) {
     const model = context.currentModel();
     const label = effortLabel(value);
     const small = S.pickerHost.querySelector(".chat-picker-btn small");
-    if (small) small.textContent = label;
+    if (small) {
+      small.textContent = label;
+      paintEffort(small, value, model);
+    }
     const btn = S.pickerHost.querySelector(".chat-picker-btn");
     if (btn && model) btn.title = model.id + " · " + label;
     syncEffortSlider(value);
@@ -254,6 +265,7 @@ export function createList(ctx) {
       if (btn) {
         btn.querySelector("span").textContent = model.name;
         btn.querySelector("small").textContent = effortLabel(effort);
+        paintEffort(btn.querySelector("small"), effort, model);
         btn.title = effort ? model.id + " · " + effortLabel(effort) : model.id;
       }
       const search = S.pickerMenuEl && S.pickerMenuEl.querySelector(".chat-picker-search");
@@ -287,6 +299,7 @@ export function createList(ctx) {
     currentEffort,
     effortLabel,
     filteredModels,
+    paintEffort,
     modelEfforts,
     renderPickerList,
     selectModel,

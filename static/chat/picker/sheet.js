@@ -197,6 +197,7 @@ export function createSheet(ctx) {
     btn.innerHTML = `${sidebar.providerLogo(model.type)}<span></span><small></small>${agent ? "" : PICKER_CHEV}`;
     btn.querySelector("span").textContent = model.name;
     btn.querySelector("small").textContent = think;
+    list.paintEffort(btn.querySelector("small"), effort, model);
     btn.title = (agent ? "Subagent model: " : "") + (think ? model.id + " · " + think : model.id);
     if (agent) btn.setAttribute("aria-haspopup", "false");
     btn.addEventListener("click", (event) => {

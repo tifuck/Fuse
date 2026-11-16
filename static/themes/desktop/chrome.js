@@ -491,12 +491,10 @@ export function create(deps) {
     const artifact = deps.root.classList.contains("is-artifact");
     const cards = deps.root.querySelectorAll("[data-theme-rail] [data-theme-card]:not([data-theme-card=preview]):not([hidden])").length;
     show(q("[data-theme-insp-empty]"), !cards && !artifact);
-    const running = Boolean(deps.streaming || deps.runIsActive(deps.activeRun));
     const next = store.open ? "open" : "closed";
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
     syncLayer(artifact ? "open" : next);
     deps.root.classList.toggle("dk-has-term", terminal);
-    deps.root.classList.toggle("dk-running", running);
     const toggle = q("[data-theme-inspector]");
     const open = next === "open" || artifact;
     if (toggle && toggle.getAttribute("aria-pressed") !== String(open)) toggle.setAttribute("aria-pressed", String(open));
