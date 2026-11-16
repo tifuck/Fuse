@@ -10,6 +10,7 @@ from .database_errors import IntegrityError, TransactionAborted
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from functools import lru_cache
 from urllib.parse import unquote, urlsplit
 
@@ -191,6 +192,18 @@ class Conn:
     def _check_open(self):
         if self._aborted is not None:
             raise TransactionAborted("transaction aborted by an earlier database error") from self._aborted
+
+    @contextmanager
+    def snapshot_reads(self):
+        """Plain (snapshot) reads inside a write transaction: SELECTs on
+        chat_runs in the block do not become FOR UPDATE. For reads that only
+        report state and must not take run locks after the thread row."""
+        saved = self._write_transaction
+        self._write_transaction = False
+        try:
+            yield
+        finally:
+            self._write_transaction = saved
 
     def _note_size(self, args):
         if not self.oversized and isinstance(args, (list, tuple)) and sum(

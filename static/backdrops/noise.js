@@ -38,3 +38,21 @@ export function hash(x, y, z = 0) {
 }
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+// A small seeded generator, so a layout can be laid out in full up front
+// and still differ from the next.
+export function seeded(n) {
+  let a = n >>> 0;
+  const r = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  r.range = (lo, hi) => lo + r() * (hi - lo);
+  r.pick = (list) => list[Math.floor(r() * list.length)];
+  r.sign = () => (r() < 0.5 ? -1 : 1);
+  return r;
+}
+export const newSeed = () => Math.floor(Math.random() * 4294967296);

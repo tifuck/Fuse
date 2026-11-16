@@ -146,6 +146,22 @@ function syncWorkClocks() {
     });
   }
 
+// A count on a summary line rolls from its old value to the new one when it
+// changes ("ran 2" -> "ran 3"), the old one fading up and out. The line is rebuilt on every render, so each
+// count remembers when it last changed and a rebuilt line resumes the roll
+// where it was (negative delay) instead of starting it over.
+const ROLL_MS = 420;
+const rolledCounts = new Map();
+function rollingCountHtml(id, n) {
+    const now = Date.now();
+    const seen = rolledCounts.get(id);
+    if (!seen || seen.n !== n) rolledCounts.set(id, { n, from: seen ? seen.n : null, at: now });
+    const roll = rolledCounts.get(id);
+    const age = now - roll.at;
+    if (roll.from === null || age >= ROLL_MS) return `<b>${n}</b>`;
+    return `<b class="dk-roll" data-from="${roll.from}" style="--dk-roll-at:-${age}ms"><span>${n}</span></b>`;
+  }
+
 function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     // A live thought's line keeps the key it will have once the thought lands.
     const key = "cgroup-" + (group.items[0]?.key || `think-${group.liveThought}`);
@@ -162,6 +178,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let minus = 0;
     let thought = false;
     let errored = false;
+    let failedCalls = 0;
     let stillRunning = 0;
     let stillCommands = false;
     const readPaths = new Set();
@@ -187,6 +204,9 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         return;
       }
       const cls = item.cls;
+      const bad = presentation.failed || (trace.name === "run_terminal_command" && presentation.state === "warning" &&
+        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError);
+      if (bad) failedCalls += 1;
       if (!cls) {
         const kind = deps.isSearchTool(trace.name) ? "web" : OTHER_KIND[trace.name] || "tool";
         others.set(kind, (others.get(kind) || 0) + 1);
@@ -247,6 +267,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       const word = parts.length ? verb : verb.charAt(0).toUpperCase() + verb.slice(1);
       parts.push(rest ? `${deps.escapeHtml(word)} ${rest}` : deps.escapeHtml(word));
     };
+    const count = (part, n) => rollingCountHtml(`${key}|${part}`, n);
     const bold = (text) => `<b>${deps.escapeHtml(text)}</b>`;
     for (const [kind, verb] of [["committed", "committed"], ["amended", "amended commit"], ["cherry-picked", "cherry-picked"]]) {
       const shas = commits.filter((commit) => commit.kind === kind).map((commit) => commit.sha);
@@ -255,26 +276,31 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (pushes.length) add("pushed to", bold([...new Set(pushes)].join(", ")));
     branches.forEach((branch) => add(branch.action === "merged" ? "merged" : "rebased onto", bold(branch.ref)));
     prs.forEach((pr) => add(CC_PR_VERBS[pr.action] || pr.action, bold(pr.url && pr.url.includes("/-/merge_requests/") ? `MR !${pr.number}` : `PR #${pr.number}`)));
-    if (search) add("searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
-    if (reads) add("read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
-    if (images) add("viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
-    if (list) add("listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
-    if (shells) add("ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
-    if (edited.size) add("edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
-    if (wrote.size) add("wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
-    if (todos) add("updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
+    if (search) add("searched for", `${count("search", search)} ${search === 1 ? "pattern" : "patterns"}`);
+    if (reads) add("read", `${count("read", reads)} ${reads === 1 ? "file" : "files"}`);
+    if (images) add("viewed", `${count("image", images)} ${images === 1 ? "image" : "images"}`);
+    if (list) add("listed", `${count("list", list)} ${list === 1 ? "directory" : "directories"}`);
+    if (shells) add("ran", `${count("bash", shells)} shell ${shells === 1 ? "command" : "commands"}`);
+    if (edited.size) add("edited", `${count("edit", edited.size)} ${edited.size === 1 ? "file" : "files"}`);
+    if (wrote.size) add("wrote", `${count("write", wrote.size)} ${wrote.size === 1 ? "file" : "files"}`);
+    if (todos) add("updated", todos === 1 ? "todos" : `todos ${count("todo", todos)} times`);
     for (const [kind, n] of others) {
       const [past, , one, many] = OTHER_WORDS[kind];
-      add(past, `<b>${n}</b> ${n === 1 ? one : many}`);
+      add(past, `${count(kind, n)} ${n === 1 ? one : many}`);
     }
 
     // Desktop: the line never names the newest call; it counts them.
     const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
-    const still = stillRunning ? `${stillRunning} still running` : "";
     const noun = stillCommands ? (stillRunning === 1 ? "command" : "commands") : (stillRunning === 1 ? "monitor" : "monitors");
-    const label = !parts.length && still ? `${stillRunning} ${noun} still running`
-      : parts.join(", ") + stat + (still ? ` (${still})` : "") + (thought && active ? "…" : "");
-    const title = label.replace(/<[^>]*>/g, "");
+    const label = !parts.length && stillRunning ? `${stillRunning} ${noun} still running`
+      : parts.join(", ") + (thought && active ? "…" : "");
+    // The diff counts end the line even when its text is cut short.
+    const diffstat = stat && parts.length ? `<span class="dk-diffstat">${stat.trim()}</span>` : "";
+    // Ledger: the line truncates, its tallies stay pinned at the end.
+    const tallies = [
+      stillRunning && parts.length ? `<span class="dk-tally is-running">${stillRunning} still running</span>` : "",
+    ].join("");
+    const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
       : item.type === "live-think"
@@ -299,8 +325,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
       `<div class="chat-step-head">` + (group.items.length
-        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${title}"><span class="chat-step-label">${label}</span></button>`
-        : `<div class="chat-step-toggle" title="${title}"><span class="chat-step-label">${label}</span></div>`) + `</div>` +
+        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${title}"><span class="chat-step-label">${label}</span>${diffstat}${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</button>`
+        : `<div class="chat-step-toggle" title="${title}"><span class="chat-step-label">${label}</span>${diffstat}${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</div>`) + `</div>` +
       // A failed or interrupted member says so on its own row once the line
       // is opened; the folded line is only its summary.
       `<div class="chat-console-bundle"><ol class="chat-timeline">${rows}</ol></div>` +

@@ -1148,6 +1148,11 @@ def finish_run(run_id, message, status):
                 "child_id": run_id,
                 "work_ms": run_work_ms(run_id, agent, message),
             }
+            # Thread before cursor, as the root path below and every thread
+            # writer lock them: thread_event's read locks the thread row, and
+            # taking it after the event's cursor upsert deadlocks (1213) with
+            # a writer holding the thread and waiting for the cursor.
+            chat_tx.lock_thread(conn, row["thread_id"], row["user_id"])
             chat_tx.event(conn, row["user_id"], "agent." + status, row["thread_id"], payload)
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
             return

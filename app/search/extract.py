@@ -988,7 +988,7 @@ def _passage_chunks(text: str, max_chars: int = PASSAGE_CHARS) -> list[_Passage]
     if not text:
         return []
     matches = list(
-        re.finditer(r"(?ms)(?:^|\n)(#{1,6} [^\n]+\n?|[^\n].*?(?=\n\s*\n|\Z))", text)
+        re.finditer(r"(?ms)(?:^|\n)(#{1,6} [^\n]+\n?|[^\n].*?(?=\n[^\S\n]*\n|\Z))", text)
     )
     if not matches:
         return [_Passage(0, len(text), text)]

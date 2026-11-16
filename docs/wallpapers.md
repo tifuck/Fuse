@@ -10,14 +10,24 @@ trusting it.
 | --- | --- |
 | `static/backdrops/wallpaper-spec.js` | Limits, motion vocabulary and `validateWallpaper(spec)`. No DOM; runs under node too. |
 | `static/backdrops/wallpaper.js` | `wallpaperScene(spec)`: validates, then returns a normal scene module `{ fps, setup, resize, draw }`. |
-| `static/backdrops/wallpapers.js` | The eight presets as spec data, each turned into a scene. |
 | `static/backdrops/scenes.js`, `static/chat-appearance.js` | Registration (`SCENES`) and the Appearance catalog (`BACKDROPS`). |
-| `tests/wallpapers.test.cjs` | Presets validate, bad specs are refused, the interpreter is bounded and deterministic. |
 | `static/chat-backdrop.js` | `FuseBackdrop.register(key, spec)`, behind `FuseChatAppearance.addWallpaper`. |
 
 Because a wallpaper is an ordinary scene, the engine's runner, the picker
 previews, the hidden-tab pause and the reduced-motion still frame apply
 unchanged.
+
+## Landscape wallpapers
+
+The built-in wallpapers are code scenes in the same tile language, too
+elaborate for the spec format: one `static/backdrops/scene-<key>.js` each,
+registered in `scenes.js`, built on `tiles.js` (a tile
+atlas filled on demand, every fill/ink/glyph combination painted once) and
+`tile-land.js` (tile pines and mountain ranges). Air, sky and fog are painted
+smooth; matter is tiles. Each sets `wallpaper: true` and `scheme`, so the
+engine, the /theme picker and the full-strength CSS treat it like a spec
+wallpaper. Static layers are painted once per resize; a frame redraws only
+what moves (swaying crowns, switching windows, aurora rays, reflections).
 
 ## Validation
 
@@ -157,7 +167,7 @@ per-frame state and no `Math.random`, so a frame is reproducible and the
 reduced-motion still frame is as settled as any other. The background is
 painted once per resize and each sprite is pre-rendered once per tile size and
 facing, so a frame is one background blit, one `drawImage` per visible sprite
-or particle and one atlas stamp per ambient glyph. The presets draw in under a
+or particle and one atlas stamp per ambient glyph. Spec wallpapers draw in under a
 millisecond per frame at 1440×900 in headless Chromium.
 
 ## Display strength
@@ -172,7 +182,7 @@ veil, so no CSS lists wallpaper keys.
 
 Each chat theme keeps its own backdrop, strength and palette
 (`fuse.chat.views.v1` in `chat-appearance.js`). Choosing a wallpaper whose
-`scheme` is `"light"` (Cloud Drift) moves that theme from a dark palette to
+`scheme` is `"light"` (the bright daytime landscapes) moves that theme from a dark palette to
 Paper and remembers the old one; None, or a dark wallpaper, brings it back.
 Picking a palette by hand while a light wallpaper is on keeps the hand pick.
 

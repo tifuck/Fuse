@@ -121,6 +121,15 @@ def terminal_activity(conn, user_id: int, thread_id: int):
 
 
 def _settled(conn, user_id: int, thread_id: int) -> bool:
+    # Snapshot reads, never run locks: finish_run asks this holding its own
+    # run and the thread row, and locking another run here (a subagent
+    # finishing into the same thread holds its run and waits for the thread
+    # row) deadlocked.
+    with db.snapshot_reads(conn):
+        return _settled_now(conn, user_id, thread_id)
+
+
+def _settled_now(conn, user_id: int, thread_id: int) -> bool:
     if conn.execute("SELECT 1 FROM chat_runs WHERE user_id=? AND thread_id=? AND status IN ('queued','running') LIMIT 1",
                     (user_id, thread_id)).fetchone():
         return False

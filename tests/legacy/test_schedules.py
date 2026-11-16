@@ -1,0 +1,591 @@
+"""Scheduled runs: interval caps, skip overlap, coding_override, run-now keys."""
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_TMP = tempfile.mkdtemp(prefix="fuse-sched-")
+os.environ.setdefault("DATABASE_PATH", str(Path(_TMP) / "sched.db"))
+os.environ.setdefault("APP_SECRET", "x" * 32)
+
+from app import accounts, chat_store, chats, db, schedules
+from app.chat_store import start_turn
+from app.cron import iso_utc, utcnow
+
+import pytest
+
+# Uses the database: a disposable MariaDB schema shared by this module.
+pytestmark = pytest.mark.usefixtures("isolated_db")
+
+
+def _user():
+    db.connect()
+    row = db.fetchone("SELECT * FROM users ORDER BY id")
+    if row:
+        return row
+    accounts.create_user("sched@test.invalid", "password12")
+    return db.fetchone("SELECT * FROM users")
+
+
+class ScheduleNormalizeTest(unittest.TestCase):
+    def setUp(self):
+        self.user = _user()
+
+    def test_star_cron_too_frequent(self):
+        with self.assertRaises(schedules.ScheduleError) as ctx:
+            schedules._normalize(self.user["id"], {
+                "name": "spam",
+                "target": "chat",
+                "prompt": "ping {{date}}",
+                "model": "glm-5.3-flash",
+                "timezone": "UTC",
+                "recur_kind": "cron",
+                "cron_expr": "* * * * *",
+            })
+        self.assertIn("frequent", str(ctx.exception.detail))
+
+    def test_five_min_search_ok(self):
+        item = schedules._normalize(self.user["id"], {
+            "name": "search",
+            "target": "chat",
+            "prompt": "headlines {{date}}",
+            "model": "glm-5.3-flash",
+            "timezone": "UTC",
+            "recur_kind": "every",
+            "every_seconds": 300,
+            "allow_coding": False,
+        })
+        self.assertEqual(item["every_seconds"], 300)
+
+    def test_non_integer_interval_is_a_schedule_error(self):
+        for field, value in (("every_seconds", [300]), ("weekdays", {"mon": 1})):
+            raw = {"name": "x", "target": "chat", "prompt": "hi", "model": "m", "timezone": "UTC",
+                   "recur_kind": "every" if field == "every_seconds" else "cron", "every_seconds": 300,
+                   "at_local": "09:00", field: value}
+            with self.subTest(field=field), self.assertRaises(schedules.ScheduleError):
+                schedules._normalize(self.user["id"], raw)
+
+    def test_five_min_coding_rejected(self):
+        with self.assertRaises(schedules.ScheduleError):
+            schedules._normalize(self.user["id"], {
+                "name": "code",
+                "target": "chat",
+                "prompt": "lint",
+                "model": "glm-5.3-flash",
+                "timezone": "UTC",
+                "recur_kind": "every",
+                "every_seconds": 300,
+                "allow_coding": True,
+            })
+
+    def test_unknown_var_rejected(self):
+        with self.assertRaises(schedules.ScheduleError):
+            schedules._normalize(self.user["id"], {
+                "name": "x",
+                "target": "chat",
+                "prompt": "hi {{nope}}",
+                "model": "glm-5.3-flash",
+                "timezone": "UTC",
+                "recur_kind": "every",
+                "every_seconds": 3600,
+            })
+
+    def test_api_key_var_banned(self):
+        with self.assertRaises(schedules.ScheduleError):
+            schedules._normalize(self.user["id"], {
+                "name": "x",
+                "target": "chat",
+                "prompt": "hi {{date}}",
+                "model": "glm-5.3-flash",
+                "timezone": "UTC",
+                "recur_kind": "every",
+                "every_seconds": 3600,
+                "variables": {"api_key": "nope"},
+            })
+
+    def test_keyboard_var_ok(self):
+        item = schedules._normalize(self.user["id"], {
+            "name": "x",
+            "target": "chat",
+            "prompt": "layout {{keyboard}} {{date}}",
+            "model": "glm-5.3-flash",
+            "timezone": "UTC",
+            "recur_kind": "every",
+            "every_seconds": 3600,
+            "variables": {"keyboard": "us"},
+        })
+        self.assertEqual(item["variables"]["keyboard"], "us")
+
+
+class StartTurnScheduledTest(unittest.TestCase):
+    def setUp(self):
+        self.user = _user()
+        self.thread = chats.create_thread(self.user["id"], title="s", model="glm-5.3-flash")
+
+    def test_scheduled_without_override_is_not_coding(self):
+        result = start_turn(
+            self.user["id"], self.thread["id"], "hello", None, None,
+            auto=True, scheduled=True, auto_title=False,
+        )
+        agent = result["run"]["request"].get("agent") or {}
+        self.assertTrue(agent.get("scheduled"))
+        self.assertFalse(agent.get("coding"))
+        self.assertTrue(agent.get("auto"))
+
+    def test_scheduled_coding_override(self):
+        result = start_turn(
+            self.user["id"], self.thread["id"], "hello", None, None,
+            auto=True, scheduled=True, coding_override=True, auto_title=False,
+        )
+        agent = result["run"]["request"]["agent"]
+        self.assertTrue(agent.get("coding"))
+        self.assertTrue(agent.get("scheduled"))
+
+
+class FireRowClassTest(unittest.TestCase):
+    def test_manual_not_retryable(self):
+        self.assertFalse(schedules.fire_row_retryable(
+            {"slot_key": "manual:abc", "status": "queued", "run_id": None},
+            {"recur_kind": "cron"},
+        ))
+
+    def test_once_vault_retryable(self):
+        self.assertTrue(schedules.fire_row_retryable(
+            {"slot_key": "2026-09-14T09:00:00Z", "status": "vault_locked", "run_id": None},
+            {"recur_kind": "once", "every_seconds": None},
+        ))
+
+    def test_sanitize_redacts(self):
+        text = schedules.sanitize_schedule_error("token sk-abcdef BEGIN CERT")
+        self.assertNotIn("sk-", text)
+
+
+class FireStatusPropagationTest(unittest.TestCase):
+    """Terminal run statuses must flow onto schedule fires and last_status."""
+
+    def setUp(self):
+        self.user = _user()
+        self.uid = self.user["id"]
+
+    def _schedule(self):
+        return schedules.create_schedule(self.uid, {
+            "name": "status",
+            "target": "chat",
+            "prompt": "hi {{date}}",
+            "model": "glm-5.3-flash",
+            "timezone": "UTC",
+            "recur_kind": "every",
+            "every_seconds": 3600,
+        })
+
+    def _running_fire(self, item, run_id, thread_pk):
+        slot = iso_utc(utcnow())
+        db.execute(
+            """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at, run_id, thread_id)
+               VALUES(?,?, 'scheduled', 'running', ?, 'firex', ?, ?, ?)""",
+            (item["id"], self.uid, slot, db.now(), run_id, thread_pk),
+        )
+        db.execute(
+            "UPDATE chat_schedules SET last_status='running', last_run_id=? WHERE id=?",
+            (run_id, item["id"]),
+        )
+        return slot
+
+    def _scheduled_run(self):
+        thread = chats.create_thread(self.uid, title="s", model="glm-5.3-flash")
+        result = start_turn(self.uid, thread["id"], "hello", None, None, auto=True, scheduled=True)
+        return result["run"]
+
+    def test_invalid_stored_variables_do_not_break_list_or_tick(self):
+        import asyncio
+
+        item = self._schedule()
+        db.execute("UPDATE chat_schedules SET variables=?, next_fire_at=? WHERE id=?",
+                   ('{"api_key": "x", "1bad": "y"}', iso_utc(utcnow()), item["id"]))
+        listed = next(s for s in schedules.list_schedules(self.uid) if s["id"] == item["id"])
+        self.assertEqual(listed["variables"], {})
+        with patch.object(schedules, "_fire", new=AsyncMock()) as fire:
+            asyncio.run(schedules.tick())
+        self.assertIn(item["id"], [call.args[0]["id"] for call in fire.await_args_list])
+
+    def test_failure_after_the_run_exists_keeps_the_fire_tracking_it(self):
+        import asyncio
+
+        from app import chat_runs
+
+        item = self._schedule()
+        # Runs left active by earlier tests in this shared schema would trip
+        # the capacity check before the fire reaches start_turn.
+        db.execute("UPDATE chat_runs SET status='completed' WHERE status IN ('queued','running')")
+        slot = iso_utc(utcnow())
+        db.execute(
+            """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+               VALUES(?,?, 'scheduled', 'queued', ?, 'fire-late', ?)""",
+            (item["id"], self.uid, slot, db.now()),
+        )
+        fire = {"slot_key": slot, "fire_id": "fire-late", "status": "queued", "run_id": None}
+        with patch("app.sources.pick", new=AsyncMock(return_value=object())), \
+                patch.object(chat_runs, "start", new=AsyncMock(side_effect=RuntimeError("launch failed"))):
+            asyncio.run(schedules._fire(item, fire, consume_slot=True))
+        row = db.fetchone("SELECT status, run_id FROM schedule_fires WHERE schedule_id=? AND slot_key=?", (item["id"], slot))
+        self.assertEqual(row["status"], "running")
+        self.assertTrue(row["run_id"])
+        # The run still executes later; its real outcome lands on the fire.
+        run = chat_store.get_run(self.uid, row["run_id"])
+        chat_store.finish_run(run["id"], dict(run["message"]), "completed")
+        self.assertEqual(db.fetchone("SELECT status FROM schedule_fires WHERE schedule_id=? AND slot_key=?",
+                                     (item["id"], slot))["status"], "completed")
+
+    def test_fire_learns_its_run_in_the_run_commit(self):
+        # A crash right after the run commits must not leave a running fire
+        # without its run_id: reconcile would close it while the run resumes.
+        item = self._schedule()
+        thread = chats.create_thread(self.uid, title="s", model="glm-5.3-flash")
+        db.execute("UPDATE chat_runs SET status='completed' WHERE status IN ('queued','running')")
+        slot = iso_utc(utcnow())
+        db.execute(
+            """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+               VALUES(?,?, 'scheduled', 'running', ?, 'fire-crash', ?)""",
+            (item["id"], self.uid, slot, db.now()),
+        )
+        run = start_turn(self.uid, thread["id"], "hello", None, None, auto=True, scheduled=True,
+                         schedule_id=item["id"], schedule_slot=slot)["run"]
+        schedules.reconcile()
+        row = db.fetchone("SELECT status, run_id FROM schedule_fires WHERE schedule_id=? AND slot_key=?", (item["id"], slot))
+        self.assertEqual((row["status"], row["run_id"]), ("running", run["id"]))
+
+    def test_vault_locked_once_stays_retryable_after_capacity_skip(self):
+        import asyncio
+
+        now = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
+        slot = "2026-10-20T05:00:00Z"
+        item = schedules.create_schedule(self.uid, {
+            "name": "vault-capacity", "target": "chat", "prompt": "hi", "model": "offline",
+            "timezone": "UTC", "recur_kind": "once", "once_at": slot,
+        })
+        db.execute(
+            """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+               VALUES(?,?, 'scheduled', 'vault_locked', ?, 'fire-vault-capacity', ?)""",
+            (item["id"], self.uid, slot, iso_utc(now - timedelta(minutes=2))),
+        )
+        fire = {"slot_key": slot, "fire_id": "fire-vault-capacity", "status": "vault_locked", "run_id": None}
+        with patch.object(schedules, "utcnow", return_value=now), \
+                patch.object(db, "fetchone", return_value={"n": schedules.MAX_CONCURRENT_USER}), \
+                patch("app.sources.pick", new=AsyncMock()) as pick:
+            asyncio.run(schedules._fire(item, fire, consume_slot=True))
+        pick.assert_not_awaited()
+        stored = dict(db.fetchone("SELECT * FROM schedule_fires WHERE schedule_id=?", (item["id"],)))
+        self.assertEqual(stored["status"], "vault_locked")
+        self.assertEqual(stored["error"], "capacity")
+        with patch.object(schedules, "utcnow", return_value=now):
+            self.assertTrue(schedules.fire_row_retryable(stored, item))
+            with patch.object(schedules, "_fire", new=AsyncMock()) as retry:
+                asyncio.run(schedules.tick())
+        claimed = [call for call in retry.await_args_list if call.args[0]["id"] == item["id"]]
+        self.assertEqual(len(claimed), 1)
+        self.assertEqual(claimed[0].args[1]["status"], "vault_locked")
+        row = db.fetchone("SELECT enabled, next_fire_at FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertTrue(row["enabled"])
+        self.assertEqual(row["next_fire_at"], slot)
+
+    def test_a_fire_that_never_started_alerts_once_per_streak(self):
+        import asyncio
+
+        item = schedules.create_schedule(self.uid, {
+            "name": "nightly", "target": "chat", "prompt": "hi", "model": "offline",
+            "timezone": "UTC", "recur_kind": "every", "every_seconds": 3600,
+        })
+        notify = AsyncMock()
+
+        async def go():
+            with patch("app.push.notify_user", new=notify):
+                for slot in ("2026-10-20T05:00:00Z", "2026-10-20T06:00:00Z"):
+                    db.execute(
+                        """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+                           VALUES(?,?, 'scheduled', 'running', ?, ?, ?)""",
+                        (item["id"], self.uid, slot, "fire-" + slot, db.now()),
+                    )
+                    schedules._finish_fire(item, {"slot_key": slot}, "vault_locked", "Vault locked", None, None, consume=True)
+                await asyncio.sleep(0)
+
+        asyncio.run(go())
+        notify.assert_awaited_once()
+        self.assertEqual(notify.await_args.args[1]["url"], "/tasks")
+
+    def test_finish_run_updates_fire_and_schedule(self):
+        item = self._schedule()
+        run = self._scheduled_run()
+        self._running_fire(item, run["id"], run["thread_id"])
+        chat_store.finish_run(run["id"], dict(run["message"]), "interrupted")
+        fire = db.fetchone("SELECT * FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual(fire["status"], "interrupted")
+        self.assertIsNotNone(fire["finished_at"])
+        row = db.fetchone("SELECT last_status,last_error FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertEqual(row["last_status"], "interrupted")
+
+    def test_abort_active_updates_fire_and_schedule(self):
+        item = self._schedule()
+        run = self._scheduled_run()
+        self._running_fire(item, run["id"], run["thread_id"])
+        self.assertTrue(chat_store.abort_active(run["id"], "cancelled"))
+        fire = db.fetchone("SELECT status FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual(fire["status"], "cancelled")
+        self.assertEqual(
+            db.fetchone("SELECT last_status FROM chat_schedules WHERE id=?", (item["id"],))["last_status"],
+            "cancelled",
+        )
+
+    def test_reconcile_marks_interrupted_after_restart(self):
+        item = self._schedule()
+        run = self._scheduled_run()
+        self._running_fire(item, run["id"], run["thread_id"])
+        # Restart recovery marks the run interrupted without touching fires.
+        db.execute("UPDATE chat_runs SET status='interrupted' WHERE id=?", (run["id"],))
+        schedules.reconcile()
+        fire = db.fetchone("SELECT status,finished_at FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual(fire["status"], "interrupted")
+        self.assertIsNotNone(fire["finished_at"])
+        self.assertEqual(
+            db.fetchone("SELECT last_status FROM chat_schedules WHERE id=?", (item["id"],))["last_status"],
+            "interrupted",
+        )
+
+    def test_reconcile_leaves_active_runs_alone(self):
+        item = self._schedule()
+        run = self._scheduled_run()
+        self._running_fire(item, run["id"], run["thread_id"])
+        schedules.reconcile()
+        fire = db.fetchone("SELECT status,finished_at FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual(fire["status"], "running")
+        self.assertIsNone(fire["finished_at"])
+
+    def test_reconcile_handles_lost_run(self):
+        item = self._schedule()
+        thread = chats.create_thread(self.uid, title="s", model="glm-5.3-flash")
+        self._running_fire(item, "run-that-vanished", chats.resolve_thread_pk(self.uid, thread["id"]))
+        schedules.reconcile()
+        fire = db.fetchone("SELECT status,error FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual(fire["status"], "interrupted")
+        self.assertEqual(fire["error"], "run lost")
+
+    def test_reconcile_fixes_stale_schedule_last_status(self):
+        item = self._schedule()
+        run = self._scheduled_run()
+        db.execute(
+            "UPDATE chat_schedules SET last_status='running', last_run_id=? WHERE id=?",
+            (run["id"], item["id"]),
+        )
+        db.execute("UPDATE chat_runs SET status='completed' WHERE id=?", (run["id"],))
+        schedules.reconcile()
+        self.assertEqual(
+            db.fetchone("SELECT last_status FROM chat_schedules WHERE id=?", (item["id"],))["last_status"],
+            "completed",
+        )
+
+    def test_sync_run_status_noop_for_unscheduled_run(self):
+        run = self._scheduled_run()
+        with db.tx() as conn:
+            schedules.sync_run_status(conn, self.uid, run["id"], "completed", "")
+        self.assertIsNone(db.fetchone("SELECT id FROM schedule_fires WHERE run_id=?", (run["id"],)))
+
+
+class FinishFireConfigTest(unittest.TestCase):
+    """A fire finishing after a PATCH must not revert the new cadence."""
+
+    def setUp(self):
+        self.user = _user()
+
+    def _schedule(self):
+        return schedules.create_schedule(self.user["id"], {
+            "name": "clobber",
+            "target": "chat",
+            "prompt": "hi {{date}}",
+            "model": "glm-5.3-flash",
+            "timezone": "UTC",
+            "recur_kind": "every",
+            "every_seconds": 3600,
+        })
+
+    def test_finish_fire_keeps_concurrent_patch(self):
+        item = self._schedule()
+        slot = item["next_fire_at"]
+        patched = schedules.patch_schedule(self.user["id"], item["public_id"], {"every_seconds": 600})
+        schedules._finish_fire(item, {"slot_key": slot}, "completed", "", None, "run-c", consume=True)
+        row = db.fetchone("SELECT next_fire_at, last_status FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertEqual(row["next_fire_at"], patched["next_fire_at"])
+        self.assertEqual(row["last_status"], "completed")
+
+    def test_finish_fire_consumes_unmodified_slot(self):
+        item = self._schedule()
+        slot = item["next_fire_at"]
+        schedules._finish_fire(item, {"slot_key": slot}, "completed", "", None, "run-c", consume=True)
+        row = db.fetchone("SELECT next_fire_at, enabled FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertNotEqual(row["next_fire_at"], slot)
+        self.assertTrue(row["enabled"])
+
+    def test_catchup_skip_jumps_past_every_missed_slot(self):
+        item = self._schedule()
+        stale = "2026-10-20T00:00:00Z"
+        for minute in (0, 10):
+            now = datetime(2026, 10, 20, 2, minute, tzinfo=timezone.utc)
+            with self.subTest(minute=minute), patch.object(schedules, "utcnow", return_value=now):
+                schedules._finish_fire(item, {"slot_key": stale}, "skipped_catchup", "missed fire window", None, None, consume=True)
+            row = db.fetchone("SELECT next_fire_at FROM chat_schedules WHERE id=?", (item["id"],))
+            self.assertEqual(row["next_fire_at"], "2026-10-20T03:00:00Z")
+
+    def test_finish_fire_does_not_reenable_disabled_schedule(self):
+        item = self._schedule()
+        slot = item["next_fire_at"]
+        schedules.patch_schedule(self.user["id"], item["public_id"], {"enabled": False})
+        schedules._finish_fire(item, {"slot_key": slot}, "completed", "", None, "run-c", consume=True)
+        row = db.fetchone("SELECT enabled, next_fire_at FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertFalse(row["enabled"])
+        self.assertIsNone(row["next_fire_at"])
+
+    def test_finish_fire_waits_for_an_uncommitted_disable(self):
+        # On MariaDB the schedule read is a snapshot unless it locks: a fire
+        # finishing (recover/_claim_due run it in a worker thread) while a
+        # PATCH disabling the schedule is still open re-enabled it.
+        import threading
+        import time
+
+        item = self._schedule()
+        slot = item["next_fire_at"]
+        done = threading.Event()
+        errors = []
+
+        def finish():
+            try:
+                schedules._finish_fire(item, {"slot_key": slot}, "completed", "", None, "run-c", consume=True)
+            except Exception as exc:  # surfaced below
+                errors.append(exc)
+            finally:
+                done.set()
+
+        with db.tx() as patch_conn:
+            patch_conn.execute("BEGIN")
+            patch_conn.execute("UPDATE chat_schedules SET enabled=0, next_fire_at=NULL WHERE id=?", (item["id"],))
+            worker = threading.Thread(target=finish)
+            worker.start()
+            # Commit only once the fire is blocked on the schedule row (at its
+            # locking read, or at its UPDATE without one).
+            deadline = time.monotonic() + 10
+            while not db.fetchone(
+                """SELECT 1 FROM information_schema.PROCESSLIST WHERE ID<>CONNECTION_ID() AND COMMAND='Query'
+                     AND INFO LIKE '%chat_schedules%' AND (INFO LIKE 'UPDATE%' OR INFO LIKE '%FOR UPDATE')"""
+            ):
+                self.assertFalse(done.is_set(), "fire finished without waiting for the open PATCH")
+                self.assertLess(time.monotonic(), deadline, "fire never reached the schedule row")
+                time.sleep(0.02)
+        worker.join(30)
+        self.assertEqual(errors, [])
+        row = db.fetchone("SELECT enabled, next_fire_at, last_status FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertFalse(row["enabled"])
+        self.assertIsNone(row["next_fire_at"])
+        self.assertEqual(row["last_status"], "completed")
+
+    def test_cron_catchup_skip_lands_on_the_next_slot_after_now(self):
+        import asyncio
+
+        item = schedules.create_schedule(self.user["id"], {
+            "name": "quarterly", "target": "chat", "prompt": "hi", "model": "glm-5.3-flash",
+            "timezone": "UTC", "recur_kind": "cron", "cron_expr": "*/15 * * * *",
+        })
+        db.execute("UPDATE chat_schedules SET next_fire_at=? WHERE id=?", ("2026-10-20T00:00:00Z", item["id"]))
+        now = datetime(2026, 10, 20, 2, 7, tzinfo=timezone.utc)
+        with patch.object(schedules, "utcnow", return_value=now), \
+                patch("app.sources.pick", new=AsyncMock(return_value=None)) as pick:
+            asyncio.run(schedules.tick())
+            asyncio.run(schedules.tick())
+        pick.assert_not_awaited()
+        row = db.fetchone("SELECT next_fire_at, last_status FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertEqual((row["next_fire_at"], row["last_status"]), ("2026-10-20T02:15:00Z", "skipped_catchup"))
+        fires = db.fetchall("SELECT slot_key, status FROM schedule_fires WHERE schedule_id=?", (item["id"],))
+        self.assertEqual([(f["slot_key"], f["status"]) for f in fires], [("2026-10-20T00:00:00Z", "skipped_catchup")])
+
+    def test_retry_cooldown(self):
+        now = utcnow()
+        self.assertFalse(schedules._retry_due({"started_at": iso_utc(now)}))
+        self.assertTrue(schedules._retry_due({"started_at": iso_utc(now - timedelta(seconds=120))}))
+        self.assertTrue(schedules._retry_due({"started_at": ""}))
+
+    def test_string_flag_rejected(self):
+        with self.assertRaises(schedules.ScheduleError):
+            schedules._normalize(self.user["id"], {
+                "name": "x", "target": "chat", "prompt": "hi", "model": "m",
+                "timezone": "UTC", "recur_kind": "every", "every_seconds": 3600,
+                "enabled": "false",
+            })
+
+    def test_reconcile_closes_runless_running(self):
+        item = self._schedule()
+        db.execute("UPDATE chat_schedules SET last_status='running', last_run_id='' WHERE id=?", (item["id"],))
+        schedules.reconcile()
+        row = db.fetchone("SELECT last_status, last_error FROM chat_schedules WHERE id=?", (item["id"],))
+        self.assertEqual((row["last_status"], row["last_error"]), ("interrupted", "no run started"))
+
+
+class ScheduledCapacityTest(unittest.TestCase):
+    def test_third_concurrent_scheduled_run_waits_for_a_free_slot(self):
+        # over_capacity counts real scheduled runs by their stored request
+        # JSON ('"scheduled":true', chat_tx.dumps' compact form): pin it
+        # against runs start_turn actually wrote.
+        import asyncio
+
+        from app import chat_runs
+
+        _user()
+        # Its own user: the shared one is near MAX_SCHEDULES.
+        uid = accounts.create_user("sched-capacity@test.invalid", "password12")["id"]
+        db.execute("UPDATE chat_runs SET status='completed' WHERE status IN ('queued','running')")
+        items = [schedules.create_schedule(uid, {
+            "name": f"cap-{n}", "target": "chat", "prompt": "hi", "model": "glm-5.3-flash",
+            "timezone": "UTC", "recur_kind": "every", "every_seconds": 3600,
+        }) for n in range(3)]
+
+        def fire(item, slot):
+            db.execute(
+                """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+                   VALUES(?,?, 'scheduled', 'queued', ?, ?, ?)""",
+                (item["id"], uid, slot, f"fire-{item['id']}-{slot}", db.now()),
+            )
+            asyncio.run(schedules._fire(item, {"slot_key": slot, "fire_id": f"fire-{item['id']}-{slot}",
+                                                "status": "queued", "run_id": None}, consume_slot=True))
+            return db.fetchone("SELECT status, run_id FROM schedule_fires WHERE schedule_id=? AND slot_key=?",
+                               (item["id"], slot))
+
+        slot = iso_utc(utcnow())
+        retry = iso_utc(utcnow() + timedelta(seconds=1))
+        with patch("app.sources.pick", new=AsyncMock(return_value=object())), \
+                patch.object(chat_runs, "start", new=AsyncMock()):
+            first, second = fire(items[0], slot), fire(items[1], slot)
+            self.assertEqual((first["status"], second["status"]), ("running", "running"))
+            self.assertEqual(fire(items[2], slot)["status"], "skipped_capacity")
+            run = chat_store.get_run(uid, first["run_id"])
+            chat_store.finish_run(run["id"], dict(run["message"]), "completed")
+            third = fire(items[2], retry)
+        self.assertEqual(third["status"], "running")
+        self.assertTrue(third["run_id"])
+
+
+class FireDeletedScheduleTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fire_does_not_start_after_schedule_deleted(self):
+        user = _user()
+        item = schedules.create_schedule(user["id"], {
+            "name": "doomed", "target": "chat", "prompt": "hi {{date}}",
+            "model": "glm-5.3-flash", "timezone": "UTC",
+            "recur_kind": "every", "every_seconds": 3600,
+        })
+        fire = {"slot_key": item["next_fire_at"], "fire_id": "fire-d", "status": "queued", "run_id": None}
+        with patch("app.sources.pick", new=AsyncMock(return_value=("src", "m"))):
+            db.execute("DELETE FROM chat_schedules WHERE id=?", (item["id"],))
+            await schedules._fire(item, fire, consume_slot=True)
+        self.assertEqual(
+            db.fetchone("SELECT COUNT(*) AS n FROM chat_threads WHERE schedule_id=?", (item["id"],))["n"], 0,
+        )

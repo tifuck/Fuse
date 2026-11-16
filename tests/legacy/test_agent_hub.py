@@ -1,0 +1,529 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+_TMP = tempfile.mkdtemp(prefix="fuse-hub-")
+os.environ.setdefault("DATABASE_PATH", str(Path(_TMP) / "hub.db"))
+os.environ.setdefault("APP_SECRET", "y" * 32)
+
+from app import accounts, agent_hub, command_jobs, db, hosts, vault, workspace
+
+
+class FakeWS:
+    def __init__(self, host_id: int):
+        self.host_id = host_id
+        self.sent = []
+        self.client_state = type("S", (), {"name": "CONNECTED"})()
+
+    async def send_json(self, obj):
+        self.sent.append(obj)
+        if obj.get("t") == "job":
+            rec = agent_hub._conns.get((1, self.host_id))
+            fut = rec["pending"].get(obj["id"]) if rec else None
+            if fut and not fut.done():
+                if obj.get("op") == "browse":
+                    out = '{"path":"/tmp","parent":"/","home":"/root","entries":[{"name":"proj","kind":"dir"}]}'
+                elif obj.get("op") in ("exec", "exec_stream"):
+                    out = "ok\n"
+                    if obj.get("op") == "exec_stream":
+                        # Streamed stdout arrives as chunks only; the result's out is empty.
+                        out = ""
+                        rec = agent_hub._conns.get((1, self.host_id))
+                        cb = rec.get("chunks", {}).get(obj["id"]) if rec else None
+                        if cb:
+                            cb("out", "ok\n")
+                else:
+                    out = (obj.get("content") and "wrote") or "hello"
+                fut.set_result({"ok": True, "exit": 0, "out": out, "err": "", "error": ""})
+
+    async def close(self, code=None):
+        return None
+
+
+class HelloWS(FakeWS):
+    """A connector socket that sends one hello, then stays connected."""
+
+    def __init__(self, host_id: int, hello: dict):
+        super().__init__(host_id)
+        self.frames = [json.dumps(hello)]
+
+    async def receive_text(self):
+        if self.frames:
+            return self.frames.pop(0)
+        await asyncio.sleep(3600)
+
+
+class ConnectorWS(FakeWS):
+    """Speaks the connector protocol to handle_socket: hello first, then every
+    result comes back as a frame on the receive loop, never inside send_json.
+    exec_stream sends stdout as a chunk and a final res with empty out."""
+
+    def __init__(self, host_id: int, hello: dict):
+        super().__init__(host_id)
+        self.inbox: asyncio.Queue = asyncio.Queue()
+        self.inbox.put_nowait(json.dumps(hello))
+
+    async def receive_text(self):
+        return await self.inbox.get()
+
+    async def send_json(self, obj):
+        self.sent.append(obj)
+        if obj.get("t") != "job":
+            return
+        if obj.get("op") == "exec_stream":
+            self.inbox.put_nowait(json.dumps({"v": 1, "t": "chunk", "id": obj["id"], "stream": "out", "data": "ok\n"}))
+        self.inbox.put_nowait(json.dumps({"v": 1, "t": "res", "id": obj["id"], "ok": True, "exit": 0,
+                                          "out": "", "err": "", "truncated": False}))
+
+
+class AgentHubTest(unittest.TestCase):
+    def setUp(self):
+        replay_patch = patch.dict(agent_hub._cancel_replay, clear=True)
+        replay_patch.start()
+        self.addCleanup(replay_patch.stop)
+        schema_patch = patch.object(command_jobs, "_schema_ready", False)
+        schema_patch.start()
+        self.addCleanup(schema_patch.stop)
+        live_patch = patch.dict(command_jobs._live, clear=True)
+        live_patch.start()
+        self.addCleanup(live_patch.stop)
+        self.tmp = tempfile.TemporaryDirectory(prefix="fuse-hub-")
+        self.addCleanup(self.tmp.cleanup)
+        self.conn = sqlite3.connect(str(Path(self.tmp.name) / "test.db"), check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        db._init(self.conn)
+        self.addCleanup(self.conn.close)
+        self.connection_patch = patch.object(db, "connect", return_value=self.conn)
+        self.connection_patch.start()
+        self.addCleanup(self.connection_patch.stop)
+        vault.lock_all()
+        accounts.create_user("hub@test.invalid", "password12", admin=False)
+        vault.lock_all()
+        pairing = hosts.mint_pairing(1)
+        self.host, self.token = hosts.redeem_pairing(pairing["code"], {"hostname": "hub", "username": "u"})
+        self.hid = self.host["id"]
+        agent_hub._conns.clear()
+        agent_hub._held.clear()
+        started_patch = patch.object(agent_hub, "_started_at", None)
+        started_patch.start()
+        self.addCleanup(started_patch.stop)
+        dropped_patch = patch.dict(agent_hub._dropped_at, clear=True)
+        dropped_patch.start()
+        self.addCleanup(dropped_patch.stop)
+
+    def tearDown(self):
+        agent_hub._conns.clear()
+        agent_hub._held.clear()
+
+    def test_hello_with_overlong_integer_closes_cleanly(self):
+        # json.loads raises a plain ValueError past 4300 digits: a bad frame,
+        # not an unhandled exception for anyone who can open the socket.
+        ws = HelloWS(self.hid, {})
+        ws.frames = ['{"t":"hello","n":' + "9" * 5000 + "}"]
+        closed = []
+
+        async def close(code=None):
+            closed.append(code)
+
+        ws.close = close
+        asyncio.run(agent_hub.handle_socket(ws, hello_timeout=1))
+        self.assertEqual(closed, [4400])
+
+    def test_offline_call(self):
+        started = time.monotonic()
+        with self.assertRaises(agent_hub.AgentError):
+            asyncio.run(agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 1))
+        # Not recently dropped and not just booted: no reconnect to wait for.
+        self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_call_waits_for_a_connector_reconnecting_after_a_drop(self):
+        key = (1, self.hid)
+
+        async def go():
+            agent_hub._dropped_at[key] = time.monotonic()
+
+            async def reconnect():
+                await asyncio.sleep(0.5)
+                agent_hub._conns[key] = {"ws": FakeWS(self.hid), "pending": {}, "user_id": 1, "host_id": self.hid}
+                agent_hub._mark_online(key)  # as handle_socket does on registration
+
+            back = asyncio.create_task(reconnect())
+            started = time.monotonic()
+            data = await agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5)
+            waited = time.monotonic() - started
+            await back
+            return data, waited
+
+        data, waited = asyncio.run(go())
+        self.assertTrue(data["ok"])
+        # Woken by the reconnect itself, not a 250 ms poll tick.
+        self.assertLess(waited, 0.65)
+        self.assertNotIn((1, self.hid), agent_hub._online)
+
+    def test_call_waits_after_boot_only_within_the_window(self):
+        long_ago = time.monotonic() - agent_hub.RECONNECT_WINDOW - 1
+        with patch.object(agent_hub, "_started_at", long_ago):
+            agent_hub._dropped_at[(1, self.hid)] = long_ago
+            started = time.monotonic()
+            with self.assertRaises(agent_hub.AgentError):
+                asyncio.run(agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5))
+            self.assertLess(time.monotonic() - started, 0.5)
+        with patch.object(agent_hub, "_started_at", time.monotonic()), patch.object(agent_hub, "RECONNECT_WAIT", 0.75):
+            started = time.monotonic()
+            with self.assertRaises(agent_hub.AgentError):
+                asyncio.run(agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5))
+            self.assertGreaterEqual(time.monotonic() - started, 0.7)
+
+    def test_dropped_socket_is_remembered_and_disconnect_forgets_it(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.agent_http import router as agent_router
+
+        app = FastAPI()
+        app.include_router(agent_router)
+        key = (1, self.hid)
+        with TestClient(app).websocket_connect("/agent/v1/connect") as ws:
+            ws.send_json({"v": 1, "t": "hello", "token": self.token, "hostname": "hub", "ver": "1.7.3"})
+            self.assertEqual(ws.receive_json()["t"], "hello_ok")
+            self.assertNotIn(key, agent_hub._dropped_at)
+            # The live version comes from hello, without a DB read.
+            self.assertEqual(agent_hub.connector_version(1, self.hid), "1.7.3")
+        deadline = time.monotonic() + 2
+        while key not in agent_hub._dropped_at and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertIn(key, agent_hub._dropped_at)
+        # A host the user disabled is not coming back: calls fail at once.
+        asyncio.run(agent_hub.disconnect(1, self.hid))
+        self.assertNotIn(key, agent_hub._dropped_at)
+
+    def test_host_disabled_after_the_token_check_is_disconnected(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.agent_http import router as agent_router
+
+        # The token lookup ran before the disable committed, so its own
+        # disconnect found no socket: the hello bookkeeping must close it.
+        row = hosts.host_by_device_token(self.token)
+        hosts.patch_host(1, self.hid, {"disabled": True})
+        app = FastAPI()
+        app.include_router(agent_router)
+        with patch.object(hosts, "host_by_device_token", return_value=row):
+            with TestClient(app).websocket_connect("/agent/v1/connect") as ws:
+                ws.send_json({"v": 1, "t": "hello", "token": self.token, "hostname": "hub"})
+                self.assertEqual(ws.receive_json()["t"], "hello_ok")
+                self.assertEqual(ws.receive_json(), {"v": 1, "t": "bye", "reason": "disabled"})
+        self.assertFalse(agent_hub.is_online(1, self.hid))
+
+    def test_auth_failure_says_so_with_a_code(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.agent_http import router as agent_router
+
+        app = FastAPI()
+        app.include_router(agent_router)
+        with TestClient(app).websocket_connect("/agent/v1/connect") as ws:
+            ws.send_json({"v": 1, "t": "hello", "token": "fa_not_a_real_token", "hostname": "hub"})
+            reply = ws.receive_json()
+        self.assertEqual((reply["t"], reply.get("code")), ("hello_err", "auth"))
+
+    def test_reconnect_preserves_stream_callback(self):
+        async def go():
+            key = (1, self.hid)
+            future = asyncio.get_running_loop().create_future()
+            received = []
+            callback = lambda stream, text: received.append((stream, text))
+            pending = {"job": future}
+            await agent_hub._hold_pending(key, pending, {"job": callback})
+            held = agent_hub._held[key]
+            self.assertIs(held["chunks"]["job"], callback)
+            live = {"pending": {}, "chunks": {}}
+            agent_hub._conns[key] = live
+            second = {"other": asyncio.get_running_loop().create_future()}
+            await agent_hub._hold_pending(key, second, {"other": callback})
+            live["chunks"]["other"]("out", "after reconnect")
+            self.assertEqual(received, [("out", "after reconnect")])
+            agent_hub._take_held(key)
+        asyncio.run(go())
+
+    def test_roundtrip_and_workspace(self):
+        ws = FakeWS(self.hid)
+        agent_hub._conns[(1, self.hid)] = {"ws": ws, "pending": {}, "user_id": 1, "host_id": self.hid}
+        self.assertTrue(agent_hub.is_online(1, self.hid))
+
+        async def go():
+            data = await agent_hub.call(1, self.hid, "exec", {"cwd": "~", "cmd": "echo ok"}, 2)
+            self.assertEqual(data["out"], "ok\n")
+            text, rec = await workspace.execute(
+                "run_terminal_command",
+                json.dumps({"command": "echo ok"}),
+                user_id=1,
+                bound_host_id=self.hid,
+                bound_cwd="/tmp",
+            )
+            self.assertEqual(rec["status"], "done")
+            self.assertEqual(rec["output"], "ok\n")
+            self.assertEqual(rec["host"], self.host["alias"])
+
+            text, rec = await workspace.execute(
+                "run_terminal_command",
+                json.dumps({"command": "echo ok"}),
+                user_id=1,
+                bound_host_id=self.hid,
+            )
+            self.assertEqual(rec["status"], "done")
+            exec_jobs = [m for m in ws.sent if m.get("t") == "job" and m.get("op") == "exec"]
+            self.assertTrue(exec_jobs)
+            self.assertNotIn("$HOME", exec_jobs[-1].get("cwd") or "")
+            self.assertEqual(exec_jobs[-1].get("cwd"), "~")
+
+            listing = await workspace.browse(1, self.hid, "/tmp")
+            self.assertEqual(listing["path"], "/tmp")
+            self.assertEqual(listing["entries"][0]["name"], "proj")
+            self.assertEqual(listing["entries"][0]["kind"], "dir")
+
+        asyncio.run(go())
+        self.assertTrue(any(m.get("t") == "job" for m in ws.sent))
+
+    def test_token_lookup(self):
+        row = hosts.host_by_device_token(self.token)
+        self.assertEqual(int(row["id"]), self.hid)
+
+    def test_oversized_payload_rejected_before_send(self):
+        ws = FakeWS(self.hid)
+        agent_hub._conns[(1, self.hid)] = {"ws": ws, "pending": {}, "user_id": 1, "host_id": self.hid}
+
+        async def go():
+            # UTF-8 wire size, not Unicode character count, determines the cap.
+            with self.assertRaises(agent_hub.AgentError) as ctx:
+                await agent_hub.call(1, self.hid, "write", {"path": "/tmp/x", "content": "€" * 310_000}, 2)
+            self.assertIn("payload too large", str(ctx.exception.detail))
+            self.assertEqual(len(ws.sent), 0)
+            rec = agent_hub._conns.get((1, self.hid))
+            self.assertEqual(rec["pending"], {})
+
+        asyncio.run(go())
+
+    def test_websocket_hello_redeems(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from app.agent_http import router as agent_router
+
+        pairing = hosts.mint_pairing(1)
+        app = FastAPI()
+        app.include_router(agent_router)
+        client = TestClient(app)
+        with client.websocket_connect("/agent/v1/connect") as ws:
+            ws.send_json(
+                {
+                    "v": 1,
+                    "t": "hello",
+                    "code": pairing["code"],
+                    "hostname": "wsbox",
+                    "user": "ada",
+                    "ver": "1.0.0",
+                }
+            )
+            hello = ws.receive_json()
+            self.assertEqual(hello["t"], "hello_ok")
+            self.assertTrue(hello["token"].startswith("fa_"))
+            hid = hello["host_id"]
+            self.assertTrue(agent_hub.is_online(1, hid))
+            row = hosts.host_by_device_token(hello["token"])
+            self.assertEqual(int(row["id"]), hid)
+            self.assertEqual(row["username"], "ada")
+            self.assertFalse(hosts.list_pending_pairings(1))
+
+    def test_pending_survives_socket_replace(self):
+        loop = asyncio.new_event_loop()
+        self.addCleanup(loop.close)
+
+        async def go():
+            first = FakeWS(self.hid)
+            rec = {"ws": first, "pending": {}, "user_id": 1, "host_id": self.hid}
+            agent_hub._conns[(1, self.hid)] = rec
+            fut = loop.create_future()
+            rec["pending"]["abc123abc123"] = fut
+            second = FakeWS(self.hid)
+            rec2 = {"ws": second, "pending": {}, "user_id": 1, "host_id": self.hid}
+            rec2["pending"].update(rec["pending"])
+            rec["pending"] = {}
+            agent_hub._conns[(1, self.hid)] = rec2
+            rec2["pending"]["abc123abc123"].set_result(
+                {"ok": True, "exit": 0, "out": "ok", "err": "", "error": ""}
+            )
+            self.assertEqual((await fut)["out"], "ok")
+            self.assertTrue(agent_hub.is_online(1, self.hid))
+
+        loop.run_until_complete(go())
+
+    def test_hold_pending_reattaches_on_hello(self):
+        loop = asyncio.new_event_loop()
+        self.addCleanup(loop.close)
+
+        async def go():
+            first = FakeWS(self.hid)
+            rec = {"ws": first, "pending": {}, "user_id": 1, "host_id": self.hid}
+            agent_hub._conns[(1, self.hid)] = rec
+            fut = loop.create_future()
+            rec["pending"]["heldjobheld1"] = fut
+            leftover = rec["pending"]
+            rec["pending"] = {}
+            agent_hub._conns.pop((1, self.hid), None)
+            await agent_hub._hold_pending((1, self.hid), leftover)
+            self.assertFalse(fut.done())
+            second = FakeWS(self.hid)
+            rec2 = {"ws": second, "pending": {}, "user_id": 1, "host_id": self.hid}
+            rec2["pending"].update(agent_hub._take_held((1, self.hid)))
+            agent_hub._conns[(1, self.hid)] = rec2
+            self.assertIn("heldjobheld1", rec2["pending"])
+            rec2["pending"]["heldjobheld1"].set_result(
+                {"ok": True, "exit": 0, "out": "ok", "err": "", "error": ""}
+            )
+            self.assertEqual((await fut)["out"], "ok")
+
+        loop.run_until_complete(go())
+
+    def test_restarted_connector_fails_jobs_it_cannot_answer(self):
+        async def go():
+            key = (1, self.hid)
+            loop = asyncio.get_running_loop()
+            tasks = []
+
+            async def connect(inst):
+                hello = {"v": 1, "t": "hello", "token": self.token, "ver": "1.7.0"}
+                if inst:
+                    hello["inst"] = inst
+                ws = HelloWS(self.hid, hello)
+                tasks.append(asyncio.create_task(agent_hub.handle_socket(ws)))
+                for _ in range(500):
+                    await asyncio.sleep(0.01)
+                    rec = agent_hub._conns.get(key)
+                    if rec is not None and rec["ws"] is ws:
+                        return rec
+                self.fail("hello never registered")
+
+            async def failure(fut):
+                with self.assertRaises(agent_hub.AgentError) as ctx:
+                    await asyncio.wait_for(fut, 1)
+                return str(ctx.exception.detail)
+
+            # Same process on a new socket keeps its job; another process fails it
+            # now instead of leaving it to hang until its deadline.
+            first = await connect("b")
+            kept = loop.create_future()
+            first["pending"]["kept"] = kept
+            second = await connect("b")
+            self.assertIs(second["pending"].get("kept"), kept)
+            self.assertFalse(kept.done())
+            third = await connect("c")
+            self.assertNotIn("kept", third["pending"])
+            self.assertIn("connector restarted", await failure(kept))
+            # Jobs parked by process a: a live process c cannot take them...
+            raced = loop.create_future()
+            await agent_hub._hold_pending(key, {"raced": raced}, None, "a")
+            self.assertIn("connector restarted", await failure(raced))
+            # ...and neither can process d reclaiming them from the hold.
+            agent_hub._conns.pop(key)
+            parked = loop.create_future()
+            await agent_hub._hold_pending(key, {"parked": parked}, None, "a")
+            fourth = await connect("d")
+            self.assertNotIn("parked", fourth["pending"])
+            self.assertIn("connector restarted", await failure(parked))
+            # A connector that does not name its process keeps today's handoff.
+            legacy = loop.create_future()
+            fourth["pending"]["legacy"] = legacy
+            fifth = await connect("")
+            self.assertIs(fifth["pending"].get("legacy"), legacy)
+            fifth["pending"].clear()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        asyncio.run(go())
+
+    def test_inflight_cap_allows_burst(self):
+        class SilentWS(FakeWS):
+            async def send_json(self, obj):
+                self.sent.append(obj)
+
+        ws = SilentWS(self.hid)
+        rec = {"ws": ws, "pending": {}, "user_id": 1, "host_id": self.hid}
+        agent_hub._conns[(1, self.hid)] = rec
+
+        async def go():
+            # A burst of 100 parallel tool calls is all sent; only past the cap
+            # is a call refused as busy.
+            def launch(n):
+                return [asyncio.create_task(agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5)) for _ in range(n)]
+
+            burst = launch(100)
+            await asyncio.sleep(0.05)
+            self.assertEqual(len([m for m in ws.sent if m.get("t") == "job"]), 100)
+            burst += launch(agent_hub.MAX_INFLIGHT - 100)
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(rec["pending"]), agent_hub.MAX_INFLIGHT)
+            with self.assertRaises(agent_hub.AgentError) as ctx:
+                await agent_hub.call(1, self.hid, "exec", {"cmd": "true"}, 5)
+            self.assertEqual(ctx.exception.detail, "agent is busy")
+            for fut in list(rec["pending"].values()):
+                fut.set_result({"ok": True, "exit": 0, "out": "ok\n", "err": "", "error": ""})
+            results = await asyncio.gather(*burst)
+            self.assertTrue(all(r["ok"] for r in results))
+
+        asyncio.run(go())
+
+    def test_streamed_command_round_trips_through_the_socket(self):
+        async def go():
+            ws = ConnectorWS(self.hid, {"v": 1, "t": "hello", "token": self.token, "ver": "1.7.0"})
+            loop = asyncio.create_task(agent_hub.handle_socket(ws))
+            try:
+                for _ in range(500):
+                    if (agent_hub._conns.get((1, self.hid)) or {}).get("ws") is ws:
+                        break
+                    await asyncio.sleep(0.01)
+                else:
+                    self.fail("hello never registered")
+                text, rec = await workspace.execute(
+                    "run_terminal_command",
+                    json.dumps({"command": "echo ok"}),
+                    user_id=1,
+                    bound_host_id=self.hid,
+                    bound_cwd="/tmp",
+                )
+            finally:
+                loop.cancel()
+                await asyncio.gather(loop, return_exceptions=True)
+            self.assertEqual(rec["status"], "done")
+            self.assertEqual(rec["output"], "ok\n")
+            self.assertIn("exec_stream", [m.get("op") for m in ws.sent if m.get("t") == "job"])
+
+        asyncio.run(go())
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+
+def test_malformed_exit_codes_are_unknown_not_a_crash():
+    from app import agent_hub
+
+    assert agent_hub._exit_code(3) == 3
+    assert agent_hub._exit_code(2.0) == 2
+    for bad in (float("inf"), float("nan"), "1", True, None):
+        assert agent_hub._exit_code(bad) is None

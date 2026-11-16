@@ -1,17 +1,21 @@
-// The scene registry, in the folded source's order. Engine and entry read it by key.
-// Verbatim extraction from static/chat-backdrop.js; chunk map: backdrop-manifest.json in the snapshot parent.
+// The scene registry. Engine and entry read it by key; the Appearance
+// catalog (BACKDROPS in chat-appearance.js) gives the order and labels.
 
-import { glyphs, life, rain, ripple } from "./scenes-glyph.js";
-import { circuit, spiral, coral } from "./scenes-circuit.js";
-import { riso, warp, mandala, aurora } from "./scenes-field.js";
-import { garden } from "./scene-garden.js";
-import { botanica } from "./scene-botanica.js";
-import { ivy } from "./scene-nouveau.js";
-import { meadow, pond } from "./scenes-meadow.js";
-import { orbit, galaxy } from "./scenes-orbit-galaxy.js";
-import { eclipse, belt, contact } from "./scenes-eclipse-belt-contact.js";
-import { koi } from "./scene-koi.js";
-import { signal } from "./scene-signal.js";
-import { spark, clouddrift, honulagoon, koipond, jellyfish, paperboats, fireflies, moonlit } from "./wallpapers.js";
+import { fogpines } from "./scene-fogpines.js";
+import { harbor } from "./scene-harbor.js";
+import { auroralake } from "./scene-aurora-lake.js";
+import { cliffs } from "./scene-cliffs.js";
+import { deepsea } from "./scene-deepsea.js";
+import { orbital } from "./scene-orbital.js";
+import { rain } from "./scene-rain.js";
+import { rooftops } from "./scene-rooftops.js";
+import { circuit } from "./scene-circuit.js";
+import { launch } from "./scene-launch.js";
+import { bamboo } from "./scene-bamboo.js";
+import { waterfall } from "./scene-waterfall.js";
+import { desert } from "./scene-desert.js";
+import { sakura } from "./scene-sakura.js";
+import { terraces } from "./scene-terraces.js";
+import { meadow } from "./scene-meadow.js";
 
-export const SCENES = { glyphs, life, rain, ripple, circuit, spiral, coral, riso, warp, mandala, aurora, garden, botanica, ivy, meadow, pond, orbit, galaxy, eclipse, belt, contact, koi, signal, spark, clouddrift, honulagoon, koipond, jellyfish, paperboats, fireflies, moonlit };
+export const SCENES = { fogpines, harbor, auroralake, cliffs, deepsea, orbital, rain, rooftops, circuit, launch, bamboo, waterfall, desert, sakura, terraces, meadow };

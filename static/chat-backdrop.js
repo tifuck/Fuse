@@ -6,7 +6,7 @@
    never follow the pointer; the picker cards render a real frame of each
    scene, animating while hovered. */
 
-/* The drawing lives in ./backdrops/: kits (env/color/noise/kit/pixel/botany/space),
+/* The drawing lives in ./backdrops/: kits (env/color/noise/kit/tiles/tile-land),
    one module per scene family, the registry in scenes.js, and the runner, picker
    previews and sync in engine.js. Load this entry as a module:
    <script type="module" src="/static/chat-backdrop.js?v=N"></script>
@@ -41,8 +41,8 @@ window.FuseBackdrop = {
   sync,
   previews: scanPreviews,
   animated: (kind) => Boolean(SCENES[kind]),
-  isWallpaper: (kind) => Boolean(SCENES[kind]?.spec),
-  scheme: (kind) => SCENES[kind]?.spec?.scheme || "",
+  isWallpaper: (kind) => Boolean(SCENES[kind]?.spec || SCENES[kind]?.wallpaper),
+  scheme: (kind) => (SCENES[kind]?.spec || SCENES[kind]?.wallpaper ? SCENES[kind].scheme || "" : ""),
   register,
 };
 scanPreviews();
