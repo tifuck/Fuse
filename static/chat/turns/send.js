@@ -211,7 +211,7 @@ export function createSend(ctx) {
     // Show local feedback before copying history or waiting for HTTP. This is
     // deliberately outside the durable transcript: retries keep their command
     // identity, and a failed request never leaves a phantom saved message.
-    const pending = fromHtml(ui.pendingSendHtml(text || `${attachments.length} attachment(s)`));
+    const pending = fromHtml(ui.pendingSendHtml(text || `${attachments.length} attachment(s)`, attachments));
     S.log.after(pending);
     transcript.setActive(true);
     // Send now from the queue keeps a paused reader's position: the interrupt

@@ -470,6 +470,7 @@ export function createDesktopTheme(runtime) {
   Object.assign(theme, createTurnExtras({
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
+    get renderUser() { return theme.renderUser; },
   }));
   Object.assign(theme, createChrome({
     get activeRun() { return runtime.activeRun; },

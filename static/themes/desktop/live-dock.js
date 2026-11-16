@@ -198,8 +198,9 @@ function activityKind(msg, groups, live) {
     return "waiting";
   }
 
+// Desktop's status line appears and goes in place, with no fade to wait for.
 function liveDockMotionMs() {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
+    return 0;
   }
 
 function followLiveDockSlide() {

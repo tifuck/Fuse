@@ -5,10 +5,15 @@ export function create(deps) {
   const esc = (value) => deps.escapeHtml(value);
 
   // Local feedback while a send is in flight; never part of the saved transcript.
-  function pendingSendHtml(text) {
-    return '<div class="chat-log chat-pending-send" role="status" data-pending-send>' +
-      `<article class="chat-turn is-user"><div class="chat-bubble">${esc(text)}</div></article>` +
-      "<small>Sending…</small></div>";
+  // It is drawn as the accepted turn will be (the same bubble, images included,
+  // and the status line's place and type), so the swap changes only the word.
+  function pendingSendHtml(text, attachments = []) {
+    const files = Array.isArray(attachments) ? attachments : [];
+    // An image-only send has no text: the runtime's "N attachment(s)" stand-in is not shown.
+    const content = files.length && /^\d+ attachment\(s\)$/.test(text) ? "" : text;
+    const turn = deps.renderUser({ role: "user", content, attachments: files }, -1).outerHTML;
+    return '<div class="chat-log chat-pending-send" role="status" data-pending-send>' + turn +
+      '<small class="dk-pending-status"><span class="chat-status-verb">Sending…</span></small></div>';
   }
 
   // An older answer drawn on demand: [data-load-earlier] hydrates it.

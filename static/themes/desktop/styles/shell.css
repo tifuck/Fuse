@@ -752,10 +752,42 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      tick never moves the word and moves nothing while the digit count
      holds. ---- */
   & .chat-live-dock { min-height: 22px; color: var(--dk-mute); font: 13px/22px var(--sans); }
+  /* It appears in place, no fade or rise: the send placeholder's line stood
+     exactly there a frame before. */
+  & .chat-live-dock:not([hidden]) { opacity: 1; transform: none; transition: none; }
   & .chat-live-dock .chat-activity-spin { display: none; }
-  & .chat-live-dock .chat-status-shimmer { display: flex; flex: 1 1 auto; min-width: 0; font: inherit; font-style: normal; }
+  /* The send placeholder holds the place the turn and its status line will
+     take: the log gives up its bottom padding as it does for the status
+     line, and "Sending…" sits in the status word's place and type. */
+  & .chat-thread:has(> .chat-pending-send) > .chat-log:not(.chat-pending-send) { padding-bottom: 0; }
+  /* The sent text and files stay in the composer until the server accepts
+     the turn (they are the retry), but they already show in the transcript:
+     the composer looks emptied at once, so it shrinks with the send instead
+     of a beat later. A failed send removes the placeholder and they return. */
+  &:has(.chat-pending-send) .dk-box .chat-attach-list { display: none; }
+  /* Fork sits only under the latest reply; it leaves the old one with the send. */
+  &:has(.chat-pending-send) [data-theme-turn-act="fork"] { display: none; }
+  &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 36px; overflow: hidden; color: transparent; caret-color: transparent; }
+  @media (max-width: 800px), (pointer: coarse) { &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 44px; } }
+  & .chat-thread > .chat-pending-send { margin-top: 0.45rem; padding-top: 0; padding-bottom: 0; }
+  & .chat-pending-send .dk-pending-status {
+    display: flex;
+    box-sizing: content-box;
+    align-items: center;
+    margin: 0;
+    padding: 0 0 1rem;
+    color: var(--dk-mute);
+    font: var(--console-type)/var(--console-leading) var(--sans);
+    font-style: normal;
+  }
+  & .chat-live-dock .chat-status-shimmer { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; font: inherit; font-style: normal; }
+  /* The line is as tall as the reply's action row that takes its place when
+     the run ends, and "Sending…" as tall as the line, so neither swap moves
+     the transcript. */
+  & :is(.chat-live-dock .chat-status-shimmer, .dk-pending-status) { min-height: 24px; }
+  @media (max-width: 480px), (pointer: coarse) { & :is(.chat-live-dock .chat-status-shimmer, .dk-pending-status) { min-height: 36px; } }
   & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { flex: 1 1 auto; }
-  & .chat-live-dock .chat-status-verb {
+  & :is(.chat-live-dock, .dk-pending-status) .chat-status-verb {
     color: transparent;
     font: inherit;
     background: linear-gradient(100deg, var(--dk-mute) 40%, var(--dk-text) 50%, var(--dk-mute) 60%) 0 0 / 250% 100%;
@@ -768,7 +800,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .chat-dock-dots { display: none; }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
-  @media (prefers-reduced-motion: reduce) { & .chat-live-dock .chat-status-verb { animation: none; background-position: 50% 0; } }
+  @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock, .dk-pending-status) .chat-status-verb { animation: none; background-position: 50% 0; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
