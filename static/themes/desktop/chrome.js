@@ -4,8 +4,9 @@
 // (Preview is the artifact pane; Tasks, Plan and Terminal are drawn
 // here from the runtime's live state). The inspector opens only when the
 // user asks; the choice is kept in localStorage, and new work puts a dot on
-// its button instead. Under 1040px it is an overlay, on phones a modal sheet.
-const WIDE = "(min-width: 1040px)";
+// its button instead. Above a phone it is a column beside the chat; on phones
+// a modal sheet.
+const WIDE = "(min-width: 801px)";
 const PHONE = "(max-width: 800px)";
 const STORE = "fuse.chat.desktop.inspector.v1";
 // Toggles whose sheet may close while they sit in a closed menu or a folded bar.
@@ -172,6 +173,8 @@ export function create(deps) {
   function bind() {
     if (bound) return;
     bound = true;
+    // The side panels slide only once the page has settled (shell.css).
+    requestAnimationFrame(() => requestAnimationFrame(() => deps.root.classList.add("dk-slide")));
     // The runtime's own handler stops the Artifacts click, so note the opener on the way down.
     deps.root.addEventListener("click", (event) => {
       const t = event.target.closest?.("[data-artifact-toggle]");

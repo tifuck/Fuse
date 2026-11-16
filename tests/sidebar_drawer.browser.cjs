@@ -93,10 +93,10 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       await page.context().close();
     }
 
-    // Desktop peek: resting on the left edge overlays the collapsed list
-    // without unpinning it. It holds while hovered or while a row menu is
-    // open, closes about a second after the pointer leaves, and pins from
-    // its own toggle.
+    // Desktop peek: resting on the left edge shows the collapsed list
+    // without unpinning it (over the chat; the Desktop theme pushes the chat
+    // over). It holds while hovered or while a row menu is open, closes
+    // about a second after the pointer leaves, and pins from its own toggle.
     {
       const page = await makePage(1440);
       const state = () => page.evaluate(() => {
@@ -123,7 +123,14 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, l
       assert.deepEqual(await state(), { collapsed: true, peek: true, inert: false }, 'the edge peeks without unpinning, and the list takes input');
       assert.equal(await page.locator('[data-history-list]').isVisible(), true);
       assert.deepEqual(await toggles(page), ['false'], 'toggles keep reporting the collapsed sidebar');
-      assert.equal(await page.locator('.chat-stage').evaluate(el => el.getBoundingClientRect().x), stageX, 'the peek overlays the chat instead of pushing it');
+      if (process.env.FUSE_CHAT_VIEW === 'desktop') {
+        // Desktop's peek is the pinned layout, slid in: the chat moves over beside the list, never under it.
+        await page.waitForFunction(() => Math.abs(document.querySelector('.chat-stage').getBoundingClientRect().x - document.querySelector('[data-history]').getBoundingClientRect().right) < 1
+          && document.querySelector('[data-history]').getBoundingClientRect().x > -1);
+        assert.ok(await page.locator('.chat-stage').evaluate(el => el.getBoundingClientRect().x) > stageX + 100, 'the peek pushes the chat over');
+      } else {
+        assert.equal(await page.locator('.chat-stage').evaluate(el => el.getBoundingClientRect().x), stageX, 'the peek overlays the chat instead of pushing it');
+      }
       await page.mouse.move(150, 500);
       await page.waitForTimeout(1300);
       assert.equal((await state()).peek, true, 'hovering the list holds it open');
