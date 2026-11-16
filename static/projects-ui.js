@@ -303,8 +303,8 @@
       s.view = "editor";
       s.back = opts.onBack || null;
       const preview = { color: draft.color, logo_url: draft.logoData || (draft.logoCleared ? "" : draft.logoUrl) };
-      const hostSelect = project
-        ? `<input value="${esc((hostById(draft.hostId) || {}).alias || project.host_alias || "")}" disabled>`
+      const hostSelect = project && !hosts.length
+        ? `<input value="${esc(project.host_alias || "")}" disabled>`
         : `<select name="host" data-fp-host required>${hosts
             .map((h) => `<option value="${esc(h.id)}"${String(h.id) === draft.hostId ? " selected" : ""}>${esc(h.alias || "machine")}</option>`)
             .join("")}</select>`;
@@ -377,6 +377,8 @@
     // Set once a create succeeds, so a retry after a failed logo upload
     // updates that project instead of POSTing a duplicate.
     let createdProject = null;
+    // The machine the project is saved on; a changed draft.hostId moves it.
+    let savedHostId = project ? String(project.host_id || draft.hostId) : "";
 
     function bind() {
       const f = form();
@@ -466,9 +468,11 @@
         };
         try {
           const existing = project || createdProject;
+          if (existing && savedHostId !== draft.hostId) body.host_id = Number(draft.hostId);
           let saved = existing
-            ? await api(`/hosts/${draft.hostId}/projects/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) })
+            ? await api(`/hosts/${savedHostId}/projects/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) })
             : await api(`/hosts/${draft.hostId}/projects`, { method: "POST", body: JSON.stringify(body) });
+          savedHostId = draft.hostId;
           if (!project) createdProject = saved;
           if (draft.logoData) {
             saved = await api(`/hosts/${draft.hostId}/projects/${saved.id}/logo`, { method: "PUT", body: JSON.stringify({ data: draft.logoData }) });

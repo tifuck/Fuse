@@ -620,7 +620,7 @@ def add_project(user_id: int, host_id: int, raw: dict) -> dict:
 
 
 def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dict:
-    allowed = {"name", "remote_path", "notes", "default_model", "permission_mode", "default_permissions", "color", "archived"}
+    allowed = {"name", "remote_path", "notes", "default_model", "permission_mode", "default_permissions", "color", "archived", "host_id"}
     if set(raw) - allowed:
         raise HostError("unsupported project fields")
     from . import chat_store as store
@@ -655,16 +655,42 @@ def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dic
         color = _color(raw["color"]) if "color" in raw else project_color(row["id"], _row_get(row, "color") or "")
         if "archived" in raw and not isinstance(raw["archived"], bool):
             raise HostError("archived must be true or false")
+        new_host = host_id
+        if raw.get("host_id") is not None:
+            if isinstance(raw["host_id"], bool) or not isinstance(raw["host_id"], int):
+                raise HostError("host_id must be an integer")
+            new_host = raw["host_id"]
+        if new_host != host_id:
+            if conn.execute("SELECT 1 FROM user_hosts WHERE id=? AND user_id=?", (new_host, user_id)).fetchone() is None:
+                raise HostError("host not found", 404)
+            # A running turn keeps the machine it started on.
+            if conn.execute(
+                """SELECT 1 FROM chat_runs r JOIN chat_threads t ON t.id=r.thread_id
+                   WHERE t.user_id=? AND t.project_id=? AND r.status IN ('queued','running') LIMIT 1""",
+                (user_id, project_id),
+            ).fetchone():
+                raise HostError("stop the project's running sessions before moving it to another machine", 409)
         ts = db.now()
         try:
             conn.execute(
-                """UPDATE user_projects SET name=?, remote_path=?, notes=?, default_model=?, permission_mode=?,
+                """UPDATE user_projects SET host_id=?, name=?, remote_path=?, notes=?, default_model=?, permission_mode=?,
                    default_permissions=?, color=?, updated_at=?
                    WHERE id=?""",
-                (name, path, notes, model, mode, perms, color, ts, project_id),
+                (new_host, name, path, notes, model, mode, perms, color, ts, project_id),
             )
         except IntegrityError as exc:
             raise HostError("project already exists on this host", 409) from exc
+        if new_host != host_id:
+            # Sessions follow the project; their next turn runs on the new machine.
+            moved = [int(r["id"]) for r in conn.execute(
+                "SELECT id FROM chat_threads WHERE user_id=? AND project_id=?", (user_id, project_id)
+            ).fetchall()]
+            for tid in moved:
+                conn.execute(
+                    "UPDATE chat_threads SET host_id=?, revision=revision+1 WHERE id=? AND user_id=?",
+                    (new_host, tid, user_id),
+                )
+                store.thread_event(conn, user_id, tid)
         if "archived" in raw and raw["archived"] != bool(_row_get(row, "archived") or 0):
             set_project_archived(conn, user_id, project_id, raw["archived"])
         projects_changed(conn, user_id)
@@ -706,10 +732,11 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
             ).fetchall()}
             ids = [i for i in ids if i not in busy]
         for tid in ids:
+            # Archiving is not activity: updated_at (the list's age) stays put.
             conn.execute(
-                """UPDATE chat_threads SET archived=1, archived_at=?, archived_by_project=1, updated_at=?, revision=revision+1
+                """UPDATE chat_threads SET archived=1, archived_at=?, archived_by_project=1, revision=revision+1
                    WHERE id=? AND user_id=?""",
-                (ts, ts, tid, user_id),
+                (ts, tid, user_id),
             )
     else:
         conn.execute(
@@ -723,9 +750,9 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
         ids = [int(r["id"]) for r in rows]
         for tid in ids:
             conn.execute(
-                """UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=?, updated_at=?, revision=revision+1
+                """UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=?, revision=revision+1
                    WHERE id=? AND user_id=?""",
-                (ts, ts, tid, user_id),
+                (ts, tid, user_id),
             )
     for tid in ids:
         store.thread_event(conn, user_id, tid)
