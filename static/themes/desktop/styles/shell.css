@@ -1122,8 +1122,8 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
-  /* The bubble, the window menus and the sidebar's search share the popovers' glass. */
-  & .chat-turn.is-user:not(.is-auto-steps) { background: color-mix(in srgb, var(--dk-bubble) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  /* The bubble is the composer's glass; the window menus and the sidebar's search share the popovers'. */
+  & .chat-turn.is-user:not(.is-auto-steps) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-menu, .user-dock-menu) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
