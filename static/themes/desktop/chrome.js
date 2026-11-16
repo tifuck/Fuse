@@ -460,16 +460,6 @@ export function create(deps) {
     return live;
   }
 
-  function syncChips() {
-    const project = deps.sessionProject?.();
-    const host = q("[data-theme-host-chip]");
-    const proj = q("[data-theme-project-chip]");
-    show(host, Boolean(project && project.host_alias));
-    show(proj, Boolean(project && project.project_name));
-    setText(q("[data-theme-host-name]"), project?.host_alias || "");
-    setText(q("[data-theme-project-name]"), project?.project_name || "");
-  }
-
   function syncTitle() {
     const btn = q("[data-theme-title-menu]");
     const text = (q("[data-chat-title]")?.textContent || "").trim();
@@ -484,7 +474,6 @@ export function create(deps) {
     const tasks = syncTasks(closed);
     const plan = syncPlan(closed);
     const terminal = syncTerminal(closed);
-    syncChips();
     syncTitle();
     syncPins();
     show(q("[data-theme-agent-back]"), deps.root.classList.contains("is-agent-view"));

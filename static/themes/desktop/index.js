@@ -486,7 +486,6 @@ export function createDesktopTheme(runtime) {
     get escapeHtml() { return runtime.escapeHtml; },
     get openWallpaperPicker() { return runtime.openWallpaperPicker; },
     get renderAnsi() { return theme.renderAnsi; },
-    get sessionProject() { return runtime.sessionProject; },
     get agentLive() { return runtime.agentLive; },
     get agentsRows() { return runtime.agentsRows; },
     get formatActivityClock() { return theme.formatActivityClock; },

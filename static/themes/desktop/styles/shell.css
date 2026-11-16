@@ -591,17 +591,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & { --dk-card-a: 78%; --dk-under: max(0px, calc(var(--dock-h, 0px) - var(--dk-band-h) - 18px - var(--safe-bottom, 0px))); }
   &:not(.is-empty) .chat-dock { margin-top: calc(-1 * var(--dk-under)); }
   &:not(.is-empty) .chat-thread::after { content: ""; flex: none; height: var(--dk-under); }
-  & .dk-chips { display: flex; flex-wrap: wrap; gap: 16px; width: 100%; max-width: var(--chat-col); margin: 0 auto 8px; }
-  & .dk-chips:not(:has(> :not([hidden]))) { display: none; }
-  & .dk-cchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 0 0 2px; color: var(--dk-mute); font: 12.5px var(--sans); }
-  /* The chips are bare labels, so the transcript fades out above them and
-     stays out of their band (the dock's 4px top, a 26px row, 8px below);
-     it shows again behind the card. */
-  &:not(.is-empty):has(.dk-chips > :not([hidden])) .chat-thread {
-    --dk-chips-b: calc(var(--dk-under) - 38px);
-    mask-image: linear-gradient(to top, #000 var(--dk-chips-b), transparent var(--dk-chips-b), transparent var(--dk-under), #000 calc(var(--dk-under) + 20px));
-  }
-  & .dk-cchip[hidden] { display: none; }
   & .chat-dock .dk-box {
     position: relative;
     display: flex;
