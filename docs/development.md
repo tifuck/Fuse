@@ -81,14 +81,11 @@ change: each pool merges its live catalog into its seed list.
   Palettes, backdrop and text size stay shared in `chat-design.css`; each
   theme saves its own palette, backdrop and strength (`chat-appearance.js`,
   `fuse.chat.views.v1`, first filled from the old global keys) and its font.
-  `tests/chat_theme_css.test.cjs` and `tests/chat_theme_markup.test.cjs`
-  pin this. A new theme is its two folders plus a `registry.js` entry: its
+  A new theme is its two folders plus a `registry.js` entry: its
   `static/themes/<t>/theme.json` (id, order, label, description, default
   font, wallpaper and scheme) is the one list the `fuse_chat_view` cookie
   check (`app/chat_themes.py`), the Appearance › Layout buttons,
-  `chat-appearance.js` and `registry.js` read (`tests/test_chat_themes.py`).
-  `FUSE_CHAT_VIEW=<theme> scripts/run_browser_tests.sh …` runs browser
-  suites under that theme. The themes are `console` (default), `combined`
+  `chat-appearance.js` and `registry.js` read. The themes are `console` (default), `combined`
   and `desktop` (a native coding-app window: top bar, sidebar, inspector).
 - `/theme` (every theme) opens a strip of wallpaper cards above the
   composer: `static/chat/composer/wallpapers.js` owns the data, keys
@@ -126,27 +123,28 @@ change: each pool merges its live catalog into its seed list.
 
 ## Tests
 
-Install the test tooling: `pip install pytest` and `npm install playwright`
-(then `npx playwright install chromium` for the browser suites).
+Install the test tooling: `pip install -r requirements-dev.txt` (pytest,
+pytest-xdist, pytest-timeout).
 
-- **pytest:** `FUSE_CHAT_TEST_MODE=1 python -m pytest tests` (that flag
-  enables the MariaDB-backed modules). Each database test gets a disposable
-  `fuse_fixture_*` schema through `tests/mariadb_fixture.py`, using a
-  dedicated MariaDB account (`FUSE_FIXTURE_DB_USER`, default `fuse_fixture`;
-  `FUSE_FIXTURE_DB_PASSWORD`; `FUSE_FIXTURE_DB_SOCKET`). The fixture prints
-  the provisioning SQL when the account is missing. `tests/conftest.py`
-  refuses connections to real schemas. Tests mock httpx: never hit search
-  providers or pooled models.
-- **Node unit suites:** `node --test tests/*.test.cjs`.
-- **Browser suites:** `scripts/run_browser_tests.sh [tests/x.browser.cjs ...]`. Each
-  suite gets its own fixture server (`tests/chat_browser_fixture.py`).
+- **`scripts/test.sh`** runs the core suite (`tests/core`); `scripts/test.sh
+  <area>…` runs areas and `scripts/test.sh changed` the areas your change
+  touches. What gets a test and how to write one: `tests/README.md`.
+- Core tests run on MariaDB only: a persistent `fuse_fixture_core_*` schema
+  with the source schema's structure, emptied before each test
+  (`tests/mariadb_fixture.py`), using a dedicated MariaDB account
+  (`FUSE_FIXTURE_DB_USER`, default `fuse_fixture`; `FUSE_FIXTURE_DB_PASSWORD`;
+  `FUSE_FIXTURE_DB_SOCKET`). The fixture prints the provisioning SQL when the
+  account is missing. `tests/conftest.py` refuses connections to real schemas.
+  Tests mock httpx: never hit search providers or pooled models.
+- **Legacy:** the pre-redesign suite (pytest, Node and Playwright) is frozen
+  in `tests/legacy`, unmaintained and run only on demand (`tests/legacy/README.md`).
 - **Connector:** `make -C agent test`; Windows: `make -C agent/windows test`.
 
 ## Schema changes
 
 Write a dated, idempotent migration in `scripts/sql/`, apply it to each
 database, then regenerate `scripts/sql/schema.sql` with
-`scripts/dump_schema.sh` (`tests/test_init_db_mariadb.py` fails while it is
+`scripts/dump_schema.sh` (`tests/legacy/test_init_db_mariadb.py` fails while it is
 stale). Delete the dated file once every deployment has it.
 
 ## Connector releases

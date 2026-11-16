@@ -433,9 +433,11 @@ def cache_ttl(bucket: str | None, kind: str) -> float | None:
 
 def _allow(user_id: int, kind: str) -> bool:
     per_min = {"fetch": FETCH_PER_MIN, "prefetch": PREFETCH_PER_MIN}.get(kind, SEARCH_PER_MIN)
-    if kind == "search" and not limiter.allow(f"chat-{kind}-h:{user_id}", SEARCH_PER_HOUR, 3600):
+    # Minute first: a search the per-minute limit refuses must not spend the
+    # hourly budget (a model retrying through refusals locked itself out).
+    if not limiter.allow(f"chat-{kind}:{user_id}", per_min, 60):
         return False
-    return limiter.allow(f"chat-{kind}:{user_id}", per_min, 60)
+    return kind != "search" or limiter.allow(f"chat-{kind}-h:{user_id}", SEARCH_PER_HOUR, 3600)
 
 
 def _limited(user_id: int, kind: str) -> str:

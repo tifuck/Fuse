@@ -1,0 +1,248 @@
+/* Ledger: the work between two replies is one quiet summary line (counts,
+   then any failed/running tally pinned at its end); clicking it opens one row
+   per call, verb aligned, result on the right. A row opens to one box: the
+   command, then the output, then any note. One row height everywhere. Last in
+   design.css, so it settles the rows the older layers fight over. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-ledger-row: 18px; }
+@media (max-width: 480px), (pointer: coarse) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-ledger-row: 22px; }
+}
+
+/* The summary line: no chevron, the text truncates, tallies stay. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle { min-height: var(--dk-ledger-row); margin-block: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[data-step-toggle]::after { content: none; display: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-tallies {
+  display: flex;
+  flex: none;
+  gap: 0.6rem;
+  margin-left: auto;
+  padding-left: 0.75rem;
+  white-space: nowrap;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-diffstat { flex: none; margin-left: 0.3em; white-space: nowrap; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-diffstat .dk-plus { color: var(--dk-add, var(--ok)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-diffstat .dk-minus { color: var(--dk-del, var(--fault)); }
+/* One colour for the whole line: dark gray words, the counts a step lighter. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-mute, var(--mute)); font-weight: 400; }
+@media (hover: hover) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label { color: var(--dk-mute, var(--mute)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label b { color: var(--dk-text, var(--mist)); }
+}
+/* A changed count rolls in: the old number fades up and out while the new one
+   fades up into place. Nothing clips them, so no edge cuts a digit in half
+   (activity-groups.js keeps a rebuilt line mid-roll). */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll { display: inline-block; position: relative; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll > span { display: inline-block; animation: dk-roll-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--dk-roll-at, 0ms) both; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll::before {
+  content: attr(data-from);
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  animation: dk-roll-out 420ms cubic-bezier(0.2, 0.7, 0.2, 1) var(--dk-roll-at, 0ms) both;
+}
+@keyframes dk-roll-in { from { opacity: 0; transform: translateY(0.45em); } to { opacity: 1; transform: none; } }
+@keyframes dk-roll-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-0.45em); } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll > span { animation: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll::before { content: none; }
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-tally.is-running { color: var(--call-live, var(--dk-link)); }
+
+/* The opened list: a plain indent, rows flush, no gaps between them. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { margin: 0; padding-left: 0.9rem; border-left: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-console-bundle > .chat-timeline { gap: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step + .chat-step { margin-top: 0; }
+
+/* A row: verb subject … result, chevron. No glyph, no host: the verb says
+   what it was, the result says how it went. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call { display: block !important; margin: 0; padding: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-node { display: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-main { display: block !important; min-width: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-tool-host { display: none !important; }
+
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-main > .chat-step-head {
+  display: flex !important;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: var(--dk-ledger-row);
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-main > .chat-step-head > :is(button.chat-step-toggle, .chat-step-static) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--dk-ledger-row);
+  margin-block: 0;
+}
+/* No chevron on a row: the whole line is the toggle. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret { display: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle > .chat-timeline > .chat-step.is-console-call > .chat-step-main > .chat-step-head .chat-step-label {
+  display: flex !important;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  padding-left: 0;
+  overflow: hidden;
+  min-height: 0;
+  line-height: var(--dk-ledger-row);
+  text-indent: 0;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+/* The row's height comes from the row alone: its mixed sans and mono pieces sit
+   inside it instead of stretching it. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > .chat-console-call { line-height: inherit; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-base, .chat-console-result-text) { line-height: 1; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label .chat-console-paren { line-height: 0; }
+/* Inline inside the call (flex items would split its text for copy and
+   innerText); the call itself is the one that ends in an ellipsis. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > .chat-console-call {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > .chat-console-call > .chat-tool-action { display: inline-block; min-width: 4.9em; margin-right: 0.5rem; overflow: visible; vertical-align: baseline; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label :is(.chat-console-call, .chat-tool-action, .chat-console-val, .dk-dir, .dk-base, .chat-tool-host, .chat-console-result-text) { white-space: nowrap !important; }
+/* A failed row says so in colour: its verb and subject turn red, no extra words. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir) { color: var(--call-fail); }
+/* A path cuts its folder first (capped share of the line), then its name. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-val > .dk-dir {
+  display: inline-block;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--dk-ledger-row);
+  vertical-align: bottom;
+  color: var(--dk-mute, var(--mute));
+}
+@media (max-width: 480px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-val > .dk-dir { max-width: 12ch; }
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-val wbr { display: none; }
+/* A described command reads as prose, not code. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-call.is-described > .chat-console-val { font-family: inherit; font-size: 1em; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > :is(.chat-tool-host, .chat-console-took) { flex: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > .chat-console-result-text {
+  flex: 0 1 auto;
+  max-width: 45%;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dk-mute, var(--mute));
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step-label > .chat-console-result-text b { font-weight: 400; }
+/* Results wait in the body; the line names the call and nothing else, */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-result-text { display: none; }
+/* except an edit's diff counts, which end its line as they end the summary's. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-result-text:has(.dk-plus, .dk-minus) {
+  display: block;
+  flex: none;
+  max-width: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+@media (hover: hover) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-tool-action { color: var(--dk-text, var(--mist)); }
+}
+
+/* An opened row: one box under the verb, flush rows inside it. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-hang { display: block !important; width: 100%; margin: 0; padding: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-branch { display: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-hang:not(.is-expanded) > .chat-console-hang-body { display: none !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded { margin: 0.1rem 0 0.35rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded > .chat-console-hang-body {
+  display: block;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--dk-card-line, var(--line));
+  border-radius: 8px;
+  background: var(--dk-card, var(--panel));
+  font-family: var(--code, var(--mono));
+  font-size: calc(0.76rem * var(--chat-text-scale, 1));
+  line-height: 1.55;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body :is(.chat-console-out, .chat-console-lines, pre) {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 1em;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > * { margin-inline: 0 !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > :is(.chat-console-out, .chat-console-lines, pre) {
+  max-height: min(18rem, 50vh);
+  padding: 0.35rem 0.65rem;
+  overflow: auto;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > * + :is(.chat-console-out, .chat-console-lines, pre) { border-top: 1px solid var(--dk-card-line, var(--line)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > :is(.dk-row-cmd, .dk-row-where) + :is(.chat-console-out, .chat-console-lines, pre, .chat-tool-image) { border-top: 0; }
+/* Where it ran: the box's first line, the same for every call. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > .dk-row-where {
+  padding: 0.35rem 0.65rem 0;
+  color: var(--dk-mute, var(--mute));
+  font-family: var(--sans);
+  font-size: 0.95em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > .dk-row-where + .dk-row-cmd { padding-top: 0.15rem; }
+/* An image box hugs its image. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded > .chat-console-hang-body:has(.chat-tool-image) { width: fit-content; max-width: 100%; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-image { margin: 0; padding: 0.4rem 0.65rem 0.65rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > .dk-row-cmd {
+  padding: 0.4rem 0.65rem 0;
+  color: var(--dk-mute, var(--mute));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body > :is(.chat-console-more, .chat-tool-truncated, .chat-console-result-text, .chat-tool-note) {
+  display: block;
+  margin: 0;
+  padding: 0.2rem 0.65rem 0.4rem;
+  color: var(--dk-mute, var(--mute));
+  font-family: var(--sans);
+  font-size: 0.95em;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-step.is-console-call:is(.is-error, .is-interrupted) .chat-console-hang-body > .chat-console-result-text { color: var(--call-fail); }
+/* Prose bodies (skills, reports): reading type, headings no bigger than the row. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md { padding: 0.45rem 0.75rem; font-family: var(--sans); font-size: 1.1em; line-height: 1.5; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md :is(h1, h2, h3, h4, h5, h6) { margin: 0.6em 0 0.15em; font-size: 1em; font-weight: 600; line-height: 1.35; border: 0; padding: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md > :first-child { margin-top: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md :is(p, ul, ol) { margin: 0 0 0.35em; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md :is(ul, ol) { padding-left: 1.2em; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .chat-console-hang-body .chat-tool-md > :last-child { margin-bottom: 0; }
+
+/* grep matches: the file once, its numbered lines, the match marked. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-out.is-matches { padding: 0 !important; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-match-file + .dk-match-file { border-top: 1px solid var(--dk-card-line, var(--line)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-match-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.65rem 0.1rem;
+  color: var(--dk-mute, var(--mute));
+  font-size: 0.95em;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-match-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-match-count { flex: none; font-variant-numeric: tabular-nums; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-match-file > .chat-console-lines { margin: 0; padding: 0 0.65rem 0.35rem; border: 0; background: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-ctx { color: var(--dk-mute, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-gap { opacity: 0.5; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-out mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--dk-link, var(--brass)) 30%, transparent);
+  color: inherit;
+}

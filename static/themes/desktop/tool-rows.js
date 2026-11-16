@@ -183,11 +183,13 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       const preview = verbose || opts.oneLine ? "" : fold.preview;
       inner = verbose || opts.oneLine ? fold.full || fold.preview : fold.full;
       if (deps.shellDescription(trace, presentation, verbose)) inner = `<div class="dk-row-cmd">$ ${deps.escapeHtml(deps.displayCommand(trace))}</div>${inner}`;
+      // An opened one-line row names where it ran, in one place for every call:
+      // the machine, plus a command's directory or an image's format and size.
+      if (opts.oneLine && inner) {
+        const where = [trace.host, trace.name === "run_terminal_command" ? trace.cwd : "", toolImageInfo(trace)].filter(Boolean);
+        if (where.length) inner = `<div class="dk-row-where">${where.map((part) => deps.escapeHtml(part)).join(" · ")}</div>${inner}`;
+      }
       const expandable = !verbose && openKind !== "agent" && Boolean(inner);
-      const head = deps.toolHeadHtml({
-        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
-        contextHost: "",
-      });
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
       // A running one-line row already says what it is doing; its result
       // only adds where (the background) or that it is being stopped.
@@ -207,10 +209,18 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // the call has nothing else to say yet. A fold that already printed the
       // deadline (the command line under a described shell) is left as it is.
       const timeout = (running) && !verbose && !/\btimeout: [^)]*/.test(`${status} ${preview}`) ? deps.ccTimeoutNote(trace) : "";
-      const showHang = Boolean(status || preview || inner || timeout);
+      const result = status || timeout ? `<span class="chat-console-result-text">${resultHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "";
+      // Ledger: a one-line row carries its result on the line itself (verb,
+      // subject, result); its hang is only the body that opens under it.
+      const lineResult = opts.oneLine ? result : "";
+      const head = deps.toolHeadHtml({
+        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + lineResult, title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
+        contextHost: "",
+      });
+      const showHang = Boolean((lineResult ? "" : result) || preview || inner);
       // A fold with only its hidden body prints one line: the branch glyph
       // and the hang's margins wait for the open.
-      const bodyOnly = !status && !preview;
+      const bodyOnly = (lineResult || !status) && !preview;
       return (
         `<li class="chat-step is-console-call is-${kind} is-${dotState}${deps.toolBackground(trace) ? " is-background" : ""}${hangOpen || verbose ? " is-console-expanded" : ""}${verbose ? " is-console-verbose" : ""}" style="--console-hang: ${deps.consoleVerb(trace.name, trace).length + 1}ch" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}" data-tool="${deps.escapeHtml(trace.name)}" data-state="${presentation.state}" data-step="${deps.escapeHtml(index)}">` +
         `<span class="chat-step-node" aria-hidden="true">${icon}</span>` +
@@ -221,7 +231,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang${running ? " is-running" : ""}${failed ? " is-error" : ""}${fold.keep ? " is-kept" : ""}${bodyOnly ? " is-body-only" : ""}${hangOpen ? " is-expanded" : ""}">` +
             `<span class="chat-console-branch" aria-hidden="true">└</span>` +
             `<div class="chat-console-hang-body">` +
-            (status || timeout ? `<span class="chat-console-result-text">${resultHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
+            (lineResult ? "" : result) +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
             (inner ? inner : "") +
             `</div></div></div></div>`

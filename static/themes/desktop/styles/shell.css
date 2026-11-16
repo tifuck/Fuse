@@ -1092,11 +1092,11 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 }
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
-   The reading column is a darker pane, the palette's base colour at 62%
-   (light 58%) over the faintest blur
-   (2px), that eases in across the whole gutter (a mask, so the blur fades
-   with the tint), so the wallpaper shows as it is at the gutter's outer
-   edge. The top bar, sidebar and
+   The reading column is a darker pane, the palette's base colour at 64%
+   (light 58%), that eases in across the whole gutter (a mask), so the
+   wallpaper shows as it is at the gutter's outer edge. The pane has no
+   backdrop blur: a full-height masked blur over the animated canvas is
+   re-rendered every frame and dropped scrolling to ~15 fps. The top bar, sidebar and
    inspector are frosted glass (a 14px blur with some saturation so the
    colours survive, then 74%, light 62%); a backdrop blur has nothing past
    the window to sample, so each darkens a little toward the window edge it
@@ -1105,11 +1105,10 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
    (a near-base tone at 80%, light 80%) with a hairline edge and a specular
    top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 62%;
+  --dk-veil-a: 64%;
   --dk-chrome-a: 74%;
   --dk-card-a: 80%;
   --dk-glass: blur(14px) saturate(1.35);
-  --dk-pane-glass: blur(2px) saturate(1.1);
   --dk-glass-tone: color-mix(in srgb, var(--ink) 95%, var(--mist));
   --dk-glass-bg: color-mix(in srgb, var(--dk-glass-tone) var(--dk-card-a), transparent);
   --dk-chrome-bg: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent);
@@ -1129,8 +1128,6 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     z-index: -1;
     flex: none;
     background: color-mix(in srgb, var(--v) var(--dk-veil-a), transparent);
-    -webkit-backdrop-filter: var(--dk-pane-glass);
-    backdrop-filter: var(--dk-pane-glass);
     -webkit-mask-image: var(--dk-pane-mask);
     mask-image: var(--dk-pane-mask);
     --dk-pane-mask: linear-gradient(90deg,

@@ -314,12 +314,67 @@ function consoleDetailHtml(trace, failed, running) {
     if ((trace.name === "grep" || trace.name === "glob") && !body.includes("\n") && (body.match(/:\d+:/g) || []).length > 1) {
       body = body.replace(/\s+(\/(?:home|Users|var|tmp|opt|usr)|[A-Za-z]:\\|\S+:\d+:)/g, "\n$1").trim();
     }
+    if (trace.name === "grep") {
+      const matches = grepMatchesHtml(trace, body);
+      if (matches) return matches;
+    }
     // Output reads as a diff only under a diff header: `ls -l` rows and
     // markdown bullets also start with "-".
     if (deps.looksLikeDiff(body) && /^(diff --git |@@ -\d|\+\+\+ )/m.test(body)) return `<div class="chat-console-out is-diff">${consoleDiffHtml(body)}</div>`;
     const lines = String(body).replace(/\s+$/, "").replace(/^\s*\n/, "").split("\n");
     const inner = lines.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("");
     return `<pre class="chat-console-out is-stdout${deps.isCodeOutputTool(trace.name) ? " is-code" : ""}">${inner}</pre>`;
+  }
+
+// grep content output ("path:12:text", context "path-11-text", "--" between
+// hunks) as one block per file: the path once, numbered lines, the match
+// marked. Anything else (file lists, counts) returns "" and prints as text.
+function grepMatchesHtml(trace, body) {
+    const lines = String(body).replace(/\s+$/, "").split("\n");
+    const hit = /^(.+?):(\d+):(.*)$/;
+    const paths = new Set(lines.map((line) => (line.match(hit) || [])[1]).filter(Boolean));
+    if (!paths.size) return "";
+    const files = [];
+    let current = null;
+    for (const line of lines) {
+      if (line === "--") { if (current) current.rows.push(null); continue; }
+      let path = "";
+      let n = 0;
+      let text = "";
+      let match = false;
+      const m = line.match(hit);
+      if (m && paths.has(m[1])) [path, n, text, match] = [m[1], Number(m[2]), m[3], true];
+      else {
+        const owner = [...paths].find((p) => line.startsWith(p + "-") && /^\d+-/.test(line.slice(p.length + 1)));
+        if (!owner) return "";
+        const rest = line.slice(owner.length + 1);
+        const dash = rest.indexOf("-");
+        [path, n, text] = [owner, Number(rest.slice(0, dash)), rest.slice(dash + 1)];
+      }
+      if (!current || current.path !== path) files.push(current = { path, rows: [], hits: 0 });
+      current.rows.push({ n, text, match });
+      if (match) current.hits += 1;
+    }
+    let re = null;
+    try { re = trace.pattern ? new RegExp(String(trace.pattern), trace.case_insensitive ? "gi" : "g") : null; } catch (_) { re = null; }
+    const marked = (text) => {
+      if (!re) return deps.escapeHtml(text);
+      let out = "";
+      let at = 0;
+      re.lastIndex = 0;
+      for (let m = re.exec(text); m; m = re.exec(text)) {
+        if (!m[0]) { re.lastIndex += 1; continue; }
+        out += deps.escapeHtml(text.slice(at, m.index)) + `<mark>${deps.escapeHtml(m[0])}</mark>`;
+        at = m.index + m[0].length;
+      }
+      return out + deps.escapeHtml(text.slice(at));
+    };
+    const width = String(Math.max(1, ...files.flatMap((f) => f.rows.filter(Boolean).map((row) => row.n)))).length;
+    return `<div class="chat-console-out is-matches">${files.map((file) =>
+      `<div class="dk-match-file"><div class="dk-match-head"><span class="dk-match-path">${deps.escapeHtml(deps.compactPath(file.path, trace, 120))}</span><span class="dk-match-count">${file.hits}</span></div>` +
+      `<div class="chat-console-lines">${file.rows.map((row) => row
+        ? `<div class="chat-console-nline ${row.match ? "is-hit" : "is-ctx"}"><span class="chat-console-n">${String(row.n).padStart(width, " ")}</span><span class="chat-console-nbody">${row.match ? marked(row.text) : deps.escapeHtml(row.text)}</span></div>`
+        : `<div class="chat-console-nline is-gap"><span class="chat-console-n">${"·".repeat(Math.min(width, 3))}</span></div>`).join("")}</div></div>`).join("")}</div>`;
   }
 
 function agentTraceWorkMs(trace) {

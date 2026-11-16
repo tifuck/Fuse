@@ -206,9 +206,10 @@ export function sync(scene, kind) {
     }, SETTLE_MS);
   }
   ink = next;
-  // Data-only wallpapers paint their own opaque ground: the CSS shows them
-  // at full strength, without the centre mask and the veil.
-  scene?.toggleAttribute("data-wallpaper", Boolean(SCENES[kind]?.spec));
+  // Wallpapers (data-only specs and the landscape scenes) paint their own
+  // opaque ground: the CSS shows them at full strength, without the centre
+  // mask and the veil.
+  scene?.toggleAttribute("data-wallpaper", Boolean(SCENES[kind]?.spec || SCENES[kind]?.wallpaper));
   const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
   const animated = Boolean(canvas && !scene.hidden && SCENES[kind]);
   const same = animated && run.state && run.kind === kind && run.canvas === canvas;

@@ -256,6 +256,18 @@ def for_update(conn) -> str:
     return "" if isinstance(conn, sqlite3.Connection) else " FOR UPDATE"
 
 
+@contextmanager
+def snapshot_reads(conn):
+    """Reads in the block are plain snapshots, not row locks, even inside a
+    write transaction (MariaDB; legacy SQLite connections have no row locks)."""
+    scoped = getattr(conn, "snapshot_reads", None)
+    if scoped is None:
+        yield
+        return
+    with scoped():
+        yield
+
+
 def for_share(conn) -> str:
     """Shared-lock suffix: the read waits for, and then blocks, a writer of
     the same rows (or of the gap where an absent row would go)."""
@@ -405,34 +417,34 @@ def record_usage(
                 cost_micros, requests)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(user_id, hour, source_id, model) DO UPDATE SET
-                  prompt_tokens=MIN(9223372036854775807, prompt_tokens+excluded.prompt_tokens),
-                   completion_tokens=MIN(9223372036854775807, completion_tokens+excluded.completion_tokens),
-                   output_tokens=MIN(9223372036854775807, output_tokens+excluded.output_tokens),
-                   visible_tokens=MIN(9223372036854775807, visible_tokens+excluded.visible_tokens),
-                   reasoning_tokens=MIN(9223372036854775807, reasoning_tokens+excluded.reasoning_tokens),
-                   cached_tokens=MIN(9223372036854775807, cached_tokens+excluded.cached_tokens),
-                   cache_write_tokens=MIN(9223372036854775807, cache_write_tokens+excluded.cache_write_tokens),
-                   total_tokens=MIN(9223372036854775807, total_tokens+excluded.total_tokens),
-                   cost_micros=MIN(9223372036854775807, cost_micros+excluded.cost_micros),
-                   requests=MIN(9223372036854775807, requests+excluded.requests)""",
+                  prompt_tokens=prompt_tokens + MIN(excluded.prompt_tokens, 9223372036854775807 - MAX(prompt_tokens, 0)),
+                   completion_tokens=completion_tokens + MIN(excluded.completion_tokens, 9223372036854775807 - MAX(completion_tokens, 0)),
+                   output_tokens=output_tokens + MIN(excluded.output_tokens, 9223372036854775807 - MAX(output_tokens, 0)),
+                   visible_tokens=visible_tokens + MIN(excluded.visible_tokens, 9223372036854775807 - MAX(visible_tokens, 0)),
+                   reasoning_tokens=reasoning_tokens + MIN(excluded.reasoning_tokens, 9223372036854775807 - MAX(reasoning_tokens, 0)),
+                   cached_tokens=cached_tokens + MIN(excluded.cached_tokens, 9223372036854775807 - MAX(cached_tokens, 0)),
+                   cache_write_tokens=cache_write_tokens + MIN(excluded.cache_write_tokens, 9223372036854775807 - MAX(cache_write_tokens, 0)),
+                   total_tokens=total_tokens + MIN(excluded.total_tokens, 9223372036854775807 - MAX(total_tokens, 0)),
+                   cost_micros=cost_micros + MIN(excluded.cost_micros, 9223372036854775807 - MAX(cost_micros, 0)),
+                   requests=requests + MIN(excluded.requests, 9223372036854775807 - MAX(requests, 0))""",
             (user_id, hour, source_id or 0, model, pt, ct, output, visible, rt, cached,
              cache_write, total, effective_cost, request_inc),
         )
         if key_id:
             conn.execute(
                 """UPDATE api_keys SET
-                     prompt_tokens = MIN(9223372036854775807, prompt_tokens + ?),
-                     completion_tokens = MIN(9223372036854775807, completion_tokens + ?),
-                     output_tokens = MIN(9223372036854775807, output_tokens + ?),
-                     visible_tokens = MIN(9223372036854775807, visible_tokens + ?),
-                     reasoning_tokens = MIN(9223372036854775807, reasoning_tokens + ?),
-                     cached_tokens = MIN(9223372036854775807, cached_tokens + ?),
-                     cache_write_tokens = MIN(9223372036854775807, cache_write_tokens + ?),
-                     audio_tokens = MIN(9223372036854775807, audio_tokens + ?),
-                     image_tokens = MIN(9223372036854775807, image_tokens + ?),
-                     total_tokens = MIN(9223372036854775807, total_tokens + ?),
-                     requests = MIN(9223372036854775807, requests + ?),
-                     cost_micros = MIN(9223372036854775807, cost_micros + ?),
+                     prompt_tokens = prompt_tokens + MIN(?, 9223372036854775807 - MAX(prompt_tokens, 0)),
+                     completion_tokens = completion_tokens + MIN(?, 9223372036854775807 - MAX(completion_tokens, 0)),
+                     output_tokens = output_tokens + MIN(?, 9223372036854775807 - MAX(output_tokens, 0)),
+                     visible_tokens = visible_tokens + MIN(?, 9223372036854775807 - MAX(visible_tokens, 0)),
+                     reasoning_tokens = reasoning_tokens + MIN(?, 9223372036854775807 - MAX(reasoning_tokens, 0)),
+                     cached_tokens = cached_tokens + MIN(?, 9223372036854775807 - MAX(cached_tokens, 0)),
+                     cache_write_tokens = cache_write_tokens + MIN(?, 9223372036854775807 - MAX(cache_write_tokens, 0)),
+                     audio_tokens = audio_tokens + MIN(?, 9223372036854775807 - MAX(audio_tokens, 0)),
+                     image_tokens = image_tokens + MIN(?, 9223372036854775807 - MAX(image_tokens, 0)),
+                     total_tokens = total_tokens + MIN(?, 9223372036854775807 - MAX(total_tokens, 0)),
+                     requests = requests + MIN(?, 9223372036854775807 - MAX(requests, 0)),
+                     cost_micros = cost_micros + MIN(?, 9223372036854775807 - MAX(cost_micros, 0)),
                      last_model = ?,
                      usage_updated_at = ?
                    WHERE id=?""",
@@ -447,18 +459,18 @@ def record_usage(
                      cost_micros, last_model, updated_at)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(user_id, provider) DO UPDATE SET
-                      prompt_tokens = MIN(9223372036854775807, prompt_tokens + excluded.prompt_tokens),
-                       completion_tokens = MIN(9223372036854775807, completion_tokens + excluded.completion_tokens),
-                       output_tokens = MIN(9223372036854775807, output_tokens + excluded.output_tokens),
-                       visible_tokens = MIN(9223372036854775807, visible_tokens + excluded.visible_tokens),
-                       reasoning_tokens = MIN(9223372036854775807, reasoning_tokens + excluded.reasoning_tokens),
-                       cached_tokens = MIN(9223372036854775807, cached_tokens + excluded.cached_tokens),
-                       cache_write_tokens = MIN(9223372036854775807, cache_write_tokens + excluded.cache_write_tokens),
-                      audio_tokens = MIN(9223372036854775807, audio_tokens + excluded.audio_tokens),
-                      image_tokens = MIN(9223372036854775807, image_tokens + excluded.image_tokens),
-                      total_tokens = MIN(9223372036854775807, total_tokens + excluded.total_tokens),
-                       requests = MIN(9223372036854775807, requests + excluded.requests),
-                      cost_micros = MIN(9223372036854775807, cost_micros + excluded.cost_micros),
+                      prompt_tokens = prompt_tokens + MIN(excluded.prompt_tokens, 9223372036854775807 - MAX(prompt_tokens, 0)),
+                       completion_tokens = completion_tokens + MIN(excluded.completion_tokens, 9223372036854775807 - MAX(completion_tokens, 0)),
+                       output_tokens = output_tokens + MIN(excluded.output_tokens, 9223372036854775807 - MAX(output_tokens, 0)),
+                       visible_tokens = visible_tokens + MIN(excluded.visible_tokens, 9223372036854775807 - MAX(visible_tokens, 0)),
+                       reasoning_tokens = reasoning_tokens + MIN(excluded.reasoning_tokens, 9223372036854775807 - MAX(reasoning_tokens, 0)),
+                       cached_tokens = cached_tokens + MIN(excluded.cached_tokens, 9223372036854775807 - MAX(cached_tokens, 0)),
+                       cache_write_tokens = cache_write_tokens + MIN(excluded.cache_write_tokens, 9223372036854775807 - MAX(cache_write_tokens, 0)),
+                      audio_tokens = audio_tokens + MIN(excluded.audio_tokens, 9223372036854775807 - MAX(audio_tokens, 0)),
+                      image_tokens = image_tokens + MIN(excluded.image_tokens, 9223372036854775807 - MAX(image_tokens, 0)),
+                      total_tokens = total_tokens + MIN(excluded.total_tokens, 9223372036854775807 - MAX(total_tokens, 0)),
+                       requests = requests + MIN(excluded.requests, 9223372036854775807 - MAX(requests, 0)),
+                      cost_micros = cost_micros + MIN(excluded.cost_micros, 9223372036854775807 - MAX(cost_micros, 0)),
                      last_model = excluded.last_model,
                      updated_at = excluded.updated_at""",
                 (user_id, provider, pt, ct, output, visible, rt, cached, cache_write, audio,
@@ -472,19 +484,19 @@ def record_usage(
             # so the CASEs must still see the previous week.
             conn.execute(
                 """UPDATE credentials SET
-                     week_tokens=CASE WHEN week_start=? THEN MIN(9223372036854775807, week_tokens+?) ELSE ? END,
-                     week_requests=CASE WHEN week_start=? THEN MIN(9223372036854775807, week_requests+?) ELSE ? END,
+                     week_tokens=CASE WHEN week_start=? THEN week_tokens + MIN(?, 9223372036854775807 - MAX(week_tokens, 0)) ELSE ? END,
+                     week_requests=CASE WHEN week_start=? THEN week_requests + MIN(?, 9223372036854775807 - MAX(week_requests, 0)) ELSE ? END,
                      week_start=?,
-                     prompt_tokens = MIN(9223372036854775807, prompt_tokens + ?),
-                     completion_tokens = MIN(9223372036854775807, completion_tokens + ?),
-                     output_tokens = MIN(9223372036854775807, output_tokens + ?),
-                     visible_tokens = MIN(9223372036854775807, visible_tokens + ?),
-                     reasoning_tokens = MIN(9223372036854775807, reasoning_tokens + ?),
-                     cached_tokens = MIN(9223372036854775807, cached_tokens + ?),
-                     cache_write_tokens = MIN(9223372036854775807, cache_write_tokens + ?),
-                     total_tokens = MIN(9223372036854775807, total_tokens + ?),
-                     requests = MIN(9223372036854775807, requests + ?),
-                     cost_micros = MIN(9223372036854775807, cost_micros + ?)
+                     prompt_tokens = prompt_tokens + MIN(?, 9223372036854775807 - MAX(prompt_tokens, 0)),
+                     completion_tokens = completion_tokens + MIN(?, 9223372036854775807 - MAX(completion_tokens, 0)),
+                     output_tokens = output_tokens + MIN(?, 9223372036854775807 - MAX(output_tokens, 0)),
+                     visible_tokens = visible_tokens + MIN(?, 9223372036854775807 - MAX(visible_tokens, 0)),
+                     reasoning_tokens = reasoning_tokens + MIN(?, 9223372036854775807 - MAX(reasoning_tokens, 0)),
+                     cached_tokens = cached_tokens + MIN(?, 9223372036854775807 - MAX(cached_tokens, 0)),
+                     cache_write_tokens = cache_write_tokens + MIN(?, 9223372036854775807 - MAX(cache_write_tokens, 0)),
+                     total_tokens = total_tokens + MIN(?, 9223372036854775807 - MAX(total_tokens, 0)),
+                     requests = requests + MIN(?, 9223372036854775807 - MAX(requests, 0)),
+                     cost_micros = cost_micros + MIN(?, 9223372036854775807 - MAX(cost_micros, 0))
                    WHERE id=?""",
                 (
                     week, total, total, week, request_inc, request_inc, week,

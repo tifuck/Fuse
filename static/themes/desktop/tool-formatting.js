@@ -303,8 +303,10 @@ function consoleCallHtml(trace, presentation, full = false) {
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
     }
     const described = shellDescription(trace, presentation, full);
-    if (described) return `<span class="chat-console-call">${deps.escapeHtml(described)}</span>${hostHtml}${clock}`;
+    if (described) return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-val">${deps.escapeHtml(described)}</span></span>${hostHtml}${clock}`;
     let inner = "";
+    // A subject written as words (a description, a title) reads in prose type.
+    let prose = ["spawn_subagent", "get_subagent_output", "kill_subagent", "scratch", "create_artifact", "update_artifact", "edit_artifact", "read_artifact", "read_transcript", "remember", "recall", "forget"].includes(name);
     // A wrapped path or command breaks after a slash, never inside a name.
     const path = ["read_file", "write_file", "search_replace", "list_dir", "run_terminal_command", "get_command_output"].includes(name);
     if (["read_file", "write_file", "search_replace", "list_dir"].includes(name)) {
@@ -317,9 +319,11 @@ function consoleCallHtml(trace, presentation, full = false) {
       // Wait and Stop Task name their target: the command's description, else
       // the command itself (an interrupted call carries only the job id).
       const id = trace.command_id || trace.child_id || trace.job_id;
-      const described = name === "kill_command" ? deps.ccFlat(trace.description) : "";
-      inner = consoleArgText(described || commandOrigin(trace)?.description || commandFor(trace) || (id ? `job ${id}` : "command"), 140);
+      const described = (name === "kill_command" ? deps.ccFlat(trace.description) : "") || commandOrigin(trace)?.description;
+      prose = Boolean(described);
+      inner = consoleArgText(described || commandFor(trace) || (id ? `job ${id}` : "command"), 140);
     } else if (name === "monitor") {
+      prose = Boolean(trace.description);
       inner = consoleArgText(trace.description || trace.url || displayCommand(trace) || "watch", 100);
     } else if ((name === "grep" || name === "glob")) {
       // Searched "x" in src
@@ -350,8 +354,13 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else {
       inner = consoleArgText(toolSubject(trace), 90);
     }
+    // A path splits into folder and name, so a narrow row cuts the folder first.
+    const cut = path && name !== "run_terminal_command" && name !== "get_command_output" ? inner.lastIndexOf("/", inner.length - 2) + 1 : 0;
+    const val = !path || prose ? deps.escapeHtml(inner)
+      : cut ? `<span class="dk-dir">${deps.escapeHtml(inner.slice(0, cut)).replace(/\//g, "/<wbr>")}</span><span class="dk-base">${deps.escapeHtml(inner.slice(cut))}</span>`
+      : deps.escapeHtml(inner).replace(/\//g, "/<wbr>");
     const call = inner
-      ? `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${path ? deps.escapeHtml(inner).replace(/\//g, "/<wbr>") : deps.escapeHtml(inner)}</span><span class="chat-console-paren">)</span></span>`
+      ? `<span class="chat-console-call${prose ? " is-described" : ""}"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${val}</span><span class="chat-console-paren">)</span></span>`
       : `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>`;
     return call + hostHtml + clock;
   }
@@ -371,7 +380,7 @@ const VERB_FORMS = {
   Read: ["Read", "Reading"], View: ["Viewed", "Viewing"], List: ["Listed", "Listing"], Write: ["Wrote", "Writing"],
   Edit: ["Edited", "Editing"], Run: ["Ran", "Running"], Monitor: ["Watched", "Watching"], Wait: ["Waited for", "Waiting for"],
   Stop: ["Stopped", "Stopping"], Search: ["Searched", "Searching"], "Web search": ["Searched the web for", "Searching the web for"],
-  Fetch: ["Fetched", "Fetching"], Skill: ["Loaded skill", "Loading skill"], Draft: ["Drafted skill", "Drafting skill"],
+  Fetch: ["Fetched", "Fetching"], Skill: ["Loaded", "Loading"], Draft: ["Drafted skill", "Drafting skill"],
   Todos: ["Updated todos", "Updating todos"], Remember: ["Remembered", "Remembering"], Recall: ["Recalled", "Recalling"],
   Forget: ["Forgot", "Forgetting"], Tools: ["Loaded tools", "Loading tools"], Transcript: ["Read transcript", "Reading transcript"],
   Models: ["Searched models", "Searching models"],

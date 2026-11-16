@@ -1,0 +1,318 @@
+"""File tools (read_file, write_file, search_replace) through workspace.execute.
+
+The SSH host is this machine (tests.core.tools._support.LocalConn): reads,
+atomic writes and edits run Fuse's real SFTP logic on real files. The last
+tests drive the connector path through FakeConnector.
+"""
+import asyncio
+import json
+import os
+import stat
+
+from app import hosts, workspace
+from tests.core.tools._support import make_project
+
+
+def call(h, name, **args):
+    """One tool call on the bound host; returns (body without the host label, rec)."""
+    text, rec = asyncio.run(workspace.execute(
+        name, json.dumps(args), user_id=h.uid, bound_host_id=h.host_id, bound_cwd=h.root))
+    return workspace.unlabel_host(h.alias, text), rec
+
+
+def put(h, rel, data, mode="w"):
+    path = os.path.join(h.root, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, mode, **({} if "b" in mode else {"newline": ""})) as f:
+        f.write(data)
+    return path
+
+
+def raw(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
+# -- read_file ---------------------------------------------------------------
+
+def test_read_numbers_lines_and_says_where_the_file_ends(ssh_host):
+    put(ssh_host, "a.txt", "alpha\nbeta\r\ngamma\n")
+    body, rec = call(ssh_host, "read_file", path="a.txt")
+
+    assert rec["status"] == "done"
+    assert rec["path"] == os.path.join(ssh_host.root, "a.txt")
+    # The CR of a CRLF line is not shown (the model could not reproduce it).
+    assert body == "1: alpha\n2: beta\n3: gamma\n\n(End of file — 3 lines.)"
+
+
+def test_read_window_continues_exactly_where_it_stopped(ssh_host):
+    put(ssh_host, "n.txt", "".join(f"line{i}\n" for i in range(1, 11)))
+
+    body, _ = call(ssh_host, "read_file", path="n.txt", offset=4, limit=3)
+    assert body.splitlines()[:3] == ["4: line4", "5: line5", "6: line6"]
+    assert "(Showing lines 4-6" in body and body.endswith("Use offset=7 to continue.)")
+
+    last, _ = call(ssh_host, "read_file", path="n.txt", offset=10, limit=3)
+    assert last == "10: line10\n\n(End of file — 10 lines.)"
+
+    beyond, rec = call(ssh_host, "read_file", path="n.txt", offset=11)
+    assert rec["status"] == "error" and "beyond the end of the file" in beyond
+
+
+def test_read_caps_a_page_by_lines_and_by_bytes(ssh_host):
+    put(ssh_host, "long.txt", "".join(f"{i}\n" for i in range(1, 2501)))
+    body, _ = call(ssh_host, "read_file", path="long.txt")
+    assert body.splitlines()[1999] == "2000: 2000"
+    assert "2001: 2001" not in body
+    assert "Use offset=2001 to continue." in body
+
+    put(ssh_host, "wide.txt", "".join(("x" * 200) + "\n" for _ in range(1000)))
+    body, _ = call(ssh_host, "read_file", path="wide.txt")
+    shown = [line for line in body.splitlines() if line.startswith(tuple("0123456789")) and ": x" in line]
+    assert len(body.encode()) <= 52 * 1024
+    assert "Output capped at 50KB" in body
+    assert f"Use offset={len(shown) + 1} to continue." in body
+
+
+def test_read_refuses_directories_missing_files_and_binary_data(ssh_host):
+    os.makedirs(os.path.join(ssh_host.root, "sub"))
+    put(ssh_host, "blob.bin", b"\x7fELF\x00\x01\x02", "wb")
+
+    text, rec = call(ssh_host, "read_file", path="sub")
+    assert rec["status"] == "error" and "use list_dir" in text
+    text, rec = call(ssh_host, "read_file", path="nope.txt")
+    assert rec["status"] == "error" and "no such file" in text
+    text, rec = call(ssh_host, "read_file", path="blob.bin")
+    assert rec["status"] == "error" and "binary" in text
+
+
+def test_read_image_returns_a_decoded_frame_not_bytes(ssh_host):
+    # One real decode (a child interpreter with PIL): ~0.3 s.
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (40, 20), "red").save(out, format="PNG")
+    put(ssh_host, "shot.png", out.getvalue(), "wb")
+
+    body, rec = call(ssh_host, "read_file", path="shot.png")
+
+    assert rec["status"] == "done"
+    assert rec["image"]["mime"] == "image/png"
+    assert (rec["image"]["width"], rec["image"]["height"]) == (40, 20)
+    assert body.startswith("Image: PNG, 40×20")
+    text, rec = call(ssh_host, "read_file", path="shot.png", offset=2)
+    assert rec["status"] == "error" and "only to text files" in text
+
+
+# -- write_file --------------------------------------------------------------
+
+def test_write_creates_then_overwrites_and_reports_the_clobber(ssh_host):
+    body, rec = call(ssh_host, "write_file", path="new/deep/f.txt", content="héllo\n")
+    path = os.path.join(ssh_host.root, "new/deep/f.txt")
+    assert rec["status"] == "done"
+    assert body == f"created {path} (7 bytes)"
+    assert raw(path) == "héllo\n".encode()
+
+    body, rec = call(ssh_host, "write_file", path="new/deep/f.txt", content="x")
+    assert body == f"overwrote {path} (1 bytes; was 7 bytes)"
+    assert raw(path) == b"x"
+    # Atomic publish leaves no sibling temp file behind.
+    assert os.listdir(os.path.dirname(path)) == ["f.txt"]
+
+
+def test_overwrite_keeps_the_existing_file_mode(ssh_host):
+    path = put(ssh_host, "run.sh", "#!/bin/sh\n")
+    os.chmod(path, 0o750)
+
+    _, rec = call(ssh_host, "write_file", path="run.sh", content="#!/bin/sh\necho hi\n")
+
+    assert rec["status"] == "done"
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o750
+
+
+def test_write_refuses_directories_nul_bytes_and_oversized_content(ssh_host):
+    os.makedirs(os.path.join(ssh_host.root, "d"))
+    text, rec = call(ssh_host, "write_file", path="d", content="x")
+    assert rec["status"] == "error"
+    assert os.path.isdir(os.path.join(ssh_host.root, "d")) and os.listdir(os.path.join(ssh_host.root, "d")) == []
+
+    text, rec = call(ssh_host, "write_file", path="z.txt", content="a\x00b")
+    assert rec["status"] == "error" and "NUL" in text
+    text, rec = call(ssh_host, "write_file", path="z.txt", content="x" * 400_001)
+    assert rec["status"] == "error" and "400000" in text
+    assert not os.path.exists(os.path.join(ssh_host.root, "z.txt"))
+
+
+# -- search_replace ----------------------------------------------------------
+
+def test_replace_edits_one_exact_match_and_shows_numbered_lines(ssh_host):
+    path = put(ssh_host, "m.py", "a = 1\nb = 2\nc = 3\n")
+
+    body, rec = call(ssh_host, "search_replace", path="m.py", old_string="b = 2", new_string="b = 20")
+
+    assert rec["status"] == "done"
+    assert raw(path) == b"a = 1\nb = 20\nc = 3\n"
+    assert body.startswith(f"updated {path} (1 replacement):")
+    assert "2: b = 20" in body
+
+
+def test_an_ambiguous_match_is_refused_and_replace_all_takes_every_one(ssh_host):
+    path = put(ssh_host, "dup.txt", "x\ny\nx\n")
+
+    text, rec = call(ssh_host, "search_replace", path="dup.txt", old_string="x", new_string="z")
+    assert rec["status"] == "error"
+    assert "not unique (2 occurrences, at lines 1, 3)" in text
+    assert raw(path) == b"x\ny\nx\n"
+
+    body, rec = call(ssh_host, "search_replace", path="dup.txt", old_string="x", new_string="z", replace_all=True)
+    assert rec["status"] == "done" and "(2 replacements)" in body
+    assert raw(path) == b"z\ny\nz\n"
+
+
+def test_a_missing_match_changes_nothing_and_points_at_the_closest_text(ssh_host):
+    path = put(ssh_host, "f.py", "def f():\n    return 1\n")
+
+    text, rec = call(ssh_host, "search_replace", path="f.py", old_string="def f():\n  return 1", new_string="x")
+
+    assert rec["status"] == "error"
+    assert text.startswith("old_string not found")
+    assert "Closest text in the file (lines 1-2" in text
+    assert raw(path) == b"def f():\n    return 1\n"
+
+
+def test_crlf_file_accepts_lf_edits_and_keeps_its_line_endings(ssh_host):
+    path = put(ssh_host, "win.txt", "one\r\ntwo\r\nthree\r\n")
+
+    _, rec = call(ssh_host, "search_replace", path="win.txt", old_string="one\ntwo", new_string="1\n2\n2b")
+
+    assert rec["status"] == "done"
+    assert raw(path) == b"1\r\n2\r\n2b\r\nthree\r\n"
+
+
+def test_several_edits_apply_in_order_or_not_at_all(ssh_host):
+    path = put(ssh_host, "e.txt", "alpha beta gamma\n")
+
+    _, rec = call(ssh_host, "search_replace", path="e.txt", edits=[
+        {"old_string": "alpha", "new_string": "ALPHA"},
+        {"old_string": "ALPHA beta", "new_string": "AB"},
+    ])
+    assert rec["status"] == "done"
+    assert raw(path) == b"AB gamma\n"
+
+    text, rec = call(ssh_host, "search_replace", path="e.txt", edits=[
+        {"old_string": "gamma", "new_string": "G"},
+        {"old_string": "missing", "new_string": "M"},
+    ])
+    assert rec["status"] == "error"
+    assert text.startswith("edit 2 of 2: old_string not found") and "No edits were applied." in text
+    assert raw(path) == b"AB gamma\n"
+
+
+def test_replace_refuses_missing_files_and_no_op_edits(ssh_host):
+    text, rec = call(ssh_host, "search_replace", path="ghost.txt", old_string="a", new_string="b")
+    assert rec["status"] == "error" and "write_file" in text
+    assert not os.path.exists(os.path.join(ssh_host.root, "ghost.txt"))
+
+    put(ssh_host, "same.txt", "a\n")
+    text, rec = call(ssh_host, "search_replace", path="same.txt", old_string="a", new_string="a")
+    assert rec["status"] == "error" and "identical" in text
+
+
+def test_concurrent_edits_of_one_file_are_serialized_and_none_is_lost(ssh_host):
+    path = put(ssh_host, "c.txt", "".join(f"k{i} = 0\n" for i in range(6)))
+
+    async def edits():
+        return await asyncio.gather(*(
+            workspace.execute("search_replace", json.dumps({"path": "c.txt", "old_string": f"k{i} = 0",
+                                                            "new_string": f"k{i} = 1"}),
+                              user_id=ssh_host.uid, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root)
+            for i in range(6)
+        ))
+
+    results = asyncio.run(edits())
+
+    assert [rec["status"] for _, rec in results] == ["done"] * 6
+    assert raw(path) == "".join(f"k{i} = 1\n" for i in range(6)).encode()
+
+
+# -- confinement and modes ---------------------------------------------------
+
+def test_paths_outside_the_working_root_are_refused_without_a_gate(ssh_host):
+    outside = os.path.join(ssh_host.base, "secret.txt")
+    with open(outside, "w") as f:
+        f.write("top secret\n")
+
+    for path in ("../secret.txt", outside, "sub/../../secret.txt"):
+        text, rec = call(ssh_host, "read_file", path=path)
+        assert rec["status"] == "error" and "outside the project root" in text, path
+        assert "top secret" not in text
+    text, rec = call(ssh_host, "write_file", path="../planted.txt", content="x")
+    assert rec["status"] == "error"
+    assert not os.path.exists(os.path.join(ssh_host.base, "planted.txt"))
+    text, rec = call(ssh_host, "read_file", path="a\nb")
+    assert rec["status"] == "error" and "control characters" in text
+
+
+def test_read_only_mode_blocks_every_mutating_tool(ssh_host):
+    path = put(ssh_host, "keep.txt", "v1\n")
+    hosts.set_settings(ssh_host.uid, permission_mode="read_only")
+
+    for name, args in (("write_file", {"path": "keep.txt", "content": "v2"}),
+                       ("search_replace", {"path": "keep.txt", "old_string": "v1", "new_string": "v2"}),
+                       ("run_terminal_command", {"command": "echo v2 > keep.txt"})):
+        text, rec = call(ssh_host, name, **args)
+        assert rec["status"] == "error" and rec["kind"] == "not_allowed", name
+    assert raw(path) == b"v1\n"
+    _, rec = call(ssh_host, "read_file", path="keep.txt")
+    assert rec["status"] == "done"
+
+
+def test_a_read_only_project_blocks_writes_inside_it(ssh_host):
+    path = put(ssh_host, "src/x.txt", "v1\n")
+    make_project(ssh_host.uid, ssh_host.host_id, ssh_host.root, permission_mode="read_only")
+
+    text, rec = call(ssh_host, "write_file", path="src/x.txt", content="v2")
+
+    assert rec["status"] == "error" and "read-only" in text
+    assert raw(path) == b"v1\n"
+
+
+def test_unknown_or_reserved_host_aliases_are_refused(ssh_host):
+    for alias, why in (("nowhere", "unknown host alias"), ("localhost", "not allowed")):
+        text, rec = call(ssh_host, "read_file", path="x", host=alias)
+        assert rec["status"] == "error" and why in text
+
+
+# -- connector path ----------------------------------------------------------
+
+def test_connector_read_of_an_exact_page_is_not_reported_as_continuing(agent_host):
+    put(agent_host, "three.txt", "a\nb\nc\n")
+    body, _ = call(agent_host, "read_file", path="three.txt", limit=3)
+    assert body.endswith("(End of file — 3 lines.)")
+
+    put(agent_host, "four.txt", "a\nb\nc\nd\n")
+    body, _ = call(agent_host, "read_file", path="four.txt", limit=3)
+    assert body.endswith("Use offset=4 to continue.)")
+
+
+def test_connector_write_creates_a_missing_parent_first(agent_host):
+    body, rec = call(agent_host, "write_file", path="made/here/f.txt", content="ok\n")
+
+    path = os.path.join(agent_host.root, "made/here/f.txt")
+    assert rec["status"] == "done" and body == f"created {path} (3 bytes)"
+    assert raw(path) == b"ok\n"
+
+
+def test_connector_crlf_edit_is_retried_with_crlf_and_never_as_a_write(agent_host):
+    path = put(agent_host, "w.txt", "one\r\ntwo\r\n")
+
+    _, rec = call(agent_host, "search_replace", path="w.txt", old_string="one\ntwo", new_string="1\n2")
+    assert rec["status"] == "done"
+    assert raw(path) == b"1\r\n2\r\n"
+
+    text, rec = call(agent_host, "search_replace", path="w.txt", old_string="\r\n", new_string="\n")
+    assert rec["status"] == "error" and "not unique" in text
+    assert "write" not in [op for op, _ in agent_host.connector.calls]
+    assert raw(path) == b"1\r\n2\r\n"

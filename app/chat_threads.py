@@ -35,6 +35,7 @@ from .chat_schema import (
     stored_messages,
 )
 from .chat_titles import _clean_title
+from .database_errors import is_lock_conflict
 from .chat_generation import cache_watch
 
 logger = logging.getLogger(__name__)
@@ -625,7 +626,7 @@ def update_thread(
     reasoning_effort: str | None = None,
     memory_off: bool | None = None,
 ) -> dict | None:
-    from . import chat_store as store
+    from . import chat_store as store, chat_tx
 
     if auto_permissions:
         from . import jev
@@ -645,14 +646,19 @@ def update_thread(
         pk = resolve_thread_pk(user_id, thread_id, conn)
         if pk is None:
             return None
-        row = conn.execute("SELECT * FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
+        # This thread's runs, then the thread row: the order every finalizer
+        # locks them in (run, thread, cursor). thread_view and
+        # purge_orphan_subagents below read (on MariaDB, lock) the runs, and
+        # waiting for a finishing run while holding the thread deadlocks.
+        conn.execute("SELECT id FROM chat_runs WHERE thread_id=?", (pk,)).fetchall()
+        # The current row under its lock, read after any finalizer we waited
+        # for committed: a snapshot from before the wait would be stale.
+        row = chat_tx.lock_thread(conn, pk, user_id)
         if row is None:
             return None
         store.check_revision(row["revision"], expected_revision)
         if messages is not None and conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
             raise ChatValidationError("cannot replace messages during an active run", 409)
-        # After the chat_runs read: finalization locks run before thread.
-        _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
         _update_thread(conn, row, title=title, model=model, archived=archived, pinned=pinned, messages=messages, context=context, tools=tools,
                        reasoning_effort=reasoning_effort)
         if memory_off is not None:
@@ -666,10 +672,6 @@ def update_thread(
 
             permissions_mod.set_auto(user_id, pk, bool(auto_permissions), conn=conn)
         doomed = store.purge_orphan_subagents(conn, user_id, pk, messages) if messages is not None else []
-        # thread_view reads (and on MariaDB locks) this thread's runs. Take
-        # those locks before the cursor upsert in thread_event: publication
-        # locks run then cursor, and the reverse order deadlocks with it.
-        conn.execute("SELECT id FROM chat_runs WHERE thread_id=?", (pk,)).fetchall()
         store.thread_event(conn, user_id, pk)
         result = store.thread_view(conn, user_id, pk)
         store.remember(conn, user_id, command_id, fingerprint, result)
@@ -692,7 +694,7 @@ def _sidebar_view(conn, user_id: int, pk: int):
     return _view(row) if row else None
 def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
     """Write the pinned section's order. `ids` is the full pinned list, top first."""
-    from . import chat_store as store
+    from . import chat_store as store, chat_tx
 
     order = [str(item).strip() for item in (ids or []) if str(item).strip()]
     with store.transaction() as conn:
@@ -704,15 +706,24 @@ def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
             pk = resolve_thread_pk(user_id, token, conn)
             if pk is not None and pk not in pks:
                 pks.append(pk)
-        for index, pk in enumerate(pks):
+        # Every row first, then the events: publishing takes the event cursor,
+        # and writing the next row after it would take a thread row after the
+        # cursor (finalizers hold their thread row and wait for the cursor).
+        # Ascending ids so two reorders lock the rows in one order.
+        for pk, index in sorted((pk, index) for index, pk in enumerate(pks)):
+            chat_tx.lock_thread(conn, pk, user_id)
             conn.execute(
                 "UPDATE chat_threads SET pin_order=? WHERE id=? AND user_id=? AND pinned=1",
                 (index, pk, user_id),
             )
+        for pk in pks:
             store.thread_event(conn, user_id, pk)
         result = {"threads": [_sidebar_view(conn, user_id, pk) for pk in pks]}
         store.remember(conn, user_id, command_id, fingerprint, result)
         return result
+_MARK_READ_ATTEMPTS = 3
+
+
 def mark_thread_read(user_id: int, thread_id) -> bool:
     """Viewing a thread clears its finished-run badge. No revision bump: the
     flag is display metadata, and the thread event carries the new state."""
@@ -721,13 +732,25 @@ def mark_thread_read(user_id: int, thread_id) -> bool:
     pk = resolve_thread_pk(user_id, thread_id)
     if pk is None:
         return False
-    with store.transaction() as conn:
-        row = conn.execute("SELECT unread FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
-        if row is None or not row["unread"]:
-            return False
-        conn.execute("UPDATE chat_threads SET unread=0 WHERE id=? AND user_id=?", (pk, user_id))
-        store.thread_event(conn, user_id, pk)
-    return True
+    # This locks the thread row, then the event cursor. A finishing subagent
+    # locks its run, the cursor, then the thread row; a root turn its run,
+    # the thread row, then all the thread's runs. No order of thread, cursor
+    # and runs here is safe against both, so MariaDB may pick this small
+    # transaction as the deadlock victim (1213). It rolled back whole and is
+    # idempotent: run it again once the finalizer has committed.
+    for attempt in range(1, _MARK_READ_ATTEMPTS + 1):
+        try:
+            with store.transaction() as conn:
+                row = conn.execute("SELECT unread FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
+                if row is None or not row["unread"]:
+                    return False
+                conn.execute("UPDATE chat_threads SET unread=0 WHERE id=? AND user_id=?", (pk, user_id))
+                store.thread_event(conn, user_id, pk)
+            return True
+        except Exception as exc:
+            if attempt == _MARK_READ_ATTEMPTS or not is_lock_conflict(exc):
+                raise
+            logger.warning("Marking thread %s read hit lock contention; retrying (attempt %d)", pk, attempt)
 def unarchive_on_activity(conn, row, ts):
     """A new message or transcript edit brings an archived chat (and its project) back."""
     if not int(row["archived"] or 0):
@@ -933,7 +956,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
     instead of aborting. With ``cancel_active=False`` (retention sweeps) the
     deletion refuses while any run is queued/running; interactive callers keep
     the legacy behavior of cancelling those runs and deleting anyway."""
-    from . import chat_store as store
+    from . import chat_store as store, chat_tx
 
     with store.transaction() as conn:
         fingerprint, previous = store.command(conn, user_id, command_id, ["delete", thread_id, expected_revision])
@@ -952,12 +975,16 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
                 return False
         public = str(row["public_id"]) if "public_id" in row.keys() and row["public_id"] else public_id_for(pk, conn)
         active = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')", (pk, user_id)).fetchall()
+        # After the chat_runs read and before the cancel events: run, thread,
+        # then the event cursor, the order finalizers and thread writers use.
+        # Deleting the row after publishing took the thread after the cursor.
         if expected_revision is not None:
-            # After the chat_runs read: finalization locks run before thread.
             try:
                 _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
             except ChatValidationError:
                 return False
+        elif chat_tx.lock_thread(conn, pk, user_id) is None:
+            return False
         if active and not cancel_active:
             return False
         for run in active:
