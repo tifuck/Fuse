@@ -1099,7 +1099,10 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Darker toward the window edge each pane sits on. */
   & .dk-side { background: linear-gradient(90deg, var(--dk-edge-dim), transparent 48px), var(--dk-chrome-bg); }
-  & .dk-head { background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); }
+  /* The bar's glass sits on a layer under it: a filter on the bar itself would
+     contain the ⋯ menu's, leaving the page under the menu unblurred. */
+  & .dk-head { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  & .dk-head::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
   & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -1109,6 +1112,10 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
+  /* The bubble, the window menus and the sidebar's search share the popovers' glass. */
+  & .chat-turn.is-user:not(.is-auto-steps) { background: color-mix(in srgb, var(--dk-bubble) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-menu, .user-dock-menu) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Secondary text leans a fifth toward the body colour so it holds AA on
