@@ -101,8 +101,10 @@ Area helpers worth reusing before writing your own (import them from the area):
 - `tests/core/threads/test_lock_order.py` (`_race`, `_other_waiting`) and
   `tests/core/features/_support.py` (`waiting_on`): pause a real transaction
   and wait on a PROCESSLIST condition instead of sleeping.
-- `tests/core/tools/_support.py`: `LocalConn`/`LocalSFTP` (a fake SSH host on
-  local files), `FakeConnector`, `ScriptedRunner`, `CardUser`.
+- `tests/core/tools/_support.py`: `FakeFS` (in-memory files), `FakeShell`
+  (records commands, answers with scripted output, executes nothing),
+  `FakeConn`/`FakeSFTP` (an SSH host on those two), `FakeConnector`,
+  `ScriptedRunner`, `CardUser`.
 - `tests/core/auth/_support.py`: signed session cookies without scrypt
   (`sign_in`), `build_app()` (routes without the lifespan).
 

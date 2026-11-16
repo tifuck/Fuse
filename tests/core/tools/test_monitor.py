@@ -7,7 +7,6 @@ matters, the monitor clock frozen.
 """
 import asyncio
 import json
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -266,10 +265,11 @@ def test_websocket_monitors_reach_only_public_web_ports(monkeypatch):
 
 def test_the_monitor_tool_turns_command_output_into_events(ssh_host, fast_batches, wakes):
     _, tid = new_thread(ssh_host.uid)
+    ssh_host.shell.on("tail -f build.log", out="ok\nFAIL one\nok\n", err="oops\n")
 
     async def body():
         _, rec = await workspace.execute(
-            "monitor", json.dumps({"command": "printf 'ok\\nFAIL one\\nok\\n'; echo oops >&2",
+            "monitor", json.dumps({"command": "tail -f build.log",
                                    "pattern": "FAIL", "max_events": 5, "description": "Watch for failures"}),
             user_id=ssh_host.uid, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root, thread_id=tid)
         await wait_until_async(lambda: job(rec["id"])["status"] == "completed")
@@ -285,6 +285,7 @@ def test_the_monitor_tool_turns_command_output_into_events(ssh_host, fast_batche
     assert (stored["exit_code"], stored["event_count"], stored["kind"]) == (0, 1, "monitor")
     assert "[stderr]\noops" in result  # stderr is kept, never an event
     assert any("FAIL one" in e for e in envelopes)
+    assert ssh_host.shell.reached == ["tail -f build.log"]
 
 
 def job(job_id):
@@ -308,4 +309,4 @@ def test_the_monitor_tool_validates_its_arguments(ssh_host):
         text, rec = run_async(call(**args))
         assert rec["status"] == "error" and why in text, args
     assert not db.fetchone("SELECT 1 FROM command_jobs")
-    assert not os.listdir(ssh_host.home)
+    assert ssh_host.shell.raw == []

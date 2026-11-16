@@ -1,18 +1,18 @@
-"""Tools-area fixtures: a user with an SSH host whose transport is this machine.
+"""Tools-area fixtures: a user with a fake SSH host and a fake connector host.
 
-``ssh_host`` gives a real user_hosts row whose working root is a scratch
-directory outside /tmp (so /tmp stays a separate permission root), with
-``app.ssh_pool.connection`` answering through tests.core.tools._support.LocalConn.
+Both hosts are tests.core.tools._support fakes: an in-memory file system and
+a shell that records commands and answers with scripted output. Nothing a
+tools test does can run a command or touch a file of the real machine.
 """
-import os
-import shutil
-import tempfile
 from types import SimpleNamespace
 
 import pytest
 
 from tests.core.helpers import quick_user
-from tests.core.tools._support import FakeConnector, LocalConn, make_host
+from tests.core.tools._support import FakeConn, FakeConnector, FakeFS, FakeShell, make_host
+
+ROOT = "/srv/app"
+HOME = "/home/dev"
 
 
 @pytest.fixture(autouse=True)
@@ -36,49 +36,40 @@ def _clean_tool_state():
     clear()
 
 
-@pytest.fixture
-def scratch_dir():
-    """A directory outside /tmp (a permission root of its own)."""
-    base = "/dev/shm" if os.path.isdir("/dev/shm") else None
-    path = os.path.realpath(tempfile.mkdtemp(prefix="fuse-core-tools-", dir=base))
-    assert not path.startswith("/tmp/"), "the scratch tree must sit outside /tmp"
-    yield path
-    shutil.rmtree(path, ignore_errors=True)
+def _fake_machine():
+    fs = FakeFS(home=HOME)
+    fs.makedirs(ROOT)
+    return fs, FakeShell(fs)
 
 
 @pytest.fixture
-def ssh_host(fresh_db, scratch_dir, monkeypatch):
+def ssh_host(fresh_db, monkeypatch):
+    """A user with an SSH host 'box' (working root /srv/app) on a fake machine.
+    Every host of that user answers from the same fake machine."""
     from app import ssh_pool
 
-    root = os.path.join(scratch_dir, "proj")
-    home = os.path.join(scratch_dir, "home")
-    os.makedirs(root)
-    os.makedirs(home)
+    fs, shell = _fake_machine()
     uid = quick_user()
-    host_id = make_host(uid, "box", default_cwd=root)
-    conn = LocalConn(home)
+    host_id = make_host(uid, "box", default_cwd=ROOT)
+    conn = FakeConn(fs, shell)
 
     async def connection(user_id, hid):
         assert int(user_id) == uid, "only the test user's hosts have a transport"
         return conn
 
     monkeypatch.setattr(ssh_pool, "connection", connection)
-    return SimpleNamespace(uid=uid, host_id=host_id, alias="box", root=root, home=home,
-                           base=scratch_dir, conn=conn)
+    return SimpleNamespace(uid=uid, host_id=host_id, alias="box", root=ROOT, home=HOME, fs=fs, shell=shell, conn=conn)
 
 
 @pytest.fixture
-def agent_host(fresh_db, scratch_dir, monkeypatch):
-    """A connector machine (auth_type agent) answered by FakeConnector."""
+def agent_host(fresh_db, monkeypatch):
+    """A connector machine 'pc' (auth_type agent) answered by FakeConnector."""
     from app import agent_hub
 
-    root = os.path.join(scratch_dir, "proj")
-    home = os.path.join(scratch_dir, "home")
-    os.makedirs(root)
-    os.makedirs(home)
+    fs, shell = _fake_machine()
     uid = quick_user()
-    host_id = make_host(uid, "pc", default_cwd=root, auth_type="agent", agent_os="linux", agent_version="1.9.0")
-    connector = FakeConnector(home)
+    host_id = make_host(uid, "pc", default_cwd=ROOT, auth_type="agent", agent_os="linux", agent_version="1.9.0")
+    connector = FakeConnector(fs, shell)
     monkeypatch.setattr(agent_hub, "call", connector)
-    return SimpleNamespace(uid=uid, host_id=host_id, alias="pc", root=root, home=home,
-                           base=scratch_dir, connector=connector)
+    return SimpleNamespace(uid=uid, host_id=host_id, alias="pc", root=ROOT, home=HOME, fs=fs, shell=shell,
+                           connector=connector)

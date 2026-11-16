@@ -1,14 +1,13 @@
 """A background command started by the model reaches the model exactly once.
 
 End to end: a real durable turn (provider faked at app.api.invoke_chat) calls
-run_terminal_command with background:true on an SSH host that is this
-machine. Whether the job finishes while the turn is still generating (its
-inbox) or after the turn ended (a wake turn), the result is delivered once,
-the job row is acknowledged, and the envelope appears once in what the model
-sees.
+run_terminal_command with background:true on the fake SSH host (recorded,
+scripted output, nothing executed). Whether the job finishes while the turn
+is still generating (its inbox) or after the turn ended (a wake turn), the
+result is delivered once, the job row is acknowledged, and the envelope
+appears once in what the model sees.
 """
 import json
-import os
 
 import pytest
 
@@ -31,8 +30,13 @@ def test_a_background_command_result_is_delivered_once(ssh_host, late):
     project = make_project(ssh_host.uid, ssh_host.host_id, ssh_host.root)
     thread = chats.create_thread(ssh_host.uid, model="offline", tools=[], kind="project",
                                  host_id=ssh_host.host_id, project_id=project)
-    release = os.path.join(ssh_host.root, "release")
-    command = (f"until [ -e {release} ]; do sleep 0.02; done; echo bg-done" if late else "echo bg-done")
+    command = "make report"
+    report = ssh_host.shell.on(command, out="bg-done\n", hold=True)
+
+    def second_round(body):
+        if not late:
+            report.release()  # finishes while the turn is still generating
+        return text_frames("started it")
     start = tool_call_frames([("call-1", "run_terminal_command",
                                {"command": command, "background": True, "description": "Say done"})])
 
@@ -43,16 +47,16 @@ def test_a_background_command_result_is_delivered_once(ssh_host, late):
 
     async def body():
         # The second answer ends the turn; a wake turn takes the third.
-        with fake_provider(start, text_frames("started it"), text_frames("saw the result")) as provider:
+        with fake_provider(start, second_round, text_frames("saw the result")) as provider:
             _, run = await run_turn(ssh_host.uid, "run it in the background", thread=thread)
             if late:
-                open(release, "w").close()
+                report.release()
             job = await wait_until_async(settled, timeout=10)
         return run, job, provider.bodies
 
     run, job, bodies = run_async(body())
 
-    assert run["status"] == "completed"
+    assert run["status"] == "completed" and ssh_host.shell.reached == [command]
     assert job["status"] == "completed" and job["delivered"] == 1
     needle = f'<command_result id="{job["id"]}"'
     assert messages_text(bodies[-1]).count(needle) == 1

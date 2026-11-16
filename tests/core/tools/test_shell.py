@@ -1,20 +1,20 @@
-"""run_terminal_command, get_command_output and kill_command over SSH.
+"""run_terminal_command, get_command_output and kill_command.
 
-Commands really run (local bash via LocalConn), so exit codes, stderr,
-output caps and cwd handling are the host's, and the job row in command_jobs
-is what a reload or restart would see. Waits are on files the test creates,
-never on a sleep.
+The host is a recording fake (tests.core.tools._support.FakeShell): it is
+asked to run the command, records it, and answers with the scripted output
+of a real host. Nothing is executed. What is real: command_jobs (the job
+row a reload or restart would see), the foreground/background handoff, the
+output caps, the denylist and cwd confinement in front of the host.
 """
 import asyncio
 import json
-import os
 
 import pytest
 
 from app import command_jobs, db, run_inbox, workspace
 from app.workspace import WorkspaceError
 from tests.core.helpers import quick_user, run_async, wait_until_async
-from tests.core.tools._support import make_host, new_thread
+from tests.core.tools._support import FakeConnector, FakeFS, FakeShell, make_host, new_thread
 
 
 async def tool(h, name, *, run_id="", thread_id=None, **args):
@@ -40,78 +40,101 @@ async def arrive_until_returned(call, run_id):
 
 
 def test_a_failing_command_completes_with_its_exit_code_and_both_streams(ssh_host):
-    body, rec = run_async(tool(ssh_host, "run_terminal_command", command="echo out; echo err >&2; exit 3"))
+    ssh_host.shell.on("make check", out="out\n", err="err\n", code=3)
 
+    body, rec = run_async(tool(ssh_host, "run_terminal_command", command="make check"))
+
+    assert ssh_host.shell.reached == ["make check"]
     assert rec["state"] == "completed" and rec["exit_code"] == 3
     assert rec["status"] == "done"  # a non-zero exit is still a finished command
     assert "exit_code: 3" in body
     assert "out" in rec["output"] and "err" in rec["output"]
     row = job_row(rec["id"])
     assert (row["status"], row["exit_code"], row["background"]) == ("completed", 3, 0)
-    assert row["command"] == "echo out; echo err >&2; exit 3"
-    assert row["cwd"] == ssh_host.root
+    assert (row["command"], row["cwd"]) == ("make check", ssh_host.root)
 
 
 def test_commands_run_in_the_working_root_and_cwd_stays_inside_it(ssh_host):
-    os.makedirs(os.path.join(ssh_host.root, "sub"))
+    ssh_host.fs.makedirs(f"{ssh_host.root}/sub")
+    ssh_host.shell.on("ls", out="a\n")
 
-    _, rec = run_async(tool(ssh_host, "run_terminal_command", command="pwd"))
-    assert rec["output"].strip() == ssh_host.root
-    _, rec = run_async(tool(ssh_host, "run_terminal_command", command="pwd", cwd="sub"))
-    assert rec["output"].strip() == os.path.join(ssh_host.root, "sub")
+    run_async(tool(ssh_host, "run_terminal_command", command="ls"))
+    run_async(tool(ssh_host, "run_terminal_command", command="ls", cwd="sub"))
+    first, second = ssh_host.shell.raw
+    assert f"cd {ssh_host.root} || exit 1" in first
+    assert f"cd {ssh_host.root}/sub || exit 1" in second
 
-    text, rec = run_async(tool(ssh_host, "run_terminal_command", command="pwd", cwd="../"))
-    assert rec["status"] == "error" and "outside the project root" in text
+    for cwd in ("../", "/etc", f"{ssh_host.root}-other"):
+        text, rec = run_async(tool(ssh_host, "run_terminal_command", command="ls", cwd=cwd))
+        assert rec["status"] == "error" and "outside the project root" in text, cwd
+    assert len(ssh_host.shell.raw) == 2
 
 
 def test_a_missing_cwd_stops_the_command_instead_of_running_it_elsewhere(ssh_host):
-    _, rec = run_async(tool(ssh_host, "run_terminal_command", command="touch marker", cwd="nosuch"))
+    _, rec = run_async(tool(ssh_host, "run_terminal_command", command="make", cwd="nosuch"))
 
     assert rec["state"] == "completed" and rec["exit_code"] == 1
-    assert not os.path.exists(os.path.join(ssh_host.home, "marker"))
-    assert not os.path.exists(os.path.join(ssh_host.root, "marker"))
+    assert ssh_host.shell.asked == ["make"] and ssh_host.shell.reached == []
+    # The wrapper stops on a failed cd instead of running the rest in $HOME.
+    assert f"cd {ssh_host.root}/nosuch || exit 1" in ssh_host.shell.raw[0]
 
 
-def test_denylisted_commands_never_run_without_a_gate(ssh_host):
-    for command in ("rm -rf /", "rm -rf /*", "rm --no-preserve-root -rf /", "mkfs.ext4 /dev/sda",
-                    "chmod -R 777 /", "x; reboot", "echo x; sudo touch planted", "ssh other touch planted",
-                    "scp f other:", "bash -c 'shutdown now'", "nohup poweroff"):
+# Destructive commands appear only here: as pure strings for the matcher, and
+# once through the recording fake to prove nothing is even asked of a host.
+DESTRUCTIVE = ("rm -rf /", "rm -rf /*", "rm --no-preserve-root -rf /", "mkfs.ext4 /dev/sda",
+               "chmod -R 777 /", "x; reboot", "nohup poweroff", "echo x; sudo true", "bash -c 'shutdown now'",
+               "ssh other true", "scp f other:")
+WINDOWS_DESTRUCTIVE = ("Stop-Computer -Force", "Restart-Computer", "Format-Volume -DriveLetter D",
+                       "Clear-Disk 1", "dir; shutdown /s")
+
+
+def test_the_denylist_matches_catastrophic_commands():
+    for command in DESTRUCTIVE:
+        assert workspace.denied(command), command
+    for command in WINDOWS_DESTRUCTIVE:
+        assert workspace.denied(command, windows=True), command
+    for command in ("rm -rf build", "ls /", "git status", "make test", "echo rebooted", "chmod 755 bin/run"):
+        assert workspace.denied(command) is None, command
+
+
+def test_denylisted_commands_are_never_sent_to_a_host(ssh_host):
+    for command in DESTRUCTIVE:
         text, rec = run_async(tool(ssh_host, "run_terminal_command", command=command))
         assert rec["status"] == "error" and "denylist" in text, command
+        text, rec = run_async(tool(ssh_host, "monitor", command=command, description="d"))
+        assert rec["status"] == "error" and "denylist" in text, command
+    assert ssh_host.shell.raw == []
     assert not db.fetchone("SELECT 1 FROM command_jobs")
-    assert not os.path.exists(os.path.join(ssh_host.root, "planted"))
 
 
-def test_destructive_windows_commands_are_denylisted_on_windows_hosts(fresh_db, monkeypatch):
+def test_destructive_windows_commands_are_never_sent_to_a_windows_host(fresh_db, monkeypatch):
     from app import agent_hub
 
     uid = quick_user()
     host = make_host(uid, "win", default_cwd="C:\\proj", auth_type="agent", agent_os="windows", agent_version="1.9.0")
-    sent = []
-
-    async def connector(*args, **kwargs):
-        sent.append(args)
-        return {"ok": True, "exit": 0, "out": "", "err": "", "error": ""}
-
+    fs = FakeFS()
+    connector = FakeConnector(fs, FakeShell(fs))
     monkeypatch.setattr(agent_hub, "call", connector)
-    for command in ("Stop-Computer -Force", "Restart-Computer", "Format-Volume -DriveLetter D", "Clear-Disk 1",
-                    "dir; shutdown /s"):
+
+    for command in WINDOWS_DESTRUCTIVE:
         text, rec = run_async(workspace.execute("run_terminal_command", json.dumps({"command": command}),
                                                 user_id=uid, bound_host_id=host, bound_cwd="C:\\proj"))
         assert rec["status"] == "error" and "denylist" in text, command
-    assert sent == []
+    assert connector.calls == []
 
 
 def test_the_per_host_exec_budget_is_180_a_minute(ssh_host):
     # The budget's window has no public reader: spend 179 of it directly
-    # (179 real commands would take seconds), then run real commands.
+    # (179 commands through command_jobs cost seconds of database writes).
     for _ in range(179):
         workspace._rate_ok(ssh_host.uid, ssh_host.host_id)
+    ssh_host.shell.on("make", out="ok\n")
 
-    _, last = run_async(tool(ssh_host, "run_terminal_command", command="echo 180th"))
+    _, last = run_async(tool(ssh_host, "run_terminal_command", command="make"))
     assert last["state"] == "completed"
-    text, refused = run_async(tool(ssh_host, "run_terminal_command", command="echo 181st"))
+    text, refused = run_async(tool(ssh_host, "run_terminal_command", command="make"))
     assert refused["status"] != "done" and "exec rate limit" in (text + str(refused.get("error")))
+    assert ssh_host.shell.reached == ["make"]
 
 
 def test_a_host_list_is_one_shell_family_of_known_hosts(ssh_host):
@@ -130,16 +153,19 @@ def test_empty_and_oversized_commands_are_refused(ssh_host):
     assert rec["status"] == "error" and "command is required" in text
     text, rec = run_async(tool(ssh_host, "run_terminal_command", command="echo " + "x" * 8000))
     assert rec["status"] == "error" and "8000" in text
+    assert ssh_host.shell.raw == []
 
 
 def test_long_output_keeps_its_head_and_tail_and_counts_every_character(ssh_host):
+    output = "".join(f"{i}\n" for i in range(1, 20001))
+    ssh_host.shell.on("seq 1 20000", out=output)
+
     _, rec = run_async(tool(ssh_host, "run_terminal_command", command="seq 1 20000"))
 
-    total = len("".join(f"{i}\n" for i in range(1, 20001)))
-    assert rec["output_chars"] == total and rec["output_chars_exact"] is True
+    assert rec["output_chars"] == len(output) and rec["output_chars_exact"] is True
     assert rec["truncated"] is True
     row = job_row(rec["id"])
-    assert row["out_chars"] == total
+    assert row["out_chars"] == len(output)
     assert len(row["out"]) == command_jobs.OUT_TAIL_CHARS and row["out"].endswith("19999\n20000\n")
     body, _ = run_async(tool(ssh_host, "get_command_output", id=rec["id"]))
     assert "\n1\n2\n3\n" in body and body.rstrip().endswith("20000")
@@ -147,15 +173,14 @@ def test_long_output_keeps_its_head_and_tail_and_counts_every_character(ssh_host
 
 
 def test_background_command_returns_an_id_at_once_and_joins_later(ssh_host):
-    release = os.path.join(ssh_host.root, "release")
+    build = ssh_host.shell.on("make build", out="finished\n", hold=True)
 
     async def body():
-        text, rec = await tool(ssh_host, "run_terminal_command", background=True,
-                               command=f"until [ -e {release} ]; do sleep 0.02; done; echo finished")
+        text, rec = await tool(ssh_host, "run_terminal_command", background=True, command="make build")
         assert rec["status"] == "running" and rec["background"] is True
         row = job_row(rec["id"])
         assert (row["status"], row["background"], row["notify"]) == ("running", 1, 1)
-        open(release, "w").close()
+        build.release()
         joined, result = await tool(ssh_host, "get_command_output", id=rec["id"], timeout_ms=5000)
         return rec["id"], joined, result
 
@@ -168,15 +193,13 @@ def test_background_command_returns_an_id_at_once_and_joins_later(ssh_host):
 
 
 def test_a_foreground_command_moves_to_the_background_when_something_arrives(ssh_host):
-    release = os.path.join(ssh_host.root, "release")
+    build = ssh_host.shell.on("make build", out="released\n", hold=True)
 
     async def body():
-        call = asyncio.create_task(tool(
-            ssh_host, "run_terminal_command", run_id="run-x",
-            command=f"until [ -e {release} ]; do sleep 0.02; done; echo released"))
+        call = asyncio.create_task(tool(ssh_host, "run_terminal_command", run_id="run-x", command="make build"))
         text, rec = await arrive_until_returned(call, "run-x")
         moved = job_row(rec["id"])
-        open(release, "w").close()
+        build.release()
         _, result = await tool(ssh_host, "get_command_output", id=rec["id"], timeout_ms=5000)
         return text, rec, moved, result
 
@@ -190,12 +213,11 @@ def test_a_foreground_command_moves_to_the_background_when_something_arrives(ssh
 
 def test_a_foreground_command_past_its_timeout_moves_to_the_background(ssh_host):
     # The shortest foreground timeout is 1 s, so this test waits that long.
-    release = os.path.join(ssh_host.root, "release")
+    build = ssh_host.shell.on("make build", out="late\n", hold=True)
 
     async def body():
-        text, rec = await tool(ssh_host, "run_terminal_command", timeout=1,
-                               command=f"until [ -e {release} ]; do sleep 0.02; done; echo late")
-        open(release, "w").close()
+        text, rec = await tool(ssh_host, "run_terminal_command", timeout=1, command="make build")
+        build.release()
         _, result = await tool(ssh_host, "get_command_output", id=rec["id"], timeout_ms=5000)
         return text, rec, result
 
@@ -209,6 +231,8 @@ def test_a_foreground_command_past_its_timeout_moves_to_the_background(ssh_host)
 
 
 def test_a_bare_sleep_stops_instead_of_moving_to_the_background(ssh_host):
+    ssh_host.shell.on("sleep 2", hold=True)
+
     async def body():
         call = asyncio.create_task(tool(ssh_host, "run_terminal_command", run_id="run-y", command="sleep 2"))
         text, rec = await arrive_until_returned(call, "run-y")
@@ -219,10 +243,37 @@ def test_a_bare_sleep_stops_instead_of_moving_to_the_background(ssh_host):
 
     assert text.startswith("Sleep stopped early.")
     assert job_row(rec["id"])["status"] == "cancelled"
+    assert ssh_host.conn.processes[0].killed
 
+
+def test_kill_command_cancels_a_running_job_and_a_second_kill_is_harmless(ssh_host):
+    ssh_host.shell.on("make serve", hold=True)
+    _, tid = new_thread(ssh_host.uid)
+
+    async def body():
+        _, rec = await tool(ssh_host, "run_terminal_command", background=True, thread_id=tid, command="make serve")
+        _, killed = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
+        await wait_until_async(lambda: job_row(rec["id"])["status"] == "cancelled" and job_row(rec["id"])["delivered"])
+        _, again = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
+        return rec["id"], killed, again
+
+    job_id, killed, again = run_async(body())
+
+    assert killed["state"] == "cancelling"
+    assert again["state"] == "cancelled"
+    assert ssh_host.conn.processes[0].killed
+    row = job_row(job_id)
+    assert row["status"] == "cancelled" and row["delivered"] == 1
+    # The model asked for the kill: its own receipt is not delivered again.
+    assert command_jobs.pending_envelopes(ssh_host.uid, tid) == []
+
+
+# -- connector ----------------------------------------------------------------
 
 def test_a_connector_command_streams_stdout_and_labels_stderr(agent_host):
-    _, rec = run_async(tool(agent_host, "run_terminal_command", command="echo out; echo err >&2; exit 4"))
+    agent_host.shell.on("make check", out="out\n", err="err\n", code=4)
+
+    _, rec = run_async(tool(agent_host, "run_terminal_command", command="make check"))
 
     assert rec["state"] == "completed" and rec["exit_code"] == 4
     assert rec["output"] == "out\n[stderr]\nerr\n"
@@ -243,31 +294,9 @@ def test_a_connector_deadline_kill_is_a_timeout_not_an_exit(agent_host):
 def test_an_older_connector_without_streaming_still_runs_the_command(agent_host):
     agent_host.connector.overrides["exec_stream"] = {"ok": False, "exit": None, "out": "", "err": "",
                                                      "error": "unknown op"}
+    agent_host.shell.on("make legacy", out="legacy\n")
 
-    _, rec = run_async(tool(agent_host, "run_terminal_command", command="echo legacy"))
+    _, rec = run_async(tool(agent_host, "run_terminal_command", command="make legacy"))
 
     assert rec["state"] == "completed" and rec["exit_code"] == 0 and rec["output"] == "legacy\n"
     assert [op for op, _ in agent_host.connector.calls][-2:] == ["exec_stream", "exec"]
-
-
-def test_kill_command_cancels_a_running_job_and_a_second_kill_is_harmless(ssh_host):
-    release = os.path.join(ssh_host.root, "release")
-    _, tid = new_thread(ssh_host.uid)
-
-    async def body():
-        _, rec = await tool(ssh_host, "run_terminal_command", background=True, thread_id=tid,
-                            command=f"until [ -e {release} ]; do sleep 0.02; done")
-        _, killed = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
-        await wait_until_async(lambda: job_row(rec["id"])["status"] == "cancelled" and job_row(rec["id"])["delivered"])
-        _, again = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
-        open(release, "w").close()
-        return rec["id"], killed, again
-
-    job_id, killed, again = run_async(body())
-
-    assert killed["state"] == "cancelling"
-    assert again["state"] == "cancelled"
-    row = job_row(job_id)
-    assert row["status"] == "cancelled" and row["delivered"] == 1
-    # The model asked for the kill: its own receipt is not delivered again.
-    assert command_jobs.pending_envelopes(ssh_host.uid, tid) == []

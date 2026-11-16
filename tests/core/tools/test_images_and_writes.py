@@ -3,7 +3,6 @@ of hard-linked files."""
 import asyncio
 import io
 import json
-import os
 import threading
 
 import pytest
@@ -86,20 +85,17 @@ def test_a_cancelled_caller_still_lets_its_write_finish():
 
 
 def test_a_hard_linked_file_is_edited_in_place_so_every_name_sees_it(ssh_host):
-    path = os.path.join(ssh_host.root, "config.ini")
-    alias = os.path.join(ssh_host.root, "config.link")
-    with open(path, "w") as f:
-        f.write("mode = dev\n")
-    os.link(path, alias)
+    path = ssh_host.fs.write(f"{ssh_host.root}/config.ini", "mode = dev\n")
+    alias = f"{ssh_host.root}/config.link"
+    ssh_host.fs.link(path, alias)
 
     text, rec = asyncio.run(workspace.execute(
         "search_replace", json.dumps({"path": "config.ini", "old_string": "dev", "new_string": "prod"}),
         user_id=ssh_host.uid, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root))
 
     assert rec["status"] == "done"
-    assert os.stat(path).st_ino == os.stat(alias).st_ino
-    with open(alias) as f:
-        assert f.read() == "mode = prod\n"
+    assert ssh_host.fs.nlink(path) == 2  # still one file under two names
+    assert ssh_host.fs.text(alias) == "mode = prod\n"
 
 
 def test_windows_paths_are_confined_to_the_windows_root(fresh_db, monkeypatch):

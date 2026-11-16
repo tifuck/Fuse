@@ -6,7 +6,6 @@ the runtime keeps per run. Schema text is not asserted.
 """
 import asyncio
 import json
-import os
 
 from app import agent_catalog, chat_tools, chats, permissions
 import pytest
@@ -34,8 +33,7 @@ def test_a_plain_chat_cannot_call_coding_tools(uid):
 
 
 def test_a_workspace_tool_runs_only_after_it_is_loaded(ssh_host):
-    with open(os.path.join(ssh_host.root, "hello.txt"), "w") as f:
-        f.write("hi\n")
+    ssh_host.fs.write(f"{ssh_host.root}/hello.txt", "hi\n")
     loaded = list(agent_catalog.ALWAYS_ON_CODING)
     kwargs = dict(uid=ssh_host.uid, loaded=loaded, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root)
 
@@ -109,11 +107,6 @@ def test_only_an_in_scope_write_binds_a_plain_chat_to_its_folder(ssh_host):
     child = {"run_id": "", "requester": {"role": "subagent", "type": "general"}}
     assert write("src/child.py", session=child)["kind"] != "project"
     assert write("src/new.py")["kind"] == "project"
-    scratch = f"/tmp/fuse-core-tools-{os.getpid()}-{ssh_host.host_id}.txt"
-    try:
-        assert write(scratch)["kind"] != "project"  # temp is a root, never a project
-    finally:
-        if os.path.exists(scratch):
-            os.remove(scratch)
-    outside = os.path.join(ssh_host.base, "elsewhere.txt")
-    assert write(outside, answer="allow")["kind"] != "project"  # "Allow once" is not a standing root
+    assert write("/tmp/scratch.txt")["kind"] != "project"  # temp is a root, never a project
+    assert write("/srv/elsewhere.txt", answer="allow")["kind"] != "project"  # "Allow once" is not a standing root
+    assert ssh_host.fs.exists("/srv/elsewhere.txt") and ssh_host.fs.exists("/tmp/scratch.txt")
