@@ -209,7 +209,8 @@ export function createProjects(ctx) {
     });
     if (!saved) return;
     if (S.pendingProject && boundTo(hostId, projectId)) {
-      S.pendingProject = { ...S.pendingProject, project_name: saved.name, remote_path: saved.remote_path,
+      S.pendingProject = { ...S.pendingProject, host_id: saved.host_id, host_alias: saved.host_alias,
+        project_name: saved.name, remote_path: saved.remote_path,
         permission_mode: saved.permission_mode, color: saved.color, logo_url: saved.logo_url };
     }
     await render.refreshThreads();
