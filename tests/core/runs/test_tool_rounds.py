@@ -2,7 +2,7 @@
 executor intact, its result goes back to the model, the final answer lands,
 and the retained transcript replays the round on the next turn."""
 from app import chats
-from tests.core.helpers import fake_provider, frame, make_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, provider_messages, tool_thread
 
@@ -12,7 +12,7 @@ def _tool_results(body):
 
 
 def test_tool_result_is_fed_back_and_the_final_answer_completes_the_turn(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     with fake_tools(lambda name, args: f"found: {args['query']}") as tools, fake_provider(
         tool_call_frames([("call_1", "web_search", {"query": "fuse docs"})]),
@@ -39,7 +39,7 @@ def test_tool_result_is_fed_back_and_the_final_answer_completes_the_turn(fresh_d
 
 
 def test_next_turn_replays_the_tool_round_verbatim(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     with fake_tools(lambda name, args: "RESULT-123"), fake_provider(
         tool_call_frames([("call_a", "web_search", {"query": "q"})]),
@@ -58,7 +58,7 @@ def test_next_turn_replays_the_tool_round_verbatim(fresh_db):
 
 
 def test_parallel_calls_each_get_their_own_result_in_call_order(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     with fake_tools(lambda name, args: "answer for " + args["query"]) as tools, fake_provider(
         tool_call_frames([("c1", "web_search", {"query": "alpha"}), ("c2", "web_search", {"query": "beta"})]),
@@ -74,7 +74,7 @@ def test_parallel_calls_each_get_their_own_result_in_call_order(fresh_db):
 
 
 def test_a_crashing_tool_reports_failure_to_the_model_and_the_turn_continues(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
 
     def explode(name, args):
@@ -95,7 +95,7 @@ def test_a_crashing_tool_reports_failure_to_the_model_and_the_turn_continues(fre
 
 
 def test_invalid_tool_arguments_are_refused_without_executing(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     broken = [
         frame({"choices": [{"index": 0, "delta": {"tool_calls": [
@@ -116,7 +116,7 @@ def test_plain_chat_wraps_up_with_text_after_its_tool_round_budget(fresh_db):
     text (tool_choice none) instead of looping on tools forever."""
     from app import chat_runtime
 
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     rounds = chat_runtime.MAX_COMPLETIONS
     script = [tool_call_frames([(f"c{i}", "web_search", {"query": f"q{i}"})]) for i in range(rounds - 1)]

@@ -8,7 +8,7 @@ import pytest
 
 from app import chat_runs, chat_store, chats, db
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames, tool_call_frames, wait_until_async
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_until_async
 
 from ._support import fake_tools, held_stream, provider_messages, run_row, settle, start_run, tool_thread
 
@@ -18,7 +18,7 @@ def _reply(uid, thread_id):
 
 
 def test_stop_while_a_tool_runs_cancels_the_turn_and_interrupts_the_tool(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         tools.hold()
@@ -39,7 +39,7 @@ def test_stop_while_a_tool_runs_cancels_the_turn_and_interrupts_the_tool(fresh_d
 
 
 def test_stop_mid_reply_keeps_the_text_already_streamed(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         provider.arm()
@@ -59,7 +59,7 @@ def test_stop_mid_reply_keeps_the_text_already_streamed(fresh_db):
 
 
 def test_stop_without_a_live_worker_settles_the_run_at_once(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "never started", thread["revision"], None)["run"]
 
@@ -74,7 +74,7 @@ def test_stop_without_a_live_worker_settles_the_run_at_once(fresh_db):
 
 
 def test_stop_landing_during_the_final_commit_wins(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     real_finish = chat_store.finish_run
 
     def stop_at_commit(ident, message, status):
@@ -91,7 +91,7 @@ def test_stop_landing_during_the_final_commit_wins(fresh_db):
 
 
 def test_a_root_stop_outlives_the_run_and_blocks_automated_turns(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(text_frames("finished")):
         thread_id, run = run_async(run_turn(uid, "go"))
     # Stop clicked just after the turn finished: still durable intent.
@@ -107,7 +107,7 @@ def test_a_root_stop_outlives_the_run_and_blocks_automated_turns(fresh_db):
 
 
 def test_stop_ends_foreground_subagents_but_send_now_keeps_them(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def scenario(action):
         tools.hold()
@@ -137,7 +137,7 @@ def test_force_stop_then_continue_survives_the_wedged_old_worker(fresh_db):
     new leg; the old worker's late tool result and saves never reach it."""
     from app import chat_recovery
 
-    uid = make_user()
+    uid = quick_user()
     release = started = None
 
     async def wedged(name, arguments, **kwargs):
@@ -184,7 +184,7 @@ def test_force_stop_then_continue_survives_the_wedged_old_worker(fresh_db):
 
 
 def test_reaper_finishes_a_stop_no_worker_owns(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "x", thread["revision"], None)["run"]
     db.execute("UPDATE chat_runs SET status='running', cancel_requested=1, cancel_requested_at=? WHERE id=?",
@@ -197,7 +197,7 @@ def test_reaper_finishes_a_stop_no_worker_owns(fresh_db):
 
 
 def test_reaper_interrupts_a_live_worker_that_stopped_making_progress(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         tools.hold()

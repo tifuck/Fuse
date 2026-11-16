@@ -9,7 +9,7 @@ import pytest
 from app import chat_checkpoint, chat_recovery, chat_runs, chat_store, chats, db
 from app.chat_run_state import INTERRUPT_NOTICE, MAX_RESUME_ATTEMPTS
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, make_user, run_async, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, text_frames, tool_call_frames
 
 from ._support import fake_tools, provider_messages, run_row, settle, start_run, tool_thread
 
@@ -35,7 +35,7 @@ def _notes(messages, head=RESUME_HEAD):
 
 
 def test_shutdown_mid_tool_resumes_after_restart_without_rerunning_the_tool(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def before_restart():
         tools.hold()
@@ -70,7 +70,7 @@ def test_shutdown_mid_tool_resumes_after_restart_without_rerunning_the_tool(fres
 
 
 def test_a_crash_before_any_saved_progress_is_finalized_interrupted(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread, run = _crashed_run(uid)
 
     chat_recovery.recover_runs()
@@ -81,7 +81,7 @@ def test_a_crash_before_any_saved_progress_is_finalized_interrupted(fresh_db):
 
 
 def test_a_never_started_turn_stays_queued_and_then_runs(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], None)["run"]
 
@@ -98,7 +98,7 @@ def test_a_never_started_turn_stays_queued_and_then_runs(fresh_db):
 
 
 def test_missing_tool_results_are_sealed_and_the_resume_note_is_added_once(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     call = {"id": "c9", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}
     _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "", "tool_calls": [call]}))
 
@@ -116,7 +116,7 @@ def test_missing_tool_results_are_sealed_and_the_resume_note_is_added_once(fresh
 
 
 def test_resume_attempts_are_capped_then_the_run_is_interrupted(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "partial"}))
     db.execute("UPDATE chat_runs SET resume_count=? WHERE id=?", (MAX_RESUME_ATTEMPTS, run["id"]))
 
@@ -126,7 +126,7 @@ def test_resume_attempts_are_capped_then_the_run_is_interrupted(fresh_db):
 
 
 def test_a_stop_pending_at_boot_finishes_cancelled(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "partial"}))
     db.execute("UPDATE chat_runs SET cancel_requested=1 WHERE id=?", (run["id"],))
 
@@ -136,7 +136,7 @@ def test_a_stop_pending_at_boot_finishes_cancelled(fresh_db):
 
 
 def test_boot_requeues_a_bounded_batch_and_the_reaper_drains_the_rest(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     batch = chat_recovery.BOOT_RESUME_BATCH
     runs = [_crashed_run(uid, _transcript({"role": "assistant", "content": f"p{i}"}), text=f"t{i}")[1]
             for i in range(batch + 2)]
@@ -154,7 +154,7 @@ def test_boot_requeues_a_bounded_batch_and_the_reaper_drains_the_rest(fresh_db):
 
 
 def test_reaper_leaves_a_requeued_run_for_its_worker(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "p"}))
     chat_recovery.recover_runs()
     before = provider_messages(run["id"])
@@ -166,7 +166,7 @@ def test_reaper_leaves_a_requeued_run_for_its_worker(fresh_db):
 
 
 def test_stale_recovery_never_overwrites_a_newer_write(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "p"}))
     stale = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run["id"],))
     # A Stop lands between the recovery's read and its requeue.
@@ -181,7 +181,7 @@ def test_stale_recovery_never_overwrites_a_newer_write(fresh_db):
 # -- user Continue -------------------------------------------------------
 
 def test_continue_resumes_a_stopped_turn_without_claiming_a_restart(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "half done"}))
     chat_store.abort_active(run["id"], "cancelled")
 
@@ -196,7 +196,7 @@ def test_continue_resumes_a_stopped_turn_without_claiming_a_restart(fresh_db):
 
 @pytest.mark.parametrize("case", ["completed", "no_transcript", "not_latest", "budget_spent"])
 def test_continue_is_refused_when_it_cannot_resume_safely(fresh_db, case):
-    uid = make_user()
+    uid = quick_user()
     transcript = None if case == "no_transcript" else _transcript({"role": "assistant", "content": "x"})
     thread, run = _crashed_run(uid, transcript)
     chat_store.abort_active(run["id"], "interrupted")

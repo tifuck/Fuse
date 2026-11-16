@@ -8,7 +8,7 @@ import pytest
 
 from app import chat_run_state, chat_store, chats, db, run_inbox
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, run_row, settle, start_run, tool_thread
 
@@ -22,7 +22,7 @@ def _count(body, text):
 
 
 def test_steer_during_a_tool_reaches_the_model_once_and_is_acknowledged(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         tools.hold()
@@ -52,7 +52,7 @@ def test_steer_during_a_tool_reaches_the_model_once_and_is_acknowledged(fresh_db
 
 
 def test_steer_accepted_during_the_final_text_reply_gets_its_own_round(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     sent = {}
 
     def first_reply(_body):
@@ -78,7 +78,7 @@ def test_steer_accepted_during_the_final_text_reply_gets_its_own_round(fresh_db)
 
 
 def test_a_steer_racing_the_terminal_write_requeues_the_run(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "work", thread["revision"], None)["run"]
     chat_store.steer_turn(uid, thread["id"], "wait, also this", "steer-race")
@@ -92,7 +92,7 @@ def test_a_steer_racing_the_terminal_write_requeues_the_run(fresh_db):
 
 
 def test_steer_continuations_are_bounded_and_the_user_is_told(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "work", thread["revision"], None)["run"]
     chat_store.steer_turn(uid, thread["id"], "again", "steer-x")
@@ -107,7 +107,7 @@ def test_steer_continuations_are_bounded_and_the_user_is_told(fresh_db):
 
 
 def test_steer_needs_a_live_run_that_is_not_stopping(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(text_frames("done")):
         thread_id, run = run_async(run_turn(uid, "hi"))
     with pytest.raises(ChatValidationError) as idle:
@@ -124,7 +124,7 @@ def test_steer_needs_a_live_run_that_is_not_stopping(fresh_db):
 
 
 def test_pending_steers_are_capped_not_silently_dropped(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "work", thread["revision"], None)["run"]
     for i in range(8):
@@ -156,7 +156,7 @@ def test_an_arrival_cuts_a_blocked_wait_short_only_for_its_own_run(fresh_db):
 
 
 def test_steer_acceptance_signals_the_live_run(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     run = chat_store.start_turn(uid, thread["id"], "work", thread["revision"], None)["run"]
 

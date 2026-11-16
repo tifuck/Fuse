@@ -1,13 +1,13 @@
 """Streaming parse: deltas split across provider frames land intact in the
 stored reply, the reasoning, and the tool calls the executor receives."""
 from app import chats
-from tests.core.helpers import fake_provider, frame, make_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
 
 from ._support import fake_tools, split_frames, tool_thread
 
 
 def test_content_and_reasoning_split_across_frames_are_stored_whole(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     frames = split_frames(
         {"reasoning_content": "Let me "},
         {"reasoning_content": "think. 😀"},
@@ -28,7 +28,7 @@ def test_content_and_reasoning_split_across_frames_are_stored_whole(fresh_db):
 
 
 def test_inline_think_tags_split_mid_tag_become_reasoning_not_content(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     frames = split_frames({"content": "<thi"}, {"content": "nk>plan it</th"}, {"content": "ink>The answer."})
     with fake_provider(frames):
         thread_id, run = run_async(run_turn(uid, "q"))
@@ -40,7 +40,7 @@ def test_inline_think_tags_split_mid_tag_become_reasoning_not_content(fresh_db):
 
 
 def test_tool_call_deltas_split_across_frames_reach_the_executor_intact(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = tool_thread(uid)
     first = [
         # Two parallel calls, interleaved by index, name and JSON in pieces.
@@ -70,7 +70,7 @@ def test_tool_call_deltas_split_across_frames_reach_the_executor_intact(fresh_db
 
 
 def test_cumulative_usage_is_recorded_on_the_reply(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     usage = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
     with fake_provider(text_frames("ok", usage=usage)):
         thread_id, run = run_async(run_turn(uid, "count"))
@@ -81,7 +81,7 @@ def test_cumulative_usage_is_recorded_on_the_reply(fresh_db):
 
 
 def test_special_tokens_never_reach_the_stored_reply(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(split_frames({"content": "Final answer"}, {"content": "<|im_end|>"})):
         thread_id, _ = run_async(run_turn(uid, "q"))
 

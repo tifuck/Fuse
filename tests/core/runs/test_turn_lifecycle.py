@@ -9,13 +9,13 @@ import pytest
 
 from app import chat_runs, chat_store, chats
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, frame, make_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
 
 from ._support import run_row
 
 
 def test_streamed_reply_completes_the_run_and_lands_in_the_thread(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(text_frames("Hello from the model")) as provider:
         thread_id, run = run_async(run_turn(uid, "Say hello"))
 
@@ -29,7 +29,7 @@ def test_streamed_reply_completes_the_run_and_lands_in_the_thread(fresh_db):
 
 
 def test_second_turn_sends_the_first_exchange_as_history(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(text_frames("first answer"), text_frames("second answer")) as provider:
         thread_id, _ = run_async(run_turn(uid, "first question"))
         thread = chats.get_thread(uid, thread_id)
@@ -43,7 +43,7 @@ def test_second_turn_sends_the_first_exchange_as_history(fresh_db):
 
 
 def test_runs_of_other_users_stay_invisible(fresh_db):
-    owner, other = make_user("owner@core.test"), make_user("other@core.test")
+    owner, other = quick_user("owner@core.test"), quick_user("other@core.test")
     with fake_provider(text_frames("private")):
         thread_id, run = run_async(run_turn(owner, "mine"))
 
@@ -52,7 +52,7 @@ def test_runs_of_other_users_stay_invisible(fresh_db):
 
 
 def test_an_empty_reply_fails_the_turn_with_a_reason(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     empty = [frame({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}), b"data: [DONE]\n\n"]
     with fake_provider(empty):
         thread_id, run = run_async(run_turn(uid, "anything?"))
@@ -63,7 +63,7 @@ def test_an_empty_reply_fails_the_turn_with_a_reason(fresh_db):
 
 
 def test_an_internal_error_fails_the_turn_without_leaking_its_text(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(), patch("app.chat_runtime.stream_dashboard_chat",
                                 side_effect=RuntimeError("password=hunter2 at db01")):
         thread_id, run = run_async(run_turn(uid, "hi"))
@@ -75,7 +75,7 @@ def test_an_internal_error_fails_the_turn_without_leaking_its_text(fresh_db):
 
 
 def test_a_finished_run_is_terminal_and_the_thread_accepts_the_next_turn(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     with fake_provider(text_frames("one")):
         thread_id, run = run_async(run_turn(uid, "first"))
 
@@ -87,7 +87,7 @@ def test_a_finished_run_is_terminal_and_the_thread_accepts_the_next_turn(fresh_d
 
 
 def test_only_one_active_root_run_per_thread(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     chat_store.start_turn(uid, thread["id"], "first", thread["revision"], None)
     current = chats.get_thread(uid, thread["id"])
@@ -98,7 +98,7 @@ def test_only_one_active_root_run_per_thread(fresh_db):
 
 
 def test_a_retried_turn_command_starts_one_run(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
     first = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], "turn-cmd-1")
     # The client lost the ACK and retries with the revision it refreshed since.

@@ -6,7 +6,7 @@ import re
 from unittest.mock import patch
 
 from app import chat_checkpoint, chat_recovery, chat_store, chats, db, mysql_compat
-from tests.core.helpers import make_user
+from tests.core.helpers import quick_user
 
 from ._support import provider_messages, run_row
 
@@ -55,7 +55,7 @@ def _rows(seed, *extra):
 
 
 def test_progress_saves_keep_one_history_copy_and_send_only_changes(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     seed = run["request"]["messages"]
     assert seed and "messages" in _stored_request(run["id"])
@@ -78,7 +78,7 @@ def test_progress_saves_keep_one_history_copy_and_send_only_changes(fresh_db):
 
 
 def test_a_rewritten_transcript_replaces_the_base_and_reads_back_whole(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     rows = _rows(run["request"]["messages"])
     chat_checkpoint.save_turn_progress(run["id"], rows)
@@ -92,14 +92,14 @@ def test_a_rewritten_transcript_replaces_the_base_and_reads_back_whole(fresh_db)
 
 
 def test_an_empty_transcript_keeps_the_request_history(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     chat_checkpoint.save_turn_progress(run["id"], [])
     assert _stored_request(run["id"])["messages"] == run["request"]["messages"]
 
 
 def test_a_requeue_rebuilds_the_request_history_from_the_transcript(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     rows = _rows(run["request"]["messages"])
     chat_checkpoint.save_turn_progress(run["id"], rows)
@@ -113,7 +113,7 @@ def test_a_requeue_rebuilds_the_request_history_from_the_transcript(fresh_db):
 
 
 def test_writes_after_the_terminal_commit_change_nothing(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     chat_checkpoint.save_turn_progress(run["id"], _rows(run["request"]["messages"]), loaded_tools=["grep"])
     chat_store.finish_run(run["id"], {"content": "final answer"}, "completed")
@@ -131,7 +131,7 @@ def test_writes_after_the_terminal_commit_change_nothing(fresh_db):
 
 
 def test_a_checkpoint_never_drops_a_steer_written_since_its_last_read(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     chat_checkpoint.checkpoint(run["id"], {"content": "working"}, [])  # caches the request
     thread_id = chat_store.get_run(uid, run["id"])["thread_id"]
@@ -149,7 +149,7 @@ def test_a_steer_committed_between_a_checkpoints_read_and_write_survives(fresh_d
     write built from the older read skip the state instead of clobbering."""
     from concurrent.futures import ThreadPoolExecutor
 
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     thread_id = chat_store.get_run(uid, run["id"])["thread_id"]
     chat_store.steer_turn(uid, thread_id, "first steer", "steer-a")  # gives the checkpoint a request write
@@ -172,7 +172,7 @@ def test_a_steer_committed_between_a_checkpoints_read_and_write_survives(fresh_d
 
 
 def test_checkpoints_write_only_changed_columns_and_keep_activity_apart(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     run = _turn(uid)
     chat_checkpoint.checkpoint(run["id"], {"content": "a"}, [])
 

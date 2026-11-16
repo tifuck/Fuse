@@ -6,7 +6,7 @@ import asyncio
 from unittest.mock import patch
 
 from app import chat_runs, chat_store, chats
-from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, root_runs, settle, start_run, thread_pk, tool_thread
 
@@ -36,7 +36,7 @@ def _idle_root_with_report(uid, report="REPORT-7781"):
 
 
 def test_report_landing_mid_run_is_delivered_at_the_next_tool_boundary_once(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         tools.hold()
@@ -61,7 +61,7 @@ def test_report_landing_mid_run_is_delivered_at_the_next_tool_boundary_once(fres
 
 
 def test_report_after_the_turn_ended_starts_one_wake_turn(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread, root, child = _idle_root_with_report(uid)
 
     async def body():
@@ -85,7 +85,7 @@ def test_report_after_the_turn_ended_starts_one_wake_turn(fresh_db):
 
 
 def test_a_stopped_thread_holds_the_report_for_the_users_next_message(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     thread, root, child = _idle_root_with_report(uid, "REPORT-9902")
     chat_store.request_cancel(uid, root["id"])
 
@@ -104,7 +104,7 @@ def test_a_stopped_thread_holds_the_report_for_the_users_next_message(fresh_db):
 
 
 def test_stop_during_the_final_commit_cannot_wake_the_thread(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     real_finish = chat_store.finish_run
     children = []
 
