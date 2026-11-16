@@ -207,6 +207,34 @@ class ArtifactStoreTest(unittest.TestCase):
         self.assertEqual(artifacts.list_for_prompt(self.archiver, thread["id"]), [])
         self.assertTrue(artifacts.delete(self.archiver, art["identifier"]))
 
+    def test_chat_list_is_scoped_to_the_chat_or_its_project_oldest_first(self):
+        accounts.create_user("scope@example.test", "password12", admin=False, require_invite=False)
+        uid = int(accounts.user_by_email("scope@example.test")["id"])
+        db.execute(
+            "INSERT INTO user_hosts(user_id,alias,label,hostname,port,username,auth_type,secret,created_at,updated_at) "
+            "VALUES(?,'box','','10.0.0.8',22,'root','agent','x',?,?)", (uid, db.now(), db.now()))
+        host = db.fetchone("SELECT id FROM user_hosts WHERE user_id=?", (uid,))["id"]
+        db.execute(
+            "INSERT INTO user_projects(user_id,host_id,name,remote_path,notes,created_at,updated_at) "
+            "VALUES(?,?,'p','/p','',?,?)", (uid, host, db.now(), db.now()))
+        project = db.fetchone("SELECT id FROM user_projects WHERE user_id=?", (uid,))["id"]
+        a, b, plain = (chats.create_thread(uid, title=t)["id"] for t in ("a", "b", "plain"))
+        pk = {t: chats.resolve_thread_pk(uid, t) for t in (a, b, plain)}
+        db.execute("UPDATE chat_threads SET project_id=? WHERE id IN (?,?)", (project, pk[a], pk[b]))
+
+        def make(title, thread):
+            return artifacts.create(uid, title=title, html="<html><body>x</body></html>", thread_id=pk.get(thread))["identifier"]
+
+        first, second, solo, loose = make("first", a), make("second", b), make("solo", plain), make("loose", None)
+        ids = lambda **kw: [item["identifier"] for item in artifacts.list_in_scope(uid, **kw)]
+        self.assertEqual(ids(thread_id=a), [first, second])
+        self.assertEqual(ids(project_id=project), [first, second])
+        self.assertEqual(ids(thread_id=plain), [solo])
+        self.assertEqual(ids(thread_id=plain, project_id=project), [solo])
+        self.assertEqual(ids(), [])
+        self.assertNotIn(loose, ids(thread_id=a) + ids(thread_id=plain))
+        self.assertEqual(artifacts.list_in_scope(self.other, thread_id=a), [])
+
     def test_sharing_again_mints_a_new_link(self):
         art = artifacts.create(self.owner, title="Reshare", html="<html><body>r</body></html>")
         ident = art["identifier"]

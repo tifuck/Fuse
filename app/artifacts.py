@@ -410,6 +410,30 @@ def thread_artifact_ids(user_id: int, thread_id) -> set[str]:
     return {r["public_id"] for r in rows}
 
 
+def list_in_scope(user_id: int, thread_id=None, project_id=None) -> list[dict]:
+    """A chat's artifact list, oldest first: the ones its chat wrote or attached,
+    or in a project session, any of that project's chats. Nothing global."""
+    from . import chats
+
+    pk = chats.resolve_thread_pk(user_id, thread_id) if thread_id else None
+    if pk is not None:
+        row = db.fetchone("SELECT project_id FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id))
+        project_id = row["project_id"] if row else None
+    if project_id:
+        scope, arg = "t.project_id=?", int(project_id)
+    elif pk is not None:
+        scope, arg = "t.id=?", pk
+    else:
+        return []
+    rows = db.fetchall(
+        "SELECT a.* FROM artifacts a WHERE a.user_id=? AND a.archived=0 AND a.id IN ("
+        "SELECT x.artifact_id FROM artifact_threads x JOIN chat_threads t ON t.id = x.thread_id "
+        f"WHERE t.user_id=? AND {scope}) ORDER BY a.id",
+        (user_id, user_id, arg),
+    )
+    return [_row_view(row) for row in rows]
+
+
 def list_for_prompt(user_id: int, thread_id: int | None) -> list[dict]:
     if not thread_id:
         return []

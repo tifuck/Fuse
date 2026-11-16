@@ -826,7 +826,8 @@ export function createArtifacts(ctx) {
     if (open) el.menu.querySelector("button:not([hidden]), a:not([hidden])")?.focus();
   }
 
-  // /artifacts: this chat's artifacts first, then the rest of the account's.
+  // /artifacts: this chat's artifacts, or in a project session its project's,
+  // oldest first. Other chats' artifacts live on the /artifacts page.
   async function openList() {
     S.artifactMode = "list";
     listItems = null;
@@ -834,7 +835,9 @@ export function createArtifacts(ctx) {
     else syncArtifactUi();
     renderList();
     try {
-      const data = await net.api("/artifacts/list" + (S.currentId ? `?thread=${encodeURIComponent(S.currentId)}` : ""));
+      const scope = S.currentId ? `?thread=${encodeURIComponent(S.currentId)}`
+        : S.pendingProject ? `?project=${encodeURIComponent(S.pendingProject.project_id)}` : "";
+      const data = scope ? await net.api("/artifacts/list" + scope) : { items: [] };
       listItems = Array.isArray(data.items) ? data.items : [];
     } catch (error) {
       listItems = [];
@@ -852,6 +855,7 @@ export function createArtifacts(ctx) {
     }
     const here = new Set(distinctArtifacts().map((trace) => normalizeId(trace.identifier)));
     const items = listItems.map((item) => ({ ...item, in_thread: item.in_thread || here.has(item.identifier) }));
+    const project = S.root.classList.contains("is-project");
     const row = (item) => `<li class="chat-artifact-row">
         <button type="button" class="chat-artifact-row-open" data-artifact-pick="${escapeHtml(item.identifier)}" data-in-thread="${item.in_thread ? "1" : ""}">
           <span class="chat-artifact-row-icon" aria-hidden="true">${GLYPH}</span>
@@ -860,10 +864,10 @@ export function createArtifacts(ctx) {
         </button>
         <button type="button" class="chat-artifact-tool" data-artifact-copy="${escapeHtml(item.visibility === "public" ? item.share_url : item.url)}" aria-label="Copy link to ${escapeHtml(item.title)}">Copy link</button>
       </li>`;
-    const group = (label, rows) => (rows.length ? `<h3 class="chat-artifact-list-head">${label}</h3><ul class="chat-artifact-rows">${rows.map(row).join("")}</ul>` : "");
-    const body = group("This chat", items.filter((item) => item.in_thread)) + group(S.currentId ? "Other artifacts" : "Your artifacts", items.filter((item) => !item.in_thread));
-    el.list.innerHTML = (body || '<p class="chat-artifact-list-empty">No artifacts yet. Ask for a chart, a dashboard or a document and it shows up here.</p>')
-      + '<p class="chat-artifact-list-foot"><a href="/artifacts">Manage artifacts</a> · opening one from another chat attaches it here</p>';
+    const head = `<h3 class="chat-artifact-list-head">${project ? "This project" : "This chat"}</h3>`;
+    el.list.innerHTML = (items.length ? `${head}<ul class="chat-artifact-rows">${items.map(row).join("")}</ul>`
+      : `<p class="chat-artifact-list-empty">No artifacts in this ${project ? "project" : "chat"} yet. Ask for a chart, a dashboard or a document and it shows up here.</p>`)
+      + '<p class="chat-artifact-list-foot"><a href="/artifacts">All artifacts</a></p>';
   }
 
   async function pickFromList(id, inThread) {

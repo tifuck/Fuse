@@ -466,9 +466,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-card-x { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: auto; border-radius: 6px; color: var(--dk-mute); font: 16px/1 var(--sans); }
   & .dk-card-x:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-card-body { min-height: 0; margin: 0; }
-  /* Preview: the artifact pane as a card with a tab and a URL bar. */
+  /* Preview: the artifact pane fills the inspector edge to edge, not a card
+     in it; its own close is the inspector's wherever that one shows. */
   &:not(.is-artifact) .dk-card-preview { display: none; }
-  & .dk-card-preview { flex: 1 0 22rem; }
+  & .dk-card-preview { flex: 1 0 22rem; margin: -8px -8px 0; border: 0; border-radius: 0; background: none; }
+  &.is-artifact .dk-insp-body:not(:has(> .dk-card:not(.dk-card-preview):not([hidden]))) { padding-bottom: 0; }
+  @media (max-width: 1039.98px) { & .dk-card-preview [data-artifact-close] { display: none; } }
+  /* No diffs in the inspector. */
+  & .dk-card-preview [data-artifact-act="diff"] { display: none; }
   & .dk-card-preview .chat-artifact {
     position: relative;
     display: flex;
@@ -484,7 +489,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-card-preview .chat-artifact-body { flex: 1; min-height: 0; background: var(--dk-canvas); }
   & .dk-card-preview .chat-artifact-resize { left: -9px; }
   & .dk-card-preview .chat-artifact-expand { display: none; }
-  /* Diff: numbered red and green rows; long unchanged runs fold behind a button. */
   /* Terminal: a background command's output. */
   & .dk-term { max-height: 16rem; padding: 8px 12px; overflow: auto; background: color-mix(in srgb, var(--ink) 70%, var(--dk-card)); color: var(--dk-text); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   /* Tasks: agents and background commands, two lines each. */
@@ -1078,22 +1082,24 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 }
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
-   The wallpaper stays sharp. The reading column is a darker pane, the
-   palette's base colour at 76% (light 66%; text holds AA over every
-   wallpaper), that eases in across the whole gutter, so the wallpaper
-   shows as it is at the gutter's outer edge. The top bar, sidebar and
+   The reading column is a darker pane, the palette's base colour at 70%
+   (light 66%; text holds AA over every wallpaper) over the faintest blur
+   (2px), that eases in across the whole gutter (a mask, so the blur fades
+   with the tint), so the wallpaper shows as it is at the gutter's outer
+   edge. The top bar, sidebar and
    inspector are frosted glass (a 14px blur with some saturation so the
    colours survive, then 74%, light 62%); a backdrop blur has nothing past
    the window to sample, so each darkens a little toward the window edge it
    sits on, which hides the smear there. The bottom row is bare wallpaper.
    Cards, the composer, user messages and popovers float on the same glass
-   (a near-base tone at 86%, light 80%) with a hairline edge and a specular
+   (a near-base tone at 80%, light 80%) with a hairline edge and a specular
    top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 76%;
+  --dk-veil-a: 70%;
   --dk-chrome-a: 74%;
-  --dk-card-a: 86%;
+  --dk-card-a: 80%;
   --dk-glass: blur(14px) saturate(1.35);
+  --dk-pane-glass: blur(2px) saturate(1.1);
   --dk-glass-tone: color-mix(in srgb, var(--ink) 95%, var(--mist));
   --dk-glass-bg: color-mix(in srgb, var(--dk-glass-tone) var(--dk-card-a), transparent);
   --dk-chrome-bg: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent);
@@ -1112,18 +1118,23 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     inset: var(--chat-bar-h) 0 0;
     z-index: -1;
     flex: none;
-    background: linear-gradient(90deg,
+    background: color-mix(in srgb, var(--v) var(--dk-veil-a), transparent);
+    -webkit-backdrop-filter: var(--dk-pane-glass);
+    backdrop-filter: var(--dk-pane-glass);
+    -webkit-mask-image: var(--dk-pane-mask);
+    mask-image: var(--dk-pane-mask);
+    --dk-pane-mask: linear-gradient(90deg,
       transparent,
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.04), transparent) calc(var(--f) * 0.2),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.14), transparent) calc(var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.33), transparent) calc(var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.62), transparent) calc(var(--f) * 0.8),
-      color-mix(in srgb, var(--v) var(--dk-veil-a), transparent) var(--f),
-      color-mix(in srgb, var(--v) var(--dk-veil-a), transparent) calc(100% - var(--f)),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.62), transparent) calc(100% - var(--f) * 0.8),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.33), transparent) calc(100% - var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.14), transparent) calc(100% - var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--dk-veil-a) * 0.04), transparent) calc(100% - var(--f) * 0.2),
+      rgb(0 0 0 / 0.04) calc(var(--f) * 0.2),
+      rgb(0 0 0 / 0.14) calc(var(--f) * 0.4),
+      rgb(0 0 0 / 0.33) calc(var(--f) * 0.6),
+      rgb(0 0 0 / 0.62) calc(var(--f) * 0.8),
+      #000 var(--f),
+      #000 calc(100% - var(--f)),
+      rgb(0 0 0 / 0.62) calc(100% - var(--f) * 0.8),
+      rgb(0 0 0 / 0.33) calc(100% - var(--f) * 0.6),
+      rgb(0 0 0 / 0.14) calc(100% - var(--f) * 0.4),
+      rgb(0 0 0 / 0.04) calc(100% - var(--f) * 0.2),
       transparent);
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -1135,9 +1146,9 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .dk-head::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
-  & :is(.dk-card, .chat-latest) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-card:not(.dk-card-preview), .chat-latest) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-wp, .chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.dk-card, .chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.dk-card:not(.dk-card-preview), .chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
   & .chat-dock .dk-box { border: 0; background: none; box-shadow: none; }
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }

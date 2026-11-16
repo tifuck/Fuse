@@ -127,12 +127,12 @@ const PAGE = (marker) => `<!doctype html><html><head><title>t</title></head><bod
     await page.locator('[data-artifact-act="share"]').click();
     await page.waitForFunction(() => document.querySelector('[data-artifact-visibility]').textContent === 'shared');
 
-    // /artifacts: this chat first, then the rest; opening one attaches it.
+    // /artifacts lists only this chat's (or project's) artifacts, never the
+    // account's others; this fixture chat has no server thread, so none.
     await page.evaluate(() => fuseToolFixture.slash('artifacts'));
-    await page.locator('[data-artifact-pick]').first().waitFor();
-    const heads = await page.locator('.chat-artifact-list-head').allTextContents();
-    assert.deepEqual(heads, ['This chat', 'Your artifacts']);
-    await page.locator(`[data-artifact-pick="${other.identifier}"]`).click();
+    await page.locator('.chat-artifact-list-empty').filter({ hasText: 'No artifacts in this' }).waitFor();
+    assert.equal(await page.locator(`[data-artifact-pick="${other.identifier}"]`).count(), 0, 'no global artifacts');
+    await page.evaluate((id) => fuseToolFixture.artifacts.showArtifact(id, null, { explicit: true }), other.identifier);
     await page.waitForFunction((id) => (document.querySelector('[data-artifact-frame]').getAttribute('src') || '').includes(id), other.identifier);
     assert.equal(await page.locator('[data-artifact-title]').innerText(), 'Other page');
 

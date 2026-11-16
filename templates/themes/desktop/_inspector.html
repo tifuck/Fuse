@@ -1,6 +1,6 @@
 {#- Desktop theme: the inspector, a right column of stacked cards under a
     bar row level with the top bar (only the cards scroll). Preview is
-    the artifact pane; Diff is this chat's latest file edits; Terminal is a
+    the artifact pane (never a diff); Terminal is a
     background command's output; Tasks are the agents and background
     commands; Plan is the todo list. On phones it is a full-screen sheet.
     Every data-* hook but data-theme-* is a runtime contract
@@ -19,7 +19,7 @@
       <div class="chat-artifact-resize" data-artifact-resize role="separator" aria-orientation="vertical" aria-label="Resize the artifact pane" tabindex="0"></div>
       <div class="chat-artifact-head">
         <div class="chat-artifact-copy">
-          <button type="button" class="chat-artifact-pick" data-artifact-list-toggle aria-expanded="false" title="All artifacts (/artifacts)">
+          <button type="button" class="chat-artifact-pick" data-artifact-list-toggle aria-expanded="false" title="Artifacts in this chat or project (/artifacts)">
             <span class="chat-artifact-name" id="chat-artifact-title" data-artifact-title>Artifact</span>
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6.2l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>

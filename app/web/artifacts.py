@@ -86,11 +86,12 @@ async def artifacts_gallery(request: Request):
 
 @router.get("/artifacts/list")
 async def artifacts_list(request: Request):
-    """The chat's /artifacts list: this chat's artifacts first, then the rest."""
+    """The chat's /artifacts list: this chat's (or its project's) artifacts, oldest first."""
     user, err = _chat_auth(request)
     if err:
         return err
     thread = (request.query_params.get("thread") or "").strip()
+    project = (request.query_params.get("project") or "").strip()
     here = artifacts.thread_artifact_ids(user["id"], thread) if thread else set()
     items = [
         {
@@ -104,10 +105,8 @@ async def artifacts_list(request: Request):
             "share_url": item["share_url"],
             "in_thread": item["identifier"] in here,
         }
-        for item in artifacts.list_for_user(user["id"])
-        if not item["archived"]
+        for item in artifacts.list_in_scope(user["id"], thread or None, int(project) if project.isdigit() else None)
     ]
-    items.sort(key=lambda item: not item["in_thread"])
     return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
 
 

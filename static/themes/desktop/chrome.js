@@ -1,7 +1,7 @@
 // Desktop's chrome: the top bar (the breadcrumb's title menu, "← Main" in a
 // subagent, the ⋯ menu), the sidebar's Customize and light/dark switches,
 // the composer's chips row, and the inspector: a right column of cards
-// (Preview is the artifact pane; Tasks, Plan, Terminal and Diff are drawn
+// (Preview is the artifact pane; Tasks, Plan and Terminal are drawn
 // here from the runtime's live state). The inspector opens only when the
 // user asks; the choice is kept in localStorage, and new work puts a dot on
 // its button instead. Under 1040px it is an overlay, on phones a modal sheet.
