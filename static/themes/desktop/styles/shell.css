@@ -1063,20 +1063,23 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
    The wallpaper stays sharp. The reading column is a darker pane, the
-   palette's canvas at 68% (light 66%; text holds AA over every
+   palette's base colour at 76% (light 66%; text holds AA over every
    wallpaper), that eases in across the whole gutter, so the wallpaper
    shows as it is at the gutter's outer edge. The top bar, sidebar and
    inspector are frosted glass (a 14px blur with some saturation so the
    colours survive, then 74%, light 62%); a backdrop blur has nothing past
    the window to sample, so each darkens a little toward the window edge it
    sits on, which hides the smear there. The bottom row is bare wallpaper.
-   Cards, the composer and popovers float on the same glass (78%, light
-   80%) with a hairline edge and a specular top rim. */
+   Cards, the composer, user messages and popovers float on the same glass
+   (a near-base tone at 86%, light 80%) with a hairline edge and a specular
+   top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 68%;
+  --dk-veil-a: 76%;
   --dk-chrome-a: 74%;
-  --dk-card-a: 78%;
+  --dk-card-a: 86%;
   --dk-glass: blur(14px) saturate(1.35);
+  --dk-glass-tone: color-mix(in srgb, var(--ink) 95%, var(--mist));
+  --dk-glass-bg: color-mix(in srgb, var(--dk-glass-tone) var(--dk-card-a), transparent);
   --dk-chrome-bg: color-mix(in srgb, var(--dk-side) var(--dk-chrome-a), transparent);
   --dk-edge-dim: color-mix(in srgb, var(--dk-side) 60%, transparent);
   --dk-glass-edge: color-mix(in srgb, var(--dk-text) 10%, transparent);
@@ -1088,7 +1091,7 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
      quicker) across the whole gutter. */
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
-    --v: var(--dk-canvas);
+    --v: var(--ink);
     position: absolute;
     inset: var(--chat-bar-h) 0 0;
     z-index: -1;
@@ -1116,15 +1119,15 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .dk-head::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
-  & :is(.dk-card, .chat-latest) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-card, .chat-latest) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.dk-cchip, .dk-wp, .chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-card, .chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
   & .chat-dock .dk-box { border: 0; background: none; box-shadow: none; }
-  & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   /* The bubble is the composer's glass; the window menus and the sidebar's search share the popovers'. */
-  & .chat-turn.is-user:not(.is-auto-steps) { background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .chat-turn.is-user:not(.is-auto-steps) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-menu, .user-dock-menu) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -1139,6 +1142,7 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
   --dk-chrome-a: 62%;
   --dk-edge-dim: color-mix(in srgb, var(--dk-side) 50%, transparent);
   --dk-card-a: 80%;
+  --dk-glass-tone: var(--ink);
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.5);
 }
 @media (prefers-reduced-transparency: reduce) {
