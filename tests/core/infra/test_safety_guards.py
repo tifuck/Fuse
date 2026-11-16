@@ -87,9 +87,15 @@ def test_git_metadata_cannot_be_written():
 
 @pytest.mark.parametrize("name", [".env", "config.env"])
 def test_the_real_settings_files_are_neither_readable_nor_writable(name):
+    # Unreachable (a symlink into /root) or covered with /dev/null (a real
+    # file in the tree, which the app's settings loader must still open):
+    # either way no secret is readable and nothing can be written.
     path = TREE / name
-    with pytest.raises(OSError):
-        open(path).close()
+    try:
+        with open(path, "rb") as handle:
+            assert handle.read() == b""
+    except OSError:
+        pass
     with pytest.raises(OSError):
         os.open(path, os.O_WRONLY | os.O_APPEND)
 
