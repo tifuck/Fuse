@@ -37,7 +37,7 @@ docs/archive/
 /.gitleaks.toml
 /third_party/
 /scripts/promote-dev.sh
-/scripts/push-main.sh
+/scripts/github.sh
 /scripts/release-connector.sh
 /scripts/clone_db_to_dev.py
 /scripts/dev_qa_account.py
