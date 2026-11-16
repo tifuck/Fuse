@@ -40,3 +40,28 @@ def test_fresh_db_has_no_foreign_keys(fresh_db):
     # Rows without parents are fine in the default schema.
     db.execute("INSERT INTO memories(user_id,project_id,scope_key,name,type,description,body,created_at,updated_at)"
                " VALUES(?,NULL,0,'m','user','d','b',?,?)", (987654, db.now(), db.now()))
+
+
+def test_a_clone_read_with_selects_only_matches_the_template():
+    """The fixture builds clones from SELECT and SHOW CREATE TABLE alone (its
+    guard refuses anything else naming the template): same tables, columns,
+    indexes and migration markers, and no foreign keys."""
+    from uuid import uuid4
+
+    from tests import mariadb_fixture as fixture
+
+    _, source = fixture._source_schema()
+    schema = "fuse_fixture_" + uuid4().hex
+    admin = fixture._admin_connect(source)
+    try:
+        with admin.cursor() as cursor:
+            fixture._build(cursor, schema, source, foreign_keys=False)
+            try:
+                assert fixture._structure_digest(cursor, schema) == fixture._structure_digest(cursor, source)
+                cursor.execute("SELECT COUNT(*) FROM information_schema.referential_constraints"
+                               " WHERE constraint_schema=%s", (schema,))
+                assert cursor.fetchone()[0] == 0
+            finally:
+                cursor.execute(f"DROP DATABASE IF EXISTS `{schema}`")
+    finally:
+        admin.close()

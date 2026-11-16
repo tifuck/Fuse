@@ -3,15 +3,17 @@
 Importing this module installs the pymysql guard (``install_guard``): no test
 or harness may open a connection whose default schema is one of the real Fuse
 schemas (``fuse_dev``/``fuse_live``), including via ``pymysql.Connection``,
-``read_default_file`` option files, ``select_db`` or ``USE``. Standalone
-harnesses such as tests/chat_browser_fixture.py get the same protection by
-importing here.
+``read_default_file`` option files, ``select_db`` or ``USE``, and no statement
+may name one of them except a read (SELECT, SHOW CREATE TABLE), which is all
+the fixture needs to clone the template schema. Standalone harnesses such as
+tests/legacy/chat_browser_fixture.py get the same protection by importing here.
 
-DDL runs through the fixture-limited database account (default
-'fuse_fixture'@'localhost'), never root: it holds ALL on the ``fuse_fixture_%``
-schema pattern and SELECT on the clone source schema only. The application
-database user holds the same fixture-pattern grant (provisioned once), so the
-fixture needs no per-schema GRANT/REVOKE.
+Tests use their own database account, never the app's or root: 'fuse_test'
+(@localhost for the fixture's socket connection, @127.0.0.1 for the app's
+DATABASE_URL), with ALL on the ``fuse_fixture_%`` schema pattern and SELECT on
+the template schema only. scripts/test_sandbox.sh hands its credentials to
+the run (FUSE_FIXTURE_DB_USER/PASSWORD, DATABASE_URL); the run never reads
+the real .env or config.env.
 """
 from contextlib import contextmanager
 from configparser import ConfigParser
@@ -33,6 +35,15 @@ _GUARD_MESSAGE = (
 _USE = re.compile(r"^\s*USE\s+[`'\"]?([A-Za-z0-9_]+)", re.I)
 _SCHEMA_NAME = re.compile(r"[A-Za-z0-9_]+")
 _FIXTURE_SCHEMA = re.compile(r"fuse_fixture_[A-Za-z0-9_]+")
+# String literals are data (a stored value may mention a schema), not names:
+# blanked before looking for a protected schema (double quotes are strings too
+# in MariaDB's default sql_mode).
+_STRING_LITERAL = re.compile(r"'(?:[^'\\]|\\.|'')*'|\"(?:[^\"\\]|\\.|\"\")*\"", re.S)
+_PROTECTED_NAME = re.compile(r"\b(?:" + "|".join(sorted(PROTECTED_SCHEMAS)) + r")\b", re.I)
+_DYNAMIC_SQL = re.compile(r"^\s*(?:PREPARE|EXECUTE)\b", re.I)
+_READ_STATEMENT = re.compile(r"^\s*(?:SELECT|SHOW\s+CREATE\s+TABLE)\b", re.I)
+# A SELECT that writes (INTO OUTFILE/@var), locks rows, or smuggles a second statement.
+_NOT_A_READ = re.compile(r"\bINTO\b|\bFOR\s+UPDATE\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|;", re.I)
 
 
 def _as_text(value):
@@ -43,6 +54,19 @@ def _refuse(schema):
     name = _as_text(schema)
     if name in PROTECTED_SCHEMAS:
         raise RuntimeError(_GUARD_MESSAGE.format(schema=name))
+
+
+def _refuse_statement(sql):
+    """Any statement naming a protected schema must be a plain read."""
+    text = _as_text(sql) or ""
+    # Dynamic SQL carries its statement in a string: judge that string too.
+    names = text if _DYNAMIC_SQL.match(text) else _STRING_LITERAL.sub("''", text)
+    match = _PROTECTED_NAME.search(names)
+    if match and (not _READ_STATEMENT.match(text) or _NOT_A_READ.search(text)):
+        raise RuntimeError(
+            f"tests may only read the real {match.group(0)!r} schema (SELECT, SHOW CREATE TABLE): "
+            + text[:120]
+        )
 
 
 def _option_file_database(kwargs):
@@ -91,6 +115,7 @@ def install_guard():
         match = _USE.match(_as_text(sql) or "")
         if match:
             _refuse(match.group(1))
+        _refuse_statement(sql)
         return original_query(self, sql, *args, **kwargs)
 
     for wrapped in (guarded_init, guarded_select_db, guarded_query):
@@ -105,7 +130,7 @@ install_guard()
 
 def _fixture_account():
     return (
-        os.environ.get("FUSE_FIXTURE_DB_USER", "fuse_fixture"),
+        os.environ.get("FUSE_FIXTURE_DB_USER", "fuse_test"),
         os.environ.get("FUSE_FIXTURE_DB_PASSWORD", ""),
         os.environ.get("FUSE_FIXTURE_DB_SOCKET", "/run/mysqld/mysqld.sock"),
     )
@@ -115,10 +140,11 @@ def _provisioning_sql(source):
     user, _, _ = _fixture_account()
     return (
         f"CREATE USER '{user}'@'localhost' IDENTIFIED BY '<password>';\n"
-        f"GRANT ALL ON `fuse\\_fixture\\_%`.* TO '{user}'@'localhost';\n"
-        f"GRANT SELECT ON `{source}`.* TO '{user}'@'localhost';\n"
-        "GRANT ALL ON `fuse\\_fixture\\_%`.* TO '<app-user>'@'localhost', '<app-user>'@'127.0.0.1';\n"
-        "(set FUSE_FIXTURE_DB_PASSWORD to <password>; '' is fine for socket-local test hosts)"
+        f"CREATE USER '{user}'@'127.0.0.1' IDENTIFIED BY '<password>';\n"
+        f"GRANT ALL ON `fuse\\_fixture\\_%`.* TO '{user}'@'localhost', '{user}'@'127.0.0.1';\n"
+        f"GRANT SELECT ON `{source}`.* TO '{user}'@'localhost', '{user}'@'127.0.0.1';\n"
+        "and put DATABASE_URL=mysql://<user>:<password>@127.0.0.1:3306/<source>, FUSE_FIXTURE_DB_USER,\n"
+        "FUSE_FIXTURE_DB_PASSWORD and a test-only APP_SECRET in the root-only file scripts/test_sandbox.sh reads"
     )
 
 
@@ -199,19 +225,57 @@ def _source_schema():
     return url, source
 
 
-def _create_schema(cursor, schema, source):
+_FOREIGN_KEY_LINE = re.compile(r"\s*CONSTRAINT `\w+` FOREIGN KEY ")
+_AUTO_INCREMENT = re.compile(r" AUTO_INCREMENT=\d+")
+
+
+def _without_foreign_keys(body):
+    """SHOW CREATE TABLE text without its FOREIGN KEY constraint lines."""
+    lines = [line for line in body.split("\n") if not _FOREIGN_KEY_LINE.match(line)]
+    for i, line in enumerate(lines):
+        if line.startswith(")") and i and lines[i - 1].endswith(","):
+            lines[i - 1] = lines[i - 1][:-1]  # the definition list ends here
+    return "\n".join(lines)
+
+
+def _copy_tables(cursor, schema, source, *, foreign_keys):
+    """Create schema with the template's tables, read with SELECT and SHOW
+    CREATE TABLE only (the guard refuses anything else naming the template).
+    Without foreign_keys the tables match CREATE TABLE ... LIKE: no foreign
+    key constraints, counters starting over."""
     from app import chat_tx
 
     cursor.execute(f"CREATE DATABASE `{schema}`")
-    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'", (source,))
-    for (table,) in cursor.fetchall():
-        if not _SCHEMA_NAME.fullmatch(table):
-            raise RuntimeError("Unexpected schema identifier")
-        cursor.execute(f"CREATE TABLE `{schema}`.`{table}` LIKE `{source}`.`{table}`")
+    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'",
+                   (source,))
+    tables = [row[0] for row in cursor.fetchall()]
+    cursor.execute(f"USE `{schema}`")  # unqualified REFERENCES resolve here
+    cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+    try:
+        for table in tables:
+            if not _SCHEMA_NAME.fullmatch(table):
+                raise RuntimeError("Unexpected schema identifier")
+            cursor.execute(f"SHOW CREATE TABLE `{source}`.`{table}`")
+            create = cursor.fetchone()[1]
+            prefix = f"CREATE TABLE `{table}`"
+            if not create.startswith(prefix):
+                raise RuntimeError("Unexpected CREATE TABLE text")
+            body = _AUTO_INCREMENT.sub("", create[len(prefix):])
+            if not foreign_keys:
+                body = _without_foreign_keys(body)
+            cursor.execute(f"CREATE TABLE `{schema}`.`{table}`" + body)
+    finally:
+        cursor.execute("SET FOREIGN_KEY_CHECKS=1")
     # Migration markers, not the source's runtime state: its receipt
     # prune mark would make a fresh schema look already pruned.
-    cursor.execute(f"INSERT INTO `{schema}`.schema_meta SELECT * FROM `{source}`.schema_meta WHERE `key`<>%s",
-                   (chat_tx._RECEIPT_MARK,))
+    cursor.execute(f"SELECT `key`, value FROM `{source}`.schema_meta WHERE `key`<>%s", (chat_tx._RECEIPT_MARK,))
+    rows = cursor.fetchall()
+    if rows:
+        cursor.executemany(f"INSERT INTO `{schema}`.schema_meta (`key`, value) VALUES (%s, %s)", rows)
+
+
+def _create_schema(cursor, schema, source):
+    _copy_tables(cursor, schema, source, foreign_keys=False)
 
 
 def _structure_digest(cursor, source):
@@ -291,30 +355,9 @@ def _add_foreign_keys(cursor, schema, source, tables):
 
 
 def _create_schema_with_foreign_keys(cursor, schema, source):
-    """Like _create_schema, from SHOW CREATE TABLE so the foreign keys come
-    with each table (adding them afterwards rebuilds every table: minutes)."""
-    from app import chat_tx
-
-    cursor.execute(f"CREATE DATABASE `{schema}`")
-    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s AND table_type='BASE TABLE'",
-                   (source,))
-    tables = [row[0] for row in cursor.fetchall()]
-    cursor.execute(f"USE `{schema}`")  # unqualified REFERENCES resolve here
-    cursor.execute("SET FOREIGN_KEY_CHECKS=0")
-    try:
-        for table in tables:
-            if not _SCHEMA_NAME.fullmatch(table):
-                raise RuntimeError("Unexpected schema identifier")
-            cursor.execute(f"SHOW CREATE TABLE `{source}`.`{table}`")
-            create = cursor.fetchone()[1]
-            prefix = f"CREATE TABLE `{table}`"
-            if not create.startswith(prefix):
-                raise RuntimeError("Unexpected CREATE TABLE text")
-            cursor.execute(f"CREATE TABLE `{schema}`.`{table}`" + create[len(prefix):])
-    finally:
-        cursor.execute("SET FOREIGN_KEY_CHECKS=1")
-    cursor.execute(f"INSERT INTO `{schema}`.schema_meta SELECT * FROM `{source}`.schema_meta WHERE `key`<>%s",
-                   (chat_tx._RECEIPT_MARK,))
+    """Like _create_schema, with the foreign keys in each CREATE TABLE
+    (adding them afterwards rebuilds every table: minutes)."""
+    _copy_tables(cursor, schema, source, foreign_keys=True)
 
 
 def _build(cursor, schema, source, foreign_keys):
