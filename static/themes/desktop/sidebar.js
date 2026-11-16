@@ -22,8 +22,8 @@ export function create(deps) {
     const age = row.age;
     if (!age) return "";
     const title = age.title ? ` title="${esc(age.title)}"` : "";
-    if (age.unread) return `<span class="dk-when"${title}><i class="dk-unread" role="img" aria-label="Unread"></i></span>`;
-    return `<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
+    const dot = age.unread ? '<i class="dk-unread" role="img" aria-label="Unread"></i>' : "";
+    return `${dot}<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
   }
 
   const square = (color) => `<i class="dk-pj" aria-hidden="true" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="--dk-pj:${color}"` : ""}></i>`;

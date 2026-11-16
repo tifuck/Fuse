@@ -207,13 +207,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row.is-unread { color: var(--dk-text); font-weight: 500; }
   & .dk-row.is-dragging { opacity: 0.7; background: var(--dk-sel); }
   & .dk-open { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 8px; border-radius: 7px; font: 13px var(--sans); text-align: left; white-space: nowrap; }
-  & .dk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* The title takes the slack: project and age sit at the row's end. */
+  & .dk-name { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; }
   & .dk-name em { color: var(--dk-link); font-style: normal; }
   & :is(.dk-sub, .dk-snip, .dk-chip) { flex: none; max-width: 40%; overflow: hidden; color: var(--dk-mute); font-size: 11.5px; text-overflow: ellipsis; }
   & .dk-snip { flex: 0 1 auto; max-width: 30%; }
   & .dk-chip { padding: 0 4px; border: 1px solid var(--dk-card-line); border-radius: 4px; font: 10.5px var(--mono); }
-  & .dk-when { display: none; }
-  & .dk-when:has(.dk-unread) { display: block; flex: none; margin-left: auto; }
+  /* The age always shows, right-aligned in a fixed slot so project names line up; ⋯ takes its place on hover. */
+  & .dk-when { flex: none; min-width: 3ch; color: var(--dk-mute); font: 11px var(--mono); text-align: right; }
   /* A fixed 14px lead slot, so every title starts on one edge. */
   & .dk-st {
     flex: none;
@@ -230,7 +231,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-pj { flex: none; width: 9px; height: 9px; margin: 0 2.5px; border-radius: 2px; background: var(--dk-pj, var(--dk-mute)); }
   & .dk-open > :is(svg, img) { flex: none; width: 14px; height: 14px; }
   & .dk-group.is-project > :is(svg, img) { width: 12px; height: 12px; }
-  & .dk-unread { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-link); }
+  /* Unread: a badge on the lead icon's top-right corner. */
+  & .dk-open { position: relative; }
+  & .dk-unread { position: absolute; top: calc(50% - 9px); left: 18px; display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-link); }
   & .dk-live { display: none; }
   & .dk-more {
     position: absolute;
@@ -247,10 +250,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-size: 13px;
     opacity: 0;
   }
-  /* Hover or focus: the age shows and ⋯ gets a reserved slot after it. */
-  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-open { padding-right: 30px; }
+  /* Hover or focus: ⋯ covers the age, so nothing in the row moves. */
   & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; }
-  & .dk-row:is(:hover, :focus-within) .dk-when { display: block; flex: none; margin-left: auto; color: var(--dk-mute); font: 11px var(--mono); }
+  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-when { visibility: hidden; }
   & .dk-more:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-row .rename { width: 100%; height: 26px; padding: 0 7px; border: 1px solid var(--dk-link); border-radius: 7px; background: var(--dk-side); color: var(--dk-text); font: 13.5px var(--sans); }
   & .dk-empty { margin: 6px 8px; color: var(--dk-mute); font-size: 12.5px; }
@@ -624,6 +626,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     border-color: color-mix(in srgb, var(--dk-text) 40%, var(--dk-comp-line));
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), var(--dk-shadow);
   }
+  /* No row flexes: the shared attach list's 100% basis would squeeze the controls band out from under the card. */
+  & .dk-box > * { flex: none; }
   & .dk-box .chat-attach-list:not([hidden]) { padding: 8px 8px 0; }
   & .dk-row1 { display: block; min-width: 0; padding: 2px 0; }
   & .dk-compose { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
