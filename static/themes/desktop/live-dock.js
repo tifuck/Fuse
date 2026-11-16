@@ -42,25 +42,22 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
     if (cmd.hidden !== !arg) cmd.hidden = !arg;
-    // Speed, clock, tokens, right-aligned. Speed leads, so it never moves the
-    // others; its slot holds its width while the model generates, so a long
-    // status does not re-truncate each time it comes and goes.
+    // Clock, tokens, speed, after the status. Speed comes last, so it coming
+    // and going never moves the others.
     if (!tail.querySelector(":scope > .dk-stat")) {
-      tail.innerHTML = `<span class="dk-stat is-speed"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1 3 9h4l-1 6 6-8H8z" fill="currentColor"/></svg><span></span></span>`
-        + `<span class="dk-stat is-clock" title="Elapsed"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span></span></span>`
-        + `<span class="dk-stat is-tokens" title="Tokens this round"><span></span></span>`;
+      tail.innerHTML = `<span class="dk-stat is-clock" title="Elapsed"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span></span></span>`
+        + `<span class="dk-stat is-tokens" title="Tokens this round"><span></span></span>`
+        + `<span class="dk-stat is-speed"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1 3 9h4l-1 6 6-8H8z" fill="currentColor"/></svg><span></span></span>`;
     }
     const stat = (name, text, title) => {
       const el = tail.querySelector(`:scope > .is-${name}`);
       if (el.lastChild.textContent !== text) el.lastChild.textContent = text;
       if (title !== undefined && el.title !== title) el.title = title;
-      if (name === "speed") el.classList.toggle("is-off", !text);
-      const hide = name === "speed" ? !text && !meta?.generating : !text;
-      if (el.hidden !== hide) el.hidden = hide;
+      if (el.hidden !== !text) el.hidden = !text;
     };
-    stat("speed", meta?.speed?.text || "", meta?.speed?.title || "");
     stat("clock", meta?.clock || "");
     stat("tokens", meta?.tokens || "");
+    stat("speed", meta?.speed?.text || "", meta?.speed?.title || "");
     const hideTail = !meta;
     // Toggling hidden on every tick reflows the in-flow dock and can flip the
     // transcript extent by a rounding pixel; only touch it on a real change.

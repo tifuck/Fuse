@@ -168,9 +168,7 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     // a terminal agent shows the clock once there is something else to show, or
     // after 16s.
     const clock = tokens || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
-    // While the model generates, the speed slot is held even when blank;
-    // while tools or agents run it cannot show and gives its room back.
-    const meta = clock || tokens ? { clock, tokens, generating: flow === "down", speed: speed && { text: speed.text.replace(" tok/s", "/s"), title: speed.title } } : null;
+    const meta = clock || tokens ? { clock, tokens, speed: speed && { text: speed.text.replace(" tok/s", "/s"), title: speed.title } } : null;
     // A running command is the line itself: what it is for ("Running the unit
     // tests"), else the command in parentheses ("Running command (npm test)").
     // Opening the line shows the command. It joins the summary line above once

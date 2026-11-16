@@ -34,10 +34,10 @@ const close = (text, done = '', ago = '') => COMBINED || DESKTOP ? [ago, text].f
 // The live dock's still frame under reduced motion: Desktop's spinner is the
 // braille set (live-dock.js), the others the ✻ star set.
 const SPIN_STILL = DESKTOP ? '⠿' : '✻';
-// Desktop's counts are icon stats with no parentheses: tok/s (only while the
-// model streams), the clock, then the arrow and count ("12s↓ 1.2k").
-const META_CLOCK = DESKTOP ? /^(?:~?[\d.]+\/s)?(\d+)s/ : /\((\d+)s/;
-const META_WRITING = DESKTOP ? /^(?:~?[\d.]+\/s)?\d+s↓ [\d.]+[kM]?$/ : /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/;
+// Desktop's counts are icon stats with no parentheses: the clock, the arrow
+// and count, then tok/s only while the model streams ("12s↓ 1.2k97/s").
+const META_CLOCK = DESKTOP ? /^(\d+)s/ : /\((\d+)s/;
+const META_WRITING = DESKTOP ? /^\d+s↓ [\d.]+[kM]?(?:~?[\d.]+\/s)?$/ : /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/;
 let agoAt = '';
 // ccTurnVerb: the closing line's word is fixed per message id (chat.js).
 const CC_TURN_VERBS = ['Baked', 'Brewed', 'Churned', 'Cogitated', 'Cooked', 'Crunched', 'Sautéed', 'Worked'];

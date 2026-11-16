@@ -90,18 +90,18 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     const more = await page.locator('[data-live-dock-label]').textContent();
     const second = Number((more.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
     assert.ok(second > first, 'down-arrow count ticks as tokens stream in');
-    // Desktop's counts are icon stats: tok/s, clock, tokens. tok/s is the call
-    // still streaming, at its own rate, and only while it streams; its slot
-    // keeps its width, so it coming and going never moves the clock or tokens.
+    // Desktop's counts are icon stats after the status: clock, tokens, tok/s.
+    // tok/s is the call still streaming, at its own rate, and only while it
+    // streams; it comes last, so it coming and going never moves the others.
     const stats = () => page.evaluate(() => {
       const meta = document.querySelector('[data-live-dock-label] .chat-status-meta');
       const x = (s) => meta.querySelector(s).getBoundingClientRect().left;
-      return { text: meta.textContent, off: meta.querySelector('.is-speed').classList.contains('is-off'), clock: x('.is-clock'), tokens: x('.is-tokens') };
+      return { text: meta.textContent, off: meta.querySelector('.is-speed').hidden, clock: x('.is-clock'), tokens: x('.is-tokens') };
     });
     if (DESKTOP) {
       await page.evaluate(() => fuseToolFixture.stream(0, { streamGen: 850, streamMs: 8800 }));
       const live = await stats();
-      assert.ok(!live.off && /^~97\/s\d+s↓ /.test(live.text), `a streaming call shows its own rate, marked ~ until calibrated: ${JSON.stringify(live)}`);
+      assert.ok(!live.off && /^\d+s↓ [\d.]+k?~97\/s$/.test(live.text), `a streaming call shows its own rate, marked ~ until calibrated: ${JSON.stringify(live)}`);
       await page.evaluate(() => fuseToolFixture.stream(0, { streamGen: 0, streamMs: 0 }));
       const idle = await stats();
       assert.ok(idle.off && !/\/s/.test(idle.text), `no call streaming, no tok/s: ${JSON.stringify(idle)}`);
