@@ -160,6 +160,8 @@
 /* —— Library dialog (Add from library / Import) ——
    A fixed-height dialog so filtering never resizes it; the list scrolls. */
 .skills-lib { width: min(46rem, calc(100% - 2rem)); overflow: hidden; }
+/* The chat sheet's phone rule zeroes its children's top margin; keep the dialog centred. */
+dialog.skills-lib { margin: auto; }
 .skills-lib .modal-shell {
   display: flex;
   flex-direction: column;
