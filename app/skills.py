@@ -302,6 +302,11 @@ def load(user_id: int, name: str, file: str | None = None) -> str:
         return "Unknown skill."
     root = _root_for(user_id, row)
     skill_md = root / "SKILL.md"
+    if not skill_md.is_file() and row["origin"] != "bundled":
+        # An installed copy whose files are gone (data/ lost on a redeploy) falls back to the bundled one.
+        root = BUNDLED_DIR / slug
+        skill_md = root / "SKILL.md"
+        row = {**row, "origin": "bundled", "source": ""}
     if not skill_md.is_file():
         return "Unknown skill."
     try:

@@ -4,6 +4,7 @@ isolation, load_skill path safety, crash recovery of a half-done swap, and
 chat-proposed skills confirmed once by the user. Files live in a per-test
 directory (``skills_dir``)."""
 import io
+import shutil
 import zipfile
 from unittest.mock import patch
 
@@ -145,6 +146,17 @@ def test_bundled_skills_default_and_a_user_copy_overrides_them(fresh_db, skills_
     assert skills.load(other, "ponytail") == "Unknown skill."  # one account's switch only
     install(uid, "debug", body="My own debug.\n")
     assert "My own debug." in skills.load(uid, "debug")
+
+
+def test_an_installed_copy_with_lost_files_falls_back_to_the_bundled_one(fresh_db, skills_dir):
+    uid = quick_user()
+    install(uid, "ponytail", body="My old copy.\n")
+    install(uid, "gone")
+    for slug in ("ponytail", "gone"):
+        shutil.rmtree(skill_dir(uid, slug))
+    text = skills.load(uid, "ponytail")
+    assert "Ponytail" in text and "My old copy." not in text and "origin=bundled" in text
+    assert skills.load(uid, "gone") == "Unknown skill."  # nothing bundled to fall back to
 
 
 def test_reinstalling_replaces_the_tree_unless_replace_is_off(fresh_db, skills_dir):
