@@ -13,12 +13,13 @@ import pytest
 
 from tests.mariadb_fixture import persistent_database, persistent_schema, reset_tables
 
-# app.main mounts data/desktop-releases (runtime data, gitignored). A fresh
-# worktree has no data/ yet, and modules importing app.main at collection
-# time would fail before any fixture runs.
+# app.main mounts data/desktop-releases at import (runtime data, gitignored).
+# The tree is read-only in the sandbox: scripts/test.sh creates it before the
+# run starts.
 from app.config import ROOT
 
-(ROOT / "data" / "desktop-releases").mkdir(parents=True, exist_ok=True)
+if not (ROOT / "data" / "desktop-releases").is_dir():
+    raise RuntimeError("data/desktop-releases is missing: run tests through scripts/test.sh, which creates it")
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -30,19 +31,6 @@ def _no_sqlite():
     sqlite3.connect = refuse
     yield
     sqlite3.connect = real
-
-
-@pytest.fixture(autouse=True, scope="session")
-def _private_push_keys(tmp_path_factory):
-    """A finishing run's push hook reads (or creates) data/vapid.json: never
-    let tests touch the tree's real keys (regenerating them breaks every
-    existing subscription)."""
-    from app import push
-
-    real = push._KEY_PATH
-    push._KEY_PATH = tmp_path_factory.mktemp("push") / "vapid.json"
-    yield
-    push._KEY_PATH = real
 
 
 @pytest.fixture(scope="session")

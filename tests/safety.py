@@ -2,15 +2,18 @@
 
 On 2026-11-16 a test fed "rm -rf /*" to a fake host that ran it in a real
 local bash as root, a mutant had switched the denylist off, and the machine
-was wiped. Two independent layers keep that from happening again:
+was wiped. Independent layers keep that from happening again:
 
-- sandbox_refusal(): tests run only inside the systemd sandbox that
-  scripts/test.sh starts (read-only system and home, writable only the tree
-  under test and a per-run temp dir). Checked before anything else is
-  imported; outside it, the run stops.
-- install_process_guard(): no test may start a process. Every way Python
-  starts one raises, except two exact app workers that take no shell (see
-  ALLOWED below).
+- scripts/test_sandbox.sh runs tests in a throwaway systemd unit as the
+  unprivileged user fuse-test, on a read-only file system (the tree under
+  test included), writable only in the unit's own run directory.
+- refuse_unless_sandboxed(): every entry point (tests/conftest.py,
+  tests/core/__init__.py, tests/legacy/__init__.py, the browser fixture)
+  ends the process before app code is imported unless it runs in that unit.
+- install_process_guard(): no test may start a process or signal one it
+  did not start. Every way Python starts one raises, except the two exact
+  app workers in ALLOWED (and, in the xdist controller only, the exact
+  execnet worker bootstrap).
 
 Neither is a test helper: do not patch, relax or mock them in a test.
 """
@@ -24,10 +27,13 @@ from pathlib import Path
 
 SANDBOX_ENV = "FUSE_TEST_SANDBOX"
 SANDBOX_TOKEN = "systemd-run"
-# Inside the sandbox these are read-only mounts: creating a file fails with
-# EROFS (EPERM where a security module refuses first). Outside it, as root,
-# the create succeeds and the empty probe file is removed at once.
-PROBE_DIRS = ("/usr", "/etc")
+UNIT_PREFIX = "fuse-test-"
+# Read-only mounts inside the unit (/tmp and /root are empty read-only
+# tmpfs mounts there): creating a file fails with EROFS (EPERM where a
+# security module refuses first). An unprivileged user outside the unit gets
+# EACCES in /usr, /etc, /var and /root and can create files in /tmp, so none
+# of that passes.
+READ_ONLY_DIRS = ("/usr", "/etc", "/var", "/tmp", "/root")
 _REFUSED = (errno.EROFS, errno.EPERM)
 
 _APP = Path(__file__).resolve().parents[1] / "app"
@@ -42,7 +48,10 @@ ALLOWED = (
 )
 
 REFUSAL = "tests may not start processes"
+SIGNAL_REFUSAL = "tests may only signal processes they started"
 
+
+# -- sandbox detection ------------------------------------------------------
 
 def _probe_refused(directory: str) -> bool:
     path = os.path.join(directory, f".fuse-test-sandbox-probe-{os.getpid()}")
@@ -55,21 +64,79 @@ def _probe_refused(directory: str) -> bool:
     return False
 
 
+def unit_name() -> str:
+    """The systemd unit this process runs in (cgroup v2), or ''."""
+    try:
+        with open("/proc/self/cgroup") as cgroup:
+            lines = cgroup.read().splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        if line.startswith("0::"):
+            return line[3:].rstrip("/").rsplit("/", 1)[-1]
+    return ""
+
+
 def sandbox_refusal() -> str | None:
     """None inside the test sandbox, else why the run must stop."""
     how = "Run tests only through scripts/test.sh (it starts the systemd sandbox)."
     if os.environ.get(SANDBOX_ENV) != SANDBOX_TOKEN or not os.environ.get("INVOCATION_ID"):
         return f"not inside the test sandbox ({SANDBOX_ENV} / systemd unit missing). {how}"
-    for directory in PROBE_DIRS:
+    if os.geteuid() == 0 or os.getuid() == 0:
+        return f"tests must not run as root. {how}"
+    unit = unit_name()
+    if not (unit.startswith(UNIT_PREFIX) and unit.endswith(".service")):
+        return f"not in a {UNIT_PREFIX}* unit (cgroup {unit!r}). {how}"
+    for directory in READ_ONLY_DIRS:
         if not _probe_refused(directory):
-            return f"{directory} is writable, so this is not the test sandbox. {how}"
+            return f"{directory} is not read-only, so this is not the test sandbox. {how}"
     return None
 
+
+def refuse_unless_sandboxed(*, hard: bool = True) -> None:
+    """End this process outside the sandbox.
+
+    hard (test packages, the browser fixture): os._exit at once. pytest
+    turns exceptions raised while importing a test module into collection
+    errors and carries on, so nothing else is certain to stop it; the
+    message may stay in pytest's capture. tests/conftest.py passes
+    hard=False: SystemExit while pytest loads its first conftest ends the
+    run before any other conftest or test module is imported, and pytest
+    prints the captured message."""
+    reason = sandbox_refusal()
+    if reason:
+        sys.stderr.write(f"\nREFUSED: {reason}\n")
+        sys.stderr.flush()
+        if hard:
+            os._exit(3)
+        raise SystemExit(3)
+
+
+# -- process guard -------------------------------------------------------------
 
 def _argv(args) -> list[str]:
     if isinstance(args, (str, bytes, os.PathLike)):
         args = [args]
     return [os.fsdecode(a) for a in args]
+
+
+_xdist_controller = False
+
+
+def allow_xdist_workers() -> None:
+    """Called only from the xdist controller (tests/conftest.py), which
+    starts the workers and never imports a test module."""
+    global _xdist_controller
+    _xdist_controller = True
+
+
+def _xdist_bootstrap(argv: list[str]) -> bool:
+    if not _xdist_controller:
+        return False
+    from execnet.gateway_io import popen_bootstrapline
+
+    return argv in ([sys.executable, "-u", "-c", popen_bootstrapline],
+                    [sys.executable, "-u", "-B", "-c", popen_bootstrapline])
 
 
 def allowed(args) -> bool:
@@ -81,7 +148,7 @@ def allowed(args) -> bool:
         tail = argv[len(head):]
         if argv[:len(head)] == head and len(tail) == extra and all(a.isdigit() for a in tail):
             return True
-    return False
+    return _xdist_bootstrap(argv)
 
 
 def check(args) -> None:
@@ -97,16 +164,31 @@ def _refuse(name):
     return refused
 
 
+def _own_child(pid) -> bool:
+    """pid is a process this one started (its parent is us)."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        with open(f"/proc/{pid}/stat") as stat:
+            fields = stat.read().rsplit(")", 1)[1].split()
+    except (OSError, IndexError):
+        return False
+    return len(fields) > 1 and fields[1] == str(os.getpid())
+
+
 _installed = False
 
 
 def install_process_guard() -> None:
-    """Replace every process-starting entry point for this interpreter."""
+    """Replace every process-starting and signalling entry point for this
+    interpreter, under both their os and posix names."""
     global _installed
     if _installed:
         return
     import _posixsubprocess
+    import posix
     import pty
+    import signal
     import subprocess
 
     # Lowest layer: what Popen and asyncio end up calling, including code
@@ -122,24 +204,28 @@ def install_process_guard() -> None:
 
     _posixsubprocess.fork_exec = fork_exec
     subprocess._fork_exec = fork_exec
+
     for name in ("posix_spawn", "posix_spawnp"):
-        if hasattr(os, name):
-            real = getattr(os, name)
+        real = getattr(posix, name, None)
+        if real is None:
+            continue
 
-            def spawn(path, argv, *rest, _real=real, **kwargs):
-                check(argv)
-                if os.fsdecode(path) != sys.executable:
-                    raise PermissionError(f"{REFUSAL}: executable {os.fsdecode(path)!r}")
-                return _real(path, argv, *rest, **kwargs)
+        def spawn(path, argv, *rest, _real=real, **kwargs):
+            check(argv)
+            if os.fsdecode(path) != sys.executable:
+                raise PermissionError(f"{REFUSAL}: executable {os.fsdecode(path)!r}")
+            return _real(path, argv, *rest, **kwargs)
 
-            setattr(os, name, spawn)
+        setattr(posix, name, spawn)
+        setattr(os, name, spawn)
 
     # Everything that runs a shell or replaces/forks this process: no exceptions.
     for name in ("system", "popen", "fork", "forkpty", "execv", "execve", "execl", "execle", "execlp",
                  "execlpe", "execvp", "execvpe", "spawnl", "spawnle", "spawnlp", "spawnlpe", "spawnv",
                  "spawnve", "spawnvp", "spawnvpe"):
-        if hasattr(os, name):
-            setattr(os, name, _refuse(f"os.{name}"))
+        for module in (os, posix):
+            if hasattr(module, name):
+                setattr(module, name, _refuse(f"os.{name}"))
     pty.spawn = _refuse("pty.spawn")
     pty.fork = _refuse("pty.fork")
     for name in ("run", "call", "check_call", "check_output", "getoutput", "getstatusoutput"):
@@ -165,4 +251,25 @@ def install_process_guard() -> None:
     for module in (asyncio, asyncio.subprocess):
         module.create_subprocess_exec = create_subprocess_exec
         module.create_subprocess_shell = _refuse("asyncio.create_subprocess_shell")
+
+    # Signals: only to this process itself (execnet interrupts its own worker
+    # that way) and to processes it started; never a process group it does
+    # not lead through a child, never by pidfd.
+    real_kill, real_killpg = posix.kill, posix.killpg
+
+    def kill(pid, sig):
+        if pid != os.getpid() and not _own_child(pid):
+            raise PermissionError(f"{SIGNAL_REFUSAL}: pid {pid!r}")
+        return real_kill(pid, sig)
+
+    def killpg(pgid, sig):
+        if not _own_child(pgid) or os.getpgid(pgid) != pgid:
+            raise PermissionError(f"{SIGNAL_REFUSAL}: process group {pgid!r}")
+        return real_killpg(pgid, sig)
+
+    for module in (os, posix):
+        module.kill = kill
+        module.killpg = killpg
+    if hasattr(signal, "pidfd_send_signal"):
+        signal.pidfd_send_signal = _refuse("signal.pidfd_send_signal")
     _installed = True

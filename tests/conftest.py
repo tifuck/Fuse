@@ -1,8 +1,10 @@
 """Shared by every suite: the sandbox and process guards, repo on sys.path,
-the real-schema guard, safe settings.
+the real-schema guard, safe settings, data writes kept in the run dir.
 
 First, before anything imports app code: tests run only inside the sandbox
-scripts/test.sh starts (tests/safety.py). A raw `python -m pytest` stops here.
+scripts/test.sh starts, and may not start processes (tests/safety.py). A raw
+`python -m pytest` stops here. tests/core/__init__.py and
+tests/legacy/__init__.py repeat both, so --noconftest cannot skip them.
 
 Default runs collect only tests/core. tests/legacy is the frozen pre-redesign
 suite: unmaintained, never required, collected only with FUSE_LEGACY_TESTS=1
@@ -13,15 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.safety import install_process_guard, sandbox_refusal  # noqa: E402
+from tests.safety import allow_xdist_workers, install_process_guard, refuse_unless_sandboxed  # noqa: E402
 
-_refusal = sandbox_refusal()
-if _refusal:
-    sys.stderr.write(f"\nREFUSED: {_refusal}\n")
-    # SystemExit, not pytest.exit: pytest wraps exceptions raised while a
-    # conftest imports (and would go on loading the others); this ends the
-    # process before any other conftest or app module is imported.
-    raise SystemExit(3)
+refuse_unless_sandboxed(hard=False)
+install_process_guard()
 
 import os  # noqa: E402
 
@@ -38,13 +35,35 @@ collect_ignore_glob = ["test_*.py"] + ([] if os.environ.get("FUSE_LEGACY_TESTS")
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
-    """No test may start a process (tests/safety.py). Installed in every
-    process that runs tests: a single-process run and each xdist worker.
-    The xdist controller is the one exception: it starts the workers and
-    never imports a test module."""
-    controller = not hasattr(config, "workerinput") and config.pluginmanager.has_plugin("dsession")
-    if not controller:
-        install_process_guard()
+    """The xdist controller may start its workers (the exact execnet
+    bootstrap, nothing else). It never imports a test module; workers and
+    single-process runs never get this."""
+    if (not hasattr(config, "workerinput") and config.getoption("dist", "no") != "no"
+            and not config.getoption("collectonly")):
+        allow_xdist_workers()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _data_writes_go_to_the_run_dir(tmp_path_factory):
+    """The tree under test is read-only in the sandbox. App files that live
+    under ROOT/data (push keys, setup token, skills, provider caches) go to
+    this run's temp dir instead, so no test touches a real tree's data."""
+    from app import accounts, push
+    from app.config import settings
+    from app.sources import devin_stream, grok_version, ollama, ollama_access
+
+    root = tmp_path_factory.mktemp("root")
+    data = root / "data"
+    (data / "desktop-releases").mkdir(parents=True)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(push, "_KEY_PATH", data / "vapid.json")
+        patch.setattr(accounts, "SETUP_TOKEN_FILE", data / "setup-token")
+        patch.setattr(settings, "skills_directory", str(data / "skills"))
+        patch.setattr(grok_version, "CACHE_PATH", data / "grok-client-version.json")
+        patch.setattr(devin_stream, "_DEBUG_LOG", data / "devin-stream-debug.log")
+        patch.setattr(ollama, "ROOT", root)
+        patch.setattr(ollama_access, "ROOT", root)
+        yield data
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -15,11 +15,9 @@ if __name__ != "__main__" or os.environ.get("FUSE_CHAT_TEST_MODE") != "1":
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tests.safety import install_process_guard, sandbox_refusal  # noqa: E402
+from tests.safety import install_process_guard, refuse_unless_sandboxed  # noqa: E402
 
-if sandbox_refusal():
-    sys.stderr.write(f"REFUSED: {sandbox_refusal()}\n")
-    raise SystemExit(3)
+refuse_unless_sandboxed()
 install_process_guard()
 
 import uvicorn
