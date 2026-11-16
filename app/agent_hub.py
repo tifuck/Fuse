@@ -19,7 +19,7 @@ _held: dict[tuple[int, int], dict] = {}
 _online: dict[tuple[int, int], set[asyncio.Event]] = {}
 _background: set[asyncio.Task] = set()
 _cancel_replay: dict[tuple[int, int], dict[str, float]] = {}
-CANCEL_REPLAY_SECONDS = 3_660.0  # max exec deadline + reconnect slack
+CANCEL_REPLAY_SECONDS = 7_260.0  # max exec deadline (2 h background) + reconnect slack
 CANCEL_REPLAY_CAP = 4096
 _lock = asyncio.Lock()
 MAX_INFLIGHT = 128
@@ -482,6 +482,14 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                 if not replay:
                     _cancel_replay.pop(key, None)
             fut = rec["pending"].pop(job_id, None)
+            if fut is None:
+                # A replaced socket still delivers what it read before its
+                # close; its jobs moved to the session that replaced it.
+                for owner in (_conns.get(key), _held.get(key)):
+                    if owner is not None and owner is not rec:
+                        fut = owner.get("pending", {}).pop(job_id, None)
+                        if fut is not None:
+                            break
             if fut is None or fut.done():
                 continue
             fut.set_result(

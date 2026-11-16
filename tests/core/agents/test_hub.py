@@ -346,6 +346,26 @@ def test_a_restarted_connector_fails_the_jobs_it_cannot_answer(box):
     run_async(body())
 
 
+def test_a_result_read_on_a_replaced_socket_still_reaches_its_caller(box):
+    uid, hid, token = box
+
+    async def body():
+        old, old_task = await _connect(uid, hid, token, inst="proc-a")
+        caller = asyncio.create_task(agent_hub.call(uid, hid, "exec", {}))
+        await wait_until_async(lambda: old.jobs())
+        new, new_task = await _connect(uid, hid, token, inst="proc-a")
+        # The job moved to the new session, but its result was already in
+        # flight on the old socket.
+        old.reply(old.jobs()[0]["id"], ok=True, exit=0, out="late")
+        result = await asyncio.wait_for(caller, 5)
+        await _hang_up(new, new_task)
+        old.drop()
+        await asyncio.wait_for(old_task, 5)
+        return result
+
+    assert run_async(body())["out"] == "late"
+
+
 def test_held_jobs_fail_when_the_connector_does_not_return_in_time(box):
     uid, hid, token = box
 
