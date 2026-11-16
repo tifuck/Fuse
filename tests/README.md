@@ -11,6 +11,33 @@
 
 Extra pytest arguments go after `--`; `JOBS=N` sets parallel workers (`0` = off).
 
+## Safety: tests never execute anything real
+
+On 2026-11-16 a test passed `rm -rf /*` to a fake host that ran it in a real
+bash as root, a mutant had disabled the denylist, and the machine was wiped.
+Since then:
+
+- **Sandbox only.** `scripts/test.sh` (and `scripts/run_browser_tests.sh`)
+  run inside `scripts/test_sandbox.sh`: a systemd unit with a read-only file
+  system except this tree and a per-run temp dir, no devices, no new
+  privileges, no capability or system call to reboot, mount or load modules.
+  `tests/conftest.py` stops any run outside it (`python -m pytest` refuses).
+- **No processes.** `tests/safety.py` makes every way to start a process
+  raise in test processes. The only exceptions are the two app workers
+  listed there (image decoder, PDF extractor): exact argv, never a shell.
+- **Fakes record, never run.** Host transports in tests are recording fakes
+  that return scripted output; fake file systems refuse any path outside
+  their own sandbox directory, whatever the app code under test decided.
+- **No destructive strings near an executor.** Never pass a destructive
+  command (`rm -rf`, `mkfs`, `dd`, `chmod -R`, `shutdown`, ...) to anything
+  that can execute. Test the denylist as a pure function
+  (`workspace.denied`) plus one end-to-end check through the recording
+  fake (which executes nothing) that it was never asked to run them.
+- **Safety code is not a casual mutation target.** The denylist,
+  path confinement and the permission gate may be mutation-tested only with
+  recording fakes, inside the sandbox, never with a real executor.
+- Do not patch, relax or mock `tests/safety.py` or the sandbox in a test.
+
 ## What gets a test
 
 - **Backend logic only**: runs and recovery, persistence, sync, tools and

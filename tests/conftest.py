@@ -1,24 +1,50 @@
-"""Shared by every suite: repo on sys.path, the real-schema guard, safe settings.
+"""Shared by every suite: the sandbox and process guards, repo on sys.path,
+the real-schema guard, safe settings.
+
+First, before anything imports app code: tests run only inside the sandbox
+scripts/test.sh starts (tests/safety.py). A raw `python -m pytest` stops here.
 
 Default runs collect only tests/core. tests/legacy is the frozen pre-redesign
 suite: unmaintained, never required, collected only with FUSE_LEGACY_TESTS=1
 (scripts/test.sh legacy). Run it on its own, never in the same session as core.
 """
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.mariadb_fixture import install_guard
+from tests.safety import install_process_guard, sandbox_refusal  # noqa: E402
+
+_refusal = sandbox_refusal()
+if _refusal:
+    sys.stderr.write(f"\nREFUSED: {_refusal}\n")
+    # SystemExit, not pytest.exit: pytest wraps exceptions raised while a
+    # conftest imports (and would go on loading the others); this ends the
+    # process before any other conftest or app module is imported.
+    raise SystemExit(3)
+
+import os  # noqa: E402
+
+import pytest  # noqa: E402
+
+from tests.mariadb_fixture import install_guard  # noqa: E402
 
 install_guard()
-
-import pytest
 
 # Root-level test_*.py are local, gitignored legacy leftovers (real-page
 # fixtures); they belong to tests/legacy.
 collect_ignore_glob = ["test_*.py"] + ([] if os.environ.get("FUSE_LEGACY_TESTS") == "1" else ["legacy/*"])
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_configure(config):
+    """No test may start a process (tests/safety.py). Installed in every
+    process that runs tests: a single-process run and each xdist worker.
+    The xdist controller is the one exception: it starts the workers and
+    never imports a test module."""
+    controller = not hasattr(config, "workerinput") and config.pluginmanager.has_plugin("dsession")
+    if not controller:
+        install_process_guard()
 
 
 @pytest.fixture(autouse=True, scope="session")

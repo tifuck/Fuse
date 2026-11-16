@@ -8,11 +8,14 @@
 #   scripts/test.sh legacy [path..] the frozen pre-redesign suite; never required
 #
 # Extra pytest arguments go after --. JOBS=N sets parallel workers (0 = off).
+#
+# Everything runs inside the systemd sandbox of scripts/test_sandbox.sh
+# (read-only system, writable only this tree and a per-run temp dir); the
+# tests themselves refuse to run anywhere else (tests/safety.py).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PYTHON=${PYTHON:-/root/fuse/venv/bin/python}
-export FUSE_CHAT_TEST_MODE=1
-[ -d /dev/shm ] && export TMPDIR=${TMPDIR:-/dev/shm}
+PYTHON=${PYTHON:-/root/fuse-dev/venv/bin/python}
+export PYTHON FUSE_CHAT_TEST_MODE=1
 
 args=() extra=()
 while [ $# -gt 0 ]; do
@@ -38,6 +41,20 @@ for path in sys.stdin.read().split():
 print(" ".join(found))'
 }
 
+if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
+  # Outside the sandbox: only pick the areas (git reads the repository's
+  # .git, which the sandbox keeps read-only), then rerun this script inside.
+  if [ "${args[0]:-}" = changed ]; then
+    ref=${args[1]:-dev}
+    picked=$( { git diff --name-only "$ref"...HEAD; git status --porcelain --untracked-files=all | cut -c4-; } | areas)
+    if [ -z "$picked" ]; then echo "no core test area covers the changed files"; exit 0; fi
+    echo "areas: $picked"
+    # shellcheck disable=SC2086
+    set -- $picked -- "${extra[@]}"
+  fi
+  exec scripts/test_sandbox.sh scripts/test.sh "$@"
+fi
+
 case "${args[0]:-}" in
   legacy)
     export FUSE_LEGACY_TESTS=1
@@ -46,16 +63,15 @@ case "${args[0]:-}" in
     pytest --timeout="${TEST_TIMEOUT:-300}" "${targets[@]}" "${extra[@]}"
     ;;
   changed)
-    ref=${args[1]:-dev}
-    picked=$( { git diff --name-only "$ref"...HEAD; git status --porcelain --untracked-files=all | cut -c4-; } | areas)
-    if [ -z "$picked" ]; then echo "no core test area covers the changed files"; exit 0; fi
-    echo "areas: $picked"
-    exec "$0" $picked -- "${extra[@]}"
+    echo "changed is resolved before entering the sandbox" >&2; exit 2
     ;;
   "")
     # shellcheck disable=SC2046
     pytest --timeout="${TEST_TIMEOUT:-30}" $(parallel auto) tests/core "${extra[@]}"
-    if compgen -G "tests/js/*.test.cjs" > /dev/null; then node --test tests/js/*.test.cjs; fi
+    if compgen -G "tests/js/*.test.cjs" > /dev/null; then
+      if command -v node > /dev/null; then node --test tests/js/*.test.cjs
+      else echo "WARNING: node is not installed: tests/js was NOT run" >&2; fi
+    fi
     ;;
   *)
     dirs=()
