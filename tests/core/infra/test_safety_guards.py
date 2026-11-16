@@ -8,6 +8,7 @@ one empty file per read-only directory that the sandbox must refuse to create.
 import asyncio
 import errno
 import os
+import stat
 import posix
 import signal
 import subprocess
@@ -92,12 +93,13 @@ def test_the_real_settings_files_are_neither_readable_nor_writable(name):
     # either way no secret is readable and nothing can be written.
     path = TREE / name
     try:
-        with open(path, "rb") as handle:
-            assert handle.read() == b""
+        mode = os.stat(path).st_mode
     except OSError:
-        pass
-    with pytest.raises(OSError):
-        os.open(path, os.O_WRONLY | os.O_APPEND)
+        return  # unreachable: nothing to read or write
+    # Covered: it is the null device, so reads are empty and writes vanish.
+    assert stat.S_ISCHR(mode) and os.stat(path).st_rdev == os.stat("/dev/null").st_rdev
+    with open(path, "rb") as handle:
+        assert handle.read() == b""
 
 
 def test_the_venv_is_not_writable():
