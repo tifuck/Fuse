@@ -39,6 +39,12 @@ MAX_FILE = 256 * 1024
 _SEG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _GH_HOSTS = {"github.com", "api.github.com", "raw.githubusercontent.com", "codeload.github.com"}
 _SKILLS_HOSTS = {"skills.sh", "www.skills.sh"}
+# Invisible and bidi characters hide text from whoever reviews a skill. ZWJ
+# (U+200D) and the emoji variation selectors stay allowed: emoji use them.
+_HIDDEN = re.compile(
+    "[\u00ad\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff"
+    "\U000e0000-\U000e007f\U000e0100-\U000e01ef]"
+)
 _CACHE: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 45.0
 _CACHE_MAX = 200
@@ -104,6 +110,12 @@ def _safe_rel(path: str, *, max_depth: int = MAX_DEPTH) -> str:
     return "/".join(parts)
 
 
+def hidden_char(text: str) -> str | None:
+    """The first invisible or bidi character in text, as U+XXXX, or None."""
+    found = _HIDDEN.search(text)
+    return f"U+{ord(found.group()):04X}" if found else None
+
+
 def validate_files(files: dict[str, bytes]) -> None:
     if not files or "SKILL.md" not in files:
         raise SkillError("SKILL.md is required")
@@ -120,6 +132,13 @@ def validate_files(files: dict[str, bytes]) -> None:
         ext = Path(rel).suffix.lower()
         if ext not in ALLOWED_EXT:
             raise SkillError(f"disallowed file type: {rel}")
+        if ext not in BINARY_EXT:
+            try:
+                hidden = hidden_char(bytes(blob).decode("utf-8-sig"))
+            except UnicodeDecodeError:
+                hidden = None  # not UTF-8: the model never reads it as text
+            if hidden:
+                raise SkillError(f"hidden character {hidden} in {rel}")
     if total > MAX_UNCOMPRESSED:
         raise SkillError("skill too large")
 

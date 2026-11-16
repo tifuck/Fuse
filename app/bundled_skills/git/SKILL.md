@@ -2,6 +2,8 @@
 name: git
 description: Conventional commits, PR descriptions, and rebase vs merge. Use when the user asks to commit, write a PR, or choose rebase versus merge.
 argument-hint: commit message or PR notes
+metadata:
+  category: Ops
 ---
 
 # Git

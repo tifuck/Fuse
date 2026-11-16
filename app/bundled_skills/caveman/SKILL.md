@@ -4,6 +4,8 @@ description: >
   Terse caveman voice: answer first, fluff gone, every technical fact kept.
   Use for /caveman, "caveman mode", "talk like caveman", "be brief", "less
   tokens". Stays on until "stop caveman" or "normal mode".
+metadata:
+  category: Agent
 ---
 
 # caveman

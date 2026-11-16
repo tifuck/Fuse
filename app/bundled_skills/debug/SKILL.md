@@ -2,6 +2,8 @@
 name: debug
 description: Systematic reproduce, isolate, fix, and verify. Use when something is broken, a test fails, or the user asks to find a bug.
 argument-hint: failure symptom
+metadata:
+  category: Quality
 ---
 
 # Debug

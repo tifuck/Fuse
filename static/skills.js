@@ -48,7 +48,16 @@
   const uploadForm = root.querySelector("[data-upload-form]");
   const uploadFile = root.querySelector("[data-upload-file]");
   const uploadError = root.querySelector("[data-upload-error]");
-  const ORIGIN = { bundled: "bundled", upload: "upload", github: "github", skills_sh: "skills.sh", chat: "chat" };
+  const library = root.querySelector("[data-skill-library]");
+  const ORIGIN = { bundled: "library", upload: "upload", github: "github", skills_sh: "skills.sh", chat: "chat" };
+  const CATEGORIES = ["Plan", "Build", "Quality", "Design", "Docs", "Ops", "Research", "Agent"];
+  // Library skills on at load, or added since, stay listed when switched off
+  // until the next load, so a row never disappears under the pointer.
+  const pinned = new Set((bundle.skills || []).filter((s) => s.origin === "bundled" && s.enabled).map((s) => s.slug));
+
+  function mine() {
+    return (bundle.skills || []).filter((s) => s.origin !== "bundled" || s.enabled || pinned.has(s.slug));
+  }
 
   function showErr(el, msg) {
     if (!el) return;
@@ -62,7 +71,16 @@
   }
 
   function originLabel(origin) {
-    return ORIGIN[origin] || origin || "bundled";
+    return ORIGIN[origin] || origin || "library";
+  }
+
+  async function setEnabled(skill, enabled) {
+    const updated = await api("/skills/" + encodeURIComponent(skill.slug), {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    });
+    Object.assign(skill, updated);
+    if (skill.origin === "bundled" && skill.enabled) pinned.add(skill.slug);
   }
 
   // Optional page-only controls: an All / On / Off filter and a text filter.
@@ -85,7 +103,7 @@
   }
 
   function renderList() {
-    const items = bundle.skills || [];
+    const items = mine();
     list.innerHTML = "";
     empty.hidden = items.length > 0;
     paintCounts(items);
@@ -121,11 +139,7 @@
       box.addEventListener("change", async () => {
         showErr(pageError, "");
         try {
-          const updated = await api("/skills/" + encodeURIComponent(skill.slug), {
-            method: "PATCH",
-            body: JSON.stringify({ enabled: box.checked }),
-          });
-          Object.assign(skill, updated);
+          await setEnabled(skill, box.checked);
           renderList();
         } catch (err) {
           box.checked = Boolean(skill.enabled);
@@ -176,6 +190,116 @@
     });
   });
   findInput?.addEventListener("input", renderList);
+
+  // —— Library dialog: the bundled skills, added with one click; Import holds
+  // skills.sh search and upload.
+  const libFind = library?.querySelector("[data-lib-find]");
+  const libCats = library?.querySelector("[data-lib-cats]");
+  const libList = library?.querySelector("[data-lib-list]");
+  let libCat = "";
+
+  function libTab(name) {
+    library.querySelectorAll("[data-lib-tab]").forEach((tab) => {
+      const on = tab.getAttribute("data-lib-tab") === name;
+      tab.classList.toggle("is-on", on);
+      tab.setAttribute("aria-selected", String(on));
+    });
+    library.querySelectorAll("[data-lib-pane]").forEach((pane) => {
+      pane.hidden = pane.getAttribute("data-lib-pane") !== name;
+    });
+  }
+
+  function renderLibrary() {
+    if (!library) return;
+    const items = (bundle.skills || []).filter((s) => s.origin === "bundled");
+    const count = library.querySelector("[data-lib-count]");
+    if (count) count.textContent = String(items.length);
+    const cats = Array.from(new Set(items.map((s) => s.category || "Other")));
+    cats.sort((a, b) => (CATEGORIES.indexOf(a) + 1 || 99) - (CATEGORIES.indexOf(b) + 1 || 99) || a.localeCompare(b));
+    if (libCat && !cats.includes(libCat)) libCat = "";
+    libCats.innerHTML = "";
+    ["", ...cats].forEach((cat) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "skills-tab" + (cat === libCat ? " is-on" : "");
+      chip.setAttribute("aria-pressed", String(cat === libCat));
+      chip.textContent = cat || "All";
+      chip.addEventListener("click", () => {
+        libCat = cat;
+        renderLibrary();
+      });
+      libCats.append(chip);
+    });
+    const q = (libFind.value || "").trim().toLowerCase();
+    const shown = items
+      .filter((s) => !libCat || (s.category || "Other") === libCat)
+      .filter((s) => !q || [s.slug, s.description, s.category].some((v) => String(v || "").toLowerCase().includes(q)));
+    libList.innerHTML = "";
+    if (!shown.length) {
+      const none = document.createElement("p");
+      none.className = "skills-none";
+      none.textContent = "No library skills match.";
+      libList.append(none);
+    }
+    shown.forEach((skill) => {
+      const row = document.createElement("div");
+      row.className = "skills-lib-item" + (skill.enabled ? " is-enabled" : "");
+      const slug = document.createElement("code");
+      slug.className = "skills-slug";
+      slug.textContent = "/" + skill.slug;
+      const cat = document.createElement("span");
+      cat.className = "skills-origin";
+      cat.textContent = skill.category || "Other";
+      const meta = document.createElement("div");
+      meta.className = "skills-row-meta";
+      meta.append(slug, cat);
+      const desc = document.createElement("p");
+      desc.className = "skills-desc";
+      desc.textContent = skill.description || "";
+      const copy = document.createElement("div");
+      copy.className = "skills-row-copy";
+      copy.append(meta, desc);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn sm" + (skill.enabled ? " ghost" : "");
+      btn.textContent = skill.enabled ? "Added" : "Add";
+      btn.setAttribute("aria-pressed", String(Boolean(skill.enabled)));
+      btn.setAttribute("aria-label", (skill.enabled ? "Remove " : "Add ") + skill.slug);
+      btn.addEventListener("click", async () => {
+        showErr(pageError, "");
+        btn.disabled = true;
+        try {
+          await setEnabled(skill, !skill.enabled);
+        } catch (err) {
+          showErr(pageError, err.message);
+        }
+        renderList();
+        renderLibrary();
+        libList.querySelector(`[aria-label$=" ${CSS.escape(skill.slug)}"]`)?.focus();
+      });
+      row.append(copy, btn);
+      libList.append(row);
+    });
+  }
+
+  if (library) {
+    library.querySelectorAll("[data-lib-tab]").forEach((tab) => {
+      tab.addEventListener("click", () => libTab(tab.getAttribute("data-lib-tab")));
+    });
+    libFind.addEventListener("input", renderLibrary);
+    // Esc closes only the dialog, never the chat sheet around it.
+    library.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") event.stopPropagation();
+    });
+    root.querySelectorAll("[data-library-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        libTab(button.getAttribute("data-library-open"));
+        renderLibrary();
+        if (!library.open) library.showModal();
+        (button.getAttribute("data-library-open") === "import" ? searchQ : libFind)?.focus();
+      });
+    });
+  }
 
   function hitKey(hit) {
     return hit.id || (hit.source ? hit.source + "/" + (hit.skillId || "") : "");

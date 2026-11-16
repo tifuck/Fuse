@@ -102,9 +102,6 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .skills-page > .callout { margin: 0; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .skills-tab.is-on { color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .skills-page .skills-installed { padding: 0 1rem; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .skills-card .skills-search { flex-direction: row; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .skills-card .callout { margin: 0.6rem 0 0; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .skills-card .skills-upload .btn { align-self: flex-start; }
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .skills-row { grid-template-columns: auto minmax(0, 1fr); }
   :where(html.is-chat-root[data-chat-view="desktop"]) .skills-row-actions { grid-column: 2; }

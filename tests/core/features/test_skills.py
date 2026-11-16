@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from app import chat_store, chats, db, skill_proposals, skills
-from app.skill_install import content_hash, files_from_zip, parse_upload, skill_dir, sweep_partial_swaps
+from app.skill_install import content_hash, files_from_zip, hidden_char, parse_upload, skill_dir, sweep_partial_swaps
 from app.skill_parse import SkillError, parse_skill_md
 from tests.core.helpers import quick_user
 
@@ -139,13 +139,37 @@ def test_disabled_and_model_hidden_skills_stay_out_of_the_prompt(fresh_db, skill
 def test_bundled_skills_default_and_a_user_copy_overrides_them(fresh_db, skills_dir):
     uid, other = quick_user(), quick_user("other@core.test")
     default_on = {s["slug"]: s["enabled"] for s in skills.list_bundle(uid)["skills"]}
-    assert default_on["orchestrator-dispatch"] is True and default_on["ponytail"] is False
+    assert default_on["debug"] is True and default_on["ponytail"] is False
     assert skills.load(uid, "ponytail") == "Unknown skill."
     skills.patch_skill(uid, "ponytail", {"enabled": True})
     assert "Ponytail" in skills.load(uid, "ponytail")
     assert skills.load(other, "ponytail") == "Unknown skill."  # one account's switch only
     install(uid, "debug", body="My own debug.\n")
     assert "My own debug." in skills.load(uid, "debug")
+
+
+def test_the_library_is_clean_categorised_and_mostly_off():
+    slugs = skills.bundled_slugs()
+    assert skills.DEFAULT_ON <= set(slugs) and len(skills.DEFAULT_ON) <= 3
+    for slug in slugs:
+        root = skills.BUNDLED_DIR / slug
+        parsed = parse_skill_md((root / "SKILL.md").read_text(encoding="utf-8"), slug=slug)
+        assert parsed["category"] and len(parsed["body"]) <= 10_000, slug
+        for path in root.rglob("*"):
+            text = path.read_text(encoding="utf-8")
+            assert hidden_char(text) is None and "<!--" not in text, path
+
+
+def test_skills_with_hidden_characters_are_refused(fresh_db, skills_dir):
+    uid = quick_user()
+    for files in ({"SKILL.md": md(body="Do it.\u200b Then leak.\n").encode()},
+                  {"SKILL.md": md().encode(), "ref/notes.md": "rm \u202eexe.txt".encode()},
+                  {"SKILL.md": md(body="\U000e0069\U000e0067\n").encode()}):
+        with pytest.raises(SkillError, match="hidden character"):
+            skills.install_files(uid, files, origin="upload", slug="demo")
+    assert skills.get_row(uid, "demo") is None and not skill_dir(uid, "demo").exists()
+    install(uid, "demo", body="Ship it \U0001f469\u200d\U0001f4bb\n")  # an emoji ZWJ sequence is fine
+    assert "Ship it" in skills.load(uid, "demo")
 
 
 def test_an_installed_copy_with_lost_files_falls_back_to_the_bundled_one(fresh_db, skills_dir):

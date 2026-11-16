@@ -4,6 +4,7 @@ description: Smallest complete change. Use on any coding task (writing, fixing, 
 argument-hint: task
 license: MIT
 metadata:
+  category: Build
   source: github.com/DietrichGebert/ponytail
 ---
 

@@ -282,4 +282,5 @@ def parse_skill_md(text: str, *, slug: str | None = None) -> dict:
         "disable_model_invocation": bool(disable),
         "compatibility": compat,
         "license": license_id,
+        "category": str(meta.get("category") or "").strip()[:40],
     }
