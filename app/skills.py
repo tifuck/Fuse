@@ -108,6 +108,12 @@ def read_bundled(slug: str) -> dict | None:
     }
 
 
+def _with_category(row: dict) -> dict:
+    if row["origin"] == "bundled":
+        row["category"] = (read_bundled(row["slug"]) or {}).get("category", "")
+    return row
+
+
 def list_user_rows(user_id: int, conn=None) -> list[dict]:
     q = "SELECT * FROM user_skills WHERE user_id=? ORDER BY slug"
     rows = conn.execute(q, (user_id,)).fetchall() if conn is not None else db.fetchall(q, (user_id,))
@@ -151,10 +157,7 @@ def list_bundle(user_id: int) -> dict:
 
     rows = list_user_rows(user_id)
     have = {r["slug"] for r in rows}
-    for row in rows:
-        if row["origin"] == "bundled":
-            row["category"] = (read_bundled(row["slug"]) or {}).get("category", "")
-    items = [_public(r) for r in rows]
+    items = [_public(_with_category(r)) for r in rows]
     for slug in bundled_slugs():
         if slug in have:
             continue
@@ -435,7 +438,7 @@ def _upsert(
                 now,
             ),
         )
-        return _public(get_row(user_id, slug, conn))
+        return _public(_with_category(get_row(user_id, slug, conn)))
 
 
 def patch_skill(user_id: int, slug: str, raw: dict) -> dict:
