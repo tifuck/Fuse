@@ -18,13 +18,31 @@ bash as root, a mutant had disabled the denylist, and the machine was wiped.
 Since then:
 
 - **Sandbox only.** `scripts/test.sh` (and `scripts/run_browser_tests.sh`)
-  run inside `scripts/test_sandbox.sh`: a systemd unit with a read-only file
-  system except this tree and a per-run temp dir, no devices, no new
-  privileges, no capability or system call to reboot, mount or load modules.
-  `tests/conftest.py` stops any run outside it (`python -m pytest` refuses).
+  run inside `scripts/test_sandbox.sh`: a systemd unit running as the
+  unprivileged system user `fuse-test`, with the whole file system read-only
+  (the tree under test included; `/tmp` and the home directories are empty)
+  except the unit's own run dir (TMPDIR, HOME, bytecode cache), no devices,
+  no new privileges, no capability or system call to reboot, mount or load
+  modules. Run it as root; it drops to `fuse-test`. `tests/conftest.py`,
+  `tests/core/__init__.py` and `tests/legacy/__init__.py` stop any run
+  outside it (`python -m pytest` refuses, `--noconftest` too), and
+  `scripts/test.sh` refuses options that would skip them (`--noconftest`,
+  `--confcutdir`, `-p`, `-c`, `-o`, `--tx`, `--rsyncdir`, …), in its
+  arguments and in `PYTEST_ADDOPTS`.
+- **Own database account, no real secrets.** Tests use `fuse_test` (ALL on
+  `fuse_fixture_%`, SELECT on `fuse_dev`), never the app's account; its
+  credentials and a test-only `APP_SECRET` come from the root-only file
+  `/root/.config/fuse-test/test.env` (provisioning: `tests/mariadb_fixture.py`).
+  `.env` and `config.env` are unreadable in the sandbox. The fixture refuses
+  any statement naming `fuse_dev`/`fuse_live` that is not a plain read.
 - **No processes.** `tests/safety.py` makes every way to start a process
-  raise in test processes. The only exceptions are the two app workers
-  listed there (image decoder, PDF extractor): exact argv, never a shell.
+  (os, posix, subprocess, pty, asyncio) raise in test processes, and every
+  signal to a process the test did not start. The only exceptions are the
+  two app workers listed there (image decoder, PDF extractor): exact argv,
+  never a shell; and, in the xdist controller only, execnet's exact worker
+  bootstrap.
+- **Data in the run dir.** App files under `ROOT/data` are redirected to the
+  run's temp dir for the whole session (`tests/conftest.py`).
 - **Fakes record, never run.** Host transports in tests are recording fakes
   that return scripted output; fake file systems refuse any path outside
   their own sandbox directory, whatever the app code under test decided.
