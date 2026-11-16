@@ -33,6 +33,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The bottom row: the account row and the composer's controls share its
      height, with no rule or fill. */
   --dk-band-h: 36px;
+  /* Between the composer card and its controls row. */
+  --dk-band-gap: 3px;
   --chat-history: 13.5rem;
   /* The reading column takes most of the window and keeps growing on wide
      displays; the sidebar and inspector still clip it (min(…, 100% - gutter)). */
@@ -577,9 +579,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The runtime sizes the list to five rows while it may be hidden (0px); the card shows them all. */
   & .dk-insp .chat-todo-rows { max-height: 18rem !important; overflow-y: auto; }
 
-  /* ---- Composer: chips, a one-line card (+, the message, mic and send),
-     then the controls row in the bottom band (mode left; model, context
-     and stash right) ---- */
+  /* ---- Composer: a one-line card (stash above +, the message, mic and
+     send), then the controls row in the bottom band (mode left; model and
+     context right) ---- */
   /* The card's edges are the transcript text's: the log's gutter, and the
      log is centred left of the scrollbar's gutter. */
   & .chat-dock { padding: 4px var(--console-gutter) 0; background: none; }
@@ -588,7 +590,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      picker: the dock overlaps the scroller down to 12px above the card's
      bottom edge (inside its rounded corners), so text never shows behind the
      controls row, and a spacer at the scroller's end clears the card. */
-  & { --dk-card-a: 78%; --dk-under: max(0px, calc(var(--dock-h, 0px) - var(--dk-band-h) - 18px - var(--safe-bottom, 0px))); }
+  & { --dk-card-a: 78%; --dk-under: max(0px, calc(var(--dock-h, 0px) - var(--dk-band-h) - var(--dk-band-gap) - 12px - var(--safe-bottom, 0px))); }
   &:not(.is-empty) .chat-dock { margin-top: calc(-1 * var(--dk-under)); }
   &:not(.is-empty) .chat-thread::after { content: ""; flex: none; height: var(--dk-under); }
   & .chat-dock .dk-box {
@@ -616,7 +618,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     content: "";
     position: absolute;
     z-index: 0;
-    inset: 0 0 calc(var(--dk-band-h) + 6px);
+    inset: 0 0 calc(var(--dk-band-h) + var(--dk-band-gap));
     /* The old prompt glyph's margins would pull the card in under the buttons. */
     margin: 0;
     pointer-events: none;
@@ -635,7 +637,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* No row flexes: the shared attach list's 100% basis would squeeze the controls band out from under the card. */
   & .dk-box > * { flex: none; }
   & .dk-box .chat-attach-list:not([hidden]) { padding: 8px 8px 0; }
-  & .dk-row1 { display: block; min-width: 0; padding: 2px 0; }
+  & .dk-row1 { position: relative; display: block; min-width: 0; padding: 2px 0; }
+  /* Stash sits at the card's top-left, above +, while it shows (text in the
+     box, or stashed prompts); the card is then tall enough for both. */
+  & .dk-row1 [data-chat-stash] { position: absolute; z-index: 2; top: 6px; left: 6px; }
+  & .dk-row1 [data-chat-stash][hidden] { display: none; }
+  & .dk-box:has(.dk-row1 [data-chat-stash]:not([hidden])) .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 70px; }
   & .dk-compose { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; background: none; }
   /* The spell mirror shares every metric with the textarea and paints only its marks. */
   & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 36px; max-height: min(40dvh, 18rem); padding: 6px 72px 6px 40px; font: 14.5px/24px var(--sans); letter-spacing: 0; text-rendering: optimizeLegibility; }
@@ -643,9 +650,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-compose .chat-compose-mirror { color: transparent; }
   & .dk-compose textarea::placeholder { color: var(--dk-mute); opacity: 1; }
   body.is-keyboard & .dk-compose :is(textarea, .chat-compose-mirror) { max-height: min(18rem, calc(var(--vv-height, 100dvh) * 0.24)); }
-  & .dk-row2 { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--dk-band-h); min-width: 0; margin-top: 6px; }
+  & .dk-row2 { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--dk-band-h); min-width: 0; margin-top: var(--dk-band-gap); }
   /* + leads the card, mic and send end it, level with its last line. */
-  & .dk-row2 :is([data-chat-attach], [data-chat-mic], [data-chat-send]) { position: absolute; bottom: calc(100% + 12px); }
+  & .dk-row2 :is([data-chat-attach], [data-chat-mic], [data-chat-send]) { position: absolute; bottom: calc(100% + var(--dk-band-gap) + 6px); }
   & .dk-row2 [data-chat-attach] { left: 6px; }
   & .dk-row2 [data-chat-send] { right: 6px; }
   & .dk-row2 [data-chat-mic] { right: 38px; }
@@ -749,9 +756,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     /* A taller card, so the larger touch buttons keep an even gap inside it:
        6px around + and the mic, 8px around send. */
     & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 44px; padding: 10px 88px 10px 46px; font-size: 16px; }
-    & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + 12px); }
+    & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + var(--dk-band-gap) + 6px); }
+    & .dk-box:has(.dk-row1 [data-chat-stash]:not([hidden])) .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 86px; }
     & .dk-row2 [data-chat-attach] { left: 6px; }
-    & .dk-row2 [data-chat-send] { right: 8px; bottom: calc(100% + 14px); }
+    & .dk-row2 [data-chat-send] { right: 8px; bottom: calc(100% + var(--dk-band-gap) + 8px); }
     & .dk-row2 [data-chat-mic] { right: 44px; }
     & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
     & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
