@@ -241,6 +241,7 @@ export function createDesktopTheme(runtime) {
     get ccTokens() { return theme.ccTokens; },
     get cleanToolOutput() { return theme.cleanToolOutput; },
     get consoleCallHtml() { return theme.consoleCallHtml; },
+    get shellDescription() { return theme.shellDescription; },
     get consoleDetailHtml() { return theme.consoleDetailHtml; },
     get consoleDiffHtml() { return theme.consoleDiffHtml; },
     get consoleFold() { return theme.consoleFold; },

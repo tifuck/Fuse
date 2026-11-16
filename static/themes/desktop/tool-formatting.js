@@ -302,6 +302,8 @@ function consoleCallHtml(trace, presentation, full = false) {
       // per call, like every other row.
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
     }
+    const described = shellDescription(trace, presentation, full);
+    if (described) return `<span class="chat-console-call">${deps.escapeHtml(described)}</span>${hostHtml}${clock}`;
     let inner = "";
     // A wrapped path or command breaks after a slash, never inside a name.
     const path = ["read_file", "write_file", "search_replace", "list_dir", "run_terminal_command", "get_command_output"].includes(name);
@@ -352,6 +354,14 @@ function consoleCallHtml(trace, presentation, full = false) {
       ? `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${path ? deps.escapeHtml(inner).replace(/\//g, "/<wbr>") : deps.escapeHtml(inner)}</span><span class="chat-console-paren">)</span></span>`
       : `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>`;
     return call + hostHtml + clock;
+  }
+
+// A described shell call's line is its description; the command shows when
+// the row opens. A running one already says it in its live form.
+function shellDescription(trace, presentation, full) {
+    if (full || trace?.name !== "run_terminal_command" || deps.ccSedEdit(displayCommand(trace))) return "";
+    if (presentation?.running && !deps.toolBackground(trace)) return "";
+    return deps.ccFlat(trace.description);
   }
 
 // A row reads as a sentence: settled calls in the past ("Read config.py"),
@@ -574,5 +584,5 @@ function searchQueries(trace) {
     return [];
   }
 
-  return { isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, scratchAction, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
+  return { isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, shellDescription, scratchAction, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
 }

@@ -81,7 +81,7 @@ function ccAgentLastCall(recent) {
 
 function ccCallLine(item) {
     const name = ccCallName(item);
-    const arg = item.name === "run_terminal_command" ? deps.ccClip(deps.ccFlat(item.command), 80) : ccCallSummary(item);
+    const arg = item.name === "run_terminal_command" ? deps.ccClip(deps.ccFlat(item.description || item.command), 80) : ccCallSummary(item);
     return arg ? `${name}(${arg})` : name;
   }
 

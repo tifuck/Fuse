@@ -173,15 +173,16 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
     const parts = [clock, tokenText, speed && speed.text].filter(Boolean);
     const meta = parts.length ? `(${parts.join(" · ")})` : "";
-    // A running command is the line itself: what it is for, then the command
-    // in parentheses ("Running the unit tests (npm test)"). It joins the
-    // summary line above once it ends.
+    // A running command is the line itself: what it is for ("Running the unit
+    // tests"), else the command in parentheses ("Running command (npm test)").
+    // Opening the line shows the command. It joins the summary line above once
+    // it ends.
     const command = !thinking && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
     const arg = command ? deps.ccFlat(deps.displayCommand(command)) : "";
     if (arg) {
       const description = deps.ccFlat(command.description);
       const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1), meta, arg };
+      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1), meta, arg: description ? "" : arg, command };
     }
     // One row: the status is the line's word (the turn's spinner verb while
     // the model only writes), so it costs no width; the counts follow it.

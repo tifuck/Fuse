@@ -196,8 +196,11 @@ window.ConsoleAudit = (() => {
     if (opts.live && dockShown) {
       const label = (document.querySelector("[data-live-dock-label]")?.textContent || "").trim();
       // A status word ends in "…"; Desktop's running command line is its
-      // description and then the command in parentheses instead.
-      const names = Boolean(document.querySelector("[data-live-dock-label] .dk-live-arg:not([hidden])"));
+      // description (else the command in parentheses) instead, and opens.
+      const names = Boolean(document.querySelector("[data-live-dock].is-detailable"));
+      if (dock.querySelector(".dk-live-arg:not([hidden])") && dock.querySelector(".chat-status-verb")?.textContent !== "Running command") {
+        add("dock-label", null, `a described command also shows the command: ${JSON.stringify(label)}`);
+      }
       if (!/^\S.*…/.test(label) && !names) add("dock-label", null, JSON.stringify(label));
       if (/\bundefined\b|\bNaN\b/.test(label)) add("dock-label", null, JSON.stringify(label));
     }

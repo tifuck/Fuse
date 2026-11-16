@@ -32,7 +32,7 @@ function setLiveLabelText(el, text, meta, arg = "") {
       tail.className = "chat-status-meta";
       el.replaceChildren(verb, tail);
     }
-    // The running command after its description, in parentheses; one line.
+    // An undescribed running command, in parentheses; one line.
     let cmd = el.querySelector(":scope > .dk-live-arg");
     if (!cmd) {
       cmd = document.createElement("span");
@@ -367,7 +367,7 @@ function syncLiveDock() {
       {
         const line = deps.formatConsoleLiveStatus(msg, groups);
         setLiveLabelText(deps.liveDockLabel, line.verb, line.meta, line.arg);
-        syncLiveDetail(deps.liveDock, line.arg ? status.current : null);
+        syncLiveDetail(deps.liveDock, line.command || null);
       }
       if ((deps.liveDockSpin)) setConsoleSpin(deps.liveDockSpin);
       else if (deps.liveDockSpin) deps.applySpinEl(deps.liveDockSpin, deps.activitySpinSet(msg), "dock", true, msg._spinOrigin);

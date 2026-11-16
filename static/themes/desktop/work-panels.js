@@ -110,8 +110,8 @@ function jobRowHtml(job, nowMs) {
     const live = ["running", "queued", "cancelling"].includes(state);
     const label = cancelling ? "cancelling" : live ? "" : state.replace(/_/g, " ");
     const monitor = job.kind === "monitor" || job.name === "monitor";
-    // As in a terminal agent's task list: a monitor by what it watches for, a shell by its command.
-    const title = monitor && job.description ? job.description : deps.displayCommand(job) || job.id;
+    // A job by its description, else its command; the tooltip keeps the command.
+    const title = job.description || deps.displayCommand(job) || job.id;
     const events = Number(job.event_count);
     const meta = [
       job.host || "",
@@ -122,7 +122,7 @@ function jobRowHtml(job, nowMs) {
     const id = deps.escapeHtml(job.command_id || job.id);
     return (
       `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem" data-job-row="${id}">` +
-      `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(deps.toolText(title))}${meta ? " · " + deps.escapeHtml(meta) : ""}">` +
+      `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(deps.toolText(deps.displayCommand(job) || title))}${meta ? " · " + deps.escapeHtml(meta) : ""}">` +
       '<span class="chat-agents-dot" aria-hidden="true"></span>' +
       `<span class="chat-jobs-cmd">${deps.escapeHtml(deps.toolText(title))}</span>` +
       (meta ? `<span class="chat-jobs-meta">${deps.escapeHtml(meta)}</span>` : "") +
