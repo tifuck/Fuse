@@ -832,7 +832,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     -webkit-text-fill-color: transparent;
     animation: dk-shimmer 2.4s linear infinite;
   }
-  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 12px; color: var(--dk-mute); font: 12px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Counts as icon stats: speed, clock, tokens, 14px apart. While the model
+     generates, the speed slot holds its width (its text right-aligned, so the
+     gap to the clock never changes) and is blank until tokens stream. */
+  & .chat-live-dock .chat-status-meta { display: inline-flex; align-items: center; gap: 14px; margin-left: auto; padding-left: 14px; color: var(--dk-mute); font: 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock :is(.chat-status-meta, .dk-stat)[hidden] { display: none; }
+  & .chat-live-dock .dk-stat { display: inline-flex; align-items: center; gap: 4px; }
+  & .chat-live-dock .dk-stat svg { flex: none; width: 11px; height: 11px; }
+  & .chat-live-dock .dk-stat.is-speed { justify-content: flex-end; min-width: calc(15px + 6ch); }
+  & .chat-live-dock .dk-stat.is-speed.is-off { visibility: hidden; }
   & .chat-live-dock .chat-dock-dots { display: none; }
   /* "Running the unit tests (npm test)": one line at every width. The
      command gives way first, then the description; the parentheses stay. */

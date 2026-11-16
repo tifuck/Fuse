@@ -194,10 +194,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
   flex: 0 0 auto;
 }
 
-@media (max-width: 600px) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-unit { display: none; }
-}
-
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md.is-writing::after {
   content: none;
 }

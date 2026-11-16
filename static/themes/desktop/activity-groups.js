@@ -10,10 +10,8 @@ function ccTurnLineHtml(msg, latest) {
     // the action row's "Just now" (full time in its title), not repeated here.
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
     const still = latest ? deps.ccStillRunningText() : "";
-    const usage = msg.usage || {};
-    const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
+    // tok/s is live only (the status line while the model streams).
     return `${turnActionsHtml(msg, latest)}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
       `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
   }
 

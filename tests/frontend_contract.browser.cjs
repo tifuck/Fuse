@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const origin = process.env.FUSE_BROWSER_ORIGIN || 'http://127.0.0.1:8099';
+const DESKTOP = process.env.FUSE_CHAT_VIEW === 'desktop';
 assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
@@ -89,6 +90,23 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     const more = await page.locator('[data-live-dock-label]').textContent();
     const second = Number((more.match(/↓\s+([\d.]+k?)/) || [])[1].replace('k', 'e3'));
     assert.ok(second > first, 'down-arrow count ticks as tokens stream in');
+    // Desktop's counts are icon stats: tok/s, clock, tokens. tok/s is the call
+    // still streaming, at its own rate, and only while it streams; its slot
+    // keeps its width, so it coming and going never moves the clock or tokens.
+    const stats = () => page.evaluate(() => {
+      const meta = document.querySelector('[data-live-dock-label] .chat-status-meta');
+      const x = (s) => meta.querySelector(s).getBoundingClientRect().left;
+      return { text: meta.textContent, off: meta.querySelector('.is-speed').classList.contains('is-off'), clock: x('.is-clock'), tokens: x('.is-tokens') };
+    });
+    if (DESKTOP) {
+      await page.evaluate(() => fuseToolFixture.stream(0, { streamGen: 850, streamMs: 8800 }));
+      const live = await stats();
+      assert.ok(!live.off && /^~97\/s\d+s↓ /.test(live.text), `a streaming call shows its own rate, marked ~ until calibrated: ${JSON.stringify(live)}`);
+      await page.evaluate(() => fuseToolFixture.stream(0, { streamGen: 0, streamMs: 0 }));
+      const idle = await stats();
+      assert.ok(idle.off && !/\/s/.test(idle.text), `no call streaming, no tok/s: ${JSON.stringify(idle)}`);
+      assert.deepEqual([idle.clock, idle.tokens], [live.clock, live.tokens], 'tok/s going away moves nothing');
+    }
     await page.evaluate(() => {
       fuseToolFixture.stream(0, { usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200 },
         tools: [{ id: 'bash', name: 'run_terminal_command', status: 'running', command: 'ls' }], segments: [{ type: 'content', text: 'abcd'.repeat(80) }, { type: 'tool', id: 'bash' }] });
@@ -96,22 +114,29 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
     });
     const up = await page.locator('[data-live-dock-label]').textContent();
     assert.match(up, /↑/, 'tool execution switches the dock to an up arrow');
-    assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, the status ahead of them: ${up}`);
+    if (DESKTOP) assert.match(up, /\d+s↑ [\d.]+k?$/, `clock, then this round's tokens: ${up}`);
+    else assert.match(up, /\(\d+s · ↑ [\d.]+k? tokens · 52 tok\/s\)$/, `tokens, then tok/s, the status ahead of them: ${up}`);
     assert.doesNotMatch(up, /12k/, 'up arrow is this round of tool/prompt tokens, not the full context window');
     assert.doesNotMatch(up, /\b0 tokens\b/);
-    // The call still streaming joins the measured average live: (2150 + 850)
-    // tokens over (41.2 + 8.8) s. Marked ~ until a measured call has
-    // calibrated tokens per character; its share drops once it is measured.
-    const dockAfter = (patch) => page.evaluate((p) => {
-      fuseToolFixture.stream(0, p);
-      return document.querySelector('[data-live-dock-label]').textContent;
-    }, patch);
-    let rate = await dockAfter({ streamGen: 850, streamMs: 8800 });
-    assert.match(rate, /· ~60 tok\/s\)$/, `an uncalibrated live share is an estimate: ${rate}`);
-    rate = await dockAfter({ usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200, gen_cal: 2150, gen_chars: 8600 } });
-    assert.match(rate, /· 60 tok\/s\)$/, `a calibrated live share is not: ${rate}`);
-    rate = await dockAfter({ streamGen: 0, streamMs: 0 });
-    assert.match(rate, /· 52 tok\/s\)$/, `with no call streaming the measured average stands: ${rate}`);
+    if (DESKTOP) {
+      await page.evaluate(() => fuseToolFixture.stream(0, { streamGen: 850, streamMs: 8800 }));
+      const tools = await stats();
+      assert.ok(tools.off && !/\/s/.test(tools.text), `a running tool shows no tok/s: ${JSON.stringify(tools)}`);
+    } else {
+      // The call still streaming joins the measured average live: (2150 + 850)
+      // tokens over (41.2 + 8.8) s. Marked ~ until a measured call has
+      // calibrated tokens per character; its share drops once it is measured.
+      const dockAfter = (patch) => page.evaluate((p) => {
+        fuseToolFixture.stream(0, p);
+        return document.querySelector('[data-live-dock-label]').textContent;
+      }, patch);
+      let rate = await dockAfter({ streamGen: 850, streamMs: 8800 });
+      assert.match(rate, /· ~60 tok\/s\)$/, `an uncalibrated live share is an estimate: ${rate}`);
+      rate = await dockAfter({ usage: { completion_tokens: 2210, gen_out: 2150, gen_ms: 41200, gen_cal: 2150, gen_chars: 8600 } });
+      assert.match(rate, /· 60 tok\/s\)$/, `a calibrated live share is not: ${rate}`);
+      rate = await dockAfter({ streamGen: 0, streamMs: 0 });
+      assert.match(rate, /· 52 tok\/s\)$/, `with no call streaming the measured average stands: ${rate}`);
+    }
     // A phone: status, clock, tokens and tok/s on one row. The status gives
     // way first; the counts are never clipped, only the word "tokens" goes.
     for (const width of [390, 320]) {
@@ -132,10 +157,10 @@ assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       });
       assert.ok(row.oneRow, `@${width} the dock is one row: ${JSON.stringify(row)}`);
       assert.ok(row.metaWhole, `@${width} the counts are never clipped: ${JSON.stringify(row)}`);
-      assert.equal(row.unit, 'none', `@${width} a narrow dock drops the word "tokens": ${JSON.stringify(row)}`);
+      if (!DESKTOP) assert.equal(row.unit, 'none', `@${width} a narrow dock drops the word "tokens": ${JSON.stringify(row)}`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
-    assert.notEqual(await page.locator('[data-live-dock-label] .chat-status-unit').evaluate((el) => getComputedStyle(el).display), 'none',
+    if (!DESKTOP) assert.notEqual(await page.locator('[data-live-dock-label] .chat-status-unit').evaluate((el) => getComputedStyle(el).display), 'none',
       'a wide dock keeps the word "tokens"');
     await page.evaluate(() => {
       fuseToolFixture.progress(0, { events: [{ fuse: { event: 'activity', phase: 'model', run_id: 'fixture-run' } }] });

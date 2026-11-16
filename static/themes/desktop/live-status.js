@@ -149,30 +149,28 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const seconds = Math.max(0, Math.floor(elapsed || 0));
     const round = ensureConsoleRound(msg, status, meter);
     const flow = consoleFlow(status, msg);
-    let tokenText = "";
+    let tokens = "";
     if (flow === "down") {
       const n = consoleDownTokens(msg, round);
-      if (n) tokenText = `↓ ${formatConsoleCount(n)} tokens`;
+      if (n) tokens = `↓ ${formatConsoleCount(n)}`;
     } else if (flow === "up") {
       const n = consoleUpTokens(msg, round, meter);
-      if (n) tokenText = `↑ ${formatConsoleCount(n)} tokens`;
+      if (n) tokens = `↑ ${formatConsoleCount(n)}`;
     }
-    // The turn's average, kept moving: its measured calls plus the call still
-    // streaming, which the server counts at the turn's own tokens per
-    // character (chars/4, marked ~, until a call has calibrated it).
-    const usage = (msg && msg.usage) || {};
-    const liveMs = Math.max(0, Number(msg && msg.streamMs) || 0);
-    const live = liveMs ? Math.max(0, Number(msg.streamGen) || 0) : 0;
-    const speed = deps.ccGenSpeed((Number(usage.gen_out) || 0) + live, (Number(usage.gen_ms) || 0) + liveMs,
-      usage.gen_est > 0 || (liveMs > 0 && !(Number(usage.gen_chars) > 0)));
+    // tok/s only while the model streams: the call still generating, at its
+    // own rate (chars/4, marked ~, until a call has calibrated it). Waiting for
+    // a first token, tools and agents show none.
+    const streaming = flow === "down" && !["queued", "waiting", "starting"].includes(status.phase) && Number(msg && msg.streamMs) > 0;
+    const speed = streaming ? deps.ccGenSpeed(msg.streamGen, msg.streamMs, !(Number(msg.usage && msg.usage.gen_chars) > 0)) : null;
     // "thought for Ns" shows only as the answer starts (ccThinkingState).
     const thinking = ccThinkingState(msg, status.phase);
     const state = thinking || ccSpinnerState(status);
     // a terminal agent shows the clock once there is something else to show, or
     // after 16s.
-    const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
-    const parts = [clock, tokenText, speed && speed.text].filter(Boolean);
-    const meta = parts.length ? `(${parts.join(" · ")})` : "";
+    const clock = tokens || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
+    // While the model generates, the speed slot is held even when blank;
+    // while tools or agents run it cannot show and gives its room back.
+    const meta = clock || tokens ? { clock, tokens, generating: flow === "down", speed: speed && { text: speed.text.replace(" tok/s", "/s"), title: speed.title } } : null;
     // A running command is the line itself: what it is for ("Running the unit
     // tests"), else the command in parentheses ("Running command (npm test)").
     // Opening the line shows the command. It joins the summary line above once

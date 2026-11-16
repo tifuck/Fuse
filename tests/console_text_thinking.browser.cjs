@@ -34,6 +34,10 @@ const close = (text, done = '', ago = '') => COMBINED || DESKTOP ? [ago, text].f
 // The live dock's still frame under reduced motion: Desktop's spinner is the
 // braille set (live-dock.js), the others the ✻ star set.
 const SPIN_STILL = DESKTOP ? '⠿' : '✻';
+// Desktop's counts are icon stats with no parentheses: tok/s (only while the
+// model streams), the clock, then the arrow and count ("12s↓ 1.2k").
+const META_CLOCK = DESKTOP ? /^(?:~?[\d.]+\/s)?(\d+)s/ : /\((\d+)s/;
+const META_WRITING = DESKTOP ? /^(?:~?[\d.]+\/s)?\d+s↓ [\d.]+[kM]?$/ : /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/;
 let agoAt = '';
 // ccTurnVerb: the closing line's word is fixed per message id (chat.js).
 const CC_TURN_VERBS = ['Baked', 'Brewed', 'Churned', 'Cogitated', 'Cooked', 'Crunched', 'Sautéed', 'Worked'];
@@ -130,7 +134,7 @@ function snap() {
     check(s.labels.join('|') === 'Thinking for 1s…', `a streaming thought is its own ticking line: ${s.labels}`);
     await page.waitForFunction(() => window.__tt.snap().clocks.some((c) => /^think:[2-9]s$/.test(c)), null, { timeout: 4500 });
     s = await snapNow();
-    check(Number((s.dock.meta.match(/\((\d+)s/) || [])[1]) >= 10, `the dock's elapsed clock ticks: ${s.dock.meta}`);
+    check(Number((s.dock.meta.match(META_CLOCK) || [])[1]) >= 10, `the dock's elapsed clock ticks: ${s.dock.meta}`);
 
     // calling: the thought lands with the server's duration, clock gone.
     await drive({ segments: [think('Plan the retry audit.', 6505)] }, { phase: 'calling' });
@@ -161,7 +165,7 @@ function snap() {
     check(s.labels.join('|') === 'Thought for 6s, read 1 file', `the ended call folds into the thought's line: ${s.labels}`);
     check(s.prose.join('||') === 'Read it.', `prose between tool rows lands in its own block: ${s.prose}`);
     check(s.dock.phase === 'writing' && s.dock.meta.includes('↓ '), `writing phase shows down tokens: ${s.dock.meta}`);
-    await page.waitForFunction(() => /^\(\d+s · ↓ [\d.]+[kM]? tokens\)$/.test(window.__tt.snap().dock.meta), null, { timeout: 5000 });
+    await page.waitForFunction((re) => new RegExp(re).test(window.__tt.snap().dock.meta), META_WRITING.source, { timeout: 5000 });
     // Only writing, no status: once the "Thought for" flash ends, the line's
     // word is the turn's spinner verb.
     await page.waitForFunction(() => !/^Thought for/.test(window.__tt.snap().dock.verb), null, { timeout: 4000 });
