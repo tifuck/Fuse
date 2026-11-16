@@ -9,11 +9,14 @@
 #
 # Extra pytest arguments go after --. JOBS=N sets parallel workers (0 = off).
 #
-# Everything runs inside the systemd sandbox of scripts/test_sandbox.sh
-# (read-only system, writable only this tree and a per-run temp dir); the
-# tests themselves refuse to run anywhere else (tests/safety.py).
+# Everything runs inside the systemd sandbox of scripts/test_sandbox.sh (as
+# the unprivileged user fuse-test, everything read-only but the unit's own
+# run dir); the tests themselves refuse to run anywhere else
+# (tests/safety.py). Options that would skip the test guards are refused.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Writable paths are the sandbox's business, never the caller's.
+unset FUSE_TEST_RW FUSE_TEST_LOG_DIR LOG_DIR PYTEST_PLUGINS
 PYTHON=${PYTHON:-/root/fuse-dev/venv/bin/python}
 export PYTHON FUSE_CHAT_TEST_MODE=1
 
@@ -22,6 +25,27 @@ while [ $# -gt 0 ]; do
   if [ "$1" = "--" ]; then shift; extra=("$@"); break; fi
   args+=("$1"); shift
 done
+
+refuse() { echo "scripts/test.sh: $1 is not allowed (it would get around the test guards; tests/README.md)" >&2; exit 2; }
+
+check_pytest_args() {  # what a caller may not hand to pytest
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --noconftest|--confcutdir|--confcutdir=*|--tx|--tx=*|--rsyncdir|--rsyncdir=*|--rootdir|--rootdir=*\
+      |--config-file|--config-file=*|--inifile|--inifile=*|--import-mode|--import-mode=*|--pyargs\
+      |--override-ini|--override-ini=*|--basetemp|--basetemp=*|--plugins|--plugins=*)
+        refuse "$arg" ;;
+      --*) ;;
+      -*)  # short options, alone or clustered: -p (plugins), -c (config), -o (ini overrides)
+        flags=${arg%%=*}
+        if [[ "${flags:1}" == *[pco]* ]]; then refuse "$arg"; fi ;;
+      *)
+        if [[ "$arg" == /* || "$arg" == *..* ]]; then refuse "path $arg"; fi ;;
+    esac
+  done
+  return 0
+}
 
 pytest() { "$PYTHON" -m pytest -q -p no:cacheprovider -o timeout_func_only=true -W "ignore:The 'reconnect' argument:DeprecationWarning" "$@"; }
 parallel() { local jobs=${JOBS:-$1}; [ "$jobs" != 0 ] && echo "-n $jobs" || true; }
@@ -41,6 +65,20 @@ for path in sys.stdin.read().split():
 print(" ".join(found))'
 }
 
+check_pytest_args "${extra[@]}"
+read -ra addopts <<< "${PYTEST_ADDOPTS:-}"
+check_pytest_args "${addopts[@]}"
+for arg in "${args[@]:1}"; do
+  case "${args[0]:-}" in
+    legacy) [[ "$arg" == tests/legacy/* && "$arg" != *..* ]] || refuse "legacy target $arg" ;;
+    changed) [[ "$arg" =~ ^[A-Za-z0-9_./-]+$ ]] || refuse "ref $arg" ;;
+  esac
+done
+case "${args[0]:-}" in
+  legacy|changed|"") ;;
+  *) for area in "${args[@]}"; do [[ "$area" =~ ^[a-z0-9_]+$ ]] || refuse "area $area"; done ;;
+esac
+
 if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
   # Outside the sandbox: only pick the areas (git reads the repository's
   # .git, which the sandbox keeps read-only), then rerun this script inside.
@@ -52,6 +90,8 @@ if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
     # shellcheck disable=SC2086
     given=($picked -- "${extra[@]}")
   fi
+  # The tree is read-only inside: create what the tests expect to exist.
+  mkdir -p -- data/desktop-releases
   exec scripts/test_sandbox.sh scripts/test.sh "${given[@]}"
 fi
 

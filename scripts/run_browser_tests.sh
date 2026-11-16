@@ -8,23 +8,29 @@
 #
 # Needs the Node "playwright" package (npm install playwright, or on
 # NODE_PATH) and its Chromium (npx playwright install chromium).
-# Logs go to $LOG_DIR (default /tmp/fuse-browser-tests).
+# Logs go to a fresh /tmp/fuse-browser-tests/run.XXXXXXXX (printed first).
 # Runs only inside the test sandbox (scripts/test_sandbox.sh): started
-# outside it, it reruns itself there; the fixture server refuses to start
-# anywhere else and may not start processes (tests/safety.py).
+# outside it, it creates that log directory (the only writable path the
+# sandbox grants it) and reruns itself there; the fixture server refuses to
+# start anywhere else and may not start processes (tests/safety.py).
 # FUSE_CHAT_VIEW=combined runs the suites under the Combined chat theme (the
 # fixture's login sets the fuse_chat_view cookie Appearance › Layout writes);
 # unset, they run under Console, the default.
 set -u
 cd "$(dirname "$0")/.."
-LOG_DIR=${LOG_DIR:-/tmp/fuse-browser-tests}
 PORT=${FUSE_BROWSER_PORT:-8099}
-PYTHON=${PYTHON:-/root/fuse-dev/venv/bin/python}
 if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
-  mkdir -p "$LOG_DIR"
-  export LOG_DIR PYTHON FUSE_TEST_RW="$LOG_DIR"
+  unset FUSE_TEST_RW LOG_DIR
+  base=/tmp/fuse-browser-tests
+  if [ -L "$base" ] || { [ -e "$base" ] && [ ! -d "$base" ]; }; then echo "$base must be a directory" >&2; exit 2; fi
+  mkdir -p -m 0755 "$base"
+  FUSE_TEST_LOG_DIR=$(mktemp -d "$base/run.XXXXXXXX")
+  chown fuse-test:fuse-test "$FUSE_TEST_LOG_DIR"
+  echo "logs: $FUSE_TEST_LOG_DIR"
+  export FUSE_TEST_LOG_DIR
   exec scripts/test_sandbox.sh scripts/run_browser_tests.sh "$@"
 fi
+LOG_DIR=${FUSE_TEST_LOG_DIR:?the sandbox hands the runner its log directory}
 export FUSE_BROWSER_ORIGIN="http://127.0.0.1:$PORT" FUSE_BROWSER_PORT="$PORT"
 files=("$@")
 [ ${#files[@]} -eq 0 ] && files=(tests/legacy/*.browser.cjs)
