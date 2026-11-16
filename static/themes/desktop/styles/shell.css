@@ -251,8 +251,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Unread: a badge on the lead icon's top-right corner. */
   & .dk-open { position: relative; }
   & .dk-unread { position: absolute; top: calc(50% - 9px); left: 18px; display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-link); }
-  /* Running (root turn, subagent or background command): the same badge, pulsing. */
-  & .dk-unread.is-live { animation: dk-pulse 1.2s ease-in-out infinite; }
+  /* The running spinner (chaos.js); a row's tints it with its project colour. */
+  & .dk-chaos { display: block; flex: none; width: 14px; height: 14px; color: var(--dk-link); }
   & .dk-live { display: none; }
   & .dk-more {
     position: absolute;
@@ -806,7 +806,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.is-empty .dk-hero { position: absolute; inset: calc(var(--chat-bar-h) + 6vh) 0 auto; z-index: 1; display: grid; place-items: center; pointer-events: none; }
   & .dk-mark { display: block; width: 44px; height: 44px; background: var(--dk-dim); -webkit-mask: url("../../../icon.svg") center / contain no-repeat; mask: url("../../../icon.svg") center / contain no-repeat; opacity: 0.6; }
 
-  /* ---- Live status: no spinner; only the status word shimmers. The clock
+  /* ---- Live status: the Chaos spinner leads, then the status word
+     shimmers. The clock
      and counts are plain grey at the far end in fixed-width digits, so a
      tick never moves the word and moves nothing while the digit count
      holds. ---- */
@@ -814,7 +815,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* It appears in place, no fade or rise: the send placeholder's line stood
      exactly there a frame before. */
   & .chat-live-dock:not([hidden]) { opacity: 1; transform: none; transition: none; }
-  & .chat-live-dock .chat-activity-spin { display: none; }
+  & :is(.chat-live-dock, .chat-agent-live-dock) .chat-activity-spin { display: grid; flex: 0 0 14px; width: 14px; height: 22px; margin-right: 8px; place-items: center; color: var(--dk-link); }
+  & :is(.chat-live-dock, .chat-agent-live-dock) .chat-activity-spin[hidden] { display: none; }
   /* The send placeholder holds the place the turn and its status line will
      take: the log gives up its bottom padding as it does for the status
      line, and "Sending…" sits in the status word's place and type. */
@@ -1192,5 +1194,5 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .dk-st, .chat-agents-dot),
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-unread.is-live, .chat-live-dock .chat-activity-spin, .dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-live-dock .chat-activity-spin, .dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }

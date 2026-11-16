@@ -1,5 +1,7 @@
+import { chaosHtml } from './chaos.js';
+
 // Sidebar presentation: one 28px row per session with a status icon (a
-// dotted circle, </> for a code session; a pulsing badge while it runs), the
+// dotted circle, </> for a code session; the Chaos spinner while it runs), the
 // timeline under Pinned and Recents, projects as coloured squares.
 // The runtime sorts, filters, pins and groups; historyListHtml draws its
 // blocks. Rows keep the runtime's hooks: data-history-item, data-thread /
@@ -17,9 +19,8 @@ export function create(deps) {
       `<span class="chat-console-spin">${deps.consoleSpinGlyph(true)}</span></span>`;
   }
 
-  // A live row wears the unread badge, pulsing (styles/shell.css).
   function whenHtml(row) {
-    const live = row.running ? runSpinHtml(row.spin) + '<i class="dk-unread is-live" aria-hidden="true"></i>' : "";
+    const live = row.running ? runSpinHtml(row.spin) : "";
     const age = row.age;
     if (!age) return live;
     const title = age.title ? ` title="${esc(age.title)}"` : "";
@@ -40,7 +41,8 @@ export function create(deps) {
 
   function threadRowHtml(item, row) {
     const title = esc(row.title);
-    const lead = !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : codeIcon(item.project_color);
+    // A running session's icon gives way to the Chaos spinner (chaos.js).
+    const lead = row.running ? chaosHtml(row.spin, item.project_color) : !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : codeIcon(item.project_color);
     const where = row.meta ? `<span class="dk-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     const chip = row.chip ? `<span class="dk-chip">${esc(row.chip)}</span>` : "";
     const snip = item.snippet ? `<span class="dk-snip">${esc(item.snippet)}</span>` : "";
@@ -69,7 +71,7 @@ export function create(deps) {
     return rowHtml({
       cls: " is-project" + (row.on ? " is-on" : "") + (row.running ? " is-running" : ""),
       attrs: ` data-project="${item.host_id}:${item.id}"` + (item.thread_id ? ` data-thread="${esc(String(item.thread_id))}"` : "") + (row.running ? ' aria-busy="true"' : ""),
-      title: tip(item.name || "Project", row, item), label: name, lead: item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
+      title: tip(item.name || "Project", row, item), label: name, lead: row.running ? chaosHtml(row.spin, item.color) : item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
       menu: `Actions for project ${name}`, on: row.on,
     });
   }

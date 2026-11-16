@@ -1,4 +1,5 @@
 // live-dock presentation. Dependencies are live getters supplied by index.js.
+import { mountChaos } from './chaos.js';
 
 // The dock's clock and token count tick several times a second, so it is not
 // a live region. Screen readers hear the phase when it changes and the end.
@@ -429,6 +430,11 @@ function stopConsoleSpin() {
 
 function setConsoleSpin(el) {
     if (!el) return;
+    // The status lines lead with the Chaos spinner (chaos.js), not a glyph.
+    if (el === deps.liveDockSpin || el === deps.agentLiveSpin) {
+      mountChaos(el, el === deps.liveDockSpin ? "dock" : "agent-dock");
+      return;
+    }
     let mark = el.querySelector(":scope > .chat-console-spin");
     if (el.dataset.spinSet !== "console-glyph" || !mark) {
       el.dataset.spinSet = "console-glyph";
