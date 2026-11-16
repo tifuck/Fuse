@@ -299,15 +299,16 @@ export function createRender(ctx) {
       }
       const blocks = [];
       if (pinned.length) blocks.push(kicker("Pinned"), ...pinned.map((item) => threadBlock(item)), ...(rest.length ? [SEP] : []));
+      // Drafts sit directly under the pinned section, above running rows and every group.
+      blocks.push(...rest.filter((item) => item.draft !== undefined).map((item) => sessionBlock(item)));
+      const sessionRows = rest.filter((item) => item.draft === undefined);
       if (S.projectSort === "project") {
-        // Drafts sit directly under the pinned section, above every group.
-        blocks.push(...rest.filter((item) => item.draft !== undefined).map((item) => sessionBlock(item)));
-        projects.groupedProjectSessions(rest.filter((item) => item.draft === undefined)).forEach((group) => {
+        projects.groupedProjectSessions(sessionRows).forEach((group) => {
           blocks.push({ type: "group", name: group.name, host: group.host, color: group.icon.color, icon: projects.projectIcon(group.icon) });
           blocks.push(...group.items.map((item) => sessionBlock(item, true)));
         });
       } else {
-        blocks.push(...rest.map((item) => sessionBlock(item)));
+        blocks.push(...sessionRows.map((item) => threadBlock(item)));
       }
       paint(blocks);
       return;

@@ -1,5 +1,5 @@
 // Sidebar presentation: one 28px row per session with a status icon (a
-// dotted circle, a pulsing dot while it runs, </> for a code session), the
+// dotted circle, </> for a code session; a pulsing badge while it runs), the
 // timeline under Pinned and Recents, projects as coloured squares.
 // The runtime sorts, filters, pins and groups; historyListHtml draws its
 // blocks. Rows keep the runtime's hooks: data-history-item, data-thread /
@@ -17,13 +17,14 @@ export function create(deps) {
       `<span class="chat-console-spin">${deps.consoleSpinGlyph(true)}</span></span>`;
   }
 
+  // A live row wears the unread badge, pulsing (styles/shell.css).
   function whenHtml(row) {
-    if (row.running) return runSpinHtml(row.spin);
+    const live = row.running ? runSpinHtml(row.spin) + '<i class="dk-unread is-live" aria-hidden="true"></i>' : "";
     const age = row.age;
-    if (!age) return "";
+    if (!age) return live;
     const title = age.title ? ` title="${esc(age.title)}"` : "";
-    const dot = age.unread ? '<i class="dk-unread" role="img" aria-label="Unread"></i>' : "";
-    return `${dot}<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
+    const dot = age.unread && !row.running ? '<i class="dk-unread" role="img" aria-label="Unread"></i>' : "";
+    return `${live}${dot}<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
   }
 
   const square = (color) => `<i class="dk-pj" aria-hidden="true" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="--dk-pj:${color}"` : ""}></i>`;
@@ -52,12 +53,11 @@ export function create(deps) {
 
   function draftRowHtml(item, row) {
     const title = esc(item.title);
-    const lead = row.project ? square(item.project_color) : '<i class="dk-dot is-draft" aria-hidden="true"></i>';
     const where = row.meta ? `<span class="dk-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     return rowHtml({
       cls: " is-draft" + (row.on ? " is-on" : "") + (row.grouped ? " is-grouped" : ""),
       attrs: ` data-draft="${esc(item.draft)}"`,
-      title: `Draft: ${title}`, label: `<em>Draft</em> ${title}`, lead, extra: where,
+      title: `Draft: ${title}`, label: `<em>Draft</em> ${title}`, lead: "", extra: where,
       menu: `Actions for draft ${title}`, on: row.on,
     });
   }
