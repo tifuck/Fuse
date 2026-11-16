@@ -34,8 +34,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      height, with no rule or fill. */
   --dk-band-h: 36px;
   --chat-history: 13.5rem;
-  /* The reading column grows with wide windows, short of overlong lines. */
-  --chat-col: clamp(40rem, 45vw, 52rem);
+  /* The reading column takes most of the window and keeps growing on wide
+     displays; the sidebar and inspector still clip it (min(…, 100% - gutter)). */
+  --chat-col: clamp(40rem, 70vw, 90rem);
   --dk-side-w: clamp(12.5rem, var(--chat-history), 100% - 24rem);
   --dk-insp-w: 0px;
   --dk-insp-open: min(27rem, 40vw);
