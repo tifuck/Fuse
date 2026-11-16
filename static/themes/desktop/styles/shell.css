@@ -822,8 +822,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      the transcript. */
   & :is(.chat-live-dock .chat-status-shimmer, .dk-pending-status) { min-height: 24px; }
   @media (max-width: 480px), (pointer: coarse) { & :is(.chat-live-dock .chat-status-shimmer, .dk-pending-status) { min-height: 36px; } }
-  & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { flex: 1 1 auto; }
-  & :is(.chat-live-dock, .dk-pending-status) .chat-status-verb {
+  & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { position: relative; flex: 1 1 auto; }
+  & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .dk-pending-status .chat-status-verb) {
     color: transparent;
     font: inherit;
     background: linear-gradient(100deg, var(--dk-mute) 40%, var(--dk-text) 50%, var(--dk-mute) 60%) 0 0 / 250% 100%;
@@ -844,6 +844,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* "Running the unit tests (npm test)": one line at every width. The
      command gives way first, then the description; the parentheses stay. */
   & .chat-live-dock .chat-status-verb { flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* A status change (live-dock.js swapVerb): the old text leaves in a copy
+     over the status, clipped to its line; a cascade's letters rise plain. */
+  & .chat-live-dock .dk-verb-ghost { position: absolute; overflow: hidden; pointer-events: none; }
+  & .chat-live-dock .dk-verb-ghost > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .chat-live-dock .dk-verb-ch { display: inline-block; white-space: pre; -webkit-text-fill-color: var(--dk-mute); }
   & .chat-live-dock .dk-live-arg { display: inline-flex; flex: 0 100 auto; min-width: 4ch; margin-left: 0.5ch; overflow: hidden; color: var(--dk-mute); font: 0.9em var(--code); white-space: nowrap; }
   & .chat-live-dock .dk-live-arg[hidden] { display: none; }
   & .chat-live-dock .dk-live-arg::before { content: "("; }
@@ -877,7 +882,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   @media (prefers-reduced-motion: reduce) { & .chat-live-dock.is-detailable [data-dock-status]::after { transition: none; } }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
-  @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock, .dk-pending-status) .chat-status-verb { animation: none; background-position: 50% 0; } }
+  @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .dk-pending-status .chat-status-verb) { animation: none; background-position: 50% 0; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
