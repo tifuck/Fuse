@@ -123,6 +123,9 @@ change: each pool merges its live catalog into its seed list.
 
 ## Tests
 
+The tests live on the `dev` branch only: releases on `main` leave out
+`tests/`, the test scripts and the connector's tests.
+
 Install the test tooling: `pip install -r requirements-dev.txt` (pytest,
 pytest-xdist, pytest-timeout).
 
