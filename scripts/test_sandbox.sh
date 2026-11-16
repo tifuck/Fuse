@@ -62,15 +62,14 @@ binds_ro=("$tree:$run/tree" "$venv:$run/venv")
 binds_rw=()
 hidden=(-/run/dbus -/run/systemd/private -/etc/mysql/debian.cnf -/root/.ssh -/etc/ssh -/home)
 # .env and config.env: symlinks into /root vanish with the home tmpfs; a real
-# file in the tree is made inaccessible where the unit sees it, and so is any
-# other symlink target.
+# file in the tree is covered with /dev/null; any other target is made inaccessible.
 for name in .env config.env; do
   path="$tree/$name"
   if [ -L "$path" ]; then
     target=$(readlink -f "$path" || true)
     case "$target" in /root/*|"") ;; *) hidden+=("-$target") ;; esac
   elif [ -e "$path" ]; then
-    hidden+=("-$run/tree/$name")
+    binds_ro+=("/dev/null:$run/tree/$name")
   fi
 done
 
