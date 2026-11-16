@@ -161,7 +161,8 @@ const FAMILIES = [
       await page.waitForFunction(() => document.querySelector('.chat-picker-btn span').textContent === 'Offline fixture');
       still(await geometry(), rest, 'a longer model name');
       const slider = page.locator('[data-effort-slider]');
-      const widths = new Set();
+      // A theme may draw the effort at a fixed width (desktop's gauge); the model name still resizes it.
+      const widths = new Set([Math.round((rest.button.right - rest.button.left) * 10)]);
       // Ends on Medium, the model's default, so the blocks below start unchanged.
       for (const [index, label] of [[0, 'Off'], [1, 'Low'], [3, 'High'], [4, 'Extra high'], [2, 'Medium']]) {
         await slider.fill(String(index));
