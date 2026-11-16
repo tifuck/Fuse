@@ -1,0 +1,96 @@
+name: desktop
+
+# A new fuse-desktop/package.json version on main builds Windows, macOS and
+# Linux and publishes them as release vX.Y.Z, which installed apps update from.
+# A version that already has a release is skipped; bump it to ship again.
+on:
+  push:
+    branches: [main]
+    paths: [fuse-desktop/package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      released: ${{ steps.v.outputs.released }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p 'require("./fuse-desktop/package.json").version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" > /dev/null 2>&1; then released=true; else released=false; fi
+          echo "released=$released" >> "$GITHUB_OUTPUT"
+          echo "v$version released already: $released"
+
+  build:
+    needs: version
+    if: needs.version.outputs.released == 'false'
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: --linux }
+          - { os: windows-latest, target: --win }
+          - { os: macos-latest, target: --mac }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: fuse-desktop
+    env:
+      # The released app id lives in a repository variable, not in the repo.
+      FUSE_APP_ID: ${{ vars.FUSE_APP_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fuse-desktop/package-lock.json
+      - run: npm ci
+      - run: node scripts/dist.js ${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            fuse-desktop/dist/Fuse*.exe
+            fuse-desktop/dist/Fuse*.blockmap
+            fuse-desktop/dist/Fuse*.dmg
+            fuse-desktop/dist/Fuse*.zip
+            fuse-desktop/dist/Fuse*.AppImage
+            fuse-desktop/dist/Fuse*.deb
+            fuse-desktop/dist/latest*.yml
+
+  # Only once every platform built, so a release never lacks one.
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          ls -l dist
+          for f in latest.yml latest-mac.yml latest-linux.yml Fuse-Setup.exe Fuse.dmg Fuse-mac.zip Fuse.AppImage Fuse.deb; do
+            test -s "dist/$f" || { echo "missing $f"; exit 1; }
+          done
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "Fuse desktop $VERSION" \
+            --notes "Fuse desktop $VERSION for Windows, macOS and Linux. Installed apps update themselves; macOS installs from the Download page."

@@ -1,5 +1,5 @@
-# appId and publish.url are placeholders: scripts/dist.js sets this instance's
-# values from site.json (gitignored) or FUSE_APP_ID / FUSE_URL.
+# One build for every Fuse server: the app asks for its server (connect.html).
+# appId is a placeholder: scripts/dist.js sets FUSE_APP_ID or its default.
 appId: com.example.fuse
 productName: Fuse
 copyright: Fuse
@@ -18,27 +18,36 @@ files:
   - site-url.js
   - permissions.js
   - load-error.html
+  - connect.html
   - package.json
   - build/icon.png
   - titlebar/**
 
+# .github/workflows/desktop.yml publishes each version as release vX.Y.Z.
+# File names carry no version, so /download links releases/latest/download/.
 publish:
-  provider: generic
-  url: https://fuse.example.com/desktop/
+  provider: github
+  owner: tifuck
+  repo: Fuse
 
 nsis:
   oneClick: true
   perMachine: false
   deleteAppDataOnUninstall: false
-  artifactName: Fuse-Setup-${version}.${ext}
+  artifactName: Fuse-Setup.${ext}
 
 dmg:
   writeUpdateInfo: true
+  artifactName: Fuse.${ext}
 
 deb:
   afterInstall: build/after-install.sh
+  artifactName: Fuse.${ext}
   fpm:
     - --deb-use-file-permissions
+
+appImage:
+  artifactName: Fuse.${ext}
 
 linux:
   icon: build/icon.png
@@ -54,8 +63,9 @@ linux:
 mac:
   icon: build/icon.png
   identity: null
-  # One build for Apple Silicon and Intel, as /download says. electron-updater
-  # installs macOS updates from the zip, never the dmg.
+  # The zip is what electron-updater reads on macOS, never the dmg.
+  artifactName: Fuse-mac.${ext}
+  # One build for Apple Silicon and Intel, as /download says.
   target:
     - target: dmg
       arch: universal

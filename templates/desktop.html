@@ -8,8 +8,8 @@
   <section class="dl-hero">
     <svg class="dl-mark" viewBox="10 10 80 80" fill="currentColor" aria-hidden="true"><path d="M38.95 40.77A12 12 0 0 0 38.95 59.23A14 14 0 0 1 40.77 61.05A12 12 0 0 0 59.23 61.05A14 14 0 1 1 59.23 78.95A12 12 0 0 0 40.77 78.95A14 14 0 1 1 21.05 59.23A12 12 0 0 0 21.05 40.77A14 14 0 1 1 38.95 40.77Z"/><circle cx="70" cy="30" r="14"/></svg>
     <div class="dl-hero-copy">
-      <h2>Fuse Desktop{% if latest %} <span>v{{ latest }}</span>{% endif %}</h2>
-      <p>The same site in a dedicated window: no tabs, no address bar, its own place in the dock and taskbar.</p>
+      <h2>Fuse Desktop</h2>
+      <p>The same site in a dedicated window: no tabs, no address bar, its own place in the dock and taskbar. It asks for this server's address the first time it opens.</p>
     </div>
     <div class="dl-hero-action">
       {% if ready %}
@@ -32,7 +32,6 @@
         <p class="dl-row-note">{{ b.note if b.url else 'Not packaged yet.' }}</p>
         <div class="dl-row-get">
           {% if b.url %}
-          <span class="dl-row-ver">v{{ b.version }}</span>
           <a class="btn ghost sm" href="{{ b.url }}" download>Download</a>
           {% else %}
           <span class="dl-row-ver">—</span>

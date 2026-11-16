@@ -1,32 +1,63 @@
-const { app, BaseWindow, clipboard, dialog, Menu, WebContentsView, ipcMain, nativeImage, shell } = require("electron");
+const { app, BaseWindow, clipboard, dialog, Menu, WebContentsView, ipcMain, nativeImage, net, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawnSync } = require("child_process");
 const { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } = require("fs");
 const path = require("path");
+const { pathToFileURL } = require("url");
 const { MAX_INSTALL_TRIES, launchNotice } = require("./update-notice");
 const { contextMenuTemplate } = require("./context-menu");
-const { checkSiteUrl } = require("./site-url");
+const { checkSiteUrl, isFuseHealth, serverOrigin } = require("./site-url");
 const { allowPermission, EXTERNAL_PROTOCOLS } = require("./permissions");
 
-// The site this build wraps: FUSE_URL at runtime, else the fuseUrl that
-// scripts/dist.js stamps into package.json, else site.json for `npm start`.
-function siteUrl() {
-  if (process.env.FUSE_URL) return process.env.FUSE_URL;
-  const stamped = require("./package.json").fuseUrl;
-  if (stamped) return stamped;
+// One build serves every Fuse server. The one shown: FUSE_URL at runtime,
+// else the one picked on the connect page (<userData>/server.json), else a
+// URL stamped by scripts/dist.js or site.json (`npm start`). With none, or
+// one that is not a URL, the connect page asks.
+const SERVER_FILE = () => path.join(app.getPath("userData"), "server.json");
+const CONNECT_PAGE = path.join(__dirname, "connect.html");
+
+function readUrl(file) {
   try {
-    return JSON.parse(readFileSync(path.join(__dirname, "site.json"), "utf8")).url;
-  } catch (err) {
-    throw new Error(`No Fuse site URL: set FUSE_URL or fuse-desktop/site.json {"url": ...} (${err.message})`);
+    return JSON.parse(readFileSync(file, "utf8")).url || null;
+  } catch {
+    return null;
   }
 }
-let APP_URL;
+
+const STAMPED_URL = require("./package.json").fuseUrl || readUrl(path.join(__dirname, "site.json"));
+let APP_URL = null;
 try {
-  APP_URL = checkSiteUrl(siteUrl()).href;
+  const url = process.env.FUSE_URL || readUrl(SERVER_FILE()) || STAMPED_URL;
+  if (url) APP_URL = checkSiteUrl(url).href;
 } catch (err) {
-  // Before ready, Linux prints this to stderr instead of a dialog.
-  dialog.showErrorBox("Fuse can't start", err.message);
-  process.exit(1);
+  console.warn(`fuse: ${err.message}`);
+}
+let APP_ORIGIN = APP_URL ? new URL(APP_URL).origin : null;
+
+// Saved, so the update that drops a stamped URL keeps the server too.
+function useServer(origin) {
+  APP_ORIGIN = origin;
+  APP_URL = `${origin}/`;
+  try {
+    writeFileSync(SERVER_FILE(), JSON.stringify({ url: origin }));
+  } catch (err) {
+    console.warn(`fuse: cannot save ${SERVER_FILE()}: ${err.message}`);
+  }
+}
+
+// Only a Fuse server is kept: with no address bar, another site here would
+// leave no way back to the connect page.
+async function checkServer(input) {
+  const origin = serverOrigin(input);
+  let res;
+  try {
+    res = await net.fetch(`${origin}/v1/health`, { signal: AbortSignal.timeout(10000) });
+  } catch (err) {
+    throw new Error(`Can't reach ${origin} (${err.message}).`);
+  }
+  const body = await res.json().catch(() => null);
+  if (!isFuseHealth(body)) throw new Error(`${origin} is not a Fuse server.`);
+  return origin;
 }
 
 // Windows attributes toasts to the Start-menu shortcut, whose AUMID the NSIS
@@ -34,7 +65,6 @@ try {
 // shortcut, so alerts lost the app's name and icon in the Action Center.
 const APP_ID = require("./package.json").fuseAppId;
 if (process.platform === "win32" && APP_ID) app.setAppUserModelId(APP_ID);
-const APP_ORIGIN = new URL(APP_URL).origin;
 const BACKGROUND = "#141615";
 
 // Windows and Linux draw Fuse's own dark title bar instead of the OS frame
@@ -427,8 +457,34 @@ function createWindow() {
     win = bar = site = null;
   });
 
-  wc.loadURL(APP_URL);
+  if (APP_URL) {
+    if (!process.env.FUSE_URL && !readUrl(SERVER_FILE())) useServer(APP_ORIGIN);
+    wc.loadURL(APP_URL);
+  } else {
+    firstServer();
+  }
   wc.focus();
+}
+
+function showConnect(error = "", value = APP_ORIGIN || "") {
+  if (alive(site)) site.webContents.loadFile(CONNECT_PAGE, { query: { url: value, error } });
+}
+
+const onConnectPage = () => alive(site) && site.webContents.getURL().split("?")[0] === pathToFileURL(CONNECT_PAGE).href;
+
+// Builds before 1.1 wrapped one stamped site and kept its sign-in cookie in
+// this profile: the first launch after that update reconnects to it.
+async function firstServer() {
+  showConnect();
+  const cookies = await site.webContents.session.cookies.get({ name: "session" }).catch(() => []);
+  for (const host of new Set(cookies.map((c) => c.domain.replace(/^\./, "")))) {
+    try {
+      const origin = await checkServer(host);
+      if (APP_ORIGIN || !alive(site)) return;
+      useServer(origin);
+      return site.webContents.loadURL(APP_URL);
+    } catch {}
+  }
 }
 
 ipcMain.on("titlebar", (event, action) => {
@@ -456,6 +512,22 @@ ipcMain.on("titlebar-icon", (event, url) => {
   if (typeof url !== "string" || !url.startsWith("data:image/png;base64,")) return;
   const image = nativeImage.createFromDataURL(url);
   if (!image.isEmpty()) win.setIcon(image);
+});
+
+// The site's sign-in page and the load-error page offer Change server.
+ipcMain.on("site-change-server", (event) => {
+  if (site && event.sender === site.webContents) showConnect();
+});
+
+// Only the connect page picks the server, never a page from a server.
+ipcMain.on("site-connect", async (event, input) => {
+  if (!site || event.sender !== site.webContents || !onConnectPage()) return;
+  try {
+    useServer(await checkServer(input));
+  } catch (err) {
+    return showConnect(err.message, String(input || ""));
+  }
+  if (alive(site)) site.webContents.loadURL(APP_URL);
 });
 
 ipcMain.on("site-restart", (event) => {

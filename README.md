@@ -192,7 +192,8 @@ reading fonts. The default is black with an ice-blue accent.
 - **Installable web app** on phones and tablets, with Web Push when a reply
   finishes or needs your approval.
 - **Live sync**: the same chat streams in every tab and device at once.
-- **Desktop app** for Windows and Linux (`fuse-desktop/`).
+- **Desktop app** for Windows, macOS and Linux (`fuse-desktop/`): one build
+  for any Fuse server, updated from GitHub Releases.
 - **Scheduled tasks** run a prompt on a clock in a chat or project.
 - **Context meter** with automatic compaction, so long sessions keep going.
 
@@ -352,7 +353,7 @@ ones:
 | --- | --- | --- |
 | `APP_SECRET` | `.env` | Required. Signs sessions and encrypts stored provider credentials. Changing it invalidates both. |
 | `DATABASE_URL` | `.env` | `mysql://user:password@host:3306/database` |
-| `PUBLIC_BASE_URL` | `config.env` | Public HTTPS URL (`https://your-domain`), used in connector install lines, invite links and desktop updates. Needs a trusted certificate. |
+| `PUBLIC_BASE_URL` | `config.env` | Public HTTPS URL (`https://your-domain`), used in connector install lines and invite links. Needs a trusted certificate. |
 | `ALLOW_REGISTER` | `config.env` | Open registration (default: invite-only after the first user) |
 | `LLAMA_BASE_URL`, `LLAMA_API_KEY` | `config.env`, `.env` | Optional site-wide llama.cpp backend |
 | `BRAVE_SEARCH_API_KEY` | `.env` | Optional extra web search source |

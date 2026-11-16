@@ -14,4 +14,17 @@ function checkSiteUrl(value, protocols = ["https:", "http:"]) {
   return url;
 }
 
-module.exports = { checkSiteUrl };
+// What someone types on the connect page: a bare host gets https://, and only
+// the origin is kept, so a pasted /chat link still connects.
+function serverOrigin(input) {
+  const value = String(input || "").trim();
+  return checkSiteUrl(/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `https://${value}`).origin;
+}
+
+// /v1/health on every Fuse server, healthy (200) or not (503), names its
+// database and background tasks; another site at that address does not.
+function isFuseHealth(body) {
+  return Boolean(body && typeof body === "object" && body.database && body.background);
+}
+
+module.exports = { checkSiteUrl, isFuseHealth, serverOrigin };

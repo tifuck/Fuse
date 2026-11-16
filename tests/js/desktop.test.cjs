@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { contextMenuTemplate } = require('../../fuse-desktop/context-menu.js');
 const { allowPermission } = require('../../fuse-desktop/permissions.js');
-const { checkSiteUrl } = require('../../fuse-desktop/site-url.js');
+const { checkSiteUrl, isFuseHealth, serverOrigin } = require('../../fuse-desktop/site-url.js');
 const { MAX_INSTALL_TRIES, launchNotice } = require('../../fuse-desktop/update-notice.js');
 
 function fakeContents() {
@@ -89,6 +89,19 @@ test('site URL must be a full http(s) URL from the allowed list', () => {
   }
   assert.throws(() => checkSiteUrl('file:///etc/passwd'), /must use https:\/\/ or http:\/\//);
   assert.throws(() => checkSiteUrl('http://fuse.example.com', ['https:']), /must use https:\/\//);
+});
+
+test('connect page: a typed server becomes an origin, https by default', () => {
+  assert.equal(serverOrigin(' fuse.example.com '), 'https://fuse.example.com');
+  assert.equal(serverOrigin('https://fuse.example.com/chat?x=1'), 'https://fuse.example.com');
+  assert.equal(serverOrigin('http://box:8088'), 'http://box:8088');
+  assert.throws(() => serverOrigin(''), /is not a URL/);
+  assert.throws(() => serverOrigin('file:///etc/passwd'), /must use https:\/\/ or http:\/\//);
+});
+
+test('connect page: only a Fuse /v1/health answer counts as a Fuse server', () => {
+  assert.equal(isFuseHealth({ ok: false, database: { ok: false }, background: { running: false } }), true);
+  for (const body of [null, 'ok', { ok: true }, { status: 'ok', database: 'up' }]) assert.equal(isFuseHealth(body), false);
 });
 
 test('update notice: quiet on install, names versions after an update', () => {

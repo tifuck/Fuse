@@ -138,8 +138,7 @@ write_config_env() {
 HOST=0.0.0.0
 PORT=8088
 
-# Public HTTPS URL of this box (required for fuse-agent connector installs
-# and desktop update checks):
+# Public HTTPS URL of this box (required for fuse-agent connector installs):
 #PUBLIC_BASE_URL=https://your-host.example.com
 #TRUSTED_HOSTS=
 #FORWARDED_ALLOW_IPS=127.0.0.1

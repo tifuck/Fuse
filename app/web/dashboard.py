@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -260,26 +258,19 @@ async def delete_key(request: Request, key_id: int):
     return RedirectResponse("/keys", status_code=303)
 
 
-def _release_key(name: str):
-    """Numeric sort so 1.10.x beats 1.9.x; ties fall back to the name."""
-    return (tuple(int(part) for part in re.findall(r"\d+", name)), name)
-
-
-def _latest_release(suffix: str) -> str | None:
-    release_dir = Path(__file__).resolve().parents[2] / "data" / "desktop-releases"
-    names = [p.name for p in release_dir.glob(f"*{suffix}") if not p.name.endswith(".blockmap")]
-    return f"/desktop/{max(names, key=_release_key)}" if names else None
-
+# One desktop build serves every Fuse server: .github/workflows/desktop.yml
+# publishes it to GitHub Releases under these fixed file names.
+_DESKTOP_DOWNLOADS = "https://github.com/tifuck/Fuse/releases/latest/download/"
 
 _DESKTOP_BUILDS = (
-    # key, label, detail, file suffix, one-line install note
-    ("windows", "Windows", "10 and 11, 64-bit installer", ".exe",
+    # key, label, detail, file name, one-line install note
+    ("windows", "Windows", "10 and 11, 64-bit installer", "Fuse-Setup.exe",
      "Unsigned: if SmartScreen appears, choose More info, then Run anyway. No admin needed."),
-    ("mac", "macOS", "Apple Silicon and Intel", ".dmg",
-     "Unsigned: open it the first time with right-click, then Open."),
-    ("linux", "Linux AppImage", "x86_64, portable", ".AppImage",
+    ("mac", "macOS", "Apple Silicon and Intel", "Fuse.dmg",
+     "Unsigned: open it the first time with right-click, then Open. Get new versions here."),
+    ("linux", "Linux AppImage", "x86_64, portable", "Fuse.AppImage",
      "chmod +x the file and run it. Updates itself."),
-    ("deb", "Linux .deb", "Debian and Ubuntu", ".deb",
+    ("deb", "Linux .deb", "Debian and Ubuntu", "Fuse.deb",
      "Install with your package manager. Updates itself (asks for your password to install)."),
 )
 
@@ -289,16 +280,10 @@ async def desktop_app(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    builds = []
-    for key, label, detail, suffix, note in _DESKTOP_BUILDS:
-        url = _latest_release(suffix)
-        name = url.rsplit("/", 1)[-1] if url else ""
-        version = ".".join(re.findall(r"\d+", name)[:3]) if name else ""
-        builds.append({"key": key, "label": label, "detail": detail, "note": note,
-                       "url": url, "file": name, "version": version})
-    versions = [b["version"] for b in builds if b["version"]]
-    latest = max(versions, key=lambda v: tuple(int(x) for x in v.split("."))) if versions else ""
-    return render(request, "desktop.html", user, builds=builds, latest=latest)
+    builds = [{"key": key, "label": label, "detail": detail, "note": note,
+               "url": _DESKTOP_DOWNLOADS + name, "file": name}
+              for key, label, detail, name, note in _DESKTOP_BUILDS]
+    return render(request, "desktop.html", user, builds=builds)
 
 
 @router.get("/docs", response_class=HTMLResponse)

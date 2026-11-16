@@ -1,11 +1,14 @@
-// Build installers for this instance without committing its URL or app id.
-// Values come from FUSE_URL / FUSE_APP_ID or site.json (gitignored):
-//   {"url": "https://fuse.example.com", "appId": "com.example.fuse"}
-// Keep appId stable once released: installed apps update only within it.
+// Build installers. Every build updates from GitHub Releases and asks for its
+// server on first launch. Optional, from the environment or site.json
+// (gitignored, {"url": ..., "appId": ...}):
+//   FUSE_APP_ID  Keep it stable once released: installed apps update only within it.
+//   FUSE_URL     A server this build opens first, for a local test build.
 const { spawnSync } = require("child_process");
 const { readFileSync } = require("fs");
 const path = require("path");
 const { checkSiteUrl } = require("../site-url");
+
+const DEFAULT_APP_ID = "io.github.tifuck.fuse";
 
 function fail(message) {
   console.error(message);
@@ -20,24 +23,23 @@ try {
   if (err.code !== "ENOENT") fail(`fuse-desktop/site.json: ${err.message}`);
 }
 const url = String(process.env.FUSE_URL || site.url || "").replace(/\/+$/, "");
-const appId = process.env.FUSE_APP_ID || site.appId || "";
-if (!url || !appId) fail("Set FUSE_URL and FUSE_APP_ID, or create fuse-desktop/site.json with url and appId.");
-// https only: the app refuses redirects off its origin, so an http URL the
-// server upgrades would open a blank window.
-try {
-  checkSiteUrl(url, ["https:"]);
-} catch (err) {
-  fail(err.message);
-}
+const appId = process.env.FUSE_APP_ID || site.appId || DEFAULT_APP_ID;
 const bin = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "electron-builder.cmd" : "electron-builder");
 const args = [
   ...process.argv.slice(2),
   `-c.appId=${appId}`,
-  `-c.publish.provider=generic`,
-  `-c.publish.url=${url}/desktop/`,
-  `-c.extraMetadata.fuseUrl=${url}`,
   `-c.extraMetadata.fuseAppId=${appId}`,
 ];
+if (url) {
+  // https only: the app refuses redirects off its origin, so an http URL the
+  // server upgrades would open a blank window.
+  try {
+    checkSiteUrl(url, ["https:"]);
+  } catch (err) {
+    fail(err.message);
+  }
+  args.push(`-c.extraMetadata.fuseUrl=${url}`);
+}
 const result = spawnSync(bin, args, { stdio: "inherit", cwd: root, shell: process.platform === "win32" });
 if (result.error) fail(`Cannot run ${bin}: ${result.error.message}`);
 if (result.signal) fail(`electron-builder was killed by ${result.signal}`);
