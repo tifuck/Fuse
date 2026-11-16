@@ -9,8 +9,8 @@ import json
 import os
 import stat
 
-from app import hosts, workspace
-from tests.core.tools._support import make_project
+from app import db, hosts, workspace
+from tests.core.tools._support import make_host, make_project
 
 
 def call(h, name, **args):
@@ -253,6 +253,48 @@ def test_paths_outside_the_working_root_are_refused_without_a_gate(ssh_host):
     assert not os.path.exists(os.path.join(ssh_host.base, "planted.txt"))
     text, rec = call(ssh_host, "read_file", path="a\nb")
     assert rec["status"] == "error" and "control characters" in text
+
+
+def test_a_sibling_folder_sharing_the_root_prefix_is_outside(ssh_host):
+    sibling = ssh_host.root + "-other"
+    os.makedirs(sibling)
+    with open(os.path.join(sibling, "s.txt"), "w") as f:
+        f.write("sibling secret\n")
+
+    for path in (os.path.join(sibling, "s.txt"), f"../{os.path.basename(ssh_host.root)}-other/s.txt"):
+        text, rec = call(ssh_host, "read_file", path=path)
+        assert rec["status"] == "error" and "outside the project root" in text, path
+        assert "sibling secret" not in text
+    _, rec = call(ssh_host, "write_file", path=os.path.join(sibling, "planted.txt"), content="x")
+    assert rec["status"] == "error" and not os.path.exists(os.path.join(sibling, "planted.txt"))
+
+
+def test_a_named_other_host_uses_its_own_working_root(ssh_host):
+    other_root = os.path.join(ssh_host.base, "other")
+    os.makedirs(other_root)
+    make_host(ssh_host.uid, "box2", default_cwd=other_root)
+    put(ssh_host, "f.txt", "project copy\n")
+    with open(os.path.join(other_root, "f.txt"), "w") as f:
+        f.write("other host copy\n")
+
+    body, rec = call(ssh_host, "read_file", path="f.txt", host="box2")
+
+    assert rec["status"] == "done" and "1: other host copy" in body
+    text, rec = call(ssh_host, "read_file", path=os.path.join(ssh_host.root, "f.txt"), host="box2")
+    assert rec["status"] == "error" and "project copy" not in text  # the project root is the bound host's only
+
+
+def test_a_disabled_host_runs_nothing(ssh_host):
+    put(ssh_host, "f.txt", "data\n")
+    db.execute("UPDATE user_hosts SET disabled=1 WHERE id=?", (ssh_host.host_id,))
+
+    text, rec = call(ssh_host, "read_file", path="f.txt")
+    assert rec["status"] == "error" and "host is disabled" in text
+    text, rec = call(ssh_host, "read_file", path="f.txt", host="box")
+    assert rec["status"] == "error" and "unknown host alias" in text
+    _, rec = call(ssh_host, "run_terminal_command", command="touch marker")
+    assert rec["status"] == "error" and not os.path.exists(os.path.join(ssh_host.root, "marker"))
+    assert ssh_host.conn.commands == []
 
 
 def test_read_only_mode_blocks_every_mutating_tool(ssh_host):

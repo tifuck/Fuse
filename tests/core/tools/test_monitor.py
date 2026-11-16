@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import chat_runs, chat_store, command_jobs, db, monitor, workspace
-from tests.core.helpers import make_user, run_async, wait_until_async
+from tests.core.helpers import quick_user, run_async, wait_until_async
 from tests.core.tools._support import launch, new_run, new_thread
 
 
@@ -67,6 +67,7 @@ class FeedRunner:
         self.started = asyncio.Event()
         self.released = asyncio.Event()
         self.cancelled = False
+        self.exc = None
 
     async def __call__(self, sink):
         self.sink = sink
@@ -76,6 +77,8 @@ class FeedRunner:
         except asyncio.CancelledError:
             self.cancelled = True
             raise
+        if self.exc is not None:
+            raise self.exc
         return SimpleNamespace(exit_status=0, output="")
 
 
@@ -100,7 +103,7 @@ async def start_monitor(uid, *, thread_id=None, run_id=None, pattern="", max_eve
 
 
 def test_events_wait_for_an_idle_thread_and_reading_them_does_not_consume_them(fresh_db, fast_batches, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -135,7 +138,7 @@ def test_events_wait_for_an_idle_thread_and_reading_them_does_not_consume_them(f
 
 
 def test_an_event_for_a_live_run_goes_into_that_run(fresh_db, fast_batches, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid, run_id = new_run(uid)
 
     async def body():
@@ -153,7 +156,7 @@ def test_an_event_for_a_live_run_goes_into_that_run(fresh_db, fast_batches, wake
 
 
 def test_max_events_ends_the_watch_as_a_normal_stop(fresh_db, fast_batches, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -173,7 +176,7 @@ def test_max_events_ends_the_watch_as_a_normal_stop(fresh_db, fast_batches, wake
 
 
 def test_a_firehose_is_stopped(fresh_db, fast_batches, wakes, monkeypatch):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
     monkeypatch.setattr(monitor, "time", SimpleNamespace(monotonic=lambda: 1000.0))
 
@@ -192,7 +195,7 @@ def test_a_firehose_is_stopped(fresh_db, fast_batches, wakes, monkeypatch):
 
 
 def test_a_monitor_deadline_reports_how_many_events_it_saw(fresh_db, fast_batches, wakes):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         runner = FeedRunner()
@@ -201,7 +204,9 @@ def test_a_monitor_deadline_reports_how_many_events_it_saw(fresh_db, fast_batche
         await runner.started.wait()
         runner.sink("a\n")
         await wait_until_async(lambda: rec["event_count"] == 1)
-        rec["_deadline"].reschedule(asyncio.get_running_loop().time())
+        # The runner reports its deadline kill (as connectors and the SSH runner do).
+        runner.exc = command_jobs.CommandTimedOut(termination_confirmed=True)
+        runner.released.set()
         await asyncio.wait_for(asyncio.shield(rec["future"]), 5)
         return rec
 
@@ -211,7 +216,7 @@ def test_a_monitor_deadline_reports_how_many_events_it_saw(fresh_db, fast_batche
 
 
 def test_stopping_the_run_that_started_a_monitor_leaves_it_running(fresh_db, fast_batches, wakes):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         rec, runner = await start_monitor(uid, run_id="run-m")
@@ -227,30 +232,63 @@ def test_stopping_the_run_that_started_a_monitor_leaves_it_running(fresh_db, fas
     assert rec["status"] == "cancelled"
 
 
+def test_an_older_event_receipt_never_rewinds_the_acknowledgement(fresh_db):
+    uid = quick_user()
+    _, tid = new_thread(uid)
+    db.execute(
+        "INSERT INTO command_jobs (id,user_id,host_id,host,thread_id,command,cwd,background,timeout_ms,status,"
+        "created_at,kind,notify) VALUES ('mon000000001',?,1,'box',?,'tail -f x','',1,60000,'running',?,'monitor',1)",
+        (uid, tid, db.now()),
+    )
+    command_jobs.mark_delivered(["mon000000001:e2"])
+    command_jobs.mark_delivered(["mon000000001:e1"])
+
+    row = db.fetchone("SELECT delivered_event_seq, delivered FROM command_jobs WHERE id='mon000000001'")
+    assert (row["delivered_event_seq"], row["delivered"]) == (2, 0)
+
+
+def test_websocket_monitors_reach_only_public_web_ports(monkeypatch):
+    answers = {"feed.example.com": "93.184.216.34", "inside.example.com": "10.1.2.3"}
+
+    def getaddrinfo(host, port, *args, **kwargs):
+        if host not in answers:
+            raise OSError("no such name")
+        return [(2, 1, 6, "", (answers[host], port))]
+
+    monkeypatch.setattr(monitor.socket, "getaddrinfo", getaddrinfo)
+    assert monitor.public_ws_url("wss://feed.example.com/live?x=1") == "wss://feed.example.com/live?x=1"
+    for url in ("wss://feed.example.com:8443/live", "ws://feed.example.com:22/", "wss://user:pw@feed.example.com/",
+                "wss://inside.example.com/", "https://feed.example.com/", "ws://127.0.0.1/", "wss://nowhere.example/"):
+        assert monitor.public_ws_url(url) == "", url
+
+
 # -- the monitor tool --------------------------------------------------------
 
 def test_the_monitor_tool_turns_command_output_into_events(ssh_host, fast_batches, wakes):
-    from tests.core.tools._support import new_thread as thread_for
-
-    _, tid = thread_for(ssh_host.uid)
+    _, tid = new_thread(ssh_host.uid)
 
     async def body():
-        text, rec = await workspace.execute(
+        _, rec = await workspace.execute(
             "monitor", json.dumps({"command": "printf 'ok\\nFAIL one\\nok\\n'; echo oops >&2",
                                    "pattern": "FAIL", "max_events": 5, "description": "Watch for failures"}),
             user_id=ssh_host.uid, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root, thread_id=tid)
-        live = command_jobs._live[rec["id"]]
-        await asyncio.wait_for(asyncio.shield(live["future"]), 5)
-        return rec, live
+        await wait_until_async(lambda: job(rec["id"])["status"] == "completed")
+        envelopes = [e["envelope"] for e in command_jobs.pending_envelopes(ssh_host.uid, tid)]
+        result, _ = await workspace.execute("get_command_output", json.dumps({"id": rec["id"]}),
+                                            user_id=ssh_host.uid, thread_id=tid)
+        return rec, result, envelopes
 
-    rec, live = run_async(body())
+    rec, result, envelopes = run_async(body())
 
     assert rec["name"] == "monitor" and rec["status"] == "running"
-    assert live["status"] == "completed" and live["exit_code"] == 0
-    assert live["event_count"] == 1
-    assert "oops" in live["err"]
-    events = [e for e in command_jobs.pending_envelopes(ssh_host.uid, tid)]
-    assert any("FAIL one" in e["envelope"] for e in events)
+    stored = job(rec["id"])
+    assert (stored["exit_code"], stored["event_count"], stored["kind"]) == (0, 1, "monitor")
+    assert "[stderr]\noops" in result  # stderr is kept, never an event
+    assert any("FAIL one" in e for e in envelopes)
+
+
+def job(job_id):
+    return db.fetchone("SELECT * FROM command_jobs WHERE id=?", (job_id,))
 
 
 def test_the_monitor_tool_validates_its_arguments(ssh_host):

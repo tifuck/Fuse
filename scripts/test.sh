@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 PYTHON=${PYTHON:-/root/fuse-dev/venv/bin/python}
 export PYTHON FUSE_CHAT_TEST_MODE=1
 
-args=() extra=()
+given=("$@") args=() extra=()
 while [ $# -gt 0 ]; do
   if [ "$1" = "--" ]; then shift; extra=("$@"); break; fi
   args+=("$1"); shift
@@ -50,9 +50,9 @@ if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
     if [ -z "$picked" ]; then echo "no core test area covers the changed files"; exit 0; fi
     echo "areas: $picked"
     # shellcheck disable=SC2086
-    set -- $picked -- "${extra[@]}"
+    given=($picked -- "${extra[@]}")
   fi
-  exec scripts/test_sandbox.sh scripts/test.sh "$@"
+  exec scripts/test_sandbox.sh scripts/test.sh "${given[@]}"
 fi
 
 case "${args[0]:-}" in

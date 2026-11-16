@@ -93,6 +93,18 @@ def test_secret_file_matches_are_withheld_from_directory_searches(tree):
     assert "TOKEN=needle-secret" in call(tree, "grep", pattern="needle-secret", path=".env")
 
 
+def test_context_lines_of_secret_files_are_withheld_too(ssh_host):
+    for name, body in ((".env", "TOKEN=abc\nneedle here\n"), ("app.py", "x = 1\nneedle here\n")):
+        with open(os.path.join(ssh_host.root, name), "w") as f:
+            f.write(body)
+
+    body = call(ssh_host, "grep", pattern="needle here", path=".", no_ignore=True, context=1)
+
+    assert "TOKEN" not in body and "abc" not in body
+    assert "app.py:2:needle here" in body and "app.py-1-x = 1" in body
+    assert "withheld" in body
+
+
 def test_grep_caps_matches_and_says_how_to_see_more(ssh_host):
     with open(os.path.join(ssh_host.root, "many.txt"), "w") as f:
         f.write("".join(f"hit {i}\n" for i in range(30)))

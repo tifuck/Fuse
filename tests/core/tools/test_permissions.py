@@ -7,11 +7,13 @@ first read. "Would this ask?" is probed with an unattended gate, which denies
 exactly the calls that would raise a card.
 """
 import asyncio
+import time
+from types import SimpleNamespace
 
 import pytest
 
 from app import db, permissions
-from tests.core.helpers import make_user
+from tests.core.helpers import quick_user
 from tests.core.tools._support import CardUser, make_host, new_thread
 
 ROOT = "/srv/app"
@@ -19,19 +21,19 @@ ROOT = "/srv/app"
 
 @pytest.fixture
 def chat(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
     return type("Chat", (), {"uid": uid, "tid": tid, "host": make_host(uid, "box", default_cwd=ROOT)})
 
 
 def review(chat, tool, *, answer=None, unattended=False, thread=None, host=None, realpath=None,
-           deny_reason="", cancel=None, **args):
+           deny_reason="", cancel=None, root=ROOT, **args):
     tid = chat.tid if thread is None else thread
     user = CardUser(chat.uid, tid, answer)
     gate = permissions.Gate(user_id=chat.uid, thread_id=tid, run_id="run-1", requester=None,
                             unattended=unattended, notify=user, cancel=cancel)
     verdict = asyncio.run(permissions.review(
-        tool=tool, args=args, user_id=chat.uid, host_id=host or chat.host, host_alias="box", root=ROOT,
+        tool=tool, args=args, user_id=chat.uid, host_id=host or chat.host, host_alias="box", root=root,
         windows=False, gate=gate, deny_reason=deny_reason, realpath=realpath))
     return verdict, user
 
@@ -62,6 +64,15 @@ def test_inside_the_roots_runs_silently(chat):
     tmp, _ = review(chat, "write_file", path="/tmp/scratch/x.txt")
     assert tmp.allowed and tmp.root == "" and not tmp.promotable
     assert ask_rows(chat) == []
+    # Only /tmp itself is temp, not every name that starts with it.
+    assert asks(chat, "write_file", path="/tmp-evil/x.txt")
+    assert asks(chat, "read_file", path=f"{ROOT}-other/x.txt")
+
+
+def test_a_home_rooted_chat_does_not_reach_other_users_homes(chat):
+    assert not asks(chat, "read_file", path="~/notes.txt", root="~")
+    assert asks(chat, "read_file", path="~bob/.profile", root="~")
+    assert asks(chat, "list_dir", path="~root", root="~")
 
 
 def test_outside_the_roots_is_refused_when_nobody_can_answer(chat):
@@ -171,6 +182,25 @@ def test_secret_files_ask_only_outside_the_roots_and_grant_just_that_file(chat):
     assert asks(chat, "read_file", path="/etc/app/settings.ini")
 
 
+def test_a_named_secret_grep_outside_the_roots_grants_only_that_file(chat):
+    verdict, user = review(chat, "grep", path="/etc/app/.env", pattern="KEY", answer="allow_session")
+
+    assert verdict.allowed and user.asks[0]["secret"] is True
+    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file", "/etc/app/.env")]
+    assert asks(chat, "grep", path="/etc/app", pattern="KEY")
+
+
+def test_credential_directories_ask_even_inside_the_root(chat):
+    for cred in (".ssh", ".aws", ".kube", ".docker", ".gnupg"):
+        assert asks(chat, "read_file", path=f"{cred}/config"), cred
+        assert asks(chat, "grep", path=f"{ROOT}/{cred}/config", pattern="x"), cred
+        assert asks(chat, "run_terminal_command", command=f"cat {ROOT}/{cred}/config"), cred
+    assert not asks(chat, "read_file", path="docs/ssh/config")
+    # Naming the credential directory itself reaches every key in it.
+    assert asks(chat, "run_terminal_command", command=f"ls {ROOT}/.ssh")
+    assert asks(chat, "run_terminal_command", command="grep -r key ~/.ssh", root="~")
+
+
 def test_a_directory_grant_never_covers_a_secret_file_in_it(chat):
     review(chat, "list_dir", path="/etc/app", answer="allow_session")
     assert not asks(chat, "read_file", path="/etc/app/settings.ini")
@@ -217,6 +247,14 @@ def test_a_command_reaching_outside_offers_a_directory_grant_that_then_covers_it
     assert asks(chat, "run_terminal_command", command="cat /var/log/other.log")
 
 
+def test_a_directory_grant_never_covers_a_compound_command(chat):
+    review(chat, "list_dir", path="/opt/x", answer="allow_session")
+
+    assert not asks(chat, "run_terminal_command", command="ls /opt/x/bin")
+    assert asks(chat, "run_terminal_command", command="cd /opt/x && make")
+    assert asks(chat, "run_terminal_command", command="cat /opt/x/a; cat /opt/x/b")
+
+
 def test_denylisted_commands_run_only_on_an_explicit_allow(chat):
     review(chat, "list_dir", path="/", answer="allow_host")  # even a grant over everything
     assert asks(chat, "run_terminal_command", command="sudo ls", deny_reason="command blocked by denylist")
@@ -252,12 +290,34 @@ def test_an_unresolvable_target_fails_closed(chat):
     assert asks(chat, "run_terminal_command", command="cat ./src/main.py", realpath=broken)
 
 
+def test_an_unresolvable_root_fails_closed(chat):
+    def root_unknown(paths):
+        async def resolve():
+            return [None if p == ROOT else p for p in paths]
+        return resolve()
+
+    assert asks(chat, "read_file", path="src/main.py", realpath=root_unknown)
+    assert asks(chat, "run_terminal_command", command="cat ./src/main.py", realpath=root_unknown)
+
+
 # -- ask records -----------------------------------------------------------
+
+def test_bypass_on_someone_elses_thread_approves_nothing(chat):
+    _pending_ask(chat, "pa_mine", created=_iso(0), expires=_iso(60))
+    stranger = quick_user("stranger@core.test")
+
+    permissions.set_bypass(stranger, chat.tid, True)
+
+    assert [r["status"] for r in ask_rows(chat)] == ["pending"]
+    assert not permissions.bypass_enabled(chat.uid, chat.tid)
+    assert permissions.resolve_thread_pending(stranger, chat.tid, "allow") == 0
+    assert [r["status"] for r in ask_rows(chat)] == ["pending"]
+
 
 def test_resolve_is_owner_and_thread_scoped_and_answers_once(chat):
     _, user = review(chat, "read_file", path="/etc/hosts", answer="deny")
     ask_id = user.asks[0]["id"]
-    stranger = make_user("stranger@core.test")
+    stranger = quick_user("stranger@core.test")
     _, other_tid = new_thread(chat.uid)
 
     with pytest.raises(LookupError):
@@ -286,14 +346,23 @@ def _iso(offset_s):
     return (datetime.now(timezone.utc) + timedelta(seconds=offset_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def test_more_time_restarts_the_minute_up_to_the_cap(chat):
-    _pending_ask(chat, "pa_fresh", created=_iso(-30), expires=_iso(5))
-    extended = permissions.extend(chat.uid, chat.tid, "pa_fresh")
-    assert _iso(55) <= extended["expires_at"] <= _iso(61)
+def _at(ts):
+    from datetime import datetime, timezone
 
-    _pending_ask(chat, "pa_old", created=_iso(-permissions.ASK_MAX_S + 10), expires=_iso(5))
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_more_time_restarts_the_minute_up_to_the_cap(chat, monkeypatch):
+    now = 2_000_000_000  # the gate's clock, frozen
+    monkeypatch.setattr(permissions, "time", SimpleNamespace(time=lambda: now, sleep=time.sleep,
+                                                             monotonic=time.monotonic))
+    _pending_ask(chat, "pa_fresh", created=_at(now - 30), expires=_at(now + 5))
+    extended = permissions.extend(chat.uid, chat.tid, "pa_fresh")
+    assert extended["expires_at"] == _at(now + permissions.ASK_TIMEOUT_S)
+
+    _pending_ask(chat, "pa_old", created=_at(now - permissions.ASK_MAX_S + 10), expires=_at(now + 5))
     capped = permissions.extend(chat.uid, chat.tid, "pa_old")
-    assert _iso(9) <= capped["expires_at"] <= _iso(11)
+    assert capped["expires_at"] == _at(now + 10)
 
 
 def test_an_expired_card_cannot_be_approved(chat):

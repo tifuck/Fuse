@@ -100,3 +100,25 @@ def test_a_connect_racing_an_eviction_is_discarded(pool, monkeypatch):
     assert pool[(1, 7)]["conn"] is new_key
     ssh_pool.evict(1, 7)
     assert new_key.closed and (1, 7) not in pool
+
+
+@pytest.mark.parametrize("address, private", [
+    ("192.168.254.77", True), ("172.31.250.9", True), ("10.200.1.2", True), ("::ffff:192.168.254.77", True),
+    ("fd12:3456::7", None), ("127.0.0.1", None), ("169.254.169.254", None), ("::1", None), ("0.0.0.0", None),
+])
+def test_hosts_on_private_or_local_addresses_are_never_dialed_by_default(monkeypatch, address, private):
+    """private=True: allowed only with ALLOW_PRIVATE_HOSTS; None: never (loopback, link-local, ULA)."""
+    monkeypatch.setattr(ssh_pool.settings, "allow_private_hosts", False)
+    with pytest.raises(ssh_pool.SshError):
+        ssh_pool.resolve_public(address, 22)
+
+    monkeypatch.setattr(ssh_pool.settings, "allow_private_hosts", True)
+    if private:
+        assert ssh_pool.resolve_public(address, 22) == [address]
+    else:
+        with pytest.raises(ssh_pool.SshError):
+            ssh_pool.resolve_public(address, 22)
+
+
+def test_a_public_address_is_dialable():
+    assert ssh_pool.resolve_public("93.184.216.34", 22) == ["93.184.216.34"]

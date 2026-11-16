@@ -11,7 +11,7 @@ import asyncio
 import pytest
 
 from app import chat_runs, chat_store, command_jobs, db, run_inbox
-from tests.core.helpers import make_user, run_async, wait_until_async
+from tests.core.helpers import quick_user, run_async, wait_until_async
 from tests.core.tools._support import ScriptedRunner, launch, new_run, new_thread
 
 
@@ -33,7 +33,7 @@ async def settled(rec):
 
 
 def test_a_job_is_durable_from_launch_to_its_terminal_state(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         runner = ScriptedRunner(out="compiling\nok\n")
@@ -58,7 +58,7 @@ def test_a_job_is_durable_from_launch_to_its_terminal_state(fresh_db):
 
 
 def test_terminal_states_say_what_happened_not_just_that_it_ended(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         outcomes = {}
@@ -87,7 +87,7 @@ def test_terminal_states_say_what_happened_not_just_that_it_ended(fresh_db):
 
 
 def test_a_moved_command_stops_at_its_background_limit(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         runner = ScriptedRunner()
@@ -106,7 +106,7 @@ def test_a_moved_command_stops_at_its_background_limit(fresh_db):
 
 
 def test_a_result_for_a_live_run_is_queued_there_and_acknowledged_once(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid, run_id = new_run(uid)
 
     async def body():
@@ -131,7 +131,7 @@ def test_a_result_for_a_live_run_is_queued_there_and_acknowledged_once(fresh_db,
 
 
 def test_an_explicit_join_supersedes_the_queued_delivery(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid, run_id = new_run(uid)
 
     async def body():
@@ -151,7 +151,7 @@ def test_an_explicit_join_supersedes_the_queued_delivery(fresh_db, wakes):
 
 
 def test_an_idle_thread_is_woken_and_its_envelope_is_peek_only_until_receipt(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -176,7 +176,7 @@ def test_an_idle_thread_is_woken_and_its_envelope_is_peek_only_until_receipt(fre
 
 
 def test_a_job_that_finished_inside_the_foreground_wait_is_never_delivered_again(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -194,7 +194,7 @@ def test_a_job_that_finished_inside_the_foreground_wait_is_never_delivered_again
 
 
 def test_a_subagents_job_goes_to_that_subagent_only(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     thread, tid, parent_run = new_run(uid)
     _, _, child_run = new_run(uid)
     db.execute("UPDATE chat_runs SET parent_run_id=? WHERE id=?", (parent_run, child_run))
@@ -221,7 +221,7 @@ def test_a_subagents_job_goes_to_that_subagent_only(fresh_db, wakes):
 
 
 def test_kill_by_the_agent_is_its_own_receipt_and_a_user_stop_is_reported(fresh_db, wakes):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -248,8 +248,48 @@ def test_kill_by_the_agent_is_its_own_receipt_and_a_user_stop_is_reported(fresh_
     assert wakes == [(uid, tid)]
 
 
+def test_the_jobs_panel_stops_background_jobs_only(fresh_db, wakes):
+    uid = quick_user()
+    _, tid = new_thread(uid)
+
+    async def body():
+        runner = ScriptedRunner()
+        foreground = await launch(uid, runner, thread_id=tid, background=False)
+        refused = command_jobs.kill_thread_job(uid, tid, foreground["id"])
+        status = foreground["status"]
+        runner.release()
+        await settled(foreground)
+        return refused, status
+
+    refused, status = run_async(body())
+    assert refused is None and status == "running"
+
+
+def test_deleting_a_thread_stops_its_commands_and_monitors_only(fresh_db, wakes):
+    uid = quick_user()
+    _, tid = new_thread(uid)
+    _, other_tid = new_thread(uid)
+
+    async def body():
+        runners = [ScriptedRunner() for _ in range(3)]
+        command = await launch(uid, runners[0], thread_id=tid)
+        watch = await launch(uid, runners[1], thread_id=tid, kind="monitor", description="d", command="tail -f x")
+        elsewhere = await launch(uid, runners[2], thread_id=other_tid)
+        command_jobs.cancel_thread(uid, tid)
+        right_after = (command["status"], watch["status"], elsewhere["status"])
+        for runner in runners:
+            runner.release()
+        for rec in (command, watch, elsewhere):
+            await settled(rec)
+        return command, watch, right_after
+
+    command, watch, right_after = run_async(body())
+    assert right_after == ("cancelling", "cancelling", "running")
+    assert command["status"] == "cancelled" and watch["status"] == "cancelled"
+
+
 def test_jobs_are_scoped_to_their_owner_and_thread(fresh_db):
-    owner, other = make_user("owner@core.test"), make_user("other@core.test")
+    owner, other = quick_user("owner@core.test"), quick_user("other@core.test")
     _, tid = new_thread(owner)
     _, other_tid = new_thread(owner)
 
@@ -275,7 +315,7 @@ def test_jobs_are_scoped_to_their_owner_and_thread(fresh_db):
 
 
 def test_cancelling_a_wait_never_cancels_the_job(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         runner = ScriptedRunner()
@@ -295,7 +335,7 @@ def test_cancelling_a_wait_never_cancels_the_job(fresh_db):
 
 
 def test_a_restart_marks_unfinished_jobs_interrupted_and_reconcile_finds_them(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     # Rows a dead process left behind: its executors died with it.
@@ -318,7 +358,7 @@ def test_a_restart_marks_unfinished_jobs_interrupted_and_reconcile_finds_them(fr
 
 
 def test_admission_refuses_past_the_running_cap_without_a_row(fresh_db, monkeypatch):
-    uid = make_user()
+    uid = quick_user()
     monkeypatch.setattr(command_jobs, "JOB_CAP", 2)
 
     async def body():
@@ -336,7 +376,7 @@ def test_admission_refuses_past_the_running_cap_without_a_row(fresh_db, monkeypa
 
 
 def test_stopping_a_run_cancels_its_own_shell_jobs_only(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         mine, theirs = ScriptedRunner(), ScriptedRunner()
@@ -354,7 +394,7 @@ def test_stopping_a_run_cancels_its_own_shell_jobs_only(fresh_db):
 
 
 def test_list_thread_jobs_shows_running_background_jobs(fresh_db):
-    uid = make_user()
+    uid = quick_user()
     _, tid = new_thread(uid)
 
     async def body():
@@ -374,14 +414,14 @@ def test_list_thread_jobs_shows_running_background_jobs(fresh_db):
 
 
 def test_waiting_ends_early_when_something_else_arrives_in_the_run(fresh_db):
-    uid = make_user()
+    uid = quick_user()
 
     async def body():
         runner = ScriptedRunner()
         rec = await launch(uid, runner)
         waiter = asyncio.create_task(command_jobs.join(rec["id"], uid, 30, run_id="run-z"))
-        await wait_until_async(lambda: run_inbox._waiters.get("run-z"))
-        run_inbox.arrived("run-z", "steer")
+        # Keep signalling: an arrival sent before the wait listens is not queued.
+        await wait_until_async(lambda: (run_inbox.arrived("run-z", "steer"), waiter.done())[1])
         text, trace = await waiter
         runner.release()
         await settled(rec)

@@ -9,7 +9,7 @@ import json
 import os
 
 from app import permissions, ssh_pool, workspace
-from tests.core.tools._support import CardUser, new_thread
+from tests.core.tools._support import CardUser, make_project, new_thread
 
 
 def gated(h, name, *, answer=None, unattended=False, **args):
@@ -60,6 +60,19 @@ def test_a_symlink_inside_the_root_is_judged_by_its_real_target(ssh_host):
 
     body, rec, _ = gated(ssh_host, "read_file", path="link.txt", answer="allow")
     assert rec["status"] == "done" and "private words" in body
+
+
+def test_an_approved_write_into_a_read_only_project_outside_the_root_is_refused(ssh_host):
+    locked = os.path.join(ssh_host.base, "locked")
+    os.makedirs(locked)
+    make_project(ssh_host.uid, ssh_host.host_id, locked, permission_mode="read_only")
+    target = os.path.join(locked, "x.txt")
+
+    text, rec, user = gated(ssh_host, "write_file", path=target, content="x", answer="allow")
+
+    assert len(user.asks) == 1  # the user approved the location...
+    assert rec["status"] == "error" and "read-only" in text  # ...but the project stays read-only
+    assert not os.path.exists(target)
 
 
 def test_a_denylisted_command_runs_only_on_the_users_own_allow(ssh_host):

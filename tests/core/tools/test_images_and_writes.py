@@ -19,19 +19,31 @@ def png(image):
     return out.getvalue()
 
 
-def test_a_photo_like_png_is_sent_as_jpeg_but_flat_ui_stays_png():
+def test_decoding_rules_photos_as_jpeg_ui_as_png_and_bounded_sizes():
     # Gradients with grain: like a photo, large as PNG and small as JPEG.
     gradient = Image.linear_gradient("L").resize((500, 500))
     grain = Image.effect_noise((500, 500), 12)
     channels = [Image.blend(c, grain, 0.25) for c in (gradient, gradient.rotate(90), gradient.rotate(45))]
-    photo = file_images._decode(png(Image.merge("RGB", channels)), 0)
-    assert photo["mime"] == "image/jpeg" and photo["format"] == "PNG"
+    inputs = {
+        "photo": png(Image.merge("RGB", channels)),
+        "ui": png(Image.new("RGB", (800, 600), "white")),
+        "wide": png(Image.new("RGB", (5000, 100), "blue")),
+        # A tiny file that claims 81 megapixels: refused, never expanded.
+        "bomb": png(Image.new("1", (9000, 9000))),
+    }
 
-    ui = file_images._decode(png(Image.new("RGB", (800, 600), "white")), 0)
-    assert ui["mime"] == "image/png"
+    async def decode_all():
+        results = await asyncio.gather(*(file_images.decode_image(data) for data in inputs.values()),
+                                       file_images.decode_image(inputs["ui"], 3), return_exceptions=True)
+        return dict(zip([*inputs, "frame"], results))
 
-    big = file_images._decode(png(Image.new("RGB", (5000, 100), "blue")), 0)
-    assert (big["width"], big["original_width"]) == (2048, 5000)
+    out = asyncio.run(decode_all())
+
+    assert out["photo"]["mime"] == "image/jpeg" and out["photo"]["format"] == "PNG"
+    assert out["ui"]["mime"] == "image/png"
+    assert (out["wide"]["width"], out["wide"]["original_width"]) == (2048, 5000)
+    assert isinstance(out["bomb"], ValueError)
+    assert isinstance(out["frame"], ValueError) and "frame range" in str(out["frame"])
 
 
 def test_images_are_validated_before_any_decoder_runs():
@@ -39,8 +51,8 @@ def test_images_are_validated_before_any_decoder_runs():
         asyncio.run(file_images.decode_image(b"%PDF-1.7 not an image"))
     with pytest.raises(ValueError, match="frame"):
         asyncio.run(file_images.decode_image(png(Image.new("RGB", (2, 2))), -1))
-    with pytest.raises(ValueError, match="outside the image's frame range"):
-        file_images._decode(png(Image.new("RGB", (2, 2))), 3)
+    with pytest.raises(ValueError, match="20 MiB"):
+        asyncio.run(file_images.decode_image(b"\x89PNG\r\n\x1a\n" + b"\0" * file_images.MAX_SOURCE))
 
 
 def test_a_cancelled_caller_still_lets_its_write_finish():
@@ -92,10 +104,10 @@ def test_a_hard_linked_file_is_edited_in_place_so_every_name_sees_it(ssh_host):
 
 def test_windows_paths_are_confined_to_the_windows_root(fresh_db, monkeypatch):
     from app import agent_hub
-    from tests.core.helpers import make_user
+    from tests.core.helpers import quick_user
     from tests.core.tools._support import make_host
 
-    uid = make_user()
+    uid = quick_user()
     host = make_host(uid, "win", default_cwd="C:\\proj", auth_type="agent", agent_os="windows", agent_version="1.9.0")
     calls = []
 

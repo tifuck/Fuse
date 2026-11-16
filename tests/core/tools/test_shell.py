@@ -9,8 +9,12 @@ import asyncio
 import json
 import os
 
+import pytest
+
 from app import command_jobs, db, run_inbox, workspace
-from tests.core.helpers import run_async, wait_until_async
+from app.workspace import WorkspaceError
+from tests.core.helpers import quick_user, run_async, wait_until_async
+from tests.core.tools._support import make_host, new_thread
 
 
 async def tool(h, name, *, run_id="", thread_id=None, **args):
@@ -22,6 +26,17 @@ async def tool(h, name, *, run_id="", thread_id=None, **args):
 
 def job_row(job_id):
     return db.fetchone("SELECT * FROM command_jobs WHERE id=?", (job_id,))
+
+
+async def arrive_until_returned(call, run_id):
+    """Signal an inbox arrival until the blocked call returns (a signal sent
+    before its wait starts listening is not queued, so keep sending)."""
+    def signalled():
+        run_inbox.arrived(run_id, "steer-1")
+        return call.done()
+
+    await wait_until_async(signalled)
+    return await call
 
 
 def test_a_failing_command_completes_with_its_exit_code_and_both_streams(ssh_host):
@@ -58,12 +73,56 @@ def test_a_missing_cwd_stops_the_command_instead_of_running_it_elsewhere(ssh_hos
 
 
 def test_denylisted_commands_never_run_without_a_gate(ssh_host):
-    for command in ("rm -rf /", "echo x; sudo touch planted", "ssh other touch planted",
-                    "bash -c 'shutdown now'"):
+    for command in ("rm -rf /", "rm -rf /*", "rm --no-preserve-root -rf /", "mkfs.ext4 /dev/sda",
+                    "chmod -R 777 /", "x; reboot", "echo x; sudo touch planted", "ssh other touch planted",
+                    "scp f other:", "bash -c 'shutdown now'", "nohup poweroff"):
         text, rec = run_async(tool(ssh_host, "run_terminal_command", command=command))
         assert rec["status"] == "error" and "denylist" in text, command
     assert not db.fetchone("SELECT 1 FROM command_jobs")
     assert not os.path.exists(os.path.join(ssh_host.root, "planted"))
+
+
+def test_destructive_windows_commands_are_denylisted_on_windows_hosts(fresh_db, monkeypatch):
+    from app import agent_hub
+
+    uid = quick_user()
+    host = make_host(uid, "win", default_cwd="C:\\proj", auth_type="agent", agent_os="windows", agent_version="1.9.0")
+    sent = []
+
+    async def connector(*args, **kwargs):
+        sent.append(args)
+        return {"ok": True, "exit": 0, "out": "", "err": "", "error": ""}
+
+    monkeypatch.setattr(agent_hub, "call", connector)
+    for command in ("Stop-Computer -Force", "Restart-Computer", "Format-Volume -DriveLetter D", "Clear-Disk 1",
+                    "dir; shutdown /s"):
+        text, rec = run_async(workspace.execute("run_terminal_command", json.dumps({"command": command}),
+                                                user_id=uid, bound_host_id=host, bound_cwd="C:\\proj"))
+        assert rec["status"] == "error" and "denylist" in text, command
+    assert sent == []
+
+
+def test_the_per_host_exec_budget_is_180_a_minute(ssh_host):
+    # The budget's window has no public reader: spend 179 of it directly
+    # (179 real commands would take seconds), then run real commands.
+    for _ in range(179):
+        workspace._rate_ok(ssh_host.uid, ssh_host.host_id)
+
+    _, last = run_async(tool(ssh_host, "run_terminal_command", command="echo 180th"))
+    assert last["state"] == "completed"
+    text, refused = run_async(tool(ssh_host, "run_terminal_command", command="echo 181st"))
+    assert refused["status"] != "done" and "exec rate limit" in (text + str(refused.get("error")))
+
+
+def test_a_host_list_is_one_shell_family_of_known_hosts(ssh_host):
+    make_host(ssh_host.uid, "box2", default_cwd="/srv")
+    make_host(ssh_host.uid, "pc", default_cwd="C:\\p", auth_type="agent", agent_os="windows")
+
+    assert workspace.host_list(ssh_host.uid, ["box", "BOX2", "box"]) == ["box", "box2"]
+    for raw, why in ((["box", "pc"], "mixes Windows"), (["box", "nowhere"], "nowhere: unknown host alias"),
+                     ([], "1-32"), (["h"] * 33, "1-32"), ("box", "1-32"), (["box", ""], "1-32")):
+        with pytest.raises(WorkspaceError, match=why):
+            workspace.host_list(ssh_host.uid, raw)
 
 
 def test_empty_and_oversized_commands_are_refused(ssh_host):
@@ -82,7 +141,7 @@ def test_long_output_keeps_its_head_and_tail_and_counts_every_character(ssh_host
     row = job_row(rec["id"])
     assert row["out_chars"] == total
     assert len(row["out"]) == command_jobs.OUT_TAIL_CHARS and row["out"].endswith("19999\n20000\n")
-    body, _ = command_jobs.render(command_jobs._live[rec["id"]])
+    body, _ = run_async(tool(ssh_host, "get_command_output", id=rec["id"]))
     assert "\n1\n2\n3\n" in body and body.rstrip().endswith("20000")
     assert "characters of output omitted" in body
 
@@ -115,9 +174,7 @@ def test_a_foreground_command_moves_to_the_background_when_something_arrives(ssh
         call = asyncio.create_task(tool(
             ssh_host, "run_terminal_command", run_id="run-x",
             command=f"until [ -e {release} ]; do sleep 0.02; done; echo released"))
-        await wait_until_async(lambda: run_inbox._waiters.get("run-x"))  # the foreground wait is listening
-        run_inbox.arrived("run-x", "steer-1")
-        text, rec = await call
+        text, rec = await arrive_until_returned(call, "run-x")
         moved = job_row(rec["id"])
         open(release, "w").close()
         _, result = await tool(ssh_host, "get_command_output", id=rec["id"], timeout_ms=5000)
@@ -138,16 +195,14 @@ def test_a_foreground_command_past_its_timeout_moves_to_the_background(ssh_host)
     async def body():
         text, rec = await tool(ssh_host, "run_terminal_command", timeout=1,
                                command=f"until [ -e {release} ]; do sleep 0.02; done; echo late")
-        live = command_jobs._live[rec["id"]]
-        still = live["status"]
         open(release, "w").close()
-        await asyncio.wait_for(asyncio.shield(live["future"]), 5)
-        return text, rec, still
+        _, result = await tool(ssh_host, "get_command_output", id=rec["id"], timeout_ms=5000)
+        return text, rec, result
 
-    text, rec, still = run_async(body())
+    text, rec, result = run_async(body())
 
     assert text.startswith("Command did not complete within its 1s timeout and was moved to the background.")
-    assert still == "running"  # moved, not killed
+    assert rec["status"] == "running" and result["state"] == "completed"  # moved, not killed
     row = job_row(rec["id"])
     assert (row["status"], row["background"], row["notify"]) == ("completed", 1, 1)
     assert row["out"] == "late\n"
@@ -156,10 +211,8 @@ def test_a_foreground_command_past_its_timeout_moves_to_the_background(ssh_host)
 def test_a_bare_sleep_stops_instead_of_moving_to_the_background(ssh_host):
     async def body():
         call = asyncio.create_task(tool(ssh_host, "run_terminal_command", run_id="run-y", command="sleep 2"))
-        await wait_until_async(lambda: run_inbox._waiters.get("run-y"))
-        run_inbox.arrived("run-y", "report-1")
-        text, rec = await call
-        await asyncio.wait_for(asyncio.shield(command_jobs._live[rec["id"]]["future"]), 5)
+        text, rec = await arrive_until_returned(call, "run-y")
+        await wait_until_async(lambda: job_row(rec["id"])["status"] == "cancelled")
         return text, rec
 
     text, rec = run_async(body())
@@ -199,13 +252,14 @@ def test_an_older_connector_without_streaming_still_runs_the_command(agent_host)
 
 def test_kill_command_cancels_a_running_job_and_a_second_kill_is_harmless(ssh_host):
     release = os.path.join(ssh_host.root, "release")
+    _, tid = new_thread(ssh_host.uid)
 
     async def body():
-        _, rec = await tool(ssh_host, "run_terminal_command", background=True,
+        _, rec = await tool(ssh_host, "run_terminal_command", background=True, thread_id=tid,
                             command=f"until [ -e {release} ]; do sleep 0.02; done")
-        _, killed = await tool(ssh_host, "kill_command", id=rec["id"])
-        await asyncio.wait_for(asyncio.shield(command_jobs._live[rec["id"]]["future"]), 5)
-        _, again = await tool(ssh_host, "kill_command", id=rec["id"])
+        _, killed = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
+        await wait_until_async(lambda: job_row(rec["id"])["status"] == "cancelled" and job_row(rec["id"])["delivered"])
+        _, again = await tool(ssh_host, "kill_command", id=rec["id"], thread_id=tid)
         open(release, "w").close()
         return rec["id"], killed, again
 
@@ -216,4 +270,4 @@ def test_kill_command_cancels_a_running_job_and_a_second_kill_is_harmless(ssh_ho
     row = job_row(job_id)
     assert row["status"] == "cancelled" and row["delivered"] == 1
     # The model asked for the kill: its own receipt is not delivered again.
-    assert command_jobs.pending_envelopes(ssh_host.uid, 0) == []
+    assert command_jobs.pending_envelopes(ssh_host.uid, tid) == []

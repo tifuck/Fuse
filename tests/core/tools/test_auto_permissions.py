@@ -10,9 +10,9 @@ import json
 import httpx
 import pytest
 
-from app import db, jev, permissions
+from app import chats, db, jev, permissions
 from app.sources import openrouter
-from tests.core.helpers import make_user
+from tests.core.helpers import quick_user
 from tests.core.tools._support import CardUser, make_host, new_thread
 
 ROOT = "/srv/app"
@@ -20,7 +20,7 @@ ROOT = "/srv/app"
 
 @pytest.fixture
 def chat(fresh_db, monkeypatch):
-    uid = make_user()
+    uid = quick_user()
     thread, tid = new_thread(uid)
     monkeypatch.setattr(openrouter, "user_has_openrouter", lambda user_id: True)
     monkeypatch.setattr(openrouter, "pick_key_for", lambda user_id, source_id=None: ({}, {}, "sk-or-test", "user"))
@@ -63,8 +63,32 @@ def test_jev_allows_safe_actions_and_refuses_dangerous_ones(chat, decisions):
     assert sent["state"]["allowed_roots"] == ["/tmp", ROOT]
 
 
+def test_the_danger_ceiling_itself_is_dangerous(chat, decisions):
+    decisions.reply = verdict_for(jev.DANGEROUS_CEILING)
+    assert judge(chat) is False
+    decisions.reply = verdict_for(jev.DANGEROUS_CEILING - 0.01)
+    assert judge(chat) is True
+
+
+def test_jev_only_sees_the_callers_own_thread(chat, decisions):
+    owner = chats.create_thread(chat.uid, model="offline",
+                                messages=[{"role": "user", "content": "deploy the secret plan"}])
+    owner_tid = chats.resolve_thread_pk(chat.uid, owner["id"])
+    stranger = quick_user("stranger@core.test")
+    decisions.reply = verdict_for(0.1)
+    action = {"tool": "read_file", "path": "/etc/hosts"}
+
+    asyncio.run(jev.judge(chat.uid, owner_tid, action))
+    asyncio.run(jev.judge(stranger, owner_tid, action))
+
+    mine, theirs = decisions.requests
+    assert mine["state"]["user_request"] == "deploy the secret plan"
+    assert theirs["state"]["user_request"] == "" and theirs["state"]["recent"] == []
+
+
 @pytest.mark.parametrize("reply", [
     (500, {"error": "upstream"}),
+    (500, {"model": jev.MODEL, "answers": {"dangerous": {"noul": 0.0}}}),  # a safe-looking body on an error status
     (200, ["not", "an", "object"]),
     (200, {"answers": {}}),
     (200, {"answers": {"dangerous": {"noul": 1.7}}}),
@@ -141,6 +165,16 @@ def test_auto_never_judges_in_scope_calls_and_allows_listings_itself(chat, jev_s
     assert review(chat, "read_file", path="src/app.py")[0].allowed
     assert review(chat, "list_dir", path="/var")[0].allowed
     assert review(chat, "glob", path="/opt", pattern="*.conf")[0].allowed
+    assert jev_says.calls == []
+
+
+def test_without_a_key_auto_allows_nothing_by_itself(chat, jev_says, monkeypatch):
+    monkeypatch.setattr(openrouter, "user_has_openrouter", lambda user_id: False)
+    permissions.set_auto(chat.uid, chat.tid, True)
+
+    for tool, args in (("list_dir", {"path": "/var"}), ("read_file", {"path": "/etc/hosts"})):
+        verdict, _ = review(chat, tool, unattended=True, **args)
+        assert not verdict.allowed, tool
     assert jev_says.calls == []
 
 

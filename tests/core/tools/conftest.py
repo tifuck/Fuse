@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.core.helpers import make_user
+from tests.core.helpers import quick_user
 from tests.core.tools._support import FakeConnector, LocalConn, make_host
 
 
@@ -36,27 +36,6 @@ def _clean_tool_state():
     clear()
 
 
-@pytest.fixture(scope="session")
-def _account_kdf_once():
-    """One real password hash and wrapped vault key, computed once."""
-    from app import accounts
-
-    hashed = accounts.hash_password("password12")
-    wrapped = accounts.create_wrapped_dek("password12")
-    return hashed, wrapped
-
-
-@pytest.fixture(autouse=True)
-def _cheap_accounts(_account_kdf_once, monkeypatch):
-    """make_user's two scrypt derivations cost ~85 ms per test and accounts
-    are not under test here: reuse one real result (same formats)."""
-    from app import accounts
-
-    hashed, wrapped = _account_kdf_once
-    monkeypatch.setattr(accounts, "hash_password", lambda password: hashed)
-    monkeypatch.setattr(accounts, "create_wrapped_dek", lambda password: wrapped)
-
-
 @pytest.fixture
 def scratch_dir():
     """A directory outside /tmp (a permission root of its own)."""
@@ -75,12 +54,12 @@ def ssh_host(fresh_db, scratch_dir, monkeypatch):
     home = os.path.join(scratch_dir, "home")
     os.makedirs(root)
     os.makedirs(home)
-    uid = make_user()
+    uid = quick_user()
     host_id = make_host(uid, "box", default_cwd=root)
     conn = LocalConn(home)
 
     async def connection(user_id, hid):
-        assert (int(user_id), int(hid)) == (uid, host_id), "only the test host has a transport"
+        assert int(user_id) == uid, "only the test user's hosts have a transport"
         return conn
 
     monkeypatch.setattr(ssh_pool, "connection", connection)
@@ -97,7 +76,7 @@ def agent_host(fresh_db, scratch_dir, monkeypatch):
     home = os.path.join(scratch_dir, "home")
     os.makedirs(root)
     os.makedirs(home)
-    uid = make_user()
+    uid = quick_user()
     host_id = make_host(uid, "pc", default_cwd=root, auth_type="agent", agent_os="linux", agent_version="1.9.0")
     connector = FakeConnector(home)
     monkeypatch.setattr(agent_hub, "call", connector)
