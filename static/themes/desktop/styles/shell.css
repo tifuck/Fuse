@@ -1082,8 +1082,8 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
 }
 
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
-   The reading column is a darker pane, the palette's base colour at 70%
-   (light 66%; text holds AA over every wallpaper) over the faintest blur
+   The reading column is a darker pane, the palette's base colour at 62%
+   (light 58%) over the faintest blur
    (2px), that eases in across the whole gutter (a mask, so the blur fades
    with the tint), so the wallpaper shows as it is at the gutter's outer
    edge. The top bar, sidebar and
@@ -1095,7 +1095,7 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
    (a near-base tone at 80%, light 80%) with a hairline edge and a specular
    top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 70%;
+  --dk-veil-a: 62%;
   --dk-chrome-a: 74%;
   --dk-card-a: 80%;
   --dk-glass: blur(14px) saturate(1.35);
@@ -1159,13 +1159,14 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  /* Secondary text leans a fifth toward the body colour so it holds AA on
-     the glass, and still reads as secondary. */
-  & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--dk-mute) 80%, var(--dk-text)); }
+  /* Secondary text leans a fifth (light: three tenths) toward the body
+     colour so it holds AA on the pane, and still reads as secondary. */
+  & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--dk-mute) var(--dk-sec-a, 80%), var(--dk-text)); }
   & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--dk-link) 80%, var(--dk-text)); }
 }
 html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 66%;
+  --dk-veil-a: 58%;
+  --dk-sec-a: 70%;
   --dk-chrome-a: 62%;
   --dk-edge-dim: color-mix(in srgb, var(--dk-side) 50%, transparent);
   --dk-card-a: 80%;
