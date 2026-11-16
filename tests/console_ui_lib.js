@@ -109,9 +109,11 @@ window.ConsoleAudit = (() => {
       }
 
       // Summary lines never hold a running call and never speak in the present
-      // tense unless a thought is streaming.
+      // tense unless a thought is streaming. Desktop counts a command running
+      // in the background on its summary line ("(1 still running)"), so that
+      // one row may sit in it, marked is-background.
       if (isGroup) {
-        if (li.querySelector(".chat-console-bundle li.is-running")) add("running-call-folded", li);
+        if (li.querySelector(".chat-console-bundle li.is-console-call.is-running:not(.is-background)")) add("running-call-folded", li);
         if (li.classList.contains("is-running") && !/^Thinking for /.test(head)) add("live-summary-line", li, head);
         if (!head) add("empty-summary-line", li);
       }
@@ -177,7 +179,10 @@ window.ConsoleAudit = (() => {
     }
 
     // A thought streaming after calls has its own ticking "Thinking for" line.
-    if (opts.thinkingLine && opts.thinking !== false &&
+    // Desktop folds it under the calls and says so on the status line instead.
+    const dockThinking = /\b(think|thought)/i.test(document.querySelector("[data-live-dock]:not([hidden]) .chat-status-verb")?.textContent || "") &&
+      Boolean(log.querySelector(".chat-console-bundle [data-reason-preview]"));
+    if (opts.thinkingLine && opts.thinking !== false && !dockThinking &&
         !rowsOf(log).some((li) => visible(li) && /^Thinking for /.test(headText(li)))) add("no-live-thought-line", null);
 
     if (opts.thinking === false) {
@@ -190,7 +195,10 @@ window.ConsoleAudit = (() => {
     if (opts.live && !dockShown) add("dock-missing", null);
     if (opts.live && dockShown) {
       const label = (document.querySelector("[data-live-dock-label]")?.textContent || "").trim();
-      if (!/^\S.*…/.test(label)) add("dock-label", null, JSON.stringify(label));
+      // A status word ends in "…"; Desktop's running command line is its
+      // description and then the command in parentheses instead.
+      const names = Boolean(document.querySelector("[data-live-dock-label] .dk-live-arg:not([hidden])"));
+      if (!/^\S.*…/.test(label) && !names) add("dock-label", null, JSON.stringify(label));
       if (/\bundefined\b|\bNaN\b/.test(label)) add("dock-label", null, JSON.stringify(label));
     }
     if (opts.live === false && dockShown && dock.getAttribute("aria-hidden") !== "true") add("dock-stale", null, "status row shown after the run");

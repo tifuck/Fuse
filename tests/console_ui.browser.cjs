@@ -270,11 +270,16 @@ function scenarios() {
             if (rows !== sc.diffRows) out.missing.push(`${sc.diffRows} diff rows (saw ${rows})`);
           }
           if (sc.wide) {
-            const label = [...document.querySelectorAll('.chat-log li.is-console-call .chat-step-label')].pop();
-            const call = label && label.querySelector('.chat-console-call');
-            const took = label && label.querySelector('.chat-console-took');
-            if (!call || call.getBoundingClientRect().width < label.getBoundingClientRect().width * 0.6) out.missing.push('command fills most of the row');
+            // Desktop names the running command on the status line, not as a row.
+            const dockLabel = document.querySelector('[data-live-dock]:not([hidden]) [data-live-dock-label]');
+            const named = dockLabel && dockLabel.querySelector('.dk-live-arg:not([hidden])');
+            const label = named ? dockLabel : [...document.querySelectorAll('.chat-log li.is-console-call .chat-step-label')].pop();
+            const call = named || (label && label.querySelector('.chat-console-call'));
+            const took = label && label.querySelector(named ? '.chat-status-meta' : '.chat-console-took');
+            const fill = named ? call.getBoundingClientRect().right - label.getBoundingClientRect().left : call && call.getBoundingClientRect().width;
+            if (!call || fill < label.getBoundingClientRect().width * 0.6) out.missing.push('command fills most of the row');
             if (!took || took.getBoundingClientRect().right > label.getBoundingClientRect().right + 1) out.missing.push('clock stays inside the row');
+            if (named && label.getBoundingClientRect().height > 30) out.missing.push('the running command line stays one line');
           }
           if (sc.expand) {
             document.querySelector(sc.expand.click)?.click();

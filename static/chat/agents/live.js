@@ -315,7 +315,7 @@ export function createLive(ctx) {
           meter: S.agentRun.compaction && S.agentRun.compaction.meter,
           seconds: agentRunWorkSeconds(S.agentRun, msg),
         });
-        ui.setLiveLabelText(S.agentLiveLabel, line.verb, line.meta);
+        ui.setLiveLabelText(S.agentLiveLabel, line.verb, line.meta, line.arg);
         if (S.agentLiveSpin) ui.setConsoleSpin(S.agentLiveSpin);
       }
     } else if (S.agentLiveSpin && (S.agentLiveSpin.firstChild || S.agentLiveSpin.dataset.spinSet)) {

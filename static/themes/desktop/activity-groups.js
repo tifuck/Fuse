@@ -164,7 +164,8 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let minus = 0;
     let thought = false;
     let errored = false;
-    let runningSince = 0;
+    let stillRunning = 0;
+    let stillCommands = false;
     const readPaths = new Set();
     const imagePaths = new Set();
     const edited = new Set();
@@ -180,7 +181,13 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       const trace = item.entry.trace;
       const presentation = deps.toolPresentation(trace, live);
       if (presentation.failed) errored = true;
-      if (presentation.running && !deps.toolBackground(trace)) runningSince = Math.max(runningSince, ccSince(trace));
+      // A background command still running is not "ran" yet: it is counted
+      // apart, "(1 still running)", and joins the count when it ends.
+      if (presentation.running) {
+        stillRunning += 1;
+        if (trace.name !== "monitor") stillCommands = true;
+        return;
+      }
       const cls = item.cls;
       if (!cls) {
         const kind = deps.isSearchTool(trace.name) ? "web" : OTHER_KIND[trace.name] || "tool";
@@ -222,16 +229,13 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       }
     });
     if (active && thinking && !group.items.length) thought = true;
-    // The verbs are in the present only while a call still runs; the work
-    // clock is the status line's, so this line never ticks or shifts.
-    const working = active && runningSince > 0;
     // Path reads count distinct files (two reads of one path are one file);
     // shell reads (cat, head, …) have no path to dedupe and count their calls.
     // Both sides always count: a path read plus a shell read is two files.
     const reads = readPaths.size + readOps;
     const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size && !others.size) return "";
+    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size && !others.size && !stillRunning) return "";
 
     const parts = [];
     if (thought) {
@@ -253,29 +257,33 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     if (pushes.length) add("pushed to", bold([...new Set(pushes)].join(", ")));
     branches.forEach((branch) => add(branch.action === "merged" ? "merged" : "rebased onto", bold(branch.ref)));
     prs.forEach((pr) => add(CC_PR_VERBS[pr.action] || pr.action, bold(pr.url && pr.url.includes("/-/merge_requests/") ? `MR !${pr.number}` : `PR #${pr.number}`)));
-    if (search) add(working ? "searching for" : "searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
-    if (reads) add(working ? "reading" : "read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
-    if (images) add(working ? "viewing" : "viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
-    if (list) add(working ? "listing" : "listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
-    if (shells) add(working ? "running" : "ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
-    if (edited.size) add(working ? "editing" : "edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
-    if (wrote.size) add(working ? "writing" : "wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
-    if (todos) add(working ? "updating" : "updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
+    if (search) add("searched for", `<b>${search}</b> ${search === 1 ? "pattern" : "patterns"}`);
+    if (reads) add("read", `<b>${reads}</b> ${reads === 1 ? "file" : "files"}`);
+    if (images) add("viewed", `<b>${images}</b> ${images === 1 ? "image" : "images"}`);
+    if (list) add("listed", `<b>${list}</b> ${list === 1 ? "directory" : "directories"}`);
+    if (shells) add("ran", `<b>${shells}</b> shell ${shells === 1 ? "command" : "commands"}`);
+    if (edited.size) add("edited", `<b>${edited.size}</b> ${edited.size === 1 ? "file" : "files"}`);
+    if (wrote.size) add("wrote", `<b>${wrote.size}</b> ${wrote.size === 1 ? "file" : "files"}`);
+    if (todos) add("updated", todos === 1 ? "todos" : `todos <b>${todos}</b> times`);
     for (const [kind, n] of others) {
-      const [past, ing, one, many] = OTHER_WORDS[kind];
-      add(working ? ing : past, `<b>${n}</b> ${n === 1 ? one : many}`);
+      const [past, , one, many] = OTHER_WORDS[kind];
+      add(past, `<b>${n}</b> ${n === 1 ? one : many}`);
     }
 
     // Desktop: the line never names the newest call; it counts them.
     const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
-    const label = parts.join(", ") + stat + (working || thought && active ? "…" : "");
+    const still = stillRunning ? `${stillRunning} still running` : "";
+    const noun = stillCommands ? (stillRunning === 1 ? "command" : "commands") : (stillRunning === 1 ? "monitor" : "monitors");
+    const label = !parts.length && still ? `${stillRunning} ${noun} still running`
+      : parts.join(", ") + stat + (still ? ` (${still})` : "") + (thought && active ? "…" : "");
     const title = label.replace(/<[^>]*>/g, "");
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
       : item.type === "live-think"
         ? ccGroupHtml({ items: [], liveThought: item.segmentIndex }, msg, live, active, openMap, thinking)
         : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
-    const state = active ? `is-running${errored ? " is-errored" : ""}` : "is-done";
+    // Only a streaming thought's line is live; a summary line is settled text.
+    const state = active && !group.items.length ? `is-running${errored ? " is-errored" : ""}` : "is-done";
     // A streaming thought: the transcript fills [data-reason-preview] and
     // keeps it pinned to the newest line (thinking-disclosure.js).
     if (!group.items.length && group.liveThought !== undefined) {
@@ -338,6 +346,10 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
       }
       i += 1;
       if (entry.type !== "tool" || AGENT_TOOLS.has(entry.trace.name)) continue;
+      // The call running now is the status line (live-status.js), not a row:
+      // it joins the summary when it ends. A background one stays counted.
+      // A Wait blocks on its command, so it is the call running now too.
+      if (deps.toolPresentation(entry.trace, live).running && (!deps.toolBackground(entry.trace) || entry.trace.name === "get_command_output")) continue;
       const cls = deps.ccToolClass(entry.trace);
       // A silent call (search_tools) stays hidden unless it was cut short: an
       // interrupted one says what the run was doing.

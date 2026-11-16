@@ -211,7 +211,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // and the hang's margins wait for the open.
       const bodyOnly = !status && !preview;
       return (
-        `<li class="chat-step is-console-call is-${kind} is-${dotState}${hangOpen || verbose ? " is-console-expanded" : ""}${verbose ? " is-console-verbose" : ""}" style="--console-hang: ${deps.consoleVerb(trace.name, trace).length + 1}ch" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}" data-tool="${deps.escapeHtml(trace.name)}" data-state="${presentation.state}" data-step="${deps.escapeHtml(index)}">` +
+        `<li class="chat-step is-console-call is-${kind} is-${dotState}${deps.toolBackground(trace) ? " is-background" : ""}${hangOpen || verbose ? " is-console-expanded" : ""}${verbose ? " is-console-verbose" : ""}" style="--console-hang: ${deps.consoleVerb(trace.name, trace).length + 1}ch" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}" data-tool="${deps.escapeHtml(trace.name)}" data-state="${presentation.state}" data-step="${deps.escapeHtml(index)}">` +
         `<span class="chat-step-node" aria-hidden="true">${icon}</span>` +
         `<div class="chat-step-main">${head}` +
         (showHang

@@ -21,7 +21,7 @@ function speakEnd() {
 }
 
 export function create(deps) {
-function setLiveLabelText(el, text, meta) {
+function setLiveLabelText(el, text, meta, arg = "") {
     if (!el) return;
     let verb = el.querySelector(":scope > .chat-status-verb");
     let tail = el.querySelector(":scope > .chat-status-meta");
@@ -32,6 +32,16 @@ function setLiveLabelText(el, text, meta) {
       tail.className = "chat-status-meta";
       el.replaceChildren(verb, tail);
     }
+    // The running command after its description, in parentheses; one line.
+    let cmd = el.querySelector(":scope > .dk-live-arg");
+    if (!cmd) {
+      cmd = document.createElement("span");
+      cmd.className = "dk-live-arg";
+      cmd.append(document.createElement("span"));
+      el.insertBefore(cmd, tail);
+    }
+    if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
+    if (cmd.hidden !== !arg) cmd.hidden = !arg;
     const nextMeta = meta || "";
     if (tail.textContent !== nextMeta) {
       // " tokens" in its own span: a narrow dock drops the word, never a number.
@@ -54,6 +64,69 @@ function setLiveLabelText(el, text, meta) {
     if (first || deps.reduceMotion.matches) return;
     void verb.offsetWidth;
     verb.classList.add("is-swap");
+  }
+
+// The running command's line opens to what it runs, where, its deadline and
+// its newest output. It closes by itself when another call takes the line.
+const detail = { open: false, id: "", trace: null };
+function liveDetailHtml(trace) {
+    const esc = deps.escapeHtml;
+    const where = [trace.host, trace.cwd].filter(Boolean).join(" · ");
+    const deadline = deps.ccTimeoutNote(trace).replace(/^\(timeout: (.*)\)$/, "times out after $1");
+    const out = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
+    const tail = out ? out.split("\n").slice(-8).join("\n") : "";
+    return `<div class="dk-live-cmd">$ ${esc(deps.displayCommand(trace))}</div>` +
+      (where || deadline ? `<div class="dk-live-where">${esc([where, deadline].filter(Boolean).join(" · "))}</div>` : "") +
+      `<pre class="chat-console-out dk-live-out">${tail ? deps.renderAnsi(tail) : '<span class="dk-live-wait">Waiting for output</span>'}</pre>`;
+  }
+function renderLiveDetail(dock) {
+    let panel = dock.querySelector(":scope > [data-live-detail]");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.className = "dk-live-detail";
+      panel.dataset.liveDetail = "";
+      dock.append(panel);
+    }
+    const html = detail.open && detail.trace ? liveDetailHtml(detail.trace) : "";
+    if (panel._html !== html) {
+      panel._html = html;
+      panel.innerHTML = html;
+    }
+    if (panel.hidden !== !html) panel.hidden = !html;
+    dock.classList.toggle("is-detail-open", Boolean(html));
+  }
+function syncLiveDetail(dock, trace) {
+    if (!dock) return;
+    const head = dock.querySelector("[data-dock-status]");
+    if (!dock._detailBound) {
+      dock._detailBound = true;
+      const toggle = (event) => {
+        if (!detail.trace || !event.target.closest("[data-dock-status]")) return;
+        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        detail.open = !detail.open;
+        head.setAttribute("aria-expanded", String(detail.open));
+        renderLiveDetail(dock);
+      };
+      dock.addEventListener("click", toggle);
+      dock.addEventListener("keydown", toggle);
+    }
+    const id = trace ? String(trace.id || deps.executionIdentity(trace)) : "";
+    if (id !== detail.id) Object.assign(detail, { open: false, id });
+    detail.trace = trace;
+    dock.classList.toggle("is-detailable", Boolean(trace));
+    if (trace) {
+      if (head.getAttribute("role") !== "button") {
+        head.setAttribute("role", "button");
+        head.tabIndex = 0;
+      }
+      head.setAttribute("aria-expanded", String(detail.open));
+    } else if (head.hasAttribute("role")) {
+      head.removeAttribute("role");
+      head.removeAttribute("tabindex");
+      head.removeAttribute("aria-expanded");
+    }
+    renderLiveDetail(dock);
   }
 
 function setLivePhase(dock, phase) {
@@ -293,7 +366,8 @@ function syncLiveDock() {
       speakPhase(status.phase, msg);
       {
         const line = deps.formatConsoleLiveStatus(msg, groups);
-        setLiveLabelText(deps.liveDockLabel, line.verb, line.meta);
+        setLiveLabelText(deps.liveDockLabel, line.verb, line.meta, line.arg);
+        syncLiveDetail(deps.liveDock, line.arg ? status.current : null);
       }
       if ((deps.liveDockSpin)) setConsoleSpin(deps.liveDockSpin);
       else if (deps.liveDockSpin) deps.applySpinEl(deps.liveDockSpin, deps.activitySpinSet(msg), "dock", true, msg._spinOrigin);
