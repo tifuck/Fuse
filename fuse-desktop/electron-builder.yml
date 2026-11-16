@@ -40,11 +40,12 @@ dmg:
   writeUpdateInfo: true
   artifactName: Fuse.${ext}
 
+# Files go in as root:root (fpm's default). --deb-use-file-permissions copied
+# the builder's owner instead: CI's runner uid left /opt/Fuse/chrome-sandbox
+# unowned by root and Chromium aborted on launch.
 deb:
   afterInstall: build/after-install.sh
   artifactName: Fuse.${ext}
-  fpm:
-    - --deb-use-file-permissions
 
 appImage:
   artifactName: Fuse.${ext}
