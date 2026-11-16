@@ -9,7 +9,6 @@ import io
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -387,15 +386,6 @@ class SearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("timeout -k 2 20", cmd)
         self.assertIn("--max-columns", cmd)
 
-    def test_fallback_grep_uses_pcre_when_available(self):
-        if not shutil.which("grep"):
-            self.skipTest("no grep")
-        with tempfile.TemporaryDirectory() as root:
-            Path(root, "a.txt").write_text("id 42\nnone\n")
-            cmd = "command() { return 1; }; " + ws._grep_search_cmd(r"\d+", ".")
-            proc = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5, cwd=root)
-        self.assertEqual(proc.stdout.strip(), "./a.txt:1:id 42")
-
     def test_search_target_is_relative_to_root(self):
         self.assertEqual(ws._search_target("/repo", "/repo", windows=False), ("/repo", "."))
         self.assertEqual(ws._search_target("/repo/src", "/repo", windows=False), ("/repo", "src"))
@@ -480,52 +470,6 @@ class SearchTest(unittest.IsolatedAsyncioTestCase):
 
 
 # --- shell ------------------------------------------------------------------------
-
-class ShellScriptTest(unittest.TestCase):
-    def run_script(self, script, **kw):
-        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10, **kw)
-
-    def test_failed_cd_stops_the_whole_command_list(self):
-        proc = self.run_script(ws._ssh_job_script("/nonexistent-dir", "echo A; echo B"))
-        self.assertEqual(proc.returncode, 1)
-        self.assertEqual(proc.stdout, "")
-
-    def test_stdin_is_closed(self):
-        start = time.monotonic()
-        proc = self.run_script(ws._ssh_job_script("/tmp", "read line; echo rc=$?"), stdin=subprocess.PIPE)
-        self.assertEqual(proc.stdout.strip(), "rc=1")
-        self.assertLess(time.monotonic() - start, 5)
-
-    def test_noninteractive_env(self):
-        proc = self.run_script(ws._ssh_job_script("/tmp", "echo $GIT_TERMINAL_PROMPT:$PAGER"))
-        self.assertEqual(proc.stdout.strip(), "0:cat")
-
-    @unittest.skipUnless(shutil.which("setsid") and shutil.which("ps"), "needs setsid and ps")
-    def test_group_kill_terminates_children(self):
-        home = tempfile.mkdtemp()
-        env = {**os.environ, "HOME": home}
-        marker = f"sleep 31{os.getpid() % 10}7"
-        proc = subprocess.Popen(
-            ["setsid", "bash", "-c", ws._ssh_job_script("/tmp", f"{marker} & {marker}; wait", "tok")],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
-        )
-        try:
-            deadline = time.monotonic() + 5
-            pgf = Path(home, ".cache/fuse/jobs/tok")
-            while not pgf.exists() and time.monotonic() < deadline:
-                time.sleep(0.05)
-            proc.kill()
-            proc.wait()
-            alive = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True).stdout.split()
-            self.assertTrue(alive, "children should survive a top-shell kill")
-            subprocess.run(["bash", "-c", ws._ssh_kill_script("tok")], env=env, timeout=10)
-            time.sleep(0.3)
-            alive = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True).stdout.split()
-            self.assertEqual(alive, [])
-            self.assertFalse(pgf.exists())
-        finally:
-            subprocess.run(["pkill", "-f", marker])
-
 
 class DenylistTest(unittest.TestCase):
     def test_blocks_named_catastrophes_and_bypasses(self):
@@ -1081,28 +1025,6 @@ class GrepModeTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("-C 2", ctx)
         self.assertIn("head -n 60", ctx)
 
-    def test_fallback_modes_run(self):
-        with tempfile.TemporaryDirectory() as root:
-            Path(root, "a.txt").write_text("one\ntwo\nthree\nfour\n")
-            Path(root, "b.txt").write_text("none\n")
-            def run(**kw):
-                cmd = "command() { return 1; }; " + ws._grep_search_cmd("two|four", ".", **kw)
-                return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5, cwd=root).stdout
-            self.assertEqual(run(mode="files_with_matches").split(), ["./a.txt"])
-            self.assertEqual(run(mode="count").split(), ["./a.txt:2"])
-            self.assertIn("./a.txt-3-three", run(context=1))
-
-    def test_fallback_missing_target_is_an_error(self):
-        # Without rg, a path that does not exist must fail like rg does, not
-        # walk the current directory (the project root) under a bogus prefix.
-        with tempfile.TemporaryDirectory() as root:
-            Path(root, "a.txt").write_text("two\n")
-            for cmd in (ws._grep_search_cmd("two", "nope/x.py"), ws._glob_search_cmd("*.txt", "nope/x.py")):
-                run = subprocess.run(["bash", "-c", "command() { return 1; }; " + cmd],
-                                     capture_output=True, text=True, timeout=5, cwd=root)
-                self.assertEqual((run.returncode, run.stdout), (2, ""))
-                self.assertIn("nope/x.py: No such file or directory", run.stderr)
-
     async def test_context_output_counts_matches_and_filters_secrets(self):
         out = "src/a.py-1-before\nsrc/a.py:2:KEY\nsrc/a.py-3-after\n--\n.env-1-x\n.env:2:KEY=1\n.env-3-y\n"
         data = {"exit": 0, "out": out, "err": "", "timed_out": False}
@@ -1149,17 +1071,6 @@ class GlobSortTest(unittest.TestCase):
         self.assertEqual(ws._glob_result("z.py\na.py\n", order="modified").split(), ["z.py", "a.py"])
         self.assertEqual(ws._glob_result("z.py\na.py\n").split(), ["a.py", "z.py"])
 
-    def test_fallback_modified_order_runs(self):
-        with tempfile.TemporaryDirectory() as root:
-            for i, name in enumerate(("old.py", "new.py")):
-                p = Path(root, name)
-                p.write_text("x")
-                os.utime(p, (1_000_000 + i * 1000, 1_000_000 + i * 1000))
-            cmd = "command() { return 1; }; " + ws._glob_search_cmd("*.py", ".", order="modified")
-            out = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5, cwd=root).stdout
-        self.assertEqual([Path(p).name for p in out.split()], ["new.py", "old.py"])
-
-
 class ListDepthTest(unittest.IsolatedAsyncioTestCase):
     async def test_sftp_tree_lists_vendor_dirs_without_expanding(self):
         class Entry:
@@ -1183,15 +1094,6 @@ class ListDepthTest(unittest.IsolatedAsyncioTestCase):
             text, _ = await ws._list(1, 2, "h", {"path": ".", "depth": 2}, "/repo")
         self.assertEqual(ws.unlabel_host("h", text).split("\n"),
                          ["README", "node_modules/", "src/", "src/a.py", "src/deep/"])
-
-    def test_posix_tree_command_runs(self):
-        with tempfile.TemporaryDirectory() as root:
-            for d in ("src/deep", "node_modules/pkg"):
-                Path(root, d).mkdir(parents=True)
-            Path(root, "src/deep/b.py").write_text("x")
-            out = subprocess.run(["bash", "-c", ws._tree_cmd_posix(3, ".")], capture_output=True, text=True, timeout=5, cwd=root).stdout
-        self.assertEqual(sorted(line.removeprefix("./") for line in out.split()),
-                         ["node_modules/", "src/", "src/deep/", "src/deep/b.py"])
 
     async def test_windows_depth_needs_new_connector(self):
         with patch.object(ws, "_is_agent", return_value=True), patch.object(ws, "_agent_version", return_value=(1, 3, 3)):

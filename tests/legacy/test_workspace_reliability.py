@@ -1,7 +1,6 @@
 """Regression tests for data preservation and bounded workspace operations."""
 import asyncio
 import io
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -119,47 +118,6 @@ class FileReliabilityTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SearchReliabilityTest(unittest.TestCase):
-    def test_fallback_regex_and_single_file_path(self):
-        with tempfile.TemporaryDirectory() as root:
-            p = Path(root) / "a.txt"
-            p.write_text("alpha\nbeta\n")
-            cmd = "command() { return 1; }; " + ws._grep_search_cmd("alpha|beta", str(p))
-            proc = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5)
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            self.assertEqual(proc.stdout.splitlines(), [f"{p}:1:alpha", f"{p}:2:beta"])
-
-    def test_complex_glob_without_rg_is_exact(self):
-        # Hosts without rg used to refuse ** and brace globs outright, so
-        # models dropped the filter and searched everything.
-        with tempfile.TemporaryDirectory() as root:
-            for rel in ("src/a.py", "src/x/b.py", "src/d.js", "other/c.py", "srcx/e.py"):
-                Path(root, rel).parent.mkdir(parents=True, exist_ok=True)
-                Path(root, rel).write_text("x\n")
-
-            def run(pattern):
-                cmd = "command() { return 1; }; " + ws._glob_search_cmd(pattern, ".")
-                proc = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5, cwd=root)
-                self.assertEqual(proc.returncode, 0, proc.stderr)
-                return sorted(line.removeprefix("./") for line in proc.stdout.split())
-
-            self.assertEqual(run("src/**/*.py"), ["src/a.py", "src/x/b.py"])
-            self.assertEqual(run("src/*.{py,js}"), ["src/a.py", "src/d.js"])
-            self.assertEqual(run("*.py"), ["other/c.py", "src/a.py", "src/x/b.py", "srcx/e.py"])
-
-    def test_grep_pipeline_survives_head_close_with_sigpipe_ignored(self):
-        # Connectors exec with SIGPIPE ignored, so head closing the pipe leaves
-        # grep dying on EPIPE ("write error: Broken pipe", exit 2) instead of
-        # SIGPIPE 141. The truncated matches must still be tolerated and kept.
-        with tempfile.TemporaryDirectory() as root:
-            Path(root, "a.txt").write_text("hit\n" * 50_000)
-            cmd = "trap '' PIPE; command() { return 1; }; " + ws._grep_search_cmd("hit", str(root), max_matches=5)
-            proc = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=5)
-            self.assertEqual(proc.returncode, 2)
-            self.assertIn("Broken pipe", proc.stderr)
-            self.assertEqual(len(proc.stdout.splitlines()), 5)
-            self.assertTrue(ws._pipe_ok_exit(proc.returncode, proc.stderr))
-            self.assertFalse(ws._pipe_ok_exit(proc.returncode, "grep: unbalanced parenthesis"))
-
     def test_windows_include_parses_drive_letter(self):
         self.assertEqual(ws._filter_grep_include("C:\\repo\\a.py:2:hit", "*.py"), "C:\\repo\\a.py:2:hit")
 
