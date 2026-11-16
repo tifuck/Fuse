@@ -473,11 +473,8 @@ export function createDesktopTheme(runtime) {
   }));
   Object.assign(theme, createChrome({
     get activeRun() { return runtime.activeRun; },
-    get consoleDiffCounts() { return theme.consoleDiffCounts; },
-    get consoleDiffHtml() { return theme.consoleDiffHtml; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get looksLikeDiff() { return theme.looksLikeDiff; },
     get openWallpaperPicker() { return runtime.openWallpaperPicker; },
     get renderAnsi() { return theme.renderAnsi; },
     get sessionProject() { return runtime.sessionProject; },

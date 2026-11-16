@@ -8,7 +8,6 @@
 const WIDE = "(min-width: 1040px)";
 const PHONE = "(max-width: 800px)";
 const STORE = "fuse.chat.desktop.inspector.v1";
-const EDIT_TOOLS = new Set(["search_replace", "write_file", "edit_file", "apply_patch"]);
 // Toggles whose sheet may close while they sit in a closed menu or a folded bar.
 const SHEET_TOGGLES = "[data-skills-toggle], [data-view-toggle], [data-memory-toggle], [data-artifact-toggle]";
 
@@ -32,7 +31,7 @@ export function create(deps) {
   let threadKey = null;
   let baseSig = null;
   const inertSaved = new Map();
-  const seen = { diff: "", terminal: "" };
+  const seen = { terminal: "" };
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
   const show = (el, on) => { if (el && el.hidden === on) el.hidden = !on; };
@@ -241,9 +240,6 @@ export function create(deps) {
           if (document.activeElement && document.activeElement !== document.body) return;
           deps.root.querySelectorAll("[data-history-toggle]").forEach((btn) => { if (visible(btn) && btn !== t) btn.focus({ preventScroll: true }); });
         });
-      } else if (t.matches("[data-theme-diff-fold]")) {
-        t.hidden = true;
-        for (let row = t.nextElementSibling; row?.hidden; row = row.nextElementSibling) row.hidden = false;
       } else if (t.matches("[data-theme-expand]")) {
         const turn = t.closest(".chat-turn");
         const open = !turn?.classList.contains("is-expanded");
@@ -419,75 +415,6 @@ export function create(deps) {
 
   // —— Inspector cards ——
 
-  function editDiff(trace) {
-    const found = [trace.preview, trace.output].find((value) => typeof value === "string" && deps.looksLikeDiff(value));
-    if (found) return found;
-    if (typeof trace.old_string === "string" || typeof trace.new_string === "string") {
-      const lines = (text, mark) => String(text || "").split("\n").filter((line, i, all) => line || i < all.length - 1).map((line) => mark + line);
-      return [...lines(trace.old_string, "-"), ...lines(trace.new_string, "+")].join("\n");
-    }
-    if (trace.name === "write_file" && typeof trace.content === "string") return trace.content.split("\n").map((line) => "+" + line).join("\n");
-    return "";
-  }
-
-  function latestEdit() {
-    const messages = deps.messages || [];
-    for (let m = messages.length - 1; m >= 0; m -= 1) {
-      const tools = messages[m].tools || [];
-      for (let t = tools.length - 1; t >= 0; t -= 1) {
-        const trace = tools[t];
-        if (!EDIT_TOOLS.has(trace.name) || trace.status === "error" || trace.error) continue;
-        const diff = editDiff(trace);
-        if (diff) return { trace, diff };
-      }
-    }
-    return null;
-  }
-
-  // Long runs of unchanged rows fold behind a button that shows them.
-  function foldUnchanged(html) {
-    const box = document.createElement("div");
-    box.innerHTML = html;
-    const rows = [...box.querySelectorAll(".chat-console-nline")];
-    let run = [];
-    const flush = () => {
-      if (run.length > 6) {
-        const hidden = run.slice(2, -2);
-        const note = document.createElement("button");
-        note.type = "button";
-        note.className = "dk-diff-fold";
-        note.textContent = `${hidden.length} unmodified lines`;
-        note.dataset.themeDiffFold = "";
-        hidden[0].before(note);
-        hidden.forEach((row) => { row.hidden = true; });
-      }
-      run = [];
-    };
-    rows.forEach((row) => { if (row.classList.contains("is-ctx")) run.push(row); else flush(); });
-    flush();
-    return box.innerHTML;
-  }
-
-  function syncDiff(closed) {
-    const card = q('[data-theme-card="diff"]');
-    if (!card) return false;
-    const edit = latestEdit();
-    const key = edit ? `${edit.trace.id}:${edit.diff.length}` : "";
-    if (key !== seen.diff) {
-      seen.diff = key;
-      if (edit) {
-        const counts = deps.consoleDiffCounts(edit.diff);
-        const path = String(edit.trace.path || edit.trace.file_path || "");
-        setText(card.querySelector("[data-theme-diff-file]"), path.split("/").slice(-2).join("/"));
-        card.querySelector("[data-theme-diff-stat]").innerHTML = `<ins>+${counts.added}</ins> <del>-${counts.removed}</del>`;
-        card.querySelector("[data-theme-diff]").innerHTML = foldUnchanged(deps.consoleDiffHtml(edit.diff, { limit: 400 }));
-      }
-    }
-    const on = Boolean(edit) && !closed.has("diff");
-    show(card, on);
-    return on;
-  }
-
   function syncTerminal(closed) {
     const card = q('[data-theme-card="terminal"]');
     if (!card) return false;
@@ -557,7 +484,6 @@ export function create(deps) {
     const tasks = syncTasks(closed);
     const plan = syncPlan(closed);
     const terminal = syncTerminal(closed);
-    const diff = syncDiff(closed);
     syncChips();
     syncTitle();
     syncPins();
@@ -577,7 +503,7 @@ export function create(deps) {
     // New work while it is shut (or on a dismissed card) only puts a dot on the button.
     const todos = q("[data-live-todos]");
     const sig = [tasks && (deps.agentsRows || []).length, tasks && (deps.jobsRows || []).map((row) => `${row.command_id || row.id}:${row.state}`).join(","),
-      plan && todos.textContent.length, diff && seen.diff].join("|");
+      plan && todos.textContent.length].join("|");
     if (thread() !== threadKey) {
       threadKey = thread();
       baseSig = sig;

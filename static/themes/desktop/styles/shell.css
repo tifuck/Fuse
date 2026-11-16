@@ -457,9 +457,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-card-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 3px 0 12px; border-bottom: 1px solid var(--dk-card-line); color: var(--dk-text); font: 13px var(--sans); }
   & .dk-card-head b { font-weight: 600; }
   & .dk-card-sub { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--dk-mute); font: 12px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-stat { flex: none; font: 12px var(--mono); }
-  & .dk-stat ins { color: var(--dk-add); text-decoration: none; }
-  & .dk-stat del { color: var(--dk-del); text-decoration: none; }
   & .dk-card-x { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: auto; border-radius: 6px; color: var(--dk-mute); font: 16px/1 var(--sans); }
   & .dk-card-x:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-card-body { min-height: 0; margin: 0; }
@@ -482,19 +479,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-card-preview .chat-artifact-resize { left: -9px; }
   & .dk-card-preview .chat-artifact-expand { display: none; }
   /* Diff: numbered red and green rows; long unchanged runs fold behind a button. */
-  & .dk-diff { max-height: 22rem; overflow-y: auto; font: 12px/1.5 var(--mono); scrollbar-width: thin; }
-  & .dk-diff .chat-console-lines { margin: 0; padding: 4px 0; overflow-x: auto; background: none; scrollbar-width: thin; }
-  & .dk-diff .chat-console-nline { display: flex; padding: 0 10px; white-space: pre; }
-  & .dk-diff .chat-console-nline[hidden] { display: none; }
-  & .dk-diff .chat-console-nline.is-add { background: color-mix(in srgb, var(--dk-add) 14%, transparent); }
-  & .dk-diff .chat-console-nline.is-del { background: color-mix(in srgb, var(--dk-del) 14%, transparent); }
-  & .dk-diff .chat-console-n { flex: none; width: 3.2em; color: var(--dk-mute); text-align: right; padding-right: 0.8em; }
-  & .dk-diff .chat-console-mark { flex: none; width: 1.2em; color: var(--dk-mute); }
-  & .dk-diff .is-add .chat-console-mark { color: var(--dk-add); }
-  & .dk-diff .is-del .chat-console-mark { color: var(--dk-del); }
-  & .dk-diff-fold { display: block; width: 100%; min-height: 24px; padding: 2px 10px 2px 4.4em; border: 0; background: color-mix(in srgb, var(--dk-link) 8%, transparent); color: var(--dk-mute); font: 11.5px var(--sans); text-align: left; cursor: pointer; }
-  & .dk-diff-fold:hover { color: var(--dk-text); }
-  & .dk-diff-fold:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   /* Terminal: a background command's output. */
   & .dk-term { max-height: 16rem; padding: 8px 12px; overflow: auto; background: color-mix(in srgb, var(--ink) 70%, var(--dk-card)); color: var(--dk-text); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   /* Tasks: agents and background commands, two lines each. */
@@ -763,26 +747,28 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.is-empty .dk-hero { position: absolute; inset: calc(var(--chat-bar-h) + 6vh) 0 auto; z-index: 1; display: grid; place-items: center; pointer-events: none; }
   & .dk-mark { display: block; width: 44px; height: 44px; background: var(--dk-dim); -webkit-mask: url("../../../icon.svg") center / contain no-repeat; mask: url("../../../icon.svg") center / contain no-repeat; opacity: 0.6; }
 
-  /* ---- Live status: one shimmering line, no spinner. The status word
-     leads; the clock and counts sit at the far end in fixed-width digits,
-     so a tick never moves the word and moves nothing while the digit
-     count holds. ---- */
+  /* ---- Live status: no spinner; only the status word shimmers. The clock
+     and counts are plain grey at the far end in fixed-width digits, so a
+     tick never moves the word and moves nothing while the digit count
+     holds. ---- */
   & .chat-live-dock { min-height: 22px; color: var(--dk-mute); font: 13px/22px var(--sans); }
   & .chat-live-dock .chat-activity-spin { display: none; }
   & .chat-live-dock .chat-status-shimmer { display: flex; flex: 1 1 auto; min-width: 0; font: inherit; font-style: normal; }
-  & .chat-live-dock [data-live-dock-label], & .chat-live-dock [data-agent-live-label] {
-    flex: 1 1 auto;
+  & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { flex: 1 1 auto; }
+  & .chat-live-dock .chat-status-verb {
+    color: transparent;
+    font: inherit;
     background: linear-gradient(100deg, var(--dk-mute) 40%, var(--dk-text) 50%, var(--dk-mute) 60%) 0 0 / 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
     animation: dk-shimmer 2.4s linear infinite;
   }
-  & .chat-live-dock .chat-status-verb { color: transparent; font: inherit; background: none; -webkit-text-fill-color: transparent; animation: none; }
-  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 12px; color: transparent; -webkit-text-fill-color: transparent; font: 12px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 12px; color: var(--dk-mute); font: 12px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .chat-live-dock .chat-dock-dots { display: none; }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
-  @media (prefers-reduced-motion: reduce) { & .chat-live-dock :is([data-live-dock-label], [data-agent-live-label]) { animation: none; background-position: 50% 0; } }
+  @media (prefers-reduced-motion: reduce) { & .chat-live-dock .chat-status-verb { animation: none; background-position: 50% 0; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }

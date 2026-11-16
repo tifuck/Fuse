@@ -166,20 +166,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step:is(*, .is-console-call, .is-console-group, .is-console-thought, .is-console-notice) > .chat-step-node { display: none !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step { grid-template-columns: minmax(0, 1fr) !important; column-gap: 0 !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step > :not(.chat-step-node) { grid-column: 1 / -1 !important; }
-/* A running line shimmers: a band of light crosses its own text, no fill
-   and no accent colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label {
-  background: linear-gradient(100deg, var(--dk-mute, var(--mute)) 40%, var(--dk-text, var(--mist)) 50%, var(--dk-mute, var(--mute)) 60%) 0 0 / 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: dk-shimmer 2.4s linear infinite;
-}
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label :is(*, *::before) { color: transparent !important; background: none !important; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label { color: transparent !important; }
+/* The status line's word shimmers (shell.css); rows and summary lines stay still. */
 @keyframes dk-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
-@media (prefers-reduced-motion: reduce) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step.is-console-call.is-running, .chat-step.is-console-group.is-running) > .chat-step-main > .chat-step-head .chat-step-label { animation: none; background-position: 50% 0; }
-}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-error .chat-tool-action { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call.is-error .chat-console-hang-body > .chat-console-result-text { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-red .chat-console-notice-text { color: var(--call-fail); }
