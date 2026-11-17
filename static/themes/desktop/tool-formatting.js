@@ -305,12 +305,15 @@ function consoleCallHtml(trace, presentation, full = false) {
     const described = shellDescription(trace, presentation, full);
     if (described) {
       // The description is the row's sentence, in the past tense ("Listed the
-      // test areas"); one that failed or was cut short keeps what it tried. A
-      // description that does not start with a verb keeps "Ran" before it.
-      const bad = presentation?.failed || presentation?.interrupted || (presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError);
-      const sentence = bad ? described : deps.ccRunningForm(described) ? deps.ccInflect(described).done : "";
-      return `<span class="chat-console-call is-described">${sentence ? "" : `<span class="chat-tool-action">${deps.escapeHtml(verb)}</span>`}` +
-        `<span class="chat-console-val">${deps.escapeHtml(sentence || described)}</span></span>${hostHtml}${clock}`;
+      // test areas") however it ended; its first word is the verb, quiet like
+      // every other row's. A description that does not start with a verb keeps
+      // "Ran" before it.
+      const sentence = deps.ccRunningForm(described) ? deps.ccInflect(described).done : "";
+      const space = sentence.indexOf(" ");
+      const lead = !sentence ? verb : space === -1 ? sentence : sentence.slice(0, space);
+      const rest = !sentence ? described : space === -1 ? "" : sentence.slice(space + 1);
+      return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(lead)}</span>` +
+        `${rest ? `<span class="chat-console-val">${deps.escapeHtml(rest)}</span>` : ""}</span>${hostHtml}${clock}`;
     }
     let inner = "";
     // "in src" after a pattern: where it searched, quieter than the pattern.
@@ -389,8 +392,7 @@ function shellDescription(trace, presentation, full) {
   }
 
 // A row reads as a sentence: settled calls in the past ("Read config.py"),
-// running ones as they happen ("Searching the web for …"), and a failed
-// one by what it tried ("Edit config.py").
+// failed ones too, and running ones as they happen ("Searching the web for …").
 const VERB_FORMS = {
   Read: ["Read", "Reading"], View: ["Viewed", "Viewing"], List: ["Listed", "Listing"], Write: ["Wrote", "Writing"],
   Edit: ["Edited", "Editing"], Run: ["Ran", "Running"], Monitor: ["Watched", "Watching"], Wait: ["Waited for", "Waiting for"],
@@ -405,7 +407,7 @@ const ARTIFACT_FORMS = { Create: ["Created", "Creating"], Update: ["Updated", "U
 function sentenceVerb(verb, name, presentation) {
     const artifact = ARTIFACT_VERBS[name];
     const forms = artifact ? ARTIFACT_FORMS[artifact] : VERB_FORMS[verb];
-    const word = !forms || presentation?.failed ? (artifact || verb) : forms[presentation?.running ? 1 : 0];
+    const word = !forms ? (artifact || verb) : forms[presentation?.running ? 1 : 0];
     return artifact ? `${word} artifact` : word;
   }
 

@@ -401,8 +401,8 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
 // A settled thought: one line ("Thought for 4s" and its first words) that
 // opens to the whole text, like a call row.
 function thoughtRowHtml(key, text, ms, segmentIndex, open) {
-    const line = `<span class="chat-console-call"><span class="chat-tool-action">Thought for ${deps.escapeHtml(ccThinkClock(ms, 0))}</span>` +
-      `<span class="dk-think-first">${deps.escapeHtml(deps.ccClip(deps.ccFlat(text), 300))}</span></span>`;
+    const line = `${deps.rowIconHtml(null)}<span class="chat-console-call"><span class="chat-tool-action">Thought for ${deps.escapeHtml(ccThinkClock(ms, 0))}</span>` +
+      `<span class="dk-think-first">${deps.escapeHtml(deps.ccClip(deps.ccFlat(text), 300))}</span></span>${deps.ROW_CHEV}`;
     return (
       `<li class="chat-step is-console-call is-dk-thought is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}" data-thought="${segmentIndex}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
