@@ -57,10 +57,12 @@ function renderAutoSteps(msg) {
       event.preventDefault();
       // A one-line call opens its body under the line, as in a reply.
       const hang = li.classList.contains("is-console-call") && li.querySelector(":scope > .chat-step-main .chat-console-hang");
-      const open = hang ? !hang.classList.contains("is-expanded") : !reveal.classList.contains("is-open");
+      const open = hang ? !li.classList.contains("is-console-expanded") : !reveal.classList.contains("is-open");
       if (hang) {
-        hang.classList.toggle("is-expanded", open);
-        li.classList.toggle("is-console-expanded", open);
+        deps.foldInPlace(li, reveal, open, () => {
+          if (open) hang.classList.add("is-expanded");
+          li.classList.toggle("is-console-expanded", open);
+        }, () => { if (!open) hang.classList.remove("is-expanded"); });
       } else deps.setToolReveal(reveal, open);
       li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", String(open)));
       if (open) deps.tailConsoleOutput(li);

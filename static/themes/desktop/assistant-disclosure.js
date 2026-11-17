@@ -149,16 +149,21 @@ function renderAssistant(msg, live) {
       const open = isThink
         ? ((li.dataset.thinkMode !== "expanded"))
         : isConsoleCall
-          ? !hang?.classList.contains("is-expanded")
+          ? !li.classList.contains("is-console-expanded")
           : isConsoleGroup
             ? !li.classList.contains("is-console-expanded")
             : !reveal.classList.contains("is-open");
       if (open && !isThink) deps.pauseThreadFollow();
+      // A call or a summary line opens and folds upward: what is under it
+      // stays put. A folding call keeps its box drawn until it has shrunk.
       if (isConsoleCall && hang) {
-        hang.classList.toggle("is-expanded", open);
-        li.classList.toggle("is-console-expanded", open);
+        deps.foldInPlace(li, reveal, open, () => {
+          if (open) hang.classList.add("is-expanded");
+          li.classList.toggle("is-console-expanded", open);
+        }, () => { if (!open) hang.classList.remove("is-expanded"); });
       } else if (isConsoleGroup) {
-        li.classList.toggle("is-console-expanded", open);
+        deps.foldInPlace(li, li.querySelector(":scope > .chat-step-main > .chat-console-bundle"), open,
+          () => li.classList.toggle("is-console-expanded", open));
       } else if (reveal) {
         reveal.classList.toggle("is-revealing", open);
         deps.setToolReveal(reveal, open);

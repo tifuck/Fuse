@@ -56,6 +56,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & { --dk-call-row: 26px; --dk-call-quiet: color-mix(in srgb, var(--dk-mute, var(--mute)) 68%, transparent); }
   @media (max-width: 480px), (pointer: coarse) { & { --dk-call-row: 32px; } }
 
+  /* Opening a line adds no padding of its own: it stays where it was and only
+     its list appears (the older layers pad an opened line). */
+  & .chat-step.is-console-group.is-console-expanded { padding-block: 0; }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: var(--dk-mute, var(--mute)); }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-text, var(--mist)); }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { margin: 0 0 4px; padding-left: 0; border-left: 0; }
