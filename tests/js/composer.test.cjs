@@ -187,6 +187,20 @@ test('machine stats: load stays white to 50%, turns amber, red from 95%; rates r
     ['0B', '840B', '1.0K', '84K', '1.2M', '13M', '3.4G', '0B']);
 });
 
+test('model picker: a long name keeps its first two words and a version right after them', async () => {
+  const { shortModelName } = await import('../../static/chat/picker/list.js');
+  assert.equal(shortModelName('Opus 5.5'), 'Opus 5.5');
+  assert.equal(shortModelName('Claude Haiku'), 'Claude Haiku');
+  assert.equal(shortModelName('DeepSeek V4.1 Flash 0528'), 'DeepSeek V4.1');
+  assert.equal(shortModelName('Claude Opus 4.5 Thinking'), 'Claude Opus 4.5');
+  assert.equal(shortModelName('Ornith 1.5 35B A3B Abliterated.i1'), 'Ornith 1.5');
+  assert.equal(shortModelName('  GPT-5.1   Codex Max '), 'GPT-5.1 Codex');
+  assert.equal(shortModelName('Kimi-K2.5-Instruct-Turbo-0905'), 'Kimi-K2.5');
+  assert.equal(shortModelName('Qwen3-Coder-480B-A35B-Instruct'), 'Qwen3-Coder-480B');
+  assert.equal(shortModelName('Supercalifragilistic'), 'Supercalifragilistic');
+  assert.equal(shortModelName(''), '');
+});
+
 test('machine stats: recent load reads as block characters, clamped to the scale', async () => {
   const { loadBlocks } = await import('../../static/chat/hoststats.js');
   assert.equal(loadBlocks([0, 50, 100, 140, -3]), '▁▅██▁');

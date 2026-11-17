@@ -159,7 +159,7 @@ export function createHostStats() {
   }
 
   // Whatever does not fit between the composer's own controls goes:
-  // the machine name first, then the network, then the whole card.
+  // the machine name first, then the network, then the disk, then the whole card.
   function room() {
     const row = card.parentElement;
     const groups = [...row.querySelectorAll(":scope > [data-box-group]")];
@@ -178,7 +178,7 @@ export function createHostStats() {
     const key = `${card.parentElement.clientWidth}|${[el.cpu, el.ram, el.disk, el.rx, el.tx, el.alias].map((n) => n?.textContent.length).join(",")}`;
     if (key === fitKey) return;
     fitKey = key;
-    const steps = [el.hostSlice, el.netSlice].filter(Boolean);
+    const steps = [el.hostSlice, el.netSlice, el.diskSlice].filter(Boolean);
     card.classList.remove("is-squeezed");
     steps.forEach((node) => node.classList.remove("is-dropped"));
     const space = room();

@@ -1171,10 +1171,16 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
    input, between the composer's own controls. Each value has a fixed-width
    slot, so the row never shifts as numbers change; a 2px gauge hangs under
    each load. The runtime drops slices that do not fit, and the model
-   picker shrinks to its logo while the meters show (the id is its title). */
+   picker shows its short name while the meters show and on phones (the id
+   is its title). */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 .chat-host-stats { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model .chat-picker-btn:not(:disabled) > span { display: none; }
+  & .dk-model .chat-picker-btn > span[data-short]::before {
+    content: attr(data-short); content: attr(data-short) / "";
+    display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12.5px;
+  }
+  & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } }
+  @media (max-width: 640px) { & .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } } }
   & .chat-host-stats {
     display: flex; align-items: center; gap: 14px; width: max-content; height: 28px;
     font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;

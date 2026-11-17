@@ -1,5 +1,6 @@
 // Picker button/sheet placement, composer hint.
 import { S } from '../state.js';
+import { shortModelName } from './list.js';
 
 const PICKER_CHEV =
   '<svg class="chat-picker-chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -196,6 +197,7 @@ export function createSheet(ctx) {
     const think = agent && !effort ? "" : list.effortLabel(effort, model);
     btn.innerHTML = `${sidebar.providerLogo(model.type)}<span></span><small></small>${agent ? "" : PICKER_CHEV}`;
     btn.querySelector("span").textContent = model.name;
+    btn.querySelector("span").dataset.short = shortModelName(model.name);
     btn.querySelector("small").textContent = think;
     list.paintEffort(btn.querySelector("small"), effort, model);
     btn.title = (agent ? "Subagent model: " : "") + (think ? model.id + " · " + think : model.id);
