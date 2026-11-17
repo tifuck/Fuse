@@ -21,7 +21,7 @@ function ccCallClockHtml(trace, presentation) {
     const ms = Number(name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
-    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> · ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
+    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"><span class="dk-sep"> · </span>${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
   }
 
 function ccCallName(item) {

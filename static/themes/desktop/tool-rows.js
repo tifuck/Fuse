@@ -153,6 +153,27 @@ function resultHtml(status) {
     return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, ""));
   }
 
+// An opened call: one box whose header is the exact input (the command, the
+// path, the pattern) with a copy button and whose body is only the output;
+// under it, how the call ended and where it ran. body and state are HTML.
+function callBoxHtml({ input = "", prompt = false, label = "input", body = "", state = "", bad = false, where = "" }) {
+    const head = input ? `<div class="dk-call-head"><span class="dk-call-in">${prompt ? '<span class="dk-call-pr">$ </span>' : ""}${deps.escapeHtml(input)}</span>` +
+      `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
+    const foot = state || where ? `<div class="dk-call-foot">${state ? `<span class="dk-call-state${bad ? " is-bad" : ""}">${state}</span>` : ""}` +
+      `${where ? `<span class="dk-call-where">${deps.escapeHtml(where)}</span>` : ""}</div>` : "";
+    return `<div class="dk-call-box">${head}${body}</div>${foot}`;
+  }
+
+function callInput(trace) {
+    const name = trace.name;
+    if (name === "run_terminal_command") return { input: deps.displayCommand(trace), prompt: true, label: "command" };
+    if (name === "grep" || name === "glob") return { input: trace.pattern ? `"${trace.pattern}"${trace.path ? ` in ${trace.path}` : ""}` : "", label: "pattern" };
+    if (["read_file", "write_file", "search_replace", "list_dir"].includes(name)) return { input: String(trace.path || ""), label: "path" };
+    if (name === "read_url") return { input: String(trace.url || ""), label: "address" };
+    if (deps.isSearchTool(name)) return { input: deps.searchQueries(trace).join("\n"), label: "search" };
+    return {};
+  }
+
 function toolRowLabel(trace) {
     const subject = deps.toolSubject(trace);
     return `${deps.toolAction(trace)}${subject ? ` · ${subject}` : ""}`;
@@ -182,14 +203,12 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // An opened summary line lists one-line rows: each opens its own output.
       const preview = verbose || opts.oneLine ? "" : fold.preview;
       inner = verbose || opts.oneLine ? fold.full || fold.preview : fold.full;
-      if (deps.shellDescription(trace, presentation, verbose)) inner = `<div class="dk-row-cmd">$ ${deps.escapeHtml(deps.displayCommand(trace))}</div>${inner}`;
-      // An opened one-line row names where it ran, in one place for every call:
-      // the machine, plus a command's directory or an image's format and size.
-      if (opts.oneLine && inner) {
-        const where = [trace.host, trace.name === "run_terminal_command" ? trace.cwd : "", toolImageInfo(trace)].filter(Boolean);
-        if (where.length) inner = `<div class="dk-row-where">${where.map((part) => deps.escapeHtml(part)).join(" · ")}</div>${inner}`;
-      }
-      const expandable = !verbose && openKind !== "agent" && Boolean(inner);
+      const described = deps.shellDescription(trace, presentation, verbose);
+      if (described && !opts.oneLine) inner = `<div class="dk-row-cmd">$ ${deps.escapeHtml(deps.displayCommand(trace))}</div>${inner}`;
+      // An opened one-line row is one box (callBoxHtml); a described command
+      // with no output still opens, to its command.
+      const boxed = Boolean(opts.oneLine && (inner || described));
+      const expandable = !verbose && openKind !== "agent" && (Boolean(inner) || boxed);
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
       // A running one-line row already says what it is doing; its result
       // only adds where (the background) or that it is being stopped.
@@ -213,6 +232,18 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // Ledger: a one-line row carries its result on the line itself (verb,
       // subject, result); its hang is only the body that opens under it.
       const lineResult = opts.oneLine ? result : "";
+      if (boxed) {
+        // How it ended: a command's exit and time, any other call's result.
+        // Where: the machine, plus a command's directory or an image's
+        // format and size.
+        const shell = trace.name === "run_terminal_command" && !running;
+        const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms);
+        const state = shell
+          ? [status ? deps.escapeHtml(status) : exit === 0 ? "Exit 0" : "", Number.isFinite(ms) && ms > 0 ? deps.humanMs(ms) : ""].filter(Boolean).join(" · ")
+          : resultHtml(status);
+        const where = [trace.host, trace.name === "run_terminal_command" ? trace.cwd : "", toolImageInfo(trace)].filter(Boolean).join(" · ");
+        inner = callBoxHtml({ ...callInput(trace), body: inner, state, bad: failed || dotState === "error", where });
+      }
       const head = deps.toolHeadHtml({
         ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + lineResult, title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
@@ -262,5 +293,5 @@ const TOOL_KIND = {
     read_transcript: "read",
   };
 
-  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, toolRowLabel, toolStepHtml, TOOL_KIND };
+  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, callBoxHtml, toolRowLabel, toolStepHtml, TOOL_KIND };
 }

@@ -876,12 +876,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
   & .chat-live-dock.is-detailable [data-dock-status]:hover .dk-live-arg { color: var(--dk-text); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
-  & .chat-live-dock .dk-live-detail { flex: 1 0 100%; min-width: 0; margin: 2px 0 0; padding-left: 0.9rem; color: var(--dk-mute); font: 12.5px/1.5 var(--sans); }
+  & .chat-live-dock .dk-live-detail { flex: 1 0 100%; min-width: 0; margin: 4px 0 6px; }
   & .chat-live-dock .dk-live-detail[hidden] { display: none; }
   & .dk-row-cmd { margin-bottom: 4px; color: var(--dk-text); font: 12px/1.5 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
-  & .chat-live-dock .dk-live-cmd { color: var(--dk-text); font: 12px/1.5 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
-  & .chat-live-dock .dk-live-where { margin-top: 2px; }
-  & .chat-live-dock .dk-live-out { max-height: 10.5rem; margin: 6px 0 0; overflow: auto; white-space: pre; font-size: 12px; }
+  & .chat-live-dock .dk-live-out { max-height: 10.5rem; white-space: pre; }
   & .chat-live-dock .dk-live-wait { color: var(--dk-mute); font-family: var(--sans); }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }

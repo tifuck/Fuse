@@ -80,3 +80,22 @@ test('desktop status line: the thought heading, then the newest action in the pa
   assert.equal(status.lastActionText({ tools: [{ name: 'search_replace', path: 'static/chat.js' }] }), 'Edited static/chat.js');
   assert.equal(status.lastActionText({ tools: [] }), '');
 });
+
+test('desktop rows read as sentences: a described command in the past tense, a file by name then folder', async () => {
+  const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
+  const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
+  const rows = (await import('../../static/themes/desktop/tool-formatting.js')).create({
+    ...words, escapeHtml: String, ccCallClockHtml: () => '', ccLiveText: () => '', ccSedEdit: () => null,
+    ccExitMeaning: (_command, exit) => ({ isError: exit > 0 }), shellExitCode: (trace) => trace.exit_code ?? null,
+    toolBackground: () => false, sessionProject: () => null, messages: [],
+    consoleVerb: (name) => ({ run_terminal_command: 'Run', read_file: 'Read', grep: 'Search' })[name],
+  });
+  const text = (trace, presentation = { state: 'done' }) => rows.consoleCallHtml(trace, presentation).replace(/<[^>]*>|[()]/g, '');
+  const run = { name: 'run_terminal_command', command: 'make test', description: 'Run the test suite twice' };
+  assert.equal(text(run), 'Ran the test suite twice');
+  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Run the test suite twice', 'a failed one keeps what it tried');
+  assert.equal(text({ ...run, description: 'Unit tests' }), 'RanUnit tests', 'no verb to inflect: the verb stays its own word');
+  assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');
+  assert.equal(text({ name: 'read_file', path: 'README.md' }), 'ReadREADME.md');
+  assert.equal(text({ name: 'grep', pattern: 'def main', path: 'app' }), 'Searched"def main" in app');
+});

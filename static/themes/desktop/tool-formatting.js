@@ -303,8 +303,18 @@ function consoleCallHtml(trace, presentation, full = false) {
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
     }
     const described = shellDescription(trace, presentation, full);
-    if (described) return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-val">${deps.escapeHtml(described)}</span></span>${hostHtml}${clock}`;
+    if (described) {
+      // The description is the row's sentence, in the past tense ("Listed the
+      // test areas"); one that failed keeps what it tried. A description that
+      // does not start with a verb keeps "Ran" before it.
+      const bad = presentation?.failed || (presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError);
+      const sentence = bad ? described : deps.ccRunningForm(described) ? deps.ccInflect(described).done : "";
+      return `<span class="chat-console-call is-described">${sentence ? "" : `<span class="chat-tool-action">${deps.escapeHtml(verb)}</span>`}` +
+        `<span class="chat-console-val">${deps.escapeHtml(sentence || described)}</span></span>${hostHtml}${clock}`;
+    }
     let inner = "";
+    // "in src" after a pattern: where it searched, quieter than the pattern.
+    let tail = "";
     // A subject written as words (a description, a title) reads in prose type.
     let prose = ["spawn_subagent", "get_subagent_output", "kill_subagent", "scratch", "create_artifact", "update_artifact", "edit_artifact", "read_artifact", "read_transcript", "remember", "recall", "forget"].includes(name);
     // A wrapped path or command breaks after a slash, never inside a name.
@@ -329,7 +339,8 @@ function consoleCallHtml(trace, presentation, full = false) {
       // Searched "x" in src
       const pattern = consoleArgText(trace.pattern || trace.query || "", 80);
       const where = String(trace.path || "").trim();
-      inner = `"${pattern}"` + (where ? ` in ${consoleArgText(compactPath(where, trace, 60), 60)}` : "");
+      inner = `"${pattern}"`;
+      tail = where ? `in ${consoleArgText(compactPath(where, trace, 60), 60)}` : "";
     } else if (name === "read_url") {
       inner = consoleArgText(trace.url || "page", 100);
     } else if (isSearchTool(name)) {
@@ -354,10 +365,14 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else {
       inner = consoleArgText(toolSubject(trace), 90);
     }
-    // A path splits into folder and name, so a narrow row cuts the folder first.
-    const cut = path && name !== "run_terminal_command" && name !== "get_command_output" ? inner.lastIndexOf("/", inner.length - 2) + 1 : 0;
-    const val = !path || prose ? deps.escapeHtml(inner)
-      : cut ? `<span class="dk-dir">${deps.escapeHtml(inner.slice(0, cut)).replace(/\//g, "/<wbr>")}</span><span class="dk-base">${deps.escapeHtml(inner.slice(cut))}</span>`
+    // A file reads name first, then its folder ("config.py in app"), so a
+    // narrow row cuts the folder and keeps the name.
+    const file = path && name !== "run_terminal_command" && name !== "get_command_output";
+    const cut = file ? inner.lastIndexOf("/", inner.length - 2) + 1 : 0;
+    const dir = (text) => ` <span class="dk-dir">${deps.escapeHtml(text).replace(/\//g, "/<wbr>")}</span>`;
+    const val = tail ? `<span class="dk-pat">${deps.escapeHtml(inner)}</span>${dir(tail)}`
+      : !path || prose ? deps.escapeHtml(inner)
+      : file ? `<span class="dk-base">${deps.escapeHtml(inner.slice(cut))}</span>${cut ? dir(`in ${inner.slice(0, cut - 1) || "/"}`) : ""}`
       : deps.escapeHtml(inner).replace(/\//g, "/<wbr>");
     const call = inner
       ? `<span class="chat-console-call${prose ? " is-described" : ""}"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${val}</span><span class="chat-console-paren">)</span></span>`

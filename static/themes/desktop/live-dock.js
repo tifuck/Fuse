@@ -93,14 +93,15 @@ function swapVerb(el, verb, text) {
 // its newest output. It closes by itself when another call takes the line.
 const detail = { open: false, id: "", trace: null };
 function liveDetailHtml(trace) {
-    const esc = deps.escapeHtml;
-    const where = [trace.host, trace.cwd].filter(Boolean).join(" · ");
-    const deadline = deps.ccTimeoutNote(trace).replace(/^\(timeout: (.*)\)$/, "times out after $1");
+    const deadline = deps.ccTimeoutNote(trace).replace(/^\(timeout: (.*)\)$/, "Times out after $1");
     const out = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
     const tail = out ? out.split("\n").slice(-8).join("\n") : "";
-    return `<div class="dk-live-cmd">$ ${esc(deps.displayCommand(trace))}</div>` +
-      (where || deadline ? `<div class="dk-live-where">${esc([where, deadline].filter(Boolean).join(" · "))}</div>` : "") +
-      `<pre class="chat-console-out dk-live-out">${tail ? deps.renderAnsi(tail) : '<span class="dk-live-wait">Waiting for output</span>'}</pre>`;
+    // The same box as an opened call in the transcript (tool-rows.js).
+    return deps.callBoxHtml({
+      input: deps.displayCommand(trace), prompt: true, label: "command",
+      body: `<pre class="chat-console-out dk-live-out">${tail ? deps.renderAnsi(tail) : '<span class="dk-live-wait">Waiting for output</span>'}</pre>`,
+      state: deps.escapeHtml(deadline), where: [trace.host, trace.cwd].filter(Boolean).join(" · "),
+    });
   }
 function renderLiveDetail(dock) {
     let panel = dock.querySelector(":scope > [data-live-detail]");

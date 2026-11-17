@@ -86,6 +86,7 @@ export function createDesktopTheme(runtime) {
     get activeRun() { return runtime.activeRun; },
     get agentRun() { return runtime.agentRun; },
     get assistantSegments() { return runtime.assistantSegments; },
+    get callBoxHtml() { return theme.callBoxHtml; },
     get ccTimeoutNote() { return theme.ccTimeoutNote; },
     get cleanToolOutput() { return theme.cleanToolOutput; },
     get consoleSpinFrame() { return runtime.consoleSpinFrame; },
@@ -151,8 +152,11 @@ export function createDesktopTheme(runtime) {
   }));
   Object.assign(theme, createToolFormatting({
     get ccCallClockHtml() { return theme.ccCallClockHtml; },
+    get ccExitMeaning() { return theme.ccExitMeaning; },
     get ccFlat() { return theme.ccFlat; },
+    get ccInflect() { return theme.ccInflect; },
     get ccLiveText() { return theme.ccLiveText; },
+    get ccRunningForm() { return theme.ccRunningForm; },
     get ccSedEdit() { return theme.ccSedEdit; },
     get consoleVerb() { return theme.consoleVerb; },
     get detailSectionHtml() { return theme.detailSectionHtml; },
@@ -165,6 +169,7 @@ export function createDesktopTheme(runtime) {
     get renderMarkdown() { return theme.renderMarkdown; },
     get safeUrl() { return runtime.safeUrl; },
     get sessionProject() { return runtime.sessionProject; },
+    get shellExitCode() { return runtime.shellExitCode; },
     get toolBackground() { return runtime.toolBackground; },
     get toolPresentation() { return runtime.toolPresentation; },
   }));
