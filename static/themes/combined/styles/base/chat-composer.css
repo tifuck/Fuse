@@ -428,3 +428,17 @@
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-lang:is(:hover, :focus) { background: color-mix(in srgb, currentColor 10%, transparent); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-unwrap { display: grid; place-items: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; opacity: 0.7; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-unwrap:is(:hover, :focus-visible) { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
+/* Inline markdown while typing (static/chat/composer/marks.js): a mirror
+   behind the field draws the text; the field keeps the caret. Nothing here
+   may change a glyph's width. */
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-compose.is-styled > textarea { -webkit-text-fill-color: transparent; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose.is-styled > textarea, .chat-blocks-line > textarea)::selection { background: color-mix(in srgb, Highlight 40%, transparent); }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-line { position: relative; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-mirror { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; margin: 0; padding: 0; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose-mirror, .chat-blocks-mirror) .cm-mark { opacity: 0.42; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose-mirror, .chat-blocks-mirror) .cm-code { border-radius: 4px; background: color-mix(in srgb, currentColor 13%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 13%, transparent); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose-mirror, .chat-blocks-mirror) .cm-strong { -webkit-text-stroke: 0.035em currentColor; }
+/* Italic only where it keeps glyph widths (marks.js measures); else the faded markers say it. */
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.is-oblique > .chat-compose-mirror, .is-oblique > .chat-blocks-mirror) .cm-em { font-style: italic; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose-mirror, .chat-blocks-mirror) .cm-del { text-decoration: line-through; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.chat-compose-mirror, .chat-blocks-mirror) .cm-link { color: var(--steel, currentColor); }

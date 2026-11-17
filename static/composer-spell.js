@@ -35,6 +35,7 @@
   let composing = false;
   let lastIssues = [];
   let lastText = "";
+  let lastPainted = "";
   let checkTimer = 0;
   let paintFrame = 0;
   let popIndex = 0;
@@ -531,26 +532,36 @@
     mirror.scrollLeft = input.scrollLeft;
   }
 
+  // The mirror behind the field: spelling marks, and through env.markup the
+  // inline markdown styles. While styled, the field's own glyphs are hidden
+  // (env.onStyled), so the mirror must always hold the field's current text.
   function paint() {
     if (!env || !env.mirror || !env.input) return;
+    if (paintFrame) {
+      root.cancelAnimationFrame(paintFrame);
+      paintFrame = 0;
+    }
     const mirror = env.mirror;
     const text = env.input.value;
-    if (!prefs().spell || !text) {
-      mirror.innerHTML = "";
-      return;
-    }
-    const issues = lastIssues;
+    lastPainted = text;
+    // Marks found on older text are kept only where their word still is.
+    const issues = prefs().spell ? lastIssues.filter((iss) => text.slice(iss.start, iss.end) === iss.word) : [];
     let html = "";
-    let pos = 0;
-    for (const iss of issues) {
-      html += escapeHtml(text.slice(pos, iss.start));
-      html += `<span class="chat-misspell" data-i="${iss.start}:${iss.end}">${escapeHtml(text.slice(iss.start, iss.end))}</span>`;
-      pos = iss.end;
+    let styled = false;
+    // An IME's unfinished text is in the field only: show the field itself.
+    if (text && env.markup && !composing) ({ html, styled } = env.markup(text, issues));
+    else if (text && issues.length) {
+      let pos = 0;
+      for (const iss of issues) {
+        html += escapeHtml(text.slice(pos, iss.start));
+        html += `<span class="chat-misspell" data-i="${iss.start}:${iss.end}">${escapeHtml(text.slice(iss.start, iss.end))}</span>`;
+        pos = iss.end;
+      }
+      html += escapeHtml(text.slice(pos));
     }
-    html += escapeHtml(text.slice(pos));
-    html += "\n";
-    mirror.innerHTML = html;
-    syncMetrics();
+    mirror.innerHTML = html ? html + "\n" : "";
+    if (typeof env.onStyled === "function") env.onStyled(styled);
+    if (html) syncMetrics();
   }
 
   function schedulePaint() {
@@ -613,6 +624,7 @@
   }
 
   function debounceCheck() {
+    paint();
     root.clearTimeout(checkTimer);
     const text = env && env.input ? env.input.value : "";
     const delay = text.length > 4000 ? 400 : 200;
@@ -870,11 +882,17 @@
     input.addEventListener("compositionstart", () => {
       composing = true;
       hidePopover();
+      paint();
     });
     input.addEventListener("compositionend", () => {
       composing = false;
+      paint();
       refresh();
     });
+    // A change no input event announced (a value set by script) still repaints.
+    const catchUp = () => { if (lastPainted !== input.value) paint(); };
+    input.addEventListener("keyup", catchUp);
+    input.addEventListener("focus", catchUp);
     input.addEventListener("click", () => {
       if (composing) return;
       if (input.selectionStart !== input.selectionEnd) return;
@@ -924,6 +942,7 @@
     mount,
     syncMetrics,
     refresh,
+    paintNow: paint,
     debounceCheck,
     dispose,
     applyCorrection,

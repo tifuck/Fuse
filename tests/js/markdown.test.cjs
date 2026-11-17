@@ -93,3 +93,24 @@ test('a stream can freeze every block before the boundary: split parses match th
     assert.equal(strip([...parseBlocks(prefix.slice(0, at)), ...parseBlocks(prefix.slice(at))]), strip(parseBlocks(prefix)), `prefix of ${n}`);
   }
 });
+
+test('composer marks keep every character and style what the sent message renders', async () => {
+  const { marksHtml } = await import('../../static/chat/composer/marks.js');
+  const text = (html) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const spans = (html) => [...html.matchAll(/<span class="cm-(\w+)">([^<]*)/g)].map((m) => `${m[1]}:${m[2]}`);
+  const { html, styled } = marksHtml('`test` test `two` and **bold** _em_ ~~gone~~ [docs](https://x.io)');
+  assert.equal(styled, true);
+  assert.deepEqual(spans(html).filter((s) => !s.startsWith('mark:')),
+    ['code:test', 'code:two', 'strong:bold', 'em:em', 'del:gone', 'link:docs']);
+  assert.equal(marksHtml('a ` b, \\*not\\*, snake_case_name').styled, false, 'nothing styled where the message has no markup');
+  assert.equal(spans(marksHtml('**a\n\nb**').html).length, 0, 'markup never crosses a blank line');
+  // The mirror must hold exactly the field's text, whatever it is.
+  const pieces = ['`', '``', '*', '**', '_', '~~', '[', ']', '(', ')', '\\', '\n', '\n\n', ' ', 'ab', 'https://x.io/a_b', '<', '&'];
+  let seed = 1;
+  const pick = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return pieces[seed % pieces.length]; };
+  for (let n = 0; n < 3000; n += 1) {
+    const input = Array.from({ length: 1 + (n % 24) }, pick).join('');
+    const issues = input.length > 3 ? [{ start: 1, end: 3 }] : [];
+    assert.equal(text(marksHtml(input, issues).html), input, JSON.stringify(input));
+  }
+});
