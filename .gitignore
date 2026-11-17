@@ -41,7 +41,6 @@ docs/archive/
 /scripts/release-connector.sh
 /scripts/clone_db_to_dev.py
 /scripts/dev_qa_account.py
-/scripts/dev_qa_shot.py
 /scripts/loadtest_subagents.py
 /scripts/build_composer_dict.py
 /scripts/migrate_chat_metadata.py
