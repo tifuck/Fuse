@@ -287,6 +287,9 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         if not auto:
             conn.execute("UPDATE chat_threads SET recap_start_id=? WHERE id=?", (user_message["id"], thread_id))
         account = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        from . import secret_swap
+        # messages ends with this turn's user row and its empty reply.
+        secret_swap.enable_for_new_thread(conn, account, thread_id, messages[:-2])
         from . import context_compact as ctxmod, context_meter
         from . import hosts as hosts_mod
 

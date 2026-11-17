@@ -1139,7 +1139,7 @@ async def chat_context_put(request: Request):
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "expected_revision", "command_id"}:
+    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "secret_swap", "expected_revision", "command_id"}:
         raise HTTPException(422, "Unsupported context fields")
     kwargs = {"expected_revision": _chat_revision(raw), "command_id": raw.get("command_id")}
     if "instructions" in raw:
@@ -1162,6 +1162,10 @@ async def chat_context_put(request: Request):
         if not isinstance(raw["memory"], bool):
             raise HTTPException(400, "Invalid memory")
         kwargs["memory"] = raw["memory"]
+    if "secret_swap" in raw:
+        if not isinstance(raw["secret_swap"], bool):
+            raise HTTPException(400, "Invalid secret_swap")
+        kwargs["secret_swap"] = raw["secret_swap"]
     try:
         data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
     except chats.ChatValidationError as exc:

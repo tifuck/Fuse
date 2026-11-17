@@ -177,7 +177,7 @@ def _has_handoff(msg: dict) -> bool:
         for part in msg.get("segments") or [])
 
 
-def compaction_cut(messages: list, state: dict) -> dict | None:
+def compaction_cut(messages: list, state: dict, swap=None) -> dict | None:
     """Where the compacted view starts in the durable transcript, or None.
 
     Rows before the latest handoff's boundary are no longer sent to the model.
@@ -193,7 +193,9 @@ def compaction_cut(messages: list, state: dict) -> dict | None:
     include = bool(checkpoint.get("provider")) and _has_handoff(messages[index])
     start = index if include else index + 1
     opens = start < len(messages) and _has_handoff(messages[start])
-    return {"id": boundary, "include": include, "summary": "" if opens else str(checkpoint.get("summary") or "")}
+    summary = "" if opens else str(checkpoint.get("summary") or "")
+    # The summary was written by a model: a swapping chat shows it restored.
+    return {"id": boundary, "include": include, "summary": swap.restore(summary) if swap is not None else summary}
 
 
 def child_display_messages(run: dict, *, include_current: bool = False) -> list[dict]:
@@ -957,7 +959,13 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
         # A handoff this run just made is not in the replay until it finalizes.
         latest = (state.get("checkpoints") or [{}])[-1]
         if not result.get("context_cut") and latest.get("display_through_id") == run["message_id"]:
-            result["context_cut"] = compaction_cut(result["messages"], state)
+            from . import secret_swap
+
+            try:
+                swap = secret_swap.for_thread(user_id, thread_id, conn)
+            except secret_swap.SwapUnavailable:
+                swap = None
+            result["context_cut"] = compaction_cut(result["messages"], state, swap)
     result["messages"] = settle_spawn_traces(conn, user_id, result["messages"])
     result["messages"] = settle_command_traces(conn, user_id, thread_id, result["messages"])
     result["messages"] = settle_artifact_traces(conn, user_id, result["messages"])
@@ -1326,6 +1334,15 @@ def get_run_snapshot(user_id, run_id):
         settle_spawn_traces(conn, user_id, [run["message"]])
         settle_command_traces(conn, user_id, run["thread_id"], [run["message"]])
         run["display_messages"], live_start = _child_display(run)
+        from . import secret_swap
+
+        try:
+            swap = secret_swap.for_thread(user_id, run["thread_id"], conn)
+        except secret_swap.SwapUnavailable:
+            swap = None
+        if swap is not None:
+            # The panel draws the child's model transcript: show real values.
+            run["display_messages"] = swap.restore_value(run["display_messages"])
         run["live_start"] = _utf16_mark(run.get("message"), live_start) if live_start else None
         settle_spawn_traces(conn, user_id, run["display_messages"])
         settle_command_traces(conn, user_id, run["thread_id"], run["display_messages"])

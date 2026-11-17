@@ -112,20 +112,32 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
         (int(thread_id), int(user_id)),
     )
     messages = chats.parse_messages(row["messages"]) if row else []
+    # Jev is a model too: a swapping chat sends it stand-ins, swapped before
+    # anything is clipped. Its own call, so the chat's decisions stay put.
+    from . import secret_swap
+
+    try:
+        swap = secret_swap.for_thread(user_id, thread_id)
+    except secret_swap.SwapUnavailable:
+        swap = None
+    if swap is not None:
+        swap.record = False
+    seen = swap.tokenize if swap is not None else str
+    wrote = swap.to_model if swap is not None else str
     user_request = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
-            user_request = str(msg.get("content") or "").strip()[:USER_CLIP]
+            user_request = seen(str(msg.get("content") or "")).strip()[:USER_CLIP]
             break
     recent: list[dict] = []
     for msg in messages[-8:]:
         role = msg.get("role")
         if role == "user":
-            text = str(msg.get("content") or "").strip()
+            text = seen(str(msg.get("content") or "")).strip()
             if text:
                 recent.append({"role": "user", "text": text[:RECENT_TEXT]})
         elif role == "assistant":
-            text = str(msg.get("content") or "").strip()
+            text = wrote(str(msg.get("content") or "")).strip()
             if text:
                 recent.append({"role": "assistant", "text": text[:RECENT_TEXT]})
             for tool in msg.get("tools") or []:
@@ -136,17 +148,20 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
                     "name": str(tool.get("name") or "")[:40],
                     "ok": tool.get("status") not in ("error", "interrupted"),
                 }
-                path = str(tool.get("path") or "").strip()
+                path = seen(str(tool.get("path") or "")).strip()
                 if path:
                     rec["path"] = path[:400]
-                preview = str(tool.get("preview") or tool.get("summary") or "").strip()
+                preview = seen(str(tool.get("preview") or tool.get("summary") or "")).strip()
                 if preview:
                     rec["preview"] = preview[:RECENT_PREVIEW]
-                command = str(tool.get("command") or "").strip()
+                command = seen(str(tool.get("command") or "")).strip()
                 if command:
                     rec["command"] = command[:COMMAND_CLIP]
                 recent.append(rec)
     act = dict(action or {})
+    for key in ("command", "path", "cwd"):
+        if isinstance(act.get(key), str):
+            act[key] = seen(act[key])
     command = str(act.get("command") or "")
     if command:
         act["command"] = command[:ACTION_CLIP]
@@ -221,7 +236,7 @@ async def judge(user_id: int, thread_id: int, action: dict, *, roots: list[str] 
         if not user_can_auto(user_id):
             logger.warning("Jev skip no OpenRouter key user=%s", user_id)
             return None
-        state = clip_thread_state(user_id, thread_id, action, roots=roots)
+        state = await asyncio.to_thread(clip_thread_state, user_id, thread_id, action, roots=roots)
         result = await evaluate(user_id, state)
         if not result:
             logger.warning("Jev no result tool=%s path=%s", (action or {}).get("tool"), (action or {}).get("path"))
