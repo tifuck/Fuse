@@ -4,6 +4,7 @@ The analytics clock is pinned (stats.datetime) so every bucket boundary is
 computed by hand: NOW is Wednesday 2026-11-11 12:30:00 UTC.
 """
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -127,6 +128,25 @@ def test_lifetime_spans_every_event_folds_the_heatmap_and_goes_weekly_past_120_d
     assert weekly["range"]["bucket_seconds"] == 7 * 86400
     assert sum(p["requests"] for p in weekly["series"]) == 4
     assert all(datetime.fromisoformat(p["at"].replace("Z", "+00:00")).weekday() == 0 for p in weekly["series"])
+
+
+def test_day_buckets_and_labels_follow_the_viewers_time_zone(fresh_db):
+    uid = user()
+    # 22:00 on the 10th and 01:00 on the 11th in New York (EST, UTC-5).
+    _event(uid, "2026-11-11T03:00:00Z")
+    _event(uid, "2026-11-11T06:00:00Z")
+
+    token = stats.display_zone.set(ZoneInfo("America/New_York"))
+    try:
+        data = stats.usage_analytics(uid, range_id="30d")
+        label = stats.format_when("2026-11-11T03:00:00Z")
+    finally:
+        stats.display_zone.reset(token)
+
+    assert {p["at"]: p["requests"] for p in data["series"] if p["requests"]} == {
+        "2026-11-10T05:00:00Z": 1, "2026-11-11T05:00:00Z": 1}
+    assert label == "10 Nov 2026 22:00 EST"
+    assert stats.format_when("2026-11-11T03:00:00Z") == "11 Nov 2026 03:00 UTC"
 
 
 def test_all_users_split_accounts_by_provider_and_keep_rows_of_deleted_users(fresh_db):

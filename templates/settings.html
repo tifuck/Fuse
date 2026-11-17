@@ -110,7 +110,7 @@
       <label><span>Type</span> <select name="type">{% for t in memory_types %}<option value="{{ t }}"{% if t == m.type %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
       <label><span>Description</span> <input name="description" maxlength="150" value="{{ m.description }}"></label>
       <label><span>Memory</span> <textarea name="body" rows="5">{{ m.body }}</textarea></label>
-      <p class="set-inline">Updated {{ m.updated_at[:10] }}{% if m.thread %} · <a href="/chat?t={{ m.thread }}">saved in this chat</a>{% endif %}</p>
+      <p class="set-inline">Updated {{ m.updated_at | when }}{% if m.thread %} · <a href="/chat?t={{ m.thread }}">saved in this chat</a>{% endif %}</p>
       <div class="set-inline">
         <button type="submit" class="btn sm">Save</button>
         <button type="button" class="btn ghost sm" data-memory-delete>Delete</button>

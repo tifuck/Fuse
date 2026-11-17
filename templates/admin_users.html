@@ -20,7 +20,7 @@
         <td data-label="Tokens" class="mono num tight">{{ '{:,}'.format(u['total_tokens']) }}</td>
         <td data-label="Requests" class="mono num tight">{{ '{:,}'.format(u['requests']) }}</td>
         <td data-label="Cost" class="mono num tight">{{ u['cost_label'] }}</td>
-        <td data-label="Created" class="mono nows tight">{{ u['created_at'] }}</td>
+        <td data-label="Created" class="mono nows tight">{{ u['created_at'] | when }}</td>
         <td data-label="Actions" class="tight">
           <div class="row-actions">
             {% if u['id'] == user['id'] %}
@@ -70,7 +70,7 @@
       {% for invite in invites %}
       <tr>
         <td data-label="Email">{{ invite['email'] }}</td>
-        <td data-label="Listed" class="mono nows tight">{{ invite['created_at'] }}</td>
+        <td data-label="Listed" class="mono nows tight">{{ invite['created_at'] | when }}</td>
         <td data-label="Actions" class="tight">
           <div class="row-actions">
             <form method="post" action="/admin/users/invites/{{ invite['id'] }}/delete">

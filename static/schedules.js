@@ -159,7 +159,7 @@
       model: form.querySelector("[data-f-model]").value,
       target,
       prompt: form.querySelector("[data-f-prompt]").value,
-      timezone: form.querySelector("[data-f-tz]").value.trim() || "UTC",
+      timezone: form.querySelector("[data-f-tz]").value.trim() || window.fuseTime.zone(),
       allow_coding: form.querySelector("[data-f-coding]").checked,
       fresh_each_fire: form.querySelector("[data-f-fresh]").checked,
       tools: ["web_search"],
@@ -217,13 +217,13 @@
     root.querySelector("[data-sched-run]").hidden = !item;
     root.querySelector("[data-sched-delete]").hidden = !item;
     document.getElementById("sched-title").textContent = item ? "Edit task" : "New task";
+    form.querySelector("[data-f-tz]").value = (item && item.timezone) || window.fuseTime.zone();
     if (item) {
       form.querySelector("[data-f-name]").value = item.name || "";
       form.querySelector("[data-f-model]").value = item.model || "";
       form.querySelector("[data-f-target]").value = item.target || "chat";
       if (item.project_id) form.querySelector("[data-f-project]").value = String(item.project_id);
       form.querySelector("[data-f-prompt]").value = item.prompt || "";
-      form.querySelector("[data-f-tz]").value = item.timezone || "UTC";
       form.querySelector("[data-f-coding]").checked = Boolean(item.allow_coding);
       form.querySelector("[data-f-fresh]").checked = Boolean(item.fresh_each_fire);
       if (item.recur_kind === "every") {
@@ -231,7 +231,10 @@
         form.querySelector("[data-f-every]").value = String(item.every_seconds || 3600);
       } else if (item.recur_kind === "once") {
         form.querySelector("[data-f-builder]").value = "once";
-        form.querySelector("[data-f-once]").value = item.once_at || "";
+        // The stored UTC moment as wall time in the task's zone (sv-SE reads "YYYY-MM-DD HH:MM").
+        form.querySelector("[data-f-once]").value = item.once_at ? new Date(item.once_at).toLocaleString("sv-SE", {
+          timeZone: item.timezone || "UTC", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+        }).replace(" ", "T") : "";
       } else if (item.weekdays) {
         form.querySelector("[data-f-builder]").value = "weekly";
         form.querySelector("[data-f-time]").value = item.at_local || "09:00";

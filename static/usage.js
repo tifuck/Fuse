@@ -668,13 +668,12 @@
     const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
     const reqs = Array.from({ length: 7 }, () => new Array(24).fill(0));
     (data.activity || []).forEach(([epoch, tokens, requests]) => {
-      const d = new Date(epoch * 1000);
-      const day = (d.getDay() + 6) % 7;
-      grid[day][d.getHours()] += tokens;
-      reqs[day][d.getHours()] += requests;
+      const { weekday: day, hour } = window.fuseTime.parts(epoch * 1000);
+      grid[day][hour] += tokens;
+      reqs[day][hour] += requests;
     });
     const max = Math.max(0, ...grid.flat());
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    const tz = window.fuseTime.zone();
     $("[data-heat-sub]").textContent = `Last ${data.activity_days} days · ${tz}`;
     if (!max) {
       el.innerHTML = '<div class="uz-heat-empty">No activity in this range.</div>';
@@ -697,7 +696,7 @@
     html += "</div>";
     const peakDay = byDay.indexOf(Math.max(...byDay));
     const peakHour = byHour.indexOf(Math.max(...byHour));
-    const hourText = new Date(2000, 0, 1, peakHour).toLocaleTimeString([], { hour: "numeric" });
+    const hourText = new Date(Date.UTC(2000, 0, 1, peakHour)).toLocaleTimeString([], { hour: "numeric", timeZone: "UTC" });
     const scale = [0.1, 0.3, 0.55, 0.8, 1].map((f) => `<i style="background:${shade(f * max)}"></i>`).join("");
     html += `<div class="uz-heat-foot"><span>Busiest on <b>${DAYS[peakDay]}</b> around <b>${esc(hourText)}</b></span><span class="uz-scale"><span>Less</span>${scale}<span>More</span></span></div>`;
     el.innerHTML = html;

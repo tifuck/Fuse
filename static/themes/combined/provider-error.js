@@ -35,6 +35,18 @@ function summaryTone(summary) {
     return /^[\w-]+ usage limit reached$/.test(summary) ? "limit" : "";
   }
 
+// The server's reset clock ("22:53 UTC", or "Nov 18 22:53 UTC" past 20 hours)
+// in the viewer's time zone.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function localClock(text) {
+    const m = String(text).match(/^(?:([A-Z][a-z]{2}) (\d{1,2}) )?(\d{1,2}):(\d{2}) UTC$/);
+    const month = m && m[1] ? MONTHS.indexOf(m[1]) : -2;
+    if (!m || month === -1) return text;
+    const now = new Date();
+    const when = new Date(Date.UTC(now.getUTCFullYear(), m[1] ? month : now.getUTCMonth(), m[1] ? +m[2] : now.getUTCDate(), +m[3], +m[4]));
+    return when.toLocaleString([], { ...(m[1] ? { month: "short", day: "numeric" } : {}), hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  }
+
 // {provider, title, tone, reset, detail} for a stored error string.
 function parseProviderError(text) {
     const raw = String(text || "").replace(/\s+/g, " ").trim();
@@ -45,7 +57,7 @@ function parseProviderError(text) {
     // "resets in 2h 10m (22:53 UTC)": the clock stays true after a reload,
     // the span does not, so a dated reset shows its clock.
     const clock = (hit[3] || "").match(/\(([^)]+)\)$/);
-    const reset = clock ? `Resets ${clock[1]}` : (hit[3] || "").replace(/^\w/, (c) => c.toUpperCase());
+    const reset = clock ? `Resets ${localClock(clock[1])}` : (hit[3] || "").replace(/^\w/, (c) => c.toUpperCase());
     return {
       provider: hit[1],
       title: hit[2].charAt(0).toUpperCase() + hit[2].slice(1),

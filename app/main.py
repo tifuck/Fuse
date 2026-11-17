@@ -12,10 +12,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse, Response
 
 from .config import ROOT, settings
 from . import static_assets
+from . import cron, stats
 from . import accounts, db, chat_store, chat_runs, chat_events, chat_recaps, chat_titles, host_events, retention, sources as sources_module
 from .api import http_errors, router as api_router
 from .web import router as web_router
@@ -368,8 +370,33 @@ class ReadMemoMiddleware:
             await self.app(scope, receive, send)
 
 
+class DisplayZoneMiddleware:
+    """Server-rendered times (stats.format_when, usage day buckets) follow the
+    viewer's time zone from the fuse_tz cookie static/time.js writes; UTC
+    without one or when it names no zone."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        name = HTTPConnection(scope).cookies.get("fuse_tz", "") if scope["type"] == "http" else ""
+        try:
+            zone = cron.parse_tz(name) if name else None
+        except ValueError:
+            zone = None
+        if zone is None:
+            await self.app(scope, receive, send)
+            return
+        token = stats.display_zone.set(zone)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            stats.display_zone.reset(token)
+
+
 app = FastAPI(title="Fuse", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(ReadMemoMiddleware)
+app.add_middleware(DisplayZoneMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 # Bodies under 512 KiB compress inline (at most ~5 ms at level 3): a hop to
 # the worker thread held a streamed thread snapshot's first line ~20 ms.

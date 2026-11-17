@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from contextvars import ContextVar
+from datetime import datetime, timedelta, timezone, tzinfo
 
 from . import accounts, db
 from .sources import PROVIDER_LABELS
@@ -84,6 +85,11 @@ def format_pct(n) -> str | None:
     return text + "%"
 
 
+# The viewer's time zone for labels and day buckets. DisplayZoneMiddleware
+# (app/main.py) sets it per request from the fuse_tz cookie static/time.js writes.
+display_zone: ContextVar[tzinfo] = ContextVar("display_zone", default=timezone.utc)
+
+
 def format_when(ts: str | None) -> str:
     if not ts:
         return ""
@@ -92,10 +98,10 @@ def format_when(ts: str | None) -> str:
         dt = datetime.fromisoformat(raw)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(display_zone.get())
     except ValueError:
         return str(ts)
-    return dt.strftime("%d %b %Y %H:%M UTC").lstrip("0")
+    return dt.strftime("%d %b %Y %H:%M %Z").lstrip("0")
 
 
 def period_label(kind: str | None) -> str:
@@ -291,7 +297,7 @@ _RANGES = {
 }
 _DAY = 86400
 _WEEK = 7 * _DAY
-# 1970-01-01 was a Thursday: weekly buckets start on Monday 00:00 UTC.
+# 1970-01-01 was a Thursday: weekly buckets start on Monday 00:00 (the viewer's).
 _MONDAY = 4 * _DAY
 _LIFETIME_DAILY_MAX = 120 * _DAY
 
@@ -465,8 +471,8 @@ _ROW_SUMS = ("tokens", "requests", "failed", "cost", "prompt", "cached")
 _MODEL_ROWS = 100
 
 
-def _bucket_of(epoch: int, size: int) -> int:
-    offset = _MONDAY if size == _WEEK else 0
+def _bucket_of(epoch: int, size: int, utc_offset: int = 0) -> int:
+    offset = (_MONDAY if size == _WEEK else 0) - utc_offset
     return ((epoch - offset) // size) * size + offset
 
 
@@ -486,6 +492,9 @@ def usage_analytics(
     end_dt = datetime.now(timezone.utc) + timedelta(seconds=1)
     end = _iso(end_dt)
     start = "" if lifetime else _iso(end_dt - duration)
+    # Day and week buckets start at the viewer's midnight. shortcut: one offset
+    # for the whole range, so days before a DST change sit an hour off.
+    utc_offset = int(end_dt.astimezone(display_zone.get()).utcoffset().total_seconds())
     # The one scan of the window, at hour (or finer) grain: series, models,
     # providers, users, sources and the heatmap all fold out of these rows.
     granule = min(bucket_seconds, 3600)
@@ -574,7 +583,7 @@ def usage_analytics(
         for key in _SUMMARY_KEYS:
             summary[key] += item[key]
         granule_at = int(item["bucket"])
-        by_bucket.setdefault(_bucket_of(granule_at, bucket_seconds), []).append(item)
+        by_bucket.setdefault(_bucket_of(granule_at, bucket_seconds, utc_offset), []).append(item)
         if not short:
             hour = by_hour.setdefault(granule_at, [0, 0])
             hour[0] += item["tokens"]
@@ -620,8 +629,8 @@ def usage_analytics(
     top_provider_ids = [pid for pid, _ in sorted(provider_totals.items(), key=lambda kv: kv[1]["tokens"], reverse=True)[:6]]
     table_models = ranked_models[:_MODEL_ROWS]
     spark_models = ranked_models[:15]
-    first_bucket = _bucket_of(int(start_dt.timestamp()), bucket_seconds)
-    last_bucket = _bucket_of(int(end_dt.timestamp()), bucket_seconds)
+    first_bucket = _bucket_of(int(start_dt.timestamp()), bucket_seconds, utc_offset)
+    last_bucket = _bucket_of(int(end_dt.timestamp()), bucket_seconds, utc_offset)
     points = []
     model_sparks: dict[str, list[int]] = {item["id"]: [] for item in spark_models}
     bucket = first_bucket

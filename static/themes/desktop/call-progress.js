@@ -472,8 +472,7 @@ function ccDoneAt(stamp) {
     const when = new Date(stamp || "");
     if (!stamp || Number.isNaN(when.getTime())) return "";
     const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    const days = Math.round((startOf(new Date()) - startOf(when)) / 86400000);
+    const days = window.fuseTime.dayNumber(Date.now()) - window.fuseTime.dayNumber(when);
     if (days === 0) return time;
     if (days > 0 && days < 7) return `${when.toLocaleDateString([], { weekday: "long" })} ${time}`;
     return `${when.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}, ${time}`;

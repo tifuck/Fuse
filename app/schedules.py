@@ -217,7 +217,8 @@ def _when_label(item: dict) -> str:
     kind = item.get("recur_kind")
     tz = item.get("timezone") or "UTC"
     if kind == "once":
-        return f"Once at {item.get('once_at') or '—'} ({tz})"
+        at = parse_iso_utc(item.get("once_at") or "")
+        return f"Once at {at.astimezone(cron.parse_tz(tz)).strftime('%Y-%m-%d %H:%M') if at else '—'} ({tz})"
     if kind == "every":
         sec = int(item.get("every_seconds") or 0)
         if sec >= 86400 and sec % 86400 == 0:
@@ -408,9 +409,9 @@ def _normalize(user_id: int, raw: dict, *, existing: dict | None = None, conn=No
     else:
         if not once_at:
             raise ScheduleError("once_at is required")
-        if not parse_iso_utc(str(once_at)):
-            raise ScheduleError("once_at must be UTC ISO")
-        once_at = iso_utc(parse_iso_utc(str(once_at)))
+        if not parse_iso_utc(str(once_at), tz):
+            raise ScheduleError("once_at must be an ISO date and time")
+        once_at = iso_utc(parse_iso_utc(str(once_at), tz))
     allow_coding = _flag(raw.get("allow_coding") if "allow_coding" in raw else (existing or {}).get("allow_coding", 0), "allow_coding")
     if target == "project":
         allow_coding = True

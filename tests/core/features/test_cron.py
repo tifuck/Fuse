@@ -116,3 +116,9 @@ def test_iso_round_trip():
     assert cron.parse_iso_utc("2026-01-02T03:04:05Z") == utc(2026, 1, 2, 3, 4, 5)
     assert cron.parse_iso_utc("2026-01-02T04:04:05+01:00") == utc(2026, 1, 2, 3, 4, 5)
     assert cron.parse_iso_utc("yesterday") is None
+
+
+def test_iso_without_an_offset_is_wall_time_in_the_given_zone():
+    assert cron.parse_iso_utc("2026-11-20T09:00") == utc(2026, 11, 20, 9, 0)
+    assert cron.parse_iso_utc("2026-11-20T09:00", "America/New_York") == utc(2026, 11, 20, 14, 0)
+    assert cron.parse_iso_utc("2026-11-20T09:00Z", "America/New_York") == utc(2026, 11, 20, 9, 0)

@@ -21,6 +21,8 @@
   <meta name="fuse-build" content="{{ build_id() }}">
   {% endif %}
   <title>{% block title %}Fuse{% endblock %}</title>
+  {#- Before every other script: sets the display time zone they format with. -#}
+  <script src="{{ asset('time.js') }}"></script>
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">

@@ -127,7 +127,7 @@
     try {
       const d = new Date(raw);
       if (Number.isNaN(d.getTime())) return raw;
-      return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+      return d.toLocaleString([], { dateStyle: "medium", timeStyle: "medium" });
     } catch (_) {
       return raw;
     }
@@ -142,7 +142,7 @@
     if (s < 3600) return Math.floor(s / 60) + "m ago";
     if (s < 86400) return Math.floor(s / 3600) + "h ago";
     if (s < 7 * 86400) return Math.floor(s / 86400) + "d ago";
-    return new Date(t).toISOString().slice(0, 10);
+    return new Date(t).toLocaleDateString();
   }
 
   const ICON = {
