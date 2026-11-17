@@ -992,7 +992,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
     color: var(--dk-mute); font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer;
   }
-  & .hs-toggle:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); }
+  /* Hover only where there is one: a tap leaves :hover stuck on touch screens. */
+  & .hs-toggle[aria-expanded="true"] { background: var(--dk-hover); }
+  @media (hover: hover) { & .hs-toggle:hover { background: var(--dk-hover); } }
   & .hs-toggle:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .hs-slice { display: flex; align-items: center; gap: 4px; }
   & .hs-slice svg { flex: none; }
@@ -1008,19 +1010,20 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   @container dk-head (max-width: 440px) { & .dk-head .chat-host-stats { display: none; } }
   /* The details card: under the bar's stats, above the phone's strip. */
   & .hs-pop {
-    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 18rem; padding: 8px 12px 4px;
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 19rem; padding: 10px 14px 6px;
     border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); box-shadow: var(--dk-pop-shadow);
     color: var(--dk-text); font: 12.5px/1.4 var(--sans); font-variant-numeric: tabular-nums; cursor: default;
   }
-  & .hs-pop-head { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+  & .hs-pop-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
   & .hs-pop-head b { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  & .hs-pop-head span { flex: none; margin-left: auto; color: var(--dk-mute); }
+  & .hs-pop-head span { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-left: auto; color: var(--dk-mute); font-size: 0.92em; }
+  & .chat-host-stats:not(.is-stale) .hs-pop-head span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-add); }
   & .hs-pop-rows { margin: 0; }
   & .hs-pop-rows > div { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) 4.4ch; align-items: center; gap: 8px; min-height: 26px; border-top: 1px solid var(--dk-card-line); }
-  & .hs-pop-rows dt { color: var(--dk-mute); }
-  & .hs-pop-rows dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  & .hs-pop-rows dd:last-child { font-weight: 500; text-align: right; }
-  & .hs-pop-rows svg { display: block; width: 100%; height: 16px; color: color-mix(in srgb, var(--dk-text) 60%, transparent); }
+  & .hs-pop-rows dt { color: var(--dk-text); }
+  & .hs-pop-rows dd { min-width: 0; margin: 0; overflow: hidden; color: var(--dk-mute); text-overflow: ellipsis; white-space: nowrap; }
+  & .hs-pop-rows dd:last-child { color: var(--dk-text); font-weight: 600; text-align: right; }
+  & .hs-pop-rows svg { display: block; width: 100%; height: 18px; border-radius: 4px; background: color-mix(in srgb, var(--dk-text) 6%, transparent); color: color-mix(in srgb, var(--dk-text) 70%, transparent); }
   & .hs-pop-rows polyline { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
   & .chat-host-stats.is-stale .hs-pop-rows dd { color: var(--dk-mute); }
   /* Phones: the strip above the input, values in the bar's slots. */
@@ -1033,7 +1036,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
   /* Jump to latest takes its spot, unless something else sits above the strip. */
   &:has(.dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(.chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open):not([hidden]))) .chat-latest {
-    bottom: calc(var(--dock-h, 6rem) - 30px + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px));
+    bottom: calc(var(--dock-h, 6rem) - 20px + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px));
   }
   @media (prefers-reduced-motion: reduce) { & .dk-stats-strip .chat-host-stats { transition: none; } }
 }
