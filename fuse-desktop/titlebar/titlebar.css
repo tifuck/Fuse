@@ -38,9 +38,7 @@ html, body {
   padding-left: 12px;
 }
 
-.mark { display: block; width: 17px; height: 17px; flex: none; fill: currentColor; stroke: none; }
-
-.word { display: block; width: auto; height: 11.5px; flex: none; fill: currentColor; stroke: none; overflow: visible; }
+.word { display: block; width: auto; height: 15px; flex: none; fill: currentColor; stroke: none; overflow: visible; }
 
 body.is-blurred .brand,
 body.is-blurred .controls svg { opacity: 0.55; }
