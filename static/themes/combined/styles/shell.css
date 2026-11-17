@@ -1001,7 +1001,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   & :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
   & .hs-slice { display: inline-flex; align-items: center; gap: 4px; }
-  & .hs-slice b { display: inline-block; width: 4.4ch; font-weight: 500; text-align: right; color: var(--mist); }
+  & .hs-slice b { display: inline-block; width: 4.1ch; font-weight: 500; text-align: right; color: var(--mist); }
   & .hs-host { gap: 6px; color: var(--mist); }
   & .hs-host i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
   & .hs-ring { flex: none; width: 14px; height: 14px; transform: rotate(-90deg); }

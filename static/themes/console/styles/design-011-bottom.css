@@ -245,7 +245,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-hos
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice { display: flex; align-items: center; gap: 1ch; padding: 0 1ch; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { display: inline-block; width: 4ch; font-weight: 500; text-align: right; color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { display: inline-block; width: 4ch; font-weight: 500; text-align: right; color: var(--mist); text-transform: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host { padding: 0 1.5ch; background: color-mix(in srgb, #3ecf8e 18%, transparent); color: #8fe39b; font-weight: 500; text-transform: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host i { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net { gap: 1ch; }
