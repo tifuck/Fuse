@@ -1016,7 +1016,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .hs-pop-head b { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   & .hs-pop-head span { flex: none; margin-left: auto; color: var(--dk-mute); }
   & .hs-pop-rows { margin: 0; }
-  & .hs-pop-rows > div { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) 3.4ch; align-items: center; gap: 8px; min-height: 26px; border-top: 1px solid var(--dk-card-line); }
+  & .hs-pop-rows > div { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) 4.4ch; align-items: center; gap: 8px; min-height: 26px; border-top: 1px solid var(--dk-card-line); }
   & .hs-pop-rows dt { color: var(--dk-mute); }
   & .hs-pop-rows dd { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .hs-pop-rows dd:last-child { font-weight: 500; text-align: right; }
