@@ -79,6 +79,43 @@ class Output:
         # last delta. Heartbeats and meters are not events.
         self._last_event_at = _now()
         self._think_since = None
+        # The chat's secret swap (app/secret_swap.py): text reaches the
+        # message restored, one restorer per stream so a stand-in split
+        # across deltas is held until it is whole.
+        self.swap = None
+        self._restorers = {}
+
+    def _restored(self, key, text):
+        if self.swap is None or not text:
+            return text
+        restorer = self._restorers.get(key)
+        if restorer is None:
+            restorer = self._restorers[key] = self.swap.restorer()
+        return restorer.push(text)
+
+    def flush_swap(self):
+        """Release text held back as a possible stand-in, restored."""
+        restorers, self._restorers = self._restorers, {}
+        for key, restorer in restorers.items():
+            rest = restorer.flush()
+            if not rest:
+                continue
+            if key == "content":
+                self._append_content(rest)
+            else:
+                self._append_text("reasoning", rest, "native")
+        if restorers:
+            self._ensure_aggregates()
+
+    def restore_event(self, obj):
+        """A frame as the user sees it: run events carry real values. Any
+        event that starts something new first settles held text."""
+        event = obj.get("fuse") if isinstance(obj, dict) else None
+        if self.swap is None or not isinstance(event, dict):
+            return obj
+        if event.get("event") not in ("heartbeat", "context"):
+            self.flush_swap()
+        return {**obj, "fuse": self.swap.restore_value(event)}
 
     def _time_thought(self, segment):
         now = _now()
@@ -273,6 +310,8 @@ class Output:
         if title:
             try:
                 out["title"] = json.loads('"' + title.group(1) + '"')[:80]
+                if self.swap is not None:
+                    out["title"] = self.swap.restore(out["title"])
             except ValueError:
                 pass
         if ident:
@@ -494,6 +533,8 @@ class Output:
             # lets a resumed stream continue the same text segment.
             while msg["segments"] and _is_notice(msg["segments"][-1]):
                 msg["segments"].pop()
+        content = self._restored("content", content)
+        reasoning = [self._restored(("reasoning", i), text) for i, text in enumerate(reasoning)]
         pending = self._remove_pending()
         for text in reasoning:
             self._append_text("reasoning", text, "native")

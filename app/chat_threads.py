@@ -163,7 +163,7 @@ def _session_root(cwd: str = "", path: str = "", *, tool: str = "") -> str:
         return (text.rsplit("/", 1)[0] or "/") if "/" in text else "."
     return text
 def get_user_context(user_id: int) -> dict:
-    row = db.fetchone("SELECT chat_instructions,chat_profile,chat_context_revision,chat_recaps,chat_artifacts,chat_memory FROM users WHERE id=?", (user_id,))
+    row = db.fetchone("SELECT chat_instructions,chat_profile,chat_context_revision,chat_recaps,chat_artifacts,chat_memory,chat_secret_swap FROM users WHERE id=?", (user_id,))
     return _context_view(row)
 def _context_view(row):
     stored = (row["chat_instructions"] or "") if row else ""
@@ -177,14 +177,17 @@ def _context_view(row):
         "artifacts": bool(row["chat_artifacts"]) if row and "chat_artifacts" in row.keys() else True,
         # Opt-in: off until the account turns it on (app/memory.py).
         "memory": bool(row["chat_memory"]) if row and "chat_memory" in row.keys() else False,
+        # Opt-in: new chats swap secrets for stand-ins (app/secret_swap.py).
+        "secret_swap": bool(row["chat_secret_swap"]) if row and "chat_secret_swap" in row.keys() else False,
     }
 def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=None, artifacts=None, memory=None,
-                     strict: bool = False, expected_revision=None, command_id=None) -> dict:
+                     secret_swap=None, strict: bool = False, expected_revision=None, command_id=None) -> dict:
     from . import chat_store as store
 
     with store.transaction() as conn:
         fingerprint, previous = store.command(conn, user_id, command_id,
-            ["context", instructions, profile, recaps, artifacts, expected_revision, *([memory] if memory is not None else [])])
+            ["context", instructions, profile, recaps, artifacts, expected_revision, *([memory] if memory is not None else []),
+             *(["secret_swap", secret_swap] if secret_swap is not None else [])])
         if previous is not None:
             return previous
         row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
@@ -212,6 +215,8 @@ def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=No
             stored_artifacts = 1 if artifacts else 0
         if memory is not None and not isinstance(memory, bool):
             raise ChatValidationError("memory must be true or false")
+        if secret_swap is not None and not isinstance(secret_swap, bool):
+            raise ChatValidationError("secret_swap must be true or false")
         conn.execute(
             """UPDATE users SET chat_instructions=?,chat_profile=?,chat_recaps=?,chat_artifacts=?,
                chat_context_revision=chat_context_revision+1 WHERE id=?""",
@@ -219,6 +224,8 @@ def set_user_context(user_id: int, *, instructions=None, profile=None, recaps=No
         )
         if memory is not None:
             conn.execute("UPDATE users SET chat_memory=? WHERE id=?", (1 if memory else 0, user_id))
+        if secret_swap is not None:
+            conn.execute("UPDATE users SET chat_secret_swap=? WHERE id=?", (1 if secret_swap else 0, user_id))
         if not stored_recaps:
             from . import chat_recaps
             chat_recaps.disable(conn, user_id)
@@ -356,8 +363,13 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
         else:
             meter, preamble = cached
         if preamble:
+            from . import secret_swap
             from .chat_views import compaction_cut
-            data["context_cut"] = compaction_cut(data["messages"], state)
+            try:
+                swap = secret_swap.for_thread(row["user_id"], row["id"], conn)
+            except secret_swap.SwapUnavailable:
+                swap = None
+            data["context_cut"] = compaction_cut(data["messages"], state, swap)
         state["meter"] = meter
         effort = state.get("effort") if isinstance(state.get("effort"), dict) else {}
         data["reasoning_effort"] = (effort.get("value") or "") if effort.get("model") == model else ""
@@ -1180,6 +1192,9 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
         )
         if col("memory_off"):
             conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
+        from . import secret_swap
+
+        secret_swap.copy_thread(conn, pk, tid)
         mapped = {"id", "thread_id", "parent_run_id", "root_run_id", "message_id", "request", "message", "provider_messages"}
         run_columns = _copyable_columns(conn, "chat_runs", runs[0].keys()) if runs else []
         if runs and "provider_messages" in runs[0].keys() and "provider_messages" not in run_columns:
