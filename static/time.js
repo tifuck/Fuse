@@ -15,7 +15,8 @@
   const zone = () => chosen || detected();
 
   // Server-rendered labels (usage limits, resets, dates) read this cookie.
-  document.cookie = `fuse_tz=${encodeURIComponent(zone())}; path=/; max-age=31536000; samesite=lax`;
+  // Raw: zone names are cookie-safe and the server does not percent-decode.
+  document.cookie = `fuse_tz=${zone()}; path=/; max-age=31536000; samesite=lax`;
 
   // Every toLocale*String call without its own timeZone uses the chosen zone.
   for (const name of ["toLocaleString", "toLocaleDateString", "toLocaleTimeString"]) {

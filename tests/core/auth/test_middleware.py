@@ -1,6 +1,7 @@
 """app.main's request edge: one-time secrets never reach the access log,
 oversized bodies are refused before any handler, and every page carries the
 security headers."""
+import asyncio
 import logging
 
 import pytest
@@ -55,6 +56,24 @@ def test_pages_carry_the_security_headers(edge):
     assert "frame-ancestors 'none'" in res.headers["content-security-policy"]
     assert res.headers["cache-control"] == "no-store"
     assert res.headers["strict-transport-security"].startswith("max-age=")
+
+
+@pytest.mark.parametrize("cookie, zone", [
+    ("fuse_tz=America/New_York; other=1", "America/New_York"),
+    ("fuse_tz=../etc/passwd", "UTC"),
+    ("", "UTC"),
+])
+def test_the_fuse_tz_cookie_sets_the_display_zone(cookie, zone):
+    from app import main, stats
+
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append(str(stats.display_zone.get()))
+
+    headers = [(b"cookie", cookie.encode())] if cookie else []
+    asyncio.run(main.DisplayZoneMiddleware(inner)({"type": "http", "headers": headers}, None, None))
+    assert seen == [zone]
 
 
 def test_oversized_or_malformed_bodies_are_refused_before_any_handler(edge):
