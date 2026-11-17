@@ -1,17 +1,18 @@
-{#- The skill library dialog, shared by the Skills page and every theme's chat
-    Skills sheet. skills.js fills it; app.js opens and closes dialog.modal. -#}
-<dialog class="modal skills-lib" id="skills-library" aria-labelledby="skills-library-title" data-skill-library>
-  <div class="modal-shell">
-    <div class="modal-head">
-      <div>
-        <h2 id="skills-library-title">Add skills</h2>
-        <p class="skills-lib-lead">Built into Fuse and checked. Add one and it is on at once.</p>
+{#- The skill library, shared by the Skills page and every theme's chat Skills
+    sheet. In a chat sheet (skills_lib_inline) it is the sheet's second
+    screen, so it takes that theme's sheet; on the page it is a dialog (full
+    screen on phones). skills.js fills it; app.js closes dialog.modal. -#}
+{% set lib_body %}
+    <div class="skills-lib-bar">
+      {% if skills_lib_inline %}
+      <button type="button" class="skills-lib-back" data-lib-back aria-label="Back to your skills">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      {% endif %}
+      <div class="skills-tabs skills-lib-tabs" role="tablist" aria-label="Add from">
+        <button type="button" role="tab" class="skills-tab is-on" data-lib-tab="library" aria-selected="true" aria-controls="skills-lib-library">Library <span data-lib-count></span></button>
+        <button type="button" role="tab" class="skills-tab" data-lib-tab="import" aria-selected="false" aria-controls="skills-lib-import">Import</button>
       </div>
-      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close">Close</button>
-    </div>
-    <div class="skills-tabs" role="tablist" aria-label="Add from">
-      <button type="button" role="tab" class="skills-tab is-on" data-lib-tab="library" aria-selected="true" aria-controls="skills-lib-library">Library <span data-lib-count></span></button>
-      <button type="button" role="tab" class="skills-tab" data-lib-tab="import" aria-selected="false" aria-controls="skills-lib-import">Import</button>
     </div>
     <div class="skills-lib-pane" id="skills-lib-library" role="tabpanel" data-lib-pane="library">
       <label class="skills-find skills-lib-find">
@@ -22,8 +23,8 @@
       <div class="skills-lib-cats" role="group" aria-label="Category" data-lib-cats></div>
       <div class="skills-lib-list" data-lib-list></div>
     </div>
-    <div class="skills-lib-pane" id="skills-lib-import" role="tabpanel" data-lib-pane="import" hidden>
-      <p class="skills-lib-note">Third-party skills are not checked by Fuse. Uploads with hidden characters are refused; read a skill before you turn it on.</p>
+    <div class="skills-lib-pane skills-lib-import" id="skills-lib-import" role="tabpanel" data-lib-pane="import" hidden>
+      <p class="skills-lib-note">Skills from outside Fuse are not checked. Uploads with hidden characters are refused; read a skill before you turn it on.</p>
       <form class="skills-search" data-search-form>
         <label class="skills-find skills-query">
           <span class="visually-hidden">Search skills.sh</span>
@@ -43,5 +44,22 @@
       </form>
       <p class="callout fault" data-upload-error role="alert" hidden></p>
     </div>
+{% endset %}
+{% if skills_lib_inline %}
+<section class="skills-lib is-inline" aria-label="Add skills" data-skill-library hidden>
+{{ lib_body }}
+</section>
+{% else %}
+<dialog class="modal skills-lib" id="skills-library" aria-labelledby="skills-library-title" data-skill-library>
+  <div class="skills-lib-head">
+    <div>
+      <h2 id="skills-library-title">Add skills</h2>
+      <p>Built into Fuse and checked. Adding one turns it on.</p>
+    </div>
+    <button type="button" class="skills-lib-x" data-dialog-close aria-label="Close">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
   </div>
+{{ lib_body }}
 </dialog>
+{% endif %}

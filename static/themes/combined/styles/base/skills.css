@@ -106,3 +106,13 @@
   :where(html.is-chat-root[data-chat-view="combined"]) .skills-row { grid-template-columns: auto minmax(0, 1fr); }
   :where(html.is-chat-root[data-chat-view="combined"]) .skills-row-actions { grid-column: 2; }
 }
+
+/* combined: the library and switches in this view's soft, rounded controls. */
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-switch { border-radius: 999px; }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-switch::after { border-radius: 50%; }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-lib-tabs { gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--mist) 6%, transparent); }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-lib-tabs .skills-tab { height: 1.65rem; padding: 0 0.7rem; border-radius: 6px; font: 500 12.5px/1 var(--sans); }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-lib-tabs .skills-tab.is-on { background: var(--raise); color: var(--mist); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-chip { height: 1.7rem; padding: 0 0.7rem; border-radius: 999px; font: 12px/1 var(--sans); }
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-lib :is(.skills-find, .skills-lib-back) { border-radius: 8px; }
+:where(html.is-chat-root[data-chat-view="combined"]) :is(.skills-lib-item, .skills-actions, .skills-lib-import) .btn { border-radius: 7px; }

@@ -61,8 +61,8 @@
   <aside class="chat-sheet chat-skills" id="chat-skills" data-chat-sheet data-chat-skills data-skills hidden role="dialog" aria-label="Skills" aria-modal="true">
     <div class="chat-sheet-head">
       <div>
-        <p>Skills</p>
-        <span>On for every chat and project. Slash /name to run.</span>
+        <p data-skills-title>Skills</p>
+        <span data-skills-sub>On for every chat and project. Slash /name to run.</span>
       </div>
       <button type="button" class="chat-menu-close" data-skills-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -78,7 +78,7 @@
         <button type="button" class="btn sm" data-library-open="library">Add from library</button>
         <button type="button" class="btn sm ghost" data-library-open="import">Import</button>
       </div>
-      {% include "_skills_library.html" %}
+      {% with skills_lib_inline = true %}{% include "_skills_library.html" %}{% endwith %}
     </div>
   </aside>
   <button type="button" class="chat-view-backdrop" data-view-backdrop hidden aria-label="Close appearance" tabindex="-1"></button>

@@ -191,12 +191,20 @@
   });
   findInput?.addEventListener("input", renderList);
 
-  // —— Library dialog: the bundled skills, added with one click; Import holds
-  // skills.sh search and upload.
+  // —— Library: the bundled skills, added with one click; Import holds
+  // skills.sh search and upload. A dialog on the Skills page; in a chat
+  // Skills sheet it is the sheet's second screen (inline).
+  const inline = Boolean(library) && library.tagName !== "DIALOG";
+  const home = inline ? Array.from(root.querySelectorAll(".skills-installed, .skills-actions")) : [];
+  const headTitle = root.querySelector("[data-skills-title]");
+  const headSub = root.querySelector("[data-skills-sub]");
+  const headText = [headTitle?.textContent, headSub?.textContent];
   const libFind = library?.querySelector("[data-lib-find]");
   const libCats = library?.querySelector("[data-lib-cats]");
   const libList = library?.querySelector("[data-lib-list]");
   let libCat = "";
+  // The category row scrolls sideways on narrow screens; fade it while more is hidden.
+  const fadeCats = () => libCats?.classList.toggle("is-scrolling", libCats.scrollWidth - libCats.scrollLeft - libCats.clientWidth > 2);
 
   function libTab(name) {
     library.querySelectorAll("[data-lib-tab]").forEach((tab) => {
@@ -221,7 +229,7 @@
     ["", ...cats].forEach((cat) => {
       const chip = document.createElement("button");
       chip.type = "button";
-      chip.className = "skills-tab" + (cat === libCat ? " is-on" : "");
+      chip.className = "skills-chip" + (cat === libCat ? " is-on" : "");
       chip.setAttribute("aria-pressed", String(cat === libCat));
       chip.textContent = cat || "All";
       chip.addEventListener("click", () => {
@@ -230,6 +238,7 @@
       });
       libCats.append(chip);
     });
+    fadeCats();
     const q = (libFind.value || "").trim().toLowerCase();
     const shown = items
       .filter((s) => !libCat || (s.category || "Other") === libCat)
@@ -256,6 +265,7 @@
       const desc = document.createElement("p");
       desc.className = "skills-desc";
       desc.textContent = skill.description || "";
+      desc.title = skill.description || "";
       const copy = document.createElement("div");
       copy.className = "skills-row-copy";
       copy.append(meta, desc);
@@ -287,16 +297,31 @@
       tab.addEventListener("click", () => libTab(tab.getAttribute("data-lib-tab")));
     });
     libFind.addEventListener("input", renderLibrary);
-    // Esc closes only the dialog, never the chat sheet around it.
-    library.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") event.stopPropagation();
-    });
+    libCats.addEventListener("scroll", fadeCats, { passive: true });
+    window.addEventListener("resize", fadeCats);
+    const showLibrary = (on) => {
+      library.hidden = !on;
+      home.forEach((el) => { el.hidden = on; });
+      if (headTitle) headTitle.textContent = on ? "Add skills" : headText[0];
+      if (headSub) headSub.textContent = on ? "Built into Fuse and checked. Adding one turns it on." : headText[1];
+    };
+    if (inline) {
+      library.querySelector("[data-lib-back]")?.addEventListener("click", () => {
+        showLibrary(false);
+        root.querySelector('[data-library-open="library"]')?.focus();
+      });
+      // A closed sheet opens on your skills next time.
+      new MutationObserver(() => { if (root.hidden) showLibrary(false); })
+        .observe(root, { attributes: true, attributeFilter: ["hidden"] });
+    }
     root.querySelectorAll("[data-library-open]").forEach((button) => {
       button.addEventListener("click", () => {
         libTab(button.getAttribute("data-library-open"));
         renderLibrary();
-        if (!library.open) library.showModal();
-        (button.getAttribute("data-library-open") === "import" ? searchQ : libFind)?.focus();
+        if (inline) showLibrary(true);
+        else if (!library.open) library.showModal();
+        fadeCats();
+        (button.getAttribute("data-library-open") === "import" ? searchQ : libFind)?.focus({ preventScroll: true });
       });
     });
   }
