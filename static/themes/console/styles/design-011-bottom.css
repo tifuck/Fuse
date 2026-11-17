@@ -233,22 +233,23 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu .chat-queue-action { padding: 0 0.55rem; }
 }
 
-/* Machine stats (static/chat/hoststats.js): the console's bar has no free
-   middle, so the sliced strip sits on its own line under the box, flat
-   and in the console's type. */
+/* Machine stats (static/chat/hoststats.js): a tmux-style status line under
+   the input bar, the full width of the dock. The machine in a green block,
+   the loads in fixed-width slots so nothing shifts as numbers change, and
+   the recent CPU as block characters on the right. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats {
-  display: flex; align-items: stretch; width: max-content; max-width: 100%; height: 20px; margin: 6px auto 0;
-  border-radius: 5px; overflow: hidden; background: rgb(0 0 0 / .35); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .05);
+  display: flex; align-items: stretch; width: 100%; height: 20px; margin: 0;
+  background: color-mix(in srgb, var(--mist) 5%, transparent);
   font: 11px/1 var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; white-space: nowrap;
-  color: var(--mute); cursor: default; user-select: none;
+  color: var(--mute); text-transform: lowercase; cursor: default; user-select: none;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice { position: relative; display: flex; align-items: center; gap: 5px; padding: 0 8px; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice:not(.is-dropped, [hidden]) ~ .hs-slice:not(.is-dropped, [hidden])::before {
-  content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1px; background: rgb(255 255 255 / .06);
-}
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { font-weight: 400; color: #fff; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host { color: var(--mist); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host i { width: 5px; height: 5px; border-radius: 50%; background: #3ecf8e; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net > span { display: inline-flex; gap: 2px; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net { gap: 6px; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice { display: flex; align-items: center; gap: 1ch; padding: 0 1ch; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { display: inline-block; width: 4ch; font-weight: 500; text-align: right; color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host { padding: 0 1.5ch; background: color-mix(in srgb, #3ecf8e 18%, transparent); color: #8fe39b; font-weight: 500; text-transform: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host i { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net { gap: 1ch; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net > span { display: inline-flex; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist { margin-left: auto; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist b { width: 24ch; overflow: hidden; font-weight: 400; letter-spacing: 0; color: color-mix(in srgb, var(--mist) 55%, transparent); }
+@media (max-width: 720px) { html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist { display: none; } }

@@ -187,6 +187,12 @@ test('machine stats: load stays white to 50%, turns amber, red from 95%; rates r
     ['0B', '840B', '1.0K', '84K', '1.2M', '13M', '3.4G', '0B']);
 });
 
+test('machine stats: recent load reads as block characters, clamped to the scale', async () => {
+  const { loadBlocks } = await import('../../static/chat/hoststats.js');
+  assert.equal(loadBlocks([0, 50, 100, 140, -3]), '▁▅██▁');
+  assert.equal(loadBlocks([]), '');
+});
+
 test('code blocks: a message splits into prose and code and joins back; carets map both ways', async () => {
   const { splitBlocks, joinBlocks, locate, offsetOf, fenceTrigger } = await import('../../static/chat/composer/blocks-core.js');
   const msg = 'Look:\n```bash\nls -la\npwd\n```\nthen\n\nmore';

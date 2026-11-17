@@ -36,13 +36,22 @@ function gib(bytes) {
 
 const pct = (part, whole) => (whole > 0 ? (100 * part) / whole : 0);
 
+// Recent samples as block characters, newest last: "▁▂▅█".
+export function loadBlocks(samples) {
+  return samples.map((p) => "▁▂▃▄▅▆▇█"[Math.min(7, Math.max(0, Math.round((p / 100) * 7)))]).join("");
+}
+
+const HISTORY = 24;
+
 export function createHostStats() {
   const card = S.root?.querySelector("[data-host-stats]");
   const slot = (name) => card?.querySelector(`[data-hs-${name}]`);
   const el = card ? {
     alias: slot("alias"), cpu: slot("cpu"), ram: slot("ram"), disk: slot("disk"), rx: slot("rx"), tx: slot("tx"),
     hostSlice: slot("host-slice"), diskSlice: slot("disk-slice"), netSlice: slot("net-slice"),
+    cpuHist: slot("cpu-hist"), netSpark: slot("net-spark"),
   } : null;
+  const history = { cpu: [], net: [] };
   const refused = new Set();
   let hostId = 0;
   let alias = "";
@@ -59,6 +68,7 @@ export function createHostStats() {
 
   function close() {
     window.clearTimeout(retry);
+    history.cpu.length = history.net.length = 0;
     const sock = ws;
     ws = null;
     sock?.close();
@@ -94,6 +104,19 @@ export function createHostStats() {
     if (tone !== undefined && node.style.color !== tone) node.style.color = tone;
   }
 
+  // The theme's meters and rings read --hs-<name> (0-100) and --hs-<name>-tone.
+  function meter(name, value) {
+    card.style.setProperty(`--hs-${name}`, String(value));
+    const tone = loadTone(value);
+    if (tone) card.style.setProperty(`--hs-${name}-tone`, tone);
+    else card.style.removeProperty(`--hs-${name}-tone`);
+  }
+
+  function remember(list, value) {
+    list.push(value);
+    if (list.length > HISTORY) list.shift();
+  }
+
   function paint(d) {
     const [memUsed, memTotal] = d.mem;
     const [rx, tx] = d.net;
@@ -102,10 +125,24 @@ export function createHostStats() {
     set(el.alias, alias || "machine");
     set(el.cpu, cpu + "%", loadTone(cpu));
     set(el.ram, ram + "%", loadTone(ram));
+    meter("cpu", cpu);
+    meter("ram", ram);
     if (el.diskSlice) el.diskSlice.hidden = !d.disk;
-    if (d.disk) set(el.disk, Math.round(d.disk[0]) + "%", loadTone(d.disk[0]));
+    if (d.disk) {
+      set(el.disk, Math.round(d.disk[0]) + "%", loadTone(d.disk[0]));
+      meter("disk", Math.round(d.disk[0]));
+    }
     set(el.rx, shortRate(rx));
     set(el.tx, shortRate(tx));
+    remember(history.cpu, cpu);
+    remember(history.net, rx + tx);
+    if (el.cpuHist) set(el.cpuHist, loadBlocks(history.cpu));
+    if (el.netSpark) {
+      const top = Math.max(...history.net, 1);
+      const step = 30 / (HISTORY - 1);
+      const start = 30 - step * (history.net.length - 1);
+      el.netSpark.setAttribute("points", history.net.map((v, i) => `${(start + i * step).toFixed(1)},${(9 - (v / top) * 8).toFixed(1)}`).join(" "));
+    }
     const lines = [
       alias || "Machine",
       `CPU ${cpu}%`,
