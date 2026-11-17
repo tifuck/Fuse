@@ -164,7 +164,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-size: calc(0.76rem * var(--chat-text-scale, 1));
     line-height: 1.6;
   }
-  & .dk-call-head { display: flex; align-items: flex-start; gap: 10px; padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
+  /* Copy sits on the input's first baseline: the mono input and the sans
+     button share one text line whatever their fonts' metrics. */
+  & .dk-call-head { display: flex; align-items: baseline; gap: 10px; padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
   & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
@@ -270,8 +272,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* A cut input fades at its edge instead of ending flush against Copy; its
      end padding keeps the last characters clear of the fade once scrolled. */
   & .dk-call-in { padding-right: 16px; white-space: pre; overflow-wrap: normal; overflow-x: auto; mask-image: linear-gradient(to left, transparent, #000 16px); }
-  /* Copy is taller on touch: the head grows to hold it and keeps the input's
-     first line on its middle. */
+  /* Copy is taller on touch: it overlaps the head's padding, so the head
+     grows only a little to hold it. */
   @media (max-width: 480px), (pointer: coarse) {
     & .dk-call-head { padding-block: 4px; }
     & .dk-call-copy { margin-block: -4px; }
