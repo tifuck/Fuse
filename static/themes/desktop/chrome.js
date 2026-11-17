@@ -308,6 +308,18 @@ export function create(deps) {
     bound = true;
     // The side panels slide only once the page has settled (shell.css).
     requestAnimationFrame(() => requestAnimationFrame(() => deps.root.classList.add("dk-slide")));
+    // Read back, the phone's machine stats strip steps aside (shell.css).
+    const thread = q("[data-chat-thread]");
+    if (thread) {
+      let frame = 0;
+      thread.addEventListener("scroll", () => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          deps.root.classList.toggle("dk-reading", thread.scrollHeight - thread.scrollTop - thread.clientHeight > 4);
+        });
+      }, { passive: true });
+    }
     // The runtime's own handler stops the Artifacts click, so note the opener on the way down.
     deps.root.addEventListener("click", (event) => {
       const t = event.target.closest?.("[data-artifact-toggle]");

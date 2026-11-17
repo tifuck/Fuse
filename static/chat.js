@@ -1545,7 +1545,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
       if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
       if (window.FuseComposerSpell && FuseComposerSpell.isOpen()) return true;
-      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
+      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), [data-hs-pop]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
     };
     const disarmEscStop = () => {
       if (!escArmed) return;

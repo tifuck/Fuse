@@ -210,6 +210,26 @@ test('machine stats: a new sample glides in eased out and lands exactly', async 
   assert.equal(glide(90, 10, -1), 90);
 });
 
+test('machine stats: recent samples draw right-aligned in their box, clamped to the top', async () => {
+  const { sparkPoints } = await import('../../static/chat/hoststats.js');
+  assert.equal(sparkPoints([0, 100], 100, 30, 10), '28.7,9.0 30.0,1.0');
+  assert.equal(sparkPoints([150], 100, 30, 10), '30.0,1.0');
+  assert.equal(sparkPoints([], 100, 30, 10), '');
+});
+
+test('machine stats: the details card lists memory, storage, disk and network, skipping what the sample lacks', async () => {
+  const { detailRows } = await import('../../static/chat/hoststats.js');
+  const gb = 2 ** 30;
+  assert.deepEqual(detailRows({ cpu: 11.4, mem: [2.6 * gb, 16 * gb], net: [1.2e6, 12e3], disk: [0.4, 0, 84e3], vol: [41 * gb, 120 * gb] }), [
+    ['CPU', '', '11%'],
+    ['Memory', '2.6 GB of 16 GB', '16%'],
+    ['Storage', '41 GB of 120 GB', '34%'],
+    ['Disk', 'read 0B/s, write 84K/s', '0%'],
+    ['Network', '↓ 1.2M/s  ↑ 12K/s', ''],
+  ]);
+  assert.deepEqual(detailRows({ cpu: 3, mem: [1, 0], net: [0, 0] }).map((row) => row[0]), ['CPU', 'Memory', 'Network']);
+});
+
 test('machine stats: recent load reads as block characters, clamped to the scale', async () => {
   const { loadBlocks } = await import('../../static/chat/hoststats.js');
   assert.equal(loadBlocks([0, 50, 100, 140, -3]), '▁▅██▁');

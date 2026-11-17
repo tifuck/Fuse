@@ -43,6 +43,27 @@ export function loadBlocks(samples) {
 
 const HISTORY = 24;
 
+// Recent samples as polyline points in a w×h box, newest at the right edge.
+export function sparkPoints(samples, top, w, h) {
+  const step = w / (HISTORY - 1);
+  const start = w - step * (samples.length - 1);
+  return samples.map((v, i) => `${(start + i * step).toFixed(1)},${(h - 1 - (Math.min(v, top) / top) * (h - 2)).toFixed(1)}`).join(" ");
+}
+
+// The details card: [label, detail, percent or ""] per row.
+export function detailRows(d) {
+  const [memUsed, memTotal] = d.mem;
+  const [rx, tx] = d.net;
+  const share = (part, whole) => Math.round(pct(part, whole)) + "%";
+  return [
+    ["CPU", "", Math.round(d.cpu) + "%"],
+    ["Memory", `${gib(memUsed)} of ${gib(memTotal)}`, share(memUsed, memTotal)],
+    d.vol && ["Storage", `${gib(d.vol[0])} of ${gib(d.vol[1])}`, share(d.vol[0], d.vol[1])],
+    d.disk && ["Disk", `read ${shortRate(d.disk[1])}/s, write ${shortRate(d.disk[2])}/s`, Math.round(d.disk[0]) + "%"],
+    ["Network", `↓ ${shortRate(rx)}/s  ↑ ${shortRate(tx)}/s`, ""],
+  ].filter(Boolean);
+}
+
 // A new sample glides in instead of jumping: fast, eased out, then still.
 const GLIDE_MS = 260;
 export function glide(from, to, t) {
@@ -56,9 +77,12 @@ export function createHostStats() {
   const el = card ? {
     alias: slot("alias"), cpu: slot("cpu"), ram: slot("ram"), disk: slot("disk"), rx: slot("rx"), tx: slot("tx"),
     hostSlice: slot("host-slice"), diskSlice: slot("disk-slice"), netSlice: slot("net-slice"),
-    cpuHist: slot("cpu-hist"), netSpark: slot("net-spark"),
+    cpuHist: slot("cpu-hist"), toggle: slot("toggle"), pop: slot("pop"),
   } : null;
-  const history = { cpu: [], net: [] };
+  const history = { cpu: [] };
+  // A theme may keep the card when samples stop (data-host-stats-keep): it
+  // greys out in place instead of leaving, so nothing around it moves.
+  const keep = Boolean(card?.hasAttribute("data-host-stats-keep"));
   // A theme may give the card a second place for narrow screens: the
   // element with data-host-stats-narrow, whose value is the media query.
   const narrow = S.root?.querySelector("[data-host-stats-narrow]");
@@ -76,19 +100,36 @@ export function createHostStats() {
   let goal = null;
   let glideAt = 0;
   let frame = 0;
+  let last = null;
 
   function hide() {
     window.clearTimeout(stale);
     window.cancelAnimationFrame(frame);
     frame = 0;
     shown = null;
+    setPop(false);
+    card?.classList.remove("is-stale");
     if (card && !card.hidden) card.hidden = true;
     fitKey = "";
   }
 
+  // No sample for a while: a kept card greys out with dashes, others hide.
+  function stall() {
+    if (!keep || card.hidden) { hide(); return; }
+    window.cancelAnimationFrame(frame);
+    frame = 0;
+    card.classList.add("is-stale");
+    for (const node of [el.cpu, el.ram, el.disk, el.rx, el.tx]) set(node, "–", "");
+    for (const name of ["cpu", "ram", "disk"]) {
+      card.style.removeProperty(`--hs-${name}`);
+      card.style.removeProperty(`--hs-${name}-tone`);
+    }
+    fillPop();
+  }
+
   function close() {
     window.clearTimeout(retry);
-    history.cpu.length = history.net.length = 0;
+    history.cpu.length = 0;
     const sock = ws;
     ws = null;
     sock?.close();
@@ -111,9 +152,10 @@ export function createHostStats() {
     sock.onclose = (event) => {
       if (ws !== sock) return;
       ws = null;
-      hide();
       // Not a connector, not this user's, signed out: no point asking again.
-      if ([4401, 4403, 4404].includes(event.code)) { refused.add(id); return; }
+      if ([4401, 4403, 4404].includes(event.code)) { hide(); refused.add(id); return; }
+      // A kept card greys out once its samples are overdue, not on every reconnect.
+      if (!keep) hide();
       retry = window.setTimeout(open, event.code === 1012 ? 1000 : 5000);
     };
   }
@@ -178,21 +220,17 @@ export function createHostStats() {
     const [rx, tx] = d.net;
     const cpu = Math.round(d.cpu);
     const ram = Math.round(pct(memUsed, memTotal));
+    last = d;
+    card.classList.remove("is-stale");
     set(el.alias, alias || "machine");
     if (el.diskSlice) el.diskSlice.hidden = !d.disk;
     const next = { cpu: d.cpu, ram: pct(memUsed, memTotal), rx, tx };
     if (d.disk) next.disk = d.disk[0];
     show(next);
     remember(history.cpu, cpu);
-    remember(history.net, rx + tx);
     if (el.cpuHist) set(el.cpuHist, loadBlocks(history.cpu));
-    if (el.netSpark) {
-      const top = Math.max(...history.net, 1);
-      const step = 30 / (HISTORY - 1);
-      const start = 30 - step * (history.net.length - 1);
-      el.netSpark.setAttribute("points", history.net.map((v, i) => `${(start + i * step).toFixed(1)},${(9 - (v / top) * 8).toFixed(1)}`).join(" "));
-    }
-    const lines = [
+    // A card with its own details card leaves the browser tooltip out.
+    const lines = el.pop ? "" : [
       alias || "Machine",
       `CPU ${cpu}%`,
       `Memory ${gib(memUsed)} of ${gib(memTotal)} (${ram}%)`,
@@ -203,8 +241,41 @@ export function createHostStats() {
     if (card.title !== lines) card.title = lines;
     if (card.hidden) card.hidden = false;
     fit();
+    fillPop();
     window.clearTimeout(stale);
-    stale = window.setTimeout(hide, STALE_MS);
+    stale = window.setTimeout(stall, STALE_MS);
+  }
+
+  // The details card ([data-hs-pop]), opened by [data-hs-toggle].
+  function setPop(open) {
+    if (!el?.pop || el.pop.hidden === !open) return;
+    el.pop.hidden = !open;
+    el.toggle?.setAttribute("aria-expanded", String(open));
+    if (open) fillPop();
+    else if (!card.hidden) { fitKey = ""; fit(); }
+  }
+
+  function fillPop() {
+    const pop = el.pop;
+    if (!pop || pop.hidden || !last) return;
+    if (!pop.firstChild) pop.innerHTML = '<p class="hs-pop-head"><b></b><span></span></p><dl class="hs-pop-rows"></dl>';
+    const [name, state] = pop.firstChild.children;
+    const live = !card.classList.contains("is-stale");
+    set(name, alias || "Machine");
+    set(state, live ? "Live" : "No recent data");
+    pop.lastChild.replaceChildren(...detailRows(last).map(([label, detail, value]) => {
+      const row = document.createElement("div");
+      const term = document.createElement("dt");
+      const info = document.createElement("dd");
+      const num = document.createElement("dd");
+      term.textContent = label;
+      if (label === "CPU") info.innerHTML = `<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><polyline points="${sparkPoints(history.cpu, 100, 100, 16)}"></polyline></svg>`;
+      else info.textContent = detail;
+      num.textContent = value;
+      num.style.color = live ? loadTone(parseFloat(value)) : "";
+      row.append(term, info, num);
+      return row;
+    }));
   }
 
   // Whatever does not fit between the composer's own controls goes:
@@ -224,6 +295,8 @@ export function createHostStats() {
   }
 
   function fit() {
+    // The open details card would count toward the card's width.
+    if (el.pop && !el.pop.hidden) return;
     const key = `${card.parentElement.clientWidth}|${[el.cpu, el.ram, el.disk, el.rx, el.tx, el.alias].map((n) => n?.textContent.length).join(",")}`;
     if (key === fitKey) return;
     fitKey = key;
@@ -239,6 +312,7 @@ export function createHostStats() {
   }
 
   function place() {
+    setPop(false);
     if (narrowQuery.matches) narrow.append(card);
     else home[0].insertBefore(card, home[1]);
     fitKey = "";
@@ -264,6 +338,15 @@ export function createHostStats() {
   if (card) {
     document.addEventListener("visibilitychange", () => (document.hidden ? close() : open()));
     window.addEventListener("resize", () => { if (!card.hidden) { fitKey = ""; fit(); } });
+  }
+  if (el?.toggle && el.pop) {
+    el.toggle.addEventListener("click", () => setPop(el.pop.hidden));
+    document.addEventListener("pointerdown", (event) => { if (!card.contains(event.target)) setPop(false); });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || el.pop.hidden) return;
+      setPop(false);
+      el.toggle.focus();
+    });
   }
 
   return { sync };
