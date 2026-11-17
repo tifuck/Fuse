@@ -85,6 +85,12 @@ html:where(.is-chat-root[data-chat-view="combined"]).is-chat-root,
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-pop button:hover { background: var(--raise); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-pop button.danger { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-pop button.danger:hover { background: color-mix(in srgb, var(--fault) 12%, transparent); }
+/* Menus open with a short fade and scale from their anchor corner. */
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-pop { transform-origin: top right; animation: chat-pop-in var(--dur-1) var(--ease-snap); }
+@media (min-width: 801px) {
+  :where(html.is-chat-root[data-chat-view="combined"]) .user-dock-menu:not([hidden]) { transform-origin: bottom center; animation: chat-pop-in var(--dur-1) var(--ease-snap); }
+}
+@keyframes chat-pop-in { from { opacity: 0; scale: 0.97; } }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-pop-sep {
   height: 1px;
   margin: 0.3rem 0.35rem;

@@ -9,7 +9,9 @@
   const COLORS = ["#E5484D", "#F76B15", "#FFC53D", "#46A758", "#12A594", "#0090FF", "#3E63DD", "#8E4EC6", "#D6409F", "#A18072"];
   const LOGO_PX = 128;
   const LOGO_MAX = 96 * 1024;
-  const FOLDER_PATH = "M1.9 4.1c0-.6.5-1.1 1.1-1.1h3.1l1.5 1.5H13c.6 0 1.1.5 1.1 1.1v6.3c0 .6-.5 1.1-1.1 1.1H3c-.6 0-1.1-.5-1.1-1.1z";
+  // A two-tone folder: the back with its tab, and a lower front flap.
+  const FOLDER_BACK = "M1.75 4.25C1.75 3.56 2.31 3 3 3h3.1c.33 0 .64.13.88.37L8.1 4.5H13c.69 0 1.25.56 1.25 1.25v6.5c0 .69-.56 1.25-1.25 1.25H3c-.69 0-1.25-.56-1.25-1.25z";
+  const FOLDER_FRONT = "M1.75 6.75c0-.55.45-1 1-1h10.5c.55 0 1 .45 1 1v5.5c0 .69-.56 1.25-1.25 1.25H3c-.69 0-1.25-.56-1.25-1.25z";
 
   const esc = (s) => escapeText(s);
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || "";
@@ -46,8 +48,9 @@
     return (project && (project.logo_url || project.project_logo_url)) || "";
   }
 
-  /* The project's icon at the caller's size. Extra classes keep each page's
-     existing glyph sizing (chat rows use .chat-history-glyph). */
+  /* The project's icon at the caller's size: a pastel of its colour (mixed
+     toward white, so custom colours get one too), or its logo. Extra classes
+     keep each page's existing glyph sizing (chat rows use .chat-history-glyph). */
   function icon(project, opts) {
     const size = (opts && opts.size) || 16;
     const cls = ["fp-icon", (opts && opts.className) || ""].join(" ").trim();
@@ -57,8 +60,8 @@
     }
     return (
       `<svg class="${esc(cls)}" viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true" style="--fp-color:${colorFor(project)}">` +
-      `<path d="${FOLDER_PATH}" fill="var(--fp-color)" stroke="var(--fp-color)" stroke-width="1.1" stroke-linejoin="round"/>` +
-      `<path d="M1.9 6.2h12.2" stroke="color-mix(in srgb, #000 28%, var(--fp-color))" stroke-width="1" fill="none"/></svg>`
+      `<path d="${FOLDER_BACK}" style="fill:color-mix(in oklch, var(--fp-color) 72%, #fff)"/>` +
+      `<path d="${FOLDER_FRONT}" style="fill:color-mix(in oklch, var(--fp-color) 52%, #fff)"/></svg>`
     );
   }
 

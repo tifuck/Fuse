@@ -35,7 +35,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-band-h: 30px;
   /* Between the composer card and its controls row. */
   --dk-band-gap: 3px;
-  --chat-history: 13.5rem;
+  --chat-history: 15rem;
   /* The reading column takes most of the window and keeps growing on wide
      displays; the sidebar and inspector still clip it (min(…, 100% - gutter)). */
   --chat-col: clamp(40rem, 70vw, 90rem);
@@ -135,7 +135,18 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     background: none;
   }
   & .dk-side-head .chat-history-collapse { order: -1; }
-  & .dk-tabs { display: flex; gap: 2px; margin: 0 auto 0 4px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--dk-text) 6%, transparent); }
+  & .dk-tabs { position: relative; display: flex; gap: 2px; margin: 0 auto 0 4px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--dk-text) 6%, transparent); }
+  /* The selected tab's fill is one pill that slides between the two tabs. */
+  & .dk-tabs::before {
+    content: "";
+    position: absolute;
+    inset: 2px auto 2px 2px;
+    width: calc(50% - 3px);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--dk-text) 14%, transparent);
+    transition: translate var(--dur-2) var(--ease-glide);
+  }
+  & .dk-tabs:has([data-history-tab="projects"][aria-selected="true"])::before { translate: calc(100% + 2px) 0; }
   & .dk-tab {
     position: relative;
     display: inline-grid;
@@ -145,9 +156,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     padding: 0;
     border-radius: 6px;
     color: var(--dk-mute);
+    transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
   }
-  & .dk-tab:hover { background: var(--dk-hover); color: var(--dk-text); }
-  & .dk-tab[aria-selected="true"] { background: color-mix(in srgb, var(--dk-text) 14%, transparent); color: var(--dk-text); }
+  & .dk-tab:hover { color: var(--dk-text); }
+  & .dk-tab:not([aria-selected="true"]):hover { background: var(--dk-hover); }
+  & .dk-tab[aria-selected="true"] { color: var(--dk-text); }
   & .dk-tab .chat-run-spin:not([hidden]) { position: absolute; top: 4px; right: 4px; display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--dk-link); }
   & .dk-tab .chat-run-spin > * { display: none; }
   & .dk-tab-unread { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; overflow: hidden; border-radius: 50%; background: var(--dk-link); font-size: 0; }
@@ -218,38 +231,37 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & [data-history-kicker]:not([hidden]) + .dk-list > .dk-group[data-history-section]:first-child { display: none; }
   & .dk-list { display: flex; flex: 1; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   & .dk-list > .dk-group:first-child { margin-top: 2px; }
-  & .dk-row { position: relative; display: flex; align-items: center; flex: none; height: 28px; border-radius: 7px; color: color-mix(in srgb, var(--dk-text) 82%, var(--dk-mute)); }
+  & .dk-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 28px;
+    border-radius: 7px;
+    color: color-mix(in srgb, var(--dk-text) 82%, var(--dk-mute));
+    transition: background-color var(--dur-1) ease, color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+  }
   & .dk-row:hover { background: var(--dk-hover); }
   & .dk-row:is(.is-on, .is-menu) { background: var(--dk-sel); color: var(--dk-text); }
+  /* Press: one step deeper and a hair smaller, back on release. */
+  & .dk-row:has(> .dk-open:active) { background: color-mix(in srgb, var(--dk-text) 8%, var(--dk-sel)); scale: 0.985; }
   & .dk-row.is-unread { color: var(--dk-text); font-weight: 500; }
   & .dk-row.is-dragging { opacity: 0.7; background: var(--dk-sel); }
   & .dk-open { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 100%; padding: 0 8px; border-radius: 7px; font: 13px var(--sans); text-align: left; white-space: nowrap; }
-  /* The title takes the slack: project and age sit at the row's end. */
+  /* The title takes the slack: the project name sits at the row's end. */
   & .dk-name { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; }
   & .dk-name em { color: var(--dk-link); font-style: normal; }
   & :is(.dk-sub, .dk-snip, .dk-chip) { flex: none; max-width: 40%; overflow: hidden; color: var(--dk-mute); font-size: 11.5px; text-overflow: ellipsis; }
   & .dk-snip { flex: 0 1 auto; max-width: 30%; }
   & .dk-chip { padding: 0 4px; border: 1px solid var(--dk-card-line); border-radius: 4px; font: 10.5px var(--mono); }
-  /* The age always shows, right-aligned in a fixed slot so project names line up; ⋯ takes its place on hover. */
-  & .dk-when { flex: none; min-width: 3ch; color: var(--dk-mute); font: 11px var(--mono); text-align: right; }
-  /* A fixed 14px lead slot, so every title starts on one edge. */
-  & .dk-st {
-    flex: none;
-    width: 11px;
-    height: 11px;
-    margin: 0 1.5px;
-    border: 1.3px dotted color-mix(in srgb, var(--dk-mute) 85%, transparent);
-    border-radius: 50%;
-  }
-  & .dk-st-code { flex: none; color: var(--dk-mute); }
-  /* A draft has no icon; its title still starts on the lead slot's far edge. */
-  & .dk-row.is-draft .dk-open { padding-left: 30px; }
-  & .dk-pj { flex: none; width: 9px; height: 9px; margin: 0 2.5px; border-radius: 2px; background: var(--dk-pj, var(--dk-mute)); }
+  /* The age slot leads every row: 26px fits the longest age ("11mo"), so
+     every title starts on one edge. It holds the unread dot or the running
+     spinner instead when the row has news or is working. */
+  & .dk-age { display: grid; flex: none; place-items: center start; width: 26px; height: 14px; }
+  & .dk-when { color: var(--dk-mute); font: 11px var(--mono); }
   & .dk-open > :is(svg, img) { flex: none; width: 14px; height: 14px; }
   & .dk-group.is-project > :is(svg, img) { width: 12px; height: 12px; }
-  /* Unread: a badge on the lead icon's top-right corner. */
-  & .dk-open { position: relative; }
-  & .dk-unread { position: absolute; top: calc(50% - 9px); left: 18px; display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-link); }
+  & .dk-unread { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--dk-link); }
   /* The running spinner (chaos.js); a row's tints it with its project colour. */
   & .dk-chaos { display: block; flex: none; width: 14px; height: 14px; color: var(--dk-link); }
   & .dk-live { display: none; }
@@ -267,10 +279,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-mute);
     font-size: 13px;
     opacity: 0;
+    transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease, color var(--dur-1) ease;
   }
-  /* Hover or focus: ⋯ covers the age, so nothing in the row moves. */
+  /* Hover or focus: ⋯ gets its own slot at the row's end, so it never covers
+     the title or the project name. */
   & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; }
-  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-when { visibility: hidden; }
+  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-open { padding-right: 30px; }
   & .dk-more:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-row .rename { width: 100%; height: 26px; padding: 0 7px; border: 1px solid var(--dk-link); border-radius: 7px; background: var(--dk-side); color: var(--dk-text); font: 13.5px var(--sans); }
   & .dk-empty { margin: 6px 8px; color: var(--dk-mute); font-size: 12.5px; }
@@ -404,6 +418,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     border-radius: 12px;
     background: var(--dk-card);
     box-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
+    transform-origin: top right;
+    animation: chat-pop-in var(--dur-1) var(--ease-snap);
   }
   & .dk-menu[hidden] { display: none; }
   & .dk-view { display: contents; }
@@ -794,13 +810,16 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-model .chat-picker-btn { max-width: 10rem; }
     & .dk-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .dk-row { height: 44px; }
-    & .dk-act { height: 40px; }
+    & .dk-open { font-size: 15px; }
+    & .dk-act { height: 40px; font-size: 15px; }
     & :is(.dk-tab, .dk-side-head .dk-ib) { width: 36px; height: 36px; }
     & .dk-sun { width: 40px; height: 40px; }
     & .dk-search { height: 40px; }
     & .dk-search input { font-size: 16px; }
     & .dk-search .dk-ib { width: 36px; height: 36px; }
-    & .dk-filters select { height: 36px; }
+    /* Filters as quiet chips: the 16px text stops iOS zooming on focus. */
+    & .dk-filters { gap: 6px; padding: 4px 2px; }
+    & .dk-filters select { height: 32px; padding: 0 26px 0 12px; border: 1px solid var(--dk-card-line); border-radius: 16px; background-position: right 10px center; color: var(--dk-mute); }
     & .dk-archived, & .dk-foot .user-dock-btn { height: 44px; }
   }
   /* Touch: every control at least 36px; the row ⋯ always shows. */
@@ -967,7 +986,7 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .dk-st, .chat-agents-dot),
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .chat-agents-dot),
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }
 
