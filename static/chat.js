@@ -18,6 +18,7 @@ import { createTurns } from './chat/turns.js';
 import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
+import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
 // the theme seam (createTheme destructuring with its fixture anchor),
@@ -145,6 +146,8 @@ import { createHostStats } from './chat/hoststats.js';
     get openWallpaperPicker() { return composer.openWallpaperPicker; },
     get motionPaints() { return transcript.motionPaints; },
     get normalizeTodos() { return transcript.normalizeTodos; },
+    get parseBlocks() { return parseBlocks; },
+    get parseInline() { return parseInline; },
     get pauseThreadFollow() { return transcript.pauseThreadFollow; },
     get pendingFullPaint() { return S.pendingFullPaint; },
     set pendingFullPaint(value) { S.pendingFullPaint = value; },
@@ -169,6 +172,7 @@ import { createHostStats } from './chat/hoststats.js';
     get shellExitCode() { return traces.shellExitCode; },
     get showThinking() { return S.showThinking; },
     get snapThread() { return transcript.snapThread; },
+    get stableBoundary() { return stableBoundary; },
     get startLiveClock() { return transcript.startLiveClock; },
     get stickToBottom() { return S.stickToBottom; },
     get streaming() { return S.streaming; },

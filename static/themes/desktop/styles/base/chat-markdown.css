@@ -258,3 +258,10 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-sync.is-fault [data-sync-label] {
   color: var(--fault);
 }
+/* Blocks inside quotes and list items (static/chat/markdown.js) sit flush. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md blockquote > :first-child { margin-top: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md blockquote > :last-child { margin-bottom: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md li > :is(p, .chat-code, table, blockquote) { margin-block: 0.45em; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md li.chat-md-task { list-style: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md-check { position: relative; display: inline-block; box-sizing: border-box; width: 0.95em; height: 0.95em; margin: 0 0.5em 0 -1.35em; border: 1.5px solid currentColor; border-radius: 3px; vertical-align: -0.12em; opacity: 0.75; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-md-check.is-done::after { content: ""; position: absolute; left: 0.28em; top: 0.08em; width: 0.22em; height: 0.48em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }

@@ -34,7 +34,8 @@ export function createDesktopTheme(runtime) {
   Object.assign(theme, createMarkdownSyntax({
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get renderBlocks() { return theme.renderBlocks; },
+    get parseBlocks() { return runtime.parseBlocks; },
+    get parseInline() { return runtime.parseInline; },
     get safeUrl() { return runtime.safeUrl; },
   }));
   Object.assign(theme, createMarkdownStream({
@@ -43,19 +44,10 @@ export function createDesktopTheme(runtime) {
     get REVEAL_MS() { return runtime.REVEAL_MS; },
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get looksLikeListBlock() { return theme.looksLikeListBlock; },
-    get mergeListBlocks() { return theme.mergeListBlocks; },
-    get parseHeadingLine() { return theme.parseHeadingLine; },
-    get parseListMarker() { return theme.parseListMarker; },
-    get parseTable() { return theme.parseTable; },
     get reduceMotion() { return runtime.reduceMotion; },
     get renderDetailsBlocks() { return theme.renderDetailsBlocks; },
-    get renderHeading() { return theme.renderHeading; },
-    get renderInline() { return theme.renderInline; },
-    get renderList() { return theme.renderList; },
-    get renderQuote() { return theme.renderQuote; },
-    get rewriteCites() { return theme.rewriteCites; },
     get snapThread() { return runtime.snapThread; },
+    get stableBoundary() { return runtime.stableBoundary; },
     get stickToBottom() { return runtime.stickToBottom; },
   }));
   Object.assign(theme, createUserTurn({

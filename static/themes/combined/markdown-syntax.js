@@ -33,7 +33,8 @@ function rewriteCites(text, catalog, streaming) {
     });
     if (streaming) out = out.replace(/[\uE200\uE206]cite(?:\uE202[^\uE201]*)?$/i, "");
     else out = out.replace(/[\uE200-\uE20F]/g, "");
-    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)(?:\s+\2)?/g, "[$1]($2)");
+    // Bounded label: an unbounded one backtracks over every unmatched "[".
+    out = out.replace(/\[([^\]\n]{1,300})\]\((https?:\/\/[^)\s]+)\)(?:\s+\2)?/g, "[$1]($2)");
     return out;
   }
 
@@ -60,62 +61,41 @@ function linkHtml(url, label, cls) {
     return `<a${attr} href="${deps.escapeHtml(url)}"${extra}>${label}</a>`;
   }
 
-function autolinkHtml(src) {
-    const held = [];
-    let out = String(src || "").replace(/<a\b[^>]*>[\s\S]*?<\/a>|<img\b[^>]*>/gi, (tag) => {
-      held.push(tag);
-      return `\uE000L${held.length - 1}\uE001`;
-    });
-    out = out.replace(/(^|[\s>(])((?:https?:\/\/|mailto:)[^\s<]+)(?=$|[\s<])/gi, (all, lead, raw) => {
-      let href = raw.replace(/&amp;/g, "&");
-      let trail = "";
-      while (/[),.;:!?]$/.test(href) && !/[/)]]$/.test(href)) {
-        trail = href.slice(-1) + trail;
-        href = href.slice(0, -1);
-      }
-      const url = deps.safeUrl(href);
-      if (!url) return all;
-      return lead + linkHtml(url, deps.escapeHtml(href)) + trail;
-    });
-    return out.replace(/\uE000L(\d+)\uE001/g, (_, i) => held[Number(i)] || "");
+// Inline markdown (static/chat/markdown.js parses it) as HTML. `ctx` carries
+// the citation catalog and whether the text is still streaming.
+function renderInline(text, ctx = {}) {
+    const src = rewriteCites(text, ctx.catalog || [], ctx.streaming);
+    return renderNodes(deps.parseInline(src));
   }
 
-function renderInline(text) {
-    const codes = [];
-    let src = String(text || "").replace(/`([^`]+)`/g, (_, code) => {
-      codes.push(code);
-      return `\uE000C${codes.length - 1}\uE001`;
-    });
-    src = deps.escapeHtml(src);
-    // Remote images are CSP-blocked (img-src 'self' data:), so image syntax
-    // renders as a link to the source instead of a permanently broken <img>.
-    src = src.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, href) => {
-      const url = deps.safeUrl(href.replace(/&amp;/g, "&"));
-      if (!url || !/^https?:/i.test(url)) return alt;
-      return linkHtml(url, alt || deps.escapeHtml(url));
-    });
-    src = src.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
-      const url = deps.safeUrl(href.replace(/&amp;/g, "&"));
-      if (!url) return label;
-      return linkHtml(url, label);
-    });
-    src = autolinkHtml(src);
-    const emphasis = (value) => value
-      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
-      .replace(/(^|[^\w])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>")
-      .replace(/(^|[^\w])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
-    const links = [];
-    src = src.replace(/(<a\b[^>]*>)([\s\S]*?)<\/a>/gi, (_, opening, label) => {
-      const href = (opening.match(/\bhref="([^"]*)"/) || [])[1];
-      links.push(opening + (label === href ? label : emphasis(label)) + "</a>");
-      return `\uE000L${links.length - 1}\uE001`;
-    });
-    src = emphasis(src);
-    src = src.replace(/\uE000L(\d+)\uE001/g, (_, i) => links[Number(i)] || "");
-    src = src.replace(/\uE000C(\d+)\uE001/g, (_, i) => `<code>${deps.escapeHtml(codes[Number(i)] || "")}</code>`);
-    return src;
+function renderNodes(nodes) {
+    return nodes.map((node) => {
+      switch (node.t) {
+        case "text": return deps.escapeHtml(node.v);
+        case "code": return `<code>${deps.escapeHtml(node.v)}</code>`;
+        case "br": return "<br>";
+        case "em": return `<em>${renderNodes(node.c)}</em>`;
+        case "strong": return `<strong>${renderNodes(node.c)}</strong>`;
+        case "del": return `<del>${renderNodes(node.c)}</del>`;
+        case "link": {
+          const label = renderNodes(node.c);
+          const url = deps.safeUrl(node.href);
+          return url ? linkHtml(url, label || deps.escapeHtml(url)) : label;
+        }
+        // Remote images are CSP-blocked (img-src 'self' data:), so image syntax
+        // renders as a link to the source instead of a permanently broken <img>.
+        case "image": {
+          const url = deps.safeUrl(node.href);
+          const alt = deps.escapeHtml(node.alt);
+          return url && /^https?:/i.test(url) ? linkHtml(url, alt || deps.escapeHtml(url)) : alt;
+        }
+        case "autolink": {
+          const url = deps.safeUrl(node.href);
+          return url ? linkHtml(url, deps.escapeHtml(node.label)) : deps.escapeHtml(node.label);
+        }
+        default: return "";
+      }
+    }).join("");
   }
 
 function trimFence(code) {
@@ -170,182 +150,62 @@ function renderFence(lang, code) {
     return `<div class="chat-code"><div class="chat-code-head"><span>${label}</span><button type="button" class="chat-icon-btn" data-copy-code title="Copy" aria-label="Copy">${ACTION_ICONS.copy}</button></div><pre><code>${highlightCode(lang, trimFence(code))}</code></pre></div>`;
   }
 
-function parseTable(block) {
-    const lines = block.split("\n").filter((line) => line.trim());
-    if (lines.length < 2 || !lines[0].includes("|")) return "";
-    const cells = (line) =>
-      line
-        .replace(/^\s*\|/, "")
-        .replace(/\|\s*$/, "")
-        .split("|")
-        .map((cell) => cell.trim());
-    const isSep = (line) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line) || /^\s*\|?\s*:?-+\s*$/.test(line);
-    const looksRow = (line) => line.includes("|") && !isSep(line) && cells(line).some(Boolean);
-    if (!looksRow(lines[0])) return "";
-    let bodyStart = 1;
-    if (isSep(lines[1])) bodyStart = 2;
-    else if (!lines.slice(1).every(looksRow)) return "";
-    const head = cells(lines[0]);
-    const rows = lines.slice(bodyStart).filter(looksRow).map(cells);
-    if (!head.length || !rows.length) return "";
-    const thead = `<tr>${head.map((cell) => `<th>${renderInline(cell)}</th>`).join("")}</tr>`;
-    const tbody = rows.map((row) => `<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join("")}</tr>`).join("");
-    return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+function renderHeading(token, ctx) {
+    return `<h${token.level}>${renderInline(token.text, ctx)}</h${token.level}>`;
   }
 
-function parseHeadingLine(line) {
-    const match = String(line || "").match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
-    if (!match) return null;
-    const title = match[2].replace(/[ \t]#+\s*$/, "").replace(/`+$/, "").trim();
-    if (!title) return null;
-    return { level: match[1].length, title };
-  }
-
-function isFenceLang(info) {
-    const first = String(info || "")
-      .trim()
-      .split(/\s+/)[0] || "";
-    if (!first) return true;
-    if (/^#{1,6}$/.test(first) || first.startsWith("#")) return false;
-    return /^[A-Za-z][\w+#.-]*$/.test(first);
-  }
-
-function renderHeading(parsed) {
-    return `<h${parsed.level}>${renderInline(parsed.title)}</h${parsed.level}>`;
-  }
-
-function parseListMarker(line) {
-    const match = String(line || "").match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
-    if (!match) return null;
-    const indent = match[1].replace(/\t/g, "  ").length;
-    const ordered = /^\d+\./.test(match[2]);
-    return { indent, ordered, number: ordered ? parseInt(match[2], 10) : 0, text: match[3] };
-  }
-
-function mergeListBlocks(blocks) {
-    const out = [];
-    blocks.forEach((block) => {
-      const prev = out[out.length - 1];
-      const lines = block.trim().split("\n");
-      if (prev !== undefined && block.trim() && looksLikeListBlock(prev.trim().split("\n")) &&
-          (parseListMarker(lines[0]) || /^\s{2,}\S/.test(block.replace(/^\n+/, ""))) &&
-          looksLikeListBlock([...prev.trim().split("\n"), ...block.replace(/^\n+/, "").split("\n")])) {
-        out[out.length - 1] = prev.replace(/\s+$/, "") + "\n" + block.replace(/^\n+/, "");
-        return;
-      }
-      out.push(block);
-    });
-    return out;
-  }
-
-function looksLikeListBlock(lines) {
-    return lines.some((line) => parseListMarker(line)) &&
-      lines.every((line) => !line.trim() || parseListMarker(line) || /^\s{2,}\S/.test(line));
-  }
-
-function renderList(lines) {
-    const items = [];
-    lines.forEach((line) => {
-      const marker = parseListMarker(line);
-      if (marker) {
-        items.push({ indent: marker.indent, ordered: marker.ordered, number: marker.number, parts: [marker.text] });
-        return;
-      }
-      if (items.length && line.trim()) items[items.length - 1].parts.push(line.trim());
-    });
-    if (!items.length) return "";
-    const rootIndent = Math.min(...items.map((item) => item.indent));
-    const stack = [];
-    let html = "";
-    const closeTo = (indent) => {
-      while (stack.length && stack[stack.length - 1].indent >= indent) {
-        html += "</li></" + stack.pop().tag + ">";
-      }
+function renderTable(token, ctx) {
+    const cell = (tag, text, i) => {
+      const align = token.align[i];
+      return `<${tag}${align ? ` style="text-align:${align}"` : ""}>${renderInline(text, ctx)}</${tag}>`;
     };
-    const open = (tag, item) => (tag === "ol" && item.number > 1 ? `<ol start="${item.number}">` : `<${tag}>`);
-    items.forEach((item) => {
-      const indent = item.indent < rootIndent ? rootIndent : item.indent;
-      const tag = item.ordered ? "ol" : "ul";
-      const body = renderInline(item.parts.join(" "));
-      if (!stack.length) {
-        html += `${open(tag, item)}<li>${body}`;
-        stack.push({ indent, tag });
-        return;
-      }
-      const top = stack[stack.length - 1];
-      if (indent > top.indent) {
-        html += `${open(tag, item)}<li>${body}`;
-        stack.push({ indent, tag });
-        return;
-      }
-      closeTo(indent + 1);
-      const parent = stack[stack.length - 1];
-      if (!parent || parent.indent !== indent) {
-        html += `${open(tag, item)}<li>${body}`;
-        stack.push({ indent, tag });
-        return;
-      }
-      if (parent.tag !== tag) {
-        html += `</li></${parent.tag}>${open(tag, item)}<li>${body}`;
-        parent.tag = tag;
-        return;
-      }
-      html += `</li><li>${body}`;
+    const width = token.head.length;
+    const row = (cells, tag) => `<tr>${Array.from({ length: width }, (_, i) => cell(tag, cells[i] || "", i)).join("")}</tr>`;
+    return `<table><thead>${row(token.head, "th")}</thead><tbody>${token.rows.map((cells) => row(cells, "td")).join("")}</tbody></table>`;
+  }
+
+// A list item's first paragraph sits in the <li> itself; what follows (more
+// paragraphs, code, nested lists) renders as blocks under it.
+function renderList(token, ctx) {
+    const tag = token.ordered ? "ol" : "ul";
+    const open = token.ordered && token.start !== 1 ? `<ol start="${token.start}">` : `<${tag}>`;
+    const items = token.items.map((item) => {
+      const [first, ...rest] = item.children;
+      const lead = first && first.type === "paragraph" ? renderInline(first.text, ctx) : "";
+      const body = renderTokens(lead ? rest : item.children, ctx);
+      // A drawn box: global form styles would restyle a real <input>.
+      const box = item.task === null ? "" : `<span class="chat-md-check${item.task ? " is-done" : ""}" role="checkbox" aria-checked="${item.task}" aria-disabled="true"></span>`;
+      return `<li${box ? ' class="chat-md-task"' : ""}>${box}${lead}${body}</li>`;
     });
-    while (stack.length) html += "</li></" + stack.pop().tag + ">";
-    return html;
+    return open + items.join("") + `</${tag}>`;
   }
 
-function renderQuote(trimmed) {
-    const lines = trimmed.split("\n").map((line) => line.replace(/^>\s?/, ""));
-    const alert = String(lines[0] || "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i);
-    if (alert) {
-      const kind = alert[1].toLowerCase();
-      const rest = [alert[2], ...lines.slice(1)]
-        .map((line) => String(line || "").replace(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i, ""))
-        .join("\n")
-        .trim();
-      const body = rest ? renderInline(rest).replace(/\n/g, "<br>") : "";
-      return `<blockquote class="chat-md-alert is-${kind}"><span class="chat-md-alert-label">${MD_ALERTS[kind]}</span>${body ? `<p>${body}</p>` : ""}</blockquote>`;
+function renderQuote(token, ctx) {
+    const body = renderTokens(token.children, ctx);
+    if (token.alert) {
+      return `<blockquote class="chat-md-alert is-${token.alert}"><span class="chat-md-alert-label">${MD_ALERTS[token.alert]}</span>${body}</blockquote>`;
     }
-    return `<blockquote>${renderInline(lines.join("\n")).replace(/\n/g, "<br>")}</blockquote>`;
+    return `<blockquote>${body}</blockquote>`;
   }
 
-function renderFencedMarkdown(text, catalog, streaming) {
-    const src = String(text || "");
-    let html = "";
-    let i = 0;
-    while (i < src.length) {
-      const start = src.indexOf("```", i);
-      if (start === -1) {
-        html += deps.renderBlocks(src.slice(i), catalog, streaming);
-        break;
+function renderTokens(tokens, ctx) {
+    return tokens.map((token) => {
+      switch (token.type) {
+        case "paragraph": return `<p>${renderInline(token.text, ctx)}</p>`;
+        case "heading": return renderHeading(token, ctx);
+        case "hr": return "<hr>";
+        case "code": return renderFence(token.lang, token.text);
+        case "quote": return renderQuote(token, ctx);
+        case "list": return renderList(token, ctx);
+        case "table": return renderTable(token, ctx);
+        default: return "";
       }
-      html += deps.renderBlocks(src.slice(i, start), catalog, streaming);
-      const nl = src.indexOf("\n", start + 3);
-      const lang = (nl === -1 ? src.slice(start + 3) : src.slice(start + 3, nl)).trim();
-      const bodyStart = nl === -1 ? src.length : nl + 1;
-      const closing = /^ {0,3}`{3,}[ \t]*(?:\r?$)/gm;
-      closing.lastIndex = bodyStart;
-      const close = closing.exec(src);
-      const end = close ? close.index : -1;
-      if (!isFenceLang(lang)) {
-        const inner = (lang ? lang + "\n" : "") + src.slice(bodyStart, end === -1 ? src.length : end);
-        html += deps.renderBlocks(inner.replace(/```\s*$/, ""), catalog, streaming);
-        if (end === -1) break;
-        i = end + close[0].length;
-        if (src[i] === "\n") i += 1;
-        continue;
-      }
-      if (end === -1) {
-        html += renderFence(lang, src.slice(bodyStart));
-        break;
-      }
-      html += renderFence(lang, src.slice(bodyStart, end));
-      i = end + close[0].length;
-      if (src[i] === "\n") i += 1;
-    }
-    return html;
+    }).join("");
+  }
+
+// Markdown without <details> structure: parse, then draw the blocks.
+function renderPlain(text, catalog, streaming) {
+    return renderTokens(deps.parseBlocks(text), { catalog: catalog || [], streaming });
   }
 
 function renderDetailsBlocks(text, catalog, streaming) {
@@ -382,15 +242,15 @@ function renderDetailsBlocks(text, catalog, streaming) {
       let html = "", cursor = start;
       for (const node of nodes) {
         if (node.end == null) continue; // Incomplete streamed markup stays literal.
-        html += renderFencedMarkdown(src.slice(cursor, node.start), catalog, streaming);
+        html += renderPlain(src.slice(cursor, node.start), catalog, streaming);
         const inner = src.slice(node.body, node.close);
         const summaryMatch = inner.match(/^\s*<summary>([^\n]*?)<\/summary>[ \t]*\n?/i);
-        const summary = summaryMatch ? renderInline(summaryMatch[1].trim()) : "Details";
+        const summary = summaryMatch ? renderInline(summaryMatch[1].trim(), { catalog, streaming }) : "Details";
         const bodyStart = node.body + (summaryMatch ? summaryMatch[0].length : 0);
         html += `<details class="chat-md-details" data-md-details="${node.start}"${node.open ? " open" : ""}><summary>${summary || "Details"}</summary>${renderRange(bodyStart, node.close, node.children)}</details>`;
         cursor = node.end;
       }
-      return html + renderFencedMarkdown(src.slice(cursor, end), catalog, streaming);
+      return html + renderPlain(src.slice(cursor, end), catalog, streaming);
     };
     return renderRange(0, src.length, roots);
   }
@@ -465,5 +325,5 @@ const MD_ALERTS = { note: "Note", tip: "Tip", important: "Important", warning: "
 
 const ANSI_COLORS = { 30: "black", 31: "red", 32: "green", 33: "yellow", 34: "blue", 35: "magenta", 36: "cyan", 37: "white", 90: "bright-black", 91: "bright-red", 92: "bright-green", 93: "bright-yellow", 94: "bright-blue", 95: "bright-magenta", 96: "bright-cyan", 97: "bright-white" };
 
-  return { citeHost, citeUrlFromPayload, rewriteCites, linkHtml, autolinkHtml, renderInline, trimFence, codeLanguage, highlightCode, renderFence, parseTable, parseHeadingLine, isFenceLang, renderHeading, parseListMarker, mergeListBlocks, looksLikeListBlock, renderList, renderQuote, renderFencedMarkdown, renderDetailsBlocks, looksLikeDiff, renderAnsi, ACTION_ICONS, _hljsCache, _HLJS_CACHE_MAX, MD_ALERTS, ANSI_COLORS };
+  return { citeHost, citeUrlFromPayload, rewriteCites, linkHtml, renderInline, renderNodes, trimFence, codeLanguage, highlightCode, renderFence, renderHeading, renderTable, renderList, renderQuote, renderTokens, renderPlain, renderDetailsBlocks, looksLikeDiff, renderAnsi, ACTION_ICONS, _hljsCache, _HLJS_CACHE_MAX, MD_ALERTS, ANSI_COLORS };
 }
