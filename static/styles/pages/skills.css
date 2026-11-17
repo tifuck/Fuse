@@ -104,12 +104,6 @@
 /* —— Page layout —— */
 .skills-page { display: flex; flex-direction: column; gap: 0.75rem; }
 :where(html:not(.is-chat-root)) .skills-page > .callout { margin: 0; }
-.skills-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-  gap: 1rem;
-  align-items: start;
-}
 .skills-main { min-width: 0; border: 1px solid var(--line); background: var(--panel); }
 .skills-bar {
   display: flex;
@@ -151,30 +145,141 @@
 .skills-find:focus-within { border-color: var(--brass); color: var(--mist); }
 .skills-find input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; outline: none; }
 :where(html:not(.is-chat-root)) .skills-page .skills-installed { padding: 0 1rem; }
-.skills-foot {
-  margin: 0;
+.skills-main .skills-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.6rem 1rem;
   border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--ink) 55%, var(--panel));
-  color: var(--mute);
-  font-size: 0.72rem;
 }
-.skills-side { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-.skills-card { padding: 0.9rem 1rem 1rem; border: 1px solid var(--line); background: var(--panel); }
-.skills-card h2 { margin: 0; font: 600 0.9rem/1.4 var(--mono); }
-.skills-card > p { margin: 0.2rem 0 0.75rem; color: var(--mute); font-size: 0.75rem; line-height: 1.5; }
-:where(html:not(.is-chat-root)) .skills-card .skills-search { flex-direction: row; }
-.skills-card .skills-query { flex: 1 1 auto; width: auto; height: 1.9rem; }
-:where(html:not(.is-chat-root)) .skills-card .callout { margin: 0.6rem 0 0; }
-.skills-hits:not(:empty) { margin-top: 0.5rem; border-top: 1px solid var(--line); }
-:where(html:not(.is-chat-root)) .skills-card .skills-upload .btn { align-self: flex-start; }
+.skills-foot { margin: 0 0 0 auto; color: var(--mute); font-size: 0.72rem; }
+.skills-hits:not(:empty) { border-top: 1px solid var(--line); }
 
-@media (max-width: 1100px) {
-  .skills-layout { grid-template-columns: minmax(0, 1fr); }
-  .skills-side { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+/* —— Library ——
+   One body in two hosts: the Skills page dialog (full screen on phones) and
+   the chat Skills sheet's second screen (.is-inline, styled by its theme).
+   Only the list scrolls; descriptions clamp to two lines. */
+.skills-lib { --lib-pad: 1.2rem; flex-direction: column; min-height: 0; }
+.skills-lib.is-inline { display: flex; flex: 1 1 auto; }
+.skills-lib[hidden],
+.skills-actions[hidden],
+.skills-lib-pane[hidden] { display: none; }
+dialog.skills-lib {
+  width: min(44rem, calc(100% - 2rem));
+  height: min(40rem, calc(100dvh - 2rem));
+  max-height: none;
+  /* The chat sheet's phone rule zeroes its children's top margin. */
+  margin: auto;
+  overflow: hidden;
+}
+dialog.skills-lib[open] { display: flex; }
+.skills-lib-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex: none;
+  padding: 1rem 0.9rem 0.85rem var(--lib-pad);
+  border-bottom: 1px solid var(--line);
+}
+.skills-lib-head > div { min-width: 0; }
+.skills-lib-head h2 { margin: 0; font: 600 0.95rem/1.35 var(--mono); }
+.skills-lib-head p { margin: 0.2rem 0 0; color: var(--mute); font-size: 0.76rem; line-height: 1.45; }
+.skills-lib-x,
+.skills-lib-back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--mute);
+  cursor: pointer;
+}
+.skills-lib-back { width: 1.9rem; height: 1.9rem; }
+.skills-lib-x:hover,
+.skills-lib-back:hover { background: var(--raise); color: var(--mist); }
+.skills-lib-bar { display: flex; flex: none; align-items: center; gap: 0.5rem; padding: 0.8rem var(--lib-pad) 0; }
+.skills-lib-pane { display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.6rem; min-height: 0; padding: 0.7rem var(--lib-pad) 0; }
+.skills-lib-pane > .callout { margin: 0; }
+.skills-lib .skills-find { flex: none; width: 100%; height: 2.1rem; }
+.skills-lib-cats {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+  margin: 0 calc(-1 * var(--lib-pad));
+  padding: 0 var(--lib-pad) 0.15rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.skills-lib-cats::-webkit-scrollbar { display: none; }
+/* A row that scrolls fades at its right edge instead of cutting a chip. */
+.skills-lib-cats.is-scrolling { mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent); }
+.skills-chip {
+  flex: none;
+  height: 1.75rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--mute);
+  font: 0.74rem/1 var(--mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.skills-chip:hover { border-color: color-mix(in srgb, var(--mist) 25%, var(--line)); color: var(--mist); }
+.skills-chip.is-on { border-color: color-mix(in srgb, var(--brass) 55%, var(--line)); background: color-mix(in srgb, var(--brass) 10%, transparent); color: var(--brass); }
+.skills-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+.skills-lib-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--lib-pad));
+  padding: 0 var(--lib-pad) 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--line);
+  /* Rows fade at the bottom edge instead of being cut. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+}
+.skills-lib-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.skills-lib-item:last-child { border-bottom: 0; }
+.skills-lib-item .skills-row-meta { flex-wrap: nowrap; min-width: 0; }
+.skills-lib-item .skills-slug { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skills-lib-item .skills-origin { flex: none; }
+.skills-lib .skills-lib-item .skills-desc {
+  display: -webkit-box;
+  margin-top: 0.15rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.skills-lib-item.is-enabled .skills-slug { color: var(--brass); }
+.skills-lib-item .btn { min-width: 4.75rem; justify-content: center; }
+.skills-lib-import { overflow-y: auto; padding-bottom: 1rem; }
+.skills-lib-note { margin: 0; color: var(--mute); font-size: 0.76rem; line-height: 1.5; }
+.skills-lib .skills-search { flex-direction: row; align-items: center; gap: 0.5rem; }
+.skills-lib .skills-search .skills-find { flex: 1 1 auto; width: auto; }
+.skills-lib .skills-upload { flex-direction: row; align-items: flex-end; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+.skills-lib .skills-upload .hosts-field { flex: 1 1 auto; min-width: 0; }
+.skills-lib .skills-lib-import .skills-search { align-items: center; }
+.skills-lib .skills-lib-import .skills-upload { align-items: flex-end; }
+.skills-lib .skills-lib-import form .btn { flex: none; width: auto; }
+
+@media (max-width: 640px) {
+  .skills-lib { --lib-pad: 1rem; }
+  dialog.skills-lib { width: 100%; max-width: none; height: 100dvh; margin: 0; border: 0; border-radius: 0; }
 }
 @media (max-width: 800px) {
-  .skills-side { grid-template-columns: minmax(0, 1fr); }
   .skills-bar h2 { flex-basis: 100%; }
   .skills-find { flex: 1 1 8rem; width: auto; }
   .skills-find input { font-size: 16px; }

@@ -3,6 +3,8 @@ name: orchestrator-dispatch
 description: Plan, brief and check subagent work. Load before spawning subagents or when the user asks to delegate or orchestrate. Not a reason to spawn.
 argument-hint: job or slice
 license: MIT
+metadata:
+  category: Agent
 ---
 
 # Orchestrator Dispatch

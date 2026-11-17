@@ -2,6 +2,8 @@
 name: create-skill
 description: Author a Fuse skill and propose it for the user to save. Use when asked to create a skill, turn this into a skill, or save a workflow as a skill.
 argument-hint: skill topic or draft
+metadata:
+  category: Agent
 ---
 
 # Create a Fuse skill

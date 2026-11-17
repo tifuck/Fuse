@@ -2,6 +2,8 @@
 name: youtube-transcript
 description: Get a YouTube video or Short's transcript from its caption track. Use when the user pastes a YouTube link and wants a summary or what was said.
 argument-hint: YouTube URL
+metadata:
+  category: Research
 ---
 
 # YouTube transcript

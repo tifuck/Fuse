@@ -32,7 +32,8 @@ SKILL_BODY_CHARS = 24_000
 INDEX_CHAT_CAP = 80
 ORIGINS = frozenset({"bundled", "upload", "github", "skills_sh", "chat"})
 RESERVED = frozenset({"undo", "retry", "redo", "rewind", "init", "compact", "help", "title"})
-DEFAULT_ON = frozenset({"orchestrator-dispatch", "youtube-transcript"})
+# The bundled skills are the built-in library; only these few start switched on.
+DEFAULT_ON = frozenset({"debug", "review", "verify"})
 
 
 def _row(row) -> dict:
@@ -68,6 +69,7 @@ def _public(item: dict) -> dict:
         "disable_model_invocation": bool(item.get("disable_model_invocation")),
         "argument_hint": item.get("argument_hint") or "",
         "can_remove": item.get("origin") != "bundled" or bool(item.get("id")),
+        "category": item.get("category") or "",
     }
 
 
@@ -101,8 +103,15 @@ def read_bundled(slug: str) -> dict | None:
         "user_invocable": parsed["user_invocable"] and slug not in RESERVED,
         "disable_model_invocation": parsed["disable_model_invocation"],
         "argument_hint": parsed["argument_hint"],
+        "category": parsed["category"],
         "id": None,
     }
+
+
+def _with_category(row: dict) -> dict:
+    if row["origin"] == "bundled":
+        row["category"] = (read_bundled(row["slug"]) or {}).get("category", "")
+    return row
 
 
 def list_user_rows(user_id: int, conn=None) -> list[dict]:
@@ -148,7 +157,7 @@ def list_bundle(user_id: int) -> dict:
 
     rows = list_user_rows(user_id)
     have = {r["slug"] for r in rows}
-    items = [_public(r) for r in rows]
+    items = [_public(_with_category(r)) for r in rows]
     for slug in bundled_slugs():
         if slug in have:
             continue
@@ -429,7 +438,7 @@ def _upsert(
                 now,
             ),
         )
-        return _public(get_row(user_id, slug, conn))
+        return _public(_with_category(get_row(user_id, slug, conn)))
 
 
 def patch_skill(user_id: int, slug: str, raw: dict) -> dict:
