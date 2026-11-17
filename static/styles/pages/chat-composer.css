@@ -330,6 +330,7 @@
 :where(html:not(.is-chat-root)) .chat-user-files {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
   max-width: min(72%, 38rem);

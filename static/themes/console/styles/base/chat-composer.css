@@ -332,6 +332,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-user-files {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
   max-width: min(72%, 38rem);
