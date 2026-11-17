@@ -101,3 +101,17 @@ test('desktop rows read as sentences: a described command in the past tense, a f
   assert.equal(text({ name: 'read_file', path: 'README.md' }), 'ReadREADME.md');
   assert.equal(text({ name: 'grep', pattern: 'def main', path: 'app' }), 'Searched"def main" in app');
 });
+
+test('desktop agents table: what a subagent did, in words; how a finished one ended', async () => {
+  const panels = (await import('../../static/themes/desktop/work-panels.js')).create({
+    agentLive: (status) => status === 'running', agentDurationSeconds: () => 30, ccAgentLastCall: () => '',
+    agentStatusText: (row) => row.status, jobsFor: () => [], escapeHtml: String, agentIsStalled: () => false,
+    agentResumeAvailable: () => false, formatActivityClock: (secs) => `${secs}s`, agentsRows: [],
+  });
+  const doing = (row) => /class="chat-agents-doing">([^<]*)</.exec(panels.agentRowHtml({ id: 'a', description: 'Audit', ...row }))?.[1];
+  assert.equal(doing({ status: 'completed', tool_counts: { read_file: 6, grep: 2, glob: 1, search_replace: 1, todo_write: 4 } }), '6 files, 3 searches, 1 edit');
+  assert.equal(doing({ status: 'completed', summary: 'Fixed the reconnect.\nDetails follow.', tool_counts: { read_file: 1 } }), 'Fixed the reconnect.');
+  assert.equal(doing({ status: 'cancelled', tool_counts: { read_file: 1 } }), 'Stopped, 1 file');
+  assert.equal(doing({ status: 'running', tool_counts: { web_search: 2 } }), 'Working, 2 web searches');
+  assert.equal(doing({ status: 'running' }), 'Working');
+});

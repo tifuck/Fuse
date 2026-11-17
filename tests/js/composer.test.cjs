@@ -201,6 +201,15 @@ test('model picker: a long name keeps its first two words and a version right af
   assert.equal(shortModelName(''), '');
 });
 
+test('machine stats: a new sample glides in eased out and lands exactly', async () => {
+  const { glide } = await import('../../static/chat/hoststats.js');
+  assert.equal(glide(10, 90, 0), 10);
+  assert.equal(glide(10, 90, 0.5), 80);
+  assert.equal(glide(10, 90, 1), 90);
+  assert.equal(glide(10, 90, 3), 90);
+  assert.equal(glide(90, 10, -1), 90);
+});
+
 test('machine stats: recent load reads as block characters, clamped to the scale', async () => {
   const { loadBlocks } = await import('../../static/chat/hoststats.js');
   assert.equal(loadBlocks([0, 50, 100, 140, -3]), '▁▅██▁');

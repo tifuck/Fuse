@@ -1,82 +1,145 @@
 // work-panels presentation. Dependencies are live getters supplied by index.js.
-const TREE_GLYPHS = { pipe: "│", tee: "├─", elbow: "└─" };
+const CHECK = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 8.4l3 3 6-6.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const CROSS = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const TERM = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5l3.2 3.2L3 10.9M8 11.5h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const EYE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8s-2.3 4.2-6.2 4.2S1.8 8 1.8 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const KINDS = { explore: "Explore", plan: "Plan", "general-purpose": "General" };
+// What a subagent has done, in words: "6 files, 3 searches, 1 edit".
+const NOUNS = {
+  read_file: "file", list_dir: "folder", grep: "search", glob: "search", search_replace: "edit", write_file: "edit",
+  run_terminal_command: "command", monitor: "watch", web_search: "web search", read_url: "page", spawn_subagent: "subagent",
+  load_skill: "skill", create_artifact: "artifact", update_artifact: "artifact", edit_artifact: "artifact",
+};
+const plural = (n, word) => (n === 1 ? word : /(ch|sh)$/.test(word) ? `${word}es` : `${word}s`);
+function workDone(row) {
+  const tally = new Map();
+  Object.entries(row.tool_counts && typeof row.tool_counts === "object" ? row.tool_counts : {}).forEach(([name, n]) => {
+    const noun = NOUNS[name];
+    if (noun && Number(n) > 0) tally.set(noun, (tally.get(noun) || 0) + Number(n));
+  });
+  return [...tally].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([noun, n]) => `${n} ${plural(n, noun)}`).join(", ");
+}
+const firstLine = (text) => String(text || "").trim().split(/\n/)[0].slice(0, 160);
+// Sort keys: a row sorts with the top of its family (the subagent its main
+// agent started), live families first; equal keys keep the runtime's order,
+// so children stay under their parent. Section labels sit between.
+const SECTION = 2e7;
 
 export function create(deps) {
-// The work strip under the header prints agents the way a terminal agent's agent
-// tree does: one thin line each, tree connectors (opts.tree: {ancestors, last}, drawn as pipe,
-// blank, tee or elbow per level), a status dot, the task,
-// what it is doing, its clock, and at most one action. The whole line but the
-// action opens that agent's transcript in place of the main one.
-function agentRowHtml(row, opts = {}) {
+  // agentMainRowHtml opens every render of the list; the rows that follow
+  // need its counts to label the Running and Finished sections.
+  let render = { live: 0, finished: 0, labelled: false };
+
+  const ratioOf = (row) => (row && row.context && Number(row.context.limit) > 0
+    ? Math.min(100, Math.round((Number(row.context.used) || 0) / Number(row.context.limit) * 100)) : null);
+
+  // The family head: up the parents while the runtime would hang the row
+  // under them (a live row under a finished parent hangs off main instead).
+  function familyHead(row) {
+    const rows = deps.agentsRows || [];
+    let head = row;
+    for (let hops = 0; hops < 8; hops += 1) {
+      const up = rows.find((r) => String(r.id) === String(head.parent_run_id ?? "") && r !== head);
+      if (!up || (!deps.agentLive(up.status) && deps.agentLive(head.status))) break;
+      head = up;
+    }
+    return head;
+  }
+
+  function sortKeys(row) {
+    const head = familyHead(row);
+    const base = deps.agentLive(head.status) ? 0 : SECTION;
+    const secs = Math.min(SECTION / 2 - 1, Math.max(0, Math.round(deps.agentDurationSeconds(head) || 0)));
+    const ctx = ratioOf(head) ?? 0;
+    return `--o-td:${base + SECTION / 2 - secs};--o-ta:${base + secs};--o-cd:${base + 100 - ctx};--o-ca:${base + ctx}`;
+  }
+
+  const sectionHtml = (kind, label, n) =>
+    `<div class="dk-ar-sec is-${kind}" role="presentation">${label}<span>${n}</span></div>`;
+
+  // One table row per subagent: status, the task and what it is doing (or
+  // how it ended), context used and its clock, and at most one action. The
+  // whole row but the action opens that agent's transcript.
+  function agentRowHtml(row, opts = {}) {
     const live = deps.agentLive(row.status);
-    const ctx = row.context && Number(row.context.limit) > 0
-      ? `${Math.round((Number(row.context.used) || 0) / Number(row.context.limit) * 100)}% ctx`
-      : "";
+    const ratio = ratioOf(row);
     const dur = deps.agentDurationSeconds(row);
     const err = String(row.error || "").trim();
     const wake = row.wake_state === "dropped" ? "report not delivered" : row.wake_state === "held" ? "report waits for your next message" : row.wake_state === "retrying" ? "report pending" : "";
     const alert = err || wake;
     const lastCall = !alert && live ? deps.ccAgentLastCall(row.recent) : "";
-    const activity = alert ? "" : lastCall || deps.agentActivitySummary(row);
     const status = deps.agentStatusText(row);
-    const doing = activity && !activity.startsWith(status) ? activity : "";
+    const done = workDone(row);
+    // Live: what it is doing now; finished: how it ended.
+    const doing = live
+      ? (row.cancel_requested ? "Stopping" : lastCall || (done ? `Working, ${done}` : "Working"))
+      : row.status === "completed" ? firstLine(row.summary) || done || "Done"
+        : row.status === "failed" ? "Failed" : done ? `Stopped, ${done}` : "Stopped";
     const commands = deps.jobsFor(row.id).length;
-    const model = deps.agentModelParts(row);
+    const kind = KINDS[row.subagent_type] || (row.subagent_type ? row.subagent_type[0].toUpperCase() + row.subagent_type.slice(1) : "General");
+    const depth = opts.tree ? opts.tree.ancestors.length : 0;
     const title = [
       row.description || "Subagent",
       status,
-      row.subagent_type && row.subagent_type !== "general-purpose" ? row.subagent_type : "",
+      kind,
       row.model || "",
-      ctx,
+      ratio != null ? `${ratio}% context` : "",
       commands ? `${commands} command${commands === 1 ? "" : "s"}` : "",
       alert,
     ].filter(Boolean).join(" · ");
     const id = deps.escapeHtml(row.id);
     const who = deps.escapeHtml(row.description || "subagent");
-    // One connector per level: a line on through an ancestor with later
-    // siblings, blank after a last one, then this row's tee or elbow.
-    const glyphs = opts.tree ? [...opts.tree.ancestors.map((last) => last ? "blank" : "pipe"), opts.tree.last ? "elbow" : "tee"] : [];
     const stamp = Date.parse(row.cancel_requested_at || "");
     const wedged = row.cancel_requested && Number.isFinite(stamp) && Date.now() - stamp >= 15000;
     const action = live && wedged
-      ? `<button type="button" class="chat-agents-act is-urgent" data-agent-force="${id}" aria-label="Force stop ${who}" title="Wedged in stopping: force stop">⊗</button>`
+      ? `<button type="button" class="chat-agents-act is-urgent" data-agent-force="${id}" aria-label="Force stop ${who}" title="Wedged in stopping: force stop">${CROSS}</button>`
       : live && !row.cancel_requested
-        ? `<button type="button" class="chat-agents-act" data-agent-stop="${id}" aria-label="Stop ${who}" title="Stop this subagent">×</button>`
+        ? `<button type="button" class="chat-agents-act" data-agent-stop="${id}" aria-label="Stop ${who}" title="Stop this subagent">${CROSS}</button>`
         : deps.agentResumeAvailable(row)
           ? `<button type="button" class="chat-agents-act is-resume" data-agent-resume="${id}" aria-label="Resume ${who}" title="Resume from where it stopped">↻</button>`
           : '<span class="chat-agents-act" aria-hidden="true"></span>';
-    return (
-      `<div class="chat-agents-row is-${deps.escapeHtml(row.status || "unknown")}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}${live && row.cancel_requested ? " is-stopping" : ""}" role="listitem" data-agent-row="${id}"${opts.selected ? ' aria-current="true"' : ""}>` +
+    const state = live ? "running" : row.status === "completed" ? "done" : row.status === "failed" ? "failed" : "stopped";
+    const mark = state === "done" ? CHECK : state === "failed" ? CROSS : "";
+    const sub = alert
+      ? `<span class="chat-agents-sum">${deps.escapeHtml(alert.slice(0, 180))}</span>`
+      : `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>`;
+    let label = "";
+    if (!live && !render.labelled) {
+      render.labelled = true;
+      label = sectionHtml("finished", "Finished", render.finished);
+    }
+    return label +
+      `<div class="chat-agents-row dk-ar is-${deps.escapeHtml(row.status || "unknown")} is-${state}${depth ? " is-child" : ""}${row.wake_state === "dropped" ? " is-undelivered" : ""}${deps.agentIsStalled(row) ? " is-stalled" : ""}${live && row.cancel_requested ? " is-stopping" : ""}" role="listitem" data-agent-row="${id}" style="${sortKeys(row)}"${opts.selected ? ' aria-current="true"' : ""}>` +
       `<button type="button" class="chat-agents-pick" data-agent-id="${id}" title="${deps.escapeHtml(title)}">` +
-      '<span class="chat-agents-head">' +
-      (glyphs.length ? `<span class="chat-agents-tree" aria-hidden="true">${glyphs.map((kind) => `<i class="is-${kind}">${TREE_GLYPHS[kind] || ""}</i>`).join("")}</span>` : "") +
-      '<span class="chat-agents-dot" aria-hidden="true"></span>' +
-      `<span class="chat-agents-name">${deps.escapeHtml(row.description || "Subagent")}</span></span>` +
-      `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(status)}</span>` +
-      (alert ? `<span class="chat-agents-sum">${deps.escapeHtml(alert.slice(0, 180))}</span>` : doing ? `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>` : "") +
-      "</span>" +
-      (model ? `<span class="chat-agents-model">${model.provider ? `<span class="chat-agents-provider">${deps.escapeHtml(model.provider)}</span>` : ""}${deps.escapeHtml(model.name)}</span>` : "") +
+      `<span class="dk-ar-st"><span class="chat-agents-dot" aria-hidden="true">${mark}</span></span>` +
+      `<span class="dk-ar-main"><span class="chat-agents-name">${depth ? '<span class="dk-sub-of" aria-hidden="true">↳</span>' : ""}${deps.escapeHtml(row.description || "Subagent")}</span>` +
+      `<span class="chat-agents-meta"><span class="dk-kind">${deps.escapeHtml(kind)}</span>${sub}</span></span>` +
+      `<span class="dk-ar-ctx">${ratio != null ? `<b>${ratio}%</b><i class="dk-meter${ratio >= 70 ? " is-high" : ""}"><i style="width:${ratio}%"></i></i>` : "<b>—</b>"}</span>` +
+      `<span class="chat-agents-time">${dur != null ? deps.formatActivityClock(dur) : "—"}</span>` +
       "</button>" +
-      `<span class="chat-agents-time">${dur != null ? deps.formatActivityClock(dur) : ""}</span>` +
       action +
-      "</div>"
-    );
+      "</div>";
   }
 
-// The root of the tree. Its trailing control folds the subagents away.
-function agentMainRowHtml({ state, live, selected, total, expanded }) {
+  // The root of the table: the main agent, its state and clock (the chrome
+  // fills its context and clock), then the Running label. Its fold control
+  // is the panel's All / Running switch.
+  function agentMainRowHtml({ state, live, selected, total, expanded }) {
+    render = { live, finished: Math.max(0, total - live), labelled: false };
     const fold = `${total} agent${total === 1 ? "" : "s"}`;
-    const doing = live ? `${live} <span class="chat-agents-noun">subagent${live === 1 ? "" : "s"} </span>running` : "";
+    const doing = live ? `Waiting on ${live} subagent${live === 1 ? "" : "s"}` : state === "working" ? "Working" : "Idle";
     return (
-      `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem" data-agent-row="main"${selected ? ' aria-current="true"' : ""}>` +
+      `<div class="chat-agents-row dk-ar is-main is-${deps.escapeHtml(state)}${state === "working" || live ? " is-running" : ""}" role="listitem" data-agent-row="main"${selected ? ' aria-current="true"' : ""}>` +
       '<button type="button" class="chat-agents-pick" data-agent-main title="Main agent">' +
-      '<span class="chat-agents-head"><span class="chat-agents-dot" aria-hidden="true"></span>' +
-      '<span class="chat-agents-name">main</span></span>' +
-      `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(state)}</span>${doing ? `<span class="chat-agents-doing">${doing}</span>` : ""}</span>` +
+      '<span class="dk-ar-st"><span class="chat-agents-dot" aria-hidden="true"></span></span>' +
+      '<span class="dk-ar-main"><span class="chat-agents-name">Main</span>' +
+      `<span class="chat-agents-meta"><span class="chat-agents-state">${deps.escapeHtml(doing)}</span></span></span>` +
+      '<span class="dk-ar-ctx" data-theme-main-ctx><b>—</b></span>' +
+      '<span class="chat-agents-time" data-theme-main-time></span>' +
       "</button>" +
-      `<button type="button" class="chat-agents-fold" data-agents-fold aria-expanded="${expanded ? "true" : "false"}" title="${expanded ? "Hide" : "Show"} subagents">` +
-      `<span>${fold}</span><svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
-      "</div>"
+      `<button type="button" class="chat-agents-fold" data-agents-fold aria-expanded="${expanded ? "true" : "false"}" title="${expanded ? "Hide" : "Show"} finished subagents"><span>${fold}</span></button>` +
+      "</div>" +
+      (total ? sectionHtml("running", "Running", live) : "")
     );
   }
 
@@ -100,35 +163,33 @@ function compactionMarkHtml(text, summary) {
     return `<p class="chat-compact-mark" data-compaction><strong>${deps.escapeHtml(title)}</strong>${detail ? `<span>${deps.escapeHtml(detail)}</span>` : ""}</p>`;
   }
 
-// A background command: `$ command` (a monitor by what it watches for), then
-// where and how it runs, its clock and a stop button. No header row: the
-// prompt glyph says what it is.
-function jobRowHtml(job, nowMs) {
+  // A background command: what it is for (else the command), then where it
+  // runs and the command itself (a monitor: what it watches and its event
+  // count), its clock and a stop button. The row opens its output.
+  function jobRowHtml(job, nowMs) {
     const secs = Math.round(deps.jobElapsedMs(job, nowMs) / 1000);
     const state = String(job.state || "running");
     const cancelling = state === "cancelling";
     const live = ["running", "queued", "cancelling"].includes(state);
-    const label = cancelling ? "cancelling" : live ? "" : state.replace(/_/g, " ");
+    const label = cancelling ? "Stopping" : state === "queued" ? "Queued" : live ? "" : state.replace(/_/g, " ");
     const monitor = job.kind === "monitor" || job.name === "monitor";
-    // A job by its description, else its command; the tooltip keeps the command.
-    const title = job.description || deps.displayCommand(job) || job.id;
+    const command = deps.toolText(deps.displayCommand(job) || "");
+    const title = deps.toolText(job.description || command || job.id);
     const events = Number(job.event_count);
-    const meta = [
-      job.host || "",
-      monitor ? "monitor" : "",
-      label,
-      Number.isFinite(events) && events > 0 ? `${events} event${events === 1 ? "" : "s"}` : "",
-    ].filter(Boolean).join(" · ");
+    const what = monitor
+      ? `Watching${Number.isFinite(events) && events > 0 ? `, ${events} event${events === 1 ? "" : "s"}` : ""}`
+      : job.description && command ? `<code>${deps.escapeHtml(command)}</code>` : "";
+    const meta = [job.host ? `<span class="dk-host">${deps.escapeHtml(job.host)}</span>` : "", label ? `<span>${deps.escapeHtml(label)}</span>` : "", what].filter(Boolean).join("");
     const id = deps.escapeHtml(job.command_id || job.id);
     return (
-      `<div class="chat-jobs-row is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem" data-job-row="${id}">` +
-      `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(deps.toolText(deps.displayCommand(job) || title))}${meta ? " · " + deps.escapeHtml(meta) : ""}">` +
-      '<span class="chat-agents-dot" aria-hidden="true"></span>' +
-      `<span class="chat-jobs-cmd">${deps.escapeHtml(deps.toolText(title))}</span>` +
-      (meta ? `<span class="chat-jobs-meta">${deps.escapeHtml(meta)}</span>` : "") +
+      `<div class="chat-jobs-row dk-jr is-${deps.escapeHtml(state)}${live ? " is-running" : ""}${monitor ? " is-monitor" : ""}" role="listitem" data-job-row="${id}">` +
+      `<button type="button" class="chat-jobs-output-link" data-show-job="${id}" title="${deps.escapeHtml(command || title)}${job.host ? " · " + deps.escapeHtml(job.host) : ""}">` +
+      `<span class="dk-jr-ic" aria-hidden="true">${monitor ? EYE : TERM}<i class="chat-agents-dot"></i></span>` +
+      `<span class="dk-jr-main"><span class="chat-jobs-cmd">${deps.escapeHtml(title)}</span>` +
+      (meta ? `<span class="chat-jobs-meta">${meta}</span>` : "") + "</span>" +
+      `<span class="chat-agents-time" data-job-time="${deps.escapeHtml(job.id)}">${state === "queued" ? "" : deps.formatActivityClock(secs)}</span>` +
       "</button>" +
-      `<span class="chat-agents-time" data-job-time="${deps.escapeHtml(job.id)}">${deps.formatActivityClock(secs)}</span>` +
-      `<button type="button" class="chat-jobs-kill" data-kill-job="${id}" aria-label="${cancelling ? "Cancelling" : "Stop"} ${deps.escapeHtml(deps.toolText(title))}" title="Stop this background command"${cancelling ? " disabled" : ""}>${cancelling ? "…" : "×"}</button>` +
+      `<button type="button" class="chat-jobs-kill" data-kill-job="${id}" aria-label="${cancelling ? "Stopping" : "Stop"} ${deps.escapeHtml(title)}" title="Stop this background command"${cancelling ? " disabled" : ""}>${CROSS}</button>` +
       "</div>"
     );
   }

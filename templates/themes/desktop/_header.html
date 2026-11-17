@@ -1,9 +1,10 @@
 {#- Desktop theme: the window's top bar. The sidebar toggle (while the
     sidebar is collapsed or a drawer), "← Main" inside a subagent, the
-    breadcrumb (project / chat title ▾), then at most five icons: todos,
-    artifacts, context, a ⋯ menu holding the rest, and the inspector toggle
-    last, beside the panel it opens. Below a 640px bar, artifacts and
-    context move into ⋯ too. Every data-* hook but
+    breadcrumb (project / chat title ▾), then artifacts, context, a ⋯ menu
+    holding the rest, and the Activity button last, beside the panel it
+    opens: it says how much is running (or the plan's progress). Below a
+    640px bar, artifacts and context move into ⋯ too. The todos button
+    stays for the runtime; the plan lives in Activity. Every data-* hook but
     data-theme-* is a runtime contract (tests/chat_theme_markup.test.cjs). -#}
   <header class="chat-bar dk-head" data-chat-bar>
     <button type="button" class="dk-ib chat-history-toggle" data-history-toggle aria-label="Toggle sidebar" aria-controls="chat-history" aria-expanded="true" title="Toggle sidebar">
@@ -47,7 +48,7 @@
           <button type="button" class="dk-mi" role="menuitem" data-theme-new>New session</button>
           <button type="button" class="dk-mi" role="menuitem" data-theme-project>Open project…</button>
           <button type="button" class="dk-mi dk-web" role="menuitemcheckbox" aria-checked="true" data-tool-search>Web search</button>
-          <button type="button" class="dk-mi" role="menuitem" data-theme-terminal>Terminal output</button>
+          <button type="button" class="dk-mi" role="menuitem" data-theme-terminal>Command output</button>
           <button type="button" class="dk-mi dk-narrow-only" role="menuitem" data-theme-proxy="[data-artifact-toggle]">Artifacts</button>
           <button type="button" class="dk-mi dk-narrow-only" role="menuitem" data-theme-proxy="[data-memory-toggle]">Context</button>
           <button type="button" class="dk-mi" role="menuitem" data-skills-toggle aria-expanded="false" aria-controls="chat-skills">Skills</button>
@@ -62,7 +63,9 @@
           <a class="dk-mi" role="menuitem" href="/projects">Projects</a>
         </div>
       </div>
-      <button type="button" class="dk-ib" data-theme-inspector aria-pressed="false" aria-controls="dk-inspector" aria-label="Inspector" title="Inspector: preview, terminal, tasks and plan">
+      <button type="button" class="dk-runbtn" data-theme-inspector aria-pressed="false" aria-controls="dk-inspector" aria-label="Activity" title="Activity: agents, commands and the plan">
+        <span class="dk-ldot" aria-hidden="true"></span>
+        <span class="dk-runbtn-label" data-theme-live-label></span>
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 3v10" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
       </button>
     </div>
