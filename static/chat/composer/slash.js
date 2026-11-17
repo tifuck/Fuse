@@ -328,7 +328,7 @@ export function createSlash(ctx) {
   }
 
     function renderComposerSuggestions() {
-    if (window.FuseComposerSpell && FuseComposerSpell.composing) {
+    if ((window.FuseComposerSpell && FuseComposerSpell.composing) || S.composerInCode) {
       closeSlash();
       return;
     }

@@ -5,6 +5,7 @@ import { createAttachments } from './composer/attachments.js';
 import { createDrafts } from './composer/drafts.js';
 import { createLibrary } from './composer/library.js';
 import { createWallpapers } from './composer/wallpapers.js';
+import { createBlocks } from './composer/blocks.js';
 
 export function createComposer(ctx) {
   const input = createInput({ ...ctx,
@@ -26,8 +27,11 @@ export function createComposer(ctx) {
   const drafts = createDrafts({ ...ctx,
     input,
   });
+  const blocks = createBlocks({ ...ctx,
+    input,
+  });
   return {
-    ...input, ...slash, ...attachments, ...drafts, ...library, ...wallpapers,
+    ...input, ...slash, ...attachments, ...drafts, ...library, ...wallpapers, ...blocks,
     get dockSpaceLocked() { return input.dockSpaceLocked; },
   };
 }

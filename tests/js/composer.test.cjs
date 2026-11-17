@@ -186,3 +186,27 @@ test('machine stats: load stays white to 50%, turns amber, red from 95%; rates r
   assert.deepEqual([0, 840, 999, 84_000, 1_234_567, 12_500_000, 3.4e9, -5].map(shortRate),
     ['0B', '840B', '1.0K', '84K', '1.2M', '13M', '3.4G', '0B']);
 });
+
+test('code blocks: a message splits into prose and code and joins back; carets map both ways', async () => {
+  const { splitBlocks, joinBlocks, locate, offsetOf, fenceTrigger } = await import('../../static/chat/composer/blocks-core.js');
+  const msg = 'Look:\n```bash\nls -la\npwd\n```\nthen\n\nmore';
+  const parts = splitBlocks(msg);
+  assert.deepEqual(parts.map((p) => [p.kind, p.text, p.lang]), [['text', 'Look:', undefined], ['code', 'ls -la\npwd', 'bash'], ['text', 'then\n\nmore', undefined]]);
+  assert.equal(joinBlocks(parts), msg);
+  for (const p of parts) assert.equal(msg.slice(p.start, p.end), p.text);
+  assert.deepEqual(locate(parts, msg.indexOf('pwd')), { index: 1, offset: 7 });
+  assert.deepEqual(locate(parts, msg.indexOf('bash')), { index: 1, offset: 0 }, 'the fence line snaps into the code');
+  assert.equal(offsetOf(parts, 2, 4), msg.indexOf('then') + 4);
+  assert.deepEqual(splitBlocks('no fences here').length, 1);
+  // Empty prose around a block adds no lines; an empty block keeps one.
+  const bare = [{ kind: 'text', text: '' }, { kind: 'code', text: '', lang: '' }, { kind: 'text', text: '' }];
+  assert.equal(joinBlocks(bare), '```\n\n```');
+  assert.deepEqual(splitBlocks('```\n\n```').map((p) => [p.kind, p.text]), [['text', ''], ['code', ''], ['text', '']]);
+  assert.deepEqual(joinBlocks(bare, { index: 1, offset: 0 }), { value: '```\n\n```', caret: 4 });
+  assert.deepEqual(joinBlocks([{ kind: 'text', text: 'a' }, { kind: 'code', text: 'x', lang: 'py' }, { kind: 'text', text: 'b' }], { index: 2, offset: 1 }),
+    { value: 'a\n```py\nx\n```\nb', caret: 15 });
+  assert.equal(splitBlocks('```js\nunclosed').at(-2).text, 'unclosed');
+  assert.deepEqual(fenceTrigger('hi\n```', 6), { insert: '\n\n```', caret: 7 });
+  assert.equal(fenceTrigger('a ```', 5), null, 'only a fence alone on its line');
+  assert.equal(fenceTrigger('```x', 3), null, 'only with the caret at the end of the line');
+});

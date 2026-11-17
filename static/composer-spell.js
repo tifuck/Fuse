@@ -563,7 +563,7 @@
 
   function refresh() {
     if (!env || !env.input) return;
-    if (!prefs().spell || composing) {
+    if (!prefs().spell || composing || !env.input.offsetParent) {
       lastIssues = [];
       lastText = env.input.value;
       schedulePaint();

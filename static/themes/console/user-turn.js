@@ -61,6 +61,13 @@ function renderAutoSteps(msg) {
     return article;
   }
 
+function fillUserText(bubble, text) {
+    // Rendered like a reply; the source stays on the element so a patch can tell it changed.
+    bubble.dataset.userText = text;
+    bubble.classList.add("chat-md");
+    bubble.innerHTML = deps.renderMarkdown(text, false, []);
+  }
+
 function renderUser(msg, index) {
     const article = document.createElement("article");
     article.className = "chat-turn is-user";
@@ -78,8 +85,7 @@ function renderUser(msg, index) {
       tag.textContent = msg.pending ? who + " · delivering at the next step" : who;
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
-      bubble.dataset.userText = "";
-      bubble.textContent = msg.content;
+      fillUserText(bubble, msg.content);
       article.append(tag, bubble);
       return article;
     }
@@ -103,8 +109,7 @@ function renderUser(msg, index) {
     if (msg.content) {
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
-      bubble.dataset.userText = "";
-      bubble.textContent = msg.content;
+      fillUserText(bubble, msg.content);
       article.appendChild(bubble);
     }
     return article;
@@ -123,5 +128,5 @@ function imagePreviewButton(att) {
 const STEP_CHEVRON =
     '<svg class="chat-step-chevron" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M5 6.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  return { consoleWakeNoticeHtml, renderAutoSteps, renderUser, fileExtLabel, imagePreviewButton, STEP_CHEVRON };
+  return { consoleWakeNoticeHtml, renderAutoSteps, renderUser, fillUserText, fileExtLabel, imagePreviewButton, STEP_CHEVRON };
 }

@@ -414,3 +414,17 @@
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-user-file-x:hover { background: rgba(6, 7, 6, 0.88); color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-user-file.is-file .chat-user-file-x:hover { background: var(--ink); color: var(--mist); }
+/* Code boxes in the composer (static/chat/composer/blocks.js): prose fields
+   and code boxes stand in for #chat-input while the message has a fence. */
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-compose.is-blocks > :is(textarea, .chat-compose-mirror) { display: none !important; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks { position: relative; z-index: 1; display: block; width: 100%; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks[hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-text.is-gap { cursor: text; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-text.is-gap:hover { background: color-mix(in srgb, currentColor 7%, transparent) !important; border-radius: 4px !important; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks .chat-blocks-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 0; padding: 3px 4px 3px 6px; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-code:focus-within { border-color: color-mix(in srgb, currentColor 28%, transparent); }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-lang { width: 10rem; min-width: 0; padding: 2px 6px; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 11.5px; outline: none; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-lang::placeholder { color: inherit; opacity: 0.55; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-lang:is(:hover, :focus) { background: color-mix(in srgb, currentColor 10%, transparent); }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-unwrap { display: grid; place-items: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; opacity: 0.7; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-blocks-unwrap:is(:hover, :focus-visible) { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
