@@ -466,6 +466,7 @@ export function createCombinedTheme(runtime) {
     get escapeHtml() { return runtime.escapeHtml; },
   }));
   Object.assign(theme, createChrome({
+    get STEP_ICONS() { return theme.STEP_ICONS; },
     get activeRun() { return runtime.activeRun; },
     get agentLive() { return runtime.agentLive; },
     get agentsRows() { return runtime.agentsRows; },
