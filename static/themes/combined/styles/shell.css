@@ -81,7 +81,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     text-decoration: none;
   }
   & .cb-brand:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-  & .cb-brand-mark { width: 14px; height: 14px; border-radius: 4px; background: var(--brass); }
+  & .cb-brand-logo { display: block; width: auto; height: 18px; }
   & .cb-ib.chat-history-collapse[aria-expanded="true"]:not(:hover) { background: none; color: var(--mute); }
   & .cb-top {
     display: flex;
