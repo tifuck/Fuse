@@ -740,6 +740,16 @@ async def _wake_parent(user_id: int, thread_id) -> None:
             closing += " Use spawn_subagent with task_id=<id> to continue a child from its saved transcript."
         lines.append(closing)
         text = "\n".join(lines)
+        from . import secret_swap
+
+        try:
+            swap = await asyncio.to_thread(secret_swap.for_thread, user_id, thread_id)
+        except secret_swap.SwapUnavailable:
+            swap = None
+        if swap is not None:
+            # Command envelopes were written for the model; the wake row is the
+            # user's view, swapped again when the turn sends it.
+            text = swap.restore(text)
         # A subagent resumed after the thread's Stop is explicit intent to
         # carry on; its user_resumed_at is what the admission guard checks.
         resumed_at = max((str(item.get("user_resumed_at") or "") for item in candidates), default="")
@@ -834,6 +844,12 @@ async def _run(request, user, run):
     ident = run["id"]
     _leg.set((ident, task))
     output = Output(run)
+    from . import secret_swap
+
+    try:
+        output.swap = await asyncio.to_thread(secret_swap.for_thread, user["id"], run.get("thread_id"))
+    except secret_swap.SwapUnavailable:
+        output.swap = None  # the runtime ends the turn and says why
     pending = []
     pending_bytes = 0
     previous_text = {
@@ -1084,6 +1100,7 @@ async def _run(request, user, run):
                         await asyncio.to_thread(chat_store.mark_followup_display, ident, delivery.get("ids") or [], output.stored())
                         continue
                     had_usage = isinstance(output.message.get("usage"), dict)
+                    obj = output.restore_event(obj)
                     output.apply(obj)
                     pending.append(obj)
                     pending_bytes += len(data)
@@ -1107,6 +1124,7 @@ async def _run(request, user, run):
                     raise ValueError("Generation frame limit reached.")
             if not done:
                 raise ValueError("Generation stream ended without [DONE].")
+            output.flush_swap()
             output.settle_tool_xml()
             if (
                 not output.message.get("content")
@@ -1278,6 +1296,7 @@ async def _run(request, user, run):
 
             permissions_mod.cancel_run_asks(ident)
             chat_store.end_leg(ident, leg)
+            output.flush_swap()
             if not disowned() and not await _finish_durably(ident, output.stored(), status):
                 # The terminal row never committed. Leave it ACTIVE and parked
                 # in _unsettled: the reaper retries this finish rather than

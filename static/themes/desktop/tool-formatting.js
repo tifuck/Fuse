@@ -324,7 +324,9 @@ function consoleCallHtml(trace, presentation, full = false) {
     // A wrapped path or command breaks after a slash, never inside a name.
     const path = ["read_file", "write_file", "search_replace", "list_dir", "run_terminal_command", "get_command_output"].includes(name);
     if (["read_file", "write_file", "search_replace", "list_dir"].includes(name)) {
-      inner = consoleArgText(compactPath(trace.path || ".", trace, 88), 88);
+      // The project folder itself reads by its name, not ".".
+      const short = compactPath(trace.path || ".", trace, 88);
+      inner = consoleArgText(short === "." ? String(trace.path || "").split(/[\\/]/).filter(Boolean).pop() || "." : short, 88);
     } else if ((name === "run_terminal_command") && deps.ccSedEdit(displayCommand(trace))) {
       inner = consoleArgText(compactPath(deps.ccSedEdit(displayCommand(trace)).file, trace, 88), 88);
     } else if (name === "run_terminal_command") {
@@ -342,9 +344,10 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else if ((name === "grep" || name === "glob")) {
       // Searched "x" in src
       const pattern = consoleArgText(trace.pattern || trace.query || "", 80);
-      const where = String(trace.path || "").trim();
+      // A search of the project folder itself names no folder ("in .").
+      const where = compactPath(String(trace.path || "").trim(), trace, 60);
       inner = `"${pattern}"`;
-      tail = where ? `in ${consoleArgText(compactPath(where, trace, 60), 60)}` : "";
+      tail = where && where !== "." ? `in ${consoleArgText(where, 60)}` : "";
     } else if (name === "read_url") {
       inner = consoleArgText(trace.url || "page", 100);
     } else if (isSearchTool(name)) {

@@ -198,8 +198,10 @@ function stopNote(text) {
 // body only the output, a note when the call needs explaining (why it
 // stopped), and a one-line footer: how it ended and how long it took on the
 // left, the machine and its folder on the right. body and state are HTML.
+// The prompt sits outside the input, so a multi-line command's later lines
+// line up under its first and a long one scrolls under a fixed "$".
 function callBoxHtml({ input = "", prompt = false, label = "input", body = "", note = "", state = "", bad = false, stop = false, time = "", host = "", cwd = "" }) {
-    const head = input ? `<div class="dk-call-head"><span class="dk-call-in">${prompt ? '<span class="dk-call-pr">$ </span>' : ""}${deps.escapeHtml(input)}</span>` +
+    const head = input ? `<div class="dk-call-head">${prompt ? '<span class="dk-call-pr" aria-hidden="true">$ </span>' : ""}<span class="dk-call-in">${deps.escapeHtml(input)}</span>` +
       `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
     const tone = bad ? " is-bad" : stop ? " is-stop" : "";
     const noteHtml = note ? `<div class="dk-call-note${tone}">${deps.escapeHtml(note)}</div>` : "";
@@ -294,7 +296,10 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
         const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms ?? trace.latency_ms);
         const time = Number.isFinite(ms) && ms > 0 ? deps.humanMs(ms) : "";
         // The time has its own slot, so a result that names it ("1 search in 900ms") drops it.
-        const state = shell && !status ? (exit === 0 ? "Exit 0" : "") : resultHtml(time ? status.replace(/ in \d[\d.,]*\s?(?:ms|s|m)$/, "") : status);
+        // A failure's reason is on the row and in full in the box: the footer only says it failed.
+        const state = shell && !status ? (exit === 0 ? "Exit 0" : "")
+          : failed && exit === null && !stopText ? "Failed"
+          : resultHtml(time ? status.replace(/ in \d[\d.,]*\s?(?:ms|s|m)$/, "") : status);
         inner = callBoxHtml({
           ...input, body: inner, note: stopText ? stopNote(stopText) : "", state, bad: failed || dotState === "error", stop: Boolean(stopText),
           time, host: trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",

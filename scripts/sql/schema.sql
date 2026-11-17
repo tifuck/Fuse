@@ -361,6 +361,7 @@ CREATE TABLE `chat_threads` (
   `pin_order` bigint(20) NOT NULL DEFAULT 0,
   `unread` bigint(20) NOT NULL DEFAULT 0,
   `memory_off` bigint(20) NOT NULL DEFAULT 0,
+  `secret_swap` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
   KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),
@@ -634,6 +635,35 @@ CREATE TABLE `schema_meta` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `secret_thread_uses` (
+  `thread_id` bigint(20) NOT NULL,
+  `token_id` bigint(20) NOT NULL,
+  `clear` bigint(20) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`thread_id`,`token_id`),
+  KEY `secret_thread_uses_token` (`token_id`),
+  CONSTRAINT `secret_thread_uses_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `secret_thread_uses_token` FOREIGN KEY (`token_id`) REFERENCES `secret_tokens` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `secret_tokens` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `real_hmac` char(64) NOT NULL,
+  `fake_hmac` char(64) NOT NULL,
+  `kind` varchar(32) NOT NULL,
+  `strong` bigint(20) NOT NULL DEFAULT 0,
+  `cipher` text NOT NULL,
+  `created_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `secret_tokens_real` (`user_id`,`real_hmac`),
+  UNIQUE KEY `secret_tokens_fake` (`user_id`,`fake_hmac`),
+  CONSTRAINT `secret_tokens_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `session_revocations` (
   `sid` varchar(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   `expires_at` bigint(20) NOT NULL,
@@ -886,6 +916,7 @@ CREATE TABLE `users` (
   `retention_delete_days` bigint(20) NOT NULL DEFAULT 0,
   `chat_artifacts` bigint(20) NOT NULL DEFAULT 1,
   `chat_memory` bigint(20) NOT NULL DEFAULT 0,
+  `chat_secret_swap` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_users_1` (`email`) USING HASH
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;

@@ -514,7 +514,7 @@ async def opencode_provider(request: Request):
 
 
 async def invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bool = False,
-                      image_snapshot: dict | None = None, prepared=None):
+                      image_snapshot: dict | None = None, prepared=None, secret_swap=None):
     """Pick a source and run one completion.
 
     Returns (user, src, upstream, requested_model, result). Failed pool
@@ -523,11 +523,13 @@ async def invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bo
     resolved provider accepts (title/recap calls).
     image_snapshot/prepared are server-only replay state and its durable
     checkpoint hook, run after admission and before dispatch.
+    secret_swap: the chat's swap; a request still holding one of its
+    swapped values is refused instead of sent.
     """
     try:
         user = dict(user)
         return await _invoke_chat(request, user, body, cheap_reasoning=cheap_reasoning,
-                                  image_snapshot=image_snapshot, prepared=prepared)
+                                  image_snapshot=image_snapshot, prepared=prepared, secret_swap=secret_swap)
     except HTTPException as exc:
         model = body.get("model") if isinstance(body, dict) else ""
         messages = body.get("messages") if isinstance(body, dict) else None
@@ -551,7 +553,7 @@ def _set_cheap_reasoning(body: dict, type_id: str, model: str, user_id: int) -> 
 
 
 async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bool = False,
-                       image_snapshot: dict | None = None, prepared=None):
+                       image_snapshot: dict | None = None, prepared=None, secret_swap=None):
     user = dict(user)
     if not isinstance(body, dict):
         raise HTTPException(400, "Invalid JSON")
@@ -563,6 +565,13 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
         # the same inline bytes as the first time. Lookups are this user's own.
         body = {**body, "messages": await asyncio.to_thread(chat_images.rehydrate, user["id"], body["messages"])}
     _validate_messages(body.get("messages"), retained=bool(request.scope.get("fuse_retained_history")))
+    if secret_swap is not None:
+        leaked = await asyncio.to_thread(secret_swap.leaks, body.get("messages"))
+        if leaked:
+            # A path skipped the swap: fail closed, never send the value.
+            logger.error("Secret swap: refused a request still holding %s value(s) for user %s",
+                         ",".join(sorted(set(leaked))), user.get("id"))
+            raise HTTPException(409, "Fuse stopped this request: it still contained a protected secret.")
     body = dict(body)
     body.pop("prompt_snapshot", None)
     body.pop("image_snapshot", None)

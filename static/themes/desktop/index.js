@@ -11,6 +11,7 @@ import { create as createToolHeaders } from './tool-headers.js';
 import { create as createTodos } from './todos.js';
 import { create as createToolRows } from './tool-rows.js';
 import { create as createAssistantDisclosure } from './assistant-disclosure.js';
+import { create as createFoldMotion } from './fold-motion.js';
 import { create as createPermissions } from './permissions.js';
 import { create as createVerbLexicon } from './verb-lexicon.js';
 import { create as createShellSemantics } from './shell-semantics.js';
@@ -50,8 +51,17 @@ export function createDesktopTheme(runtime) {
     get stableBoundary() { return runtime.stableBoundary; },
     get stickToBottom() { return runtime.stickToBottom; },
   }));
+  Object.assign(theme, createFoldMotion({
+    get motionPaints() { return runtime.motionPaints; },
+    get reduceMotion() { return runtime.reduceMotion; },
+    get stickToBottom() { return runtime.stickToBottom; },
+    get thread() { return runtime.thread; },
+    get toolMotions() { return runtime.toolMotions; },
+    get updateAssistant() { return theme.updateAssistant; },
+  }));
   Object.assign(theme, createUserTurn({
     get autoEventLabel() { return runtime.autoEventLabel; },
+    get foldInPlace() { return theme.foldInPlace; },
     get ccDuration() { return theme.ccDuration; },
     get ccFlat() { return theme.ccFlat; },
     get cleanToolOutput() { return theme.cleanToolOutput; },
@@ -273,6 +283,7 @@ export function createDesktopTheme(runtime) {
   }));
   Object.assign(theme, createAssistantDisclosure({
     get ccToolClass() { return theme.ccToolClass; },
+    get foldInPlace() { return theme.foldInPlace; },
     get followThinking() { return theme.followThinking; },
     get pauseThreadFollow() { return runtime.pauseThreadFollow; },
     get restoreDisclosures() { return runtime.restoreDisclosures; },
@@ -313,6 +324,7 @@ export function createDesktopTheme(runtime) {
     get runPhase() { return runtime.runPhase; },
   }));
   Object.assign(theme, createCallProgress({
+    get humanMs() { return runtime.humanMs; },
     get providerErrorLine() { return theme.providerErrorLine; },
     get agentLive() { return runtime.agentLive; },
     get agentSubject() { return theme.agentSubject; },

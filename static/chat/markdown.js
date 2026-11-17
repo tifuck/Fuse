@@ -373,7 +373,7 @@ function linkAt(src, at, pairs) {
   const title = src.slice(j).match(/^("[^"\n]*"|'[^'\n]*'|\([^)\n]*\))\s*/);
   if (title) j += title[0].length;
   if (src[j] !== ")") return null;
-  return { label, href, end: j + 1 };
+  return { label, href, close: i, end: j + 1 };
 }
 
 // A bare URL from `at`: { href, end } or null. Trailing punctuation and an
@@ -392,15 +392,19 @@ function bareUrlAt(src, at) {
   return /^(?:https?:\/\/|mailto:)./i.test(href) ? { href, end: at + href.length } : null;
 }
 
-function pushText(items, text) {
+function pushText(items, text, s, e) {
   const last = items[items.length - 1];
-  if (last && last.t === "text") last.v += text;
-  else items.push({ t: "text", v: text });
+  if (last && last.t === "text") {
+    last.v += text;
+    last.e = e;
+  } else items.push({ t: "text", v: text, s, e });
 }
 
 // Inline nodes for a span of text: { t: "text" | "code" | "br" | "em" |
-// "strong" | "del" | "link" | "image" | "autolink", ... }.
-export function parseInline(text, inLink = false) {
+// "strong" | "del" | "link" | "image" | "autolink", ... }. Every node holds
+// its source range [s, e); code, emphasis and links also the range of what
+// sits between their markers [cs, ce). `base` offsets them (link labels).
+export function parseInline(text, inLink = false, base = 0) {
   const src = String(text || "");
   const items = [];
   const misses = new Map();
@@ -410,41 +414,42 @@ export function parseInline(text, inLink = false) {
   while (i < src.length) {
     const ch = src[i];
     if (ch === "\\" && i + 1 < src.length && ESCAPABLE.test(src[i + 1])) {
-      pushText(items, src[i + 1]);
+      pushText(items, src[i + 1], base + i, base + i + 2);
       i += 2;
       continue;
     }
     if (ch === "\\" && src[i + 1] === "\n") {
-      items.push({ t: "br" });
+      items.push({ t: "br", s: base + i, e: base + i + 2 });
       i += 2;
       continue;
     }
     if (ch === "\n") {
       const last = items[items.length - 1];
       if (last && last.t === "text") last.v = last.v.replace(/ +$/, "");
-      items.push({ t: "br" });
+      const from = i;
       i += 1;
       while (src[i] === " ") i += 1;
+      items.push({ t: "br", s: base + from, e: base + i });
       continue;
     }
     if (ch === "`") {
       const run = src.slice(i).match(/^`+/)[0];
       const close = codeClose(src, i, run, misses);
       if (close < 0) {
-        pushText(items, run);
+        pushText(items, run, base + i, base + i + run.length);
         i += run.length;
         continue;
       }
       let code = src.slice(i + run.length, close).replace(/\n/g, " ");
       if (/^ .*[^ ].* $/s.test(code) || /^ [^ ] $/.test(code)) code = code.slice(1, -1);
-      items.push({ t: "code", v: code });
+      items.push({ t: "code", v: code, s: base + i, e: base + close + run.length, cs: base + i + run.length, ce: base + close });
       i = close + run.length;
       continue;
     }
     if (ch === "!" && src[i + 1] === "[") {
       const link = linkFrom(i + 1);
       if (link) {
-        items.push({ t: "image", href: link.href, alt: link.label });
+        items.push({ t: "image", href: link.href, alt: link.label, s: base + i, e: base + link.end, cs: base + i + 2, ce: base + link.close });
         i = link.end;
         continue;
       }
@@ -452,7 +457,7 @@ export function parseInline(text, inLink = false) {
     if (ch === "[" && !inLink) {
       const link = linkFrom(i);
       if (link) {
-        items.push({ t: "link", href: link.href, c: parseInline(link.label, true) });
+        items.push({ t: "link", href: link.href, c: parseInline(link.label, true, base + i + 1), s: base + i, e: base + link.end, cs: base + i + 1, ce: base + link.close });
         i = link.end;
         continue;
       }
@@ -460,7 +465,7 @@ export function parseInline(text, inLink = false) {
     if (ch === "<") {
       const m = src.slice(i).match(/^<((?:https?:\/\/|mailto:)[^\s<>]+)>/i);
       if (m && !inLink) {
-        items.push({ t: "autolink", href: m[1], label: m[1] });
+        items.push({ t: "autolink", href: m[1], label: m[1], s: base + i, e: base + i + m[0].length, cs: base + i + 1, ce: base + i + m[0].length - 1 });
         i += m[0].length;
         continue;
       }
@@ -468,7 +473,7 @@ export function parseInline(text, inLink = false) {
     if ((ch === "h" || ch === "H" || ch === "m" || ch === "M") && !inLink) {
       const url = bareUrlAt(src, i);
       if (url) {
-        items.push({ t: "autolink", href: url.href, label: url.href });
+        items.push({ t: "autolink", href: url.href, label: url.href, s: base + i, e: base + url.end, cs: base + i, ce: base + url.end });
         i = url.end;
         continue;
       }
@@ -476,7 +481,7 @@ export function parseInline(text, inLink = false) {
     if (ch === "*" || ch === "_" || ch === "~") {
       const run = src.slice(i).match(ch === "*" ? /^\*+/ : ch === "_" ? /^_+/ : /^~+/)[0];
       if (ch === "~" && run.length !== 2) {
-        pushText(items, run);
+        pushText(items, run, base + i, base + i + run.length);
         i += run.length;
         continue;
       }
@@ -487,13 +492,13 @@ export function parseInline(text, inLink = false) {
         open = f.left && (!f.right || PUNCT.test(f.before));
         close = f.right && (!f.left || PUNCT.test(f.after));
       }
-      items.push({ t: "delim", ch, n: run.length, size: run.length, open, close });
+      items.push({ t: "delim", ch, n: run.length, size: run.length, open, close, at: base + i });
       i += run.length;
       continue;
     }
     let j = i + 1;
     while (j < src.length && !/[\\\n`![<*_~hHmM]/.test(src[j])) j += 1;
-    pushText(items, src.slice(i, j));
+    pushText(items, src.slice(i, j), base + i, base + j);
     i = j;
   }
   return finish(emphasis(items));
@@ -513,9 +518,12 @@ function emphasis(items) {
           !(opener.size % 3 === 0 && closer.size % 3 === 0)) continue;
       const use = closer.ch === "~" ? 2 : opener.n >= 2 && closer.n >= 2 ? 2 : 1;
       const inner = finish(items.splice(o + 1, c - o - 1));
-      items.splice(o + 1, 0, { t: closer.ch === "~" ? "del" : use === 2 ? "strong" : "em", c: inner });
+      // The opener gives up its last characters, the closer its first.
+      const s = opener.at + opener.n - use;
+      items.splice(o + 1, 0, { t: closer.ch === "~" ? "del" : use === 2 ? "strong" : "em", c: inner, s, e: closer.at + use, cs: s + use, ce: closer.at });
       opener.n -= use;
       closer.n -= use;
+      closer.at += use;
       c = o + 1;
       break;
     }
@@ -527,8 +535,8 @@ function finish(items) {
   const out = [];
   for (const item of items) {
     if (item.t === "delim") {
-      if (item.n) pushText(out, item.ch.repeat(item.n));
-    } else if (item.t === "text") pushText(out, item.v);
+      if (item.n) pushText(out, item.ch.repeat(item.n), item.at, item.at + item.n);
+    } else if (item.t === "text") pushText(out, item.v, item.s, item.e);
     else out.push(item);
   }
   return out;

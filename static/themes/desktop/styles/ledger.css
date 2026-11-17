@@ -28,6 +28,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label { color: var(--dk-mute, var(--mute)); }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label b { color: var(--dk-text, var(--mist)); }
 }
+/* A tap draws no browser highlight over the whole line (a blue box on
+   Android); a finger on the line steps its type up a shade, as a pointer does. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step-head, .dk-call-copy) { -webkit-tap-highlight-color: transparent; }
+@media (hover: none) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:active .chat-step-label { color: var(--dk-mute, var(--mute)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:active .chat-step-label b { color: var(--dk-text, var(--mist)); }
+}
 /* A changed count rolls in: the old number fades up and out while the new one
    fades up into place. Nothing clips them, so no edge cuts a digit in half
    (activity-groups.js keeps a rebuilt line mid-roll). */
@@ -56,6 +63,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & { --dk-call-row: 26px; --dk-call-quiet: color-mix(in srgb, var(--dk-mute, var(--mute)) 68%, transparent); }
   @media (max-width: 480px), (pointer: coarse) { & { --dk-call-row: 32px; } }
 
+  /* Opening a line adds no padding of its own: it stays where it was and only
+     its list appears (the older layers pad an opened line). */
+  & .chat-step.is-console-group.is-console-expanded { padding-block: 0; }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: var(--dk-mute, var(--mute)); }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-text, var(--mist)); }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { margin: 0 0 4px; padding-left: 0; border-left: 0; }
@@ -76,6 +86,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
     & .chat-console-bundle .chat-step.is-console-call:not(.is-error, .is-interrupted) > .chat-step-main > .chat-step-head:hover .chat-step-label > :is(.chat-console-took, .chat-console-result-text) { color: var(--dk-mute, var(--mute)); }
+  }
+  @media (hover: none) {
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
+    & .dk-call-copy:active { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
   }
   @media (prefers-reduced-motion: reduce) {
     & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: none; }
@@ -149,7 +164,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-size: calc(0.76rem * var(--chat-text-scale, 1));
     line-height: 1.6;
   }
-  & .dk-call-head { display: flex; align-items: flex-start; gap: 10px; padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
+  /* Copy sits on the input's first baseline: the mono input and the sans
+     button share one text line whatever their fonts' metrics. */
+  & .dk-call-head { display: flex; align-items: baseline; gap: 10px; padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
   & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
@@ -178,7 +195,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-step[data-tool="run_terminal_command"] .dk-call-box > .chat-console-lines.is-error > .chat-console-stdout:last-child:not(:only-child) { display: none; }
   & .dk-call-box .chat-tool-image { margin: 0; padding: 8px 12px 10px; }
   /* Prose bodies (skills, reports): reading type, headings no bigger than the row. */
-  & .dk-call-box .chat-tool-md { padding: 8px 12px; font-family: var(--sans); font-size: 1.1em; line-height: 1.5; }
+  & .dk-call-box .chat-tool-md { padding: 4px 0; font-family: var(--sans); font-size: 1.1em; line-height: 1.5; }
   & .dk-call-box .chat-tool-md :is(h1, h2, h3, h4, h5, h6) { margin: 0.6em 0 0.15em; padding: 0; border: 0; font-size: 1em; font-weight: 600; line-height: 1.35; }
   & .dk-call-box .chat-tool-md > :first-child { margin-top: 0; }
   & .dk-call-box .chat-tool-md :is(p, ul, ol) { margin: 0 0 0.35em; }
@@ -233,10 +250,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label > .dk-row-ico { color: var(--call-fail); }
   & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .dk-row-ico { color: var(--dk-warn); }
   & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .chat-console-result-text { color: var(--dk-warn); }
-  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { margin-left: auto; padding-left: 12px; text-align: right; }
+  /* The sentence takes the free space, so the result and chevron keep the
+     right edge whatever is hidden (a phone hides most results). */
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-call { margin-right: auto; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { margin-left: 0; padding-left: 12px; text-align: right; }
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-took ~ .chat-console-result-text { margin-left: 10px; padding-left: 0; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev { display: inline-flex; flex: none; align-self: center; width: 12px; height: 12px; margin-left: auto; color: var(--dk-call-quiet); opacity: 0; transition: transform var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
-  & .chat-console-bundle .chat-step-label > :is(.chat-console-result-text, .chat-console-took) ~ .dk-row-chev { margin-left: 8px; }
+  & .chat-console-bundle .chat-step-label > .dk-row-chev { display: inline-flex; flex: none; align-self: center; width: 12px; height: 12px; margin-left: 8px; color: var(--dk-call-quiet); opacity: 0; transition: transform var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
   & .chat-console-bundle .chat-step-label > .dk-row-chev svg { width: 12px; height: 12px; }
   & .chat-console-bundle .chat-step-label > .dk-row-chev.is-empty { visibility: hidden; }
   & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:is(:hover, :focus-within) .dk-row-chev,
@@ -248,7 +267,25 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-dk-thought .chat-console-hang.is-expanded { margin: 1px 0 6px var(--dk-row-indent); }
 
   & .dk-call-head { padding: 2px 8px 2px 12px; }
-  & .dk-call-in { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+  /* The "$" stays put beside the input; the gap after it is its own space. */
+  & .dk-call-pr { flex: none; margin-right: -10px; white-space: pre; }
+  /* A cut input fades at its edge instead of ending flush against Copy; its
+     end padding keeps the last characters clear of the fade once scrolled. */
+  & .dk-call-in { padding-right: 16px; white-space: pre; overflow-wrap: normal; overflow-x: auto; mask-image: linear-gradient(to left, transparent, #000 16px); }
+  /* Copy is taller on touch: it overlaps the head's padding, so the head
+     grows only a little to hold it. */
+  @media (max-width: 480px), (pointer: coarse) {
+    & .dk-call-head { padding-block: 4px; }
+    & .dk-call-copy { margin-block: -4px; }
+  }
+  /* Phones read the box at a reply code block's size, not a step under it. */
+  @media (max-width: 480px) {
+    & .dk-call-box { font-size: calc(0.82rem * var(--chat-text-scale, 1)); }
+    & .dk-call-copy { font-size: 12.5px; }
+    & :is(.dk-call-foot, .dk-call-note) { font-size: calc(0.75rem * var(--chat-text-scale, 1)); }
+  }
+  /* A web page's text starts on its title's edge. */
+  & .dk-call-box .chat-console-out.is-web > pre { padding-inline: 0; }
   & .dk-call-box > :is(.chat-console-out, .chat-console-lines, pre) { padding-block: 4px; }
   & .dk-call-box :is(.chat-console-stdout, .chat-console-nline, .chat-console-nbody, .dk-match-file, .dk-match-file *, .chat-console-lines) { white-space: pre !important; overflow-wrap: normal !important; word-break: normal !important; }
   /* Numbered and diff lines share one width, the longest line's, so a tinted
@@ -260,6 +297,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-note.is-bad { color: var(--call-fail); }
   & .dk-call-foot { align-items: center; justify-content: space-between; padding: 1px 12px; line-height: 18px; white-space: nowrap; }
   & .dk-call-end { display: inline-flex; flex: none; align-items: baseline; }
+  & .dk-call-state::first-letter { text-transform: uppercase; }
   & .dk-call-sep { margin: 0 5px; opacity: 0.6; }
   & .dk-call-where { display: flex; flex: 1 1 auto; justify-content: flex-end; gap: 6px; min-width: 0; margin-left: auto; overflow: hidden; }
   & .dk-call-host { flex: 0 0 auto; max-width: 60%; overflow: hidden; color: var(--dk-mute, var(--mute)); text-overflow: ellipsis; }

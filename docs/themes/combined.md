@@ -1,6 +1,6 @@
 # Combined theme: UX spec
 
-A flat, dark reading view: a centred column, one-line work summaries, a pill composer and a status rail. Minimal, quiet, one accent. Markup and CSS live only in `static/themes/combined/` and `templates/themes/combined/`; the runtime finds elements by `data-*` hooks only. `scripts/qa/theme_audit.py --themes combined` is the gate: zero failures.
+A flat, dark reading view: a centred column, one-line work summaries, a pill composer and a status rail. Minimal, quiet, one accent. Markup and CSS live only in `static/themes/combined/` and `templates/themes/combined/`; the runtime finds elements by `data-*` hooks only. Check every change with screenshots of the running page in this view.
 
 ## Global rules
 

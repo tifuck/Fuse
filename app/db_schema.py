@@ -481,6 +481,8 @@ def _ensure_chat_columns(conn: sqlite3.Connection) -> None:
     retention.init_schema(conn)
     from . import memory
     memory.init_schema(conn)
+    from . import secret_swap
+    secret_swap.init_schema(conn)
     from . import command_jobs
     command_jobs.create_schema(conn)
     _ensure_skill_tables(conn)

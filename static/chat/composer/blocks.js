@@ -4,6 +4,7 @@
 // writes it as before, and this module keeps the fields in step both ways.
 import { S } from '../state.js';
 import { splitBlocks, joinBlocks, locate, offsetOf, fenceTrigger } from './blocks-core.js';
+import { marksHtml, italicKeepsWidth } from './marks.js';
 
 const proto = HTMLTextAreaElement.prototype;
 const nativeValue = Object.getOwnPropertyDescriptor(proto, "value");
@@ -24,6 +25,7 @@ export function createBlocks(ctx) {
   let on = false;
   let writing = false;
   let triggering = false;
+  let composing = null;
 
   const value = () => nativeValue.get.call(S.input);
   const select = (a, b) => proto.setSelectionRange.call(S.input, a, b);
@@ -42,8 +44,15 @@ export function createBlocks(ctx) {
       el.className = "chat-blocks-text";
       el.setAttribute("aria-label", "Message");
       el.setAttribute("enterkeyhint", "send");
-      el.style.cssText = FIELD_STYLE + "padding:0;overflow:hidden;font:inherit;letter-spacing:inherit;line-height:inherit;";
-      return { kind, el, node: el };
+      el.style.cssText = FIELD_STYLE + "position:relative;z-index:1;padding:0;overflow:hidden;font:inherit;letter-spacing:inherit;line-height:inherit;";
+      // Inline markdown shows from a mirror behind the field, as in #chat-input.
+      const line = document.createElement("div");
+      line.className = "chat-blocks-line";
+      const mirror = document.createElement("div");
+      mirror.className = "chat-blocks-mirror";
+      mirror.setAttribute("aria-hidden", "true");
+      line.append(mirror, el);
+      return { kind, el, mirror, node: line };
     }
     const box = document.createElement("div");
     box.className = "chat-code chat-blocks-code";
@@ -93,6 +102,7 @@ export function createBlocks(ctx) {
     segs.forEach((seg, i) => {
       const el = seg.el;
       if (seg.kind === "text") {
+        paintLine(seg);
         const gap = !el.value && i < segs.length - 1 && document.activeElement !== el;
         seg.el.classList.toggle("is-gap", gap);
         if (gap) {
@@ -105,6 +115,13 @@ export function createBlocks(ctx) {
     });
     input.syncDockSpace();
     if (follow) thread.scrollTop = Math.max(0, thread.scrollHeight - thread.clientHeight);
+  }
+
+  function paintLine(seg) {
+    const { html, styled } = composing === seg.el ? { html: "", styled: false } : marksHtml(seg.el.value);
+    seg.mirror.innerHTML = styled ? html + "\n" : "";
+    seg.el.style.webkitTextFillColor = styled ? "transparent" : "";
+    seg.node.classList.toggle("is-oblique", styled && italicKeepsWidth(seg.el));
   }
 
   function render() {
@@ -362,11 +379,13 @@ export function createBlocks(ctx) {
       set(next) {
         nativeValue.set.call(field, next);
         if (!writing) fromInput();
+        window.FuseComposerSpell?.paintNow?.();
       },
     });
     field.setRangeText = function (...args) {
       proto.setRangeText.apply(field, args);
       if (!writing) fromInput();
+      window.FuseComposerSpell?.paintNow?.();
     };
     field.setSelectionRange = function (...args) {
       proto.setSelectionRange.apply(field, args);
@@ -381,6 +400,15 @@ export function createBlocks(ctx) {
       .observe(field, { attributes: true, attributeFilter: ["disabled"] });
 
     host.addEventListener("input", onSegInput);
+    host.addEventListener("compositionstart", (event) => {
+      composing = event.target;
+      const seg = segs.find((item) => item.el === event.target && item.mirror);
+      if (seg) paintLine(seg);
+    });
+    host.addEventListener("compositionend", () => {
+      composing = null;
+      fit();
+    });
     host.addEventListener("keydown", onKeydown);
     host.addEventListener("mousedown", onMouseDown);
     host.addEventListener("click", (event) => {

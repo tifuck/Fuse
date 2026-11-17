@@ -146,8 +146,13 @@ def clip_prompt_text(text: str, limit: int) -> str:
 
 
 async def metadata_once(request, user, model, text, system, limit, parser, *, consume):
-    from .. import api
+    from .. import api, secret_swap
 
+    # Titles and recaps read the user's own text: an account that swaps
+    # secrets sends this one-off call stand-ins too, and shows the result real.
+    swap = await asyncio.to_thread(secret_swap.for_user, (user or {}).get("id"))
+    if swap is not None:
+        text = await asyncio.to_thread(swap.tokenize, text or "")
     prompt = clip_prompt_text(text or "", max(1, min(int(limit), chats.TITLE_REGEN_PROMPT_MAX)))
     if not prompt or not isinstance(model, str) or not model.strip():
         return ""
@@ -206,6 +211,8 @@ async def metadata_once(request, user, model, text, system, limit, parser, *, co
         )
         return ""
     raw = summary.get("content") or ""
+    if swap is not None:
+        raw = swap.restore(raw)
     title = parser(raw)
     if not title:
         logger.info(

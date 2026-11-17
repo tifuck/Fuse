@@ -19,6 +19,7 @@ import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
 import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
+import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
 // the theme seam (createTheme destructuring with its fixture anchor),
@@ -1544,7 +1545,7 @@ import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
       if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
       if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
       if (window.FuseComposerSpell && FuseComposerSpell.isOpen()) return true;
-      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
+      return Boolean(document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), [data-hs-pop]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]"));
     };
     const disarmEscStop = () => {
       if (!escArmed) return;
@@ -2177,6 +2178,14 @@ import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
       popover: S.spellPop,
       getPrefs: composer.composerPrefs,
       getContext: composer.getComposerContext,
+      markup: marksHtml,
+      // Styled text shows from the mirror; the field keeps only its caret.
+      onStyled(styled) {
+        const compose = S.composeMirror.parentElement;
+        compose.classList.toggle("is-styled", styled);
+        compose.classList.toggle("is-oblique", styled && italicKeepsWidth(S.input));
+        S.composeMirror.style.color = styled ? window.getComputedStyle(S.input).color : "";
+      },
       onChange() {
         S.drafts.set(draftKey(), S.input.value);
         composer.resizeInput();
