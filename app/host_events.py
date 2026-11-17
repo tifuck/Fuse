@@ -8,10 +8,11 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from . import accounts, hosts
+from . import accounts, agent_hub, hosts
 
 router = APIRouter()
 _subscribers: dict[int, dict] = defaultdict(dict)
+_stat_sockets: dict[int, int] = defaultdict(int)
 _loop = None
 _closing = False
 MAX_CONNECTIONS_PER_USER = 8
@@ -137,6 +138,64 @@ async def events(ws: WebSocket):
         _subscribers[uid].pop(ws, None)
         if not _subscribers[uid]:
             _subscribers.pop(uid, None)
+        try:
+            await ws.close()
+        except (RuntimeError, WebSocketDisconnect, OSError):
+            pass
+
+
+@router.websocket("/hosts/{host_id}/stats")
+async def stats(ws: WebSocket, host_id: int):
+    """A connector machine's live usage for the chat's stats card. Samples
+    flow only while a socket is open; the page closes it when hidden."""
+    expected = ("https" if ws.url.scheme == "wss" else "http") + "://" + ws.url.netloc
+    uid = ws.session.get("uid")
+    if _origin(ws.headers.get("origin", "")) != _origin(expected):
+        await ws.close(code=4403)
+        return
+    if not uid or not await asyncio.to_thread(accounts.session_user, ws.session):
+        await ws.close(code=4401)
+        return
+    host = await asyncio.to_thread(hosts.get_host, uid, host_id)
+    if not host or host["kind"] != "agent" or host["disabled"]:
+        await ws.close(code=4404)
+        return
+    if _closing or _stat_sockets[uid] >= MAX_CONNECTIONS_PER_USER:
+        await ws.close(code=4429)
+        return
+    await ws.accept()
+    _stat_sockets[uid] += 1
+
+    async def receive():
+        while True:
+            await ws.receive_text()  # nothing is expected; this notices the close
+
+    reader = asyncio.create_task(receive())
+    try:
+        async with agent_hub.watch_stats(uid, host_id) as samples:
+            started = checked = time.monotonic()
+            while not _closing and not reader.done():
+                getter = asyncio.ensure_future(samples.get())
+                done, _ = await asyncio.wait({getter, reader}, timeout=15, return_when=asyncio.FIRST_COMPLETED)
+                if getter in done:
+                    async with asyncio.timeout(5):
+                        await ws.send_json({"type": "stats", **getter.result()})
+                else:
+                    getter.cancel()
+                now = time.monotonic()
+                if now - checked >= 15:
+                    checked = now
+                    if now - started > 1800 or not await asyncio.to_thread(accounts.session_user, ws.session):
+                        await ws.close(code=1012)
+                        return
+    except (WebSocketDisconnect, RuntimeError, TimeoutError, OSError):
+        pass
+    finally:
+        reader.cancel()
+        await asyncio.gather(reader, return_exceptions=True)
+        _stat_sockets[uid] -= 1
+        if _stat_sockets[uid] <= 0:
+            _stat_sockets.pop(uid, None)
         try:
             await ws.close()
         except (RuntimeError, WebSocketDisconnect, OSError):

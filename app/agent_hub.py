@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -34,6 +35,13 @@ RECONNECT_WINDOW = 60.0
 RECONNECT_WAIT = 12.0
 _started_at: float | None = None
 _dropped_at: dict[tuple[int, int], float] = {}
+# Live machine stats (the chat's stats card): the connector samples only
+# while someone watches, and stops LINGER seconds after the last one leaves
+# (a tab switch or reload should not restart it).
+STATS_MS = 2000
+STATS_LINGER = 5.0
+_stat_watch: dict[tuple[int, int], set[asyncio.Queue]] = {}
+_stat_off: dict[tuple[int, int], asyncio.TimerHandle] = {}
 RESULT_CHARS = 262_144  # transport budget, not the model's display budget
 # Connector frame limit is 1 MiB. Measure encoded JSON bytes before sending.
 MAX_PAYLOAD_CHARS = 900_000
@@ -368,6 +376,97 @@ def _exit_code(value) -> int | None:
     return None
 
 
+def _num(value, cap=None):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value < 2**63:
+        return None
+    return min(value, cap) if cap is not None else value
+
+
+def _pair(value, size=2):
+    if not isinstance(value, list) or len(value) != size:
+        return None
+    nums = [_num(v) for v in value]
+    return None if None in nums else nums
+
+
+def _stats_frame(data: dict) -> dict | None:
+    """A connector's stats frame, checked and rebuilt: only known fields of
+    the right shape reach the browser."""
+    cpu, mem, net = _num(data.get("cpu"), 100), _pair(data.get("mem")), _pair(data.get("net"))
+    if cpu is None or mem is None or net is None:
+        return None
+    frame = {"cpu": cpu, "mem": mem, "net": net}
+    disk, vol = _pair(data.get("disk"), 3), _pair(data.get("vol"))
+    if disk is not None:
+        frame["disk"] = [min(disk[0], 100), disk[1], disk[2]]
+    if vol is not None:
+        frame["vol"] = vol
+    return frame
+
+
+def _offer(queue: asyncio.Queue, item) -> None:
+    """Newest wins: a watcher that fell behind gets the latest sample only."""
+    try:
+        queue.get_nowait()
+    except asyncio.QueueEmpty:
+        pass
+    queue.put_nowait(item)
+
+
+async def _send_stats(key: tuple[int, int], on: bool) -> None:
+    rec = _conns.get(key)
+    if rec is None or rec.get("closed"):
+        return
+    msg = {"v": 1, "t": "stats", "on": on}
+    if on:
+        msg["ms"] = STATS_MS
+    else:
+        rec.pop("stats", None)  # the next watcher must not see an old sample
+    try:
+        async with asyncio.timeout(2):
+            await rec["ws"].send_json(msg)
+    except Exception:
+        pass
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+@contextlib.asynccontextmanager
+async def watch_stats(user_id: int, host_id: int):
+    """Yields a queue of this host's stats samples while the caller watches.
+    The first watcher turns the connector's sampling on; the last one
+    leaving turns it off after STATS_LINGER."""
+    key = (int(user_id), int(host_id))
+    queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+    watchers = _stat_watch.setdefault(key, set())
+    pending_off = _stat_off.pop(key, None)
+    if pending_off is not None:
+        pending_off.cancel()  # still sampling: nothing to turn on
+    elif not watchers:
+        await _send_stats(key, True)
+    watchers.add(queue)
+    last = (_conns.get(key) or {}).get("stats")
+    if last is not None:
+        _offer(queue, last)
+    try:
+        yield queue
+    finally:
+        watchers.discard(queue)
+        if not watchers and _stat_watch.get(key) is watchers:
+            _stat_watch.pop(key, None)
+
+            def off():
+                _stat_off.pop(key, None)
+                if key not in _stat_watch:
+                    _spawn(_send_stats(key, False))
+
+            _stat_off[key] = asyncio.get_running_loop().call_later(STATS_LINGER, off)
+
+
 def _clip(text) -> str:
     if not isinstance(text, str):
         text = "" if text is None else str(text)
@@ -447,6 +546,8 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
     try:
         replay = _cancel_replay.get(key, {})
         await _cancel_pending(ws, {i: None for i, deadline in replay.items() if deadline > time.monotonic()})
+        if _stat_watch.get(key) or key in _stat_off:
+            await _send_stats(key, True)  # a connector forgets its sampling when its session ends
         while True:
             try:
                 text = await ws.receive_text()
@@ -463,6 +564,14 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                 continue
             if kind == "ping":
                 await ws.send_json({"v": 1, "t": "pong"})
+                continue
+            if kind == "stats":
+                frame = _stats_frame(data)
+                # Kept only while sampling is wanted: one in flight at the off would be stale.
+                if frame is not None and (key in _stat_watch or key in _stat_off):
+                    rec["stats"] = frame
+                    for queue in _stat_watch.get(key, ()):
+                        _offer(queue, frame)
                 continue
             if kind == "chunk":
                 job_id = str(data.get("id") or "")

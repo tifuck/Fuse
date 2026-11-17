@@ -381,3 +381,78 @@ def test_held_jobs_fail_when_the_connector_does_not_return_in_time(box):
         assert ws.jobs()[0]["id"] in agent_hub._cancel_replay[(uid, hid)]
 
     run_async(body())
+
+
+# -- live stats ----------------------------------------------------------------
+
+def _stat_toggles(ws):
+    return [m["on"] for m in ws.sent if m.get("t") == "stats"]
+
+
+def _sample(**over):
+    return json.dumps({"v": 1, "t": "stats", "cpu": 12.5, "mem": [6, 16], "net": [100, 20], **over})
+
+
+def test_stats_sample_only_while_watched_and_stop_after_the_linger(box):
+    uid, hid, token = box
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        with patch.object(agent_hub, "STATS_LINGER", 0.05):
+            async with agent_hub.watch_stats(uid, hid) as first:
+                async with agent_hub.watch_stats(uid, hid) as second:
+                    assert _stat_toggles(ws) == [True]  # the second watcher shares the first's sampling
+                    ws.inbox.put_nowait(_sample(disk=[150, 1, 2], vol=[1, 9], extra="dropped"))
+                    want = {"cpu": 12.5, "mem": [6, 16], "net": [100, 20], "disk": [100, 1, 2], "vol": [1, 9]}
+                    assert await asyncio.wait_for(first.get(), 1) == want
+                    assert await asyncio.wait_for(second.get(), 1) == want
+            # Back within the linger: still sampling, nothing toggled.
+            async with agent_hub.watch_stats(uid, hid):
+                pass
+            assert _stat_toggles(ws) == [True]
+            await wait_until_async(lambda: _stat_toggles(ws) == [True, False])
+        await _hang_up(ws, task)
+
+    run_async(body())
+
+
+@pytest.mark.parametrize("bad", [
+    {"cpu": "12"}, {"cpu": True}, {"cpu": -1}, {"mem": [1]}, {"net": [1, None]}, {"cpu": float("nan")},
+])
+def test_a_malformed_stats_frame_never_reaches_a_watcher(box, bad):
+    uid, hid, token = box
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        async with agent_hub.watch_stats(uid, hid) as samples:
+            ws.inbox.put_nowait(_sample(**bad))
+            ws.inbox.put_nowait(_sample(cpu=1))
+            assert (await asyncio.wait_for(samples.get(), 1))["cpu"] == 1
+        await _hang_up(ws, task)
+
+    run_async(body())
+
+
+def test_a_reconnected_connector_is_asked_for_stats_again_and_old_samples_go(box):
+    uid, hid, token = box
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        with patch.object(agent_hub, "STATS_LINGER", 0.05):
+            async with agent_hub.watch_stats(uid, hid) as samples:
+                ws.inbox.put_nowait(_sample())
+                await asyncio.wait_for(samples.get(), 1)
+                await _hang_up(ws, task)
+                ws2, task2 = await _connect(uid, hid, token)
+                await wait_until_async(lambda: _stat_toggles(ws2) == [True])
+            await wait_until_async(lambda: _stat_toggles(ws2) == [True, False])
+            assert "stats" not in agent_hub._conns[(uid, hid)]
+            ws2.inbox.put_nowait(_sample(cpu=99))  # a frame already in flight at the off
+            ws2.inbox.put_nowait(json.dumps({"v": 1, "t": "pong"}))
+            await wait_until_async(lambda: ws2.inbox.empty())
+            await asyncio.sleep(0.01)
+            async with agent_hub.watch_stats(uid, hid) as samples:
+                assert samples.qsize() == 0
+        await _hang_up(ws2, task2)
+
+    run_async(body())

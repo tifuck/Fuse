@@ -16,6 +16,10 @@ def _clear():
     agent_hub._cancel_replay.clear()
     agent_hub._dropped_at.clear()
     agent_hub._started_at = None
+    agent_hub._stat_watch.clear()
+    for handle in agent_hub._stat_off.values():
+        handle.cancel()
+    agent_hub._stat_off.clear()
     chat_run_state._live_legs.clear()
 
 
