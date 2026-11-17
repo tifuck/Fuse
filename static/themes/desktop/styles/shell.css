@@ -32,7 +32,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --chat-bar-h: 36px;
   /* The bottom row: the account row and the composer's controls share its
      height, with no rule or fill. */
-  --dk-band-h: 36px;
+  --dk-band-h: 30px;
   /* Between the composer card and its controls row. */
   --dk-band-gap: 3px;
   --chat-history: 13.5rem;
@@ -682,7 +682,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 [data-chat-attach] { left: 6px; }
   & .dk-row2 [data-chat-send] { right: 6px; }
   & .dk-row2 [data-chat-mic] { right: 38px; }
-  & .dk-group-l { margin-left: -6px; }
+  /* Inset like + and send above them, so the row's ends line up with the card's. */
+  & .dk-group-l { margin-left: 6px; }
+  & .dk-group-r { margin-right: 6px; }
   & :is(.dk-group-l, .dk-group-r) { display: flex; align-items: center; gap: 4px; min-width: 0; }
   & .dk-group-l { flex: 0 1 auto; }
   & .dk-group-r { flex: 1 1 auto; justify-content: flex-end; }
@@ -707,16 +709,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-send.is-stop { background: var(--dk-text); color: var(--dk-canvas); }
   & .dk-send.is-stop svg { display: none; }
   & .dk-send.is-stop::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-  /* The permission mode is quiet text naming the mode; Bypass alone takes the warn colour. */
+  /* The permission mode is quiet text naming the mode; Bypass alone reads in the body colour. */
   & .dk-perm { position: static; display: flex; min-width: 0; }
-  & .dk-tb[data-perm-chip] { min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 12.5px var(--sans); }
+  & .dk-tb[data-perm-chip] { min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 12px var(--sans); }
   & .dk-tb[data-perm-chip] svg { display: none; }
   & .dk-tb[data-perm-chip]:is(:not(.is-on), .is-auto) [data-perm-chip-label] { display: none; }
   & .dk-tb[data-perm-chip]:not(.is-on)::after { content: "Ask"; }
   & .dk-tb[data-perm-chip].is-auto::after { content: "Auto approve"; }
-  & .dk-tb[data-perm-chip].is-bypass { color: var(--dk-warn); }
+  & .dk-tb[data-perm-chip].is-bypass { color: var(--dk-text); }
   & .dk-tb[data-perm-chip]:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
-  & .dk-tb[data-perm-chip].is-bypass:is(:hover, [aria-expanded="true"]) { color: var(--dk-warn); }
   /* Popovers rise from the card top inside the column: perms from the card's left edge, context from its right. */
   & .dk-perm .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }
   & .dk-model { position: relative; flex: 0 1 auto; min-width: 0; max-width: none; margin: 0; }
@@ -732,7 +733,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     border-radius: 7px;
     background: none;
     color: var(--dk-mute);
-    font: 500 12.5px var(--sans);
+    font: 500 12px var(--sans);
     white-space: nowrap;
   }
   & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
@@ -754,7 +755,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .dk-model .chat-picker-btn > small:empty { display: none; }
   & .dk-model .chat-picker-btn > svg { flex: none; }
-  & .dk-model .chat-picker-btn .provider-logo { display: block; flex: none; width: 14px; height: 14px; }
+  & .dk-model .chat-picker-btn .provider-logo { display: block; flex: none; width: 12px; height: 12px; }
   & .dk-ring-wrap { position: static; display: flex; flex: none; }
   & .dk-ring-wrap[hidden] { display: none; }
   & .dk-ring-wrap .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
@@ -1177,13 +1178,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 .chat-host-stats { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   & .dk-model .chat-picker-btn > span[data-short]::before {
     content: attr(data-short); content: attr(data-short) / "";
-    display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12.5px;
+    display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12px;
   }
   & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } }
   @media (max-width: 640px) { & .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } } }
   & .chat-host-stats {
     display: flex; align-items: center; gap: 14px; width: max-content; height: 28px;
-    font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
+    font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
     color: var(--dk-mute); cursor: default; user-select: none;
   }
   & :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
