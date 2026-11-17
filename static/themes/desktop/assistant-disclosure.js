@@ -78,14 +78,6 @@ function renderAssistant(msg, live) {
       addEventListener("mousemove", move);
       addEventListener("mouseup", up);
     });
-    function collapseConsoleGroup(group, target) {
-      group.classList.remove("is-console-expanded");
-      group.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", "false"));
-      if (!target.stepOpen) target.stepOpen = {};
-      target.stepOpen[group.dataset.step] = false;
-      consoleGroupOpenKeys(group, target).forEach((key) => { target.stepOpen[key] = false; });
-      deps.saveDisclosures(target);
-    }
     article.addEventListener("click", (event) => {
       const thinkingSize = event.target.closest("[data-think-size]");
       if (thinkingSize) {
@@ -138,15 +130,9 @@ function renderAssistant(msg, live) {
         deps.saveDisclosures(msg);
         return;
       }
-      // An opened summary line has no header in Console (as in a terminal agent):
-      // a click on its printed calls folds it back.
-      const openGroup = (event.target.closest(".chat-step.is-console-group.is-console-expanded"));
-      // Desktop: an opened member's output and an agent row are not the line.
-      if (openGroup && !event.target.closest("a, button, input, textarea, [data-copy-tool], [data-open-agent], .chat-console-bundle .chat-console-hang.is-expanded") && !String(window.getSelection() || "").trim()) {
-        event.preventDefault();
-        collapseConsoleGroup(openGroup, msg);
-        return;
-      }
+      // Desktop keeps an opened summary line as its header: only that line
+      // folds the group. A click on a row opens that row, or does nothing when
+      // the row has nothing to show.
       const btn = event.target.closest("[data-step-toggle]");
       if (!btn || event.target.closest(".chat-step-open")) return;
       if ((event.target.closest("a"))) return;

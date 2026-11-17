@@ -150,18 +150,67 @@ function resultHtml(status) {
     if (edit && (edit[1] || edit[2])) {
       return [edit[1] && `<span class="dk-plus">+${edit[1]}</span>`, edit[2] && `<span class="dk-minus">−${edit[2]}</span>`].filter(Boolean).join(" ");
     }
-    return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, ""));
+    return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, "")
+      .replace(/^Created .+ \(([^()]+)\)$/, "New file, $1").replace(/^\((No output)\)$/, "$1").replace(/^Exit code (?=\d)/, "Exit ")
+      .replace(/^[a-z]+(?:_[a-z]+)+$/, (state) => state.charAt(0).toUpperCase() + state.slice(1).replace(/_/g, " ")));
   }
 
-// An opened call: one box. Its header is the exact input (the command, the
-// path, the pattern) with a copy button, its body only the output, and its
-// footer how the call ended and where it ran. body and state are HTML.
-function callBoxHtml({ input = "", prompt = false, label = "input", body = "", state = "", bad = false, where = "" }) {
+// Desktop's opened summary line: each row starts with a glyph for its kind of
+// call, and ends in a chevron when it opens.
+const ROW_ICON_PATHS = {
+    read: '<path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8 11.9 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="1.8"/>',
+    edit: '<path d="M10.5 2.5 12.5 4.5 6.5 10.5H4.5V8.5z"/><path d="M3 13.5h10"/>',
+    write: '<path d="M8 2.5v7M5 6.5l3 3 3-3"/><path d="M3 11v2.5h10V11"/>',
+    search: '<path d="M2.5 4h7M2.5 7h4M2.5 10h3"/><circle cx="10.5" cy="9.5" r="2.5"/><path d="m12.3 11.3 1.7 1.7"/>',
+    list: '<path d="M3.5 2.5v9M3.5 5.5h3M3.5 11.5h3"/><rect x="7.5" y="4" width="6" height="3" rx=".8"/><rect x="7.5" y="10" width="6" height="3" rx=".8"/>',
+    shell: '<path d="m3 4.5 3.5 3.5L3 11.5M8 12h5"/>',
+    wait: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.3"/>',
+    fetch: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c2 2 2 9 0 11M8 2.5c-2 2-2 9 0 11"/>',
+    web: '<path d="M2.5 5h11M2.5 8h7M2.5 11h5"/><path d="m12 9 .8 1.7 1.7.8-1.7.8L12 14l-.8-1.7-1.7-.8 1.7-.8z" fill="currentColor" stroke="none"/>',
+    other: '<circle cx="8" cy="8" r="2"/>',
+  };
+const ROW_ICON_KIND = {
+    read_file: "read", read_transcript: "read", read_artifact: "read", search_replace: "edit", edit_artifact: "edit",
+    write_file: "write", create_artifact: "write", update_artifact: "write", grep: "search", glob: "search", list_dir: "list",
+    run_terminal_command: "shell", kill_command: "shell", get_command_output: "wait", monitor: "wait", read_url: "fetch",
+  };
+function rowIconHtml(trace) {
+    const kind = trace ? ROW_ICON_KIND[trace.name] || (deps.isSearchTool(trace.name) ? "web" : "other") : "other";
+    return `<span class="dk-row-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${ROW_ICON_PATHS[kind]}</svg></span>`;
+  }
+const ROW_CHEV = '<span class="dk-row-chev" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+const ROW_CHEV_EMPTY = '<span class="dk-row-chev is-empty" aria-hidden="true"></span>';
+
+// A cut-short call's row says it in one word; its box says why.
+// "Interrupted · stopped; the process may still be running" ->
+// "Stopped before it finished. The process may still be running."
+function stopWord(text) {
+    return /^Interrupted · stopped/.test(text) ? "Stopped" : "Interrupted";
+  }
+function stopNote(text) {
+    const rest = String(text).replace(/^Interrupted · /, "");
+    if (/^stopped/.test(rest)) return `Stopped before it finished.${/may still be running/.test(rest) ? " The process may still be running." : ""}`;
+    return `${rest.charAt(0).toUpperCase()}${rest.slice(1)}.`;
+  }
+
+// An opened call: one box, its slots always in this order. The header is the
+// exact input (the command, the path, the pattern) with a copy button, the
+// body only the output, a note when the call needs explaining (why it
+// stopped), and a one-line footer: how it ended and how long it took on the
+// left, the machine and its folder on the right. body and state are HTML.
+function callBoxHtml({ input = "", prompt = false, label = "input", body = "", note = "", state = "", bad = false, stop = false, time = "", host = "", cwd = "" }) {
     const head = input ? `<div class="dk-call-head"><span class="dk-call-in">${prompt ? '<span class="dk-call-pr">$ </span>' : ""}${deps.escapeHtml(input)}</span>` +
       `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
-    const foot = state || where ? `<div class="dk-call-foot">${state ? `<span class="dk-call-state${bad ? " is-bad" : ""}">${state}</span>` : ""}` +
-      `${where ? `<span class="dk-call-where">${deps.escapeHtml(where)}</span>` : ""}</div>` : "";
-    return `<div class="dk-call-box">${head}${body}${foot}</div>`;
+    const tone = bad ? " is-bad" : stop ? " is-stop" : "";
+    const noteHtml = note ? `<div class="dk-call-note${tone}">${deps.escapeHtml(note)}</div>` : "";
+    const end = [state ? `<span class="dk-call-state${tone}">${state}</span>` : "", time ? `<span class="dk-call-time">${deps.escapeHtml(time)}</span>` : ""]
+      .filter(Boolean).join('<span class="dk-call-sep" aria-hidden="true">·</span>');
+    // The folder keeps its end when it is cut: the marks keep a leading "/" in
+    // place inside the right-to-left box that cuts it from the start.
+    const where = host || cwd ? `<span class="dk-call-where">${host ? `<span class="dk-call-host" title="${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : ""}` +
+      `${cwd ? `<span class="dk-call-cwd" title="${deps.escapeHtml(cwd)}">&lrm;${deps.escapeHtml(cwd)}&lrm;</span>` : ""}</span>` : "";
+    const foot = end || where ? `<div class="dk-call-foot"><span class="dk-call-end">${end}</span>${where}</div>` : "";
+    return `<div class="dk-call-box">${head}${body}${noteHtml}${foot}</div>`;
   }
 
 function callInput(trace) {
@@ -203,11 +252,16 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // An opened summary line lists one-line rows: each opens its own output.
       const preview = verbose || opts.oneLine ? "" : fold.preview;
       inner = verbose || opts.oneLine ? fold.full || fold.preview : fold.full;
+      // A cut-short one-line row: one word on the line, the reason as the box's
+      // note (not under its output as well).
+      const stopText = opts.oneLine && interrupted && !running ? deps.ccInterruptedText(trace) : "";
+      if (stopText) inner = inner.replace(/<div class="chat-console-result-text is-stop-note[^"]*">[^<]*<\/div>/g, "");
       const described = deps.shellDescription(trace, presentation, verbose);
       if (described && !opts.oneLine) inner = `<div class="dk-row-cmd">$ ${deps.escapeHtml(deps.displayCommand(trace))}</div>${inner}`;
-      // An opened one-line row is one box (callBoxHtml); a described command
-      // with no output still opens, to its command.
-      const boxed = Boolean(opts.oneLine && (inner || described));
+      // An opened one-line row is one box (callBoxHtml); a call with an input
+      // (a command, a path, a pattern) opens even with no output, to its input.
+      const input = opts.oneLine ? callInput(trace) : {};
+      const boxed = Boolean(opts.oneLine && (inner || described || input.input || stopText));
       const expandable = !verbose && openKind !== "agent" && (Boolean(inner) || boxed);
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
       // A running one-line row already says what it is doing; its result
@@ -220,6 +274,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       const exit = deps.shellExitCode(trace);
       const status = opts.oneLine && running
         ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Cancelling" ? "Cancelling…" : "")
+        : stopText ? stopWord(stopText)
         : fold.status || (opts.oneLine && (failed || dotState === "error")
           ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : String(trace.error || trace.summary || "failed").split("\n").find((line) => line.trim()) || "failed")
           : "");
@@ -233,19 +288,21 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // subject, result); its hang is only the body that opens under it.
       const lineResult = opts.oneLine ? result : "";
       if (boxed) {
-        // How it ended: a command's exit and time, any other call's result.
-        // Where: the machine, plus a command's directory or an image's
-        // format and size.
+        // How it ended (a command's exit, any other call's result) and how long
+        // it took; where: the machine, plus a command's directory.
         const shell = trace.name === "run_terminal_command" && !running;
-        const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms);
-        const state = shell
-          ? [status ? deps.escapeHtml(status) : exit === 0 ? "Exit 0" : "", Number.isFinite(ms) && ms > 0 ? deps.humanMs(ms) : ""].filter(Boolean).join(" · ")
-          : resultHtml(status);
-        const where = [trace.host, trace.name === "run_terminal_command" ? trace.cwd : "", toolImageInfo(trace)].filter(Boolean).join(" · ");
-        inner = callBoxHtml({ ...callInput(trace), body: inner, state, bad: failed || dotState === "error", where });
+        const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms ?? trace.latency_ms);
+        const time = Number.isFinite(ms) && ms > 0 ? deps.humanMs(ms) : "";
+        // The time has its own slot, so a result that names it ("1 search in 900ms") drops it.
+        const state = shell && !status ? (exit === 0 ? "Exit 0" : "") : resultHtml(time ? status.replace(/ in \d[\d.,]*\s?(?:ms|s|m)$/, "") : status);
+        inner = callBoxHtml({
+          ...input, body: inner, note: stopText ? stopNote(stopText) : "", state, bad: failed || dotState === "error", stop: Boolean(stopText),
+          time, host: trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",
+        });
       }
+      const line = deps.consoleCallHtml(trace, presentation, verbose) + lineResult;
       const head = deps.toolHeadHtml({
-        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + lineResult, title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
+        ...presentation, line: opts.oneLine ? rowIconHtml(trace) + line + (expandable ? ROW_CHEV : ROW_CHEV_EMPTY) : line, title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
       });
       const showHang = Boolean((lineResult ? "" : result) || preview || inner);
@@ -293,5 +350,5 @@ const TOOL_KIND = {
     read_transcript: "read",
   };
 
-  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, callBoxHtml, toolRowLabel, toolStepHtml, TOOL_KIND };
+  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, callBoxHtml, rowIconHtml, ROW_CHEV, toolRowLabel, toolStepHtml, TOOL_KIND };
 }

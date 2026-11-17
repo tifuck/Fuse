@@ -92,9 +92,10 @@ test('desktop rows read as sentences: a described command in the past tense, a f
   });
   const text = (trace, presentation = { state: 'done' }) => rows.consoleCallHtml(trace, presentation).replace(/<[^>]*>|[()]/g, '');
   const run = { name: 'run_terminal_command', command: 'make test', description: 'Run the test suite twice' };
-  assert.equal(text(run), 'Ran the test suite twice');
-  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Run the test suite twice', 'a failed one keeps what it tried');
-  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Run the test suite twice', 'so does one cut short');
+  assert.equal(text(run), 'Ranthe test suite twice', 'the inflected verb is its own word, the rest the subject');
+  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Ranthe test suite twice', 'a failed one reads in the past tense too');
+  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Ranthe test suite twice', 'so does one cut short');
+  assert.equal(text({ name: 'read_file', path: 'app/main.py' }, { state: 'error', failed: true }), 'Readmain.py in app');
   assert.equal(text({ ...run, description: 'Unit tests' }), 'RanUnit tests', 'no verb to inflect: the verb stays its own word');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');
   assert.equal(text({ name: 'read_file', path: 'README.md' }), 'ReadREADME.md');

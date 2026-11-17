@@ -215,3 +215,57 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
   background: color-mix(in srgb, var(--dk-link, var(--brass)) 30%, transparent);
   color: inherit;
 }
+
+/* Columns: an opened summary line lists one row per call: a glyph for its
+   kind, the sentence, its result right-aligned, a chevron when it opens. Rows
+   sit close. An opened row's box sits under the sentence and never wraps: its
+   input, output and note keep their lines and scroll sideways, and its footer
+   is one thin line, how it ended and how long it took on the left, the
+   machine and folder on the right. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  & { --dk-call-row: 23px; --dk-row-indent: 25px; }
+  @media (max-width: 480px), (pointer: coarse) { & { --dk-call-row: 30px; } }
+  @media (max-width: 480px) { & { --dk-row-indent: 0px; } }
+
+  & .chat-step-label > :is(.dk-row-ico, .dk-row-chev) { display: none; }
+  & .chat-console-bundle .chat-step-label > .dk-row-ico { display: inline-flex; flex: none; align-self: center; width: 15px; height: 15px; margin-right: 10px; color: var(--dk-call-quiet); }
+  & .chat-console-bundle .chat-step-label > .dk-row-ico svg { width: 15px; height: 15px; }
+  & .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label > .dk-row-ico { color: var(--call-fail); }
+  & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .dk-row-ico { color: var(--dk-warn); }
+  & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .chat-console-result-text { color: var(--dk-warn); }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { margin-left: auto; padding-left: 12px; text-align: right; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-took ~ .chat-console-result-text { margin-left: 10px; padding-left: 0; }
+  & .chat-console-bundle .chat-step-label > .dk-row-chev { display: inline-flex; flex: none; align-self: center; width: 12px; height: 12px; margin-left: auto; color: var(--dk-call-quiet); opacity: 0; transition: transform var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
+  & .chat-console-bundle .chat-step-label > :is(.chat-console-result-text, .chat-console-took) ~ .dk-row-chev { margin-left: 8px; }
+  & .chat-console-bundle .chat-step-label > .dk-row-chev svg { width: 12px; height: 12px; }
+  & .chat-console-bundle .chat-step-label > .dk-row-chev.is-empty { visibility: hidden; }
+  & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:is(:hover, :focus-within) .dk-row-chev,
+  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { opacity: 1; }
+  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { & .chat-console-bundle .chat-step-label > .dk-row-chev { transition: none; } }
+
+  & .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded { margin: 2px 0 6px var(--dk-row-indent); width: auto; }
+  & .chat-console-bundle .chat-step.is-dk-thought .chat-console-hang.is-expanded { margin: 1px 0 6px var(--dk-row-indent); }
+
+  & .dk-call-head { padding: 2px 8px 2px 12px; }
+  & .dk-call-in { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+  & .dk-call-box > :is(.chat-console-out, .chat-console-lines, pre) { padding-block: 4px; }
+  & .dk-call-box :is(.chat-console-stdout, .chat-console-nline, .chat-console-nbody, .dk-match-file, .dk-match-file *, .chat-console-lines) { white-space: pre !important; overflow-wrap: normal !important; word-break: normal !important; }
+  /* Numbered and diff lines share one width, the longest line's, so a tinted
+     row reaches the end of the scroll. */
+  & .dk-call-box .chat-console-lines { display: grid; grid-template-columns: minmax(max-content, 1fr); }
+  & .dk-call-note { padding: 1px 12px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-mute, var(--mute)); font: calc(0.72rem * var(--chat-text-scale, 1))/18px var(--sans); white-space: pre; overflow-x: auto; scrollbar-width: none; }
+  & .dk-call-head + .dk-call-note { border-top: 0; }
+  & .dk-call-note.is-stop, & .dk-call-state.is-stop { color: var(--dk-warn); }
+  & .dk-call-note.is-bad { color: var(--call-fail); }
+  & .dk-call-foot { align-items: center; justify-content: space-between; padding: 1px 12px; line-height: 18px; white-space: nowrap; }
+  & .dk-call-end { display: inline-flex; flex: none; align-items: baseline; }
+  & .dk-call-sep { margin: 0 5px; opacity: 0.6; }
+  & .dk-call-where { display: flex; flex: 1 1 auto; justify-content: flex-end; gap: 6px; min-width: 0; margin-left: auto; overflow: hidden; }
+  & .dk-call-host { flex: 0 0 auto; max-width: 60%; overflow: hidden; color: var(--dk-mute, var(--mute)); text-overflow: ellipsis; }
+  & .dk-call-cwd { flex: 0 1 auto; min-width: 0; overflow: hidden; direction: rtl; text-align: left; text-overflow: ellipsis; }
+  @media (max-width: 480px) {
+    & .dk-call-cwd { display: none; }
+    & .dk-call-host { max-width: 100%; }
+  }
+}

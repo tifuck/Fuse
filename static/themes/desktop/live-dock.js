@@ -100,7 +100,7 @@ function liveDetailHtml(trace) {
     return deps.callBoxHtml({
       input: deps.displayCommand(trace), prompt: true, label: "command",
       body: `<pre class="chat-console-out dk-live-out">${tail ? deps.renderAnsi(tail) : '<span class="dk-live-wait">Waiting for output</span>'}</pre>`,
-      state: deps.escapeHtml(deadline), where: [trace.host, trace.cwd].filter(Boolean).join(" · "),
+      state: deps.escapeHtml(deadline), host: trace.host || "", cwd: trace.cwd || "",
     });
   }
 function renderLiveDetail(dock) {
