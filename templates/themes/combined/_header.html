@@ -18,6 +18,12 @@
     </div>
     <h1 class="chat-bar-title cb-title"><span data-chat-title class="is-untitled"></span><span class="visually-hidden" data-chat-title-fallback>New chat</span></h1>
     <div class="cb-actions">
+      <div class="chat-host-stats" data-host-stats hidden role="group" aria-label="Machine usage">
+        <span class="hs-slice hs-host" data-hs-host-slice><i aria-hidden="true"></i><span data-hs-alias></span></span>
+        <span class="hs-slice hs-cpu"><svg class="hs-ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" pathLength="100"></circle><circle cx="8" cy="8" r="6" pathLength="100"></circle></svg><span class="visually-hidden">CPU</span><b data-hs-cpu></b></span>
+        <span class="hs-slice hs-ram"><svg class="hs-ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" pathLength="100"></circle><circle cx="8" cy="8" r="6" pathLength="100"></circle></svg><span class="visually-hidden">RAM</span><b data-hs-ram></b></span>
+        <span class="hs-slice hs-disk" data-hs-disk-slice><svg class="hs-ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" pathLength="100"></circle><circle cx="8" cy="8" r="6" pathLength="100"></circle></svg><span class="visually-hidden">Disk</span><b data-hs-disk></b></span>
+      </div>
       <button type="button" class="cb-pill" data-theme-pill aria-expanded="false" aria-controls="cb-rail" title="Agents, background commands, todos and context">
         <i class="cb-pill-dot" aria-hidden="true"></i><span data-theme-pill-text>Ready</span><em data-theme-pill-meta></em>
       </button>
