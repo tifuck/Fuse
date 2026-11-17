@@ -4,6 +4,22 @@ const CROSS = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true
 const TERM = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5l3.2 3.2L3 10.9M8 11.5h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const EYE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8s-2.3 4.2-6.2 4.2S1.8 8 1.8 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 const KINDS = { explore: "Explore", plan: "Plan", "general-purpose": "General" };
+// What a subagent has done, in words: "6 files, 3 searches, 1 edit".
+const NOUNS = {
+  read_file: "file", list_dir: "folder", grep: "search", glob: "search", search_replace: "edit", write_file: "edit",
+  run_terminal_command: "command", monitor: "watch", web_search: "web search", read_url: "page", spawn_subagent: "subagent",
+  load_skill: "skill", create_artifact: "artifact", update_artifact: "artifact", edit_artifact: "artifact",
+};
+const plural = (n, word) => (n === 1 ? word : /(ch|sh)$/.test(word) ? `${word}es` : `${word}s`);
+function workDone(row) {
+  const tally = new Map();
+  Object.entries(row.tool_counts && typeof row.tool_counts === "object" ? row.tool_counts : {}).forEach(([name, n]) => {
+    const noun = NOUNS[name];
+    if (noun && Number(n) > 0) tally.set(noun, (tally.get(noun) || 0) + Number(n));
+  });
+  return [...tally].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([noun, n]) => `${n} ${plural(n, noun)}`).join(", ");
+}
+const firstLine = (text) => String(text || "").trim().split(/\n/)[0].slice(0, 160);
 // Sort keys: a row sorts with the top of its family (the subagent its main
 // agent started), live families first; equal keys keep the runtime's order,
 // so children stay under their parent. Section labels sit between.
@@ -52,9 +68,13 @@ export function create(deps) {
     const wake = row.wake_state === "dropped" ? "report not delivered" : row.wake_state === "held" ? "report waits for your next message" : row.wake_state === "retrying" ? "report pending" : "";
     const alert = err || wake;
     const lastCall = !alert && live ? deps.ccAgentLastCall(row.recent) : "";
-    const activity = alert ? "" : lastCall || deps.agentActivitySummary(row);
     const status = deps.agentStatusText(row);
-    const doing = activity && !activity.startsWith(status) ? activity : "";
+    const done = workDone(row);
+    // Live: what it is doing now; finished: how it ended.
+    const doing = live
+      ? (row.cancel_requested ? "Stopping" : lastCall || (done ? `Working, ${done}` : "Working"))
+      : row.status === "completed" ? firstLine(row.summary) || done || "Done"
+        : row.status === "failed" ? "Failed" : done ? `Stopped, ${done}` : "Stopped";
     const commands = deps.jobsFor(row.id).length;
     const kind = KINDS[row.subagent_type] || (row.subagent_type ? row.subagent_type[0].toUpperCase() + row.subagent_type.slice(1) : "General");
     const depth = opts.tree ? opts.tree.ancestors.length : 0;
@@ -82,7 +102,7 @@ export function create(deps) {
     const mark = state === "done" ? CHECK : state === "failed" ? CROSS : "";
     const sub = alert
       ? `<span class="chat-agents-sum">${deps.escapeHtml(alert.slice(0, 180))}</span>`
-      : `<span class="chat-agents-doing">${deps.escapeHtml(doing || status)}</span>`;
+      : `<span class="chat-agents-doing">${deps.escapeHtml(doing)}</span>`;
     let label = "";
     if (!live && !render.labelled) {
       render.labelled = true;

@@ -261,11 +261,12 @@ export function create(deps) {
       const done = drag;
       drag = null;
       if (!done.moved) return;
-      justDragged = true;
-      setTimeout(() => { justDragged = false; });
       el.classList.remove("is-dragging");
       el.style.removeProperty("--dk-drag");
       finish.end(done.dy, done.v, done.h);
+      // The release's own click (on a tab or a button under the finger) is not a tap.
+      justDragged = true;
+      setTimeout(() => { justDragged = false; });
     };
     el.addEventListener("pointerup", end);
     el.addEventListener("pointercancel", end);
@@ -784,6 +785,8 @@ export function create(deps) {
     setAttr(toggle, "aria-label", label ? `Activity: ${label}` : "Activity");
     const artLive = q("[data-theme-art-live]");
     show(artLive, running > 0);
+    artLive?.classList.toggle("is-live", running > 0);
+    artLive?.classList.toggle("has-label", running > 0);
     setText(q("[data-theme-art-live-label]"), running ? `${running} running` : "");
     setText(q("[data-theme-art-bar-label]"), running ? `${running} running` : "Activity");
     q("[data-theme-art-live-bar]")?.classList.toggle("is-live", running > 0);

@@ -91,6 +91,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     width: var(--dk-insp-open);
     border-left: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
   }
+  /* The transcript keeps a centered column with margins beside it. */
+  &[data-theme-insp="dock"][data-theme-rail-state="open"] { --chat-col: clamp(32rem, calc(100vw - var(--dk-side-w) - var(--dk-insp-open) - 8rem), 90rem); }
   &[data-theme-insp="dock"]:not([data-theme-rail-state="open"]) .dk-insp { visibility: hidden; }
   &[data-theme-insp="dock"].dk-slide:not([data-theme-rail-state="open"]) .dk-insp { transition: visibility 0s linear var(--dk-slide, 260ms); }
   /* Over the chat: a panel from the right edge. */
@@ -367,6 +369,18 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     @starting-style { opacity: 0; translate: 0 -3px; }
   }
   & :is(.dk-ar, .dk-jr):last-child { border-bottom: 0; }
+  /* The shared row styles (base/chat-subagents.css, design-012-work.css) lay
+     rows out on Console's subgrid: these rows keep to their own grid. */
+  & :is(.dk-ar > .chat-agents-pick, .dk-jr > .chat-jobs-output-link) { grid-column: 1; grid-row: 1; height: auto; }
+  & :is(.dk-ar, .dk-jr) > :is(.chat-agents-act, .chat-jobs-kill, .chat-agents-fold) { grid-column: 2; grid-row: 1; }
+  & :is(.dk-ar, .dk-jr) { height: auto; column-gap: 0; }
+  & :is(.dk-ar .chat-agents-meta, .dk-jr .chat-jobs-meta) { flex: none; height: auto; max-width: none; margin-left: 0; }
+  & :is(.dk-ar, .dk-jr) .chat-agents-dot { animation: none; color: inherit; }
+  & :is(.dk-ar, .dk-jr) .chat-agents-dot::before { content: none; }
+  & .dk-jobs .dk-jr .chat-jobs-cmd::before { content: none; }
+  & .dk-agents .dk-ar:not(.is-main) :is(.chat-agents-doing, .chat-agents-sum) { display: block; }
+  & .dk-agents .dk-ar .chat-agents-state { color: var(--dk-mute); }
+  & .dk-ar[aria-current="true"]::before { background: var(--dk-link); }
   & :is(.dk-ar, .dk-jr):hover { background: var(--dk-hover); }
   & .dk-ar[aria-current="true"],
   & .dk-jr:has(.is-picked) { background: color-mix(in srgb, var(--dk-link) 10%, transparent); }
@@ -475,9 +489,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-jr .chat-jobs-cmd { overflow: hidden; color: var(--dk-text); font: 500 13px/18px var(--sans); text-overflow: ellipsis; white-space: nowrap; }
   & .dk-jr .chat-jobs-meta { display: flex; align-items: baseline; gap: 7px; min-width: 0; margin-top: 1px; overflow: hidden; color: var(--dk-mute); font: 12px/16px var(--sans); white-space: nowrap; }
   & .dk-jr .chat-jobs-meta > * { flex: none; }
-  & .dk-jr .chat-jobs-meta code { flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 0; border: 0; background: none; color: color-mix(in srgb, var(--dk-text) 68%, var(--dk-mute)); font: 11.5px/16px var(--mono); text-overflow: ellipsis; }
+  & .dk-jr .chat-jobs-meta code { flex: 1 1 auto; min-width: 0; overflow: hidden; padding: 0; border: 0; background: none; color: color-mix(in srgb, var(--dk-text) 68%, var(--dk-mute)); font: 11.5px/16px var(--code); text-overflow: ellipsis; }
   & .dk-host { color: color-mix(in srgb, var(--dk-text) 80%, var(--dk-mute)); }
-  & .dk-jr .chat-agents-time { padding-top: 0; color: var(--dk-text); font: 12px/18px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .dk-jr .chat-agents-time { grid-column: 3; padding-top: 0; color: var(--dk-text); font: 12px/18px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .dk-jr:not(.is-running) .chat-agents-time { color: var(--dk-mute); }
 
   /* The plan: a check for done, a ring for in progress, a dashed ring and
@@ -556,7 +570,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
   & .dk-btn.is-danger { border-color: color-mix(in srgb, var(--dk-del) 40%, var(--dk-card-line)); color: var(--dk-del); }
   & .dk-btn[hidden] { display: none; }
-  & .dk-out-cmd { padding: 8px 10px; border: 1px solid var(--dk-card-line); border-radius: 8px; background: var(--dk-card); color: var(--dk-text); font: 12px/1.45 var(--mono); overflow-wrap: anywhere; }
+  & .dk-out-cmd { padding: 8px 10px; border: 1px solid var(--dk-card-line); border-radius: 8px; background: var(--dk-card); color: var(--dk-text); font: 12px/1.45 var(--code); overflow-wrap: anywhere; }
   & .dk-out-cmd:empty { display: none; }
   & .dk-term {
     flex: 1;
@@ -565,14 +579,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     padding: 12px 14px;
     overflow: auto;
     overscroll-behavior: contain;
+    border: 1px solid var(--dk-card-line);
     border-radius: 10px;
-    background: #0b0c0e;
-    color: #d5d7db;
-    font: 12px/1.6 var(--mono);
+    background: color-mix(in srgb, var(--dk-canvas) 55%, #000);
+    color: color-mix(in srgb, var(--dk-text) 88%, var(--dk-mute));
+    font: 12px/1.6 var(--code);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  & .dk-term-wait { color: #7f848e; font-family: var(--sans); }
+  & .dk-term-wait { color: var(--dk-mute); font-family: var(--sans); }
   & .dk-out-picks { display: flex; flex: none; gap: 6px; overflow-x: auto; scrollbar-width: none; }
   & .dk-out-picks:empty, &:not([data-theme-insp="sheet"]) .dk-out-picks { display: none; }
   & .dk-pick { flex: none; height: 34px; padding: 0 12px; border: 1px solid var(--dk-card-line); border-radius: 999px; background: none; color: var(--dk-text); font: 13px var(--sans); white-space: nowrap; cursor: pointer; }
@@ -651,9 +666,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* ---- Windows above a phone ---- */
   @media (min-width: 801px) {
     /* The workspace: a narrow chat column beside the page; the divider between them resizes. */
+    /* The page's width: the runtime's own (set inline once dragged) wins over this default. */
     &.is-artifact {
-      --dk-ws-chat: max(320px, calc(100vw - var(--dk-side-w) - var(--chat-artifact, calc(100vw - var(--dk-side-w) - clamp(340px, 30vw, 440px)))));
-      grid-template-columns: var(--dk-side-w) var(--dk-ws-chat) minmax(0, 1fr) 0px;
+      --chat-artifact: calc(100vw - var(--dk-side-w) - clamp(340px, 30vw, 440px));
+      grid-template-columns: var(--dk-side-w) max(320px, calc(100vw - var(--dk-side-w) - var(--chat-artifact))) minmax(0, 1fr) 0px;
     }
     &.is-artifact:not(.dk-art-full) .chat-artifact-resize { display: block; }
     /* Full window: the page alone; Chat slides in over it from the left. */
