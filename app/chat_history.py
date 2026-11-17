@@ -373,6 +373,8 @@ def finalize(conn, run, request, display, message):
     source = _clean(_load(run["provider_messages"], [])) or _clean(_load(run["request"], {}).get("messages") or [])
     source = chat_store.seal_provider_messages(source, notice="Tool interrupted before a result was saved; outcome unknown. Verify before retrying.")
     swap = _swap(run["user_id"], run["thread_id"], conn)
+    if swap is not None:
+        swap.bind(lambda: source)  # the model's own transcript decides what it wrote
     shown = swap.restore if swap is not None else (lambda text: text)
     input_hashes = request.get("history_input_hashes") or []
     boundary = 0

@@ -441,6 +441,16 @@ _HOSTS = (
     "and host on the bound machine: file-tool paths resolve from the project directory, so use short "
     "project-relative paths and never prepend cd to it."
 )
+_PRINT_SECRETS = "Never print full secret values into chat."
+# Chats that swap secrets (app/secret_swap.py): the model holds stand-ins, so a
+# value it shows maps back to the user's real one, but only when written whole.
+# Says nothing of the swap.
+_PRINT_SECRETS_SWAPPED = (
+    "Show a secret value only when the user asks for it or the task needs it in your reply, and then "
+    "write it in full, exactly as it appears, never shortened. Never put secret values in artifacts, "
+    "memories, or commit messages."
+)
+assert _PRINT_SECRETS in _HOSTS
 # Plan children have no shell and write nothing: they get _HOSTS without these.
 _HOSTS_SHELL = (
     " To run a command elsewhere, set cwd (paths in the command are relative to it); cd does not "
@@ -736,6 +746,7 @@ def build_system_prompt(
     memory_index: str = "",
     memory_project: bool = False,
     temp_dir: str = "",
+    secrets_swapped: bool = False,
 ) -> str:
     sources = ["User instructions", "profile notes", "this-chat notes"]
     memory_block = "" if subagent else memory_section(memory, memory_index, project=memory_project)
@@ -805,7 +816,8 @@ def build_system_prompt(
         if kind == "explore":
             parts.append(_SHELL + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:
-        parts.append(_HOSTS if kind == "plan" else _HOSTS + _HOSTS_SHELL)
+        hosts = _HOSTS.replace(_PRINT_SECRETS, _PRINT_SECRETS_SWAPPED) if secrets_swapped else _HOSTS
+        parts.append(hosts if kind == "plan" else hosts + _HOSTS_SHELL)
     if "web_search" in tools:
         parts.append(_SEARCH_CORE if coding else _SEARCH_PLAYBOOK)
     else:

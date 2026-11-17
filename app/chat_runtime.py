@@ -666,6 +666,12 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         str((thread or {}).get("created_at") or ""),
         str(agent.get("run_id") or "") if is_child else "",
     ) if coding else ""
+    from . import secret_swap
+
+    try:
+        swap = await asyncio.to_thread(secret_swap.for_thread, user["id"], thread_id) if thread_id else None
+    except secret_swap.SwapUnavailable as exc:
+        raise HTTPException(409, str(exc)) from None
     candidate_system = build_system_prompt(
         instructions=prefs["instructions"],
         profile=prefs["profile"],
@@ -687,6 +693,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_index=memory_index,
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
+        secrets_swapped=swap is not None,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
     prompt_snapshot = copy.deepcopy(snapshot) if isinstance(snapshot, dict) and isinstance(snapshot.get("system"), str) else {}
@@ -694,12 +701,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     model_messages = messages if agent.get("resumed") or agent.get("followup_continuation") else expand_slash_messages(
         messages, project_session=project_session, bound_cwd=bound_cwd)
     work = [{"role": "system", "content": system}, *model_messages]
-    from . import secret_swap
-
-    try:
-        swap = await asyncio.to_thread(secret_swap.for_thread, user["id"], thread_id) if thread_id else None
-    except secret_swap.SwapUnavailable as exc:
-        raise HTTPException(409, str(exc)) from None
     if not agent.get("resumed") and not agent.get("followup_continuation"):
         tail_block = _session_tail_block(
             _artifact_lines(artifacts.list_for_prompt(user["id"], thread_id) if artifacts_on else []),
