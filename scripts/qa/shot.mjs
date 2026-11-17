@@ -90,7 +90,7 @@
 // parts and a big sheet into pages (-1.png, -2.png). Exit 1 on failure, 2 on a
 // bad option; the page's script errors are listed. No dependencies: Node's own
 // WebSocket and Playwright's cached headless Chromium over the DevTools
-// protocol. Private to this server (.gitignore).
+// protocol. Tracked on dev, never released to main; the login stays in data/.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';

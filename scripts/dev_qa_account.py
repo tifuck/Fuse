@@ -21,9 +21,10 @@ field stops the seeder instead of drawing wrongly. "QA · Artifacts" and the
 pending draft in "QA · Planning and memory" are real rows; the draft expires
 after 24 hours (reseed). Titles start with "QA · ".
 
-Refuses any database but fuse_dev. This file is private to this server
-(.gitignore); the fixture text is made up and holds nothing real: never copy
-chats, paths, keys or output from production or from a real session.
+Refuses any database but fuse_dev. This file is tracked on dev (pushed to
+GitHub dev, which is public, and never released to main); the fixture text is
+made up and holds nothing real: never copy chats, paths, keys or output from
+production or from a real session.
 """
 from __future__ import annotations
 
