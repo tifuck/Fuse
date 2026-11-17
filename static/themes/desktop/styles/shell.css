@@ -1170,11 +1170,11 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
 /* Machine stats (static/chat/hoststats.js): quiet meters centred under the
    input, between the composer's own controls. Each value has a fixed-width
    slot, so the row never shifts as numbers change; a 2px gauge hangs under
-   each load. The runtime drops slices that do not fit, and a long model
-   name is cut short while the meters show. */
+   each load. The runtime drops slices that do not fit, and the model
+   picker shrinks to its logo while the meters show (the id is its title). */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 .chat-host-stats { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model { max-width: 15rem; }
+  & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model .chat-picker-btn:not(:disabled) > span { display: none; }
   & .chat-host-stats {
     display: flex; align-items: center; gap: 14px; width: max-content; height: 28px;
     font: 500 11px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
