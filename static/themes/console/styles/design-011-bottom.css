@@ -232,3 +232,23 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more { width: 1.7rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu .chat-queue-action { padding: 0 0.55rem; }
 }
+
+/* Machine stats (static/chat/hoststats.js): the console's bar has no free
+   middle, so the sliced strip sits on its own line under the box, flat
+   and in the console's type. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats {
+  display: flex; align-items: stretch; width: max-content; max-width: 100%; height: 20px; margin: 6px auto 0;
+  border-radius: 5px; overflow: hidden; background: rgb(0 0 0 / .35); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .05);
+  font: 11px/1 var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--mute); cursor: default; user-select: none;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice { position: relative; display: flex; align-items: center; gap: 5px; padding: 0 8px; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice:not(.is-dropped, [hidden]) ~ .hs-slice:not(.is-dropped, [hidden])::before {
+  content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 1px; background: rgb(255 255 255 / .06);
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { font-weight: 400; color: #fff; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host i { width: 5px; height: 5px; border-radius: 50%; background: #3ecf8e; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net > span { display: inline-flex; gap: 2px; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net { gap: 6px; }

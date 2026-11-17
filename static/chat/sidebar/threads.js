@@ -37,7 +37,7 @@ function openedMessage(msg) {
 }
 
 export function createThreads(ctx) {
-  const { agents, artifacts, chatApi, composer, context, drawer, net, overlays, panels, perms, picker, projects, render, spinners, sync, traces, transcript, turns, undo } = ctx;
+  const { agents, artifacts, chatApi, composer, context, drawer, hostStats, net, overlays, panels, perms, picker, projects, render, spinners, sync, traces, transcript, turns, undo } = ctx;
     function upsertLocal(thread) {
     if (!thread || !thread.id) return;
     const bucket = thread.archived ? S.archivedThreads : S.threads;
@@ -171,6 +171,7 @@ export function createThreads(ctx) {
       }
     }
     S.root.classList.toggle("is-project", Boolean(bound));
+    hostStats.sync(bound);
     if (S.welcomeEl) {
       if (bound && (bound.project_name || bound.host_alias)) {
         const project = bound.project_name || "project";

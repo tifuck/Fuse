@@ -1,0 +1,173 @@
+// Machine stats card: live CPU, RAM, disk and network of the session's
+// connector machine, under the composer. One socket while the page is
+// visible and the chat is bound to a machine; the connector samples only
+// while that socket is open. Each theme draws the card ([data-host-stats]).
+import { S } from './state.js';
+
+// No sample for this long (connector offline, sampling stopped): hide.
+const STALE_MS = 7000;
+
+// White to 50%, amber at 75%, red from 95%; mixed in oklch so the ramp
+// stays even. Below 50% the theme's own colour stands.
+export function loadTone(pct) {
+  if (!(pct > 50)) return "";
+  if (pct >= 95) return "#ff453a";
+  if (pct < 75) return `color-mix(in oklch, #f5b83d ${Math.round((pct - 50) * 4)}%, #fff)`;
+  return `color-mix(in oklch, #ff453a ${Math.round((pct - 75) * 5)}%, #f5b83d)`;
+}
+
+// Bytes per second, short: 0B, 840B, 84K, 1.2M, 3.4G.
+export function shortRate(bps) {
+  const n = Math.max(0, Number(bps) || 0);
+  const units = [["G", 1e9], ["M", 1e6], ["K", 1e3]];
+  for (const [unit, size] of units) {
+    if (n >= size * 0.995) {
+      const v = n / size;
+      return (v < 9.95 ? v.toFixed(1) : String(Math.round(v))) + unit;
+    }
+  }
+  return Math.round(n) + "B";
+}
+
+function gib(bytes) {
+  const v = (Number(bytes) || 0) / 2 ** 30;
+  return (v < 9.95 ? v.toFixed(1) : String(Math.round(v))) + " GB";
+}
+
+const pct = (part, whole) => (whole > 0 ? (100 * part) / whole : 0);
+
+export function createHostStats() {
+  const card = S.root?.querySelector("[data-host-stats]");
+  const slot = (name) => card?.querySelector(`[data-hs-${name}]`);
+  const el = card ? {
+    alias: slot("alias"), cpu: slot("cpu"), ram: slot("ram"), disk: slot("disk"), rx: slot("rx"), tx: slot("tx"),
+    hostSlice: slot("host-slice"), diskSlice: slot("disk-slice"), netSlice: slot("net-slice"),
+  } : null;
+  const refused = new Set();
+  let hostId = 0;
+  let alias = "";
+  let ws = null;
+  let retry = 0;
+  let stale = 0;
+  let fitKey = "";
+
+  function hide() {
+    window.clearTimeout(stale);
+    if (card && !card.hidden) card.hidden = true;
+    fitKey = "";
+  }
+
+  function close() {
+    window.clearTimeout(retry);
+    const sock = ws;
+    ws = null;
+    sock?.close();
+    hide();
+  }
+
+  function open() {
+    if (!card || ws || !hostId || document.hidden || refused.has(hostId)) return;
+    const id = hostId;
+    const url = new URL(`/hosts/${id}/stats`, location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const sock = new WebSocket(url);
+    ws = sock;
+    sock.onmessage = (event) => {
+      if (ws !== sock) return;
+      let data;
+      try { data = JSON.parse(event.data); } catch (_) { return; }
+      if (data?.type === "stats") paint(data);
+    };
+    sock.onclose = (event) => {
+      if (ws !== sock) return;
+      ws = null;
+      hide();
+      // Not a connector, not this user's, signed out: no point asking again.
+      if ([4401, 4403, 4404].includes(event.code)) { refused.add(id); return; }
+      retry = window.setTimeout(open, event.code === 1012 ? 1000 : 5000);
+    };
+  }
+
+  function set(node, text, tone) {
+    if (!node) return;
+    if (node.textContent !== text) node.textContent = text;
+    if (tone !== undefined && node.style.color !== tone) node.style.color = tone;
+  }
+
+  function paint(d) {
+    const [memUsed, memTotal] = d.mem;
+    const [rx, tx] = d.net;
+    const cpu = Math.round(d.cpu);
+    const ram = Math.round(pct(memUsed, memTotal));
+    set(el.alias, alias || "machine");
+    set(el.cpu, cpu + "%", loadTone(cpu));
+    set(el.ram, ram + "%", loadTone(ram));
+    if (el.diskSlice) el.diskSlice.hidden = !d.disk;
+    if (d.disk) set(el.disk, Math.round(d.disk[0]) + "%", loadTone(d.disk[0]));
+    set(el.rx, shortRate(rx));
+    set(el.tx, shortRate(tx));
+    const lines = [
+      alias || "Machine",
+      `CPU ${cpu}%`,
+      `Memory ${gib(memUsed)} of ${gib(memTotal)} (${ram}%)`,
+      d.disk && `Disk ${Math.round(d.disk[0])}% busy, read ${shortRate(d.disk[1])}/s, write ${shortRate(d.disk[2])}/s`,
+      d.vol && `Storage ${gib(d.vol[0])} of ${gib(d.vol[1])} used`,
+      `Network down ${shortRate(rx)}/s, up ${shortRate(tx)}/s`,
+    ].filter(Boolean).join("\n");
+    if (card.title !== lines) card.title = lines;
+    if (card.hidden) card.hidden = false;
+    fit();
+    window.clearTimeout(stale);
+    stale = window.setTimeout(hide, STALE_MS);
+  }
+
+  // Whatever does not fit between the composer's own controls goes:
+  // the machine name first, then the network, then the whole card.
+  function room() {
+    const row = card.parentElement;
+    const groups = [...row.querySelectorAll(":scope > [data-box-group]")];
+    if (groups.length < 2) return row.clientWidth;
+    const r = row.getBoundingClientRect();
+    const mid = r.left + r.width / 2;
+    const edges = (group) => [...group.children]
+      .map((child) => child.getBoundingClientRect())
+      .filter((b) => b.width && b.bottom > r.top && b.top < r.bottom);
+    const left = Math.max(r.left, ...edges(groups[0]).map((b) => b.right));
+    const right = Math.min(r.right, ...edges(groups[1]).map((b) => b.left));
+    return 2 * Math.min(mid - left, right - mid) - 24;
+  }
+
+  function fit() {
+    const key = `${card.parentElement.clientWidth}|${[el.cpu, el.ram, el.disk, el.rx, el.tx, el.alias].map((n) => n?.textContent.length).join(",")}`;
+    if (key === fitKey) return;
+    fitKey = key;
+    const steps = [el.hostSlice, el.netSlice].filter(Boolean);
+    card.classList.remove("is-squeezed");
+    steps.forEach((node) => node.classList.remove("is-dropped"));
+    const space = room();
+    for (const node of steps) {
+      if (card.scrollWidth <= space) return;
+      node.classList.add("is-dropped");
+    }
+    if (card.scrollWidth > space) card.classList.add("is-squeezed");
+  }
+
+  // Called whenever the chat's identity is synced (thread, project session).
+  function sync(bound) {
+    if (!card) return;
+    const next = Number(bound?.host_id) || 0;
+    alias = bound?.host_alias || "";
+    if (el.alias && card.hidden === false) set(el.alias, alias || "machine");
+    if (next === hostId) return;
+    close();
+    hostId = next;
+    open();
+  }
+
+  if (card) {
+    document.addEventListener("visibilitychange", () => (document.hidden ? close() : open()));
+    window.addEventListener("resize", () => { if (!card.hidden) { fitKey = ""; fit(); } });
+  }
+
+  return { sync };
+}

@@ -173,3 +173,16 @@ test('composePrompt appends the mode rules and only modifiers valid for it; the 
     }
   }
 });
+
+test('machine stats: load stays white to 50%, turns amber, red from 95%; rates read short', async () => {
+  const { loadTone, shortRate } = await import('../../static/chat/hoststats.js');
+  assert.equal(loadTone(0), '');
+  assert.equal(loadTone(50), '');
+  assert.equal(loadTone(75), 'color-mix(in oklch, #ff453a 0%, #f5b83d)');
+  assert.match(loadTone(60), /#f5b83d 40%, #fff/);
+  assert.equal(loadTone(95), '#ff453a');
+  assert.equal(loadTone(100), '#ff453a');
+  assert.equal(loadTone(NaN), '');
+  assert.deepEqual([0, 840, 999, 84_000, 1_234_567, 12_500_000, 3.4e9, -5].map(shortRate),
+    ['0B', '840B', '1.0K', '84K', '1.2M', '13M', '3.4G', '0B']);
+});
