@@ -40,12 +40,10 @@ docs/archive/
 /scripts/github.sh
 /scripts/release-connector.sh
 /scripts/clone_db_to_dev.py
-/scripts/dev_qa_account.py
 /scripts/loadtest_subagents.py
 /scripts/build_composer_dict.py
 /scripts/migrate_chat_metadata.py
 /scripts/migrate_projects.py
-/scripts/qa/
 /scripts/git-hooks/
 /tests/legacy/fixtures/
 /tests/legacy/page_fixtures.py

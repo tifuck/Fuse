@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+"""The dev instance's permanent QA login and its artificial chats.
+
+    ./venv/bin/python -m scripts.dev_qa_account
+
+Run from the dev tree. Creates the QA account once and keeps it an admin (so
+the QA browser, scripts/qa/shot.mjs, can open the admin pages; it aborts every
+write), keeps its password in data/dev-qa-login.json (gitignored, mode 0600;
+never printed) and replaces the account's chats, artifacts and skill drafts
+with the "QA · " fixtures below, so every run leaves the same data.
+
+Writing a chat: THREADS lists (title, builder). A builder returns messages
+made with user(text) and reply(*parts), where a part is reply text,
+("think", text, ms), tool(name, **fields), perm(...), marker(kind, text) or
+delivery(envelope, ...); wake(envelope, ...) is the automated user turn that
+brings background results. The envelope helpers (command_result,
+monitor_event, monitor_result, task_report) copy the server's format. The
+server validates each message strictly (app/chat_schema.py: parse_messages
+and _parse_tool_traces list the tool names and fields it accepts), so a wrong
+field stops the seeder instead of drawing wrongly. "QA · Artifacts" and the
+pending draft in "QA · Planning and memory" are real rows; the draft expires
+after 24 hours (reseed). Titles start with "QA · ".
+
+Refuses any database but fuse_dev. This file is private to this server
+(.gitignore); the fixture text is made up and holds nothing real: never copy
+chats, paths, keys or output from production or from a real session.
+"""
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import sys
+from datetime import datetime, timedelta, timezone
+from itertools import count
+from pathlib import Path
+from urllib.parse import urlsplit
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+os.environ.setdefault("DATABASE_POOL_SIZE", "2")
+
+EMAIL = "qa@dev.fuse.invalid"
+CREDS = ROOT / "data" / "dev-qa-login.json"
+HOST = "fuse-dev"
+PROJECT = "/srv/demo"
+MODEL = "qa-fixture"
+
+_ids = count(1)
+
+
+def tool(name: str, **fields) -> dict:
+    row = {"id": f"qa{next(_ids)}", "name": name, "status": "done", "host": HOST, "project_root": PROJECT}
+    row.update(fields)
+    return row
+
+
+def numbered(start: int, lines: list[str]) -> str:
+    return "\n".join(f"{start + i}: {line}" for i, line in enumerate(lines))
+
+
+def perm(**fields) -> dict:
+    """A permission card in a reply: tool_permission (an ask) or skill_save."""
+    return {"_perm": {"id": f"qa-perm-{next(_ids)}", **fields}}
+
+
+def marker(kind: str, text: str, summary: str = "") -> dict:
+    """A run marker in a reply: compaction, prune, resume or notice."""
+    return {"_seg": {"type": "marker", "kind": kind, "text": text, **({"summary": summary} if summary else {})}}
+
+
+def delivery(*envelopes: str) -> dict:
+    """Background results handed to the model mid-reply (inbox.display_text)."""
+    return {"_seg": {"type": "delivery", "text": "\n".join(envelopes)}}
+
+
+def reply(*parts, minutes_ago: int = 0, elapsed_s: int = 0, live: bool = False, **extra) -> dict:
+    """An assistant message from its parts in order: a str is reply text, a
+    ("think", text, ms) tuple a thought, a dict a tool call (or a perm, marker
+    or delivery). live: a reply still being worked on, with no end time (see
+    live_thread)."""
+    tools, segments, content, reasoning, perms = [], [], [], [], []
+    for part in parts:
+        if isinstance(part, dict) and "_seg" in part:
+            segments.append(part["_seg"])
+        elif isinstance(part, dict) and "_perm" in part:
+            perms.append(part["_perm"])
+            segments.append({"type": "permission", "id": part["_perm"]["id"]})
+        elif isinstance(part, dict):
+            tools.append(part)
+            segments.append({"type": "tool", "id": part["id"]})
+        elif isinstance(part, tuple):
+            segments.append({"type": "reasoning", "text": part[1], "ms": part[2]})
+            reasoning.append(part[1])
+        else:
+            segments.append({"type": "content", "text": part})
+            content.append(part)
+    ended = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    done = {} if live else {"elapsedMs": elapsed_s * 1000, "endedAt": ended.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    return {"role": "assistant", "content": "".join(content), "reasoning": "".join(reasoning), "tools": tools,
+            "segments": segments, "model": MODEL, **({"permissions": perms} if perms else {}), **done, **extra}
+
+
+def user(text: str, **extra) -> dict:
+    return {"role": "user", "content": text, **extra}
+
+
+# Background result envelopes, in the server's own shapes (command_jobs.notification,
+# monitor.event_envelope / result_envelope, chat_views task envelope).
+def command_result(ident: str, state: str, command: str, output: str, *, description: str = "", exit_code=None,
+                   duration_ms: int = 0, error: str = "") -> str:
+    lines = [f'<command_result id="{ident}" state="{state}">', f"host: {HOST} command: {command}"]
+    lines += [f"description: {description}"] if description else []
+    lines += [f"exit_code: {exit_code}"] if state == "completed" else []
+    lines += [f"duration_ms: {duration_ms}"] + ([f"error: {error}"] if error else [])
+    lines += [f"output_chars: {len(output)}", "output_chars_exact: true", "", output or "(no output)", "</command_result>"]
+    return "\n".join(lines)
+
+
+def monitor_event(ident: str, seq: int, command: str, body: str, *, description: str = "", elapsed_ms: int = 0) -> str:
+    return "\n".join([f'<monitor_event id="{ident}" seq="{seq}" count="{seq}">', f"host: {HOST} source: command target: {command}",
+                      *([f"description: {description}"] if description else []), f"events: {seq}", f"elapsed_ms: {elapsed_ms}",
+                      "", body, "</monitor_event>"])
+
+
+def monitor_result(ident: str, state: str, command: str, events: int, *, description: str = "", timeout_ms: int = 0,
+                   duration_ms: int = 0, out: str = "") -> str:
+    return "\n".join([f'<monitor_result id="{ident}" state="{state}">', f"host: {HOST} source: command target: {command}",
+                      *([f"description: {description}"] if description else []), f"events: {events}",
+                      *([f"timeout_ms: {timeout_ms}"] if timeout_ms else []), f"duration_ms: {duration_ms}",
+                      "", out or "(no output)", "</monitor_result>"])
+
+
+def task_report(ident: str, state: str, summary: str, body: str) -> str:
+    tag = "task_error" if state in ("error", "cancelled", "interrupted") else "task_result"
+    return "\n".join([f'<task id="{ident}" state="{state}">', f"<summary>{summary}</summary>", f"<{tag}>", body,
+                      f"</{tag}>", "</task>", f"task_id: {ident} (pass task_id to continue this subagent)"])
+
+
+def wake(*envelopes: str) -> dict:
+    """The automated user turn that carries background results (inbox.results_message)."""
+    from app.chat_generation.inbox import RESULTS_HEAD, RESULTS_TAIL
+
+    return user(RESULTS_HEAD + "\n\n" + "\n\n".join(envelopes) + "\n\n" + RESULTS_TAIL, auto=True)
+
+
+SESSION_GO = ["func (s *session) reattach(ws *conn) {", "\told := s.swap(ws)", "\tif old != nil {", "\t\told.Close()", "\t}", "}", "",
+              "func (s *session) swap(ws *conn) *conn {", "\ts.mu.Lock()", "\tdefer s.mu.Unlock()", "\told := s.ws", "\ts.ws = ws",
+              "\treturn old", "}"]
+DIFF = ("@@ -212,3 +212,5 @@\n async def _reader(self, ws):\n-    while not ws.closed:\n+    while True:\n"
+        "+        if ws is not self._socket:\n+            break\n         frame = await ws.receive_text()")
+BIG_DIFF = ("@@ -40,9 +40,12 @@\n def load(path):\n-    data = open(path).read()\n-    return json.loads(data)\n"
+            "+    with open(path, encoding=\"utf-8\") as handle:\n+        data = handle.read()\n+    try:\n"
+            "+        return json.loads(data)\n+    except json.JSONDecodeError as error:\n"
+            "+        raise ConfigError(f\"{path}: {error}\") from None\n \n def save(path, value):\n"
+            "-    open(path, \"w\").write(json.dumps(value))\n+    tmp = path + \".tmp\"\n"
+            "+    with open(tmp, \"w\", encoding=\"utf-8\") as handle:\n+        json.dump(value, handle, indent=2)\n"
+            "+    os.replace(tmp, path)")
+PYTEST = "\n".join([f"tests/core/agents/test_hub.py::test_case_{i:02d} PASSED" for i in range(60)] + ["", "198 passed in 61.82s"])
+ANSI = "\x1b[32m✓\x1b[0m lint\n\x1b[32m✓\x1b[0m types\n\x1b[31m✗\x1b[0m unit  \x1b[2m(2 failed)\x1b[0m\n\x1b[33m!\x1b[0m coverage 81% (threshold 85%)"
+LONG_LINE = "tests/core/agents/test_hub.py:131:async def test_reattach_after_close_drops_old_frames_and_keeps_the_pending_reply_for_the_new_socket(hub, fake_socket, monkeypatch):"
+
+
+def rows_thread() -> list[dict]:
+    """One reply with every kind of call the desktop rows draw."""
+    return [
+        user("Run the suite twice so we know it isn't flaky."),
+        reply(
+            "Benign. Checking the two run-store commits that touched `chat_runs.py`.\n\n",
+            tool("read_file", path=f"{PROJECT}/app/chat_runs.py", output=numbered(1, ["import asyncio", "", "from . import db"])),
+            tool("run_terminal_command", command="git log --oneline -3", cwd=PROJECT, exit_code=0, execution_duration_ms=180,
+                 output="be63041 Status line names what is happening\n712b233 Skills library sheet\n471de71 Skills dialog stays centred"),
+            "Checking how the reader loop handles a replaced socket before the double run.\n\n",
+            tool("read_file", path=f"{PROJECT}/agent/windows/session.go", output=numbered(86, SESSION_GO)),
+            tool("grep", pattern="streamWriter", path=f"{PROJECT}/agent/windows",
+                 output="agent/windows/exec_windows.go:41:type streamWriter struct {\n"
+                        "agent/windows/exec_windows.go:97:func (w *streamWriter) Write(p []byte) (int, error) {\n"
+                        "agent/windows/session.go:58:\tout := &streamWriter{id: id}"),
+            ("think", "**Checking the socket swap**\nThe hub drops the reply when the socket is replaced mid-flight, so the test has to keep "
+                      "the old socket reading after close. The fake already does that; the double run only needs to prove the ordering is stable.", 4200),
+            tool("glob", pattern="tests/core/agents/test_*.py", path=PROJECT,
+                 output="tests/core/agents/test_delivery.py\ntests/core/agents/test_hub.py\ntests/core/agents/test_lifecycle.py"),
+            tool("list_dir", path=f"{PROJECT}/tests/core", output="agents/\nchat/\nrouter/\ntools/\nworkspace/\nconftest.py"),
+            tool("read_file", path=f"{PROJECT}/README.md", output=numbered(1, ["# Demo", "", "A made-up project for QA screenshots."])),
+            tool("run_terminal_command", command='ls tests/core && grep -rn "reattach" tests/core/agents',
+                 description="List core test areas and relevant test files", cwd=PROJECT, exit_code=0, execution_duration_ms=420,
+                 output="agents  chat  router  tools  workspace\ntests/core/agents/test_hub.py:88:async def test_reattach_keeps_pending_reply(hub):\n" + LONG_LINE),
+            tool("search_replace", path=f"{PROJECT}/app/agent_hub.py", preview=DIFF, lines_added=3, lines_removed=1),
+            tool("write_file", path=f"{PROJECT}/tests/core/agents/test_reattach.py", output="created tests/core/agents/test_reattach.py (412 bytes)"),
+            tool("run_terminal_command", command="systemctl restart demo", description="Restart the dev instance", cwd=PROJECT,
+                 exit_code=5, execution_duration_ms=110, output="Failed to restart demo.service: Unit demo.service not found."),
+            tool("read_file", status="error", path=f"{PROJECT}/app/missing.py", error="No such file or directory"),
+            tool("run_terminal_command", command="git -C /srv/demo status --short", cwd=PROJECT, exit_code=0, execution_duration_ms=2400,
+                 output=" M app/agent_hub.py\n?? tests/core/agents/test_reattach.py"),
+            tool("run_terminal_command", command="true", description="Check the lock file is gone", cwd=PROJECT, exit_code=0,
+                 execution_duration_ms=30, output=""),
+            tool("read_url", url="https://docs.python.org/3/library/asyncio-task.html", bytes=48211, http_status=200,
+                 results=[{"title": "Coroutines and Tasks", "url": "https://docs.python.org/3/library/asyncio-task.html",
+                           "snippet": "This section outlines high-level asyncio APIs to work with coroutines and Tasks."}]),
+            tool("web_search", queries=["asyncio websocket close race"], latency_ms=900,
+                 results=[{"title": "Closing a websocket while a read is pending", "url": "https://example.com/ws-close", "snippet": "A read in flight completes after close."},
+                          {"title": "asyncio cancellation notes", "url": "https://example.org/cancel", "snippet": "CancelledError is raised at the next await."}]),
+            tool("run_terminal_command", command="scripts/test.sh agents -- -q --count 2", description="Run the test suite twice",
+                 cwd=PROJECT, exit_code=0, execution_duration_ms=64000, output=PYTEST),
+            "Both runs pass: 99 tests each, no failures, same order. It isn't flaky.",
+            minutes_ago=15, elapsed_s=372),
+    ]
+
+
+def edits_thread() -> list[dict]:
+    """Bigger diffs and outputs: long, coloured, cut short, interrupted."""
+    return [
+        user("Harden the config loader and run the checks."),
+        reply(
+            "Rewriting the loader so a bad file names itself.\n\n",
+            tool("search_replace", path=f"{PROJECT}/app/config_store.py", preview=BIG_DIFF, lines_added=11, lines_removed=3),
+            tool("run_terminal_command", command="make check", description="Run the checks", cwd=PROJECT, exit_code=1,
+                 execution_duration_ms=8300, output=ANSI),
+            tool("run_terminal_command", command="pytest -q tests/core", description="Run the core tests", cwd=PROJECT, exit_code=0,
+                 execution_duration_ms=61820, output=PYTEST, output_chars=180000, truncated=True),
+            tool("run_terminal_command", status="interrupted", command="sleep 600", description="Wait for the queue to drain", cwd=PROJECT,
+                 error="Interrupted by the user"),
+            "The loader is done. Coverage is under the threshold, so the check target fails until the two unit failures are fixed.",
+            minutes_ago=42, elapsed_s=95),
+    ]
+
+
+def summary_thread() -> list[dict]:
+    """Several short turns: each folded line counts something different."""
+    return [
+        user("Where is the retry limit set?"),
+        reply(tool("grep", pattern="RETRY_LIMIT", path=PROJECT, output="app/net.py:12:RETRY_LIMIT = 5"),
+              "In `app/net.py`, line 12: `RETRY_LIMIT = 5`.", minutes_ago=180, elapsed_s=4),
+        user("Raise it to 8 and add a test."),
+        reply(tool("search_replace", path=f"{PROJECT}/app/net.py", preview="@@ -12 +12 @@\n-RETRY_LIMIT = 5\n+RETRY_LIMIT = 8", lines_added=1, lines_removed=1),
+              tool("write_file", path=f"{PROJECT}/tests/test_net.py", output="created tests/test_net.py (188 bytes)"),
+              tool("run_terminal_command", command="pytest -q tests/test_net.py", cwd=PROJECT, exit_code=0, execution_duration_ms=900, output="1 passed in 0.31s"),
+              "Raised to 8, with a test that pins it.", minutes_ago=170, elapsed_s=21),
+        user("Stop, I changed my mind."),
+        reply("Reverting the", minutes_ago=165, elapsed_s=3, stopped=True),
+        user("What does the README say about setup?"),
+        reply(("think", "The README is short; reading it whole is cheaper than searching it.", 1800),
+              "It says to copy `config.env.example`, set the database URL and run `start.sh`.", minutes_ago=160, elapsed_s=6),
+    ]
+
+
+def live_thread() -> list[dict]:
+    """A reply caught mid-run: its last call, a described command, is still
+    running. Nothing is running on the server; the QA browser's --fake running
+    tells the page it is (and --fake ask adds a permission prompt)."""
+    return [
+        user("Run the suite twice so we know it isn't flaky."),
+        reply(
+            "Checking how the reader loop handles a replaced socket first.\n\n",
+            tool("read_file", path=f"{PROJECT}/agent/windows/session.go", output=numbered(86, SESSION_GO)),
+            tool("grep", pattern="streamWriter", path=f"{PROJECT}/agent/windows",
+                 output="agent/windows/exec_windows.go:41:type streamWriter struct {\nagent/windows/session.go:58:\tout := &streamWriter{id: id}"),
+            tool("search_replace", path=f"{PROJECT}/app/agent_hub.py", preview=DIFF, lines_added=3, lines_removed=1),
+            "The fix is in. Running the suite twice to rule out a flake.\n\n",
+            tool("run_terminal_command", status="running", command="scripts/test.sh agents -- -q --count 2",
+                 description="Run the test suite twice", cwd=PROJECT, timeout_ms=600000,
+                 output="........................................ [ 40%]\n........................................ [ 80%]"),
+            live=True),
+    ]
+
+
+MARKDOWN = """## Why the reply was lost
+
+A command's finished result can be dropped while the connector reconnects. The server then waits out the background limit.
+
+1. A foreground command waits up to its timeout (`app/workspace.py:200`).
+2. At the timeout it moves to the background and reports later.
+3. A reconnect in that window loses the report.
+
+| Stage | Limit | Owner |
+| --- | --- | --- |
+| Foreground | 2 min | caller |
+| Background | 30 min | connector |
+
+```python
+async def finish(job):
+    await hub.report(job.id, job.result)
+```
+
+> The fix keeps the old socket reading until the new one has taken over.
+"""
+
+EXPLORE_REPORT = ("## Reconnect paths\n\n- `agent/linux/session.go:88` swaps the socket under a lock.\n"
+                  "- `agent/windows/session.go:86` does the same, but closes the old socket first.\n\n"
+                  "Both drop a frame read in flight. No other path reconnects.")
+
+
+def agents_thread() -> list[dict]:
+    """Subagents: foreground, background, joins, a stop, a list, a report delivered mid-reply.
+    Background spawns are stored as chat_views.settle_spawn_traces leaves them
+    (there are no child runs). Desktop keeps these out of the transcript."""
+    spawn = dict(subagent_type="general-purpose", model="qa/fixture-small")
+    return [
+        user("Audit the three connectors in parallel and fix what they find."),
+        reply(
+            "Mapping the reconnect paths first, then one agent per connector.\n\n",
+            tool("spawn_subagent", description="Map the reconnect paths", preview="Map the reconnect paths", subagent_type="explore",
+                 child_id="qa-child-explore", agent_tool_uses=14, agent_tokens=38200, agent_work_ms=96000, summary=EXPLORE_REPORT),
+            tool("spawn_subagent", description="Audit the Linux connector", preview="Audit the Linux connector", child_id="qa-child-linux",
+                 background=True, summary="Background task started", execution_status="completed", agent_work_ms=148000, **spawn),
+            tool("spawn_subagent", description="Audit the Windows connector", preview="Audit the Windows connector", child_id="qa-child-win",
+                 background=True, summary="Background task started", execution_status="completed", agent_work_ms=212000, **spawn),
+            tool("spawn_subagent", status="error", description="Audit the macOS connector", subagent_type="plan",
+                 error="Subagent could not start: no model is available for this account", preview="Subagent could not start"),
+            tool("list_subagents", output=json.dumps({"live": [
+                {"id": "qa-child-linux", "status": "running", "description": "Audit the Linux connector", "model": "qa/fixture-small"},
+                {"id": "qa-child-win", "status": "running", "description": "Audit the Windows connector", "model": "qa/fixture-small"}],
+                "finished": [{"id": "qa-child-explore", "status": "completed", "description": "Map the reconnect paths", "model": "qa/fixture-small"}]})),
+            tool("get_subagent_output", child_id="qa-child-win", preview="still running", execution_status="running", timeout_ms=60000),
+            delivery(task_report("qa-child-linux", "completed", "Audit the Linux connector",
+                                 "Found one bug: the reader loop keeps reading the old socket. Fixed in `agent/linux/session.go` and covered by a test.")),
+            tool("get_subagent_output", child_id="qa-child-win", agent_work_ms=212000,
+                 summary="Same bug as Linux. Fixed in `agent/windows/session.go`; the existing test now passes on both."),
+            tool("spawn_subagent", description="Recheck the hub after both fixes", preview="Recheck the hub after both fixes",
+                 child_id="qa-child-recheck", background=True, summary="Background task started", status="interrupted",
+                 execution_status="cancelled", agent_work_ms=21000, **spawn),
+            tool("kill_subagent", child_id="qa-child-recheck", preview="stopped"),
+            "Both connectors had the same bug and both are fixed. I stopped the recheck: the tests already cover it.",
+            minutes_ago=50, elapsed_s=318),
+    ]
+
+
+def background_thread() -> list[dict]:
+    """Background commands and monitors: started, joined, stopped, results delivered mid-reply and in a wake turn."""
+    build, tail, soak = "qa-job-build", "qa-job-tail", "qa-job-soak"
+    return [
+        user("Build the release in the background and tell me if the log shows errors."),
+        reply(
+            "Starting the build in the background and watching its log.\n\n",
+            tool("run_terminal_command", command="make release", description="Build the release", cwd=PROJECT, background=True,
+                 command_id=build, child_id=build, job_id=build, state="completed", execution_status="completed", exit_code=0,
+                 execution_duration_ms=184000, output="[1/3] compile\n[2/3] link\n[3/3] package\nbuilt dist/demo-2.4.0.tar.gz"),
+            tool("monitor", command="tail -n0 -F build.log | grep --line-buffered -E 'ERROR|WARN'", description="Errors in the build log",
+                 cwd=PROJECT, background=True, command_id=tail, child_id=tail, job_id=tail, event_count=2, timeout_ms=1800000,
+                 state="completed", execution_status="completed", preview="2 events"),
+            tool("get_command_output", command_id=build, timeout_ms=120000, preview="[2/3] link", output="[1/3] compile\n[2/3] link",
+                 state="running", execution_status="running"),
+            delivery(monitor_event(tail, 1, "tail -n0 -F build.log", "WARN deprecated flag -fno-common", description="Errors in the build log",
+                                   elapsed_ms=41000),
+                     command_result(build, "completed", "make release", "[3/3] package\nbuilt dist/demo-2.4.0.tar.gz",
+                                    description="Build the release", exit_code=0, duration_ms=184000)),
+            tool("run_terminal_command", command="./soak.sh --hours 6", description="Run the soak test", cwd=PROJECT, background=True,
+                 command_id=soak, child_id=soak, job_id=soak, state="cancelled", execution_status="cancelled", status="interrupted"),
+            tool("kill_command", command_id=soak, description="Run the soak test", preview="stopped"),
+            tool("kill_command", command_id=build, preview="already completed", exit_code=0),
+            "The release built in 3 min 4 s. The log had one warning so far; the watch keeps going.",
+            minutes_ago=30, elapsed_s=226),
+        wake(monitor_event(tail, 2, "tail -n0 -F build.log", "ERROR upload: 503 from the mirror", description="Errors in the build log",
+                           elapsed_ms=402000),
+             monitor_result(tail, "timed_out", "tail -n0 -F build.log", 2, description="Errors in the build log", timeout_ms=1800000,
+                            duration_ms=1800000),
+             command_result("qa-job-upload", "failed", "scripts/upload.sh dist/demo-2.4.0.tar.gz", "uploading… 503 Service Unavailable",
+                            description="Upload the release", duration_ms=9100, error="exit 22")),
+        reply("The upload failed: the mirror returned 503. The build itself is fine, and the log watch has ended.",
+              minutes_ago=20, elapsed_s=12),
+    ]
+
+
+SKILL_BODY = "# Release checklist\n\nRun the checks, bump the version, tag, then build.\n\n1. `make check`\n2. Bump `VERSION`\n3. `git tag v$(cat VERSION)`"
+
+
+def planning_thread(proposal: str) -> list[dict]:
+    """Planning and housekeeping calls: todos, scratch, tools, skills, models, transcript, memory.
+    The pending skill draft is a real proposal the seed makes; it expires
+    after 24 hours (reseed)."""
+    return [
+        user("Plan the 2.4 release and remember that I want short replies."),
+        reply(
+            tool("todo_write", todos=[{"id": "1", "content": "Run the checks", "status": "completed"},
+                                      {"id": "2", "content": "Bump the version to 2.4.0", "status": "in_progress"},
+                                      {"id": "3", "content": "Tag and build the release", "status": "pending"},
+                                      {"id": "4", "content": "Publish the changelog to the old wiki", "status": "cancelled"}]),
+            tool("search_tools", query="shell", preview="run_terminal_command, get_command_output, kill_command, monitor",
+                 output=json.dumps({"loaded": ["run_terminal_command", "get_command_output", "kill_command", "monitor"]})),
+            tool("search_tools", query="hosts", output="fuse-dev  linux  roots: /tmp, /srv/demo"),
+            tool("load_skill", preview="release-checklist", summary="Steps to cut a release of the demo project.", output=SKILL_BODY),
+            tool("load_skill", preview="release-checklist", path="references/versioning.md", output="Versions are MAJOR.MINOR.PATCH."),
+            tool("search_models", query="small", output=json.dumps({"models": [
+                {"id": "qa/fixture-small", "name": "Fixture Small", "provider": "qa"},
+                {"id": "qa/fixture-large", "name": "Fixture Large", "provider": "qa"}]})),
+            tool("scratch", description="Save the release plan", preview="saved release-plan"),
+            tool("scratch", preview="release-plan (412 chars)"),
+            tool("scratch", preview="2 slots", output=json.dumps({"slots": {"release-plan": 412, "wave-2-prompts": 3810}})),
+            tool("read_transcript", preview="messages 1-40 of 120"),
+            tool("remember", title="Prefers short replies", preview="saved"),
+            tool("recall", title="release habits", preview="2 memories",
+                 output="- Prefers short replies\n- Releases go out on Tuesdays"),
+            tool("forget", title="Old wiki location", preview="forgotten"),
+            tool("propose_skill", preview="release-checklist", summary="Steps to cut a release of the demo project."),
+            {"_perm": {"id": proposal, "kind": "skill_save", "status": "pending", "slug": "release-checklist",
+                       "description": "Steps to cut a release of the demo project.", "files": ["references/versioning.md"]}},
+            "The plan is in the task list. I'll keep replies short, and the checklist is drafted as a skill for you to save.",
+            minutes_ago=90, elapsed_s=64),
+        user("Save it, and draft one for hotfixes too."),
+        reply(tool("propose_skill", preview="hotfix-checklist", summary="Steps for a hotfix release."),
+              perm(kind="skill_save", status="saved", slug="release-checklist", description="Steps to cut a release of the demo project."),
+              perm(kind="skill_save", status="rejected", slug="hotfix-checklist", description="Steps for a hotfix release."),
+              perm(kind="skill_save", status="error", slug="old-checklist", description="An older checklist.", overwrite=True,
+                   error="a built-in skill already uses this name"),
+              "Saved the release checklist. You turned down the hotfix draft.", minutes_ago=85, elapsed_s=9),
+    ]
+
+
+ARTIFACT_V1 = "<!doctype html><html><body><h1>Release 2.4</h1><p>Build: passing.</p></body></html>"
+ARTIFACT_V2 = "<!doctype html><html><body><h1>Release 2.4</h1><p>Build: passing. Upload: failed (503).</p></body></html>"
+
+
+def artifacts_thread(ident: str) -> list[dict]:
+    """Artifact calls against a real artifact the seed makes (v1, then v2)."""
+    art = dict(identifier=ident, title="Release 2.4 status", format="html", host="", project_root="")
+    return [
+        user("Make me a status page for the release."),
+        reply(tool("create_artifact", version=1, visibility="private", **art),
+              tool("read_artifact", version=1, preview="lines 1-1 of 1", **art),
+              tool("edit_artifact", version=2, **art),
+              tool("update_artifact", status="error", error="artifact is at v2, not v1: it changed since you read it", **art),
+              "The status page is up; it now shows the failed upload.", minutes_ago=70, elapsed_s=33),
+    ]
+
+
+def _png(width: int, height: int) -> str:
+    """A small made-up gradient as a PNG data URI."""
+    import base64
+    import struct
+    import zlib
+
+    rows = b"".join(b"\0" + bytes(v for x in range(width) for v in (40 + 4 * x % 200, 90, 160 + y * 3 % 90)) for y in range(height))
+    chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+    return "data:image/png;base64," + base64.b64encode(png).decode()
+
+
+def notices_thread() -> list[dict]:
+    """Attachments, permission outcomes, run markers, notices, an unknown tool, a stored provider error.
+    By design no view draws a settled tool_permission, and notices show only
+    on a stopped, failed or live reply."""
+    import base64
+
+    pdf = "data:application/pdf;base64," + base64.b64encode(b"%PDF-1.4\n% made-up QA file\n%%EOF\n").decode()
+    shell = dict(tool="run_terminal_command", host=HOST, cwd=PROJECT, requester="Main agent")
+    return [
+        user("Here is the failing screenshot and the log. Clean up the build dir and retry.", attachments=[
+            {"name": "failure.png", "kind": "image", "mime": "image/png", "data": _png(160, 100)},
+            {"name": "build-log.csv", "kind": "text", "mime": "text/csv", "data": "step,status\ncompile,ok\nupload,503\n"},
+            {"name": "runbook.pdf", "kind": "file", "mime": "application/pdf", "data": pdf}]),
+        reply(
+            tool("read_file", path=f"{PROJECT}/docs/failure.png", image={"width": 800, "height": 533, "original_width": 1600,
+                                                                          "original_height": 1066, "mime": "image/png"}),
+            perm(kind="tool_permission", status="allowed", command="rm -rf build", grant_scope="allow_session", **shell),
+            tool("run_terminal_command", command="rm -rf build", description="Clean the build directory", cwd=PROJECT, exit_code=0,
+                 execution_duration_ms=300, output=""),
+            perm(kind="tool_permission", status="denied", command="git push --force origin main", **shell),
+            perm(kind="tool_permission", status="timeout", tool="write_file", host=HOST, path="/etc/hosts", requester="Main agent"),
+            marker("prune", "Pruned 14 old tool outputs to save context"),
+            marker("compaction", "Context compacted", summary="## Summary\n\nThe build failed at upload (503). The build dir was cleaned; a force-push was denied."),
+            marker("resume", "Resumed after the server restarted"),
+            tool("browser_navigate", status="error", error="Unknown tool: browser_navigate"),
+            "Cleaned the build directory. I did not force-push: you denied it.",
+            minutes_ago=12, elapsed_s=140, usage={"prompt_tokens": 18400, "completion_tokens": 912, "total_tokens": 19312}),
+        user("Try the upload once more."),
+        reply("Retrying the upload", marker("notice", "Provider busy, retrying (3 of 3)"), minutes_ago=10, elapsed_s=61,
+              notice="Stopped after 3 failed upload retries",
+              error="Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)"),
+    ]
+
+
+def live_agents_thread() -> list[dict]:
+    """A reply caught mid-run with a subagent working, a watch armed and a
+    background command going (use with --fake running)."""
+    return [
+        user("Audit the connectors and watch the build log meanwhile."),
+        reply(
+            tool("monitor", status="running", command="tail -n0 -F build.log | grep --line-buffered ERROR", description="Errors in the build log",
+                 cwd=PROJECT, background=True, command_id="qa-live-tail", child_id="qa-live-tail", event_count=1, timeout_ms=1800000,
+                 state="running", execution_status="running"),
+            tool("run_terminal_command", status="running", command="make release", description="Build the release", cwd=PROJECT,
+                 background=True, command_id="qa-live-build", child_id="qa-live-build", state="running", execution_status="running",
+                 timeout_ms=1800000),
+            "Both are running. Starting the audit.\n\n",
+            tool("spawn_subagent", status="running", description="Audit the Linux connector", preview="Audit the Linux connector",
+                 subagent_type="explore", child_id="qa-live-child", agent_tool_uses=6, agent_tokens=12100),
+            live=True),
+    ]
+
+
+LONG_CMD = ("docker run --rm -v \"$PWD\":/work -w /work -e PYTHONDONTWRITEBYTECODE=1 -e PIP_DISABLE_PIP_VERSION_CHECK=1 --network host "
+            "ghcr.io/example/toolchain:2024.11.3-python3.12-slim bash -lc 'pip install -q -r requirements-dev.txt && pytest -q -x tests/core'")
+HEREDOC = "cat > /tmp/qa-notes.md <<'EOF'\n# Notes\n- reconnect drops the pending reply\nEOF\nwc -l /tmp/qa-notes.md"
+DEEP = "/home/someone/projects/clients/northwind/services/api-gateway/internal/handlers/websocket"
+LONG_NAME = "test_reattach_after_close_drops_old_frames_and_keeps_the_pending_reply.py"
+UNICODE_OUT = "name\tsize\tnote\nrésumé.txt\t4 KB\tdéjà vu\n日本語.md\t12 KB\t翻訳済み\nemoji.txt\t1 KB\t✅ ok 🚀\n\tindented\t\ttabs"
+MINIFIED = json.dumps({"items": [{"id": i, "name": f"connector-{i}", "state": "reconnecting" if i % 3 else "ok"} for i in range(12)]})
+
+
+def edge_thread() -> list[dict]:
+    """Inputs and outputs at their edges: very long, very short, multi-line, unicode, root paths."""
+    return [
+        user("Show me the awkward ones."),
+        reply(
+            "Long, short and multi-line commands.\n\n",
+            tool("run_terminal_command", command=LONG_CMD, cwd=PROJECT, exit_code=0, execution_duration_ms=48210, output="........\n8 passed in 3.02s"),
+            tool("run_terminal_command", command="ls", cwd=PROJECT, exit_code=0, execution_duration_ms=4, output="a"),
+            tool("run_terminal_command", command=HEREDOC, description="Write the notes file", cwd="/tmp", exit_code=0, execution_duration_ms=12,
+                 output="3 /tmp/qa-notes.md"),
+            tool("run_terminal_command", command="grep -rn TODO app/", cwd=DEEP, exit_code=1, execution_duration_ms=35, output=""),
+            tool("run_terminal_command", command="ls -la && cat config.json | jq '.items[] | select(.state != \"ok\")'",
+                 description="Check that every connector reconnects after the hub restarts and that no pending reply is lost on the way",
+                 cwd=PROJECT, exit_code=0, execution_duration_ms=1240, output=UNICODE_OUT),
+            tool("run_terminal_command", command="curl -s localhost:8080/connectors", cwd=PROJECT, exit_code=0, execution_duration_ms=95, output=MINIFIED),
+            "Paths at the edges.\n\n",
+            tool("read_file", path="/etc/hosts", output=numbered(1, ["127.0.0.1 localhost", "::1 localhost"])),
+            tool("read_file", path=f"{DEEP}/{LONG_NAME}", output=numbered(1, ["import pytest"])),
+            tool("list_dir", path=PROJECT, output="app/\ntests/\nREADME.md"),
+            tool("grep", pattern=r"^(async\s+)?def\s+test_[a-z_]+\(.*(hub|socket).*\):$", path=f"{PROJECT}/tests",
+                 output="tests/core/agents/test_hub.py:88:async def test_reattach_keeps_pending_reply(hub):"),
+            tool("glob", pattern="**/*.{ts,tsx}", path=DEEP, output="index.ts\nsocket.tsx"),
+            tool("grep", status="error", pattern="(unclosed", path=PROJECT,
+                 error="regex parse error:\n    (unclosed\n    ^\nerror: unclosed group"),
+            tool("write_file", path=f"{PROJECT}/docs/notes.md", output="created /srv/demo/docs/notes.md (96 bytes)"),
+            tool("search_replace", path=f"{PROJECT}/app/net.py",
+                 preview="@@ -3 +3 @@\n-TIMEOUTS = {'connect': 5, 'read': 30}\n+TIMEOUTS = {'connect': 5, 'read': 30, 'write': 30, 'pool': 10, 'keepalive': 75, 'handshake': 15, 'close': 5}",
+                 lines_added=1, lines_removed=1),
+            "Web calls with long inputs.\n\n",
+            tool("web_search", queries=["python asyncio websocket reconnect pending reply lost after server restart race condition", "aiohttp close", "websockets keepalive"],
+                 latency_ms=1400, results=[{"title": "A very long result title that keeps going well past the width of a phone screen", "url": "https://example.com/a"},
+                                           {"title": "Short", "url": "https://example.org/b"}]),
+            tool("read_url", url="https://example.com/docs/guide/networking/websockets?version=2024.11&lang=en&section=reconnect#pending-replies",
+                 bytes=1200, http_status=200, results=[{"title": "Reconnecting", "url": "https://example.com/docs/guide/networking/websockets",
+                                                        "snippet": "A client that reconnects should resend what it did not see acknowledged."}]),
+            "Done.",
+            minutes_ago=5, elapsed_s=61),
+    ]
+
+
+THREADS = [
+    ("QA · Long markdown", lambda: [user("Why did the background command never report back?"), reply(MARKDOWN, minutes_ago=300, elapsed_s=48)]),
+    ("QA · Summary lines", summary_thread),
+    ("QA · Live command", live_thread),
+    ("QA · Live agents", live_agents_thread),
+    ("QA · Notices and attachments", notices_thread),
+    ("QA · Artifacts", artifacts_thread),
+    ("QA · Planning and memory", planning_thread),
+    ("QA · Background work", background_thread),
+    ("QA · Subagents", agents_thread),
+    ("QA · File edits and output", edits_thread),
+    ("QA · Claude Code rows", rows_thread),
+    ("QA · Edge cases", edge_thread),
+]
+
+
+def _seed(uid: int) -> list[str]:
+    """Replace the account's chats (and artifacts) with the fixtures; newest last.
+    The artifact chat's calls name a real artifact, so its card opens."""
+    from app import artifacts, chat_threads, db, skill_proposals
+
+    db.execute("DELETE FROM chat_threads WHERE user_id=?", (uid,))
+    db.execute("DELETE FROM artifacts WHERE user_id=?", (uid,))
+    db.execute("DELETE FROM skill_proposals WHERE user_id=?", (uid,))
+    art = artifacts.create(uid, title="Release 2.4 status", html=ARTIFACT_V1)["identifier"]
+    titles, pk = [], None
+    for title, build in THREADS:
+        if build is artifacts_thread:
+            messages = build(art)
+        elif build is planning_thread:
+            messages = build(skill_proposals.create(uid, thread_id=pk, name="release-checklist", body=SKILL_BODY,
+                                                    description="Steps to cut a release of the demo project.",
+                                                    files={"references/versioning.md": "Versions are MAJOR.MINOR.PATCH."})["id"])
+        else:
+            messages = build()
+        made = chat_threads.create_thread(uid, model=MODEL, title=title, messages=messages)
+        pk = chat_threads.resolve_thread_pk(uid, made["id"])
+        if build is artifacts_thread:
+            artifacts.update(uid, art, html=ARTIFACT_V2, thread_id=pk)
+        titles.append(title)
+    return titles
+
+
+def _account() -> int:
+    """The QA user's id, created on first run and kept an admin, so the QA
+    browser can open the admin pages (it aborts every write). A lost password
+    file means a new password (the account has no vault worth keeping)."""
+    from app import accounts, db
+
+    row = accounts.user_by_email(EMAIL)
+    saved = json.loads(CREDS.read_text()) if CREDS.exists() else {}
+    if not (row and saved.get("email") == EMAIL and accounts.login(EMAIL, saved.get("password", ""))):
+        password = secrets.token_urlsafe(18)
+        if row:
+            accounts.reset_password(EMAIL, password)
+        else:
+            row = accounts.create_user(EMAIL, password, admin=True)
+        CREDS.parent.mkdir(exist_ok=True)
+        CREDS.touch(mode=0o600, exist_ok=True)
+        CREDS.chmod(0o600)
+        CREDS.write_text(json.dumps({"email": EMAIL, "password": password}))
+    # Not accounts.set_admin: it needs another admin to act, by design.
+    db.execute("UPDATE users SET is_admin=1 WHERE id=?", (int(row["id"]),))
+    return int(row["id"])
+
+
+def main() -> int:
+    from app.config import settings
+
+    name = urlsplit((settings.database_url or "").strip()).path.strip("/")
+    if name != "fuse_dev":
+        print("refused: this only ever writes to the fuse_dev database", file=sys.stderr)
+        return 1
+    uid = _account()
+    titles = _seed(uid)
+    print(f"QA account {EMAIL} (user {uid}); login kept in {CREDS.relative_to(ROOT)}")
+    print("threads: " + ", ".join(titles))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
