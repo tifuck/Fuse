@@ -12,11 +12,14 @@ user sees it or a tool on their machines runs it. The model is never told.
 What keeps data intact:
 - Rows bound for a model are processed once and marked (MARK). A marked row
   is never rewritten, so prompt caches and signed reasoning stay valid.
-- A value the model already saw in clear in a chat stays clear there
-  (secret_thread_uses.clear): within one chat a value is always fake or
-  always real.
+- Each model transcript (a chat's main conversation, each subagent's) is the
+  only record of what its model has seen: a value it already shows in clear
+  stays clear there, so a model never meets one value in two forms. Nothing
+  shared decides for it, so transcripts cannot contradict each other.
 - Strong values (long, random) are swapped wherever they appear for the user;
-  weak ones (short passwords) only where detected and then within that chat.
+  weak ones (short passwords) only where detected, or where their stand-in
+  is already in view.
+- Nothing here stops a chat: a missed swap is logged, never refused.
 - Punctuation is never changed, so restoring cannot change quoting.
 - A tool call still holding part of a fake after restore is refused, never run.
 """
@@ -601,65 +604,62 @@ def _lazy(fn):
 
 
 class Swap:
-    """The swap for one chat (thread_id) or, with record=False, for a one-off
-    model call (titles, Jev) that must not change the chat's decisions."""
+    """The swap for one model transcript: a chat's main conversation, or one
+    subagent's. What to show is decided by that transcript alone, never by a
+    shared record: a value it already shows in clear stays clear, a value
+    whose stand-in it shows stays swapped, a new strong value is swapped.
+    Without a transcript (titles, Jev, background results) values are
+    swapped for that one view and nothing is decided."""
 
-    def __init__(self, vault: _Vault, thread_id: int | None = None, states: dict | None = None,
-                 conn=None, record: bool = True):
+    def __init__(self, vault: _Vault, thread_id: int | None = None):
         self.vault = vault
         self.thread_id = thread_id
-        self.states: dict[int, bool] = dict(states or {})  # pair id -> clear
-        self.conn = conn
-        self.record = record and thread_id is not None
+        self.states: dict[int, bool] = {}  # pair id -> clear, for the bound transcript
         self._rows = None
 
     def bind(self, rows_fn) -> None:
-        """Rows already in front of the model, for tool output swapped mid-turn."""
+        """The transcript this swap decides for: the rows its model has read."""
         self._rows = rows_fn
+        self.states = {}
 
     # decisions
 
-    def _use(self, pair: Pair, sent) -> bool:
+    def _use(self, pair: Pair, sent, detected: bool = True) -> bool:
+        """Swap this value here? `detected`: found by detection right now, not
+        only as a known value (weak values need that or their stand-in in view)."""
         with self.vault.lock:
             state = self.states.get(pair.id)
-        if state is None:
-            clear = bool(sent and pair.real in sent())
-            if self.record:
-                clear = self._record(pair, clear)
-            with self.vault.lock:
-                self.states[pair.id] = clear
-            state = clear
-            if clear:
-                logger.info("Secret swap: a %s value stays clear in thread %s (seen before it was known)",
-                            pair.kind, self.thread_id)
-        return not state
-
-    def _record(self, pair: Pair, clear: bool) -> bool:
-        def write(conn):
-            conn.execute("INSERT OR IGNORE INTO secret_thread_uses (thread_id, token_id, clear) VALUES (?,?,?)",
-                         (self.thread_id, pair.id, int(clear)))
-            row = conn.execute("SELECT clear FROM secret_thread_uses WHERE thread_id=? AND token_id=?",
-                               (self.thread_id, pair.id)).fetchone()
-            return bool(row["clear"]) if row else clear
-        if self.conn is not None:
-            return write(self.conn)
-        with db.tx() as conn:
-            return write(conn)
+        if state is not None:
+            return not state
+        if sent is None:
+            return detected or pair.strong  # a one-off view: swap, decide nothing
+        seen = sent()
+        if pair.real in seen:
+            clear = True
+        elif detected or pair.strong or pair.fake in seen:
+            clear = False
+        else:
+            return False  # a weak value this transcript never had swapped
+        with self.vault.lock:
+            self.states[pair.id] = clear
+        if clear:
+            logger.info("Secret swap: a %s value stays clear in thread %s (its model already saw it)",
+                        pair.kind, self.thread_id)
+        return not clear
 
     def _tokenize_table(self) -> _Table:
         with self.vault.lock:
-            weak = frozenset(i for i, clear in self.states.items() if not clear)
             clear = frozenset(i for i, c in self.states.items() if c)
 
         def build():
             mapping = {}
             for p in self.vault.by_id.values():
-                if p.id in clear or not (p.strong or p.id in weak):
+                if p.id in clear:
                     continue
                 for real, fake in _forms(p):
                     mapping[real] = (p, fake)
             return _Table(mapping)
-        return self.vault.table(("tok", self.thread_id), build, (weak, clear))
+        return self.vault.table("tok", build, clear)
 
     # model-bound text
 
@@ -667,11 +667,14 @@ class Swap:
         if sent is not None:
             return sent
         rows = self._rows
-        return _lazy(lambda: "\n".join(t for r in (rows() or []) if isinstance(r, dict) for t in _row_texts(r)) if rows else "")
+        if rows is None:
+            return None
+        return _lazy(lambda: "\n".join(t for r in (rows() or []) if isinstance(r, dict) for t in _row_texts(r)))
 
     def _exact(self, text: str, sent) -> str:
         table = self._tokenize_table()
-        return table.sub(text, lambda key: (lambda p, f: f if self._use(p, sent) else None)(*table.mapping[key]))
+        return table.sub(text, lambda key: (lambda p, f: f if self._use(p, sent, detected=False) else None)(
+            *table.mapping[key]))
 
     def _fragments(self, text: str, sent) -> str:
         starts, ends = self.vault.fragments()
@@ -732,8 +735,8 @@ class Swap:
 
     def tokenize(self, text, *, sent=None, detect_new: bool = True, _depth: int = 0):
         """Real -> fake for text a model is about to read. Known strong values
-        anywhere, this chat's weak ones, ends of known values cut by a clip,
-        base64 copies, then newly detected values."""
+        anywhere, weak ones this transcript has swapped, ends of known values
+        cut by a clip, base64 copies, then newly detected values."""
         if not isinstance(text, str) or not text:
             return text
         sent = self._sent_fn(sent)
@@ -761,7 +764,7 @@ class Swap:
 
     def to_model(self, text):
         """Model-written text shown to the user, back to what the model wrote:
-        the exact inverse of restore for this chat's values, no detection."""
+        the inverse of restore for the bound transcript's values, no detection."""
         if not isinstance(text, str) or not text:
             return text
         return self._exact(text, self._sent_fn(None))
@@ -806,7 +809,8 @@ class Swap:
         return changed
 
     def leaks(self, messages) -> list[str]:
-        """Kinds of this chat's swapped values still present in messages."""
+        """Kinds of this transcript's swapped values still present in messages.
+        A tripwire for a path that skipped prepare: logged, never blocking."""
         with self.vault.lock:
             swapped = {i for i, clear in self.states.items() if not clear}
         table = self._tokenize_table()
@@ -914,21 +918,19 @@ def for_thread(user_id, thread_id, conn=None) -> Swap | None:
     if vault.broken:
         raise SwapUnavailable("This chat's protected secrets cannot be decrypted (the server key changed). "
                               "Start a new chat to continue.")
-    sql = "SELECT token_id, clear FROM secret_thread_uses WHERE thread_id=?"
-    rows = conn.execute(sql, (int(thread_id),)).fetchall() if conn is not None else db.fetchall(sql, (int(thread_id),))
-    return Swap(vault, int(thread_id), {int(r["token_id"]): bool(r["clear"]) for r in rows}, conn=conn)
+    return Swap(vault, int(thread_id))
 
 
 def for_user(user_id) -> Swap | None:
     """A one-off swap for a model call outside a chat's transcript (titles,
-    recaps): it creates pairs but records nothing for any chat."""
+    recaps): it creates pairs and decides nothing for any transcript."""
     if not user_id:
         return None
     row = db.fetchone("SELECT chat_secret_swap FROM users WHERE id=?", (int(user_id),))
     if not row or not row["chat_secret_swap"]:
         return None
     vault = _vault(int(user_id))
-    return None if vault.broken else Swap(vault, record=False)
+    return None if vault.broken else Swap(vault)
 
 
 def enable_for_new_thread(conn, account, thread_id, messages) -> None:
@@ -943,13 +945,10 @@ def enable_for_new_thread(conn, account, thread_id, messages) -> None:
 
 
 def copy_thread(conn, source_id, target_id) -> None:
-    """A fork keeps its source's swap and decisions."""
+    """A fork swaps like its source (its transcripts carry the rest)."""
     row = conn.execute("SELECT secret_swap FROM chat_threads WHERE id=?", (source_id,)).fetchone()
-    if not row or not row["secret_swap"]:
-        return
-    conn.execute("UPDATE chat_threads SET secret_swap=1 WHERE id=?", (target_id,))
-    conn.execute("INSERT INTO secret_thread_uses (thread_id, token_id, clear) "
-                 "SELECT ?, token_id, clear FROM secret_thread_uses WHERE thread_id=?", (target_id, source_id))
+    if row and row["secret_swap"]:
+        conn.execute("UPDATE chat_threads SET secret_swap=1 WHERE id=?", (target_id,))
 
 
 def init_schema(conn) -> None:
@@ -967,11 +966,5 @@ def init_schema(conn) -> None:
             created_at VARCHAR(32) NOT NULL,
             UNIQUE(user_id, real_hmac),
             UNIQUE(user_id, fake_hmac)
-        );
-        CREATE TABLE IF NOT EXISTS secret_thread_uses (
-            thread_id INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
-            token_id INTEGER NOT NULL REFERENCES secret_tokens(id) ON DELETE CASCADE,
-            clear INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (thread_id, token_id)
         );
     """)

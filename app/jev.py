@@ -113,17 +113,14 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
     )
     messages = chats.parse_messages(row["messages"]) if row else []
     # Jev is a model too: a swapping chat sends it stand-ins, swapped before
-    # anything is clipped. Its own call, so the chat's decisions stay put.
+    # anything is clipped. A one-off view: it decides nothing for the chat.
     from . import secret_swap
 
     try:
         swap = secret_swap.for_thread(user_id, thread_id)
     except secret_swap.SwapUnavailable:
         swap = None
-    if swap is not None:
-        swap.record = False
     seen = swap.tokenize if swap is not None else str
-    wrote = swap.to_model if swap is not None else str
     user_request = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
@@ -137,7 +134,7 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
             if text:
                 recent.append({"role": "user", "text": text[:RECENT_TEXT]})
         elif role == "assistant":
-            text = wrote(str(msg.get("content") or "")).strip()
+            text = seen(str(msg.get("content") or "")).strip()
             if text:
                 recent.append({"role": "assistant", "text": text[:RECENT_TEXT]})
             for tool in msg.get("tools") or []:

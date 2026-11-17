@@ -202,19 +202,41 @@ def test_a_value_the_model_already_saw_stays_clear_and_sent_rows_never_change(sw
     assert shown in rows[3]["content"]           # clear here, as the model already knows it
     assert new_secret not in rows[3]["content"]
     assert rows[3][secret_swap.MARK] == 1
-    # The decision is the chat's: a later swap of this chat keeps it clear.
+    # The transcript is the record: a later run on it (a new swap) agrees.
     again = secret_swap.for_thread(swap.vault.user_id, swap.thread_id)
+    again.bind(lambda: rows)
     assert again.tokenize(f"API_TOKEN={shown}") == f"API_TOKEN={shown}"
 
 
-def test_a_request_still_holding_a_swapped_value_is_refused(swap):
-    real = "sk-proj-" + "Hw4Tz8Lq2Bn5" * 4
-    swap.tokenize(f"key {real}")
-    request = SimpleNamespace(scope={})
-    body = {"model": "anything", "messages": [{"role": "user", "content": f"here: {real}"}]}
+def test_a_subagent_never_blocks_or_contradicts_the_main_agent(swap):
+    # Production regression: the main agent saw a value unlabelled (nothing
+    # detected); a subagent of the same chat then met it labelled. A shared
+    # per-chat record marked it hidden, so the main agent's next request held
+    # it "unswapped" and was refused on every retry.
+    uid, value = swap.vault.user_id, "Zt7Kq2Lm9Pv4Rx8Wn3YsQe5Hd"
+    main_rows = [{"role": "system", "content": "sys"},
+                 {"role": "tool", "tool_call_id": "c1", "content": f"found {value} in the fixture"}]
+    main = secret_swap.for_thread(uid, swap.thread_id)
+    main.bind(lambda: main_rows)
+    main.prepare(main_rows)
+    child_rows = [{"role": "user", "content": "audit the tests"}]
+    child = secret_swap.for_thread(uid, swap.thread_id)
+    child.bind(lambda: child_rows)
+    assert value not in child.tokenize(f"API_KEY={value}")   # the subagent never saw it: swapped
+    # The main agent keeps the value it already knows, in new output too.
+    main_next = secret_swap.for_thread(uid, swap.thread_id)
+    main_next.bind(lambda: main_rows)
+    main_rows.append({"role": "tool", "tool_call_id": "c2", "content": f"API_KEY={value}"})
+    main_next.prepare(main_rows)
+    assert main_rows[-1]["content"] == f"API_KEY={value}"
+    assert main_next.leaks(main_rows) == []
+    # And the last check before a request leaves never stops a chat: a value
+    # the subagent swapped, still in a request, is logged and the request goes on.
+    body = {"model": "no-such-model", "messages": [{"role": "user", "content": f"here: {value}"}]}
+    assert child.leaks(body["messages"]) == ["assign"]
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(api.invoke_chat(request, {"id": swap.vault.user_id}, body, secret_swap=swap))
-    assert exc.value.status_code == 409
+        asyncio.run(api.invoke_chat(SimpleNamespace(scope={}), {"id": uid}, body, secret_swap=child))
+    assert exc.value.status_code == 404  # got past the check to model lookup
 
 
 GARBAGE = (string.printable + "\x00\x01\x1b\x7f\u00e9\u00fc\u4e2d\u6587\u0645\u202e\u200b\ufeff"
@@ -239,7 +261,9 @@ def test_garbage_never_raises_and_still_round_trips(swap):
         assert "".join(out) + stream.flush() == text
         args, _runnable = swap.restore_args("run_terminal_command", json.dumps({"command": seen}))
         json.loads(args)
+        swap.bind(lambda: [{"role": "user", "content": seen}])
         assert swap.to_model(swap.restore(seen)) == seen
+        swap.bind(None)
 
 
 def test_odd_rows_never_raise_and_signed_or_binary_parts_are_untouched(swap):
@@ -301,10 +325,16 @@ def test_live_output_never_shows_part_of_a_stand_in(swap):
     assert stored["tools"][0]["command"] == f"deploy --key {key}"
 
 
-def test_weak_values_are_scoped_to_their_chat(swap):
-    other = secret_swap.for_thread(swap.vault.user_id, swapping_thread(swap.vault.user_id)[1])
-    assert "Biscuit2019!" not in swap.tokenize("DB_PASSWORD=Biscuit2019!")
+def test_weak_values_are_scoped_to_their_transcript(swap):
+    # A short password is swapped where detected, and again only where its
+    # stand-in is already in view; elsewhere an equal string is left alone.
+    rows = [{"role": "tool", "tool_call_id": "c1", "content": "DB_PASSWORD=Biscuit2019!"}]
+    swap.bind(lambda: rows)
+    swap.prepare(rows)
+    assert "Biscuit2019!" not in rows[0]["content"]
     assert "Biscuit2019!" not in swap.tokenize("login with Biscuit2019! today")
+    other = secret_swap.for_thread(swap.vault.user_id, swapping_thread(swap.vault.user_id)[1])
+    other.bind(lambda: [{"role": "user", "content": "hello"}])
     assert other.tokenize("login with Biscuit2019! today") == "login with Biscuit2019! today"
 
 
@@ -340,7 +370,7 @@ def test_switch_and_fork_rules(swap):
     # A fork swaps like its source, with the same stand-ins and decisions.
     fork = chats.fork_thread(uid, swap.public_id)
     forked = secret_swap.for_thread(uid, chats.resolve_thread_pk(uid, fork["id"]))
-    assert forked is not None and forked.states == swap.states
+    assert forked is not None
     assert forked.tokenize(f"T={key}") == seen
 
 

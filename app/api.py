@@ -523,8 +523,8 @@ async def invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bo
     resolved provider accepts (title/recap calls).
     image_snapshot/prepared are server-only replay state and its durable
     checkpoint hook, run after admission and before dispatch.
-    secret_swap: the chat's swap; a request still holding one of its
-    swapped values is refused instead of sent.
+    secret_swap: the transcript's swap; a request still holding one of its
+    swapped values is logged (a path skipped it), never refused.
     """
     try:
         user = dict(user)
@@ -568,10 +568,10 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     if secret_swap is not None:
         leaked = await asyncio.to_thread(secret_swap.leaks, body.get("messages"))
         if leaked:
-            # A path skipped the swap: fail closed, never send the value.
-            logger.error("Secret swap: refused a request still holding %s value(s) for user %s",
+            # Rows reach here only through prepare, so this is a bug to find,
+            # not a reason to stop the chat (the history already holds them).
+            logger.error("Secret swap: a request still holds %s value(s) for user %s",
                          ",".join(sorted(set(leaked))), user.get("id"))
-            raise HTTPException(409, "Fuse stopped this request: it still contained a protected secret.")
     body = dict(body)
     body.pop("prompt_snapshot", None)
     body.pop("image_snapshot", None)
