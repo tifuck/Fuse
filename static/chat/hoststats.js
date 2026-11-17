@@ -59,7 +59,7 @@ export function detailRows(d) {
     ["CPU", "", Math.round(d.cpu) + "%"],
     ["Memory", `${gib(memUsed)} of ${gib(memTotal)}`, share(memUsed, memTotal)],
     d.vol && ["Storage", `${gib(d.vol[0])} of ${gib(d.vol[1])}`, share(d.vol[0], d.vol[1])],
-    d.disk && ["Disk", `read ${shortRate(d.disk[1])}/s, write ${shortRate(d.disk[2])}/s`, Math.round(d.disk[0]) + "%"],
+    d.disk && ["Disk", `R ${shortRate(d.disk[1])}/s  W ${shortRate(d.disk[2])}/s`, Math.round(d.disk[0]) + "%"],
     ["Network", `↓ ${shortRate(rx)}/s  ↑ ${shortRate(tx)}/s`, ""],
   ].filter(Boolean);
 }
@@ -258,23 +258,38 @@ export function createHostStats() {
   function fillPop() {
     const pop = el.pop;
     if (!pop || pop.hidden || !last) return;
-    if (!pop.firstChild) pop.innerHTML = '<p class="hs-pop-head"><b></b><span></span></p><dl class="hs-pop-rows"></dl>';
+    if (!pop.firstChild) pop.innerHTML = '<p class="hs-pop-head"><b></b><span></span></p><dl class="hs-pop-grid"></dl>';
     const [name, state] = pop.firstChild.children;
     const live = !card.classList.contains("is-stale");
     set(name, alias || "Machine");
     set(state, live ? "Live" : "No recent data");
+    // A tile per percentage: the number, a meter (CPU: its recent load), the
+    // detail. The network has no percentage and runs along the foot.
     pop.lastChild.replaceChildren(...detailRows(last).map(([label, detail, value]) => {
-      const row = document.createElement("div");
+      const tile = document.createElement("div");
       const term = document.createElement("dt");
-      const info = document.createElement("dd");
       const num = document.createElement("dd");
+      tile.className = value ? "hs-tile" : "hs-tile is-wide";
       term.textContent = label;
-      if (label === "CPU") info.innerHTML = `<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><polyline points="${sparkPoints(history.cpu, 100, 100, 16)}"></polyline></svg>`;
-      else info.textContent = detail;
-      num.textContent = value;
-      num.style.color = live ? loadTone(parseFloat(value)) : "";
-      row.append(term, info, num);
-      return row;
+      num.className = "hs-tile-num";
+      num.textContent = value || detail;
+      tile.append(term, num);
+      if (!value) return tile;
+      const tone = live ? loadTone(parseFloat(value)) : "";
+      num.style.color = tone;
+      const viz = document.createElement("dd");
+      viz.className = label === "CPU" ? "hs-tile-spark" : "hs-tile-meter";
+      viz.setAttribute("aria-hidden", "true");
+      if (label === "CPU") viz.innerHTML = `<svg viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="${sparkPoints(history.cpu, 100, 100, 24)}"></polyline></svg>`;
+      else viz.innerHTML = `<i style="width: ${Math.min(100, parseFloat(value))}%; ${tone ? `background: ${tone}` : ""}"></i>`;
+      tile.append(viz);
+      if (detail) {
+        const info = document.createElement("dd");
+        info.className = "hs-tile-info";
+        info.textContent = detail;
+        tile.append(info);
+      }
+      return tile;
     }));
   }
 
