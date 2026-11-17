@@ -452,6 +452,7 @@ export function createDesktopTheme(runtime) {
     get agentIsStalled() { return runtime.agentIsStalled; },
     get agentLive() { return runtime.agentLive; },
     get agentStatusText() { return runtime.agentStatusText; },
+    get agentsRows() { return runtime.agentsRows; },
     get ccAgentLastCall() { return theme.ccAgentLastCall; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -490,6 +491,7 @@ export function createDesktopTheme(runtime) {
     get root() { return runtime.root; },
     get runIsActive() { return runtime.runIsActive; },
     get streaming() { return runtime.streaming; },
+    get toolText() { return theme.toolText; },
   }));
   // The inspector follows every live-dock and work-clock sync.
   const withChrome = (fn) => (...args) => { const out = fn(...args); theme.syncChrome(); return out; };

@@ -1,23 +1,33 @@
 // Desktop's chrome: the top bar (the breadcrumb's title menu, "← Main" in a
-// subagent, the ⋯ menu), the sidebar's Customize and light/dark switches,
-// the composer's chips row, and the inspector: a right column of cards
-// (Preview is the artifact pane; Tasks, Plan and Terminal are drawn
-// here from the runtime's live state). The inspector opens only when the
-// user asks; the choice is kept in localStorage, and new work puts a dot on
-// its button instead. Above a phone it is a column beside the chat; on phones
-// a modal sheet.
-const WIDE = "(min-width: 801px)";
-const PHONE = "(max-width: 800px)";
-const STORE = "fuse.chat.desktop.inspector.v1";
+// subagent, the ⋯ menu, the Activity button), the sidebar's Customize and
+// light/dark switches, the composer's chips row, the artifact workspace's own
+// controls, and Activity: the agents table, background commands, the plan and
+// a command's output, drawn here from the runtime's live state. Activity
+// opens only when the user asks (the choice is kept in localStorage); the
+// button says what is running instead. Wide it docks beside the chat,
+// narrower it slides over it, and on phones it is a bottom sheet that drags
+// and whose pages swipe sideways.
+const DOCK = "(min-width: 1100px)";
+const PHONE = "(max-width: 640px)";
+const STORE = "fuse.chat.desktop.activity.v1";
+const PAGES = ["activity", "plan", "output"];
+const SORTS = new Set(["td", "ta", "cd", "ca"]);
+const LIVE_JOB = new Set(["running", "queued", "cancelling"]);
+const TERM = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M3 4.5l3.2 3.2L3 10.9M8 11.5h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const EYE = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8s-2.3 4.2-6.2 4.2S1.8 8 1.8 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 // Toggles whose sheet may close while they sit in a closed menu or a folded bar.
 const SHEET_TOGGLES = "[data-skills-toggle], [data-view-toggle], [data-memory-toggle], [data-artifact-toggle]";
 
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || "{}");
-    return { open: saved.open === true, cards: saved.cards && typeof saved.cards === "object" ? saved.cards : {} };
+    return {
+      open: saved.open === true,
+      fold: saved.fold && typeof saved.fold === "object" ? saved.fold : {},
+      sort: SORTS.has(saved.sort) ? saved.sort : "",
+    };
   } catch (_) {
-    return { open: false, cards: {} };
+    return { open: false, fold: {}, sort: "" };
   }
 }
 
@@ -26,43 +36,55 @@ export function create(deps) {
   let bound = false;
   let lastState = "";
   let pickedJob = "";
+  let page = "";
   let titleOpen = false;
   let pickerReturn = null;
   let opener = null;
   let threadKey = null;
   let baseSig = null;
+  let wasArtifact = false;
+  let openBeforeArtifact = null;
+  let justDragged = false;
   const inertSaved = new Map();
   const seen = { terminal: "" };
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  const setAttr = (el, name, value) => { if (el && el.getAttribute(name) !== value) el.setAttribute(name, value); };
   const show = (el, on) => { if (el && el.hidden === on) el.hidden = !on; };
   const esc = (value) => deps.escapeHtml(String(value ?? ""));
   const visible = (el) => Boolean(el && el.getClientRects().length);
-  const thread = () => new URLSearchParams(location.search).get("t") || "";
+  const matches = (query) => window.matchMedia(query).matches;
+  const isOpen = () => deps.root.dataset.themeRailState === "open";
+  const reduced = () => matches("(prefers-reduced-motion: reduce)");
 
   function save() {
-    const ids = Object.keys(store.cards);
-    // ponytail: keeps the 50 most recently touched threads' dismissed cards.
-    ids.slice(0, Math.max(0, ids.length - 50)).forEach((id) => delete store.cards[id]);
     try { localStorage.setItem(STORE, JSON.stringify(store)); } catch (_) {}
   }
 
-  const closedCards = () => new Set(store.cards[thread()] || []);
-  function setCard(name, dismissed) {
-    const id = thread();
-    const set = closedCards();
-    if (dismissed) set.add(name); else set.delete(name);
-    delete store.cards[id];
-    if (set.size) store.cards[id] = [...set];
-    save();
+  // dock: a column beside the chat; over: a panel over it; sheet: a phone's bottom sheet.
+  function mode() {
+    if (matches(PHONE)) return "sheet";
+    return matches(DOCK) && !deps.root.classList.contains("is-artifact") ? "dock" : "over";
   }
 
   function setOpen(open, from) {
     if (from) opener = from;
     store.open = Boolean(open);
-    if (store.open) delete store.cards[thread()];
+    openBeforeArtifact = null;
+    if (!open) {
+      q("[data-theme-rail]")?.classList.remove("is-full");
+      page = "";
+    }
     save();
     syncChrome();
+  }
+
+  // Opens Activity on a page: "output" (a command's output) or the overview.
+  function openPage(name, from) {
+    page = name === "output" ? "output" : "";
+    if (!isOpen()) setOpen(true, from);
+    else syncChrome();
+    if (mode() === "sheet") goTab(PAGES.indexOf(name) >= 0 ? name : "activity", isOpen());
   }
 
   function act(name) {
@@ -127,9 +149,9 @@ export function create(deps) {
     if (!active || active === document.body || active.matches("[data-row-more]")) btn?.focus({ preventScroll: true });
   }
 
-  // —— Inspector focus and modality ——
+  // —— Activity: focus and modality ——
 
-  // Narrow, the open inspector is a dialog over the chat; on phones a modal one.
+  // Over the chat (a panel or a phone's sheet) it is a modal dialog.
   function setLayer(rail, dialog, modal) {
     if (dialog) {
       rail.setAttribute("role", "dialog");
@@ -150,23 +172,133 @@ export function create(deps) {
     }
   }
 
-  function syncLayer(state) {
+  function syncLayer(state, how) {
     const rail = q("[data-theme-rail]");
     if (!rail) return;
-    const narrow = !window.matchMedia(WIDE).matches;
     const open = state === "open";
-    setLayer(rail, open && narrow, open && window.matchMedia(PHONE).matches);
+    setLayer(rail, open && how !== "dock", open && how !== "dock");
     if (state === lastState) return;
     const was = lastState;
     lastState = state;
     if (!was) return;
-    if (open && narrow) q("[data-theme-inspector-close]")?.focus({ preventScroll: true });
+    if (open && how !== "dock") q("[data-theme-inspector-close]")?.focus({ preventScroll: true });
     else if (!open) {
       const active = document.activeElement;
       if (!active || active === document.body || rail.contains(active)) {
         const back = [opener, q("[data-theme-inspector]"), q("[data-theme-more]")].find(visible);
         back?.focus({ preventScroll: true });
       }
+    }
+  }
+
+  // —— Phone: tabs over pages that swipe (native scroll snapping) ——
+
+  function goTab(name, smooth) {
+    const pages = q("[data-theme-pages]");
+    const i = PAGES.indexOf(name);
+    if (!pages || i < 0) return;
+    pages.scrollTo({ left: i * pages.clientWidth, behavior: smooth && !reduced() ? "smooth" : "auto" });
+    syncTabs(i);
+  }
+
+  function syncTabs(index) {
+    const pages = q("[data-theme-pages]");
+    if (!pages) return;
+    const width = pages.clientWidth || 1;
+    const at = index ?? Math.round(pages.scrollLeft / width);
+    pages.parentElement?.style.setProperty("--dk-ink", String(Math.max(0, Math.min(PAGES.length - 1, pages.scrollLeft / width))));
+    deps.root.querySelectorAll("[data-theme-tab]").forEach((tab) => {
+      const on = PAGES.indexOf(tab.dataset.themeTab) === at;
+      setAttr(tab, "aria-selected", String(on));
+      setAttr(tab, "tabindex", on ? "0" : "-1");
+    });
+  }
+
+  function tabKey(event) {
+    const tabs = [...deps.root.querySelectorAll("[data-theme-tab]")];
+    const i = tabs.indexOf(event.target);
+    if (i < 0) return;
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length];
+    next.focus();
+    goTab(next.dataset.themeTab, true);
+  }
+
+  // —— Dragging: the phone sheet by its grip, bar and tabs (down to close,
+  //    up to fill the screen); a phone's artifact by its head (down to close) ——
+
+  function bindDrag(el, handles, finish) {
+    let drag = null;
+    el.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || !event.isPrimary || !finish.when()) return;
+      const handle = event.target.closest?.(handles);
+      if (!handle || !el.contains(handle)) return;
+      drag = { id: event.pointerId, y: event.clientY, x: event.clientX, t: event.timeStamp, dy: 0, v: 0, moved: false, h: el.offsetHeight };
+    });
+    el.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const dy = event.clientY - drag.y;
+      if (!drag.moved) {
+        // A sideways move is a swipe between pages, not a drag.
+        if (Math.abs(dy) < 8 || Math.abs(event.clientX - drag.x) > Math.abs(dy)) {
+          if (Math.abs(event.clientX - drag.x) > 8) drag = null;
+          return;
+        }
+        drag.moved = true;
+        try { el.setPointerCapture(event.pointerId); } catch (_) {}
+        el.classList.add("is-dragging");
+      }
+      const dt = Math.max(1, event.timeStamp - drag.t);
+      drag.v = (dy - drag.dy) / dt;
+      drag.dy = dy;
+      drag.t = event.timeStamp;
+      el.style.setProperty("--dk-drag", `${Math.round(finish.follow(dy))}px`);
+    });
+    const end = (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const done = drag;
+      drag = null;
+      if (!done.moved) return;
+      justDragged = true;
+      setTimeout(() => { justDragged = false; });
+      el.classList.remove("is-dragging");
+      el.style.removeProperty("--dk-drag");
+      finish.end(done.dy, done.v, done.h);
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  }
+
+  function bindSheet() {
+    const rail = q("[data-theme-rail]");
+    if (!rail) return;
+    bindDrag(rail, "[data-theme-grab], [data-theme-drag], [data-theme-tabs]", {
+      when: () => mode() === "sheet" && isOpen(),
+      // Down follows the finger; up gives a little, as if pulled against a spring.
+      follow: (dy) => (dy > 0 ? dy : -Math.min(48, Math.sqrt(-dy) * 4)),
+      end: (dy, v, h) => {
+        const full = rail.classList.contains("is-full");
+        if (dy < -40 || v < -0.5) rail.classList.add("is-full");
+        else if (full && (dy > h * 0.5 || (dy > 60 && v > 0.9))) setOpen(false);
+        else if (full && (dy > 60 || v > 0.5)) rail.classList.remove("is-full");
+        else if (!full && (dy > h * 0.25 || v > 0.5)) setOpen(false);
+      },
+    });
+    const art = q("[data-chat-artifact]");
+    if (art) bindDrag(art, "[data-theme-art-head]", {
+      when: () => matches(PHONE),
+      follow: (dy) => Math.max(0, dy),
+      end: (dy, v) => { if (dy > 120 || v > 0.6) q("[data-artifact-close]")?.click(); },
+    });
+    const pages = q("[data-theme-pages]");
+    if (pages) {
+      let frame = 0;
+      pages.addEventListener("scroll", () => {
+        if (frame || mode() !== "sheet") return;
+        frame = requestAnimationFrame(() => { frame = 0; syncTabs(); });
+      }, { passive: true });
     }
   }
 
@@ -179,33 +311,69 @@ export function create(deps) {
     deps.root.addEventListener("click", (event) => {
       const t = event.target.closest?.("[data-artifact-toggle]");
       if (t && visible(t)) opener = t;
+      // A drag's release is not a tap.
+      if (justDragged && event.target.closest?.("[data-theme-rail], [data-chat-artifact]")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     }, true);
     deps.root.addEventListener("click", (event) => {
       const t = event.target.closest?.("button, a");
-      if (!t || !deps.root.contains(t)) return;
+      if (!t || !deps.root.contains(t)) {
+        if (event.target.closest?.("[data-theme-backdrop]")) closeOverlays();
+        return;
+      }
       const fromMenu = Boolean(t.closest("[data-theme-menu]"));
-      if (t.matches("[data-theme-inspector]")) {
-        const open = deps.root.dataset.themeRailState === "open" || deps.root.classList.contains("is-artifact");
-        if (open && deps.root.classList.contains("is-artifact")) q("[data-artifact-close]")?.click();
-        setOpen(!open, t);
+      if (t.matches("[data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar]")) {
+        setOpen(!isOpen(), t);
       } else if (t.matches("[data-theme-inspector-close]")) {
-        if (deps.root.classList.contains("is-artifact")) q("[data-artifact-close]")?.click();
         setOpen(false);
-      } else if (t.matches("[data-theme-terminal]")) {
-        setCard("terminal", false);
-        setOpen(true, fromMenu ? q("[data-theme-more]") : t);
-        q('[data-theme-card="terminal"]:not([hidden])')?.scrollIntoView({ block: "nearest" });
-      } else if (t.matches("[data-todo-header]")) {
-        if (t.getAttribute("aria-expanded") === "true") {
-          setCard("plan", false);
-          setOpen(true, t);
-          const plan = q('[data-theme-card="plan"]:not([hidden]) [data-live-todos]');
-          plan?.scrollIntoView({ block: "nearest" });
-          if (window.matchMedia(WIDE).matches) plan?.focus({ preventScroll: true });
-        } else if (!window.matchMedia(WIDE).matches) setOpen(false);
-      } else if (t.matches("[data-theme-card-close]")) {
-        setCard(t.dataset.themeCardClose, true);
+      } else if (t.matches("[data-theme-insp-back]")) {
+        page = "";
         syncChrome();
+        q("[data-theme-inspector-close]")?.focus({ preventScroll: true });
+      } else if (t.matches("[data-theme-terminal]")) {
+        openPage("output", fromMenu ? q("[data-theme-more]") : t);
+      } else if (t.matches("[data-show-job]")) {
+        pickedJob = t.dataset.showJob;
+        seen.terminal = "";
+        openPage("output", t);
+      } else if (t.matches("[data-theme-pick-job]")) {
+        pickedJob = t.dataset.themePickJob;
+        seen.terminal = "";
+        syncChrome();
+      } else if (t.matches("[data-theme-term-stop]")) {
+        const id = t.dataset.job;
+        if (id) q(`[data-kill-job="${CSS.escape(id)}"]`)?.click();
+      } else if (t.matches("[data-theme-term-copy]")) {
+        copyOutput();
+      } else if (t.matches("[data-theme-tab]")) {
+        goTab(t.dataset.themeTab, true);
+      } else if (t.matches("[data-theme-fold]")) {
+        const name = t.dataset.themeFold;
+        store.fold[name] = !store.fold[name];
+        if (!store.fold[name]) delete store.fold[name];
+        save();
+        syncChrome();
+      } else if (t.matches("[data-theme-agents-show]")) {
+        const fold = q("[data-agents-fold]");
+        const all = fold?.getAttribute("aria-expanded") === "true";
+        if (fold && all !== (t.dataset.themeAgentsShow === "all")) fold.click();
+      } else if (t.matches("[data-theme-sort]")) {
+        const key = t.dataset.themeSort;
+        store.sort = store.sort === `${key}d` ? `${key}a` : store.sort === `${key}a` ? "" : `${key}d`;
+        save();
+        syncChrome();
+      } else if (t.matches("[data-theme-art-chat]")) {
+        deps.root.classList.toggle("dk-art-chat");
+        syncChrome();
+        if (deps.root.classList.contains("dk-art-chat")) setTimeout(() => q("[data-chat-input]")?.focus({ preventScroll: true }), reduced() ? 0 : 280);
+      } else if (t.matches("[data-theme-art-back]")) {
+        q("[data-artifact-close]")?.click();
+      } else if (t.matches("[data-theme-art-more]")) {
+        // The runtime closes its menu on any click outside its toggle: open it after this one.
+        event.stopPropagation();
+        setTimeout(() => q("[data-artifact-menu-toggle]")?.click());
       } else if (t.matches("[data-theme-agent-back]")) {
         const main = q("[data-agent-main]");
         if (main) main.click();
@@ -231,13 +399,9 @@ export function create(deps) {
         syncScheme();
       } else if (t.matches("[data-theme-more]")) {
         toggleMenu();
-      } else if (t.matches("[data-show-job]")) {
-        pickedJob = t.dataset.showJob;
-        setCard("terminal", false);
-        syncChrome();
       } else if (t.matches("[data-theme-turn-act]")) {
         turnAction(t);
-      } else if (t.matches("[data-history-toggle]") && !window.matchMedia(PHONE).matches) {
+      } else if (t.matches("[data-history-toggle]") && !matches("(max-width: 800px)")) {
         // Collapsing or expanding hides the toggle just used: focus moves to the other one.
         setTimeout(() => {
           if (document.activeElement && document.activeElement !== document.body) return;
@@ -257,12 +421,13 @@ export function create(deps) {
     q("[data-theme-menu]")?.addEventListener("focusout", (event) => {
       if (event.relatedTarget && !event.relatedTarget.closest?.(".dk-menu-wrap")) toggleMenu(false);
     });
+    q("[data-theme-tabs]")?.addEventListener("keydown", tabKey);
     document.addEventListener("click", (event) => {
       const menu = q("[data-theme-menu]");
       if (menu && !menu.hidden && !event.target.closest?.(".dk-menu-wrap")) toggleMenu(false);
-      // Narrow: the inspector overlays the chat; a click outside closes it.
-      if (!window.matchMedia(WIDE).matches && deps.root.dataset.themeRailState === "open"
-        && !event.target.closest?.("[data-theme-rail], [data-theme-inspector], [data-theme-terminal], [data-todo-header], [data-show-job], .chat-pop, dialog")) {
+      // Over the chat, a click outside Activity closes it.
+      if (mode() !== "dock" && isOpen() && !justDragged
+        && !event.target.closest?.("[data-theme-rail], [data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar], [data-theme-terminal], [data-show-job], .chat-pop, dialog")) {
         setOpen(false);
       }
     });
@@ -280,16 +445,22 @@ export function create(deps) {
       } else if (ctx && !ctx.hidden) {
         q("[data-chat-context]")?.click();
         q("[data-chat-context]")?.focus();
+      } else if (deps.root.classList.contains("dk-art-chat")) {
+        deps.root.classList.remove("dk-art-chat");
+        syncChrome();
+        q("[data-theme-art-chat]")?.focus({ preventScroll: true });
       } else return;
       event.preventDefault();
       event.stopImmediatePropagation();
     }, true);
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
-      // Narrow it is an overlay; docked, it closes when the focus is in it.
+      // Over the chat it closes; docked, it closes when the focus is in it.
       const inside = q("[data-theme-rail]")?.contains(document.activeElement);
-      if ((inside || !window.matchMedia(WIDE).matches) && deps.root.dataset.themeRailState === "open" && !deps.root.classList.contains("is-artifact")
-        && !document.querySelector("body > .chat-pop, dialog[open]")) setOpen(false);
+      if ((inside || mode() !== "dock") && isOpen() && !document.querySelector("body > .chat-pop, dialog[open]")) {
+        event.preventDefault();
+        if (page && mode() !== "sheet") { page = ""; syncChrome(); } else setOpen(false);
+      }
     });
     // A layer the runtime closes on Escape (the phone model sheet, a sheet opened
     // from ⋯) can drop the focus to <body>: give it back to what opened it.
@@ -308,8 +479,10 @@ export function create(deps) {
       };
       setTimeout(check);
     }, true);
-    window.matchMedia(WIDE).addEventListener?.("change", () => syncChrome());
-    window.matchMedia(PHONE).addEventListener?.("change", () => syncChrome());
+    [DOCK, PHONE, "(max-width: 800px)"].forEach((query) => window.matchMedia(query).addEventListener?.("change", () => {
+      q("[data-theme-pages]")?.scrollTo({ left: 0 });
+      syncChrome();
+    }));
     document.addEventListener("fuse-appearance", syncScheme);
     // The runtime redraws the chat list in place; keep the keyboard on the same row and control.
     const rowKey = (item) => ["thread", "draft", "project"].map((k) => item.dataset[k] || "").join("|");
@@ -356,7 +529,16 @@ export function create(deps) {
       const active = document.activeElement;
       if (!active || active === document.body || active.matches("[data-chat-input]")) back.focus({ preventScroll: true });
     }).observe(picker, { attributes: true, attributeFilter: ["hidden"] });
+    bindSheet();
     syncScheme();
+  }
+
+  function closeOverlays() {
+    if (deps.root.classList.contains("dk-art-chat")) {
+      deps.root.classList.remove("dk-art-chat");
+      syncChrome();
+    }
+    if (mode() !== "dock" && isOpen()) setOpen(false);
   }
 
   // The footer sun keeps one name and says its state with aria-pressed; the
@@ -416,51 +598,140 @@ export function create(deps) {
     });
   }
 
-  // —— Inspector cards ——
+  // —— Activity: its lists, the plan and a command's output ——
 
-  function syncTerminal(closed) {
-    const card = q('[data-theme-card="terminal"]');
-    if (!card) return false;
+  const jobId = (job) => String(job.command_id || job.id);
+  const jobLive = (job) => LIVE_JOB.has(String(job.state || "running"));
+
+  async function copyOutput() {
+    const job = (deps.jobsRows || []).find((row) => jobId(row) === pickedJob);
+    const text = job ? String(job.output || job.preview || "") : "";
+    try {
+      await navigator.clipboard.writeText(text);
+      window.FuseChatActions?.hint?.(text ? "Copied the output." : "No output yet.");
+    } catch (_) {
+      window.FuseChatActions?.hint?.("Clipboard copy failed.");
+    }
+  }
+
+  function syncTerminal() {
     const rows = deps.jobsRows || [];
-    const job = rows.find((row) => (row.command_id || row.id) === pickedJob)
-      || rows.find((row) => ["running", "queued"].includes(String(row.state || "running"))) || rows[0];
-    const output = job ? String(job.output || job.preview || "") : "";
-    const key = job ? `${job.command_id || job.id}:${output.length}` : "";
+    const job = rows.find((row) => jobId(row) === pickedJob) || rows.find(jobLive) || rows[0];
+    if (job) pickedJob = jobId(job);
+    const out = q("[data-theme-out]");
+    show(out, Boolean(job));
+    show(q("[data-theme-out-empty]"), !job);
+    // The phone's Output page picks among the live commands.
+    const picks = q("[data-theme-out-picks]");
+    const live = rows.filter(jobLive);
+    if (picks) {
+      const html = live.length > 1 ? live.map((row) => `<button type="button" class="dk-pick${jobId(row) === pickedJob ? " is-on" : ""}" data-theme-pick-job="${esc(jobId(row))}" aria-pressed="${jobId(row) === pickedJob}">${esc(deps.toolText(row.description || deps.displayCommand(row) || row.id))}</button>`).join("") : "";
+      if (picks._html !== html) { picks._html = html; picks.innerHTML = html; }
+    }
+    if (!job) return false;
+    const state = String(job.state || "running");
+    const monitor = job.kind === "monitor" || job.name === "monitor";
+    const command = deps.displayCommand(job) || "";
+    const secs = Math.round((Number(job.started_ms) > 0 ? Date.now() - Number(job.started_ms) : Number(job.elapsed_ms) || 0) / 1000);
+    const events = Number(job.event_count);
+    const status = state === "running" ? `Running for ${deps.formatActivityClock(secs)}` : state === "queued" ? "Queued" : state === "cancelling" ? "Stopping" : state.replace(/_/g, " ");
+    const meta = [status, job.host || "", monitor && events > 0 ? `${events} event${events === 1 ? "" : "s"}` : ""].filter(Boolean);
+    setText(q("[data-theme-term-title]"), job.description || command || job.id);
+    const metaEl = q("[data-theme-term-meta]");
+    const metaHtml = meta.map((part, i) => `<span${i === 0 && jobLive(job) ? ' class="is-live"' : ""}>${esc(part)}</span>`).join("");
+    if (metaEl && metaEl._html !== metaHtml) { metaEl._html = metaHtml; metaEl.innerHTML = metaHtml; }
+    const icon = q("[data-theme-term-icon]");
+    if (icon && icon.dataset.kind !== (monitor ? "monitor" : "command")) {
+      icon.dataset.kind = monitor ? "monitor" : "command";
+      icon.innerHTML = monitor ? EYE : TERM;
+    }
+    const stop = q("[data-theme-term-stop]");
+    if (stop) {
+      show(stop, jobLive(job) && state !== "cancelling");
+      stop.dataset.job = jobId(job);
+    }
+    setText(q("[data-theme-term-name]"), command ? `$ ${command}` : "");
+    const output = String(job.output || job.preview || "");
+    const key = `${jobId(job)}:${output.length}`;
     if (key !== seen.terminal) {
       seen.terminal = key;
-      if (job) {
-        setText(card.querySelector("[data-theme-term-name]"), `$ ${deps.displayCommand(job) || job.description || job.id}`);
-        const out = card.querySelector("[data-theme-term-out]");
-        out.innerHTML = deps.renderAnsi(output.split("\n").slice(-200).join("\n")) || esc("(no output yet)");
-        out.scrollTop = out.scrollHeight;
+      const pre = q("[data-theme-term-out]");
+      if (pre) {
+        const stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
+        pre.innerHTML = deps.renderAnsi(output.split("\n").slice(-400).join("\n")) || '<span class="dk-term-wait">No output yet.</span>';
+        if (stick || !pre._seen) pre.scrollTop = pre.scrollHeight;
+        pre._seen = true;
       }
     }
     deps.root.querySelectorAll("[data-jobs-list] [data-show-job]").forEach((btn) => {
-      const on = Boolean(job) && btn.dataset.showJob === (job.command_id || job.id);
+      const on = page === "output" && btn.dataset.showJob === pickedJob;
       if (btn.classList.contains("is-picked") !== on) btn.classList.toggle("is-picked", on);
     });
-    show(card, Boolean(job) && !closed.has("terminal"));
-    return Boolean(job);
+    return true;
   }
 
-  function syncTasks(closed) {
-    const strip = q("[data-work-strip]");
-    const live = Boolean(strip && !strip.hidden);
-    const agents = (deps.agentsRows || []).length;
-    const jobs = (deps.jobsRows || []).length;
-    setText(q("[data-theme-tasks-count]"), agents + jobs ? String(agents + jobs) : "");
-    show(q('[data-theme-card="tasks"]'), live && !closed.has("tasks"));
-    return live;
+  // Main's own clock and context sit in its row; the runtime draws the rest.
+  function syncMainRow() {
+    const busy = Boolean(deps.streaming || deps.runIsActive?.(deps.activeRun));
+    const msgs = deps.messages || [];
+    let last = null;
+    for (let i = msgs.length - 1; i >= 0 && !last; i -= 1) if (msgs[i]?.role === "assistant") last = msgs[i];
+    const secs = busy && last && deps.liveElapsedSeconds ? deps.liveElapsedSeconds(last, true) : null;
+    setText(q("[data-theme-main-time]"), secs != null && Number.isFinite(secs) ? deps.formatActivityClock(Math.round(secs)) : "—");
+    const ctx = q("[data-theme-main-ctx]");
+    const pct = Number(/\((\d+)%\)/.exec(q("[data-chat-context]")?.title || "")?.[1]);
+    const html = Number.isFinite(pct) ? `<b>${pct}%</b><i class="dk-meter${pct >= 70 ? " is-high" : ""}"><i style="width:${Math.min(100, pct)}%"></i></i>` : "<b>—</b>";
+    if (ctx && ctx._html !== html) { ctx._html = html; ctx.innerHTML = html; }
+    return busy;
   }
 
-  function syncPlan(closed) {
-    const todos = q("[data-live-todos]");
-    // In a subagent the composer shows its own list; the card keeps to main's.
-    const live = Boolean(todos && !todos.hidden) && !deps.root.classList.contains("is-agent-view");
-    const items = todos ? todos.querySelectorAll("li, [data-todo-id], .chat-todo-row").length : 0;
-    setText(q("[data-theme-plan-count]"), items ? String(items) : "");
-    show(q('[data-theme-card="plan"]'), live && !closed.has("plan"));
-    return live;
+  function syncGroups() {
+    const agentsRows = deps.agentsRows || [];
+    const jobsRows = deps.jobsRows || [];
+    const agentsLive = agentsRows.filter((row) => deps.agentLive(row.status)).length;
+    const jobsLive = jobsRows.filter((row) => ["running", "cancelling"].includes(String(row.state || "running"))).length;
+    const agentsList = q("[data-agents-list]");
+    const jobsList = q("[data-jobs-list]");
+    const agentsShown = Boolean(agentsList && !agentsList.hidden);
+    const jobsShown = Boolean(jobsList && !jobsList.hidden);
+    show(q('[data-theme-grp="agents"]'), agentsShown);
+    show(q('[data-theme-grp="commands"]'), jobsShown);
+    setText(q("[data-theme-agents-count]"), agentsRows.length ? `${agentsLive} running of ${agentsRows.length}` : "");
+    const shownJobs = jobsList ? jobsList.querySelectorAll("[data-job-row]").length : 0;
+    const shownLive = jobsList ? jobsList.querySelectorAll("[data-job-row].is-running").length : 0;
+    setText(q("[data-theme-jobs-count]"), shownJobs ? (shownLive ? `${shownLive} running` : `${shownJobs} finished`) : "");
+    const all = q("[data-agents-fold]")?.getAttribute("aria-expanded") === "true";
+    deps.root.querySelectorAll("[data-theme-agents-show]").forEach((btn) => setAttr(btn, "aria-pressed", String((btn.dataset.themeAgentsShow === "all") === all)));
+    // Sorting reorders rows in CSS (order keys on each row), so it survives every redraw.
+    if (agentsList && (agentsList.dataset.sort || "") !== store.sort) {
+      if (store.sort) agentsList.dataset.sort = store.sort;
+      else delete agentsList.dataset.sort;
+    }
+    deps.root.querySelectorAll("[data-theme-sort]").forEach((btn) => {
+      const key = btn.dataset.themeSort;
+      const on = store.sort.startsWith(key) ? (store.sort.endsWith("a") ? "ascending" : "descending") : "";
+      if ((btn.getAttribute("aria-sort") || "") !== on) {
+        if (on) btn.setAttribute("aria-sort", on);
+        else btn.removeAttribute("aria-sort");
+      }
+    });
+    deps.root.querySelectorAll("[data-theme-fold]").forEach((btn) => {
+      const folded = Boolean(store.fold[btn.dataset.themeFold]);
+      setAttr(btn, "aria-expanded", String(!folded));
+      btn.closest(".dk-grp")?.classList.toggle("is-folded", folded);
+    });
+    // The plan of the transcript on screen: main's, or the open subagent's.
+    const todos = q(deps.root.classList.contains("is-agent-view") ? "[data-agent-live-todos]" : "[data-live-todos]");
+    const plan = Boolean(todos && !todos.hidden);
+    const rows = todos ? todos.querySelectorAll(".chat-todo-row") : [];
+    const done = todos ? todos.querySelectorAll(".chat-todo-row:is(.is-completed, .is-cancelled)").length : 0;
+    show(q('[data-theme-grp="plan"]'), plan);
+    show(q("[data-theme-plan-empty]"), !plan);
+    setText(q("[data-theme-plan-count]"), rows.length ? `${done} of ${rows.length} done` : "");
+    const bar = q("[data-theme-plan-bar]");
+    const width = rows.length ? `${Math.round((done / rows.length) * 100)}%` : "0%";
+    if (bar && bar.style.width !== width) bar.style.width = width;
+    return { agentsLive, jobsLive, tasks: agentsShown || jobsShown, plan: plan && rows.length ? { done, total: rows.length } : null };
   }
 
   function syncTitle() {
@@ -473,32 +744,74 @@ export function create(deps) {
   function syncChrome() {
     if (!deps.root) return;
     bind();
-    const closed = closedCards();
-    const tasks = syncTasks(closed);
-    const plan = syncPlan(closed);
-    const terminal = syncTerminal(closed);
+    const artifact = deps.root.classList.contains("is-artifact");
+    // An artifact takes the window: an open Activity steps aside and comes back after.
+    if (artifact !== wasArtifact) {
+      if (artifact && store.open && mode() !== "sheet") { openBeforeArtifact = true; store.open = false; }
+      else if (!artifact) {
+        if (openBeforeArtifact) store.open = true;
+        openBeforeArtifact = null;
+        deps.root.classList.remove("dk-art-chat");
+      }
+      wasArtifact = artifact;
+    }
+    // The artifact fills the window when asked to ("Full window") or when the
+    // window has no room for it beside the chat; then Chat slides in over it.
+    const full = artifact && (deps.root.classList.contains("is-artifact-wide") || !matches(DOCK));
+    if (deps.root.classList.contains("dk-art-full") !== full) deps.root.classList.toggle("dk-art-full", full);
+    if (!full && deps.root.classList.contains("dk-art-chat")) deps.root.classList.remove("dk-art-chat");
+    const how = mode();
+    if (deps.root.dataset.themeInsp !== how) deps.root.dataset.themeInsp = how;
+    const counts = syncGroups();
+    const busy = syncMainRow();
+    const terminal = syncTerminal();
+    if (!terminal && page === "output") page = "";
+    // A phone's sheet shows every page side by side; wider, one at a time.
+    const rail = q("[data-theme-rail]");
+    const shown = how === "sheet" ? "" : page;
+    if (rail && (rail.dataset.page || "") !== shown) {
+      if (shown) rail.dataset.page = shown;
+      else delete rail.dataset.page;
+    }
+    show(q("[data-theme-insp-back]"), page === "output" && how !== "sheet");
+    const running = counts.agentsLive + counts.jobsLive;
+    const label = running ? `${running} running` : counts.plan ? `Plan ${counts.plan.done}/${counts.plan.total}` : "";
+    setText(q("[data-theme-live-label]"), label);
+    setText(q("[data-theme-live-count]"), running ? `${running} running` : "");
+    const toggle = q("[data-theme-inspector]");
+    toggle?.classList.toggle("is-live", running > 0);
+    toggle?.classList.toggle("has-label", Boolean(label));
+    setAttr(toggle, "aria-label", label ? `Activity: ${label}` : "Activity");
+    const artLive = q("[data-theme-art-live]");
+    show(artLive, running > 0);
+    setText(q("[data-theme-art-live-label]"), running ? `${running} running` : "");
+    setText(q("[data-theme-art-bar-label]"), running ? `${running} running` : "Activity");
+    q("[data-theme-art-live-bar]")?.classList.toggle("is-live", running > 0);
+    setAttr(q("[data-theme-art-chat]"), "aria-pressed", String(deps.root.classList.contains("dk-art-chat")));
+    setText(q("[data-theme-tab-n=\"activity\"]"), running ? String(running) : "");
+    setText(q("[data-theme-tab-n=\"plan\"]"), counts.plan ? `${counts.plan.done}/${counts.plan.total}` : "");
+    show(q("[data-theme-insp-empty]"), !counts.tasks);
+    setText(q("[data-theme-insp-empty]"), busy ? "Working in the chat. Subagents and background commands show up here." : "Nothing running.");
     syncTitle();
     syncPins();
     show(q("[data-theme-agent-back]"), deps.root.classList.contains("is-agent-view"));
-    const artifact = deps.root.classList.contains("is-artifact");
-    const cards = deps.root.querySelectorAll("[data-theme-rail] [data-theme-card]:not([data-theme-card=preview]):not([hidden])").length;
-    show(q("[data-theme-insp-empty]"), !cards && !artifact);
     const next = store.open ? "open" : "closed";
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
-    syncLayer(artifact ? "open" : next);
+    syncLayer(next, how);
+    if (how === "sheet" && next === "open") syncTabs();
     deps.root.classList.toggle("dk-has-term", terminal);
-    const toggle = q("[data-theme-inspector]");
-    const open = next === "open" || artifact;
-    if (toggle && toggle.getAttribute("aria-pressed") !== String(open)) toggle.setAttribute("aria-pressed", String(open));
-    // New work while it is shut (or on a dismissed card) only puts a dot on the button.
+    const open = next === "open";
+    setAttr(toggle, "aria-pressed", String(open));
+    // New work while it is shut only puts a dot on the button.
     const todos = q("[data-live-todos]");
-    const sig = [tasks && (deps.agentsRows || []).length, tasks && (deps.jobsRows || []).map((row) => `${row.command_id || row.id}:${row.state}`).join(","),
-      plan && todos.textContent.length].join("|");
-    if (thread() !== threadKey) {
-      threadKey = thread();
+    const sig = [counts.tasks && (deps.agentsRows || []).length, counts.tasks && (deps.jobsRows || []).map((row) => `${jobId(row)}:${row.state}`).join(","),
+      counts.plan && todos.textContent.length].join("|");
+    const id = new URLSearchParams(location.search).get("t") || "";
+    if (id !== threadKey) {
+      threadKey = id;
       baseSig = sig;
     }
-    if (open && closed.size === 0) baseSig = sig;
+    if (open) baseSig = sig;
     toggle?.classList.toggle("has-notes", sig !== baseSig);
   }
 
