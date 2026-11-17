@@ -3,7 +3,13 @@
    shell.css in design.css, which settles the window chrome. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --chat-col: 44rem;
+  /* One type scale, each step a notch below the last: the status line, the
+     reply, call rows, the turn line. Phones read one step up (iOS's 17pt
+     body). All follow the reader's text size. */
+  --dk-status: calc(1.0625rem * var(--chat-text-scale, 1));
+  --dk-prose: calc(1rem * var(--chat-text-scale, 1));
   --console-type: calc(0.875rem * var(--chat-text-scale, 1));
+  --dk-meta: calc(0.8125rem * var(--chat-text-scale, 1));
   --console-leading: 1.55;
   --console-stack: 0.05rem;
   --console-col: 0.85rem;
@@ -15,17 +21,25 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-hit: 32px; }
 }
+@media (max-width: 640px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+    --dk-status: calc(1.125rem * var(--chat-text-scale, 1));
+    --dk-prose: calc(1.0625rem * var(--chat-text-scale, 1));
+    --console-type: calc(0.9375rem * var(--chat-text-scale, 1));
+    --dk-meta: calc(0.875rem * var(--chat-text-scale, 1));
+  }
+}
 
 /* Turns sit close; the user bubble is the separator. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-log { gap: 0.45rem; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-assistant { gap: 0.3rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-log { gap: 0.5rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-assistant { gap: 0.375rem; }
 
 /* You: a compact bubble on the right. Wake turns keep their rows. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user:not(.is-auto-steps) {
   align-self: flex-end;
   width: auto;
   max-width: 75%;
-  margin-block: 0.9rem 0.35rem;
+  margin-block: 1rem 0.25rem;
   padding: 0.5rem 0.9rem;
   border-radius: 1rem;
   background: var(--dk-bubble, var(--raise));
@@ -34,7 +48,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tur
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user .chat-bubble {
   display: block;
   color: var(--mist);
-  font-size: calc(1rem * var(--chat-text-scale, 1));
+  font-size: var(--dk-prose);
   line-height: 1.5;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user .chat-bubble::before { content: none; }
@@ -42,7 +56,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tur
 /* Replies: plain prose, no bullet column. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md {
   display: block;
-  font-size: calc(1rem * var(--chat-text-scale, 1));
+  font-size: var(--dk-prose);
   line-height: 1.6;
   color: var(--dk-text, var(--mist));
 }
@@ -279,7 +293,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    the action icons, which show while the reply is pointed at or focused.
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 0.15rem; font-size: calc(0.76rem * var(--chat-text-scale, 1)); color: var(--dk-mute, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 0.15rem; font-size: var(--dk-meta); color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; margin-left: 6px; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; }
 @media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
