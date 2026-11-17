@@ -305,9 +305,9 @@ function consoleCallHtml(trace, presentation, full = false) {
     const described = shellDescription(trace, presentation, full);
     if (described) {
       // The description is the row's sentence, in the past tense ("Listed the
-      // test areas"); one that failed keeps what it tried. A description that
-      // does not start with a verb keeps "Ran" before it.
-      const bad = presentation?.failed || (presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError);
+      // test areas"); one that failed or was cut short keeps what it tried. A
+      // description that does not start with a verb keeps "Ran" before it.
+      const bad = presentation?.failed || presentation?.interrupted || (presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError);
       const sentence = bad ? described : deps.ccRunningForm(described) ? deps.ccInflect(described).done : "";
       return `<span class="chat-console-call is-described">${sentence ? "" : `<span class="chat-tool-action">${deps.escapeHtml(verb)}</span>`}` +
         `<span class="chat-console-val">${deps.escapeHtml(sentence || described)}</span></span>${hostHtml}${clock}`;
