@@ -1,38 +1,37 @@
 import { chaosHtml } from './chaos.js';
 
-// Sidebar presentation: one 28px row per session with a status icon (a
-// dotted circle, </> for a code session; the Chaos spinner while it runs), the
-// timeline under Pinned and Recents, projects as coloured squares.
-// The runtime sorts, filters, pins and groups; historyListHtml draws its
-// blocks. Rows keep the runtime's hooks: data-history-item, data-thread /
-// data-draft / data-project, data-pinned, data-row-open, data-row-more.
+// Sidebar presentation: one 28px row per session. Each row opens with its
+// age slot (relative time, the unread dot, or the Chaos spinner while it
+// runs), then the project's pastel folder or logo for project sessions; the
+// timeline sits under Pinned and Recents. The runtime sorts, filters, pins
+// and groups; historyListHtml draws its blocks. Rows keep the runtime's
+// hooks: data-history-item, data-thread / data-draft / data-project,
+// data-pinned, data-row-open, data-row-more.
 export function create(deps) {
   const esc = (value) => deps.escapeHtml(value);
-  const HEX = /^#[0-9a-f]{3,8}$/i;
 
   // A run spinner slot; the runtime fills [data-run-spin] (setConsoleSpin).
   // Desktop shows it as a pulsing dot (styles/shell.css).
-  // A code session's </> mark wears its project's colour (data-project-color).
-  const codeIcon = (color) => `<svg class="dk-st-code" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="color:${color}"` : ""} viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   function runSpinHtml(stamp) {
     return `<span class="chat-run-spin dk-live" data-run-spin="${esc(String(stamp))}" data-spin-set="console-glyph" aria-hidden="true">` +
       `<span class="chat-console-spin">${deps.consoleSpinGlyph(true)}</span></span>`;
   }
 
-  function whenHtml(row) {
-    const live = row.running ? runSpinHtml(row.spin) : "";
+  // The age slot: what the row is doing, else when it last moved (the
+  // runtime keeps [data-age-stamp] current). A running row shows the Chaos
+  // spinner (chaos.js), tinted with its project colour.
+  function whenHtml(row, color) {
+    if (row.running) return chaosHtml(row.spin, color) + runSpinHtml(row.spin);
+    if (row.unread) return '<i class="dk-unread" role="img" aria-label="Unread"></i>';
     const age = row.age;
-    if (!age) return live;
+    if (!age?.text) return "";
     const title = age.title ? ` title="${esc(age.title)}"` : "";
-    const dot = age.unread && !row.running ? '<i class="dk-unread" role="img" aria-label="Unread"></i>' : "";
-    return `${live}${dot}<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
+    return `<time class="dk-when" data-age-stamp="${esc(String(age.at))}"${title}>${esc(age.text)}</time>`;
   }
 
-  const square = (color) => `<i class="dk-pj" aria-hidden="true" data-project-color="${esc(color || "")}"${HEX.test(color || "") ? ` style="--dk-pj:${color}"` : ""}></i>`;
-
-  function rowHtml({ cls, attrs, title, label, lead, extra = "", when = "", menu, on, working = "" }) {
+  function rowHtml({ cls, attrs, title, label, lead = "", extra = "", when = "", menu, on, working = "" }) {
     return `<div class="dk-row${cls}" data-history-item${attrs}>` +
-      `<button type="button" class="dk-open" data-row-open title="${title}"${on ? ' aria-current="true"' : ""}>${working}${lead}<span class="dk-name" data-row-name>${label}</span>${extra}${when}</button>` +
+      `<button type="button" class="dk-open" data-row-open title="${title}"${on ? ' aria-current="true"' : ""}>${working}<span class="dk-age">${when}</span>${lead}<span class="dk-name" data-row-name>${label}</span>${extra}</button>` +
       `<button type="button" class="dk-more" data-row-more aria-label="${menu}" aria-haspopup="menu" aria-expanded="false">⋯</button></div>`;
   }
 
@@ -41,8 +40,7 @@ export function create(deps) {
 
   function threadRowHtml(item, row) {
     const title = esc(row.title);
-    // A running session's icon gives way to the Chaos spinner (chaos.js).
-    const lead = row.running ? chaosHtml(row.spin, item.project_color) : !row.project ? '<i class="dk-st" aria-hidden="true"></i>' : item.project_logo_url ? row.icon : codeIcon(item.project_color);
+    const lead = row.project ? row.icon : "";
     const where = row.meta ? `<span class="dk-sub" data-row-meta>${esc(row.meta.name)}</span>` : "";
     const chip = row.chip ? `<span class="dk-chip">${esc(row.chip)}</span>` : "";
     const snip = item.snippet ? `<span class="dk-snip">${esc(item.snippet)}</span>` : "";
@@ -50,7 +48,7 @@ export function create(deps) {
       (item.pinned ? " is-pinned" : "") + (item.schedule_id ? " is-task" : "") + (row.grouped ? " is-grouped" : "") + (snip ? " has-snip" : "");
     const attrs = (item.pinned ? " data-pinned" : "") + ` data-thread="${esc(String(item.id))}"` + (row.running ? ' aria-busy="true"' : "");
     const working = row.running ? '<span class="visually-hidden">Working</span>' : "";
-    return rowHtml({ cls, attrs, title: tip(row.title, row, item), label: title, working, lead, extra: where + chip + snip, when: whenHtml(row), menu: `Actions for ${title}`, on: row.on });
+    return rowHtml({ cls, attrs, title: tip(row.title, row, item), label: title, working, lead, extra: where + chip + snip, when: whenHtml(row, item.project_color), menu: `Actions for ${title}`, on: row.on });
   }
 
   function draftRowHtml(item, row) {
@@ -59,7 +57,7 @@ export function create(deps) {
     return rowHtml({
       cls: " is-draft" + (row.on ? " is-on" : "") + (row.grouped ? " is-grouped" : ""),
       attrs: ` data-draft="${esc(item.draft)}"`,
-      title: `Draft: ${title}`, label: `<em>Draft</em> ${title}`, lead: "", extra: where,
+      title: `Draft: ${title}`, label: `<em>Draft</em> ${title}`, lead: row.project ? row.icon : "", extra: where,
       menu: `Actions for draft ${title}`, on: row.on,
     });
   }
@@ -71,7 +69,7 @@ export function create(deps) {
     return rowHtml({
       cls: " is-project" + (row.on ? " is-on" : "") + (row.running ? " is-running" : ""),
       attrs: ` data-project="${item.host_id}:${item.id}"` + (item.thread_id ? ` data-thread="${esc(String(item.thread_id))}"` : "") + (row.running ? ' aria-busy="true"' : ""),
-      title: tip(item.name || "Project", row, item), label: name, lead: row.running ? chaosHtml(row.spin, item.color) : item.logo_url ? row.icon : square(item.color), extra: host + chip, when: whenHtml(row),
+      title: tip(item.name || "Project", row, item), label: name, lead: row.icon, extra: host + chip, when: whenHtml(row, item.color),
       menu: `Actions for project ${name}`, on: row.on,
     });
   }
@@ -94,7 +92,7 @@ export function create(deps) {
           heading = "";
           break;
         case "group":
-          out += `<h2 class="dk-group is-project" data-history-group data-project-color="${esc(block.color || "")}">${/fp-logo/.test(block.icon) ? block.icon : square(block.color)}<span data-group-name>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h2>`;
+          out += `<h2 class="dk-group is-project" data-history-group data-project-color="${esc(block.color || "")}">${block.icon}<span data-group-name>${esc(block.name)}</span>${block.host ? `<small>${esc(block.host)}</small>` : ""}</h2>`;
           timeline = false;
           break;
         case "thread":

@@ -45,13 +45,19 @@ export function createRender(ctx) {
     const next = tab === "projects" ? "projects" : "chats";
     const persist = !opts || opts.persist !== false;
     const silent = Boolean(opts && opts.silent);
-    if (next !== S.historyTab) S.showArchived = false;
+    const changed = next !== S.historyTab;
+    if (changed) S.showArchived = false;
     S.historyTab = next;
     if (persist) {
       try { localStorage.setItem(S.STORE_TAB, next); } catch (_) {}
     }
     syncHistoryChrome();
-    if (!silent) renderHistory();
+    if (silent) return;
+    renderHistory();
+    // The new tab's list fades up into place, once per switch.
+    if (changed && S.historyList && !S.reduceMotion.matches) {
+      S.historyList.animate([{ opacity: 0, translate: "0 3px" }, { opacity: 1, translate: "0 0" }], { duration: 200, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+    }
   }
 
     function syncHistoryChrome() {

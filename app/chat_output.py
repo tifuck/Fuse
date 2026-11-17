@@ -108,12 +108,15 @@ class Output:
             self._ensure_aggregates()
 
     def restore_event(self, obj):
-        """A frame as the user sees it: run events carry real values. Any
-        event that starts something new first settles held text."""
+        """A frame as the user sees it: run events carry real values. Held
+        text settles only where the model's text really ends (a call, a new
+        round, a delivery); a mid-reply marker must not cut a stand-in."""
         event = obj.get("fuse") if isinstance(obj, dict) else None
         if self.swap is None or not isinstance(event, dict):
             return obj
-        if event.get("event") not in ("heartbeat", "context"):
+        kind = event.get("event")
+        if kind in ("tool", "delivery") or (kind == "activity" and event.get("phase") == "model"
+                                            and not event.get("thinking")):
             self.flush_swap()
         return {**obj, "fuse": self.swap.restore_value(event)}
 

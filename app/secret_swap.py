@@ -110,10 +110,18 @@ _SECRET_NAME = re.compile(
 _NOT_SECRET_NAME = re.compile(
     r"(?i)(?:file|path|dir|url|uri|name|len|length|size|ttl|expir\w*|type|count|id|hint|prompt|header|field"
     r"|policy|rotation|ref|env|var|limit|max|min|timeout|regex|pattern|endpoint|mode|enabled|required"
-    r"|label|format|prefix|suffix|usage|cost|budget)s?$")
+    r"|label|format|prefix|suffix|usage|cost|budget)s?$|tokeniz")
+_PASSWORD_NAME = re.compile(r"(?i)pass|pwd")
 _PLACEHOLDER = re.compile(
     r"(?i)^(?:x+|\*+|\.+|-+|_+|0+)$|example|placeholder|changeme|change_me|redacted|dummy|your[_-]|xxxx"
-    r"|<|>|\$\{|\{\{|%s|^\$|^/|^\./|^~|^https?:")
+    r"|replace[_-]?me|todo|fixme|<|>|\$\{|\{\{|%s|^\$|^/|^\./|^~|^https?:")
+# Code, not a value: `self.db_password`, `settings.API_KEY`, `refreshToken`.
+# Only real identifier shapes, so a random letters-only password is not one.
+_IDENT = r"(?:[a-z]+(?:[A-Z][a-z]+)+|[A-Z][a-z]+(?:[A-Z][a-z]+)+|_?[a-z]+(?:_[a-z]+)+|[A-Z]+(?:_[A-Z]+)+)"
+_PART = r"(?:%s|[a-z]+|[A-Z][a-z]+|[A-Z]+)" % _IDENT
+_CODE = re.compile(r"%s(?:\.%s)+|%s" % (_PART, _PART, _IDENT))
+# One word-like piece: `aws`, `secrets`, `v2`, `2024`, `Prod`.
+_WORD = re.compile(r"(?:[a-z]+|[A-Z]+|[A-Z][a-z]+)?[0-9]*")
 _CARD = re.compile(r"(?<![\d-])(?:\d[ -]?){12,18}\d(?![\d-])")
 _CARD_CONTEXT = re.compile(r"(?i)card|\bcc\b|credit|debit|visa|master|amex|\bpan\b|payment|cvv")
 _CARD_IIN = re.compile(r"^(?:4|5[1-5]|2[2-7]|3[47]|6(?:011|5|4[4-9])|35)")
@@ -124,6 +132,7 @@ _PUBLIC = frozenset({
     "5105105105105100", "378282246310005", "371449635398431", "6011111111111117", "6011000990139424",
     "3056930009020004", "36227206271667", "3566002020360505", "4111111111111111", "4012888888881881",
     "4000000000000002", "4000000000009995", "4000000000000077",
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",  # the jwt.io example token's signature
 })
 
 
@@ -134,7 +143,30 @@ def _classes(value: str) -> int:
 
 def _weak_ok(value: str) -> bool:
     return (len(value) >= _MIN_WEAK and _classes(value) >= 2 and len(set(value)) > 3
-            and not _PLACEHOLDER.search(value) and value not in _PUBLIC)
+            and not _PLACEHOLDER.search(value) and value not in _PUBLIC and not _CODE.fullmatch(value))
+
+
+def _wordy(value: str) -> bool:
+    """Hyphenated words and numbers (`aws-secrets-manager`, `sk-learn-tutorial-2024`):
+    a name, never a random token."""
+    return all(_WORD.fullmatch(piece) for piece in re.split(r"[-_.]+", value) if piece)
+
+
+def _random_body(kind: str, body: str) -> bool:
+    """A provider-shaped value whose random part is really random, not
+    `xxxx` or words. AWS ids may lack digits, so only placeholders count there."""
+    chars = [c for c in body if _alnum(c)]
+    if len(set(chars)) <= 4:
+        return False
+    return kind == "aws" or not _wordy(body)
+
+
+def _encodable(value: str) -> bool:
+    try:
+        value.encode()
+    except UnicodeEncodeError:  # lone surrogates from decoded JSON
+        return False
+    return True
 
 
 def _luhn(digits: str) -> bool:
@@ -156,11 +188,13 @@ def detect(text: str) -> list[Hit]:
     for order, (kind, rx, tail) in enumerate(_RULES):
         for m in rx.finditer(text):
             value = m.group(0)
-            if value in _PUBLIC or "EXAMPLE" in value:
+            if value in _PUBLIC or "EXAMPLE" in value or not _random_body(kind, value[len(m.group("p")):]):
                 continue
             specific.append((m.start(), -len(value), order, Hit(m.start(), m.end(), kind, len(m.group("p")),
                                                                 tail if len(value) >= 20 else 0)))
     for m in _JWT.finditer(text):
+        if m.group("v") in _PUBLIC:
+            continue
         specific.append((m.start("v"), -len(m.group("v")), 90, Hit(m.start("v"), m.end("v"), "jwt")))
     for m in _PEM.finditer(text):
         body_start, first = m.start(2), True
@@ -176,20 +210,30 @@ def detect(text: str) -> list[Hit]:
     for rx, kind in ((_BEARER, "bearer"), (_URL_CRED, "url")):
         for m in rx.finditer(text):
             value = m.group("v")
-            if (kind == "url" and not _weak_ok(value)) or _PLACEHOLDER.search(value):
+            if (kind == "url" and not _weak_ok(value)) or _PLACEHOLDER.search(value) or _wordy(value):
                 continue
             generic.append((m.start("v"), -len(value), 0, Hit(m.start("v"), m.end("v"), kind)))
-    for m in _ASSIGN.finditer(text):
+    pos = 0
+    while (m := _ASSIGN.search(text, pos)) is not None:
+        # A rejected pair (`https://host/?access_token=...`) must not hide one inside it.
+        pos = m.start() + 1
         name, value = m.group("name"), m.group("v")
         if not _SECRET_NAME.search(name) or _NOT_SECRET_NAME.search(name) or not _weak_ok(value):
             continue
+        # A passphrase may be words; a token, secret or key never is.
+        if _wordy(value) and not _PASSWORD_NAME.search(name):
+            continue
         generic.append((m.start("v"), -len(value), 1, Hit(m.start("v"), m.end("v"), "assign")))
+        pos = m.end()
     for m in _CARD.finditer(text):
         digits = re.sub(r"\D", "", m.group(0))
+        before = text[max(0, m.start() - 40):m.start()].rsplit("\n", 1)[-1]  # this line only
         if (len(digits) < 13 or digits in _PUBLIC or not _CARD_IIN.match(digits) or not _luhn(digits)
-                or not _CARD_CONTEXT.search(text[max(0, m.start() - 40):m.start()])):
+                or not _CARD_CONTEXT.search(before)):
             continue
         generic.append((m.start(), -len(m.group(0)), 2, Hit(m.start(), m.end(), "card", 1, 4)))
+    specific = [item for item in specific if _encodable(text[item[3].start:item[3].end])]
+    generic = [item for item in generic if _encodable(text[item[3].start:item[3].end])]
     chosen: list[Hit] = []
     for pool in (specific, generic):
         for *_key, hit in sorted(pool, key=lambda item: item[:3]):

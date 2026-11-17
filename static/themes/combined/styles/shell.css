@@ -132,8 +132,20 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   & .cb-search input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
   & .cb-search .cb-ib { width: 24px; height: 24px; }
-  & .cb-tabs { display: flex; gap: 2px; height: 28px; margin: 2px 0 0; padding: 2px; border-radius: 7px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); }
+  & .cb-tabs { position: relative; display: flex; gap: 2px; height: 28px; margin: 2px 0 0; padding: 2px; border-radius: 7px; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); }
+  /* The selected tab's fill is one pill that slides between the two tabs. */
+  & .cb-tabs::before {
+    content: "";
+    position: absolute;
+    inset: 2px auto 2px 2px;
+    width: calc(50% - 3px);
+    border-radius: 5px;
+    background: var(--cb-on);
+    transition: translate var(--dur-2) var(--ease-glide);
+  }
+  & .cb-tabs:has([data-history-tab="projects"][aria-selected="true"])::before { translate: calc(100% + 2px) 0; }
   & .cb-tab {
+    position: relative;
     display: inline-flex;
     flex: 1;
     align-items: center;
@@ -145,7 +157,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     font-weight: 500;
     font-size: 12.5px;
   }
-  & .cb-tab[aria-selected="true"] { background: var(--cb-on); color: var(--mist); }
+  & .cb-tab { transition: color var(--dur-1) ease; }
+  & .cb-tab[aria-selected="true"] { color: var(--mist); }
   & .cb-tab .chat-run-spin:not([hidden]) { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
   & .cb-tab .chat-run-spin > * { display: none; }
   & .cb-tab-unread { width: 6px; height: 6px; border-radius: 50%; background: var(--brass); font-size: 0; }
@@ -198,9 +211,20 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     scrollbar-width: thin;
   }
   & .cb-list > .cb-group:first-child { margin-top: 2px; }
-  & .cb-row { position: relative; display: flex; align-items: center; flex: none; height: 28px; border-radius: 7px; color: color-mix(in srgb, var(--mist) 78%, var(--mute)); }
+  & .cb-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 28px;
+    border-radius: 7px;
+    color: color-mix(in srgb, var(--mist) 78%, var(--mute));
+    transition: background-color var(--dur-1) ease, color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+  }
   & .cb-row:hover { background: var(--cb-hover); }
   & .cb-row:is(.is-on, .is-menu) { background: var(--cb-on); color: var(--mist); }
+  /* Press: one step deeper and a hair smaller, back on release. */
+  & .cb-row:has(> .cb-open:active) { background: color-mix(in srgb, var(--mist) 10%, var(--cb-on)); scale: 0.985; }
   & .cb-row.is-unread { color: var(--mist); }
   & .cb-row.is-dragging { opacity: 0.7; background: var(--cb-on); }
   & .cb-open {
@@ -218,8 +242,11 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   /* The ⋯ button gets its own slot while it shows, so it never covers the title. */
   & .cb-row:is(:hover, :focus-within, .is-menu) .cb-open { padding-right: 30px; }
+  /* The age slot leads every row: 26px fits the longest age ("11mo"), so
+     every title starts on one edge. */
+  & .cb-age { display: grid; flex: none; place-items: center start; width: 26px; height: 14px; font: 11px var(--mono); }
   & .cb-lead { display: grid; flex: none; place-items: center; width: 14px; height: 14px; }
-  & .cb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .cb-name { min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; }
   & .cb-name em { color: color-mix(in srgb, var(--brass) 70%, var(--mist)); font-style: normal; }
   & :is(.cb-sub, .cb-snip, .cb-chip) { flex: none; max-width: 40%; overflow: hidden; color: var(--mute); font-size: 11.5px; text-overflow: ellipsis; }
   & .cb-snip { flex: 0 1 auto; }
@@ -227,13 +254,12 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-row.has-snip { height: auto; min-height: 28px; }
   & .has-snip .cb-open { flex-wrap: wrap; row-gap: 0; padding-block: 4px; }
   & .has-snip .cb-name { flex: 1 1 0; }
-  & .has-snip .cb-snip { order: 1; flex: 1 0 100%; max-width: none; padding-left: 21px; font-size: 12px; white-space: nowrap; }
+  & .has-snip .cb-snip { order: 1; flex: 1 0 100%; max-width: none; padding-left: 33px; font-size: 12px; white-space: nowrap; }
   & .cb-chip { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; font: 10.5px var(--mono); }
-  & .cb-when { flex: none; margin-left: auto; padding-left: 4px; color: var(--mute); font: 11px var(--mono); }
-  & .cb-dot { width: 6px; height: 6px; border: 1px solid var(--cb-dim); border-radius: 50%; }
-  & .cb-dot.is-draft { border: 0; background: var(--brass); }
-  & .cb-pj { width: 8px; height: 8px; border-radius: 2px; background: var(--cb-pj, var(--mute)); }
-  & .cb-lead > :is(svg, img) { width: 12px; height: 12px; }
+  & .cb-when { color: var(--mute); }
+  & .cb-dot { width: 6px; height: 6px; border-radius: 50%; }
+  & .cb-dot.is-draft { background: var(--brass); }
+  & .cb-lead > :is(svg, img) { width: 14px; height: 14px; }
   & .cb-group.is-project > :is(svg, img) { width: 12px; height: 12px; }
   & .cb-unread { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
   & .cb-live { display: block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); animation: cb-pulse 1.2s ease-in-out infinite; }
@@ -252,6 +278,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     background: none;
     color: var(--mute);
     opacity: 0;
+    transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease, color var(--dur-1) ease;
   }
   & .cb-row:is(:hover, :focus-within, .is-menu) .cb-more { opacity: 1; }
   & .cb-more:hover { background: var(--cb-hover); color: var(--mist); }
@@ -928,11 +955,14 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   }
   @media (max-width: 800px) {
     & .cb-row { height: 44px; }
+    & .cb-open { font-size: 15px; }
     & .cb-tabs { height: 36px; }
     & .cb-new { height: 40px; }
     & .cb-search { height: 40px; }
     & .cb-search input { font-size: 16px; }
-    & .cb-filters select { height: 36px; }
+    /* Filters as quiet chips: the 16px text stops iOS zooming on focus. */
+    & .cb-filters { gap: 6px; padding: 4px 2px; }
+    & .cb-filters select { height: 32px; padding: 0 26px 0 12px; border: 1px solid var(--line); border-radius: 16px; background-position: right 10px center; color: var(--mute); }
     & :is(.cb-archived, .cb-foot .user-dock-btn) { height: 44px; }
     & :is(.cb-agents .chat-agents-row, .cb-jobs .chat-jobs-row) { min-height: 40px; }
     & :is(.cb-agents .chat-agents-pick, .cb-jobs .chat-jobs-output-link) { min-height: 32px; }
