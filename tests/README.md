@@ -62,7 +62,8 @@ Since then:
   permissions, usage and pricing, pool routing, providers, auth. One small test
   per behaviour or bug fix, in its area folder.
 - **No frontend tests for features or views.** Themes and views change too
-  often; check UI changes with a screenshot (`scripts/dev_qa_shot.py`). Pure
+  often; check UI changes with a screenshot of the running page (on the dev
+  server, the QA browser `scripts/qa/shot.mjs`, which is not published). Pure
   frontend logic with no DOM (formatters, parsers, state) may get a Node unit
   test in `tests/js/`.
 - Never add to `tests/legacy`, and never fix a legacy test: if one is in your

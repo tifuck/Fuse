@@ -1,6 +1,6 @@
 # Desktop theme: UX spec
 
-A native coding-app window: quiet chrome, a centred transcript, a floating composer and an inspector of cards. Minimal, monochrome, one accent. No third-party branding. Markup and CSS live only in `static/themes/desktop/` and `templates/themes/desktop/`; the runtime finds elements by `data-*` hooks only. `scripts/qa/theme_audit.py --themes desktop` is the gate: zero failures.
+A native coding-app window: quiet chrome, a centred transcript, a floating composer and an inspector of cards. Minimal, monochrome, one accent. No third-party branding. Markup and CSS live only in `static/themes/desktop/` and `templates/themes/desktop/`; the runtime finds elements by `data-*` hooks only. Check every change with screenshots of the running page in this view.
 
 ## Global rules
 

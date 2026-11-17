@@ -18,7 +18,7 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `combined`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. |
 | `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
-| `tests/` | pytest suites, Node unit suites (`*.test.cjs`) and Playwright browser suites (`*.browser.cjs`). |
+| `tests/` | `tests/core` (pytest, one folder per area), `tests/js` (Node unit suites, `*.test.cjs`) and the frozen `tests/legacy`; see `tests/README.md`. The UI has no automated tests: it is checked with screenshots. |
 | `fuse-desktop/` | Electron wrapper around the site (no app logic). One build for every server: it asks for the server on first launch (Change server on the sign-in page) and updates from GitHub Releases. A new `package.json` version on `main` makes `.github/workflows/desktop.yml` build and publish release `vX.Y.Z`. `npm run dist` builds locally; `FUSE_URL` (or `site.json` `url`) opens a server first, `FUSE_APP_ID` (repository variable in CI) must stay the released app id. |
 
 ## Configuration
