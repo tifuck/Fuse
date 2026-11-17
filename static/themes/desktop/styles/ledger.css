@@ -28,6 +28,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label { color: var(--dk-mute, var(--mute)); }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label b { color: var(--dk-text, var(--mist)); }
 }
+/* A tap draws no browser highlight over the whole line (a blue box on
+   Android); a finger on the line steps its type up a shade, as a pointer does. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-step-head, .dk-call-copy) { -webkit-tap-highlight-color: transparent; }
+@media (hover: none) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:active .chat-step-label { color: var(--dk-mute, var(--mute)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:active .chat-step-label b { color: var(--dk-text, var(--mist)); }
+}
 /* A changed count rolls in: the old number fades up and out while the new one
    fades up into place. Nothing clips them, so no edge cuts a digit in half
    (activity-groups.js keeps a rebuilt line mid-roll). */
@@ -79,6 +86,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
     & .chat-console-bundle .chat-step.is-console-call:not(.is-error, .is-interrupted) > .chat-step-main > .chat-step-head:hover .chat-step-label > :is(.chat-console-took, .chat-console-result-text) { color: var(--dk-mute, var(--mute)); }
+  }
+  @media (hover: none) {
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
+    & .dk-call-copy:active { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
   }
   @media (prefers-reduced-motion: reduce) {
     & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: none; }
