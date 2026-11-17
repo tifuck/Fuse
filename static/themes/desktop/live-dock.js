@@ -1,6 +1,4 @@
 // live-dock presentation. Dependencies are live getters supplied by index.js.
-import { mountChaos } from './chaos.js';
-
 // The dock's clock and token count tick several times a second, so it is not
 // a live region. Screen readers hear the phase when it changes and the end.
 const SPOKEN_PHASE = { thinking: "Thinking", writing: "Writing", stopping: "Stopping", queued: "Queued", searching: "Searching" };
@@ -43,134 +41,50 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
     if (cmd.hidden !== !arg) cmd.hidden = !arg;
-    // Clock, tokens, speed, after the status. Speed comes last, so it coming
-    // and going never moves the others.
-    if (!tail.querySelector(":scope > .dk-stat")) {
-      tail.innerHTML = `<span class="dk-stat is-clock" title="Elapsed"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span></span></span>`
-        + `<span class="dk-stat is-tokens" title="Tokens this round"><span></span></span>`
-        + `<span class="dk-stat is-speed"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1 3 9h4l-1 6 6-8H8z" fill="currentColor"/></svg><span></span></span>`;
-    }
-    const stat = (name, text, title) => {
-      const el = tail.querySelector(`:scope > .is-${name}`);
-      if (el.lastChild.textContent !== text) el.lastChild.textContent = text;
-      if (title !== undefined && el.title !== title) el.title = title;
-      if (el.hidden !== !text) el.hidden = !text;
-    };
-    stat("clock", meta?.clock || "");
-    stat("tokens", meta?.tokens || "");
-    stat("speed", meta?.speed?.text || "", meta?.speed?.title || "");
-    const hideTail = !meta;
+    // The clock, at the line's far end.
+    const clock = meta?.clock || "";
+    if (tail.textContent !== clock) tail.textContent = clock;
+    if (tail.title !== "Elapsed") tail.title = "Elapsed";
+    const hideTail = !clock;
     // Toggling hidden on every tick reflows the in-flow dock and can flip the
     // transcript extent by a rounding pixel; only touch it on a real change.
     if (tail.hidden !== hideTail) tail.hidden = hideTail;
-    if ((verb.dataset.text ?? verb.textContent) === text) return;
+    if (verb.textContent === text) return;
     swapVerb(el, verb, text);
   }
 
-// The status changing animates in one of six ways, picked at random once a
-// turn (el.dataset.turn), fast. The status element keeps the new text (its
+// The status changing fades: the status element keeps the new text (its
 // shimmer, ellipsis and textContent untouched); the old text leaves in an
-// aria-hidden copy laid over it, clipped to the line. The stats glide with
-// the status's width.
-const SWAP_KINDS = ["roll", "blur", "cascade", "wipe", "flip", "decode"];
+// aria-hidden copy laid over it, clipped to the line.
 const SWAP_MS = 180;
 const SWAP_EASE = "cubic-bezier(.2, .8, .2, 1)";
 function swapVerb(el, verb, text) {
-    const old = verb.dataset.text ?? verb.textContent;
+    const old = verb.textContent;
     const live = verb._swap;
     if (live) {
       live.anims.forEach((a) => a.cancel());
-      live.ghost?.remove();
-      cancelAnimationFrame(live.frame);
+      live.ghost.remove();
     }
     verb._swap = null;
-    verb.style.webkitMaskImage = verb.style.maskImage = verb.style.webkitMaskSize = verb.style.maskSize = "";
     const w0 = verb.getBoundingClientRect().width;
     const box = { left: verb.offsetLeft, top: verb.offsetTop, width: verb.offsetWidth, height: verb.offsetHeight };
     verb.textContent = text;
-    delete verb.dataset.text;
     if (!old || !text || !w0 || deps.reduceMotion.matches) return;
-    if (el.dataset.swapTurn !== (el.dataset.turn || "")) {
-      el.dataset.swapTurn = el.dataset.turn || "";
-      el.dataset.swap = SWAP_KINDS[Math.floor(Math.random() * SWAP_KINDS.length)];
-    }
-    const kind = el.dataset.swap || "roll";
-    const d = SWAP_MS;
-    const run = { anims: [], ghost: null, frame: 0 };
+    const run = { anims: [], ghost: document.createElement("span") };
     verb._swap = run;
-    const go = (node, frames, opts) => {
-      const a = node.animate(frames, { duration: d, easing: SWAP_EASE, ...opts });
-      run.anims.push(a);
-      return a;
-    };
-    const w1 = verb.getBoundingClientRect().width;
-    if (Math.abs(w1 - w0) > 0.5) go(verb, [{ width: `${w0}px` }, { width: `${w1}px` }]);
-    let out = null;
-    if (kind !== "decode") {
-      run.ghost = document.createElement("span");
-      run.ghost.className = "dk-verb-ghost";
-      run.ghost.setAttribute("aria-hidden", "true");
-      Object.assign(run.ghost.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
-      out = document.createElement("span");
-      out.textContent = old;
-      run.ghost.append(out);
-      el.append(run.ghost);
-    }
-    let landed;
-    if (kind === "roll") {
-      go(out, [{ transform: "none", opacity: 1 }, { transform: "translateY(-100%)", opacity: 0 }], { fill: "forwards" });
-      landed = go(verb, [{ transform: "translateY(100%)", clipPath: "inset(-100% 0 100% 0)", opacity: 0 }, { transform: "none", clipPath: "inset(0)", opacity: 1 }]);
-    } else if (kind === "blur") {
-      go(out, [{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(4px)" }], { duration: d * 0.8, easing: "ease-out", fill: "forwards" });
-      landed = go(verb, [{ opacity: 0, filter: "blur(4px)", transform: "scale(.98)" }, { opacity: 1, filter: "blur(0)", transform: "none" }]);
-    } else if (kind === "flip") {
-      go(out, [{ transformOrigin: "50% 0", transform: "perspective(300px) rotateX(0)", opacity: 1 }, { transformOrigin: "50% 0", transform: "perspective(300px) rotateX(80deg)", opacity: 0 }], { duration: d * 0.6, easing: "ease-in", fill: "forwards" });
-      landed = go(verb, [
-        { transformOrigin: "50% 100%", transform: "perspective(300px) rotateX(-80deg)", opacity: 0, offset: 0 },
-        { transformOrigin: "50% 100%", transform: "perspective(300px) rotateX(-80deg)", opacity: 0, offset: 0.35 },
-        { transformOrigin: "50% 100%", transform: "perspective(300px) rotateX(0)", opacity: 1 },
-      ], { duration: d * 1.3 });
-    } else if (kind === "wipe") {
-      go(out, [{ opacity: 1 }, { opacity: 0 }], { duration: d * 0.6, easing: "ease-out", fill: "forwards" });
-      verb.style.webkitMaskImage = verb.style.maskImage = "linear-gradient(90deg, #000 40%, transparent 60%)";
-      verb.style.webkitMaskSize = verb.style.maskSize = "250% 100%";
-      landed = go(verb, [{ webkitMaskPosition: "100% 0", maskPosition: "100% 0" }, { webkitMaskPosition: "0 0", maskPosition: "0 0" }], { duration: d * 1.2 });
-    } else if (kind === "cascade") {
-      go(out, [{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-30%)" }], { duration: d * 0.5, easing: "ease-out", fill: "forwards" });
-      // Letters are their own boxes, which a text-clipped shimmer cannot
-      // paint through: they rise in a plain colour, then the text rejoins.
-      const chars = [...text];
-      const step = Math.min(10, (d * 0.8) / chars.length);
-      verb.replaceChildren(...chars.map((c) => Object.assign(document.createElement("span"), { className: "dk-verb-ch", textContent: c })));
-      const rises = [...verb.children].map((ch, i) => go(ch, [{ opacity: 0, transform: "translateY(.55em)", filter: "blur(2px)" }, { opacity: 1, transform: "none", filter: "blur(0)" }], { delay: i * step, fill: "backwards" }));
-      landed = rises[rises.length - 1];
-    } else {
-      // decode: random letters settle into the text, left to right.
-      verb.dataset.text = text;
-      const glyphs = "abcdefghijklmnopqrstuvwxyz";
-      const target = [...text];
-      const t0 = performance.now();
-      const total = d * 1.4;
-      const tick = (now) => {
-        if (verb._swap !== run) return;
-        const p = Math.min(1, (now - t0) / total);
-        const fixed = Math.floor(p * target.length);
-        verb.textContent = p < 1 ? target.map((c, i) => (i < fixed || /[\s.…]/.test(c) ? c : glyphs[(Math.random() * 26) | 0])).join("") : text;
-        if (p < 1) run.frame = requestAnimationFrame(tick);
-        else {
-          delete verb.dataset.text;
-          verb._swap = null;
-        }
-      };
-      run.frame = requestAnimationFrame(tick);
-      return;
-    }
-    landed?.finished.then(() => {
+    run.ghost.className = "dk-verb-ghost";
+    run.ghost.setAttribute("aria-hidden", "true");
+    Object.assign(run.ghost.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+    const out = document.createElement("span");
+    out.textContent = old;
+    run.ghost.append(out);
+    el.append(run.ghost);
+    run.anims.push(out.animate([{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(4px)" }], { duration: SWAP_MS * 0.8, easing: "ease-out", fill: "forwards" }));
+    const landed = verb.animate([{ opacity: 0, filter: "blur(4px)", transform: "scale(.98)" }, { opacity: 1, filter: "blur(0)", transform: "none" }], { duration: SWAP_MS, easing: SWAP_EASE });
+    run.anims.push(landed);
+    landed.finished.then(() => {
       if (verb._swap !== run) return;
-      run.anims.forEach((a) => a.cancel());
-      run.ghost?.remove();
-      verb.style.webkitMaskImage = verb.style.maskImage = verb.style.webkitMaskSize = verb.style.maskSize = "";
-      if (kind === "cascade") verb.textContent = text;
+      run.ghost.remove();
       verb._swap = null;
     }, () => {});
   }
@@ -401,10 +315,6 @@ function hideLiveDock() {
     if (!deps.liveDock) return;
     deps.liveDock.hidden = true;
     deps.liveDock.setAttribute("aria-hidden", "true");
-    if (deps.liveDockSpin) {
-      deps.liveDockSpin.replaceChildren();
-      delete deps.liveDockSpin.dataset.spinSet;
-    }
     deps.syncLatest();
   }
 
@@ -414,7 +324,7 @@ function consoleSpinGlyph() {
   }
 
 function consoleSpinMarks() {
-    return [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
+    return [[deps.latestPill, deps.latestSpin]]
       .filter(([dock, spin]) => dock && spin && !dock.hidden && !spin.hidden)
       .map(([, spin]) => spin.querySelector(":scope > .chat-console-spin"))
       .concat([...deps.root.querySelectorAll("[data-run-spin]:not([hidden]) > .chat-console-spin")])
@@ -430,11 +340,6 @@ function stopConsoleSpin() {
 
 function setConsoleSpin(el) {
     if (!el) return;
-    // The status lines lead with the Chaos spinner (chaos.js), not a glyph.
-    if (el === deps.liveDockSpin || el === deps.agentLiveSpin) {
-      mountChaos(el, el === deps.liveDockSpin ? "dock" : "agent-dock");
-      return;
-    }
     let mark = el.querySelector(":scope > .chat-console-spin");
     if (el.dataset.spinSet !== "console-glyph" || !mark) {
       el.dataset.spinSet = "console-glyph";
@@ -480,12 +385,9 @@ function syncLiveDock() {
       speakPhase(status.phase, msg);
       {
         const line = deps.formatConsoleLiveStatus(msg, groups);
-        if (deps.liveDockLabel) deps.liveDockLabel.dataset.turn = String(msg.id || "");
         setLiveLabelText(deps.liveDockLabel, line.verb, line.meta, line.arg);
         syncLiveDetail(deps.liveDock, line.command || null);
       }
-      if ((deps.liveDockSpin)) setConsoleSpin(deps.liveDockSpin);
-      else if (deps.liveDockSpin) deps.applySpinEl(deps.liveDockSpin, deps.activitySpinSet(msg), "dock", true, msg._spinOrigin);
       if (instant) {
         if (deps.liveDockShowFrame) cancelAnimationFrame(deps.liveDockShowFrame);
         deps.liveDockShowFrame = 0;

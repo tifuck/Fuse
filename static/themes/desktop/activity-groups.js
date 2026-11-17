@@ -1,7 +1,9 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-function ccTurnLineHtml(msg, latest) {
-    if (msg.elapsedMs == null) return turnActionsHtml(msg, latest);
+// A finished reply's line: what it took, when it ended (darker), then its
+// actions. usage: the stored-reply stand-in for the work time.
+function ccTurnLineHtml(msg, latest, usage = "") {
+    if (msg.elapsedMs == null) return `${usage ? `<span>${usage}</span>` : ""}${agoHtml(msg)}${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
@@ -11,12 +13,12 @@ function ccTurnLineHtml(msg, latest) {
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
     const still = latest ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
-    return `${turnActionsHtml(msg, latest)}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+    return `<span>${outcome ? `${outcome} · ` : ""}Worked for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
+      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${agoHtml(msg)}${turnActionsHtml(msg, latest)}`;
   }
 
-// A finished reply's action row: copy, fork, pin, read aloud, then when it
-// ended ("Just now", "5m ago"). Desktop's chrome.js runs the buttons.
+// A finished reply's actions: copy, fork, pin, read aloud. Desktop's
+// chrome.js runs the buttons.
 // Fork copies the whole chat, so it sits only under the last reply; a
 // subagent's replies (noActions) can be copied and read, not forked or pinned.
 const TURN_ACTIONS = [
@@ -39,9 +41,14 @@ function turnActionsHtml(msg, latest) {
       : !msg.noActions && (kind !== "fork" || latest)));
     const buttons = shown.map(([kind, label, icon]) =>
       `<button type="button" class="dk-act-btn" data-theme-turn-act="${kind}" aria-label="${label}" title="${label}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${icon}</svg></button>`).join("");
+    return `<span class="dk-acts">${buttons}</span>`;
+  }
+// When the reply ended ("Just now", "5m ago"); the full time in its title.
+function agoHtml(msg) {
     const ago = agoText(msg.endedAt);
-    const when = ago ? new Date(msg.endedAt) : null;
-    return `<span class="dk-acts">${buttons}${ago ? `<time class="dk-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString())}">${deps.escapeHtml(ago)}</time>` : ""}</span>`;
+    if (!ago) return "";
+    const when = new Date(msg.endedAt);
+    return `<time class="dk-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString())}">${deps.escapeHtml(ago)}</time>`;
   }
 
 function ccShellHint(trace) {

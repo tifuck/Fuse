@@ -806,17 +806,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &.is-empty .dk-hero { position: absolute; inset: calc(var(--chat-bar-h) + 6vh) 0 auto; z-index: 1; display: grid; place-items: center; pointer-events: none; }
   & .dk-mark { display: block; width: 44px; height: 44px; background: var(--dk-dim); -webkit-mask: url("../../../icon.svg") center / contain no-repeat; mask: url("../../../icon.svg") center / contain no-repeat; opacity: 0.6; }
 
-  /* ---- Live status: the Chaos spinner leads, then the status word
-     shimmers. The clock
-     and counts are plain grey at the far end in fixed-width digits, so a
-     tick never moves the word and moves nothing while the digit count
-     holds. ---- */
+  /* ---- Live status: what is happening, shimmering, on the prose edge;
+     the clock in plain grey at the line's far right, so the text changing
+     length never moves it. ---- */
   & .chat-live-dock { min-height: 22px; color: var(--dk-mute); font: 13px/22px var(--sans); }
   /* It appears in place, no fade or rise: the send placeholder's line stood
      exactly there a frame before. */
   & .chat-live-dock:not([hidden]) { opacity: 1; transform: none; transition: none; }
-  & :is(.chat-live-dock, .chat-agent-live-dock) .chat-activity-spin { display: grid; flex: 0 0 14px; width: 14px; height: 22px; margin-right: 8px; place-items: center; color: var(--dk-link); }
-  & :is(.chat-live-dock, .chat-agent-live-dock) .chat-activity-spin[hidden] { display: none; }
   /* The send placeholder holds the place the turn and its status line will
      take: the log gives up its bottom padding as it does for the status
      line, and "Sending…" sits in the status word's place and type. */
@@ -857,23 +853,16 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     -webkit-text-fill-color: transparent;
     animation: dk-shimmer 2.4s linear infinite;
   }
-  /* Counts as icon stats right after the status: clock, tokens, speed, 14px
-     apart. The status holds a minimum slot, so the short ones ("Waiting…",
-     "Thinking…", "Writing…") all put the stats in the same place. */
-  & .chat-live-dock .chat-status-meta { display: inline-flex; align-items: center; gap: 14px; padding-left: 14px; color: var(--dk-mute); font: 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  & .chat-live-dock .chat-status-verb:has(+ .dk-live-arg[hidden]) { min-width: min(17ch, 42%); }
-  & .chat-live-dock :is(.chat-status-meta, .dk-stat)[hidden] { display: none; }
-  & .chat-live-dock .dk-stat { display: inline-flex; align-items: center; gap: 4px; }
-  & .chat-live-dock .dk-stat svg { flex: none; width: 11px; height: 11px; }
+  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 16px; color: var(--dk-mute); font: 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock .chat-status-meta[hidden] { display: none; }
   & .chat-live-dock .chat-dock-dots { display: none; }
   /* "Running the unit tests (npm test)": one line at every width. The
      command gives way first, then the description; the parentheses stay. */
   & .chat-live-dock .chat-status-verb { flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* A status change (live-dock.js swapVerb): the old text leaves in a copy
-     over the status, clipped to its line; a cascade's letters rise plain. */
+     over the status, clipped to its line. */
   & .chat-live-dock .dk-verb-ghost { position: absolute; overflow: hidden; pointer-events: none; }
   & .chat-live-dock .dk-verb-ghost > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  & .chat-live-dock .dk-verb-ch { display: inline-block; white-space: pre; -webkit-text-fill-color: var(--dk-mute); }
   & .chat-live-dock .dk-live-arg { display: inline-flex; flex: 0 100 auto; min-width: 4ch; margin-left: 0.5ch; overflow: hidden; color: var(--dk-mute); font: 0.9em var(--code); white-space: nowrap; }
   & .chat-live-dock .dk-live-arg[hidden] { display: none; }
   & .chat-live-dock .dk-live-arg::before { content: "("; }
@@ -882,23 +871,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
   & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }
-  /* The running command opens to its details: a chevron after the counts. */
+  /* The running command opens to its details; nothing follows its text. */
   & .chat-live-dock { flex-wrap: wrap; }
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
   & .chat-live-dock.is-detailable [data-dock-status]:hover .dk-live-arg { color: var(--dk-text); }
-  & .chat-live-dock.is-detailable [data-dock-status]::after {
-    content: "";
-    flex: none;
-    align-self: center;
-    width: 0.32rem;
-    height: 0.32rem;
-    margin: 0 0.2rem 0.12em 0.6rem;
-    border: solid currentColor;
-    border-width: 0 1.5px 1.5px 0;
-    transform: rotate(-45deg);
-    transition: transform var(--dur-1, 120ms) ease;
-  }
-  & .chat-live-dock.is-detail-open [data-dock-status]::after { transform: rotate(45deg); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
   & .chat-live-dock .dk-live-detail { flex: 1 0 100%; min-width: 0; margin: 2px 0 0; padding-left: 0.9rem; color: var(--dk-mute); font: 12.5px/1.5 var(--sans); }
   & .chat-live-dock .dk-live-detail[hidden] { display: none; }
@@ -907,7 +883,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-where { margin-top: 2px; }
   & .chat-live-dock .dk-live-out { max-height: 10.5rem; margin: 6px 0 0; overflow: auto; white-space: pre; font-size: 12px; }
   & .chat-live-dock .dk-live-wait { color: var(--dk-mute); font-family: var(--sans); }
-  @media (prefers-reduced-motion: reduce) { & .chat-live-dock.is-detailable [data-dock-status]::after { transition: none; } }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
   @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .dk-pending-status .chat-status-verb) { animation: none; background-position: 50% 0; } }
@@ -1191,5 +1166,5 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-activity-spin, .dk-st, .chat-agents-dot),
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-live-dock .chat-activity-spin, .dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }

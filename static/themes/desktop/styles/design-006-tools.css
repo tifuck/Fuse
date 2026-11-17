@@ -158,11 +158,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-lat
   line-height: 1;
 }
 
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-console-spin {
-  width: var(--console-col);
-  font: var(--console-type)/var(--console-row) var(--mono);
-}
-
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-live-dock, .chat-agent-live-dock) .chat-status-shimmer {
   --status-ink: color-mix(in srgb, var(--mist) 62%, var(--ink));
   --status-gleam: color-mix(in srgb, var(--phase-tint) 35%, var(--mist));

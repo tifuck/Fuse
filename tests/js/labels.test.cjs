@@ -60,3 +60,23 @@ test('agent rows say stopping only while the stopped agent is still live', () =>
   assert.equal(live.agentStatusText({ status: 'cancelled', cancel_requested: true, cancel_requested_at: ago(40) }), 'cancelled');
   assert.equal(live.agentStatusText({ status: 'completed', cancel_requested: true, cancel_requested_at: ago(40) }), 'completed');
 });
+
+test('desktop status line: the thought heading, then the newest action in the past tense', async () => {
+  const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
+  const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
+  const status = (await import('../../static/themes/desktop/live-status.js')).create({
+    ccFlat: words.ccFlat, ccInflect: words.ccInflect, ccRunningForm: words.ccRunningForm,
+    ccLiveText: (trace) => (trace.name === 'read_file' ? `Reading ${trace.path}` : ''), ccPathHint: (trace) => trace.path,
+  });
+  assert.equal(status.thoughtHeading('**Reading the schema**\nfirst\n\n**Checking the FK delete rules**\nThe dump…'), 'Checking the FK delete rules');
+  assert.equal(status.thoughtHeading('### Planning the backup:\nsteps'), 'Planning the backup');
+  assert.equal(status.thoughtHeading('no heading, **bold** inline only'), '');
+  const thinking = { segments: [{ type: 'reasoning', text: 'x\n**Checking the FK delete rules**\ny' }] };
+  assert.equal(status.ccThinkingState(thinking, 'thinking'), 'Checking the FK delete rules');
+  assert.equal(status.ccThinkingState({ segments: [{ type: 'reasoning', text: 'plain' }] }, 'thinking'), 'thinking');
+  const ran = { tools: [{ name: 'run_terminal_command', description: 'Run the test suite twice', command: 'make test' }] };
+  assert.equal(status.lastActionText(ran), 'Ran the test suite twice');
+  assert.equal(status.lastActionText({ tools: [{ name: 'read_file', path: 'app/main.py' }] }), 'Read app/main.py');
+  assert.equal(status.lastActionText({ tools: [{ name: 'search_replace', path: 'static/chat.js' }] }), 'Edited static/chat.js');
+  assert.equal(status.lastActionText({ tools: [] }), '');
+});
