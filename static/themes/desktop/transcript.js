@@ -448,15 +448,15 @@ function updateAssistant(article, msg, live) {
       }
     }
     const usageBits = deps.formatTurnMeta(msg);
-    const turnLine = (!live) && hasOutput ? deps.ccTurnLineHtml(msg, msg === deps.messages[deps.messages.length - 1]) : "";
+    // A reply without a work time (stored, imported) still gets its
+    // actions; its usage bits stand in for the time.
+    const usage = msg.elapsedMs == null ? usageBits
+      .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
+      .join(" · ") : "";
+    const turnLine = (!live) && hasOutput ? deps.ccTurnLineHtml(msg, msg === deps.messages[deps.messages.length - 1], usage) : "";
     if (turnLine) {
-      // A reply without a work time (stored, imported) still gets its
-      // actions; its usage bits follow them.
-      const usage = msg.elapsedMs == null ? usageBits
-        .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
-        .join(" · ") : "";
       foot.hidden = false;
-      meta.innerHTML = `<span class="chat-console-turn">${turnLine}${usage ? `<span>${usage}</span>` : ""}</span>`;
+      meta.innerHTML = `<span class="chat-console-turn">${turnLine}</span>`;
     } else {
       foot.hidden = true;
     }

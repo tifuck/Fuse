@@ -606,10 +606,15 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 	// ticker woke an idle connector 20 times a second.
 	timer := time.NewTimer(time.Duration(connWatchWaitMS(&watch, nowMonoMS())) * time.Millisecond)
 	defer timer.Stop()
+	// The server asks again on the next session if someone still watches.
+	var stats statsLoop
+	defer stats.stop()
 	for {
 		select {
 		case <-stop:
 			return false, "stop", gotFrame
+		case <-stats.c():
+			stats.tick(s.sendJSON)
 		case wake := <-s.wake:
 			d, _ := connWatchTick(&watch, nowMonoMS(), nowBootMS(), wake)
 			if d != "" {
@@ -639,6 +644,13 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 			case "ping":
 				_ = s.sendJSON(map[string]any{"v": 1, "t": "pong"})
 			case "pong":
+			case "stats":
+				on, _ := msg["on"].(bool)
+				ms, ok := msg["ms"].(float64)
+				if !ok {
+					ms = 2000
+				}
+				stats.set(on, int(ms))
 			}
 		case <-timer.C:
 			d, send := connWatchTick(&watch, nowMonoMS(), nowBootMS(), wakeNone)

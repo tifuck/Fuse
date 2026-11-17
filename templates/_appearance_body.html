@@ -113,6 +113,16 @@
     </div>
   </div>
 </section>
+<section class="ap-section" aria-labelledby="ap-h-time">
+  <div class="ap-intro">
+    <h2 id="ap-h-time">Time zone</h2>
+    <p>Every time and date is shown in it. Automatic follows this device. Saved in this browser; changing it reloads the page.</p>
+  </div>
+  <div class="ap-body">
+    {#- static/time.js fills and binds it. -#}
+    <select data-time-zone aria-label="Time zone"></select>
+  </div>
+</section>
 <section class="ap-section" aria-labelledby="ap-h-composer">
   <div class="ap-intro">
     <h2 id="ap-h-composer">Composer</h2>

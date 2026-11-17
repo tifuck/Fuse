@@ -197,7 +197,8 @@ def iso_utc(dt: datetime | None) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def parse_iso_utc(value: str) -> datetime | None:
+def parse_iso_utc(value: str, tz: str = "") -> datetime | None:
+    """A time with no offset is wall time in tz (default UTC)."""
     text = (value or "").strip()
     if not text:
         return None
@@ -208,5 +209,5 @@ def parse_iso_utc(value: str) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=parse_tz(tz))
     return dt.astimezone(timezone.utc)

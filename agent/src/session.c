@@ -12,6 +12,7 @@
 #include "outq.h"
 #include "reconnect.h"
 #include "session.h"
+#include "stats.h"
 #include "update.h"
 
 /* The live session socket, for the update exec veto below. */
@@ -240,6 +241,7 @@ int session_loop(void) {
                 }
                 conn_watch_sent_ping(&watch, now_mono_ms());
             }
+            stats_tick(now_mono_ms());
             if (out_flush(&t) != 0) {
                 drop_reason = "io error";
                 break;
@@ -280,7 +282,8 @@ int session_loop(void) {
                     p[n].revents = 0;
                     n++;
                 }
-                int pr = poll(p, n, pending_out ? 0 : conn_watch_wait_ms(&watch, now_mono_ms()));
+                int64_t now = now_mono_ms();
+                int pr = poll(p, n, pending_out ? 0 : stats_wait_ms(now, conn_watch_wait_ms(&watch, now)));
                 if (wake_i >= 0 && (p[wake_i].revents & POLLIN)) consume_wake();
                 if (stop_i >= 0 && (p[stop_i].revents & POLLIN)) record_main_stop();
                 if (pr < 0) {
@@ -365,11 +368,14 @@ int session_loop(void) {
                 }
             } else if (strcmp(tt, "pong") == 0) {
                 /* liveness already recorded via conn_watch_got_rx */
+            } else if (strcmp(tt, "stats") == 0) {
+                stats_set(json_bool(o, "on"), json_int(o, "ms", 2000), now_mono_ms());
             }
             cJSON_Delete(o);
         }
         set_live_fd(-1);
         s_live_tls = NULL;
+        stats_reset(); /* the server asks again on the next session if someone still watches */
         tls_close(&t);
         if (!g_stop_main) {
             if (replaced) {

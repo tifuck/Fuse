@@ -15,175 +15,83 @@ function formatActivityElapsed(secondsF, live) {
     return ` for ${formatActivityClock(secondsF)}`;
   }
 
-function consoleFlow(status, msg) {
-    if (!status) return "down";
-    if (status.phase === "thinking" || status.phase === "writing") return "down";
-    if (status.phase === "stopping" || status.phase === "error") return "";
-    if (status.phase === "searching" || status.phase === "reading" || status.phase === "working"
-        || status.phase === "building" || status.phase === "spawning") return "up";
-    if (status.current && deps.toolPresentation(status.current, true).running) return "up";
-    const traces = Array.isArray(msg && msg.tools) ? msg.tools : [];
-    if ((status.phase === "queued" || status.phase === "waiting") && traces.length) return "up";
-    return "down";
-  }
-
-function consoleRoundKey(msg, status) {
-    const traces = Array.isArray(msg && msg.tools) ? msg.tools : [];
-    return `${consoleFlow(status, msg)}|${traces.length}`;
-  }
-
-function ensureConsoleRound(msg, status, meter = deps.liveMeter) {
-    const key = consoleRoundKey(msg, status);
-    if (msg._consoleRound && msg._consoleRound.key === key) return msg._consoleRound;
-    const split = deps.usageInOut(msg && msg.usage);
-    const prev = msg._consoleRound;
-    const flow = consoleFlow(status, msg);
-    // After a tool round the first new tokens are already on the message
-    // when we notice the switch. Keep the origin snapshotted when tools began.
-    const keepOrigin = prev && flow === "down" && String(prev.key).startsWith("up|");
-    if (prev) {
-      delete msg.streamOut;
-      delete msg.streamGen;
-      delete msg.streamMs;
+// The thought's newest heading ("**Checking the FK delete rules**" or a
+// markdown heading line), which says what the model is working out.
+function thoughtHeading(text) {
+    const lines = String(text || "").split("\n");
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const m = /^\s*(?:#{1,6}\s+(.+?)\s*#*|\*\*(.+?)\*\*:?)\s*$/.exec(lines[i]);
+      const heading = m ? deps.ccFlat(m[1] || m[2]).replace(/[\s.:…]+$/, "") : "";
+      if (heading) return heading;
     }
-    const meterUsed = meter && typeof meter.used === "number" ? Math.max(0, Math.round(Number(meter.used) || 0)) : 0;
-    msg._consoleRound = {
-      key,
-      content: keepOrigin ? prev.content : (prev ? String((msg && msg.content) || "").length : 0),
-      reasoning: keepOrigin ? prev.reasoning : (prev ? String((msg && msg.reasoning) || "").length : 0),
-      usageOut: keepOrigin ? prev.usageOut : (prev && split ? split.out : 0),
-      meterUsed: keepOrigin ? prev.meterUsed : meterUsed,
-    };
-    return msg._consoleRound;
-  }
-
-function formatConsoleCount(n) {
-    const tokens = Math.max(0, Math.round(Number(n) || 0));
-    if (tokens >= 1_000_000 || Math.round(tokens / 1000) >= 1000) return (tokens / 1_000_000).toFixed(tokens >= 10_000_000 ? 0 : 1).replace(/\.0$/, "") + "M";
-    if (tokens >= 10_000) return Math.round(tokens / 1000) + "k";
-    if (tokens >= 1000) return (tokens / 1000).toFixed(1).replace(/\.0$/, "") + "k";
-    return String(tokens);
-  }
-
-function consoleDownTokens(msg, round) {
-    const grown = deps.estimateChars(
-      String((msg && msg.content) || "").slice(round.content)
-      + String((msg && msg.reasoning) || "").slice(round.reasoning)
-    );
-    const fromServer = Math.max(0, Math.round(Number(msg && msg.streamOut) || 0));
-    let down = Math.max(grown, fromServer);
-    const split = deps.usageInOut(msg && msg.usage);
-    if (split && split.out > round.usageOut) down = Math.max(down, split.out - round.usageOut);
-    return down;
-  }
-
-function consoleUpTokens(msg, round, meter) {
-    const fromMeter = meter && typeof meter.used === "number" ? Math.max(0, Math.round(Number(meter.used) || 0)) : 0;
-    if (fromMeter && round && fromMeter > (round.meterUsed || 0)) return fromMeter - (round.meterUsed || 0);
-    const traces = Array.isArray(msg && msg.tools) ? msg.tools : [];
-    const last = traces[traces.length - 1];
-    return last ? deps.estimateTrace(last) : 0;
-  }
-
-function ccSpinnerVerb(msg) {
-    const key = String((msg && msg.id) || "");
-    let hash = 0;
-    for (let i = 0; i < key.length; i += 1) hash = (Math.imul(hash, 31) + key.charCodeAt(i)) | 0;
-    return CC_SPINNER_VERBS[(hash >>> 0) % CC_SPINNER_VERBS.length];
-  }
-
-function ccThinkingState(msg, phase) {
-    const now = Date.now();
-    const clock = (msg._spinThink ||= { since: 0, flash: null, end: -1 });
-    // The newest thought: its run of reasoning segments and the server's own
-    // clock for it (ms on each segment), the number its transcript line shows.
-    // It is live only while nothing (a call, text) has come after it.
-    const segs = Array.isArray(msg.segments) ? msg.segments : [];
-    let end = segs.length - 1;
-    while (end >= 0 && segs[end]?.type !== "reasoning") end -= 1;
-    let thoughtMs = 0;
-    for (let k = end; k >= 0 && segs[k]?.type === "reasoning"; k -= 1) thoughtMs += Number(segs[k].ms) || 0;
-    const live = end >= 0 && !segs.slice(end + 1).some((seg) => seg && (seg.type === "tool" || String(seg.text || "").trim()));
-    if (phase === "thinking") {
-      // Anchored on the live thought, never an older one before a call
-      // (that started the clock at the old thought's length).
-      const key = live ? end : -1;
-      if (!clock.since || clock.end !== key) {
-        clock.since = now - (live ? thoughtMs : 0);
-        clock.end = key;
-      }
-      clock.flash = null;
-      const ms = now - clock.since;
-      return ms >= 45000 ? "deep in thought" : ms >= 30000 ? "thinking some more" : ms >= 20000 ? "thinking more"
-        : ms >= 10000 ? "still thinking" : "thinking";
-    }
-    // Only an answer starting straight after the thought flashes its length;
-    // anything else (a call, a wait) is newer activity and drops it for good.
-    if (clock.since) {
-      clock.flash = phase === "writing" ? { ms: clock.end === end && thoughtMs > 0 ? thoughtMs : now - clock.since, until: now + 2000 } : null;
-      clock.since = 0;
-    }
-    if (phase !== "writing") clock.flash = null;
-    if (clock.flash && now < clock.flash.until) return `thought for ${Math.max(1, Math.round(clock.flash.ms / 1000))}s`;
-    clock.flash = null;
     return "";
   }
 
-function ccSpinnerState(status) {
+function ccThinkingState(msg, phase) {
+    if (phase !== "thinking") return "";
+    // The newest thought: its run of reasoning segments.
+    const segs = Array.isArray(msg.segments) ? msg.segments : [];
+    let end = segs.length - 1;
+    while (end >= 0 && segs[end]?.type !== "reasoning") end -= 1;
+    let text = "";
+    for (let k = end; k >= 0 && segs[k]?.type === "reasoning"; k -= 1) text = `${segs[k].text || ""}\n${text}`;
+    return thoughtHeading(segs.length ? text : msg.reasoning) || "thinking";
+  }
+
+// Between calls (the model reading a result) the line keeps the newest
+// action, in the past tense: "Ran the test suite twice", "Read app/main.py".
+const DONE_WORDS = { Reading: "Read", Viewing: "Viewed", Searching: "Searched", Finding: "Found", Listing: "Listed", Running: "Ran", Editing: "Edited", Writing: "Wrote" };
+function lastActionText(msg) {
+    const traces = Array.isArray(msg && msg.tools) ? msg.tools : [];
+    const last = traces[traces.length - 1];
+    if (!last) return "";
+    const description = last.name === "run_terminal_command" ? deps.ccFlat(last.description) : "";
+    if (description) return deps.ccRunningForm(description) ? deps.ccInflect(description).done : description;
+    return actionText(last).replace(/^\w+/, (word) => DONE_WORDS[word] || word);
+  }
+
+// A call by what it acts on: "Reading app/main.py", "Editing static/chat.js".
+function actionText(trace) {
+    const live = deps.ccLiveText(trace);
+    if (live) return live;
+    const path = (trace.name === "search_replace" || trace.name === "write_file") ? deps.ccPathHint(trace) : "";
+    return path ? `${trace.name === "write_file" ? "Writing" : "Editing"} ${path}` : "";
+  }
+
+function ccSpinnerState(status, msg) {
     let state = "";
     if (status.phase === "queued") state = "queued";
     else if (status.phase === "stopping") state = "stopping";
     else if (status.current) state = deps.executionState(status.current) === "cancelling" ? "cancelling"
-      : deps.isSearchTool(status.current.name) ? "searching the web" : CC_SPINNER_STATES[status.current.name] || "running tool";
+      : deps.isSearchTool(status.current.name) ? "searching the web" : actionText(status.current) || CC_SPINNER_STATES[status.current.name] || "running tool";
     else if (status.phase === "calling") state = !status.tool ? "calling tool"
       : deps.isSearchTool(status.tool) ? "searching the web" : CC_SPINNER_STATES[status.tool] || `calling ${status.tool}`;
-    else if (status.phase === "waiting" || status.phase === "starting") state = "waiting";
-    else if (status.phase === "working") state = "working";
+    else if (status.phase === "waiting" || status.phase === "starting") state = lastActionText(msg);
+    else if (status.phase === "writing") state = "writing the reply";
     return state;
   }
 
 function formatConsoleLiveStatus(msg, groups, opts) {
     const status = deps.currentActivity(msg, groups, true);
-    const meter = opts ? opts.meter : deps.liveMeter;
     const elapsed = opts && opts.seconds != null ? opts.seconds : deps.liveElapsedSeconds(msg, true);
     const seconds = Math.max(0, Math.floor(elapsed || 0));
-    const round = ensureConsoleRound(msg, status, meter);
-    const flow = consoleFlow(status, msg);
-    let tokens = "";
-    if (flow === "down") {
-      const n = consoleDownTokens(msg, round);
-      if (n) tokens = `↓ ${formatConsoleCount(n)}`;
-    } else if (flow === "up") {
-      const n = consoleUpTokens(msg, round, meter);
-      if (n) tokens = `↑ ${formatConsoleCount(n)}`;
-    }
-    // tok/s only while the model streams: the call still generating, at its
-    // own rate (chars/4, marked ~, until a call has calibrated it). Waiting for
-    // a first token, tools and agents show none.
-    const streaming = flow === "down" && !["queued", "waiting", "starting"].includes(status.phase) && Number(msg && msg.streamMs) > 0;
-    const speed = streaming ? deps.ccGenSpeed(msg.streamGen, msg.streamMs, !(Number(msg.usage && msg.usage.gen_chars) > 0)) : null;
-    // "thought for Ns" shows only as the answer starts (ccThinkingState).
-    const thinking = ccThinkingState(msg, status.phase);
-    const state = thinking || ccSpinnerState(status);
-    // a terminal agent shows the clock once there is something else to show, or
-    // after 16s.
-    const clock = tokens || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
-    const meta = clock || tokens ? { clock, tokens, speed: speed && { text: speed.text.replace(" tok/s", "/s"), title: speed.title } } : null;
-    // A running command is the line itself: what it is for ("Running the unit
-    // tests"), else the command in parentheses ("Running command (npm test)").
-    // Opening the line shows the command. It joins the summary line above once
-    // it ends.
-    const command = !thinking && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
+    // A running command is the line itself and nothing follows it: what it is
+    // for ("Running the unit tests"), else the command in parentheses
+    // ("Running command (npm test)"). Opening the line shows the command. It
+    // joins the summary line above once it ends.
+    const command = status.phase !== "thinking" && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
     const arg = command ? deps.ccFlat(deps.displayCommand(command)) : "";
     if (arg) {
       const description = deps.ccFlat(command.description);
       const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1), meta, arg: description ? "" : arg, command };
+      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), meta: null, arg: description ? "" : arg, command };
     }
-    // One row: the status is the line's word (the turn's spinner verb while
-    // the model only writes), so it costs no width; the counts follow it.
-    const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : ccSpinnerVerb(msg);
-    const verb = /(…|\.\.\.)$/.test(word) || /^Thought for /.test(word) ? word : `${word}…`;
+    // Everything else names what is happening; only the clock follows it.
+    const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status, msg);
+    const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : "Working";
+    const settled = (status.phase === "waiting" || status.phase === "starting") && state;
+    const verb = settled || /(…|\.\.\.)$/.test(word) ? word : `${word}…`;
+    const meta = seconds >= 1 ? { clock: deps.ccDuration(seconds * 1000) } : null;
     return { verb, meta, arg: "" };
   }
 
@@ -220,33 +128,6 @@ function syncActivitySpin(article, msg, live) {
     deps.applySpinEl(el, activitySpinSet(msg), "live", true, msg._spinOrigin);
   }
 
-const CC_SPINNER_VERBS = [
-    "Accomplishing", "Actioning", "Actualizing", "Architecting", "Baking", "Beaming", "Beboppin'", "Befuddling",
-    "Billowing", "Blanching", "Bloviating", "Boogieing", "Boondoggling", "Booping", "Bootstrapping", "Brewing", "Bunning",
-    "Burrowing", "Calculating", "Canoodling", "Caramelizing", "Cascading", "Catapulting", "Cerebrating", "Channeling",
-    "Choreographing", "Churning", "Clauding", "Coalescing", "Cogitating", "Combobulating", "Composing", "Computing",
-    "Concocting", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Crystallizing",
-    "Cultivating", "Deciphering", "Deliberating", "Determining", "Dilly-dallying", "Discombobulating", "Doing", "Doodling",
-    "Drizzling", "Ebbing", "Effecting", "Elucidating", "Embellishing", "Enchanting", "Envisioning", "Fermenting",
-    "Fiddle-faddling", "Finagling", "Flambéing", "Flibbertigibbeting", "Flowing", "Flummoxing", "Fluttering", "Forging",
-    "Forming", "Frolicking", "Frosting", "Gallivanting", "Galloping", "Garnishing", "Generating", "Gesticulating",
-    "Germinating", "Gitifying", "Grooving", "Gusting", "Harmonizing", "Hashing", "Hatching", "Herding", "Honking",
-    "Hullaballooing", "Hyperspacing", "Ideating", "Imagining", "Improvising", "Incubating", "Inferring", "Infusing",
-    "Ionizing", "Jitterbugging", "Julienning", "Kerfuffling", "Kneading", "Leavening", "Levitating", "Lollygagging",
-    "Manifesting", "Marinating", "Meandering", "Metamorphosing", "Misting", "Moonwalking", "Moseying", "Mulling",
-    "Mustering", "Musing", "Nebulizing", "Nesting", "Newspapering", "Noodling", "Nucleating", "Onioning", "Orbiting",
-    "Orchestrating", "Osmosing", "Perambulating", "Percolating", "Perusing", "Philosophizing", "Photosynthesizing",
-    "Polishing", "Pollinating", "Pondering", "Pontificating", "Pouncing", "Precipitating", "Prestidigitating",
-    "Processing", "Proofing", "Propagating", "Puttering", "Puzzling", "Quantumizing", "Razzle-dazzling", "Razzmatazzing",
-    "Recombobulating", "Reticulating", "Roosting", "Ruminating", "Sautéing", "Scampering", "Schlepping", "Scurrying",
-    "Seasoning", "Shenaniganing", "Shimmying", "Simmering", "Skedaddling", "Sketching", "Slithering", "Smooshing",
-    "Sock-hopping", "Spelunking", "Spinning", "Sprouting", "Stewing", "Sublimating", "Swirling", "Swooping", "Symbioting",
-    "Synthesizing", "Tempering", "Thinking", "Thundering", "Tinkering", "Tomfoolering", "Topsy-turvying", "Transfiguring",
-    "Transmogrifying", "Transmuting", "Twisting", "Undulating", "Unfurling", "Unraveling", "Vibing", "Waddling",
-    "Wandering", "Warping", "Whatchamacalliting", "Whirlpooling", "Whirring", "Whisking", "Wibbling", "Working",
-    "Wrangling", "Zesting", "Zigzagging",
-  ];
-
 const CC_SPINNER_STATES = {
     run_terminal_command: "running command", get_command_output: "waiting for command", kill_command: "stopping command",
     read_file: "reading", grep: "searching", glob: "searching", list_dir: "listing", search_replace: "editing",
@@ -256,5 +137,5 @@ const CC_SPINNER_STATES = {
     read_artifact: "reading artifact", search_models: "finding models",
   };
 
-  return { formatActivityClock, formatActivityElapsed, consoleFlow, consoleRoundKey, ensureConsoleRound, formatConsoleCount, consoleDownTokens, consoleUpTokens, ccSpinnerVerb, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_VERBS, CC_SPINNER_STATES };
+  return { formatActivityClock, formatActivityElapsed, thoughtHeading, ccThinkingState, lastActionText, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };
 }

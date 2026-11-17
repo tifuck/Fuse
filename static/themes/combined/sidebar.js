@@ -83,7 +83,7 @@ export function create(deps) {
     if (block.row.running || block.type === "draft") return "Today";
     const at = new Date(block.item.updated_at || "");
     if (!Number.isFinite(at.getTime())) return "Earlier";
-    return at.toDateString() === new Date().toDateString() ? "Today" : "Earlier";
+    return window.fuseTime.dayNumber(at) === window.fuseTime.dayNumber(Date.now()) ? "Today" : "Earlier";
   }
 
   function historyListHtml(blocks) {

@@ -21,7 +21,7 @@ function ccCallClockHtml(trace, presentation) {
     const ms = Number(name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
-    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> · ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
+    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"><span class="dk-sep"> · </span>${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
   }
 
 function ccCallName(item) {
@@ -468,20 +468,11 @@ function ccAgentsGroupHtml(agents, live, openMap) {
     );
   }
 
-function ccTurnVerb(msg) {
-    const key = String((msg && msg.id) || "");
-    if (!key) return "Worked";
-    let hash = 0;
-    for (let i = 0; i < key.length; i += 1) hash = (Math.imul(hash, 31) + key.charCodeAt(i)) | 0;
-    return CC_TURN_VERBS[(hash >>> 0) % CC_TURN_VERBS.length];
-  }
-
 function ccDoneAt(stamp) {
     const when = new Date(stamp || "");
     if (!stamp || Number.isNaN(when.getTime())) return "";
     const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    const days = Math.round((startOf(new Date()) - startOf(when)) / 86400000);
+    const days = window.fuseTime.dayNumber(Date.now()) - window.fuseTime.dayNumber(when);
     if (days === 0) return time;
     if (days > 0 && days < 7) return `${when.toLocaleDateString([], { weekday: "long" })} ${time}`;
     return `${when.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}, ${time}`;
@@ -514,7 +505,5 @@ const CC_CALL_NAMES = {
     read_transcript: "Transcript",
   };
 
-const CC_TURN_VERBS = ["Baked", "Brewed", "Churned", "Cogitated", "Cooked", "Crunched", "Sautéed", "Worked"];
-
-  return { ccCallClockHtml, ccCallName, ccCallSummary, ccCallKind, ccCountsText, ccAgentLastCall, ccCallLine, ccAgentProgressHtml, ccAgentType, ccAgentDoneText, consoleOnlyFold, ccInterruptedFold, ccFailure, ccInterruptedText, ccCleanBackgroundEnd, consoleMonitorEventHtml, consoleAgentNoticeHtml, consoleAutoStepsHtml, ccAgentsGroupHtml, ccTurnVerb, ccDoneAt, ccStillRunningText, ccStillRunningCount, CC_CALL_NAMES, CC_TURN_VERBS };
+  return { ccCallClockHtml, ccCallName, ccCallSummary, ccCallKind, ccCountsText, ccAgentLastCall, ccCallLine, ccAgentProgressHtml, ccAgentType, ccAgentDoneText, consoleOnlyFold, ccInterruptedFold, ccFailure, ccInterruptedText, ccCleanBackgroundEnd, consoleMonitorEventHtml, consoleAgentNoticeHtml, consoleAutoStepsHtml, ccAgentsGroupHtml, ccDoneAt, ccStillRunningText, ccStillRunningCount, CC_CALL_NAMES };
 }

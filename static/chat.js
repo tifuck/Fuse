@@ -17,6 +17,7 @@ import { createComposer } from './chat/composer.js';
 import { createTurns } from './chat/turns.js';
 import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
+import { createHostStats } from './chat/hoststats.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
 // the theme seam (createTheme destructuring with its fixture anchor),
@@ -239,6 +240,8 @@ import { createDictation } from './chat/dictation.js';
 
   const chatApi = { clearChatState };
 
+  const hostStats = createHostStats();
+
   const overlays = createOverlays({
     agents: { closeAgentView: (...args) => agents.closeAgentView(...args) },
     artifacts: { setArtifactOpen: (...args) => artifacts.setArtifactOpen(...args) },
@@ -329,6 +332,7 @@ import { createDictation } from './chat/dictation.js';
     chatApi,
     composer: { closeSlash: (...args) => composer.closeSlash(...args), persist: (...args) => composer.persist(...args), refreshProjectListing: (...args) => composer.refreshProjectListing(...args), renderAttachList: (...args) => composer.renderAttachList(...args), resizeInput: (...args) => composer.resizeInput(...args), scheduleFitChatBar: (...args) => composer.scheduleFitChatBar(...args), syncComposer: (...args) => composer.syncComposer(...args), syncEmptyComposer: (...args) => composer.syncEmptyComposer(...args) },
     context,
+    hostStats,
     net,
     overlays,
     panels,

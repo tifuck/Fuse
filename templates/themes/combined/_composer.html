@@ -62,6 +62,13 @@
             </button>
           </div>
         </div>
+        <div class="chat-host-stats" data-host-stats hidden role="group" aria-label="Machine usage">
+          <span class="hs-slice hs-host" data-hs-host-slice><i aria-hidden="true"></i><span data-hs-alias></span></span>
+          <span class="hs-slice">CPU <b data-hs-cpu></b></span>
+          <span class="hs-slice">RAM <b data-hs-ram></b></span>
+          <span class="hs-slice" data-hs-disk-slice>Disk <b data-hs-disk></b></span>
+          <span class="hs-slice hs-net" data-hs-net-slice><span><span aria-hidden="true">↓</span><span class="visually-hidden">Down</span><b data-hs-rx></b></span><span><span aria-hidden="true">↑</span><span class="visually-hidden">Up</span><b data-hs-tx></b></span></span>
+        </div>
         <div class="cb-group-r" data-box-group>
           <div class="chat-model cb-model" data-chat-picker></div>
           <div class="cb-ring-wrap" data-context-wrap hidden>

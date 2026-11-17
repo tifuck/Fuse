@@ -33,7 +33,7 @@
       <li>
         <div class="uz-key-id">
           <strong>{{ k.name }}</strong>
-          <span class="mono">{{ k.prefix }}…{% if k.last_used_at %} · <time data-ago datetime="{{ k.last_used_at }}" title="{{ k.last_used_at }}">used {{ k.last_used_at[:10] }}</time>{% else %} · never used{% endif %}</span>
+          <span class="mono">{{ k.prefix }}…{% if k.last_used_at %} · <time datetime="{{ k.last_used_at }}">used {{ k.last_used_at | when }}</time>{% else %} · never used{% endif %}</span>
         </div>
         <dl class="uz-key-stats">
           <div><dt>Tokens</dt><dd>{{ '{:,}'.format(k.total_tokens) }}</dd></div>
