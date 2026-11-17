@@ -21,7 +21,8 @@ function ccCallClockHtml(trace, presentation) {
     const ms = Number(name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
-    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"><span class="dk-sep"> · </span>${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
+    // humanMs, like the opened box's footer, so the two never disagree ("2s" over "2.4s").
+    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"><span class="dk-sep"> · </span>${deps.escapeHtml(deps.humanMs(ms))}</span>` : "";
   }
 
 function ccCallName(item) {
@@ -243,7 +244,9 @@ function ccInterruptedFold(trace, shell) {
 // other the fuller one is the error, since it is what the model was told. A
 // command's own output stays its output unless it only repeats the error.
 function ccFailure(trace) {
-    const error = String((trace && (trace.error || trace.summary)) || "").trim();
+    const raw = String((trace && (trace.error || trace.summary)) || "").trim();
+    // A bare execution state ("timed_out") reads as words.
+    const error = /^[a-z]+(?:_[a-z]+)+$/.test(raw) ? raw.charAt(0).toUpperCase() + raw.slice(1).replace(/_/g, " ") : raw;
     // Traces saved before calls kept their output carry only the preview.
     const stored = trace && (typeof trace.output === "string" ? trace.output
       : ["still running", "background task started"].includes(String(trace.preview || "").trim().toLowerCase()) ? "" : String(trace.preview || ""));

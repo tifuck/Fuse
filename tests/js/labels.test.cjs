@@ -88,7 +88,7 @@ test('desktop rows read as sentences: a described command in the past tense, a f
     ...words, escapeHtml: String, ccCallClockHtml: () => '', ccLiveText: () => '', ccSedEdit: () => null,
     ccExitMeaning: (_command, exit) => ({ isError: exit > 0 }), shellExitCode: (trace) => trace.exit_code ?? null,
     toolBackground: () => false, sessionProject: () => null, messages: [],
-    consoleVerb: (name) => ({ run_terminal_command: 'Run', read_file: 'Read', grep: 'Search' })[name],
+    consoleVerb: (name) => ({ run_terminal_command: 'Run', read_file: 'Read', grep: 'Search', list_dir: 'List' })[name],
   });
   const text = (trace, presentation = { state: 'done' }) => rows.consoleCallHtml(trace, presentation).replace(/<[^>]*>|[()]/g, '');
   const run = { name: 'run_terminal_command', command: 'make test', description: 'Run the test suite twice' };
@@ -100,6 +100,9 @@ test('desktop rows read as sentences: a described command in the past tense, a f
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');
   assert.equal(text({ name: 'read_file', path: 'README.md' }), 'ReadREADME.md');
   assert.equal(text({ name: 'grep', pattern: 'def main', path: 'app' }), 'Searched"def main" in app');
+  const root = { project_root: '/srv/demo', path: '/srv/demo' };
+  assert.equal(text({ name: 'grep', pattern: 'x', ...root }), 'Searched"x"', 'the project folder itself is not "in ."');
+  assert.equal(text({ name: 'list_dir', ...root }), 'Listeddemo', 'it reads by its name');
 });
 
 test('desktop agents table: what a subagent did, in words; how a finished one ended', async () => {

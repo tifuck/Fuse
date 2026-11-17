@@ -313,6 +313,7 @@ export function createDesktopTheme(runtime) {
     get runPhase() { return runtime.runPhase; },
   }));
   Object.assign(theme, createCallProgress({
+    get humanMs() { return runtime.humanMs; },
     get providerErrorLine() { return theme.providerErrorLine; },
     get agentLive() { return runtime.agentLive; },
     get agentSubject() { return theme.agentSubject; },
