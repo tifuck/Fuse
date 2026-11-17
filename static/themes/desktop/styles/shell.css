@@ -654,9 +654,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     box-sizing: content-box;
     align-items: center;
     margin: 0;
-    padding: 0 0 1rem;
+    padding: 0 0 0.25rem;
     color: var(--dk-mute);
-    font: var(--console-type)/var(--console-leading) var(--sans);
+    font: calc(1rem * var(--chat-text-scale, 1))/1.5 var(--sans);
     font-style: normal;
   }
   & .chat-live-dock .chat-status-shimmer { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; font: inherit; font-style: normal; }
@@ -675,7 +675,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     -webkit-text-fill-color: transparent;
     animation: dk-shimmer 2.4s linear infinite;
   }
-  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 16px; color: var(--dk-mute); font: 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 16px; color: var(--dk-mute); font: 0.875em/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .chat-live-dock .chat-status-meta[hidden] { display: none; }
   & .chat-live-dock .chat-dock-dots { display: none; }
   /* "Running the unit tests (npm test)": one line at every width. The

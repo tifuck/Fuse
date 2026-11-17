@@ -93,7 +93,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"]:not(.is-empty) .chat-d
 html[data-chat-view="desktop"] .chat[data-view="desktop"]:not(.is-empty) .chat-thread { min-height: 0; }
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"]:not(.is-empty) :is(.chat-log, .chat-live-dock) {
-  padding-bottom: 1rem;
+  padding-bottom: 0.25rem;
 }
 
 @keyframes console-output-reveal {

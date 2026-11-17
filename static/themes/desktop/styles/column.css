@@ -3,7 +3,7 @@
    shell.css in design.css, which settles the window chrome. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --chat-col: 44rem;
-  --console-type: calc(0.84rem * var(--chat-text-scale, 1));
+  --console-type: calc(0.875rem * var(--chat-text-scale, 1));
   --console-leading: 1.55;
   --console-stack: 0.05rem;
   --console-col: 0.85rem;
@@ -34,7 +34,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tur
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user .chat-bubble {
   display: block;
   color: var(--mist);
-  font-size: calc(0.92rem * var(--chat-text-scale, 1));
+  font-size: calc(1rem * var(--chat-text-scale, 1));
   line-height: 1.5;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user .chat-bubble::before { content: none; }
@@ -42,7 +42,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tur
 /* Replies: plain prose, no bullet column. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md {
   display: block;
-  font-size: calc(0.9375rem * var(--chat-text-scale, 1));
+  font-size: calc(1rem * var(--chat-text-scale, 1));
   line-height: 1.6;
   color: var(--dk-text, var(--mist));
 }

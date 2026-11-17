@@ -120,9 +120,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-liv
   margin-top: 0.45rem;
   padding-inline: var(--console-gutter);
   overflow: visible;
-  /* The status line is a row like any other: the call rows' type, leading and
-     dot column, all of which follow the reader's text size. */
-  font: var(--console-type)/var(--console-leading) var(--mono);
+  /* The status line reads at the reply's size, following the reader's text
+     size; 1.5 keeps it the action row's 24px at 100%. */
+  font: calc(1rem * var(--chat-text-scale, 1))/1.5 var(--mono);
   font-style: italic;
   color: var(--mute);
   letter-spacing: 0;
