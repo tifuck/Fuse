@@ -1,83 +1,5 @@
 // markdown-stream presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-function renderChunk(trimmed) {
-    if (!trimmed) return "";
-    const table = deps.parseTable(trimmed);
-    if (table) return table;
-    if (/^[-*_]{3,}$/.test(trimmed)) return "<hr>";
-    const heading = deps.parseHeadingLine(trimmed);
-    if (heading && !trimmed.includes("\n")) return deps.renderHeading(heading);
-    const quoteLines = trimmed.split("\n");
-    if (quoteLines.every((line) => /^>\s?/.test(line) || !line.trim())) return deps.renderQuote(trimmed);
-    const lines = trimmed.split("\n");
-    if (deps.looksLikeListBlock(lines)) {
-      const list = deps.renderList(lines);
-      if (list) return list;
-    }
-    const mixed = splitParagraphLists(lines);
-    if (mixed) return mixed;
-    return `<p>${deps.renderInline(lines.join("\n")).replace(/\n/g, "<br>")}</p>`;
-  }
-
-function splitParagraphLists(lines) {
-    const opens = (line) => {
-      const marker = deps.parseListMarker(line);
-      return Boolean(marker && (!marker.ordered || marker.number === 1));
-    };
-    if (!lines.some((line, index) => index > 0 && opens(line))) return "";
-    let html = "";
-    let para = [];
-    let list = [];
-    const flushPara = () => {
-      if (para.length) html += `<p>${deps.renderInline(para.join("\n")).replace(/\n/g, "<br>")}</p>`;
-      para = [];
-    };
-    const flushList = () => {
-      if (list.length) html += deps.renderList(list);
-      list = [];
-    };
-    lines.forEach((line) => {
-      if (list.length && (deps.parseListMarker(line) || /^\s{2,}\S/.test(line))) { list.push(line); return; }
-      if (opens(line)) { flushPara(); list.push(line); return; }
-      flushList();
-      para.push(line);
-    });
-    flushList();
-    flushPara();
-    return html;
-  }
-
-function renderBlocks(text, catalog, streaming) {
-    return deps.mergeListBlocks(deps.rewriteCites(String(text || ""), catalog, streaming).split(/\n{2,}/))
-      .map((block) => {
-        const trimmed = block.trim();
-        if (!trimmed) return "";
-        const table = deps.parseTable(trimmed);
-        if (table) return table;
-        const lines = trimmed.split("\n");
-        if (!lines.some((line) => deps.parseHeadingLine(line))) return renderChunk(trimmed);
-        let html = "";
-        let buf = [];
-        const flush = () => {
-          if (!buf.length) return;
-          html += renderChunk(buf.join("\n"));
-          buf = [];
-        };
-        lines.forEach((line) => {
-          const heading = deps.parseHeadingLine(line);
-          if (heading) {
-            flush();
-            html += deps.renderHeading(heading);
-            return;
-          }
-          buf.push(line);
-        });
-        flush();
-        return html;
-      })
-      .join("");
-  }
-
 function renderMarkdown(src, streaming, catalog) {
     if (deps.detailProbe) return deps.escapeHtml(String(src || ""));
     const text = String(src || "").replace(/\r\n/g, "\n");
@@ -144,20 +66,8 @@ function mdStableBoundary(text) {
     // Disclosure node IDs use document-relative offsets. Keep disclosures
     // on the full renderer until the parser exposes stable block identities.
     if (/<\/?details\b/i.test(text)) return 0;
-    let fence = false, boundary = 0;
-    for (let i = 0; i < text.length; i += 1) {
-      if (text.startsWith("```", i)) { fence = !fence; i += 2; continue; }
-      // A list may continue past a blank line (loose items), so never freeze
-      // right after one: the renderer merges it with the next block.
-      if (!fence && text[i] === "\n" && text[i + 1] === "\n" && !mdEndsInList(text, i)) boundary = i + 2;
-    }
-    return boundary;
-  }
-
-function mdEndsInList(text, end) {
-    const start = text.lastIndexOf("\n\n", end - 1);
-    const lines = text.slice(start < 0 ? 0 : start + 2, end).split("\n").filter((line) => line.trim());
-    return lines.length > 0 && deps.looksLikeListBlock(lines);
+    // Blocks before the last one are final (static/chat/markdown.js).
+    return deps.stableBoundary(text);
   }
 
 function _mdNodeKey(node) {
@@ -281,5 +191,5 @@ function paintContentBlock(md, text, writing, catalog, srcKey) {
     }
   }
 
-  return { renderChunk, splitParagraphLists, renderBlocks, renderMarkdown, patchMarkdown, patchMarkdownFrom, mdStableBoundary, mdEndsInList, _mdNodeKey, streamMarkdown, revealCut, revealNow, revealTick, paintContentBlock };
+  return { renderMarkdown, patchMarkdown, patchMarkdownFrom, mdStableBoundary, _mdNodeKey, streamMarkdown, revealCut, revealNow, revealTick, paintContentBlock };
 }

@@ -212,7 +212,7 @@ export function createApply(ctx) {
           ui.updateAssistant(article, msg, live);
         } else if (article.querySelector("[data-user-text]")) {
           const text = article.querySelector("[data-user-text]");
-          if (text.textContent !== msg.content) text.textContent = msg.content;
+          if (text.dataset.userText !== msg.content) ui.fillUserText(text, msg.content);
           ui.fillUserFiles(article, msg, i);
         }
       });

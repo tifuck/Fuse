@@ -331,6 +331,16 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md:
   background: var(--mist);
 }
 
+/* A sent message renders markdown too but keeps its ">" prompt, not the reply's dot. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-turn.is-user .chat-bubble.chat-md::before {
+  justify-self: start;
+  width: auto;
+  height: auto;
+  margin-top: 0;
+  border-radius: 0;
+  background: none;
+}
+
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md > * {
   grid-column: 2;
 }

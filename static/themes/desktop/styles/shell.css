@@ -32,7 +32,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --chat-bar-h: 36px;
   /* The bottom row: the account row and the composer's controls share its
      height, with no rule or fill. */
-  --dk-band-h: 36px;
+  --dk-band-h: 30px;
   /* Between the composer card and its controls row. */
   --dk-band-gap: 3px;
   --chat-history: 13.5rem;
@@ -41,7 +41,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --chat-col: clamp(40rem, 70vw, 90rem);
   --dk-side-w: clamp(12.5rem, var(--chat-history), 100% - 24rem);
   --dk-insp-w: 0px;
-  --dk-insp-open: min(27rem, 40vw);
+  --dk-insp-open: min(28rem, 36vw);
+  --dk-art-w: 0px;
 
   background: var(--dk-canvas);
   color: var(--dk-text);
@@ -78,15 +79,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & :is(.dk-ib, .dk-tb, .dk-chip)[hidden] { display: none; }
   & :is(.dk-ib, .dk-tb, .dk-act, .dk-code, .dk-open, .dk-more, .dk-tab, .dk-send, .dk-mi, .dk-card-x, .dk-act-btn, .dk-title-btn, .dk-seg button):focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
 
-  /* ---- Window layout: sidebar | stage | inspector ----
-     Both side panels are columns at every width above a phone, never
-     overlays: opening one (a click, or the sidebar's hover peek) widens its
-     column and the chat slides over beside it. Each panel keeps its full
-     width in its column and rides in on the column's edge. */
+  /* ---- Window layout: sidebar | stage | artifact | Activity ----
+     The sidebar is a column at every width above a phone: opening it (a
+     click, or the hover peek) widens its column and the chat slides over.
+     Activity is a column only when docked (activity.css says when); the
+     artifact's column is activity.css's too. */
   @media (min-width: 801px) {
     & {
       --dk-slide: 260ms;
-      grid-template-columns: var(--dk-side-w) minmax(0, 1fr) var(--dk-insp-w);
+      grid-template-columns: var(--dk-side-w) minmax(0, 1fr) var(--dk-art-w) var(--dk-insp-w);
       grid-template-rows: minmax(0, 1fr);
       overflow: clip;
     }
@@ -94,9 +95,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     &.dk-slide { transition: grid-template-columns var(--dk-slide) var(--ease-glide); }
     &.is-artifact-resizing { transition: none; }
     &.history-collapsed:not(.history-peek) { --dk-side-w: 0px; }
-    &:is([data-theme-rail-state="open"], .is-artifact) { --dk-insp-w: var(--dk-insp-open); }
-    &.is-artifact { --dk-insp-open: clamp(24rem, var(--chat-artifact, 30rem), 50vw); }
-    &.is-artifact.is-artifact-wide { --dk-insp-open: min(56rem, 58vw); }
+    &[data-theme-insp="dock"][data-theme-rail-state="open"] { --dk-insp-w: var(--dk-insp-open); }
     & .chat-history { grid-row: 1; justify-self: end; width: clamp(12.5rem, var(--chat-history), 100vw - 24rem); }
     & > .chat-stage { grid-column: 2; grid-row: 1; }
     /* Collapsed, the list waits off the left edge; the peek is a pinned
@@ -425,185 +424,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-crumb > :not(.dk-title) { display: none; }
   }
 
-  /* ---- Inspector ---- */
-  & :is(.dk-insp, .dk-scrim) { display: none; }
-  /* Above a phone it stays laid out while shut, so it can slide out too. */
-  @media (min-width: 801px) {
-    & .dk-insp { display: flex; grid-column: 3; grid-row: 1 / -1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--dk-side); justify-self: start; width: var(--dk-insp-open); }
-    &:not([data-theme-rail-state="open"], .is-artifact) .dk-insp { visibility: hidden; }
-    &.dk-slide:not([data-theme-rail-state="open"], .is-artifact) .dk-insp { transition: visibility 0s linear var(--dk-slide); }
-  }
-  &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp {
-    display: flex;
-    grid-column: 3;
-    grid-row: 1 / -1;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    border-left: 0;
-    background: var(--dk-side);
-  }
-  /* The top bar's twin, like the sidebar head, its title set like the chat's
-     at every width; wide, the header's toggle closes it. */
-  & .dk-insp-bar {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: space-between;
-    height: var(--chat-bar-h);
-    padding: 0 4px 0 20px;
-    border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
-    color: var(--dk-text);
-    font: 500 13.5px var(--sans);
-  }
-  @media (min-width: 801px) { & .dk-insp-bar [data-theme-inspector-close] { display: none; } }
-  & .dk-insp-body {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    padding: 8px 8px 10px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-  }
-  & .dk-insp-empty { margin: 0; padding: 12px; color: var(--dk-mute); font: 12.5px var(--sans); text-align: center; }
-  & .dk-insp-empty[hidden] { display: none; }
-  & .dk-card {
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-    border: 1px solid var(--dk-card-line);
-    border-radius: 10px;
-    background: var(--dk-card);
-  }
-  & .dk-card[hidden] { display: none; }
-  & .dk-card-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 3px 0 12px; border-bottom: 1px solid var(--dk-card-line); color: var(--dk-text); font: 13px var(--sans); }
-  & .dk-card-head b { font-weight: 600; }
-  & .dk-card-sub { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--dk-mute); font: 12px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-card-x { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: auto; border-radius: 6px; color: var(--dk-mute); font: 16px/1 var(--sans); }
-  & .dk-card-x:hover { background: var(--dk-hover); color: var(--dk-text); }
-  & .dk-card-body { min-height: 0; margin: 0; }
-  /* Preview: the artifact pane fills the inspector edge to edge, not a card
-     in it; its own close is the inspector's wherever that one shows. */
-  &:not(.is-artifact) .dk-card-preview { display: none; }
-  & .dk-card-preview { flex: 1 0 22rem; margin: -8px -8px 0; border: 0; border-radius: 0; background: none; }
-  &.is-artifact .dk-insp-body:not(:has(> .dk-card:not(.dk-card-preview):not([hidden]))) { padding-bottom: 0; }
-  @media (max-width: 800px) { & .dk-card-preview [data-artifact-close] { display: none; } }
-  /* No diffs in the inspector. */
-  & .dk-card-preview [data-artifact-act="diff"] { display: none; }
-  & .dk-card-preview .chat-artifact {
-    position: relative;
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-    border: 0;
-    background: none;
-  }
-  & .dk-card-preview .chat-artifact-head { height: 36px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--dk-card-line); background: none; }
-  & .dk-card-preview .chat-artifact-pick { gap: 6px; font: 500 13px var(--sans); }
-  & .dk-card-preview .chat-artifact-pick::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--dk-link); }
-  & .dk-card-preview .chat-artifact-body { flex: 1; min-height: 0; background: var(--dk-canvas); }
-  & .dk-card-preview .chat-artifact-resize { left: -9px; }
-  & .dk-card-preview .chat-artifact-expand { display: none; }
-  /* Terminal: a background command's output. */
-  & .dk-term { max-height: 16rem; padding: 8px 12px; overflow: auto; background: color-mix(in srgb, var(--ink) 70%, var(--dk-card)); color: var(--dk-text); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-  /* Tasks: agents and background commands, two lines each. */
-  & .dk-work { padding: 4px; }
-  & .dk-work[hidden] { display: none; }
-  & :is(.dk-agents, .dk-jobs) { display: flex; flex-direction: column; gap: 1px; max-height: none; overflow: visible; }
-  & :is(.dk-agents, .dk-jobs)[hidden] { display: none; }
-  & :is(.dk-agents .chat-agents-row, .dk-jobs .chat-jobs-row) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 0 6px;
-    height: auto;
-    min-height: 32px;
-    padding: 4px 4px 4px 6px;
-    border-radius: 7px;
-    background: none;
-    font: 13px/1.35 var(--sans);
-  }
-  & :is(.dk-agents .chat-agents-row, .dk-jobs .chat-jobs-row)::before { content: none; }
-  & :is(.dk-agents .chat-agents-row, .dk-jobs .chat-jobs-row):hover { background: var(--dk-hover); }
-  & :is(.dk-agents .chat-agents-row[aria-current="true"], .dk-jobs .chat-jobs-row:has(.is-picked)) { background: var(--dk-sel); }
-  & .dk-agents .chat-agents-row > *,
-  & .dk-jobs .chat-jobs-row > * { grid-row: 1; grid-column: auto; }
-  & :is(.dk-agents .chat-agents-pick, .dk-jobs .chat-jobs-output-link) {
-    display: grid;
-    grid-template-columns: 7px minmax(0, 1fr);
-    gap: 1px 9px;
-    align-items: center;
-    min-width: 0;
-    height: auto;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--dk-text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    align-self: stretch;
-  }
-  & .dk-agents .chat-agents-head { display: contents; }
-  & .dk-agents :is(.chat-agents-tree, .chat-agents-model, .chat-agents-noun) { display: none; }
-  & :is(.dk-agents, .dk-jobs) .chat-agents-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-  & :is(.dk-agents, .dk-jobs) .is-running .chat-agents-dot { color: var(--dk-link); animation: dk-pulse 1.2s ease-in-out infinite; }
-  & :is(.dk-agents, .dk-jobs) .chat-agents-dot::before { content: none; }
-  & :is(.dk-agents .chat-agents-name, .dk-jobs .chat-jobs-cmd) { min-width: 0; overflow: hidden; color: var(--dk-text); text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-jobs .chat-jobs-cmd { font: 12.5px var(--mono); }
-  & .dk-jobs .chat-jobs-cmd::before { content: none; }
-  & :is(.dk-agents .chat-agents-meta, .dk-jobs .chat-jobs-meta) { display: block; grid-column: 2; justify-self: start; margin: 0; text-align: left; height: auto; min-width: 0; overflow: hidden; color: var(--dk-mute); font: 12px/1.35 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-agents .chat-agents-row:not(.is-main) .chat-agents-state { display: none; }
-  & .dk-agents .chat-agents-meta > * { display: inline; color: inherit; font: inherit; }
-  & .dk-agents .chat-agents-meta > * + *::before { content: " · "; }
-  & .dk-agents .chat-agents-row:not(.is-main) .chat-agents-meta > * + *::before { content: none; }
-  & :is(.dk-agents, .dk-jobs) .chat-agents-time { color: var(--dk-mute); font: 11.5px var(--mono); white-space: nowrap; }
-  & :is(.dk-agents, .dk-jobs) .chat-agents-time::after { padding: 1px 6px; margin-left: 8px; border: 1px solid var(--dk-card-line); border-radius: 5px; color: var(--dk-mute); font: 500 11px var(--sans); }
-  & .dk-agents .chat-agents-row:not(.is-main) .chat-agents-time::after { content: "Agent"; }
-  & .dk-jobs .chat-agents-time::after { content: "Run"; }
-  & :is(.dk-agents .chat-agents-act, .dk-jobs .chat-jobs-kill, .dk-agents .chat-agents-fold) {
-    display: inline-grid;
-    place-items: center;
-    width: auto;
-    min-width: 24px;
-    height: 24px;
-    padding: 0 4px;
-    border: 0;
-    border-radius: 6px;
-    background: none;
-    color: var(--dk-mute);
-    font: 12px var(--sans);
-    cursor: pointer;
-  }
-  & :is(.dk-agents .chat-agents-act, .dk-jobs .chat-jobs-kill, .dk-agents .chat-agents-fold):hover { background: var(--dk-sel); color: var(--dk-text); }
-  & .dk-agents .chat-agents-row.is-main { position: static; height: auto; margin-bottom: 2px; }
-  & .dk-agents .chat-agents-row.is-main .chat-agents-name { font-weight: 600; text-transform: capitalize; }
-  & .dk-agents .chat-agents-fold { gap: 3px; display: inline-flex; align-items: center; }
-  /* The Terminal card is the one place for a command's output. */
-  & .dk-jobs .chat-jobs-detail { display: none; }
-  /* Plan: the todo list, inline and unfolded in its card. */
-  & .dk-insp .chat-live-todos { position: static; inset: auto; width: auto; height: auto; max-width: none; margin: 0; padding: 6px 8px; border: 0; background: none; box-shadow: none; transform: none; font: 13px/1.45 var(--sans); }
-  & .dk-insp .chat-live-todos[hidden] { display: none; }
-  & .dk-insp .chat-todo-sheet { position: static; pointer-events: auto; }
-  & .dk-insp .chat-todo-drawer { grid-template-rows: 1fr; visibility: visible; box-shadow: none; }
-  & .dk-insp .chat-todo-page { padding: 0; border: 0; background: none; }
-  /* The card head already names and counts the list; a finished run's dismiss takes the card's × slot. */
-  & [data-theme-card="plan"] { position: relative; }
-  & .dk-insp .chat-todo-bar { display: contents; }
-  & .dk-insp .chat-todo-bar .chat-todo-head,
-  & .dk-insp .chat-todo-bar::after { display: none; }
-  & .dk-insp .chat-todo-dismiss { position: absolute; top: 3px; right: 3px; z-index: 1; width: 28px; height: 28px; border-radius: 6px; background: none; color: var(--dk-mute); font: 16px/1 var(--sans); }
-  & .dk-insp .chat-todo-dismiss:hover { background: var(--dk-hover); color: var(--dk-text); }
-  & [data-theme-card="plan"]:has([data-todo-dismiss]) [data-theme-card-close] { visibility: hidden; }
-  /* The runtime sizes the list to five rows while it may be hidden (0px); the card shows them all. */
-  & .dk-insp .chat-todo-rows { max-height: 18rem !important; overflow-y: auto; }
+  /* ---- Activity and the artifact workspace: activity.css ---- */
 
   /* ---- Composer: a one-line card (stash above +, the message, mic and
      send), then the controls row in the bottom band (mode left; model and
@@ -682,7 +503,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 [data-chat-attach] { left: 6px; }
   & .dk-row2 [data-chat-send] { right: 6px; }
   & .dk-row2 [data-chat-mic] { right: 38px; }
-  & .dk-group-l { margin-left: -6px; }
+  /* Inset like + and send above them, so the row's ends line up with the card's. */
+  & .dk-group-l { margin-left: 6px; }
+  & .dk-group-r { margin-right: 6px; }
   & :is(.dk-group-l, .dk-group-r) { display: flex; align-items: center; gap: 4px; min-width: 0; }
   & .dk-group-l { flex: 0 1 auto; }
   & .dk-group-r { flex: 1 1 auto; justify-content: flex-end; }
@@ -707,16 +530,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-send.is-stop { background: var(--dk-text); color: var(--dk-canvas); }
   & .dk-send.is-stop svg { display: none; }
   & .dk-send.is-stop::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-  /* The permission mode is quiet text naming the mode; Bypass alone takes the warn colour. */
+  /* The permission mode is quiet text naming the mode; Bypass alone reads in the body colour. */
   & .dk-perm { position: static; display: flex; min-width: 0; }
-  & .dk-tb[data-perm-chip] { min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 12.5px var(--sans); }
+  & .dk-tb[data-perm-chip] { min-width: 0; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--dk-mute); font: 12px var(--sans); }
   & .dk-tb[data-perm-chip] svg { display: none; }
   & .dk-tb[data-perm-chip]:is(:not(.is-on), .is-auto) [data-perm-chip-label] { display: none; }
   & .dk-tb[data-perm-chip]:not(.is-on)::after { content: "Ask"; }
   & .dk-tb[data-perm-chip].is-auto::after { content: "Auto approve"; }
-  & .dk-tb[data-perm-chip].is-bypass { color: var(--dk-warn); }
+  & .dk-tb[data-perm-chip].is-bypass { color: var(--dk-text); }
   & .dk-tb[data-perm-chip]:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
-  & .dk-tb[data-perm-chip].is-bypass:is(:hover, [aria-expanded="true"]) { color: var(--dk-warn); }
   /* Popovers rise from the card top inside the column: perms from the card's left edge, context from its right. */
   & .dk-perm .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }
   & .dk-model { position: relative; flex: 0 1 auto; min-width: 0; max-width: none; margin: 0; }
@@ -732,7 +554,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     border-radius: 7px;
     background: none;
     color: var(--dk-mute);
-    font: 500 12.5px var(--sans);
+    font: 500 12px var(--sans);
     white-space: nowrap;
   }
   & .dk-model .chat-picker-btn:is(:hover, [aria-expanded="true"]) { background: var(--dk-hover); color: var(--dk-text); }
@@ -754,7 +576,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .dk-model .chat-picker-btn > small:empty { display: none; }
   & .dk-model .chat-picker-btn > svg { flex: none; }
-  & .dk-model .chat-picker-btn .provider-logo { display: block; flex: none; width: 14px; height: 14px; }
+  & .dk-model .chat-picker-btn .provider-logo { display: block; flex: none; width: 12px; height: 12px; }
   & .dk-ring-wrap { position: static; display: flex; flex: none; }
   & .dk-ring-wrap[hidden] { display: none; }
   & .dk-ring-wrap .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
@@ -963,20 +785,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* ---- Phones: the inspector is a full-screen sheet, the sidebar a drawer ---- */
   @media (max-width: 800px) {
     /* Notched phones: the top bar, the drawer's head and foot and the composer clear the insets. */
-    &:is([data-theme-rail-state="open"], .is-artifact) .dk-insp {
-      position: fixed;
-      inset: 0;
-      z-index: 60;
-      padding-top: var(--safe-top, 0px);
-      border: 0;
-    }
-    & .dk-insp-body { padding-bottom: calc(10px + var(--safe-bottom, 0px)); }
-    /* The sheet's head is the bar it covers: a 44px row plus the same hairline. */
-    & .dk-insp-bar { padding-right: 0; }
-    & .dk-insp-bar .dk-ib { width: 44px; height: 44px; }
-    & .dk-card-preview { flex: 1 0 60dvh; }
-    & .dk-card-preview .chat-artifact { position: relative; inset: auto; z-index: auto; width: auto; }
-    & .dk-card-preview .chat-artifact-head { height: 44px; padding: 0 4px 0 10px; }
     /* A 44px row plus the hairline, the bar and the drawer's head alike. */
     & { --chat-bar-h: 45px; }
     & :is(.dk-head, .dk-side-head) { height: calc(45px + var(--safe-top, 0px)); min-height: 0; padding: var(--safe-top, 0px) 4px 0; }
@@ -1003,10 +811,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-head .dk-ib { width: 36px; }
     & .dk-head [data-todo-header]:not([hidden]) { width: auto; min-width: 36px; }
     & .dk-mi { height: 40px; }
-    & .dk-card-head { height: 42px; }
-    & :is(.dk-card-x, .dk-insp .chat-todo-dismiss) { width: 36px; height: 36px; }
-    & :is(.dk-agents .chat-agents-row, .dk-jobs .chat-jobs-row) { min-height: 40px; }
-    & :is(.dk-agents .chat-agents-act, .dk-jobs .chat-jobs-kill, .dk-agents .chat-agents-fold) { min-width: 36px; height: 36px; }
   }
   @media (max-width: 800px), (hover: none) {
     & .dk-more { position: static; flex: none; width: 40px; height: 40px; opacity: 1; }
@@ -1126,9 +930,9 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .dk-head::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
-  & :is(.dk-card:not(.dk-card-preview), .chat-latest) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .chat-latest { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-wp, .chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.dk-card:not(.dk-card-preview), .chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
   & .chat-dock .dk-box { border: 0; background: none; box-shadow: none; }
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
@@ -1167,28 +971,46 @@ html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view=
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }
 
-/* Machine stats card (static/chat/hoststats.js): dark glass centred under
-   the input, between the composer's own controls; the runtime drops
-   slices that do not fit. */
+/* Machine stats (static/chat/hoststats.js): quiet meters centred under the
+   input, between the composer's own controls. Each value has a fixed-width
+   slot, so the row never shifts as numbers change; a 2px gauge hangs under
+   each load. The runtime drops slices that do not fit, and the model
+   picker shows its short name while the meters show and on phones (the id
+   is its title). On phones the runtime moves the card into the strip above
+   the input ([data-host-stats-narrow]). */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 .chat-host-stats { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  & .dk-model .chat-picker-btn > span[data-short]::before {
+    content: attr(data-short); content: attr(data-short) / "";
+    display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12px;
+  }
+  & .dk-row2:has(> .chat-host-stats:not([hidden], .is-squeezed)) .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } }
+  @media (max-width: 640px) { & .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } } }
   & .chat-host-stats {
-    display: flex; align-items: stretch; width: max-content; height: 22px; border-radius: 7px; overflow: hidden;
-    background: linear-gradient(180deg, rgb(255 255 255 / .045), rgb(255 255 255 / 0) 60%), rgb(0 0 0 / .42);
-    -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .035), inset 0 1px 0 rgb(255 255 255 / .035), 0 1px 8px rgb(0 0 0 / .3);
-    font: 500 11px/1 var(--sans); letter-spacing: .01em; font-variant-numeric: tabular-nums; white-space: nowrap;
+    display: flex; align-items: center; gap: 14px; width: max-content; height: 28px;
+    font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
     color: var(--dk-mute); cursor: default; user-select: none;
   }
   & :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
-  & .hs-slice { position: relative; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
-  & .hs-slice:not(.is-dropped, [hidden]) ~ .hs-slice:not(.is-dropped, [hidden])::before {
-    content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1px; background: rgb(255 255 255 / .05);
+  & .hs-slice { position: relative; display: flex; align-items: center; gap: 4px; }
+  & .hs-slice b { display: inline-block; width: 4.4ch; font-weight: 500; color: var(--dk-text); }
+  & .hs-meter::after {
+    content: ""; position: absolute; left: 0; right: 0; top: calc(50% + 7px); height: 2px; border-radius: 1px;
+    background: linear-gradient(90deg, var(--t) calc(var(--p) * 1%), color-mix(in srgb, var(--dk-text) 12%, transparent) 0);
   }
-  & .hs-slice b { font-weight: 500; color: #fff; }
-  & .hs-host { color: var(--dk-text); }
-  & .hs-host i { width: 5px; height: 5px; border-radius: 50%; background: #3ecf8e; box-shadow: 0 0 6px rgb(62 207 142 / .55); }
+  & .hs-cpu { --p: var(--hs-cpu, 0); --t: var(--hs-cpu-tone, color-mix(in srgb, var(--dk-text) 55%, transparent)); }
+  & .hs-ram { --p: var(--hs-ram, 0); --t: var(--hs-ram-tone, color-mix(in srgb, var(--dk-text) 55%, transparent)); }
+  & .hs-disk { --p: var(--hs-disk, 0); --t: var(--hs-disk-tone, color-mix(in srgb, var(--dk-text) 55%, transparent)); }
+  & .hs-host { gap: 6px; color: var(--dk-text); }
+  & .hs-host i { width: 5px; height: 5px; border-radius: 50%; background: #3ecf8e; }
   & .hs-net { gap: 6px; }
-  & .hs-net > span { display: inline-flex; gap: 2px; }
-  @media (max-width: 640px) { & .chat-host-stats { display: none; } }
+  & .hs-net > span { display: inline-flex; align-items: center; }
+  & .hs-spark { width: 30px; height: 10px; overflow: visible; }
+  & .hs-spark polyline { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  /* Phones: a quiet strip above the input, plain text without gauges or the
+     sparkline, every value in the same fixed slot as on desktop. */
+  & .dk-stats-strip:not(:has(> .chat-host-stats:not([hidden]))) { display: none; }
+  & .dk-stats-strip .chat-host-stats { gap: 12px; width: 100%; height: 16px; margin: 0 0 6px; justify-content: center; font-size: 11px; }
+  & .dk-stats-strip .hs-meter::after, & .dk-stats-strip .hs-spark { display: none; }
+  & .dk-stats-strip :is(.hs-slice b, .hs-host) { font-weight: 400; color: color-mix(in srgb, var(--dk-text) 60%, var(--dk-mute)); }
 }

@@ -36,13 +36,34 @@ function gib(bytes) {
 
 const pct = (part, whole) => (whole > 0 ? (100 * part) / whole : 0);
 
+// Recent samples as block characters, newest last: "▁▂▅█".
+export function loadBlocks(samples) {
+  return samples.map((p) => "▁▂▃▄▅▆▇█"[Math.min(7, Math.max(0, Math.round((p / 100) * 7)))]).join("");
+}
+
+const HISTORY = 24;
+
+// A new sample glides in instead of jumping: fast, eased out, then still.
+const GLIDE_MS = 260;
+export function glide(from, to, t) {
+  const k = Math.min(1, Math.max(0, t));
+  return from + (to - from) * (1 - (1 - k) ** 3);
+}
+
 export function createHostStats() {
   const card = S.root?.querySelector("[data-host-stats]");
   const slot = (name) => card?.querySelector(`[data-hs-${name}]`);
   const el = card ? {
     alias: slot("alias"), cpu: slot("cpu"), ram: slot("ram"), disk: slot("disk"), rx: slot("rx"), tx: slot("tx"),
     hostSlice: slot("host-slice"), diskSlice: slot("disk-slice"), netSlice: slot("net-slice"),
+    cpuHist: slot("cpu-hist"), netSpark: slot("net-spark"),
   } : null;
+  const history = { cpu: [], net: [] };
+  // A theme may give the card a second place for narrow screens: the
+  // element with data-host-stats-narrow, whose value is the media query.
+  const narrow = S.root?.querySelector("[data-host-stats-narrow]");
+  const narrowQuery = card && narrow ? window.matchMedia?.(narrow.dataset.hostStatsNarrow) : null;
+  const home = card ? [card.parentElement, card.nextSibling] : null;
   const refused = new Set();
   let hostId = 0;
   let alias = "";
@@ -50,15 +71,24 @@ export function createHostStats() {
   let retry = 0;
   let stale = 0;
   let fitKey = "";
+  let shown = null;
+  let from = null;
+  let goal = null;
+  let glideAt = 0;
+  let frame = 0;
 
   function hide() {
     window.clearTimeout(stale);
+    window.cancelAnimationFrame(frame);
+    frame = 0;
+    shown = null;
     if (card && !card.hidden) card.hidden = true;
     fitKey = "";
   }
 
   function close() {
     window.clearTimeout(retry);
+    history.cpu.length = history.net.length = 0;
     const sock = ws;
     ws = null;
     sock?.close();
@@ -94,18 +124,74 @@ export function createHostStats() {
     if (tone !== undefined && node.style.color !== tone) node.style.color = tone;
   }
 
+  // The theme's meters and rings read --hs-<name> (0-100) and --hs-<name>-tone.
+  function meter(name, value) {
+    card.style.setProperty(`--hs-${name}`, String(value));
+    const tone = loadTone(value);
+    if (tone) card.style.setProperty(`--hs-${name}-tone`, tone);
+    else card.style.removeProperty(`--hs-${name}-tone`);
+  }
+
+  function draw(v) {
+    set(el.cpu, Math.round(v.cpu) + "%", loadTone(Math.round(v.cpu)));
+    set(el.ram, Math.round(v.ram) + "%", loadTone(Math.round(v.ram)));
+    meter("cpu", v.cpu);
+    meter("ram", v.ram);
+    if (v.disk !== undefined) {
+      set(el.disk, Math.round(v.disk) + "%", loadTone(Math.round(v.disk)));
+      meter("disk", v.disk);
+    }
+    set(el.rx, shortRate(v.rx));
+    set(el.tx, shortRate(v.tx));
+  }
+
+  function step(now) {
+    const t = (now - glideAt) / GLIDE_MS;
+    for (const key in goal) shown[key] = glide(from[key] ?? goal[key], goal[key], t);
+    draw(shown);
+    frame = t < 1 ? window.requestAnimationFrame(step) : 0;
+  }
+
+  // The first sample after showing, or with reduced motion, lands at once.
+  function show(next) {
+    if (!shown || document.hidden || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      window.cancelAnimationFrame(frame);
+      frame = 0;
+      shown = { ...next };
+      draw(shown);
+      return;
+    }
+    from = { ...shown };
+    goal = next;
+    shown = { ...next, ...shown };
+    glideAt = performance.now();
+    if (!frame) frame = window.requestAnimationFrame(step);
+  }
+
+  function remember(list, value) {
+    list.push(value);
+    if (list.length > HISTORY) list.shift();
+  }
+
   function paint(d) {
     const [memUsed, memTotal] = d.mem;
     const [rx, tx] = d.net;
     const cpu = Math.round(d.cpu);
     const ram = Math.round(pct(memUsed, memTotal));
     set(el.alias, alias || "machine");
-    set(el.cpu, cpu + "%", loadTone(cpu));
-    set(el.ram, ram + "%", loadTone(ram));
     if (el.diskSlice) el.diskSlice.hidden = !d.disk;
-    if (d.disk) set(el.disk, Math.round(d.disk[0]) + "%", loadTone(d.disk[0]));
-    set(el.rx, shortRate(rx));
-    set(el.tx, shortRate(tx));
+    const next = { cpu: d.cpu, ram: pct(memUsed, memTotal), rx, tx };
+    if (d.disk) next.disk = d.disk[0];
+    show(next);
+    remember(history.cpu, cpu);
+    remember(history.net, rx + tx);
+    if (el.cpuHist) set(el.cpuHist, loadBlocks(history.cpu));
+    if (el.netSpark) {
+      const top = Math.max(...history.net, 1);
+      const step = 30 / (HISTORY - 1);
+      const start = 30 - step * (history.net.length - 1);
+      el.netSpark.setAttribute("points", history.net.map((v, i) => `${(start + i * step).toFixed(1)},${(9 - (v / top) * 8).toFixed(1)}`).join(" "));
+    }
     const lines = [
       alias || "Machine",
       `CPU ${cpu}%`,
@@ -122,7 +208,7 @@ export function createHostStats() {
   }
 
   // Whatever does not fit between the composer's own controls goes:
-  // the machine name first, then the network, then the whole card.
+  // the machine name first, then the network, then the disk, then the whole card.
   function room() {
     const row = card.parentElement;
     const groups = [...row.querySelectorAll(":scope > [data-box-group]")];
@@ -141,7 +227,7 @@ export function createHostStats() {
     const key = `${card.parentElement.clientWidth}|${[el.cpu, el.ram, el.disk, el.rx, el.tx, el.alias].map((n) => n?.textContent.length).join(",")}`;
     if (key === fitKey) return;
     fitKey = key;
-    const steps = [el.hostSlice, el.netSlice].filter(Boolean);
+    const steps = [el.hostSlice, el.netSlice, el.diskSlice].filter(Boolean);
     card.classList.remove("is-squeezed");
     steps.forEach((node) => node.classList.remove("is-dropped"));
     const space = room();
@@ -150,6 +236,13 @@ export function createHostStats() {
       node.classList.add("is-dropped");
     }
     if (card.scrollWidth > space) card.classList.add("is-squeezed");
+  }
+
+  function place() {
+    if (narrowQuery.matches) narrow.append(card);
+    else home[0].insertBefore(card, home[1]);
+    fitKey = "";
+    if (!card.hidden) fit();
   }
 
   // Called whenever the chat's identity is synced (thread, project session).
@@ -164,6 +257,10 @@ export function createHostStats() {
     open();
   }
 
+  if (narrowQuery) {
+    place();
+    narrowQuery.addEventListener("change", place);
+  }
   if (card) {
     document.addEventListener("visibilitychange", () => (document.hidden ? close() : open()));
     window.addEventListener("resize", () => { if (!card.hidden) { fitKey = ""; fit(); } });

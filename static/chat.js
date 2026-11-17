@@ -18,6 +18,7 @@ import { createTurns } from './chat/turns.js';
 import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
+import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
 // the theme seam (createTheme destructuring with its fixture anchor),
@@ -39,6 +40,7 @@ import { createHostStats } from './chat/hoststats.js';
     deferredShellHtml,
     disposeThinking,
     fillUserFiles,
+    fillUserText,
     followLiveDockSlide,
     followThinking,
     formatActivityClock,
@@ -144,6 +146,8 @@ import { createHostStats } from './chat/hoststats.js';
     get openWallpaperPicker() { return composer.openWallpaperPicker; },
     get motionPaints() { return transcript.motionPaints; },
     get normalizeTodos() { return transcript.normalizeTodos; },
+    get parseBlocks() { return parseBlocks; },
+    get parseInline() { return parseInline; },
     get pauseThreadFollow() { return transcript.pauseThreadFollow; },
     get pendingFullPaint() { return S.pendingFullPaint; },
     set pendingFullPaint(value) { S.pendingFullPaint = value; },
@@ -168,6 +172,7 @@ import { createHostStats } from './chat/hoststats.js';
     get shellExitCode() { return traces.shellExitCode; },
     get showThinking() { return S.showThinking; },
     get snapThread() { return transcript.snapThread; },
+    get stableBoundary() { return stableBoundary; },
     get startLiveClock() { return transcript.startLiveClock; },
     get stickToBottom() { return S.stickToBottom; },
     get streaming() { return S.streaming; },
@@ -198,6 +203,7 @@ import { createHostStats } from './chat/hoststats.js';
     deferredShellHtml,
     disposeThinking,
     fillUserFiles,
+    fillUserText,
     followLiveDockSlide,
     followThinking,
     formatActivityClock,
@@ -1296,6 +1302,8 @@ import { createHostStats } from './chat/hoststats.js';
     // After the keydown handler above: the library's Tab and Escape only see keys it left alone.
     composer.mountLibrary();
 
+    composer.mountBlocks();
+
     if (S.searchChip) {
     S.searchChip.addEventListener("click", (event) => {
       event.preventDefault();
@@ -1519,7 +1527,7 @@ import { createHostStats } from './chat/hoststats.js';
       if (event.key !== "Escape" || event.defaultPrevented || !S.agentsOpen) return;
       if (S.pickerOpen || S.permsOpen || S.memoryOpen || S.skillsOpen || S.artifactOpen) return;
       if (document.querySelector("[data-chat-slash]:not([hidden]), [data-chat-rewind]:not([hidden]), .chat-lightbox:not([hidden]), dialog[open]")) return;
-      if (event.target === S.input && S.input.value) return;
+      if (event.target.closest?.("[data-chat-compose]") && S.input.value) return;
       agents.closeAgentView();
     });
 
@@ -1531,7 +1539,7 @@ import { createHostStats } from './chat/hoststats.js';
     let escArmed = 0;
     const escClaimed = (event) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (target && target !== S.input && target.closest("input, textarea, select, [contenteditable='true'], dialog")) return true;
+      if (target && !target.closest("[data-chat-compose]") && target.closest("input, textarea, select, [contenteditable='true'], dialog")) return true;
       if (S.pickerOpen || S.permsOpen || S.memoryOpen || S.skillsOpen || S.artifactOpen || S.searchOpen || S.agentsOpen || S.queueMenuId || S.pop) return true;
       if (S.root.classList.contains("is-history") || S.root.classList.contains("history-peek")) return true;
       if ((S.viewMenu && !S.viewMenu.hidden) || (S.contextPop && !S.contextPop.hidden)) return true;
@@ -2085,12 +2093,12 @@ import { createHostStats } from './chat/hoststats.js';
     const t = event.target;
     if (t.closest && t.closest("[data-chat-send], .chat-send, [data-chat-stash]")) return;
     if (window.FuseComposerSpell && FuseComposerSpell.isOpen() &&
-        S.spellPop && !S.spellPop.contains(t) && t !== S.input) {
+        S.spellPop && !S.spellPop.contains(t) && !t.closest?.("[data-chat-compose]")) {
       FuseComposerSpell.close();
       composer.restoreEnterKeyHint();
       composer.syncComposerAria();
     }
-    if (S.slashMenu && !S.slashMenu.hidden && !S.slashMenu.contains(t) && t !== S.input &&
+    if (S.slashMenu && !S.slashMenu.hidden && !S.slashMenu.contains(t) && !t.closest?.("[data-chat-compose]") &&
         !(S.spellPop && S.spellPop.contains(t))) composer.closeSlash();
     if (S.rewindPanel && !S.rewindPanel.hidden && !S.rewindPanel.contains(event.target)) turns.closeRewind();
     if (S.contextPop && !S.contextPop.hidden && S.contextWrap && !S.contextWrap.contains(event.target)) context.closeContextPop();

@@ -117,7 +117,8 @@ function pageHost(url) {
 
 function stripPreview(raw, max) {
     const text = String(raw || "")
-      .replace(/```[\s\S]*?```/g, " ")
+      // Fenced blocks only: a fence starts a line (static/chat/markdown.js).
+      .replace(/(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)/g, "$1 ")
       .replace(/`+/g, "")
       .replace(/[*_>#~\-]+/g, " ")
       .replace(/\s+/g, " ")

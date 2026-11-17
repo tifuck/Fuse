@@ -21,6 +21,20 @@ const starIcon = (on) =>
 
 let favoritesSaving = Promise.resolve();
 
+// A long model name cut to its first two words, plus a version right after
+// them: "DeepSeek V4.1 Flash 0528" -> "DeepSeek V4.1", "Claude Opus 4.5
+// Thinking" -> "Claude Opus 4.5". A name without spaces splits at - and _.
+// Short names stay whole.
+export function shortModelName(name) {
+  const whole = String(name || "").trim().replace(/\s+/g, " ");
+  if (whole.length <= 12) return whole;
+  const words = [...whole.matchAll(whole.includes(" ") ? /\S+/g : /[^-_]+/g)];
+  if (words.length <= 2) return whole;
+  const digits = (i) => /\d/.test(words[i][0]);
+  const last = words[digits(1) || !digits(2) ? 1 : 2];
+  return whole.slice(0, last.index + last[0].length);
+}
+
 export function createList(ctx) {
   const { composer, context, net, sheet, sidebar } = ctx;
     function modelEfforts() {
@@ -264,6 +278,7 @@ export function createList(ctx) {
       if (logo) logo.outerHTML = sidebar.providerLogo(model.type);
       if (btn) {
         btn.querySelector("span").textContent = model.name;
+        btn.querySelector("span").dataset.short = shortModelName(model.name);
         btn.querySelector("small").textContent = effortLabel(effort);
         paintEffort(btn.querySelector("small"), effort, model);
         btn.title = effort ? model.id + " · " + effortLabel(effort) : model.id;

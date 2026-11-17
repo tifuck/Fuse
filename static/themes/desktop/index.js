@@ -34,7 +34,8 @@ export function createDesktopTheme(runtime) {
   Object.assign(theme, createMarkdownSyntax({
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get renderBlocks() { return theme.renderBlocks; },
+    get parseBlocks() { return runtime.parseBlocks; },
+    get parseInline() { return runtime.parseInline; },
     get safeUrl() { return runtime.safeUrl; },
   }));
   Object.assign(theme, createMarkdownStream({
@@ -43,19 +44,10 @@ export function createDesktopTheme(runtime) {
     get REVEAL_MS() { return runtime.REVEAL_MS; },
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get looksLikeListBlock() { return theme.looksLikeListBlock; },
-    get mergeListBlocks() { return theme.mergeListBlocks; },
-    get parseHeadingLine() { return theme.parseHeadingLine; },
-    get parseListMarker() { return theme.parseListMarker; },
-    get parseTable() { return theme.parseTable; },
     get reduceMotion() { return runtime.reduceMotion; },
     get renderDetailsBlocks() { return theme.renderDetailsBlocks; },
-    get renderHeading() { return theme.renderHeading; },
-    get renderInline() { return theme.renderInline; },
-    get renderList() { return theme.renderList; },
-    get renderQuote() { return theme.renderQuote; },
-    get rewriteCites() { return theme.rewriteCites; },
     get snapThread() { return runtime.snapThread; },
+    get stableBoundary() { return runtime.stableBoundary; },
     get stickToBottom() { return runtime.stickToBottom; },
   }));
   Object.assign(theme, createUserTurn({
@@ -71,6 +63,7 @@ export function createDesktopTheme(runtime) {
     get executionIdentity() { return runtime.executionIdentity; },
     get executionState() { return runtime.executionState; },
     get fillUserFiles() { return theme.fillUserFiles; },
+    get renderMarkdown() { return theme.renderMarkdown; },
     get setToolReveal() { return runtime.setToolReveal; },
     get shellExitCode() { return runtime.shellExitCode; },
     get tailConsoleOutput() { return theme.tailConsoleOutput; },
@@ -459,6 +452,7 @@ export function createDesktopTheme(runtime) {
     get agentIsStalled() { return runtime.agentIsStalled; },
     get agentLive() { return runtime.agentLive; },
     get agentStatusText() { return runtime.agentStatusText; },
+    get agentsRows() { return runtime.agentsRows; },
     get ccAgentLastCall() { return theme.ccAgentLastCall; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -497,6 +491,7 @@ export function createDesktopTheme(runtime) {
     get root() { return runtime.root; },
     get runIsActive() { return runtime.runIsActive; },
     get streaming() { return runtime.streaming; },
+    get toolText() { return theme.toolText; },
   }));
   // The inspector follows every live-dock and work-clock sync.
   const withChrome = (fn) => (...args) => { const out = fn(...args); theme.syncChrome(); return out; };
@@ -512,6 +507,7 @@ export function createDesktopTheme(runtime) {
     displayCommand: theme.displayCommand,
     disposeThinking: theme.disposeThinking,
     fillUserFiles: theme.fillUserFiles,
+    fillUserText: theme.fillUserText,
     followLiveDockSlide: theme.followLiveDockSlide,
     followThinking: theme.followThinking,
     formatActivityClock: theme.formatActivityClock,

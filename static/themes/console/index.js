@@ -33,7 +33,8 @@ export function createConsoleTheme(runtime) {
   Object.assign(theme, createMarkdownSyntax({
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get renderBlocks() { return theme.renderBlocks; },
+    get parseBlocks() { return runtime.parseBlocks; },
+    get parseInline() { return runtime.parseInline; },
     get safeUrl() { return runtime.safeUrl; },
   }));
   Object.assign(theme, createMarkdownStream({
@@ -42,19 +43,10 @@ export function createConsoleTheme(runtime) {
     get REVEAL_MS() { return runtime.REVEAL_MS; },
     get detailProbe() { return runtime.detailProbe; },
     get escapeHtml() { return runtime.escapeHtml; },
-    get looksLikeListBlock() { return theme.looksLikeListBlock; },
-    get mergeListBlocks() { return theme.mergeListBlocks; },
-    get parseHeadingLine() { return theme.parseHeadingLine; },
-    get parseListMarker() { return theme.parseListMarker; },
-    get parseTable() { return theme.parseTable; },
     get reduceMotion() { return runtime.reduceMotion; },
     get renderDetailsBlocks() { return theme.renderDetailsBlocks; },
-    get renderHeading() { return theme.renderHeading; },
-    get renderInline() { return theme.renderInline; },
-    get renderList() { return theme.renderList; },
-    get renderQuote() { return theme.renderQuote; },
-    get rewriteCites() { return theme.rewriteCites; },
     get snapThread() { return runtime.snapThread; },
+    get stableBoundary() { return runtime.stableBoundary; },
     get stickToBottom() { return runtime.stickToBottom; },
   }));
   Object.assign(theme, createUserTurn({
@@ -70,6 +62,7 @@ export function createConsoleTheme(runtime) {
     get executionIdentity() { return runtime.executionIdentity; },
     get executionState() { return runtime.executionState; },
     get fillUserFiles() { return theme.fillUserFiles; },
+    get renderMarkdown() { return theme.renderMarkdown; },
     get setToolReveal() { return runtime.setToolReveal; },
     get shellExitCode() { return runtime.shellExitCode; },
     get tailConsoleOutput() { return theme.tailConsoleOutput; },
@@ -479,6 +472,7 @@ export function createConsoleTheme(runtime) {
     displayCommand: theme.displayCommand,
     disposeThinking: theme.disposeThinking,
     fillUserFiles: theme.fillUserFiles,
+    fillUserText: theme.fillUserText,
     followLiveDockSlide: theme.followLiveDockSlide,
     followThinking: theme.followThinking,
     formatActivityClock: theme.formatActivityClock,

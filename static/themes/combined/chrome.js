@@ -1,20 +1,18 @@
-// Combined's chrome: the header status pill, the rail, the phone ⋯ menu and
-// Escape for the theme's own popups. The pill says what the run is doing, for
-// how long and how many agents it has; it toggles the rail. The rail opens
-// only when the user asks (the pill, Todos): wide, it docks and the choice is
-// kept in localStorage; narrow, it is a dropdown under the header that Esc or
-// a click elsewhere closes. Runtime events only light the pill's dot.
+// Combined's chrome: the status bar, the rail, the phone ⋯ menu and Escape
+// for the theme's own popups. The status bar runs along the bottom edge under
+// the composer, like an editor's: what the run is doing and for how long, its
+// live agents, background commands and plan (each toggles the rail), then
+// context and the machine. The rail opens only when the user asks (the bar,
+// Todos): wide, it docks and the choice is kept in localStorage; narrow, it is
+// a popover above the bar that Esc or a click elsewhere closes.
 const WIDE = "(min-width: 1040px)";
 const KEY = "fuse.chat.combined.rail.v1";
 
 export function create(deps) {
   let railOpen = null; // null until the first sync reads the saved choice
   let bound = false;
-  let seen = null; // the rail contents the user has seen, per thread
-  let seenThread = null;
-  let news = false;
   let menuUsed = false;
-  let opener = "[data-theme-pill]"; // what Escape refocuses when it shuts the dropdown
+  let opener = null; // what Escape refocuses when it shuts the popover
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
   const wide = () => window.matchMedia(WIDE).matches;
@@ -81,21 +79,46 @@ export function create(deps) {
         ring?.focus({ preventScroll: true });
       };
     }
-    if (railOpen && !wide()) return () => { setRail(false); (q(`${opener}:not([hidden])`) || q("[data-theme-pill]"))?.focus({ preventScroll: true }); };
+    if (railOpen && !wide()) return () => { setRail(false); (shown(opener) ? opener : q("[data-theme-status-run]"))?.focus({ preventScroll: true }); };
     return null;
+  }
+
+  function statusBar() {
+    const seg = (name, body, extra = " hidden") => `<button type="button" class="cb-sb" data-theme-status-${name} aria-controls="cb-rail" aria-expanded="false"${extra}>${body}</button>`;
+    const bar = document.createElement("div");
+    bar.className = "cb-status";
+    bar.dataset.themeStatus = "";
+    bar.setAttribute("role", "group");
+    bar.setAttribute("aria-label", "Status");
+    bar.innerHTML = seg("run", '<i class="cb-sb-dot" aria-hidden="true"></i><b data-theme-status-label></b> <span data-theme-status-clock></span>',
+      ' title="Agents, background commands, todos and context"')
+      + '<i class="cb-sb-sep" data-theme-status-sep aria-hidden="true" hidden></i>'
+      + seg("agents", `${deps.STEP_ICONS.agent}<span><span data-theme-status-n></span> <span class="cb-sb-word"></span></span>`)
+      + seg("jobs", `${deps.STEP_ICONS.shell}<span><span data-theme-status-n></span> <span class="cb-sb-word"></span></span>`)
+      + seg("plan", 'Plan <span data-theme-status-n></span><span class="cb-sb-meter" aria-hidden="true"><i></i></span>')
+      + '<span class="cb-sb-gap"></span>'
+      + '<span class="cb-sb" data-theme-status-context hidden>Context <span data-theme-status-n></span></span>'
+      + '<i class="cb-sb-sep" aria-hidden="true"></i>';
+    // The machine stats card moves in whole: hoststats.js keeps painting it.
+    const stats = q("[data-host-stats]");
+    if (stats) bar.append(stats);
+    bar.addEventListener("click", (event) => {
+      const btn = event.target.closest("button.cb-sb");
+      if (!btn) return;
+      opener = btn;
+      setRail(!railOpen, event.detail === 0);
+    });
+    return bar;
   }
 
   function bind() {
     if (bound) return;
     bound = true;
-    q("[data-theme-pill]")?.addEventListener("click", (event) => {
-      opener = "[data-theme-pill]";
-      setRail(!railOpen, event.detail === 0);
-    });
+    q("[data-chat-form]")?.after(statusBar());
     // Todos opens the rail the list lives in (the runtime only folds the list).
-    q("[data-todo-header]")?.addEventListener("click", () => {
+    q("[data-todo-header]")?.addEventListener("click", (event) => {
       if (!railOpen) {
-        opener = "[data-todo-header]";
+        opener = event.currentTarget;
         setRail(true);
       }
       requestAnimationFrame(() => q("[data-live-todos]")?.scrollIntoView({ block: "nearest" }));
@@ -135,7 +158,7 @@ export function create(deps) {
     document.addEventListener("click", (event) => {
       const t = event.target;
       if (!t.closest?.("[data-theme-menu], [data-theme-more]") && q("[data-theme-menu].is-open")) setMenu(false);
-      if (wide() || !railOpen || t.closest?.("[data-theme-rail], [data-theme-pill], [data-todo-header]")) return;
+      if (wide() || !railOpen || t.closest?.("[data-theme-rail], [data-theme-status] button, [data-todo-header]")) return;
       railOpen = false;
       syncChrome();
     });
@@ -207,58 +230,68 @@ export function create(deps) {
     return deps.formatActivityClock(Math.max(0, Math.round(seconds)));
   }
 
-  function syncPill(state) {
-    const pill = q("[data-theme-pill]");
-    if (!pill) return;
-    const text = pill.querySelector("[data-theme-pill-text]");
-    const meta = pill.querySelector("[data-theme-pill-meta]");
-    const total = deps.agentsRows.length;
+  // A count segment: the number, then its noun (which phones drop).
+  function syncCount(seg, n, noun) {
+    if (!seg) return;
+    if (seg.hidden !== !n) seg.hidden = !n;
+    setText(seg.querySelector("[data-theme-status-n]"), String(n));
+    setText(seg.querySelector(".cb-sb-word"), n === 1 ? noun : `${noun}s`);
+  }
+
+  function syncStatus(state) {
+    const bar = q("[data-theme-status]");
+    if (!bar) return;
+    const seg = (name) => bar.querySelector(`[data-theme-status-${name}]`);
     const live = deps.agentsRows.filter((row) => deps.agentLive(row.status)).length;
+    const jobs = deps.jobsRows.length;
+    const todos = q("[data-live-todos]");
+    const plan = todos && !todos.hidden ? todos.querySelector("[data-todo-count]")?.textContent || "" : "";
     let label = deps.messages.length ? "Done" : "Ready";
-    let tone = "idle";
     let elapsed = "";
     if (state.run) {
       label = "Working";
-      tone = "run";
       const msg = [...deps.messages].reverse().find((row) => row.role === "assistant");
       elapsed = msg ? clock(deps.liveElapsedSeconds(msg, true)) : "";
-    } else if (state.agents) {
-      label = live === 1 ? "1 agent working" : `${live} agents working`;
-      tone = "run";
-    } else if (state.jobs) {
+    } else if (state.agents || state.jobs) {
       label = "Running in background";
-      tone = "run";
     }
-    const parts = [elapsed, total ? `${total} agent${total === 1 ? "" : "s"}` : "", state.jobs ? `${deps.jobsRows.length} cmd` : ""].filter(Boolean);
-    setText(text, label);
-    setText(meta, parts.join(" · "));
-    if (pill.dataset.tone !== tone) pill.dataset.tone = tone;
-    const name = `Activity: ${[label, ...parts].join(", ")}${news ? ", new" : ""}`;
-    if (pill.getAttribute("aria-label") !== name) pill.setAttribute("aria-label", name);
-    pill.setAttribute("aria-expanded", railOpen ? "true" : "false");
-    pill.classList.toggle("has-news", news);
-  }
-
-  // The dot on the pill: the rail's agents, commands or todos changed during
-  // work while it was shut. Opening the rail or another thread clears it.
-  function syncNews(state) {
-    const sig = [deps.agentsRows.length, deps.agentsRows.filter((row) => deps.agentLive(row.status)).length,
-      deps.jobsRows.length, q("[data-live-todos]")?.hidden ? "" : q("[data-todo-count]")?.textContent || ""].join("|");
-    const thread = new URLSearchParams(location.search).get("t") || "";
-    if (railOpen || thread !== seenThread) news = false;
-    else if (sig !== seen && (state.run || state.agents || state.jobs)) news = true;
-    seen = sig;
-    seenThread = thread;
+    const tone = state.run || state.agents || state.jobs ? "run" : "idle";
+    if (bar.dataset.tone !== tone) bar.dataset.tone = tone;
+    setText(seg("label"), label);
+    setText(seg("clock"), elapsed);
+    syncCount(seg("agents"), live, "agent");
+    syncCount(seg("jobs"), jobs, "command");
+    const planSeg = seg("plan");
+    if (planSeg.hidden !== !plan) planSeg.hidden = !plan;
+    setText(planSeg.querySelector("[data-theme-status-n]"), plan);
+    const [done, total] = plan.split("/").map(Number);
+    const width = `${total > 0 ? Math.round(done / total * 100) : 0}%`;
+    const fill = planSeg.querySelector(".cb-sb-meter i");
+    if (fill.style.width !== width) fill.style.width = width;
+    const sep = seg("sep");
+    if (sep.hidden !== !(live || jobs || plan)) sep.hidden = !(live || jobs || plan);
+    const expanded = railOpen ? "true" : "false";
+    bar.querySelectorAll("button.cb-sb").forEach((btn) => {
+      if (btn.getAttribute("aria-expanded") !== expanded) btn.setAttribute("aria-expanded", expanded);
+    });
   }
 
   function syncContext() {
     const box = q("[data-theme-context]");
-    if (!box) return;
+    const seg = q("[data-theme-status-context]");
     const meter = deps.liveMeter;
     const used = Number(meter && meter.used);
     const limit = Number(meter && meter.limit);
-    if (!(limit > 0) || !Number.isFinite(used)) { if (!box.hidden) box.hidden = true; return; }
+    if (!(limit > 0) || !Number.isFinite(used)) {
+      [box, seg].forEach((el) => { if (el && !el.hidden) el.hidden = true; });
+      return;
+    }
     const pct = Math.min(100, Math.round(used / limit * 100));
+    if (seg) {
+      if (seg.hidden) seg.hidden = false;
+      setText(seg.querySelector("[data-theme-status-n]"), `${pct}%`);
+    }
+    if (!box) return;
     const k = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n);
     // Writes only on change: the rail's MutationObserver calls back here.
     if (box.hidden) box.hidden = false;
@@ -298,8 +331,7 @@ export function create(deps) {
       deps.root.dataset.themeRailState = next;
       if (railOpen) fitTodos();
     }
-    syncNews(state);
-    syncPill(state);
+    syncStatus(state);
     syncContext();
     syncTitle();
   }
