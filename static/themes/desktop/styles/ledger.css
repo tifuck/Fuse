@@ -149,7 +149,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-size: calc(0.76rem * var(--chat-text-scale, 1));
     line-height: 1.6;
   }
-  & .dk-call-head { display: flex; align-items: flex-start; gap: 10px; padding: 7px 8px 7px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
+  & .dk-call-head { display: flex; align-items: flex-start; gap: 10px; padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
   & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
@@ -184,7 +184,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-box .chat-tool-md :is(p, ul, ol) { margin: 0 0 0.35em; }
   & .dk-call-box .chat-tool-md :is(ul, ol) { padding-left: 1.2em; }
   & .dk-call-box .chat-tool-md > :last-child { margin-bottom: 0; }
-  & .dk-call-foot { display: flex; align-items: baseline; gap: 12px; padding: 5px 12px 6px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-call-quiet); font: calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--sans); font-variant-numeric: tabular-nums; }
+  & .dk-call-foot { display: flex; align-items: baseline; gap: 12px; padding: 2px 12px 3px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-call-quiet); font: calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--sans); font-variant-numeric: tabular-nums; }
   & .dk-call-state { flex: none; color: var(--dk-mute, var(--mute)); white-space: nowrap; }
   & .dk-call-state b { font-weight: 400; }
   & .dk-call-state.is-bad { color: var(--call-fail); }
