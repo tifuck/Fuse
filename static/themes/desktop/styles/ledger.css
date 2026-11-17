@@ -137,8 +137,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-dk-thought .chat-console-thought { color: var(--dk-mute, var(--mute)); font-size: 1em; font-style: normal; line-height: 1.55; }
 
   /* An opened call, here and under the status line: a reply's code block.
-     The header is the exact input with Copy at its end, the body only output;
-     under the box, how the call ended and where it ran. */
+     The header is the exact input with Copy at its end, the body only
+     output, and a thin footer says how the call ended and where it ran. */
   & .dk-call-box {
     overflow: hidden;
     border: 1px solid var(--dk-card-line, var(--line));
@@ -150,7 +150,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     line-height: 1.6;
   }
   & .dk-call-head { display: flex; align-items: flex-start; gap: 10px; padding: 7px 8px 7px 12px; border-bottom: 1px solid var(--dk-card-line, var(--line)); }
-  & .dk-call-head:last-child { border-bottom: 0; }
+  & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
   & .dk-call-copy { flex: none; min-height: 20px; padding: 0 5px; border: 0; border-radius: 5px; background: none; color: var(--dk-mute, var(--mute)); font: 500 11.5px/20px var(--sans); cursor: pointer; }
@@ -184,10 +184,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-box .chat-tool-md :is(p, ul, ol) { margin: 0 0 0.35em; }
   & .dk-call-box .chat-tool-md :is(ul, ol) { padding-left: 1.2em; }
   & .dk-call-box .chat-tool-md > :last-child { margin-bottom: 0; }
-  & .dk-call-foot { display: flex; align-items: baseline; gap: 12px; margin-top: 5px; padding: 0 2px; color: var(--dk-call-quiet); font: calc(0.75rem * var(--chat-text-scale, 1))/1.4 var(--sans); font-variant-numeric: tabular-nums; }
+  & .dk-call-foot { display: flex; align-items: baseline; gap: 12px; padding: 5px 12px 6px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-call-quiet); font: calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--sans); font-variant-numeric: tabular-nums; }
   & .dk-call-state { flex: none; color: var(--dk-mute, var(--mute)); white-space: nowrap; }
   & .dk-call-state b { font-weight: 400; }
   & .dk-call-state.is-bad { color: var(--call-fail); }
+  & .dk-call-state .dk-plus { color: var(--dk-add, var(--ok)); }
+  & .dk-call-state .dk-minus { color: var(--dk-del, var(--fault)); }
   & .dk-call-where { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 

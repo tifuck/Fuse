@@ -153,15 +153,15 @@ function resultHtml(status) {
     return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, ""));
   }
 
-// An opened call: one box whose header is the exact input (the command, the
-// path, the pattern) with a copy button and whose body is only the output;
-// under it, how the call ended and where it ran. body and state are HTML.
+// An opened call: one box. Its header is the exact input (the command, the
+// path, the pattern) with a copy button, its body only the output, and its
+// footer how the call ended and where it ran. body and state are HTML.
 function callBoxHtml({ input = "", prompt = false, label = "input", body = "", state = "", bad = false, where = "" }) {
     const head = input ? `<div class="dk-call-head"><span class="dk-call-in">${prompt ? '<span class="dk-call-pr">$ </span>' : ""}${deps.escapeHtml(input)}</span>` +
       `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
     const foot = state || where ? `<div class="dk-call-foot">${state ? `<span class="dk-call-state${bad ? " is-bad" : ""}">${state}</span>` : ""}` +
       `${where ? `<span class="dk-call-where">${deps.escapeHtml(where)}</span>` : ""}</div>` : "";
-    return `<div class="dk-call-box">${head}${body}</div>${foot}`;
+    return `<div class="dk-call-box">${head}${body}${foot}</div>`;
   }
 
 function callInput(trace) {
