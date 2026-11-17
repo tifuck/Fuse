@@ -224,7 +224,7 @@ test('machine stats: the details card lists memory, storage, disk and network, s
     ['CPU', '', '11%'],
     ['Memory', '2.6 GB of 16 GB', '16%'],
     ['Storage', '41 GB of 120 GB', '34%'],
-    ['Disk', 'read 0B/s, write 84K/s', '0%'],
+    ['Disk', 'R 0B/s  W 84K/s', '0%'],
     ['Network', '↓ 1.2M/s  ↑ 12K/s', ''],
   ]);
   assert.deepEqual(detailRows({ cpu: 3, mem: [1, 0], net: [0, 0] }).map((row) => row[0]), ['CPU', 'Memory', 'Network']);
