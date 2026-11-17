@@ -90,12 +90,11 @@
   color: var(--mist);
   text-decoration: none;
 }
-:where(html:not(.is-chat-root)) .chat-brand-mark { display: block; width: 1.375rem; height: 1.375rem; flex-shrink: 0; }
-/* "Fuse" in Unbounded Medium, drawn as outlines so no font has to load. */
+/* The logo: the liquid F and "use" in Nunito Black, drawn as outlines so no font has to load. */
 :where(html:not(.is-chat-root)) .chat-brand-word {
   display: block;
   width: auto;
-  height: 0.95625rem;
+  height: 1.375rem;
   flex-shrink: 0;
   color: var(--mist);
 }
