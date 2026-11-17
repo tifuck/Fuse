@@ -59,6 +59,11 @@ export function createHostStats() {
     cpuHist: slot("cpu-hist"), netSpark: slot("net-spark"),
   } : null;
   const history = { cpu: [], net: [] };
+  // A theme may give the card a second place for narrow screens: the
+  // element with data-host-stats-narrow, whose value is the media query.
+  const narrow = S.root?.querySelector("[data-host-stats-narrow]");
+  const narrowQuery = card && narrow ? window.matchMedia?.(narrow.dataset.hostStatsNarrow) : null;
+  const home = card ? [card.parentElement, card.nextSibling] : null;
   const refused = new Set();
   let hostId = 0;
   let alias = "";
@@ -233,6 +238,13 @@ export function createHostStats() {
     if (card.scrollWidth > space) card.classList.add("is-squeezed");
   }
 
+  function place() {
+    if (narrowQuery.matches) narrow.append(card);
+    else home[0].insertBefore(card, home[1]);
+    fitKey = "";
+    if (!card.hidden) fit();
+  }
+
   // Called whenever the chat's identity is synced (thread, project session).
   function sync(bound) {
     if (!card) return;
@@ -245,6 +257,10 @@ export function createHostStats() {
     open();
   }
 
+  if (narrowQuery) {
+    place();
+    narrowQuery.addEventListener("change", place);
+  }
   if (card) {
     document.addEventListener("visibilitychange", () => (document.hidden ? close() : open()));
     window.addEventListener("resize", () => { if (!card.hidden) { fitKey = ""; fit(); } });
