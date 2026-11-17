@@ -55,5 +55,10 @@ def test_a_swapping_chat_runs_and_shows_real_values_the_model_never_reads(ssh_ho
     assert ssh_host.shell.reached == [command]
     assert run["message"]["tools"][0]["command"] == command
     assert run["message"]["content"] == f"Deployed with {OPENAI}. CI token: {GITHUB}"
+    # The model is asked to write values whole (they map back only then); the
+    # prompt says nothing of a swap.
+    system = bodies[0]["messages"][0]["content"]
+    assert "write it in full, exactly as it appears" in system
+    assert "Never print full secret values" not in system and "swap" not in system.lower()
     # The next turn replays the reply once, as the model wrote it.
     assert sent(bodies[2]).count(f"Deployed with {model['key']}. CI token: {model['gh']}") == 1
