@@ -1012,4 +1012,5 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-stats-strip:not(:has(> .chat-host-stats:not([hidden]))) { display: none; }
   & .dk-stats-strip .chat-host-stats { gap: 12px; width: 100%; height: 16px; margin: 0 0 6px; justify-content: center; font-size: 11px; }
   & .dk-stats-strip .hs-meter::after, & .dk-stats-strip .hs-spark { display: none; }
+  & .dk-stats-strip :is(.hs-slice b, .hs-host) { font-weight: 400; color: color-mix(in srgb, var(--dk-text) 60%, var(--dk-mute)); }
 }
