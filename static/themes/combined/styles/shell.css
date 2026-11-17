@@ -1007,11 +1007,10 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .hs-ring { flex: none; width: 14px; height: 14px; transform: rotate(-90deg); }
   & .hs-ring circle { fill: none; stroke-width: 2.4; }
   & .hs-ring circle:first-child { stroke: color-mix(in srgb, var(--mist) 16%, transparent); }
-  & .hs-ring circle + circle { stroke: var(--t); stroke-linecap: round; stroke-dasharray: 100px; stroke-dashoffset: calc((100 - var(--p)) * 1px); transition: stroke-dashoffset .4s, stroke .4s; }
+  & .hs-ring circle + circle { stroke: var(--t); stroke-linecap: round; stroke-dasharray: 100px; stroke-dashoffset: calc((100 - var(--p)) * 1px); }
   & .hs-cpu { --p: var(--hs-cpu, 0); --t: var(--hs-cpu-tone, var(--mist)); }
   & .hs-ram { --p: var(--hs-ram, 0); --t: var(--hs-ram-tone, var(--mist)); }
   & .hs-disk { --p: var(--hs-disk, 0); --t: var(--hs-disk-tone, var(--mist)); }
   @container cb-head (max-width: 899.98px) { & .hs-host { display: none; } }
   @container cb-head (max-width: 639.98px) { & .chat-host-stats { display: none; } }
-  @media (prefers-reduced-motion: reduce) { & .hs-ring circle + circle { transition: none; } }
 }

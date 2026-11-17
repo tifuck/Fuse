@@ -1193,7 +1193,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .hs-meter::after {
     content: ""; position: absolute; left: 0; right: 0; top: calc(50% + 7px); height: 2px; border-radius: 1px;
     background: linear-gradient(90deg, var(--t) calc(var(--p) * 1%), color-mix(in srgb, var(--dk-text) 12%, transparent) 0);
-    transition: background .4s;
   }
   & .hs-cpu { --p: var(--hs-cpu, 0); --t: var(--hs-cpu-tone, color-mix(in srgb, var(--dk-text) 55%, transparent)); }
   & .hs-ram { --p: var(--hs-ram, 0); --t: var(--hs-ram-tone, color-mix(in srgb, var(--dk-text) 55%, transparent)); }
@@ -1204,6 +1203,5 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .hs-net > span { display: inline-flex; align-items: center; }
   & .hs-spark { width: 30px; height: 10px; overflow: visible; }
   & .hs-spark polyline { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-  @media (prefers-reduced-motion: reduce) { & .hs-meter::after { transition: none; } }
   @media (max-width: 640px) { & .chat-host-stats { display: none; } }
 }

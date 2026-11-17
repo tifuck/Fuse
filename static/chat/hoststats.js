@@ -43,6 +43,13 @@ export function loadBlocks(samples) {
 
 const HISTORY = 24;
 
+// A new sample glides in instead of jumping: fast, eased out, then still.
+const GLIDE_MS = 260;
+export function glide(from, to, t) {
+  const k = Math.min(1, Math.max(0, t));
+  return from + (to - from) * (1 - (1 - k) ** 3);
+}
+
 export function createHostStats() {
   const card = S.root?.querySelector("[data-host-stats]");
   const slot = (name) => card?.querySelector(`[data-hs-${name}]`);
@@ -59,9 +66,17 @@ export function createHostStats() {
   let retry = 0;
   let stale = 0;
   let fitKey = "";
+  let shown = null;
+  let from = null;
+  let goal = null;
+  let glideAt = 0;
+  let frame = 0;
 
   function hide() {
     window.clearTimeout(stale);
+    window.cancelAnimationFrame(frame);
+    frame = 0;
+    shown = null;
     if (card && !card.hidden) card.hidden = true;
     fitKey = "";
   }
@@ -112,6 +127,42 @@ export function createHostStats() {
     else card.style.removeProperty(`--hs-${name}-tone`);
   }
 
+  function draw(v) {
+    set(el.cpu, Math.round(v.cpu) + "%", loadTone(Math.round(v.cpu)));
+    set(el.ram, Math.round(v.ram) + "%", loadTone(Math.round(v.ram)));
+    meter("cpu", v.cpu);
+    meter("ram", v.ram);
+    if (v.disk !== undefined) {
+      set(el.disk, Math.round(v.disk) + "%", loadTone(Math.round(v.disk)));
+      meter("disk", v.disk);
+    }
+    set(el.rx, shortRate(v.rx));
+    set(el.tx, shortRate(v.tx));
+  }
+
+  function step(now) {
+    const t = (now - glideAt) / GLIDE_MS;
+    for (const key in goal) shown[key] = glide(from[key] ?? goal[key], goal[key], t);
+    draw(shown);
+    frame = t < 1 ? window.requestAnimationFrame(step) : 0;
+  }
+
+  // The first sample after showing, or with reduced motion, lands at once.
+  function show(next) {
+    if (!shown || document.hidden || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      window.cancelAnimationFrame(frame);
+      frame = 0;
+      shown = { ...next };
+      draw(shown);
+      return;
+    }
+    from = { ...shown };
+    goal = next;
+    shown = { ...next, ...shown };
+    glideAt = performance.now();
+    if (!frame) frame = window.requestAnimationFrame(step);
+  }
+
   function remember(list, value) {
     list.push(value);
     if (list.length > HISTORY) list.shift();
@@ -123,17 +174,10 @@ export function createHostStats() {
     const cpu = Math.round(d.cpu);
     const ram = Math.round(pct(memUsed, memTotal));
     set(el.alias, alias || "machine");
-    set(el.cpu, cpu + "%", loadTone(cpu));
-    set(el.ram, ram + "%", loadTone(ram));
-    meter("cpu", cpu);
-    meter("ram", ram);
     if (el.diskSlice) el.diskSlice.hidden = !d.disk;
-    if (d.disk) {
-      set(el.disk, Math.round(d.disk[0]) + "%", loadTone(d.disk[0]));
-      meter("disk", Math.round(d.disk[0]));
-    }
-    set(el.rx, shortRate(rx));
-    set(el.tx, shortRate(tx));
+    const next = { cpu: d.cpu, ram: pct(memUsed, memTotal), rx, tx };
+    if (d.disk) next.disk = d.disk[0];
+    show(next);
     remember(history.cpu, cpu);
     remember(history.net, rx + tx);
     if (el.cpuHist) set(el.cpuHist, loadBlocks(history.cpu));
