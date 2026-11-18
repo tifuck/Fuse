@@ -1,20 +1,25 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-// A finished reply's line: what it took, when it ended (darker), then its
-// actions. usage: the stored-reply stand-in for the work time.
+// A finished reply's line: when it ended, then (darker) what it took, then
+// its actions: "4m ago · worked 3m 53s". usage: the stored-reply stand-in
+// for the work time.
 function ccTurnLineHtml(msg, latest, usage = "") {
-    if (msg.elapsedMs == null) return `${usage ? `<span>${usage}</span>` : ""}${agoHtml(msg)}${turnActionsHtml(msg, latest)}`;
+    const ago = agoHtml(msg);
+    const sep = '<span class="dk-sep">·</span>';
+    const lead = ago ? sep : "";
+    if (msg.elapsedMs == null) return `${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
-    // A stopped or failed turn never finished, so it says so. When it ended is
-    // the action row's "Just now" (full time in its title), not repeated here.
-    const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
+    // A stopped or failed turn never finished: its outcome is the verb
+    // ("interrupted after 26s"), the one tinted word.
+    const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
+    const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
+    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> after ${took}` : `worked ${took}`;
     const still = latest ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
-    return `<span>${outcome ? `${outcome} · ` : ""}Worked for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${agoHtml(msg)}${turnActionsHtml(msg, latest)}`;
+    return `${ago}<span class="dk-took">${lead}${doing}${still ? `${sep}${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
   }
 
 // A finished reply's actions: copy, fork, pin, read aloud. Desktop's

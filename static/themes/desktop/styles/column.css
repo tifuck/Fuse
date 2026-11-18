@@ -289,8 +289,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-add { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-del { color: var(--dk-del, var(--fault)); }
 
-/* The reply's line: "Worked for 20s", when it ended a shade darker, then
-   the action icons, which show while the reply is pointed at or focused.
+/* The reply's line: when it ended, what it took a shade darker ("4m ago ·
+   worked 3m 53s"), then the action icons, which show while the reply is
+   pointed at or focused. Only an outcome verb ("interrupted", "failed") is tinted.
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 0.15rem; font-size: var(--dk-meta); color: var(--dk-mute, var(--mute)); }
@@ -299,8 +300,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 @media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { flex: none; margin-left: 8px; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); white-space: nowrap; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn > .dk-ago:first-child { margin-left: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { flex: none; white-space: nowrap; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took > .dk-sep { padding: 0 0.45ch; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: var(--dk-warn); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: var(--dk-del, var(--fault)); }
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { width: 36px; height: 36px; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { margin-left: 0; }
