@@ -4,9 +4,9 @@
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock {
   --ask-r: 0px;
   --ask-btn-r: 0px;
-  --ask-bg: color-mix(in srgb, var(--brass) 5%, var(--panel));
-  --ask-edge: color-mix(in srgb, var(--brass) 45%, var(--line));
-  --ask-inset: color-mix(in srgb, #000 40%, var(--ask-bg));
+  --ask-bg: #000;
+  --ask-edge: var(--line);
+  --ask-inset: transparent;
 }
 
 /* Permission ask: title row, payload, why. */
@@ -168,8 +168,20 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-dot { animation: none; }
 }
 
-/* Console: square and flat; the ask keeps a 2 px rule on its left, the queue
-   a dashed line above the prompt. */
-html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask { border-color: var(--line); border-left: 2px solid var(--perm-color, var(--brass)); }
-html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-dot { border-radius: 0; }
+/* Console: black and flat like the transcript. The ask reads as a tool line
+   (square marker, $ command, a └ line for why); its buttons are outlined,
+   Allow in the accent, nothing filled. The queue has a dashed line above
+   the prompt. */
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask { padding: 8px 12px 10px; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-track { left: 0; right: 0; height: 1px; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-dot { border-radius: 0; animation: none; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-btn { height: 26px; background: transparent; color: var(--mute); font-weight: 400; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-btn:hover { border-color: var(--mute); color: var(--mist); background: transparent; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-btn:is(.is-allow, .is-caret) { border-color: color-mix(in srgb, var(--brass) 60%, var(--line)); background: transparent; color: var(--brass); }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-btn:is(.is-allow, .is-caret):hover { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-btn.is-caret { border-left-color: color-mix(in srgb, var(--brass) 30%, var(--line)); }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-pay { padding: 0 0 0 15px; border: 0; background: transparent; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why { padding-left: calc(15px + 2ch); text-indent: -2ch; }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why::before { content: "└ "; color: var(--mute); }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock :is(.chat-ask .chat-perm-always-menu, .chat-qrow .chat-queue-menu:not([hidden])) { border: 1px solid var(--line); border-radius: 0; background: #000; box-shadow: none; }
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-queue { border: 0; border-bottom: 1px dashed var(--line); }
