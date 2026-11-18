@@ -1995,7 +1995,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     // Mouse drags a pinned row straight away; a finger must hold still first,
     // so a plain swipe keeps scrolling the list. Once the hold arms the drag,
-    // the touchmove veto below keeps the browser from claiming the gesture.
+    // the pinned rows' touchmove veto (sidebar/render.js) keeps the browser
+    // from claiming the gesture.
     S.historyList.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || S.pinDrag) return;
       // Reordering needs the whole pinned section visible: search, the archive
@@ -2036,9 +2037,6 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       }
       movePinnedDrag(event);
     }, { passive: true });
-    S.historyList.addEventListener("touchmove", (event) => {
-      if (S.pinDrag && S.pinDrag.dragging) event.preventDefault();
-    }, { passive: false });
     window.addEventListener("pointerup", (event) => {
       if (!S.pinDrag || (S.pinDrag.dragging && event.pointerId !== S.pinDrag.id)) return;
       endPinDrag(S.pinDrag.dragging);

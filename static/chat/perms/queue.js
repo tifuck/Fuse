@@ -106,7 +106,7 @@ let _permThemeCache = { key: "", brass: null, yellow: null, red: null };
 
 function stopPermTick() {
   if (!permTick) return;
-  cancelAnimationFrame(permTick);
+  window.clearTimeout(permTick);
   permTick = 0;
 }
 
@@ -347,14 +347,20 @@ export function createQueue(ctx) {
     else stopPermTick();
   }
 
-    function startPermTick() {
+    // The counters show whole seconds: wake as the soonest one turns over.
+  // The bar runs on its own animation (paintPermCountdowns).
+  function startPermTick() {
     if (permTick) return;
-    const loop = () => {
+    let wait = 1000;
+    for (const rec of S.permCards.values()) {
+      const t = Date.parse(rec.expires_at || rec.expiresAt || "");
+      if (rec.status === "pending" && Number.isFinite(t)) wait = Math.min(wait, ((t - Date.now()) % 1000 + 1000) % 1000 || 1000);
+    }
+    permTick = window.setTimeout(() => {
       permTick = 0;
       paintPermCountdowns();
       if (permQueueEl && !permQueueEl.hidden) startPermTick();
-    };
-    permTick = requestAnimationFrame(loop);
+    }, wait + 5);
   }
 
     function paintPermCountdowns() {
@@ -374,9 +380,19 @@ export function createQueue(ctx) {
       const expires = rec.expires_at || rec.expiresAt;
       const frac = Math.max(0, Math.min(1, left / PERM_TOTAL_S));
       const count = card.querySelector("[data-perm-count]");
-      if (count) count.textContent = fmtPermCountdown(expires);
+      const text = fmtPermCountdown(expires);
+      if (count && count.textContent !== text) count.textContent = text;
       card.style.setProperty("--perm-left", String(frac));
       card.style.setProperty("--perm-color", permUrgencyColor(card, frac));
+      // The bar drains smoothly to the deadline; restarted when it moves (More time).
+      const bar = card.querySelector("[data-perm-bar]");
+      if (bar && bar.animate && bar._permUntil !== expires) {
+        bar._permUntil = expires;
+        bar._permRun?.cancel();
+        // Full until the last PERM_TOTAL_S seconds, then down to empty.
+        const hold = Math.max(0, left - PERM_TOTAL_S) / left;
+        bar._permRun = bar.animate([{ width: `${frac * 100}%` }, { width: `${frac * 100}%`, offset: hold }, { width: "0%" }], { duration: left * 1000, easing: "linear", fill: "forwards" });
+      }
       card.classList.toggle("is-low", left <= 15);
       if (left <= 15 && !permWarned.has(rec.id)) {
         permWarned.add(rec.id);
