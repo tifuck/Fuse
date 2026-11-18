@@ -106,9 +106,19 @@ def test_leap_day_and_posix_day_matching():
 
 
 def test_implied_gap_measures_the_tightest_spacing():
-    assert cron.implied_min_gap("* * * * *", "UTC", utc(2026, 9, 14), 5) == 60
-    assert cron.implied_min_gap("0,10 9 * * *", "UTC", utc(2026, 9, 14), 6) == 600
-    assert cron.implied_min_gap("0 9 * * *", "UTC", utc(2026, 9, 14), 4) == 86400
+    assert cron.implied_min_gap("* * * * *", "UTC", utc(2026, 9, 14)) == 60
+    assert cron.implied_min_gap("0,10 9 * * *", "UTC", utc(2026, 9, 14)) == 600
+    assert cron.implied_min_gap("0 9 * * *", "UTC", utc(2026, 9, 14)) == 86400
+    assert cron.implied_min_gap("0 0 31 2 *", "UTC", utc(2026, 9, 14)) is None
+
+
+def test_implied_gap_covers_the_whole_cycle_not_just_the_next_fires():
+    # 23:59 on the 31st to 00:00 on the 1st, weeks past the next dozen fires.
+    assert cron.implied_min_gap("0,59 0,23 1,15,31 * *", "UTC", utc(2026, 11, 18)) == 60
+    # 01:55 EST to 03:00 EDT on the spring-forward day.
+    assert cron.implied_min_gap("0,55 1,3 * * *", "America/New_York", utc(2026, 11, 18)) == 300
+    # The fall-back fold: 01:30 EDT, then 01:30 EST an hour later.
+    assert cron.implied_min_gap("30 1 * * *", "America/New_York", utc(2026, 11, 18)) == 3600
 
 
 def test_iso_round_trip():

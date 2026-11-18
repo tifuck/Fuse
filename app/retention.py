@@ -227,13 +227,13 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
                                 hosts.set_project_archived(conn, user_id, int(p["id"]), True, skip_running=True) is not None:
                             stats["archived_projects"] += 1
                             p["archived"] = 1
-                    # Archived just now: the delete pass must age them from
-                    # this moment, not from their old activity timestamps.
-                    archived_now = _iso(now)
-                    p["archived_at"] = archived_now
-                    for t in sessions:
-                        t["archived"] = 1
-                        t["archived_at"] = archived_now
+                            # Archived just now: the delete pass must age them from
+                            # this moment, not from their old activity timestamps.
+                            archived_now = _iso(now)
+                            p["archived_at"] = archived_now
+                            for t in sessions:
+                                t["archived"] = 1
+                                t["archived_at"] = archived_now
         if archive_chats:
             for t in threads:
                 if t["archived"] or t["pinned"] or t["schedule_id"] is not None or t["id"] in busy:
