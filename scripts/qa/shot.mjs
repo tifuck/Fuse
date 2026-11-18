@@ -38,6 +38,8 @@
 //                                  --thread "live command", or "live code" for
 //                                  a run_code whose calls are still running)
 //                         ask      a pending permission prompt
+//                         asks     three at once (a command, a subagent's file write,
+//                                  a file read outside the project): the 1 of 3 card
 //                         error    the last reply failed at the provider
 //                         agents   the agents pane (Desktop inspector, Combined
 //                                  rail) lists made-up subagents: running, done,
@@ -106,7 +108,7 @@ const TALL = 2000;  // so a cell is at most this tall, which leaves room for its
 const LIMIT = 12000;  // the tallest viewport a shot may grow to
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'error', 'agents', 'stats'];
+const FAKES = ['running', 'ask', 'asks', 'error', 'agents', 'stats'];
 const VALUES = new Set(['thread', 'page', 'view', 'tree', 'size', 'zoom', 'pad', 'fake', 'out', 'base']);
 const FLAGS = new Set(['list', 'toasts', 'touch', 'live', 'motion']);
 const STEPS = new Set(['find', 'click', 'hover', 'type', 'key', 'wait', 'eval']);
@@ -156,6 +158,7 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 opts.fake = new Set(list(opts.fake));
 opts.fake.forEach((name) => FAKES.includes(name) || bad(`--fake ${name}: use ${FAKES.join(', ')}`));
+if (opts.fake.has('asks')) opts.fake.add('ask');
 const views = opts.view === 'all' ? VIEWS : list(opts.view);
 views.forEach((view) => VIEWS.includes(view) || bad(`--view ${view}: use ${VIEWS.join(', ')} or all`));
 const sizes = list(opts.size).map((text) => {
@@ -255,6 +258,12 @@ const ASK = {
   cwd: '/srv/demo', command: 'rm -rf build && make release VERSION=2.4.0', secret: false, requester: 'Main agent', decision: '',
   grant_scope: '', grant_kind: '', grant_value: '', description: 'Deletes the build directory, then builds and tags the release.',
 };
+const MORE_ASKS = [
+  { ...ASK, id: 'qa-perm-2', perm_kind: 'file', tool: 'write_file', path: '/srv/demo/notes/findings.md', cwd: '', command: '', requester: 'researcher',
+    grant_kind: 'file', description: '', reasons: ['outside allowed folders'] },
+  { ...ASK, id: 'qa-perm-3', perm_kind: 'file', tool: 'read_file', path: '/etc/nginx/sites-enabled/fuse.conf', cwd: '', command: '',
+    grant_kind: 'file', description: '', reasons: ['outside allowed folders'] },
+];
 // The agents pane lists child runs; fixtures have none. These match the
 // child_ids in "QA · Subagents" and "QA · Live agents".
 const agentRow = (id, status, description, extra = {}) => ({
@@ -295,7 +304,9 @@ const FIXES = {
   },
   perms(data) {
     if (!opts.fake.has('ask')) return data;
-    return { ...data, bypass: false, auto: false, pending: [{ ...ASK, expires_at: iso(startedAt + 240000) }] };
+    const pending = [{ ...ASK, expires_at: iso(startedAt + 240000) }];
+    if (opts.fake.has('asks')) pending.push(...MORE_ASKS.map((ask, i) => ({ ...ask, expires_at: iso(startedAt + 180000 - i * 60000) })));
+    return { ...data, bypass: false, auto: false, pending };
   },
 };
 // --fake stats: runs in the page before its own scripts. The thread lists
