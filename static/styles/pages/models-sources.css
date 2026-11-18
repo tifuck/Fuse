@@ -382,7 +382,7 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 .sources-back:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
 /* A phone: the rail is the first screen (data-view="list") and a provider
    opens in its place ("pane"), each row larger and marked to open. */
-@container sources (max-width: 46rem) {
+@container sources (max-width: 40rem) {
   .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
   .sources-dir[data-view="list"] .sources-pane,
   .sources-dir[data-view="pane"] .sources-rail { display: none; }
