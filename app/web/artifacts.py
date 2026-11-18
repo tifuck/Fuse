@@ -86,13 +86,11 @@ async def artifacts_gallery(request: Request):
 
 @router.get("/artifacts/list")
 async def artifacts_list(request: Request):
-    """The chat's /artifacts list: this chat's (or its project's) artifacts, oldest first."""
+    """The chat's /artifacts list: this chat's artifacts only, oldest first."""
     user, err = _chat_auth(request)
     if err:
         return err
     thread = (request.query_params.get("thread") or "").strip()
-    project = (request.query_params.get("project") or "").strip()
-    here = artifacts.thread_artifact_ids(user["id"], thread) if thread else set()
     items = [
         {
             "identifier": item["identifier"],
@@ -103,9 +101,9 @@ async def artifacts_list(request: Request):
             "updated_at": item["updated_at"],
             "url": item["url"],
             "share_url": item["share_url"],
-            "in_thread": item["identifier"] in here,
+            "in_thread": True,
         }
-        for item in artifacts.list_in_scope(user["id"], thread or None, int(project) if project.isdigit() else None)
+        for item in artifacts.list_in_scope(user["id"], thread or None)
     ]
     return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
 
@@ -113,6 +111,8 @@ async def artifacts_list(request: Request):
 @router.get("/a/{public_id}", response_class=HTMLResponse)
 async def artifact_page(request: Request, public_id: str):
     user, row, owner = _viewer(request, public_id)
+    if row and row["expired_at"]:
+        return render(request, "artifact_missing.html", user, status_code=410, expired=artifacts.expired_notice())
     if not row:
         return render(request, "artifact_missing.html", user, status_code=404)
     version = _artifact_version(request.query_params.get("v")) if owner else None
@@ -146,6 +146,9 @@ async def artifact_content(request: Request, public_id: str):
     _, row, owner = _viewer(request, public_id)
     if not row:
         raise HTTPException(404, "Artifact not found")
+    if row["expired_at"]:
+        raise HTTPException(410, artifacts.expired_notice())
+    artifacts.touch(row)
     try:
         item = artifacts.client_payload(row, owner=owner, include_html=True, version=version if owner else None)
     except artifacts.ArtifactError as exc:
@@ -202,6 +205,8 @@ async def artifact_meta(request: Request, public_id: str):
     _, row, owner = _viewer(request, public_id)
     if not row:
         raise HTTPException(404, "Artifact not found")
+    if row["expired_at"]:
+        raise HTTPException(410, artifacts.expired_notice())
     # Open views poll this to update in place; the tag spares them the body.
     tag = f'W/"{row["current_version"]}-{row["shared_version"] or 0}-{row["updated_at"]}-{int(owner)}"'
     if request.headers.get("if-none-match") == tag:
