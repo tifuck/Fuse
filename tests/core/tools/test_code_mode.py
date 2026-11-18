@@ -444,3 +444,23 @@ def test_kept_results_expire_and_the_oldest_go_first_past_the_cap(monkeypatch):
     now[0] += code_mode.KEEP_S
     assert code_mode._read_kept((1, 1), json.dumps({"id": second}))["ok"] is False
     assert code_mode._kept_chars == 0
+
+
+def test_a_cut_result_keeps_its_calls_line():
+    text = "x" * 30_000 + "\n[Fuse: 3 calls: read_file×3]"
+    head = ToolJob(0, "call-1", "run_code", "{}", "ts_0_0", text=text, done=True, trace={"status": "done"})
+
+    _, result = tool_jobs._tool_messages([head])
+
+    assert len(result["content"]) <= tool_jobs.TOOL_RESULT_CHARS
+    assert result["content"].endswith("\n[Fuse: 3 calls: read_file×3]") and "result cut at" in result["content"]
+
+
+def test_a_run_that_only_reads_a_kept_result_counts_that_read(monkeypatch):
+    monkeypatch.setattr(code_mode, "_kept", collections.OrderedDict())
+    monkeypatch.setattr(code_mode, "_kept_chars", 0)
+    ident = code_mode.keep((1, 1), "abcdef")
+
+    text, _ = run_code(f'return await read_result("{ident}", {{offset: 2, limit: 2}});', Runner(), owner=(1, 1))
+
+    assert text == "cd\n[Fuse: 1 calls: read_result×1]"

@@ -12,6 +12,7 @@ from __future__ import annotations
 import collections
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -323,16 +324,23 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
         last["content"] = f"{last['content']}\n\n{tip}"
 
 
+_CALLS_TAIL = re.compile(r"\n\[Fuse: (?:\d+ calls|no tool calls)[^\n]*\](?:\n\[Fuse: [^\n]*\])?$")
+
+
 def _code_clip(text: str, result_id: str = "") -> str:
     """A run_code result over the limit: the head, then what was cut and how
     to get the rest without running the code again."""
     if len(text) <= TOOL_RESULT_CHARS:
         return text
-    cut = TOOL_RESULT_CHARS - 400
+    # The closing "[Fuse: N calls ...]" lines survive the cut, so a long run
+    # never reads as one that made no calls.
+    tail = _CALLS_TAIL.search(text)
+    calls = tail.group(0) if tail else ""
+    cut = TOOL_RESULT_CHARS - 400 - len(calls)
     rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {cut}}})` (kept 30 "
             "minutes), or return a narrower result." if result_id else " Return a narrower result.")
     return text[:cut] + (f"\n[Fuse: result cut at {cut} of {len(text)} characters. The code's calls already ran, so do "
-                         f"not run its edits or commands again.{rest}]")
+                         f"not run its edits or commands again.{rest}]") + calls
 
 
 def _code_result(group: list[ToolJob]) -> str:

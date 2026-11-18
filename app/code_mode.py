@@ -116,7 +116,8 @@ SCHEMA = {
             "Promise<string>; // raw text, no line numbers; the whole file (up to 2 MB) unless limit is given\n"
             "declare function grep(a: {pattern: string, path?: string, include?: string, output_mode?: \"content\" | "
             "\"files_with_matches\" | \"count\", case_insensitive?: boolean, max_matches?: number, host?: string} | "
-            "string): Promise<string>; // path:line:text lines\n"
+            "string): Promise<string>; // path:line:text lines; path is one file or directory (for several, use "
+            "include with braces, e.g. \"*.{py,js}\", or one call each)\n"
             "declare function glob(a: {pattern: string, path?: string, host?: string} | string): Promise<string>; "
             "// one path per line\n"
             "declare function list_dir(a?: {path?: string, depth?: number, host?: string} | string): Promise<string>; "
@@ -131,9 +132,12 @@ SCHEMA = {
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
             "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
-            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes)\n"
+            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes): the text "
+            "that run returned, not its variables, so take only the part you need\n"
             "A line in (parentheses) in grep, glob or list_dir text is a note, not a result. A failed call throws "
-            "an Error with the tool's message; catch it where a miss is expected. console.log output comes back "
+            "an Error with the tool's message; catch it where a miss is expected. In Promise.all one failure "
+            "rejects the whole batch and ends the code, stopping calls still running: add .catch(...) to calls "
+            "that may fail, or use Promise.allSettled. console.log output comes back "
             "too. Limits: 500 calls, 5 minutes (timeout, in ms, up to 10). A returned value over 24,000 "
             "characters is cut, so return findings, not file bodies.\n"
             "Example:\n"
@@ -365,7 +369,9 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 return {"ok": False, "error": f"the code made over {2 * MAX_CALLS} tool calls, most of them refused."}
             if name == "read_result":
                 # The model's own earlier output, already swapped: no host, no tool job.
-                send({"reply": n, "body": json.dumps(_read_kept(owner, raw))})
+                page = _read_kept(owner, raw)
+                done.append({"name": "read_result", "subject": "", "status": "done" if page["ok"] else "error"})
+                send({"reply": n, "body": json.dumps(page)})
                 continue
             if name not in HELPERS:
                 refuse(n, f"{name} is not available in run_code (available: {', '.join(HELPERS)}).")
