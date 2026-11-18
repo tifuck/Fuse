@@ -106,11 +106,100 @@ if (process.platform === "linux" && process.getuid() !== 0 && !setuidSandboxHelp
   app.commandLine.appendSwitch("no-sandbox");
 }
 
-// GPU rendering on Linux flashes random pink/green/black garbage blocks on
-// some AMD and NVIDIA machines (seen on Strix Halo and an RTX 5060). Machines
-// where Chromium already falls back to software never show it, so draw in
-// software everywhere on Linux.
-if (process.platform === "linux") app.disableHardwareAcceleration();
+// Fuse draws on the GPU wherever Chromium's own GPU blocklist allows it.
+// Software rendering on all of Linux (for the pink/green/black blocks seen on
+// a Strix Halo and an RTX 5060) left every other Linux machine lagging, so
+// software is now the way out instead: the Use hardware acceleration toggle
+// (right-click an empty spot), FUSE_DISABLE_GPU=1 or Chromium's --disable-gpu
+// for one launch, and a switch to software after the GPU process keeps
+// crashing. Garbage blocks crash nothing, so they need the toggle.
+// <userData>/rendering.json: {gpu, fellBack}.
+const RENDERING_FILE = () => path.join(app.getPath("userData"), "rendering.json");
+const GPU_CRASH_LIMIT = 3;
+const GPU_CRASH_WINDOW_MS = 2 * 60 * 1000;
+
+function loadRendering() {
+  try {
+    const saved = JSON.parse(readFileSync(RENDERING_FILE(), "utf8"));
+    return { gpu: saved.gpu !== false, fellBack: saved.fellBack === true };
+  } catch {
+    return { gpu: true, fellBack: false };
+  }
+}
+
+const rendering = loadRendering();
+function saveRendering() {
+  try {
+    writeFileSync(RENDERING_FILE(), JSON.stringify(rendering));
+  } catch (err) {
+    console.warn(`fuse: cannot save ${RENDERING_FILE()}: ${err.message}`);
+  }
+}
+
+const GPU_FORCED_OFF = process.env.FUSE_DISABLE_GPU === "1" || app.commandLine.hasSwitch("disable-gpu");
+if (GPU_FORCED_OFF || !rendering.gpu) app.disableHardwareAcceleration();
+
+// A few crashes in a row (Chromium restarts the GPU process each time) mean
+// the driver cannot carry it: the next launch draws in software and says so.
+// Isolated ones, such as a resume from suspend, do not count.
+let gpuCrashes = [];
+app.on("child-process-gone", (_event, details) => {
+  if (details.type !== "GPU" || details.reason === "clean-exit" || quitting || GPU_FORCED_OFF || !rendering.gpu) return;
+  console.warn(`fuse: GPU process gone: ${details.reason} (exit code ${details.exitCode})`);
+  const now = Date.now();
+  gpuCrashes = gpuCrashes.filter((at) => now - at < GPU_CRASH_WINDOW_MS).concat(now);
+  if (gpuCrashes.length < GPU_CRASH_LIMIT) return;
+  rendering.gpu = false;
+  rendering.fellBack = true;
+  saveRendering();
+});
+
+function showSoftwareNotice() {
+  rendering.fellBack = false;
+  saveRendering();
+  dialog.showMessageBox(win, {
+    type: "info",
+    message: "Hardware acceleration is off",
+    detail: "The graphics process kept crashing, so Fuse now draws in software. To turn it back on, right-click an empty spot in Fuse, tick Use hardware acceleration and restart.",
+  });
+}
+
+// Restarts like an update does (see relaunchFromSystemd); a quit the leave
+// dialog keeps back leaves the change for the next launch.
+function restartFuse() {
+  const deb = process.platform === "linux" && !process.env.APPIMAGE;
+  if (!deb || !relaunchFromSystemd()) {
+    if (deb && setuidSandboxHelper() && !userNamespacesUsable()) {
+      dialog.showMessageBox(win, { type: "info", message: "Close and open Fuse again to apply the change." });
+      return;
+    }
+    app.relaunch();
+  }
+  app.quit();
+}
+
+async function setHardwareAcceleration(on) {
+  rendering.gpu = on;
+  rendering.fellBack = false;
+  saveRendering();
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question",
+    buttons: ["Restart now", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Hardware acceleration turns ${on ? "on" : "off"} when Fuse restarts`,
+  });
+  if (response === 0) restartFuse();
+}
+
+// Native, so it draws even when the page renders as garbage.
+const hardwareAccelerationItem = () => ({
+  label: "Use hardware acceleration",
+  type: "checkbox",
+  checked: rendering.gpu && !GPU_FORCED_OFF,
+  enabled: !GPU_FORCED_OFF,
+  click: (item) => setHardwareAcceleration(item.checked),
+});
 
 let win = null;
 let bar = null;
@@ -398,7 +487,7 @@ function createWindow() {
 
   wc.on("context-menu", (_event, params) => {
     const items = contextMenuTemplate(params, wc, { openExternal: openExternalSafe, copyText: (text) => clipboard.writeText(text) });
-    if (!items.length) return;
+    if (!items.length) items.push(hardwareAccelerationItem());
     const at = site.getBounds();
     Menu.buildFromTemplate(items).popup({ window: win, x: at.x + params.x, y: at.y + params.y });
   });
@@ -751,6 +840,7 @@ if (!gotLock) {
     if (CUSTOM_FRAME) app.userAgentFallback = `${app.userAgentFallback} FuseDesktop/${app.getVersion()}`;
     loadFrameTheme();
     createWindow();
+    if (rendering.fellBack) showSoftwareNotice();
 
     if (app.isPackaged) startUpdater();
 
