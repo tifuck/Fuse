@@ -276,18 +276,6 @@ html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-se
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search { height: 1.9rem; background: var(--raise); }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search:focus-within { border-color: var(--brass); }
 
-/* Project chooser rows: the current one carries the accent bar, and the
-   "Open" hint only shows on the row under the pointer. */
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--brass) 8%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
-}
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current .fp-row-go { color: var(--brass); }
-@media (hover: hover) {
-  html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row:not(.is-current, :hover, :focus-visible) .fp-row-go { visibility: hidden; }
-}
-
 /* Page-head action groups (Sources): a quiet label, then the choices. */
 html[data-chat-console="true"] body.is-settings .settings-tools .head-actions { align-items: center; gap: 0.3rem; }
 html[data-chat-console="true"] body.is-settings .settings-tools .head-actions form { margin: 0; display: flex; }

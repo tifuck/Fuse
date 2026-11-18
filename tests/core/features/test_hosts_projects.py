@@ -151,6 +151,18 @@ def test_removing_a_machine_leaves_its_sessions_as_plain_chats(uid):
 
 # -- projects --------------------------------------------------------------
 
+def test_listed_projects_carry_their_session_count_and_last_activity(uid):
+    host = make_host(uid)
+    busy = hosts.add_project(uid, host, {"name": "busy", "remote_path": "/srv/busy"})
+    hosts.add_project(uid, host, {"name": "idle", "remote_path": "/srv/idle"})
+    session(uid, host, busy)
+    newest = session(uid, host, busy)
+    listed = {p["name"]: p for p in hosts.list_bundle(uid)["hosts"][0]["projects"]}
+    assert listed["busy"]["sessions"] == 2
+    assert listed["busy"]["last_active_at"] == chats.get_thread(uid, newest["id"])["updated_at"]
+    assert (listed["idle"]["sessions"], listed["idle"]["last_active_at"]) == (0, "")
+
+
 def test_project_fields_validate_and_belong_to_the_host_owner(uid):
     host = make_host(uid)
     made = hosts.add_project(uid, host, {"name": "api", "remote_path": "/srv/api", "permission_mode": "read_only",

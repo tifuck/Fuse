@@ -279,12 +279,16 @@ def _project_view(row) -> dict:
 def _projects(conn, user_id: int, host_id: int) -> list[dict]:
     rows = conn.execute(
         """SELECT p.*, (SELECT COUNT(*) FROM chat_threads c
-                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS sessions
+                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS sessions,
+                       (SELECT MAX(c.updated_at) FROM chat_threads c
+                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS last_active_at
            FROM user_projects p WHERE p.user_id=? AND p.host_id=? ORDER BY p.name""",
         (user_id, host_id),
     ).fetchall()
-    # The delete confirm names how many chats go with the project.
-    return [{**_project_view(r), "sessions": int(r["sessions"] or 0)} for r in rows]
+    # The delete confirm names how many chats go with the project; the chat
+    # chooser orders by both, most used first.
+    return [{**_project_view(r), "sessions": int(r["sessions"] or 0), "last_active_at": r["last_active_at"] or ""}
+            for r in rows]
 
 
 def _public_host(row, projects=None) -> dict:

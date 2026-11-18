@@ -155,15 +155,19 @@
     const s = state;
     setHead("Projects", s.title || "Open a project", false);
     const q = (s.query || "").trim().toLowerCase();
-    const groups = [];
-    s.hosts.forEach((host) => {
-      const items = (host.projects || []).filter((p) => {
+    // Most used first: more sessions, then the latest activity, then by name.
+    const items = s.hosts
+      .flatMap((host) => (host.projects || []).map((p) => ({ host, p })))
+      .filter(({ host, p }) => {
         if (Boolean(p.archived) !== Boolean(s.showArchived)) return false;
         if (!q) return true;
         return [p.name, p.remote_path, host.alias].some((v) => String(v || "").toLowerCase().includes(q));
-      });
-      if (items.length) groups.push({ host, items });
-    });
+      })
+      .sort((a, b) =>
+        (b.p.sessions || 0) - (a.p.sessions || 0) ||
+        String(b.p.last_active_at || "").localeCompare(String(a.p.last_active_at || "")) ||
+        String(a.p.name || "").localeCompare(String(b.p.name || ""))
+      );
     const archivedCount = s.hosts.reduce((n, h) => n + (h.projects || []).filter((p) => p.archived).length, 0);
     const current = s.current ? `${s.current.host_id}:${s.current.project_id}` : "";
     let list = "";
@@ -171,32 +175,34 @@
       list =
         `<div class="fp-empty"><p>Projects live on a machine. Connect one first; it takes one command.</p>` +
         `<a class="btn sm" href="/hosts">Connect a machine</a></div>`;
-    } else if (!groups.length) {
+    } else if (!items.length) {
       list = `<div class="fp-empty"><p>${
         q ? "No projects match." : s.showArchived ? "No archived projects." : "No projects yet. Add a folder on one of your machines."
       }</p></div>`;
     } else {
-      list = groups
-        .map(({ host, items }) =>
-          `<section class="fp-group"><p class="fp-group-head"><span>${esc(host.alias || "machine")}</span>` +
-          `${host.online === false ? '<span class="fp-off">offline</span>' : ""}</p><ul class="fp-list">` +
-          items
-            .map((p) => {
-              const key = `${host.id}:${p.id}`;
-              const on = key === current;
-              return (
-                `<li><button type="button" class="fp-row${on ? " is-current" : ""}" data-fp-pick="${esc(key)}"${on ? ' aria-current="true"' : ""}>` +
-                icon(p, { size: 22 }) +
-                `<span class="fp-row-text"><span class="fp-row-name">${esc(p.name)}${
-                  p.permission_mode === "read_only" ? '<span class="fp-badge">Read-only</span>' : ""
-                }</span><span class="fp-row-path">${esc(p.remote_path)}</span></span>` +
-                `<span class="fp-row-go" aria-hidden="true">${s.showArchived ? "Restore" : on ? "Current" : s.pickLabel || "Open"}</span></button></li>`
-              );
-            })
-            .join("") +
-          `</ul></section>`
-        )
-        .join("");
+      list =
+        `<ul class="fp-cards">` +
+        items
+          .map(({ host, p }) => {
+            const key = `${host.id}:${p.id}`;
+            const on = key === current;
+            const offline = host.online === false;
+            const count = Number(p.sessions || 0);
+            const go = s.showArchived ? "Restore" : on ? "Current" : s.pickLabel || "Open";
+            return (
+              `<li><button type="button" class="fp-card${on ? " is-current" : ""}" data-fp-pick="${esc(key)}"${on ? ' aria-current="true"' : ""}>` +
+              icon(p, { size: 20 }) +
+              `<span class="fp-card-name">${esc(p.name)}</span><span class="fp-card-go">${go}</span>` +
+              `<span class="fp-card-host${offline ? " is-off" : ""}"><span class="fp-card-dot" aria-hidden="true"></span>` +
+              `<span class="fp-card-alias">${esc(host.alias || "machine")}</span>${offline ? '<span class="fp-off">offline</span>' : ""}</span>` +
+              `<span class="fp-card-path" title="${esc(p.remote_path)}">${esc(p.remote_path)}</span>` +
+              `<span class="fp-card-meta"><span>${count ? `${count} ${count === 1 ? "session" : "sessions"}` : "No sessions yet"}</span>` +
+              `${p.permission_mode === "read_only" ? '<span class="fp-badge">Read-only</span>' : ""}</span>` +
+              `</button></li>`
+            );
+          })
+          .join("") +
+        `</ul>`;
     }
     body().innerHTML =
       `<div class="fp-toolbar">` +
