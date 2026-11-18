@@ -280,10 +280,9 @@ _BATCH = (
     "steps only when one needs another's result.\n"
 )
 _BATCH_CODE = (
-    "- Do not batch several direct file or shell calls in one step: put them in one `run_code` call. Other "
-    "independent direct calls in one step still run concurrently (up to 16); host writes, edits and shell "
-    "commands on the same host run in the order you issue them. Split work across steps only when you must "
-    "see a result before deciding the next step.\n"
+    "- Several file or shell calls belong in one `run_code` snippet, not in one step of direct calls. Other "
+    "independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
+    "on the same host run in the order you issue them.\n"
 )
 _LOCATE = (
     "- Locate, then read, with the cheapest search that answers the question: `glob` when you know a "
@@ -294,38 +293,41 @@ _LOCATE = (
     "slices."
 )
 _PARALLEL = _BATCH + _LOCATE
-# run_code first: models take the first tool rule as their default.
-_RUN_CODE = (
-    "- `run_code` is your default for file and shell work: projects here have dozens to hundreds of files, and "
-    "run_code keeps their contents out of your context. Start a task with it to explore (lay out the tree, "
-    "grep, read the matches and return only what matters), and use it whenever you would loop over files, read "
-    "the hits of a search, parse or count across files, repeat an edit in several files, or run a command whose "
-    "output you will filter, and whenever you are about to make two or more file or shell calls in a row. Its "
-    "code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): "
-    "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command are async functions "
-    "taking the same argument object as the tools, e.g. `await read_file({path: \"app.py\"})`, and only what "
-    "the code returns reaches you. Chain dependent calls with await, run independent ones with Promise.all, "
-    "and return compact findings, with path:line for anything you will cite or edit (line numbers come from "
-    "grep output, or are the index + 1 after splitting a file's text).\n"
-    "- Make a direct call only when that one call's whole result is what you need next: a file you are about "
-    "to edit by hand (direct read_file shows line numbers and images), or a command whose full output matters. "
-    "Also for what run_code cannot do: background commands, monitor, get_command_output, kill_command, web, "
-    "subagents, artifacts, todo_write, scratch, skills.\n"
-    "- A mechanical change across files (a rename, a version bump, the same fix in several places) is one "
-    "run_code: grep for the files, then search_replace each, with replace_all where every match changes; read "
-    "first, by hand or in the code, when you are not sure of the exact text. Calls from code are "
-    "permission-checked and shown to the user like direct calls."
-)
-# HELPERS: the role's own calls (explore has a shell, plan does not).
-_RUN_CODE_READ_ONLY = (
-    "- `run_code` is your default for searches and reads: projects here have dozens to hundreds of files. Start "
-    "with it to explore, and use it whenever you would loop over files, read the hits of a search, or filter "
-    "long output, and whenever you are about to make two or more calls in a row. Its code is plain JavaScript, "
-    "not Node.js (no require, import, child_process, fs or process): HELPERS are async functions taking the "
-    "same argument object as the tools, and only what the code returns reaches you. Chain dependent calls with "
-    "await, run independent ones with Promise.all, and return compact findings, with path:line for anything you "
-    "will cite (line numbers come from grep output, or are the index + 1 after splitting a file's text). Call a "
-    "tool directly for a file you will study in full."
+
+
+def _code_mode(work: str, helpers: str, exceptions: str) -> str:
+    """The run_code section: what it is, why, when not, how. Short and in
+    that order, so a weak model can follow it; it comes before the other
+    tool rules, which models read as the default."""
+    return (
+        f"Code mode (`run_code`): use it for almost all {work}.\n"
+        f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
+        "arguments as the tools. Only what the snippet returns comes back to you.\n"
+        "- Why it is better: one call does the work of many tool calls; the files it reads stay out of your "
+        "context, so you stay fast and accurate in big projects; and you filter, count and compare in code "
+        "instead of by reading. Each call is still permission-checked and shown to the user. At worst it costs "
+        "about the same as calling the tools directly.\n"
+        f"- When not to use it: {exceptions} Also for what code cannot do: background commands, monitor, "
+        "get_command_output, kill_command, web, subagents, artifacts, todo_write, scratch, skills.\n"
+        "- How: plain JavaScript, not Node.js (no require, import, fs, child_process or process). Write "
+        "`await read_file(\"src/app.py\")`, run independent calls together with `await Promise.all(...)`, and "
+        "end with `return`. Return findings with path:line (line numbers come from grep, or are the index + 1 "
+        "after splitting a file's text), not whole files. Example:\n"
+        "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter(Boolean);\n"
+        "  const found = [];\n"
+        "  for (const f of files) {\n"
+        "    const lines = (await read_file(f)).split(\"\\n\");\n"
+        "    lines.forEach((line, i) => { if (line.includes(\"fetchUser\")) found.push(`${f}:${i + 1}: ${line.trim()}`); });\n"
+        "  }\n"
+        "  return found.join(\"\\n\");"
+    )
+
+
+_CODE_MODE = _code_mode(
+    "file and shell work",
+    "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command",
+    "call a tool directly only when the project is tiny (a handful of files), or for a single one-line edit when "
+    "you already know the file and the exact text to change.",
 )
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
@@ -334,6 +336,13 @@ _FILE_TOOLS_OVER_SHELL = (
     "are skipped, and they work the same on Windows hosts, while a shell `find` or `grep -r` can return "
     "thousands of vendor paths and a glob in a shell command needs the user's approval. File tools stay "
     "inside the host's listed roots. Reserve the shell for git, tests, builds, and other programs."
+)
+# With code mode the same rule covers the functions inside run_code, so it does
+# not read as "call these tools directly".
+_FILE_TOOLS_IN_CODE = _FILE_TOOLS_OVER_SHELL.replace(
+    "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` —",
+    "- In code as in direct calls, use the file functions (list_dir, grep, glob, read_file, search_replace, "
+    "write_file) —",
 )
 _EDITS = (
     "- Read a file before editing it. Prefer `search_replace` for targeted edits (`edits` for several "
@@ -712,7 +721,7 @@ _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 
 def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
-    use = "Use them directly or inside `run_code`" if code else "Call them directly"
+    use = "Use them inside `run_code` (directly only for the exceptions in Code mode)" if code else "Call them directly"
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
         return (
@@ -855,15 +864,23 @@ def build_system_prompt(
     shell = _SHELL.replace(_SHELL_SPLIT, _SHELL_SPLIT_CODE) if code_mode else _SHELL
     if coding and not read_only:
         parts.append("How to work:\n" + (_ACT_CHILD if subagent else _ACT_MAIN) + "\n" + _TASK_METHOD)
-        parts.append("Tools:\n" + (_RUN_CODE + "\n" if code_mode else "") + _FILE_TOOLS_OVER_SHELL + "\n"
-                     + (_BATCH_CODE + _LOCATE if code_mode else _PARALLEL) + "\n" + _EDITS)
+        if code_mode:
+            parts.append(_CODE_MODE)
+            parts.append("Tools:\n" + _FILE_TOOLS_IN_CODE + "\n" + _BATCH_CODE + _LOCATE + "\n" + _EDITS)
+        else:
+            parts.append("Tools:\n" + _FILE_TOOLS_OVER_SHELL + "\n" + _PARALLEL + "\n" + _EDITS)
         parts.append(shell + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
         parts.append(_RISKY_CHILD if subagent else _RISKY_MAIN)
     elif coding:
-        helpers = "read_file, list_dir, grep, glob and run_terminal_command" if kind == "explore" \
-            else "read_file, list_dir, grep and glob"
-        parts.append("Tools:\n" + (_RUN_CODE_READ_ONLY.replace("HELPERS", helpers) + "\n" + _BATCH_CODE + _LOCATE
-                                   if code_mode else _PARALLEL))
+        if code_mode:
+            helpers = "read_file, list_dir, grep, glob and run_terminal_command" if kind == "explore" \
+                else "read_file, list_dir, grep and glob"
+            parts.append(_code_mode("searching and reading", helpers,
+                                    "call a tool directly only when the project is tiny (a handful of files), or to "
+                                    "read one file you already know in full."))
+            parts.append("Tools:\n" + _BATCH_CODE + _LOCATE)
+        else:
+            parts.append("Tools:\n" + _PARALLEL)
         if kind == "explore":
             parts.append(shell + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:

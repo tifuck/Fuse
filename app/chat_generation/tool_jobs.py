@@ -313,9 +313,9 @@ def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collection
 
 def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
     calls = ", ".join(f"{n} {name}" for name, n in seen.most_common())
-    tip = (f"[Fuse] Tip: this turn has made {sum(seen.values())} direct file calls ({calls}). One run_code call "
-           "does that kind of work in a single step (Promise.all over the files, a loop of edits) and returns only "
-           "what you need. Use it for the rest of this work unless you need a whole file or output.")
+    tip = (f"[Fuse] Tip: you have made {sum(seen.values())} direct file calls this turn ({calls}). Switch to "
+           "run_code for the rest of this task: one snippet does all of these in a single step and returns only "
+           "what you need.")
     last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
     if last is not None:
         last["content"] = f"{last['content']}\n\n{tip}"
