@@ -62,7 +62,9 @@ SCHEMA = {
             "real tool calls; only what it returns comes back to you, so one call does the work of many and the "
             "files it reads stay out of your context.\n"
             "Plain JavaScript, not Node.js: no require, import, fs, child_process, process or timers. Await each "
-            "call, use Promise.all for independent ones, and end with return. Each function takes the same "
+            "call, use Promise.all for independent ones, and end with return. In a backtick string `${x}` is "
+            "JavaScript, so write shell commands and code-heavy old_string/new_string text as '…' or \"…\" "
+            "strings (or escape it as \\${x}). Each function takes the same "
             "argument object as the tool of that name (a string is the path, pattern or command), and each call is "
             "permission-checked and shown to the user like a direct call:\n"
             "declare function read_file(a: {path: string, offset?: number, limit?: number, host?: string} | string): "
@@ -78,7 +80,7 @@ SCHEMA = {
             "string): Promise<string>; // receipt; write_file(path, content) works too\n"
             "declare function search_replace(a: {path: string, old_string?: string, new_string?: string, "
             "replace_all?: boolean, edits?: {old_string: string, new_string: string, replace_all?: boolean}[], "
-            "host?: string}): Promise<string>; // receipt\n"
+            "host?: string}): Promise<string>; // receipt with the edited lines\n"
             "declare function run_terminal_command(a: {command: string, cwd?: string, timeout?: number, "
             "description?: string, host?: string} | string): Promise<{status: string, exit_code: number | null, "
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
@@ -166,6 +168,16 @@ def _value(name: str, text: str, trace: dict):
     return value
 
 
+# Undefined names that mean "run_code is not Node.js" or "that is a tool, not
+# a helper"; any other undefined name is most often a shell or file `${x}`
+# left inside a backtick string, which JavaScript filled in itself.
+_NOT_HERE = frozenset({
+    "require", "module", "exports", "process", "Buffer", "__dirname", "__filename", "fs", "path", "os",
+    "child_process", "fetch", "setTimeout", "setInterval", "monitor", "get_command_output", "kill_command",
+    "web_search", "read_url", "spawn_subagent", "todo_write", "scratch", "load_skill", "search_tools",
+})
+
+
 def _user_lines(stack: str) -> str:
     """V8 positions as the model's own line numbers; frames in the prelude
     (a helper throwing) are dropped, and a Node habit gets its fix."""
@@ -179,7 +191,12 @@ def _user_lines(stack: str) -> str:
     fix = " Fix the code and call run_code again."
     # A helper the code shadowed (`const { grep } = globalThis`) is undefined, not un-awaited.
     shadowed = re.search(r"\b(\w+) is not a function", text)
-    if "is not defined" in text:
+    undefined = re.search(r"\b(\w+) is not defined", text)
+    if undefined and undefined.group(1) not in _NOT_HERE:
+        name = undefined.group(1)
+        text += (f"\n(If `${{{name}}}` sits in a backtick string meant for the shell or for file text, JavaScript "
+                 f"filled it in: use a '…' or \"…\" string there, or write \\${{{name}}}.{fix})")
+    elif undefined:
         text += f"\n(run_code provides only: {', '.join(HELPERS)}, e.g. `await read_file(\"a.py\")`.{fix})"
     elif text.startswith("Not supported") or "Error: Not supported" in text:
         text += f"\n(import() is not available: run_code is not Node.js. Use {', '.join(HELPERS)}.{fix})"

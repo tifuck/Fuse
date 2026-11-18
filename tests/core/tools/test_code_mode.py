@@ -397,3 +397,20 @@ def test_a_call_run_code_made_is_placed_under_it_even_when_another_call_ran_mean
         out.apply({"fuse": {"event": "tool", "status": "running", **event}})
 
     assert [part["id"] for part in out.message["segments"] if part["type"] == "tool"] == ["ts_0_0", "ts_0_0_c1", "ts_0_0_c2", "ts_0_1"]
+
+
+def test_a_shell_variable_left_in_a_template_string_gets_the_template_hint_not_the_helpers_hint():
+    text, _ = run_code("return await run_terminal_command(`grep -n x ${sel}`);", Runner())
+    assert "sel is not defined" in text and "write \\${sel}" in text and "run_code provides only" not in text
+
+    text, _ = run_code("return await monitor({command: 'x'});", Runner())
+    assert "run_code provides only" in text and "backtick" not in text
+
+
+def test_a_cut_run_code_result_says_the_calls_already_ran():
+    head = ToolJob(0, "call-1", "run_code", "{}", "ts_0_0", text="x" * 30_000, done=True, trace={"status": "done"})
+
+    _, result = tool_jobs._tool_messages([head])
+
+    assert len(result["content"]) <= tool_jobs.TOOL_RESULT_CHARS
+    assert "of 30000 characters" in result["content"] and "do not run its edits or commands again" in result["content"]

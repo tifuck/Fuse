@@ -321,10 +321,20 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
         last["content"] = f"{last['content']}\n\n{tip}"
 
 
+def _code_clip(text: str) -> str:
+    """A run_code result over the limit: the head, then what was cut and why
+    running the code again is the wrong way to get the rest."""
+    if len(text) <= TOOL_RESULT_CHARS:
+        return text
+    cut = TOOL_RESULT_CHARS - 400
+    return text[:cut] + (f"\n[Fuse: result cut at {cut} of {len(text)} characters. The code's calls already ran, so do "
+                         "not run its edits or commands again: return a narrower result.]")
+
+
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     if head.done and head.text and head.text != "Tool interrupted.":
-        return _tool_result_clip(head.name, head.text)
+        return _code_clip(head.text)
     # Cut off mid-run (a stop or a restart): what changed, and what may have.
     lines = []
     for j in group[1:]:
