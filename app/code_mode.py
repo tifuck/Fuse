@@ -308,4 +308,5 @@ def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], st
         lines.append(f"{stopped} calls still running were stopped.")
     text = "\n".join(lines)
     status = "interrupted" if kind == "interrupted" else "error"
-    return text, {**rec, "status": status, "kind": kind or "code_error", "error": error[:400], "output": f"{code}\n\n{text}"}
+    # A failed row shows its output as the error: the message leads, the code follows.
+    return text, {**rec, "status": status, "kind": kind or "code_error", "error": error[:400], "output": f"{text}\n\n{code}"}

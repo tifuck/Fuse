@@ -574,8 +574,8 @@ def code_thread() -> list[dict]:
                         output=f"# module {i}\n# TODO: tidy\nVALUE = {i}") for i in range(40)]
     failed = tool("run_code", status="error", kind="code_error", description="Parse every config",
                   error="line 1: SyntaxError: missing ) after argument list",
-                  output="return files.map((p) => JSON.parse(p);\n\nError: line 1: SyntaxError: missing ) after argument list\n"
-                         "No tool calls finished before the error.")
+                  output="Error: line 1: SyntaxError: missing ) after argument list\nNo tool calls finished before the error.\n\n"
+                         "return files.map((p) => JSON.parse(p);")
     return [
         user("Lower the retry count on any service whose worst-case wait is over a minute, then run the checks."),
         reply("Scanning the service configs in one pass.\n\n", run, *calls,
