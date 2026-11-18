@@ -152,17 +152,31 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-d
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-qrow .chat-queue-menu .chat-queue-action:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--mist) 8%, transparent); }
 
 @media (max-width: 640px) {
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-head { flex-wrap: wrap; row-gap: 8px; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-actions { order: 3; flex-basis: 100%; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-actions > .chat-ask-btn { flex: 1; height: 40px; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-allow { flex: 1.4; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-allow .chat-ask-btn { height: 40px; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-btn.is-allow { flex: 1; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-btn.is-caret { width: 44px; padding: 0; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-pay { flex-wrap: wrap; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-note { flex-basis: 100%; max-width: none; padding-left: 18px; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-qrow { grid-template-columns: 16px minmax(0, 1fr) auto 76px; min-height: 40px; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-qrow-btn { width: 36px; height: 36px; }
+  /* Three rows, small buttons: title with step and clock; the payload; why
+     with Deny and Allow at its end. */
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask {
+    grid-template-columns: 7px minmax(0, 1fr) auto auto;
+    grid-template-areas: "dot title step clock" "pay pay pay pay" "why why deny allow";
+    column-gap: 8px;
+    row-gap: 4px;
+    padding: 8px 10px;
+  }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock :is(.chat-ask-head, .chat-ask-actions) { display: contents; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-dot { grid-area: dot; align-self: center; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-title { grid-area: title; align-self: center; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-step { grid-area: step; justify-self: end; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-clock { grid-area: clock; justify-self: end; height: 24px; padding: 0 2px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-actions > [data-perm-decide="deny"] { grid-area: deny; align-self: end; justify-self: end; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-allow { grid-area: allow; align-self: end; justify-self: end; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-btn { height: 26px; padding: 0 10px; font-size: 12px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-btn.is-caret { padding: 0 6px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-pay { grid-area: pay; display: block; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-glyph { display: inline-block; margin-right: 6px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-value { display: inline; word-break: normal; overflow-wrap: anywhere; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-note { display: inline; margin-left: 8px; white-space: normal; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-why { grid-area: why; align-self: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-qrow { grid-template-columns: 16px minmax(0, 1fr) auto 68px; min-height: 34px; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-qrow-btn { width: 32px; height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-dock .chat-ask-dot { animation: none; }
