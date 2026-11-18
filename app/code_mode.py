@@ -109,7 +109,8 @@ SCHEMA = {
             "tool calls; only what it returns comes back to you.\n"
             "Plain JavaScript, not Node.js: no require, import, fs, child_process, process or timers. Await each "
             "call, use Promise.all for independent ones, and end with return. Write shell commands and code-heavy "
-            "edit text as '…' or \"…\" strings: in a backtick string ${x} is JavaScript (or escape it as \\${x}). "
+            "edit text as '…' or \"…\" strings: in a backtick string ${x} is JavaScript (or escape it as \\${x}); for text with literal backslashes use String.raw`...`, which keeps \\n as two "
+            "characters. "
             "Each function takes the same arguments as the tool of that name (a string is the path, pattern or "
             "command):\n"
             "declare function read_file(a: {path: string, offset?: number, limit?: number, host?: string} | string): "
@@ -257,7 +258,28 @@ def _call_error(name: str, args: dict, message: str) -> str:
     path = str(args.get("path") or "")
     if "," in path and re.search(r"no such file|not found|does not exist", message, re.I):
         message += " (path is one file or directory: make one call per path, or use include with braces)"
+    if name == "search_replace" and "not found" in message:
+        message = _edit_miss(args, message)
     return " ".join(f"{name} {subject(args)}".split()) + f": {message}"
+
+
+def _edit_miss(args: dict, message: str) -> str:
+    """Why an edit from code missed, after the tool's first line (any closest
+    match the tool found follows it)."""
+    edits = args.get("edits") if isinstance(args.get("edits"), list) else [args]
+    olds = [str(e.get("old_string") or "") for e in edits if isinstance(e, dict)]
+    hints = []
+    if any("\\" in old for old in olds):
+        hints.append("old_string has backslashes: in a JavaScript string \\n is a newline and \\\\ is one "
+                     "backslash, so write file text that has literal backslashes with String.raw`...` or doubled "
+                     "backslashes, or make this one edit with a direct search_replace call")
+    which = re.search(r"edit (\d+) of", message)
+    if which and int(which.group(1)) > 1:
+        hints.append("edits apply in order, so each old_string must match the text after the edits before it")
+    if not hints:
+        return message
+    first, _, rest = message.partition("\n")
+    return f"{first} ({'; '.join(hints)})" + (f"\n{rest}" if rest else "")
 
 
 def _user_lines(stack: str) -> str:

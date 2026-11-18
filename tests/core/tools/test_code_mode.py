@@ -485,3 +485,16 @@ def test_a_type_mistake_gets_the_type_hint_and_a_comma_path_gets_the_path_hint()
 
     text, _ = run_code("return await grep({pattern: 'x', path: 'a.py,b.py'});", Runner(missing))
     assert "grep a.py,b.py: No such file or directory (path is one file or directory" in text
+
+
+
+def test_an_edit_from_code_that_misses_says_why_it_may_have_missed():
+    def miss(name, args):
+        return ("From host box:\nedit 3 of 4: old_string not found; no edits were applied\nClosest text: x = 1",
+                {"name": name, "status": "error", "host": "box"})
+
+    code = "await search_replace({path: 'a.py', edits: [{old_string: 'a', new_string: 'b'}, {old_string: 'c', new_string: 'd'}, " \
+           "{old_string: String.raw`s = \"\\n\"`, new_string: 'e'}, {old_string: 'f', new_string: 'g'}]});"
+    text, _ = run_code(code, Runner(miss))
+
+    assert "old_string has backslashes" in text and "edits apply in order" in text and "Closest text: x = 1" in text
