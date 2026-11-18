@@ -599,6 +599,11 @@ def recover_one(row, allow_resume=True, capped=False):
             logger.exception("Failed to abort chat run %s after recover error", row["id"] if row else "?")
 
 
+def _active_run(run_id):
+    row = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run_id,))
+    return row if row is not None and row["status"] in ("queued", "running") else None
+
+
 def recover_runs():
     """Re-queue runs (root and child) that have a durable tool transcript; interrupt the rest.
 
@@ -608,27 +613,38 @@ def recover_runs():
     BOOT_RESUME_BATCH oldest transcript runs requeue in the first pass so a
     restart storm cannot stampede generation; the reaper drains the rest.
     """
-    seen = set()
+    # (created_at, id) of the oldest resumable runs seen so far; they resume
+    # once every page is read, every other run is recovered as it is seen.
+    oldest = []
+    last_id = ""
     while True:
         # Ids first: no index serves this filter, and selecting every column
         # made InnoDB read each run's transcript blobs (gigabytes, minutes on
         # a cold start) only to discard the inactive ones.
-        ids = [row["id"] for row in db.fetchall("SELECT id FROM chat_runs WHERE status IN ('queued','running') LIMIT 256")]
-        fresh = [ident for ident in ids if ident not in seen]
-        if not fresh:
+        ids = [row["id"] for row in db.fetchall(
+            "SELECT id FROM chat_runs WHERE status IN ('queued','running') AND id>? ORDER BY id LIMIT 256", (last_id,))]
+        if not ids:
             break
-        seen.update(fresh)
-        batch = [row for row in (db.fetchone("SELECT * FROM chat_runs WHERE id=?", (ident,)) for ident in fresh)
-                 if row is not None and row["status"] in ("queued", "running")]
-        resumable = [
-            row for row in batch
-            if row["provider_messages"]
-            and not row["cancel_requested"]
-            and int(row["resume_count"] if "resume_count" in row.keys() else 0) < MAX_RESUME_ATTEMPTS
-        ]
-        resumable_ids = {row["id"] for row in sorted(resumable, key=lambda r: str(r["created_at"]))[:BOOT_RESUME_BATCH]}
-        for row in batch:
-            recover_one(row, allow_resume=row["id"] in resumable_ids)
+        last_id = ids[-1]
+        for row in (_active_run(ident) for ident in ids):
+            if row is None:
+                continue
+            if not (row["provider_messages"]
+                    and not row["cancel_requested"]
+                    and int(row["resume_count"] if "resume_count" in row.keys() else 0) < MAX_RESUME_ATTEMPTS):
+                recover_one(row, allow_resume=False)
+                continue
+            oldest.append((str(row["created_at"]), row["id"]))
+            oldest.sort()
+            if len(oldest) > BOOT_RESUME_BATCH:
+                _, ident = oldest.pop()
+                late = row if ident == row["id"] else _active_run(ident)
+                if late is not None:
+                    recover_one(late, allow_resume=False)
+    for _, ident in oldest:
+        row = _active_run(ident)
+        if row is not None:
+            recover_one(row, allow_resume=True)
     from . import permissions as permissions_mod
 
     permissions_mod.recover()

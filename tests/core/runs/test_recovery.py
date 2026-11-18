@@ -3,6 +3,7 @@ note, bounded attempts, never re-running a tool); runs without one are
 finalized interrupted; a user Continue resumes only the latest stopped turn."""
 import asyncio
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -214,3 +215,27 @@ def test_continue_is_refused_when_it_cannot_resume_safely(fresh_db, case):
 
     assert refused.value.status_code == 409
     assert json.dumps(dict(run_row(run["id"], "status,resume_count,message"))) == before
+
+
+def test_boot_examines_every_page_and_resumes_the_oldest_batch_overall():
+    # More active runs than one page, oldest last: a page-local cap or a
+    # pager that rereads its first page would miss them.
+    total, batch = 600, chat_recovery.BOOT_RESUME_BATCH
+    rows = {f"r{i:04d}": {"id": f"r{i:04d}", "status": "running", "provider_messages": "[{}]",
+                          "cancel_requested": 0, "resume_count": 0, "created_at": f"t{total - i:04d}"}
+            for i in range(total)}
+
+    def fetchall(sql, params=()):
+        ids = sorted(ident for ident in rows if not params or ident > params[0])
+        return [{"id": ident} for ident in ids[:256]]
+
+    recovered = {}
+    with patch.object(db, "fetchall", fetchall), \
+            patch.object(db, "fetchone", lambda sql, params: rows.get(params[0])), \
+            patch.object(chat_recovery, "recover_one",
+                         lambda row, allow_resume=True: recovered.setdefault(row["id"], allow_resume)), \
+            patch("app.permissions.recover"):
+        chat_recovery.recover_runs()
+
+    assert len(recovered) == total
+    assert sorted(ident for ident, resume in recovered.items() if resume) == sorted(rows)[-batch:]
