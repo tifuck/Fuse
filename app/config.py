@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # Archive chats/projects inactive this many days; delete what has been archived this long.
     retention_force_archive_days: int = 0
     retention_force_delete_days: int = 0
+    # Mandatory for everyone, whatever they chose (0 = off): delete any chat
+    # nothing happened in for this many days, pinned ones included.
+    chat_max_idle_days: int = 30
+    # Drop an artifact's pages once nobody opened (in Fuse or by its share
+    # link) or changed it for this many days; a small stub says so.
+    artifact_max_idle_days: int = 7
 
     # Dashboard context meter + compaction. Ratios are of the model window.
     # Strategy is a name in app.context_compact.STRATEGIES so a later summarizer can

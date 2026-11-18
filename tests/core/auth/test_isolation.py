@@ -171,7 +171,11 @@ def test_artifacts_are_private_to_their_owner(web, alice, bob):
     bob_thread = chats.create_thread(bob, model="offline")["id"]
     alice_thread = chats.create_thread(alice, model="offline")["id"]
     own = artifacts.create(bob, title="Bob's", html="<p>bob</p>")["identifier"]
-    rows_before = db.fetchall("SELECT * FROM artifacts ORDER BY id")
+    def artifact_rows():
+        # viewed_at moves on purpose: opening a public link keeps it from expiring.
+        return [{k: v for k, v in dict(r).items() if k != "viewed_at"} for r in db.fetchall("SELECT * FROM artifacts ORDER BY id")]
+
+    rows_before = artifact_rows()
 
     def owner_ops(ident, thread):
         return [
@@ -206,7 +210,7 @@ def test_artifacts_are_private_to_their_owner(web, alice, bob):
     # His own artifact cannot be filed into her chat.
     assert web.post(f"/a/{own}/attach", json={"thread_id": alice_thread}).status_code == 404
     assert "Private" not in web.get("/artifacts/list").text
-    assert db.fetchall("SELECT * FROM artifacts ORDER BY id") == rows_before
+    assert artifact_rows() == rows_before
 
     sign_in(web, alice)
     for method, path, body in owner_ops(private, alice_thread)[:-3]:
