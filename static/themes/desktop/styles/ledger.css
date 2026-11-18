@@ -69,6 +69,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: var(--dk-mute, var(--mute)); }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-text, var(--mist)); }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { margin: 0 0 4px; padding-left: 0; border-left: 0; }
+  /* One call: no summary line, only its row. */
+  & .chat-step.is-console-group.is-dk-single > .chat-step-main > .chat-step-head { display: none !important; }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle > .chat-timeline { gap: 0; }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step + .chat-step { margin-top: 0; }
 

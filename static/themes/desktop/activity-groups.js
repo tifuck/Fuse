@@ -314,12 +314,16 @@ function ccGroupHtml(group, live, openMap) {
       stillRunning && parts.length ? `<span class="dk-tally is-running">${stillRunning} still running</span>` : "",
     ].join("");
     const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
+    // One call: the line stays its opened list, header hidden, so the call
+    // reads as its own row; the same element folds to the summary when a
+    // second call joins.
+    const single = counted.filter((item) => item.type === "tool").length === 1 && !stillRunning;
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
       : item.calls ? scriptRowHtml(item, live, openMap)
       : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     return (
-      `<li class="chat-step is-console-group is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<li class="chat-step is-console-group is-done${single ? " is-console-expanded is-dk-single" : open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
       `<div class="chat-step-head">` +
