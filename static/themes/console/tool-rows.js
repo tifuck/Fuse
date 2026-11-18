@@ -168,12 +168,16 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     {
       const verbose = Boolean(opts.verbose);
       const fold = trace.name === "run_code" ? deps.consoleCodeFold(trace, presentation, opts.calls || [], live, openMap, index) : deps.consoleFold(trace, presentation, verbose);
+      // A truncation notice rides the call's own line, never a row of its
+      // own; run_code's calls keep theirs in its tree.
+      const ownNote = trace.name === "run_code" ? "" : deps.consoleTruncationNote(trace).replace(/<[^>]*>/g, "");
+      const noNote = (html) => ownNote ? String(html || "").replace(/<span class="chat-tool-truncated[^"]*">[^<]*<\/span>/g, "") : html;
       // An opened summary line prints a call the way an expanded row reads.
-      const preview = verbose ? "" : fold.preview;
-      inner = verbose ? fold.full || fold.preview : fold.full;
-      const expandable = !verbose && openKind !== "agent" && Boolean(fold.full);
+      const preview = verbose ? "" : noNote(fold.preview);
+      inner = noNote(verbose ? fold.full || fold.preview : fold.full);
+      const expandable = !verbose && Boolean(fold.full);
       const head = deps.toolHeadHtml({
-        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
+        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + (ownNote ? `<span class="chat-console-dim chat-console-trunc"> | ${ownNote}</span>` : ""), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
       });
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
@@ -203,7 +207,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang-body">` +
             (status || timeout ? `<span class="chat-console-result-text">${fold.statusHtml ?? deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
-            (inner ? inner : "") +
+            (inner ? `<div class="chat-console-full">${inner}</div>` : "") +
             `</div></div></div></div>`
           : "") +
         `</div></li>`

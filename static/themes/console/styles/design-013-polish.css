@@ -5,9 +5,16 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-step, .chat-turn.is-user, .chat-notice-line) :not(svg, svg *, img, .chat-md, .chat-md *) { font-size: var(--tty) !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-compact-mark, .chat-compact-banner) :is(strong, summary, summary *) { text-transform: none !important; letter-spacing: 0 !important; font-size: var(--tty) !important; }
 
-/* An opened call or group prints inline instead of turning into a grey panel. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-console-expanded,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-console-expanded { background: none !important; }
+/* A folded call prints one line under it: long lines end in an ellipsis and
+   the body waits for the open, which turns the row into a grey panel. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body { min-width: 0; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body > :is(.chat-console-result-text, .chat-console-preview, .chat-console-progress, .chat-console-progress > *) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body > .chat-console-full { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call:has(> .chat-step-main > .chat-step-head [data-step-toggle]) .chat-console-hang:not(.is-expanded) { cursor: pointer; }
 
 /* Rendered lists in tool output had their markers clipped ("ı." for "1."). */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] .chat-step ol { list-style-position: inside; padding-left: 0; }

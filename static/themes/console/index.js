@@ -335,7 +335,7 @@ export function createConsoleTheme(runtime) {
     get consoleResultLine() { return theme.consoleResultLine; },
     get consoleSameText() { return theme.consoleSameText; },
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
-    get consoleTailHtml() { return theme.consoleTailHtml; },
+    get consoleLastLine() { return theme.consoleLastLine; },
     get consoleTruncationNote() { return theme.consoleTruncationNote; },
     get consoleWakeNoticeHtml() { return theme.consoleWakeNoticeHtml; },
     get displayCommand() { return theme.displayCommand; },
