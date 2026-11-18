@@ -190,14 +190,14 @@
             const count = Number(p.sessions || 0);
             const go = s.showArchived ? "Restore" : on ? "Current" : s.pickLabel || "Open";
             return (
-              `<li><button type="button" class="fp-card${on ? " is-current" : ""}" data-fp-pick="${esc(key)}"${on ? ' aria-current="true"' : ""}>` +
-              icon(p, { size: 20 }) +
-              `<span class="fp-card-name">${esc(p.name)}</span><span class="fp-card-go">${go}</span>` +
+              `<li><button type="button" class="fp-card${on ? " is-current" : ""}" data-fp-pick="${esc(key)}"${on ? ' aria-current="true"' : ""} title="${esc(`${p.name} on ${host.alias || "machine"}: ${p.remote_path}`)}">` +
+              icon(p, { size: 18 }) +
+              `<span class="fp-card-name"><span class="fp-card-title">${esc(p.name)}</span>${p.permission_mode === "read_only" ? '<span class="fp-badge">Read-only</span>' : ""}</span>` +
+              `<span class="fp-card-count">${count ? `${count} ${count === 1 ? "session" : "sessions"}` : "No sessions"}</span>` +
               `<span class="fp-card-host${offline ? " is-off" : ""}"><span class="fp-card-dot" aria-hidden="true"></span>` +
-              `<span class="fp-card-alias">${esc(host.alias || "machine")}</span>${offline ? '<span class="fp-off">offline</span>' : ""}</span>` +
-              `<span class="fp-card-path" title="${esc(p.remote_path)}">${esc(p.remote_path)}</span>` +
-              `<span class="fp-card-meta"><span>${count ? `${count} ${count === 1 ? "session" : "sessions"}` : "No sessions yet"}</span>` +
-              `${p.permission_mode === "read_only" ? '<span class="fp-badge">Read-only</span>' : ""}</span>` +
+              `<span class="fp-card-alias">${esc(host.alias || "machine")}${offline ? '<span class="visually-hidden"> (offline)</span>' : ""}</span>` +
+              `<span class="fp-card-path">${esc(p.remote_path)}</span></span>` +
+              `<span class="fp-card-go">${go}</span>` +
               `</button></li>`
             );
           })

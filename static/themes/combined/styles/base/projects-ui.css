@@ -109,23 +109,25 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-view="console"] b
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-  gap: 0.6rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
   margin: 0;
   padding: 0.35rem 0.4rem;
   list-style: none;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-cards > li { display: flex; min-width: 0; }
+/* Two lines: name and session count, then machine, folder and the action.
+   The icon sits centred against both. */
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto auto auto 1fr;
-  column-gap: 0.6rem;
-  row-gap: 0.3rem;
+  grid-template-areas: "icon name count" "icon host go";
+  align-items: center;
+  column-gap: 0.65rem;
+  row-gap: 0.15rem;
   width: 100%;
   min-width: 0;
-  min-height: 7.25rem;
-  padding: 0.8rem 0.85rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--fp-card-line);
   border-radius: var(--fp-card-radius);
   background: var(--fp-card-bg);
@@ -136,32 +138,25 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-view="console"] b
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:hover { border-color: color-mix(in srgb, var(--mist) 24%, var(--fp-card-line)); background: var(--raise); }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card.is-current { border-color: color-mix(in srgb, var(--brass) 55%, var(--fp-card-line)); background: color-mix(in srgb, var(--brass) 7%, var(--fp-card-bg));  }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card.is-current { border-color: color-mix(in srgb, var(--brass) 55%, var(--fp-card-line)); background: color-mix(in srgb, var(--brass) 7%, var(--fp-card-bg)); }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:disabled { opacity: 0.6; cursor: progress; }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card > .fp-icon { grid-column: 1; grid-row: 1; margin-top: 0.05rem; }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-name {
-  display: -webkit-box;
-  grid-column: 2;
-  overflow: hidden;
-  font-size: 0.92rem;
-  font-weight: 600;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-go { grid-column: 3; color: var(--mute); font-size: 0.74rem; line-height: 1.2rem; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card > .fp-icon { grid-area: icon; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-name { grid-area: name; display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-title { overflow: hidden; font-size: 0.88rem; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-name .fp-badge { flex-shrink: 0; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-count,
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-go { justify-self: end; color: var(--mute); font-size: 0.7rem; line-height: 1.3; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-count { grid-area: count; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-go { grid-area: go; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:is(:hover, :focus-visible, .is-current) .fp-card-go { color: var(--brass); }
 @media (hover: hover) {
   :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:not(.is-current, :hover, :focus-visible) .fp-card-go { visibility: hidden; }
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host,
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-path,
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-meta { grid-column: 2 / -1; min-width: 0; }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; line-height: 1.3; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host { grid-area: host; display: flex; align-items: center; gap: 0.4rem; min-width: 0; font-size: 0.74rem; line-height: 1.3; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-dot { flex-shrink: 0; width: 0.4rem; height: 0.4rem; border-radius: 999px; background: var(--ok); }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host.is-off .fp-card-dot { background: var(--fault); }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-alias { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-alias { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host.is-off .fp-card-alias { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-path,
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-preview-path {
   overflow: hidden;
@@ -170,17 +165,7 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-view="console"] b
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.3rem 0.5rem;
-  align-self: end;
-  padding-top: 0.35rem;
-  color: var(--mute);
-  font-size: 0.72rem;
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card-path { min-width: 0; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-off { color: var(--fault); font-size: 0.72rem; text-transform: none; letter-spacing: 0; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-dirs { margin: 0; padding: 0; list-style: none; }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-badge {
