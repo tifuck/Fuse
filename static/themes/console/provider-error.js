@@ -67,16 +67,16 @@ function parseProviderError(text) {
     };
   }
 
-// One line for a failed call row: "ChatGPT · 5-hour usage limit reached · Resets 22:53 UTC".
+// One line for a failed call row: "ChatGPT | 5-hour usage limit reached | Resets 22:53 UTC".
 function providerErrorLine(text) {
     const info = parseProviderError(text);
     if (!info.provider) return String(text || "");
-    return [info.provider, info.title, info.reset].filter(Boolean).join(" · ");
+    return [info.provider, info.title, info.reset].filter(Boolean).join(" | ");
   }
 
 function providerErrorHtml(text) {
     const info = parseProviderError(text);
-    const head = [info.provider, info.title].filter(Boolean).map(deps.escapeHtml).join(' <span class="chat-error-sep">·</span> ');
+    const head = [info.provider, info.title].filter(Boolean).map(deps.escapeHtml).join(' <span class="chat-error-sep">|</span> ');
     return `<span class="chat-error-head"><span class="chat-error-title">${head}</span>` +
       (info.reset ? `<span class="chat-error-reset">${deps.escapeHtml(info.reset)}</span>` : "") + "</span>" +
       (info.detail ? `<span class="chat-error-detail">${deps.escapeHtml(info.detail)}</span>` : "");

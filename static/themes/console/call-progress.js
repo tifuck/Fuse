@@ -21,7 +21,7 @@ function ccCallClockHtml(trace, presentation) {
     const ms = Number(name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
-    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> · ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
+    return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> | ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
   }
 
 function ccCallName(item) {
@@ -130,7 +130,7 @@ function ccAgentDoneText(trace) {
     if (Number.isFinite(work) && work >= 0 && trace.agent_work_ms != null) parts.push(deps.ccDuration(Math.max(1000, work)));
     const speed = deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
     if (speed) parts.push(speed.text);
-    return parts.length ? `Done (${parts.join(" · ")})` : "Done";
+    return parts.length ? `Done (${parts.join(" | ")})` : "Done";
   }
 
 function consoleOnlyFold(trace, presentation, verbose) {
@@ -177,7 +177,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
         const out = deps.consoleDetailHtml(trace, false, false);
         const exit = deps.shellExitCode(trace);
         const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : "Failed in the background")
-          : `Ran in the background${exit !== null && exit !== 0 ? ` · exit code ${exit}` : ""}`;
+          : `Ran in the background${exit !== null && exit !== 0 ? ` | exit code ${exit}` : ""}`;
         const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
         const shown = body ? deps.consoleTailHtml(body.split("\n"), 4).html : "";
         return { status, preview: shown, full: deps.consoleSameText(out, "") ? "" : out, keep: true };
@@ -264,21 +264,21 @@ function ccInterruptedText(trace) {
     const error = String((trace && trace.error) || "").toLowerCase();
     const state = trace ? deps.executionState(trace) : "";
     if (/connector restarted/.test(error)) {
-      return `${head} · ${trace.host ? `the connector on ${trace.host} restarted` : "the connector restarted"}`;
+      return `${head} | ${trace.host ? `the connector on ${trace.host} restarted` : "the connector restarted"}`;
     }
     if (/connection lost/.test(error)) {
-      return `${head} · ${trace.host ? `${trace.host} lost its connection` : "the connection was lost"}`;
+      return `${head} | ${trace.host ? `${trace.host} lost its connection` : "the connection was lost"}`;
     }
     if (/\b(agent|connector|host) is offline\b|went offline|disconnected/.test(error)) {
-      return `${head} · ${trace.host ? `${trace.host} went offline` : "the host went offline"}`;
+      return `${head} | ${trace.host ? `${trace.host} went offline` : "the host went offline"}`;
     }
     if (state === "cancelled" || /cancel/.test(error) || (trace && trace.status === "cancelled")) {
       return trace && trace.termination_confirmed === false && trace.name === "run_terminal_command"
-        ? `${head} · stopped; the process may still be running`
-        : `${head} · stopped`;
+        ? `${head} | stopped; the process may still be running`
+        : `${head} | stopped`;
     }
-    if (state === "lost") return `${head} · the result was lost`;
-    return `${head} · the run ended before it finished`;
+    if (state === "lost") return `${head} | the result was lost`;
+    return `${head} | the run ended before it finished`;
   }
 
 function ccCleanBackgroundEnd(trace) {
@@ -305,7 +305,7 @@ function consoleMonitorEventHtml(trace, key) {
       const firstAt = lines.findIndex((line) => line.trim());
       const first = firstAt >= 0 ? lines[firstAt].trim() : "event";
       const rest = firstAt >= 0 ? lines.length - firstAt - 1 : 0;
-      const text = `Monitor event: ${deps.escapeHtml(deps.ccFlat(first))}<span class="chat-console-dim"> · ${deps.escapeHtml(label)}</span>`;
+      const text = `Monitor event: ${deps.escapeHtml(deps.ccFlat(first))}<span class="chat-console-dim"> | ${deps.escapeHtml(label)}</span>`;
       if (!rest) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
       return row(
         `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${text}</button></div>`,
@@ -442,14 +442,14 @@ function ccAgentsGroupHtml(agents, live) {
       // data-since=0: render it ticking from this paint. The snap stays off
       // the trace so the next poll anchors the pair at server work_ms.
       const since = trace._workSnap || Date.now();
-      const took = hasWork ? ` · ${deps.ccDuration(Math.max(1000, base))}` : "";
+      const took = hasWork ? ` | ${deps.ccDuration(Math.max(1000, base))}` : "";
       const speed = presentation.running ? null : deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
-      const rate = speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "";
+      const rate = speed ? ` | <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "";
       const stats = resolvedBackground
-        ? ` · ${presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished"}${presentation.failed || presentation.interrupted ? "" : took}`
+        ? ` | ${presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished"}${presentation.failed || presentation.interrupted ? "" : took}`
         : liveClock
-          ? ` · <span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
-          : ` · ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` · ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
+          ? ` | <span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
+          : ` | ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? ` | ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
       const status = presentation.running
         ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…")
         : presentation.failed ? "Failed" : presentation.interrupted ? "Interrupted" : "Done";

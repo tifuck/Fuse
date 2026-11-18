@@ -175,7 +175,7 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     // the model only writes), so it costs no width; the counts follow it.
     const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : ccSpinnerVerb(msg);
     const verb = /(…|\.\.\.)$/.test(word) || /^Thought for /.test(word) ? word : `${word}…`;
-    return { verb, meta: parts.length ? `(${parts.join(" · ")})` : "" };
+    return { verb, meta: parts.length ? `(${parts.join(" | ")})` : "" };
   }
 
 function syncActivityElapsed(article, msg, live) {

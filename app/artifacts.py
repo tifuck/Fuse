@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from .config import settings
@@ -390,46 +391,24 @@ def list_for_user(user_id: int) -> list[dict]:
     rows = db.fetchall(
         "SELECT a.*, t.title AS thread_title FROM artifacts a "
         "LEFT JOIN chat_threads t ON t.id = a.thread_id AND t.user_id = a.user_id "
-        "WHERE a.user_id=? ORDER BY a.updated_at DESC",
+        "WHERE a.user_id=? AND a.expired_at='' ORDER BY a.updated_at DESC",
         (user_id,),
     )
     return [_row_view(row) for row in rows]
 
 
-def thread_artifact_ids(user_id: int, thread_id) -> set[str]:
+def list_in_scope(user_id: int, thread_id=None) -> list[dict]:
+    """A chat's artifact list, oldest first: the ones this chat wrote or
+    attached. Never another chat's, not even one in the same project."""
     from . import chats
 
     pk = chats.resolve_thread_pk(user_id, thread_id) if thread_id else None
     if pk is None:
-        return set()
-    rows = db.fetchall(
-        "SELECT a.public_id FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
-        "WHERE x.thread_id=? AND a.user_id=?",
-        (pk, user_id),
-    )
-    return {r["public_id"] for r in rows}
-
-
-def list_in_scope(user_id: int, thread_id=None, project_id=None) -> list[dict]:
-    """A chat's artifact list, oldest first: the ones its chat wrote or attached,
-    or in a project session, any of that project's chats. Nothing global."""
-    from . import chats
-
-    pk = chats.resolve_thread_pk(user_id, thread_id) if thread_id else None
-    if pk is not None:
-        row = db.fetchone("SELECT project_id FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id))
-        project_id = row["project_id"] if row else None
-    if project_id:
-        scope, arg = "t.project_id=?", int(project_id)
-    elif pk is not None:
-        scope, arg = "t.id=?", pk
-    else:
         return []
     rows = db.fetchall(
-        "SELECT a.* FROM artifacts a WHERE a.user_id=? AND a.archived=0 AND a.id IN ("
-        "SELECT x.artifact_id FROM artifact_threads x JOIN chat_threads t ON t.id = x.thread_id "
-        f"WHERE t.user_id=? AND {scope}) ORDER BY a.id",
-        (user_id, user_id, arg),
+        "SELECT a.* FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
+        "WHERE x.thread_id=? AND a.user_id=? AND a.archived=0 AND a.expired_at='' ORDER BY a.id",
+        (pk, user_id),
     )
     return [_row_view(row) for row in rows]
 
@@ -445,7 +424,7 @@ def list_for_prompt(user_id: int, thread_id: int | None) -> list[dict]:
     rows = db.fetchall(
         "SELECT a.public_id, a.title, a.visibility, a.current_version FROM artifacts a "
         "JOIN artifact_threads x ON x.artifact_id = a.id "
-        "WHERE x.thread_id=? AND a.user_id=? AND a.archived=0 ORDER BY a.updated_at DESC, a.id DESC LIMIT 20",
+        "WHERE x.thread_id=? AND a.user_id=? AND a.archived=0 AND a.expired_at='' ORDER BY a.updated_at DESC, a.id DESC LIMIT 20",
         (pk, user_id),
     )
     return [
@@ -461,8 +440,59 @@ def list_for_prompt(user_id: int, thread_id: int | None) -> list[dict]:
 
 
 def _count(conn, user_id: int) -> int:
-    row = conn.execute("SELECT COUNT(*) AS n FROM artifacts WHERE user_id=?", (user_id,)).fetchone()
+    row = conn.execute("SELECT COUNT(*) AS n FROM artifacts WHERE user_id=? AND expired_at=''", (user_id,)).fetchone()
     return int(row["n"] if row else 0)
+
+
+def expired_notice() -> str:
+    return f"This artifact was deleted after {settings.artifact_max_idle_days} days without being opened or changed."
+
+
+def _live(row):
+    if row["expired_at"]:
+        raise ArtifactError(expired_notice(), 410)
+    return row
+
+
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def touch(row) -> None:
+    """Someone opened it, in Fuse or by its share link: that keeps it from
+    expiring. At most one write an hour per artifact."""
+    now = datetime.now(timezone.utc)
+    db.execute(
+        "UPDATE artifacts SET viewed_at=? WHERE id=? AND viewed_at<?",
+        (_iso(now), row["id"], _iso(now - timedelta(hours=1))),
+    )
+
+
+def expire_idle(*, now: datetime | None = None) -> dict:
+    """Drop the pages of artifacts nobody opened or changed in
+    ARTIFACT_MAX_IDLE_DAYS (0 = off). The small row stays as a stub, so its
+    links and chat cards say why it is gone; a stub goes once no chat refers
+    to it."""
+    counts = {"expired": 0, "stubs_removed": 0}
+    days = int(settings.artifact_max_idle_days or 0)
+    if days <= 0:
+        return counts
+    now = now or datetime.now(timezone.utc)
+    cutoff = _iso(now - timedelta(days=days))
+    idle = "expired_at='' AND updated_at<? AND viewed_at<?"
+    for row in db.fetchall(f"SELECT id FROM artifacts WHERE {idle}", (cutoff, cutoff)):
+        with db.tx() as conn:
+            # Guarded again: an edit or a view since the read keeps it.
+            cur = conn.execute(f"UPDATE artifacts SET expired_at=? WHERE id=? AND {idle}", (_iso(now), row["id"], cutoff, cutoff))
+            if cur.rowcount:
+                conn.execute("DELETE FROM artifact_versions WHERE artifact_id=?", (row["id"],))
+                counts["expired"] += 1
+    cur = db.execute(
+        "DELETE FROM artifacts WHERE expired_at<>'' "
+        "AND NOT EXISTS (SELECT 1 FROM artifact_threads x WHERE x.artifact_id = artifacts.id)"
+    )
+    counts["stubs_removed"] = int(cur.rowcount or 0)
+    return counts
 
 
 def _link_thread(conn, artifact_id: int, thread_id: int | None) -> None:
@@ -564,12 +594,13 @@ def update(
         # fully before this one reads, so neither is lost and current_version
         # can never regress. A plain read would be a snapshot that misses it.
         fresh = conn.execute(
-            "SELECT title, visibility, current_version, share_token, shared_version FROM artifacts WHERE id=? AND user_id=?"
+            "SELECT title, visibility, current_version, share_token, shared_version, expired_at FROM artifacts WHERE id=? AND user_id=?"
             + db.for_update(conn),
             (row["id"], user_id),
         ).fetchone()
         if fresh is None:
             raise ArtifactError("artifact not found", 404)
+        _live(fresh)
         current = int(fresh["current_version"])
         if base_version is not None and int(base_version) != current:
             # Claude Code's stale-copy refusal: the change was made against
@@ -637,6 +668,7 @@ def edit(
     row = get_owned(user_id, public_id)
     if not row:
         raise ArtifactError("artifact not found", 404)
+    _live(row)
     if isinstance(edits, dict):
         edits = [edits]
     if not isinstance(edits, list) or not edits:
@@ -692,6 +724,7 @@ def read_source(user_id: int, public_id: str, *, version: int | None = None, off
     row = get_owned(user_id, public_id)
     if not row:
         raise ArtifactError("artifact not found", 404)
+    _live(row)
     current = int(row["current_version"])
     ver = version or current
     vrow = _version_row(row["id"], ver)
@@ -742,7 +775,7 @@ def revert(user_id: int, public_id: str, version: int, *, thread_id: int | None 
     row = get_owned(user_id, public_id)
     if not row:
         raise ArtifactError("artifact not found", 404)
-    text, fmt = source_of(row, version)
+    text, fmt = source_of(_live(row), version)
     return update(user_id, public_id, html=text, fmt=fmt, note=f"Restored v{version}", thread_id=thread_id)
 
 
@@ -832,7 +865,7 @@ def continue_in_chat(user_id: int, public_id: str, *, model: str = "") -> dict:
         raise ArtifactError("artifact not found", 404)
     if row["archived"]:
         raise ArtifactError("artifact is archived", 409)
-    art = view(row)
+    art = view(_live(row))
     context = (
         f"This chat is attached to artifact {art['identifier']} ({art['title']}). "
         f"When the user asks to change it, read it with read_artifact and change it with edit_artifact "

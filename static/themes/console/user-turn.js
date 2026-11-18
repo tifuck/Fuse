@@ -28,7 +28,7 @@ function consoleWakeNoticeHtml(trace) {
       tone = "red";
     }
     const took = Number(trace.latency_ms ?? trace.duration_ms);
-    const detail = Number.isFinite(took) && took > 0 ? ` · ${deps.ccDuration(Math.max(1000, took))}` : "";
+    const detail = Number.isFinite(took) && took > 0 ? ` | ${deps.ccDuration(Math.max(1000, took))}` : "";
     const body = !monitor && typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
     const output = body ? `<div class="chat-console-hang is-expanded"><span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${deps.consoleTailHtml(body.split("\n"), 4, false).html}</div></div>` : "";
     return (
@@ -82,7 +82,7 @@ function renderUser(msg, index) {
       const tag = document.createElement("div");
       tag.className = "chat-agent-note";
       const who = msg.fromParent ? "From main agent" : "You";
-      tag.textContent = msg.pending ? who + " · delivering at the next step" : who;
+      tag.textContent = msg.pending ? who + " | delivering at the next step" : who;
       const bubble = document.createElement("div");
       bubble.className = "chat-bubble";
       fillUserText(bubble, msg.content);

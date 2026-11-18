@@ -72,6 +72,8 @@ CREATE TABLE `artifacts` (
   `share_token` varchar(64) DEFAULT NULL,
   `shared_version` bigint(20) DEFAULT NULL,
   `icon` varchar(32) NOT NULL DEFAULT '',
+  `viewed_at` varchar(32) NOT NULL DEFAULT '',
+  `expired_at` varchar(32) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `artifacts_share_token` (`share_token`),
   UNIQUE KEY `sqlite_autoindex_artifacts_1` (`public_id`) USING HASH,

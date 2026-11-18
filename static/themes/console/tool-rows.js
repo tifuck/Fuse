@@ -17,7 +17,7 @@ function toolImage(trace) {
     return safe;
   }
 
-// One line for what the image is: "PNG · 640 × 480 · resized from … · frame 2 of 3".
+// One line for what the image is: "PNG | 640 × 480 | resized from … | frame 2 of 3".
 function toolImageInfo(trace) {
     const image = toolImage(trace);
     if (!image) return "";
@@ -27,7 +27,7 @@ function toolImageInfo(trace) {
       info.push(`resized from ${image.original_width} × ${image.original_height}`);
     }
     if (image.frames > 1 && image.frame != null) info.push(`frame ${image.frame + 1} of ${image.frames}`);
-    return info.join(" · ");
+    return info.join(" | ");
   }
 
 function toolImageHtml(trace) {
@@ -89,7 +89,7 @@ function toolDetailHtml(trace, failed, running) {
     if (authoritativeOutput && shownOutput) {
       const note = deps.consoleTruncationNote(trace);
       if (note) sections.push(note);
-    } else if (trace.output_truncated && output.length <= 4000) sections.push('<span class="chat-tool-truncated">Output truncated · preview only</span>');
+    } else if (trace.output_truncated && output.length <= 4000) sections.push('<span class="chat-tool-truncated">Output truncated | preview only</span>');
     if (!hasImage && !error && !output && !hasResults && !trace.command && !["todo_write", "create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(trace.name)) {
       sections.push(detailSectionHtml("Output", running ? "Waiting for output"
         : trace.child_id && ["spawn_subagent", "get_subagent_output"].includes(trace.name) ? "No inline output. Open agent for its transcript." : "No output", "is-empty"));
@@ -106,7 +106,7 @@ function toolDetailHtml(trace, failed, running) {
       trace.path && ["read_file", "write_file", "search_replace", "list_dir", "grep", "glob"].includes(trace.name) ? trace.path : "",
       Number.isFinite(trace.offset) ? `lines ${trace.offset}–${trace.offset + (Number.isFinite(trace.limit) ? trace.limit - 1 : 0)}` : "",
       trace.include ? `include ${trace.include}` : "",
-      queries.length > 1 ? queries.join(" · ") : "",
+      queries.length > 1 ? queries.join(" | ") : "",
       running && trace.progressLabel ? trace.progressLabel : "",
       deps.toolBackground(trace) ? "background" : "",
       state && !["completed", "running"].includes(state) ? state.replace(/_/g, " ") : "",
@@ -139,12 +139,12 @@ function detailSectionHtml(label, value, kind = "", cap = 4000, command = "") {
       (command ? `<button type="button" class="chat-tool-copy" data-copy-tool data-copy-value="${deps.escapeHtml(command)}" aria-label="Copy command">Copy command</button>` : "") +
       `<button type="button" class="chat-tool-copy" data-copy-tool aria-label="Copy ${deps.escapeHtml(label.toLowerCase())}">Copy</button></div>` +
       body +
-      (characters.length > cap ? `<span class="chat-tool-truncated">Output truncated · showing ${deps.ccTokens(cap)} of ${deps.ccTokens(characters.length)} chars</span>` : "") + "</section>";
+      (characters.length > cap ? `<span class="chat-tool-truncated">Output truncated | showing ${deps.ccTokens(cap)} of ${deps.ccTokens(characters.length)} chars</span>` : "") + "</section>";
   }
 
 function toolRowLabel(trace) {
     const subject = deps.toolSubject(trace);
-    return `${deps.toolAction(trace)}${subject ? ` · ${subject}` : ""}`;
+    return `${deps.toolAction(trace)}${subject ? ` | ${subject}` : ""}`;
   }
 
 function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
@@ -154,9 +154,9 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     const read = trace.name === "read_url";
     const search = deps.isSearchTool(trace.name);
     const artifactVerb = { create_artifact: "Create artifact", update_artifact: "Update artifact", edit_artifact: "Edit artifact", read_artifact: "Read artifact" }[trace.name];
-    const label = artifact ? `${artifactVerb} · ${trace.title || "artifact"}`
-      : read ? `Page read · ${deps.pageHost(trace.url) || "page"}`
-      : search ? `Search · ${deps.searchCountFor(trace) === 1 && deps.searchQueries(trace)[0] ? deps.shortToolText(deps.searchQueries(trace)[0], 72) : `${deps.searchCountFor(trace)} ${deps.searchCountFor(trace) === 1 ? "query" : "queries"}`}`
+    const label = artifact ? `${artifactVerb} | ${trace.title || "artifact"}`
+      : read ? `Page read | ${deps.pageHost(trace.url) || "page"}`
+      : search ? `Search | ${deps.searchCountFor(trace) === 1 && deps.searchQueries(trace)[0] ? deps.shortToolText(deps.searchQueries(trace)[0], 72) : `${deps.searchCountFor(trace)} ${deps.searchCountFor(trace) === 1 ? "query" : "queries"}`}`
       : toolRowLabel(trace);
     const kind = artifact ? "artifact" : read ? "read" : search ? "search" : TOOL_KIND[trace.name] || "workspace";
     const openKind = artifact && trace.identifier && presentation.state === "done" ? "artifact"
