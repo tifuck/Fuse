@@ -185,5 +185,5 @@ def test_the_coding_prompt_leads_with_run_code_only_when_it_is_available():
                 bound_label="box", loaded_tools=["read_file"])
     on = chat_prompts.build_system_prompt(**base, code_mode=True)
     off = chat_prompts.build_system_prompt(**base, code_mode=False)
-    assert "`run_code` is the default" in on and "inside `run_code`" in on
+    assert "Use `run_code` by default" in on and "inside `run_code`" in on
     assert "run_code" not in off

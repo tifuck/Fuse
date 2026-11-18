@@ -84,6 +84,7 @@ from .chat_generation.policy import (
 from .chat_generation import cache_watch
 from .chat_generation.consume import _add_usage, consume_round as _consume_round
 from .chat_generation.tool_jobs import (
+    CODE_TIP_AFTER,
     CODING_UNLIMITED,
     READ_RESULT_CHARS,
     SKILL_RESULT_CHARS,
@@ -99,7 +100,9 @@ from .chat_generation.tool_jobs import (
     _tool_messages,
     _tool_result_clip,
     _tool_rounds_done,
+    add_code_tip,
     apply_skill_preload,
+    code_tip_count,
     fold_preload_skill,
     jobs_from_calls,
 )
@@ -1091,6 +1094,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         event_base = max(event_base, trace_next["round"] - start_i)
         resumes_left = MAX_RESUME_RETRIES
         stall_fails = 0
+        # Direct file calls this turn, until the one run_code tip is given.
+        code_tip_seen = 0 if coding and CODE_MODE else None
         idle_stalls = 0
         length_salvages = 0
         empty_retries = 0
@@ -1796,6 +1801,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     length_salvages = 0
                 tool_msgs = _tool_messages(jobs, content=str(summary.get("content") or ""))
                 tool_msgs[0].update(_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess))
+                if code_tip_seen is not None:
+                    code_tip_seen = code_tip_count(jobs, code_tip_seen)
+                    if code_tip_seen is not None and code_tip_seen >= CODE_TIP_AFTER:
+                        add_code_tip(tool_msgs)
+                        code_tip_seen = None
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:

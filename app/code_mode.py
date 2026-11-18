@@ -148,6 +148,8 @@ def _user_lines(stack: str) -> str:
     text = "\n".join(out)
     if "is not defined" in text:
         text += f"\n(run_code provides only: {', '.join(HELPERS)}.)"
+    elif "is not a function" in text or "[object Promise]" in text:
+        text += "\n(Each helper is async: write `await read_file(...)`, and `await Promise.all(...)` over a map.)"
     return text
 
 

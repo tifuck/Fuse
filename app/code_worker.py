@@ -28,6 +28,10 @@ for (const name of ["setTimeout", "clearTimeout", "setInterval", "clearInterval"
   try { delete globalThis[name]; } catch (_) {}
   globalThis[name] = undefined;
 }
+globalThis.require = (name) => {
+  throw new Error(`require(${JSON.stringify(String(name))}) is not available: run_code is not Node.js. ` +
+    "Use the async helpers instead: await read_file({path}), list_dir, glob, grep, write_file, search_replace, run_terminal_command.");
+};
 const __logs = [];
 const console = {};
 console.log = console.info = console.warn = console.error = console.debug = (...parts) => {

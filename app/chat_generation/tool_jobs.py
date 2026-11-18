@@ -294,6 +294,28 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
     return list(groups.values())[:MAX_TOOL_CALLS]
 
 
+# A turn that makes this many direct file calls without trying run_code gets
+# one tip on its next tool result. It rides the conversation, so the cached
+# system prompt is untouched.
+CODE_TIP_AFTER = 5
+CODE_TIP = ("[Fuse] Tip: run_code does several reads, searches and edits in one call and returns only what "
+            "the code returns. Prefer it for the rest of this work unless you need a whole result.")
+_CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
+
+
+def code_tip_count(jobs: list[ToolJob], seen: int) -> int | None:
+    """Direct file calls so far this turn; None once the model has used run_code."""
+    if any(j.name == "run_code" for j in jobs):
+        return None
+    return seen + sum(1 for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS)
+
+
+def add_code_tip(tool_msgs: list[dict]) -> None:
+    last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
+    if last is not None:
+        last["content"] = f"{last['content']}\n\n{CODE_TIP}"
+
+
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     if head.done and head.text and head.text != "Tool interrupted.":
