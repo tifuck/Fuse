@@ -636,6 +636,7 @@ def user_sources(request: Request):
         openrouter_account=or_card,
         openrouter_flash_kind=flash[0] if flash and flash[2] == "openrouter" else "",
         openrouter_flash_msg=flash[1] if flash and flash[2] == "openrouter" else "",
+        flash_pane=flash[2] if flash and flash[2] != "pool" else "",
     )
 
 

@@ -669,10 +669,8 @@ document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((
       a.tabIndex = on ? 0 : -1;
     });
     ids.forEach((other) => members(other).forEach((el) => { el.hidden = other !== id; }));
-    // A rail that scrolls sideways (Sources on a phone) brings the open tab into view.
-    if (nav.scrollWidth > nav.clientWidth) links[ids.indexOf(id)].scrollIntoView({ block: "nearest", inline: "nearest" });
     try { sessionStorage.setItem(key, id); } catch (_) {}
-    if (push) history.replaceState(null, "", "#" + id);
+    if (push) history.replaceState(history.state, "", "#" + id);
     const scroller = nav.closest(".settings-scroll");
     if (scroller && push) scroller.scrollTop = 0;
     document.dispatchEvent(new CustomEvent("fuse-section-tab", { detail: { id } }));
@@ -696,7 +694,10 @@ document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((
     show(next.getAttribute("href").slice(1), true);
     next.focus();
   });
+  // #id first, then the tab the server picked (data-start: where a form's
+  // message is), then the last one open.
   let start = location.hash.slice(1);
+  if (!ids.includes(start)) start = nav.dataset.start || "";
   if (!ids.includes(start)) {
     try { start = sessionStorage.getItem(key) || ""; } catch (_) { start = ""; }
   }
@@ -730,6 +731,36 @@ document.querySelectorAll("[data-page-tabs]").forEach((nav) => {
 // on the selected tab, arrow/Home/End keys select a neighbour by clicking it so
 // each page's own handler runs, and the tab's panel (aria-controls) is a
 // tabpanel labelled by the tab that is showing it.
+// Sources on a phone: the rail is the first screen and a provider opens in its
+// place, with All sources (and the browser's back) to return. Wider, both show
+// side by side and data-view does nothing; the back button only shows narrow.
+document.querySelectorAll(".sources-dir").forEach((dir) => {
+  const nav = dir.querySelector("[data-section-tabs]");
+  const back = dir.querySelector("[data-sources-back]");
+  const narrow = () => getComputedStyle(back).display !== "none";
+  const toTop = () => { const scroller = dir.closest(".settings-scroll"); if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0); };
+  const opened = [location.hash.slice(1), nav.dataset.start].some((id) => id && dir.querySelector(`.sources-pane > #${CSS.escape(id)}`));
+  dir.dataset.view = opened ? "pane" : "list";
+  nav.addEventListener("click", (event) => {
+    if (!event.target.closest('a[href^="#"]')) return;
+    if (narrow() && dir.dataset.view === "list") {
+      history.pushState({ sourcesPane: true }, "");
+      toTop();
+    }
+    dir.dataset.view = "pane";
+  }, true);
+  back.addEventListener("click", () => {
+    if (history.state && history.state.sourcesPane) return history.back();
+    dir.dataset.view = "list";
+    history.replaceState(null, "", location.pathname + location.search);
+    toTop();
+  });
+  window.addEventListener("popstate", () => {
+    dir.dataset.view = history.state && history.state.sourcesPane ? "pane" : "list";
+    toTop();
+  });
+});
+
 document.querySelectorAll('[role="tablist"]:not(.settings-jump):not([data-section-tabs])').forEach((list, n) => {
   const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
   if (!tabs.length) return;

@@ -307,6 +307,15 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
    own widths (they sit beside the settings rail), not the viewport. */
 .sources-note { margin: 0; color: var(--mute); font-size: 0.76rem; }
 .sources-page { container: sources / inline-size; }
+.sources-how summary {
+  width: fit-content;
+  padding: 0.25rem 0;
+  color: var(--mute);
+  font: 0.74rem/1.3 var(--mono);
+  cursor: pointer;
+}
+.sources-how summary:hover, .sources-how[open] summary { color: var(--mist); }
+.sources-how .sources-note { margin-top: 0.35rem; }
 .sources-dir {
   display: grid;
   grid-template-columns: 14rem minmax(0, 1fr);
@@ -356,17 +365,45 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 }
 .sources-pane { container: pools / inline-size; min-width: 0; }
 .sources-pane > [hidden] { display: none; }
+.sources-back {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  margin: -0.5rem 0 0.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brass);
+  font: 500 0.85rem/1 var(--mono);
+  cursor: pointer;
+}
+.sources-back::before { content: "‹"; font-size: 1.3rem; line-height: 1; }
+.sources-back:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+/* A phone: the rail is the first screen (data-view="list") and a provider
+   opens in its place ("pane"), each row larger and marked to open. */
 @container sources (max-width: 46rem) {
-  .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .sources-rail {
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 0 0 0.5rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+  .sources-dir[data-view="list"] .sources-pane,
+  .sources-dir[data-view="pane"] .sources-rail { display: none; }
+  .sources-page:has(> .sources-dir[data-view="pane"]) > .sources-how { display: none; }
+  .sources-back { display: inline-flex; }
+  .sources-rail { padding-right: 0; border-right: 0; }
+  .sources-rail-group { margin: 1.1rem 0 0.35rem; }
+  .sources-rail a {
+    grid-template-columns: 1.25rem minmax(0, 1fr) auto auto;
+    column-gap: 0.7rem;
+    min-height: 3.5rem;
+    padding: 0.5rem 0.25rem;
+    border-radius: 0;
+    border-top: 1px solid var(--line);
   }
-  .sources-rail :is(.sources-rail-group, small) { display: none; }
-  .sources-rail a { flex: none; }
+  .sources-rail-group + a { border-top: 0; }
+  .sources-rail a.on { background: none; box-shadow: none; }
+  .sources-rail a::after { content: "›"; grid-column: 4; grid-row: 1 / span 2; color: var(--mute); font-size: 1.2rem; }
+  .sources-rail .provider-logo { width: 1.25rem; height: 1.25rem; grid-row: 1 / span 2; }
+  .sources-rail-name { font-size: 0.92rem; }
+  .sources-rail small { grid-column: 2 / 4; font-size: 0.74rem; }
 }
 .sources-page .pool { gap: 0.55rem; }
 .sources-page .pool-head {

@@ -365,13 +365,16 @@
 {%- endmacro %}
 
 <div class="stack-y sources-page">
-  <p class="sources-note">New conversations start on your own accounts and fall back to accounts shared with you, least used first; each conversation then stays on one account to keep its prompt cache. <b>Sharing</b> on each pool sets who else may use yours. Z.AI also unlocks with a live x.ai or OpenAI account you share.</p>
+  <details class="sources-how">
+    <summary>How Fuse picks an account</summary>
+    <p class="sources-note">New conversations start on your own accounts and fall back to accounts shared with you, least used first; each conversation then stays on one account to keep its prompt cache. <b>Sharing</b> on each pool sets who else may use yours. Z.AI also unlocks with a live x.ai or OpenAI account you share.</p>
+  </details>
   {% if pool_flash_msg %}
   <p class="callout {% if pool_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ pool_flash_msg }}</p>
   {% endif %}
 
   <div class="sources-dir">
-  <nav class="sources-rail" data-section-tabs aria-label="Providers" aria-orientation="vertical">
+  <nav class="sources-rail" data-section-tabs aria-label="Providers" aria-orientation="vertical"{% if flash_pane %} data-start="pool-{{ flash_pane }}"{% endif %}>
     {% if rail.yours %}<p class="sources-rail-group" aria-hidden="true">Your accounts</p>{% endif %}
     {% for id, title, ok, accts, pool, need in rail.yours %}
     {% set own = accts|selectattr('mine')|list %}
@@ -390,6 +393,7 @@
     {{ rail_link('explabs', 'Experiential Labs', 'key linked' if explabs_account else 'no key') }}
   </nav>
   <div class="sources-pane">
+    <button type="button" class="sources-back" data-sources-back>All sources</button>
 
     <section class="pool stack-y" id="pool-grok">
       {% call pool_head(grok_ui, 'x.ai', 'grok', pool_state(grok_ok, grok_reason, grok_ui, 'needs SuperGrok', 'No SuperGrok subscription'), [('Pool usage', grok_pool)]) %}{{ add_button('grok-connect-dialog', 'Add account', pending) }}{% endcall %}
