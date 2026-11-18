@@ -154,6 +154,13 @@ def test_a_failed_call_throws_into_the_code_and_an_uncaught_one_lists_what_finis
     assert "- write_file out.txt: done" in text and "- read_file missing.txt: error" in text
 
 
+def test_the_row_keeps_the_code_apart_from_what_the_model_got():
+    text, trace = run_code("return 1 + 1;", Runner(), description="Add")
+
+    assert trace["output"] == text and "return 1 + 1;" not in text
+    assert chats._parse_tool_traces([trace], strict=True)[0]["code"] == "return 1 + 1;"
+
+
 def test_only_the_workspace_helpers_reach_the_runner():
     runner = Runner()
 

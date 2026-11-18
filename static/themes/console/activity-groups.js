@@ -373,6 +373,17 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
       i += 1;
       if (entry.type !== "tool") continue;
       const key = deps.toolKey(entry.trace, entry.index);
+      // run_code's calls follow it (chat_output.py orders them) and hang under it.
+      if (entry.trace.name === "run_code") {
+        const calls = [];
+        while (i < entries.length && entries[i].type === "tool" && entries[i].trace.parent === entry.trace.id) {
+          const call = entries[i++];
+          calls.push({ trace: call.trace, key: deps.toolKey(call.trace, call.index) });
+        }
+        flush();
+        rows.push({ entry, key, calls });
+        continue;
+      }
       const cls = deps.ccToolClass(entry.trace);
       if (cls && !holds(entry, i - 1, cls)) {
         (group ||= { items: [] }).items.push({ type: "tool", entry, cls, key });
@@ -397,6 +408,9 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     const lastRow = rows[rows.length - 1];
     return rows.map((row) => {
       if (row.agents) return deps.ccAgentsGroupHtml(row.agents, live);
+      // A running script shows its calls until it is folded by hand.
+      if (row.calls) return deps.toolStepHtml(row.entry.trace, row.key, live, row.key in stepOpen ? deps.stepOpenAt(stepOpen, row.key)
+        : deps.toolPresentation(row.entry.trace, live).running, stepOpen, { calls: row.calls });
       if (!row.items) return deps.toolStepHtml(row.entry.trace, row.key, live, deps.stepOpenAt(stepOpen, row.key), stepOpen);
       const current = row === lastRow && !row.endedByThought;
       // Console keeps calls off a live line, so only a thought makes it live.

@@ -551,9 +551,9 @@ RETRY_DIFF = "@@ -2,3 +2,3 @@\n   \"timeout_ms\": 30000,\n-  \"retries\": 3,\n+ 
 
 def code_thread() -> list[dict]:
     """run_code rows: a run with each kind of call under it, a bulk run of
-    40 reads, a run whose code failed and one the user stopped mid-way."""
-    run = tool("run_code", description="Find slow retry policies and lower them", output=f"{CODE_RESULT}\n\n{CODE}",
-               duration_ms=1840)
+    40 reads, a run whose code failed, one saved before description was
+    required and one the user stopped mid-way."""
+    run = tool("run_code", description="Find slow retry policies and lower them", output=CODE_RESULT, code=CODE, duration_ms=1840)
     calls = [
         tool("glob", parent=run["id"], pattern="services/*.json", path=PROJECT,
              output="services/a.json\nservices/b.json\nservices/c.json"),
@@ -565,18 +565,22 @@ def code_thread() -> list[dict]:
              exit_code=0, execution_duration_ms=900, output="lint ok\nunit ok"),
     ]
     bulk = tool("run_code", description="Count TODOs in every module", duration_ms=3100,
-                output='17\n[Fuse: 41 calls: glob×1, read_file×40]\n\n'
-                       'const files = (await glob({pattern: "app/*.py"})).split("\\n").filter(Boolean);\n'
-                       'return (await Promise.all(files.map(async (p) => (await read_file(p)).split("TODO").length - 1)))'
-                       '.reduce((a, b) => a + b, 0);')
+                output='17\n[Fuse: 41 calls: glob×1, read_file×40]',
+                code='const files = (await glob({pattern: "app/*.py"})).split("\\n").filter(Boolean);\n'
+                     'return (await Promise.all(files.map(async (p) => (await read_file(p)).split("TODO").length - 1)))'
+                     '.reduce((a, b) => a + b, 0);')
     bulk_calls = [tool("glob", parent=bulk["id"], pattern="app/*.py", path=PROJECT,
                        output="\n".join(f"app/module_{i:02d}.py" for i in range(40)))]
     bulk_calls += [tool("read_file", parent=bulk["id"], path=f"{PROJECT}/app/module_{i:02d}.py",
                         output=f"# module {i}\n# TODO: tidy\nVALUE = {i}") for i in range(40)]
     failed = tool("run_code", status="error", kind="code_error", description="Parse every config",
                   error="line 1: SyntaxError: missing ) after argument list",
-                  output="Error: line 1: SyntaxError: missing ) after argument list\nNo tool calls finished before the error.\n\n"
-                         "return files.map((p) => JSON.parse(p);")
+                  output="Error: line 1: SyntaxError: missing ) after argument list\nNo tool calls finished before the error.",
+                  code="return files.map((p) => JSON.parse(p);")
+    bare = tool("run_code", duration_ms=140, output=" M app/net.py\n?? tests/test_net.py\n[Fuse: 1 calls: run_terminal_command×1]",
+                code='return (await run_terminal_command("git status --short")).output;')
+    bare_calls = [tool("run_terminal_command", parent=bare["id"], command="git status --short", cwd=PROJECT, exit_code=0,
+                       execution_duration_ms=60, output=" M app/net.py\n?? tests/test_net.py")]
     stopped = tool("run_code", status="interrupted", description="Bump the version and build", error="Interrupted by the user")
     stopped_calls = [
         tool("search_replace", parent=stopped["id"], path=f"{PROJECT}/package.json", lines_added=1, lines_removed=1,
@@ -588,7 +592,8 @@ def code_thread() -> list[dict]:
         user("Lower the retry count on any service whose worst-case wait is over a minute, then run the checks."),
         reply("Scanning the service configs in one pass.\n\n", run, *calls,
               "One service was over a minute (`services/a.json`, 30 s × 4 tries); its retries are now 1 and the checks pass.\n\n",
-              failed, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.", minutes_ago=5, elapsed_s=41),
+              failed, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.\n\n", bare, *bare_calls,
+              "Two files are uncommitted.", minutes_ago=5, elapsed_s=41),
         user("Bump the version to 2.4.0 and build it."),
         reply("Bumping the version and building in one pass.\n\n", stopped, *stopped_calls, minutes_ago=3, elapsed_s=12,
               stopped=True),
@@ -599,7 +604,10 @@ def live_code_thread() -> list[dict]:
     """A run_code caught mid-run: two of its calls done, its test run still
     going. Nothing runs on the server; the QA browser's --fake running tells
     the page it is."""
-    run = tool("run_code", status="running", description="Rename fetchUser to loadUser and run the tests")
+    run = tool("run_code", status="running", description="Rename fetchUser to loadUser and run the tests",
+               code='const hits = (await grep({pattern: "fetchUser\\\\(", output_mode: "files_with_matches"})).split("\\n").filter(Boolean);\n'
+                    'for (const path of hits) await search_replace({path, old_string: "fetchUser(", new_string: "loadUser(", replace_all: true});\n'
+                    'return (await run_terminal_command({command: "npm test", description: "Run the tests"})).exit_code;')
     return [
         user("Rename fetchUser to loadUser everywhere, then run the tests."),
         reply(

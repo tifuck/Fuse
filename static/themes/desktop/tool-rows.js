@@ -167,12 +167,13 @@ const ROW_ICON_PATHS = {
     wait: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.3"/>',
     fetch: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c2 2 2 9 0 11M8 2.5c-2 2-2 9 0 11"/>',
     web: '<path d="M2.5 5h11M2.5 8h7M2.5 11h5"/><path d="m12 9 .8 1.7 1.7.8-1.7.8L12 14l-.8-1.7-1.7-.8 1.7-.8z" fill="currentColor" stroke="none"/>',
+    code: '<path d="M5.5 4.5 2.5 8l3 3.5M10.5 4.5l3 3.5-3 3.5"/>',
     other: '<circle cx="8" cy="8" r="2"/>',
   };
 const ROW_ICON_KIND = {
     read_file: "read", read_transcript: "read", read_artifact: "read", search_replace: "edit", edit_artifact: "edit",
     write_file: "write", create_artifact: "write", update_artifact: "write", grep: "search", glob: "search", list_dir: "list",
-    run_terminal_command: "shell", kill_command: "shell", get_command_output: "wait", monitor: "wait", read_url: "fetch",
+    run_terminal_command: "shell", kill_command: "shell", get_command_output: "wait", monitor: "wait", read_url: "fetch", run_code: "code",
   };
 function rowIconHtml(trace) {
     const kind = trace ? ROW_ICON_KIND[trace.name] || (deps.isSearchTool(trace.name) ? "web" : "other") : "other";

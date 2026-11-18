@@ -342,6 +342,10 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(transcriptRange(trace), 90);
     } else if (["remember", "recall", "forget"].includes(name)) {
       inner = consoleArgText(trace.title || "memory", 90);
+    } else if (name === "run_code") {
+      // A run saved before description was required names its call count.
+      const n = codeRunParts(trace).calls.reduce((sum, [, k]) => sum + k, 0);
+      inner = consoleArgText(trace.description || (n ? `${n} ${n === 1 ? "call" : "calls"}` : ""), 140);
     } else if (name === "load_skill") {
       // Skill(name), or Skill(name / file) for a supporting file; the line
       // under it says what the skill is for.
@@ -554,5 +558,27 @@ function searchQueries(trace) {
     return [];
   }
 
-  return { isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, scratchAction, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
+// run_code: its output is what the model got, the value then "[Fuse: …]"
+// lines (code_mode._calls_line, with the exact counts: reads past 40 draw
+// no row). Rows from before the source had its own field carry it after
+// the first blank line past those lines (or past the error).
+function codeRunParts(trace) {
+    const text = String(trace?.output || "");
+    const lines = text.split("\n");
+    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls: |no tool calls\])/.test(line));
+    const calls = at < 0 ? [] : [...lines[at].matchAll(/(\w+)×(\d+)/g)].map((m) => [m[1], Number(m[2])]);
+    let end = at + 1;
+    while (at >= 0 && end < lines.length && lines[end].startsWith("[Fuse: ")) end += 1;
+    let result = at < 0 ? text : lines.slice(0, at).join("\n");
+    let code = typeof trace?.code === "string" ? trace.code : "";
+    if (!code && at >= 0) code = lines.slice(end).join("\n").replace(/^\n+/, "");
+    else if (!code && trace?.status === "error" && text.includes("\n\n")) {
+      // shortcut: an error whose console logs hold a blank line splits there.
+      code = text.slice(text.indexOf("\n\n") + 2);
+      result = text.slice(0, text.indexOf("\n\n"));
+    }
+    return { result, code, calls };
+  }
+
+  return { codeRunParts, isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, scratchAction, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
 }

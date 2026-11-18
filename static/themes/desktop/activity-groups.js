@@ -340,7 +340,8 @@ function consoleActivityEntriesHtml(entries, msg, live) {
     segs.forEach((seg, index) => { if (seg && seg.type === "reasoning") lastReasonIndex = index; });
     const phase = deps.runPhase(msg);
     const streamingLast = Boolean(live && lastReasonIndex >= 0 && !segs.some((seg, index) => index > lastReasonIndex) && phase !== "calling" && phase !== "tools");
-    const items = [];
+    const parts = [];
+    let items = [];
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];
@@ -362,6 +363,16 @@ function consoleActivityEntriesHtml(entries, msg, live) {
       }
       i += 1;
       if (entry.type !== "tool" || AGENT_TOOLS.has(entry.trace.name)) continue;
+      // A script is its own line with the calls it made (chat_output.py
+      // orders them after it), running or not; the summary lines around it
+      // count only the turn's own calls.
+      if (entry.trace.name === "run_code") {
+        const calls = [];
+        while (i < entries.length && entries[i].type === "tool" && entries[i].trace.parent === entry.trace.id) calls.push(entries[i++]);
+        parts.push(items, { entry, calls });
+        items = [];
+        continue;
+      }
       // The call running now is the status line (live-status.js), not a row:
       // it joins the summary when it ends. A background one stays counted.
       // A Wait blocks on its command, so it is the call running now too.
@@ -372,11 +383,101 @@ function consoleActivityEntriesHtml(entries, msg, live) {
       if (cls?.kind === "silent" && !deps.toolPresentation(entry.trace, live).interrupted) continue;
       items.push({ type: "tool", entry, cls, key: deps.toolKey(entry.trace, entry.index) });
     }
-    // No call yet: a thought is its own line, since the summary counts calls.
-    if (!items.some((item) => item.type === "tool")) {
-      return items.map((item) => thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
+    parts.push(items);
+    return parts.map((part) => {
+      if (part.entry) return codeLineHtml(part.entry, part.calls, live, stepOpen);
+      // No call yet: a thought is its own line, since the summary counts calls.
+      if (!part.some((item) => item.type === "tool")) {
+        return part.map((item) => thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
+      }
+      return ccGroupHtml({ items: part }, live, stepOpen);
+    }).join("");
+  }
+
+// A script's line: its description, then how much it did ("6 calls · 1.8s"),
+// or that it failed or stopped. It opens to its calls, three or more reads in
+// a row as one row, then a row for its code and what it returned.
+function codeLineHtml(entry, calls, live, openMap) {
+    const trace = entry.trace;
+    const key = "cgroup-" + deps.toolKey(trace, entry.index);
+    const open = deps.stepOpenAt(openMap, key);
+    const presentation = deps.toolPresentation(trace, live);
+    const parts = deps.codeRunParts(trace);
+    const total = parts.calls.length ? parts.calls.reduce((n, [, k]) => n + k, 0) : calls.length;
+    const noun = `${total === 1 ? "call" : "calls"}`;
+    const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
+    const ms = Number(trace.duration_ms ?? trace.call_duration_ms);
+    const meta = presentation.failed ? `<span class="dk-code-bad">failed: ${deps.escapeHtml(String(trace.error || "run_code failed").split("\n")[0])}</span>`
+      : presentation.interrupted ? `<span class="dk-code-stop">stopped</span> after ${finished} of ${total} ${noun}`
+      : presentation.running ? `${total} ${noun} so far`
+      : `${total} ${noun}${Number.isFinite(ms) && ms > 0 ? ` · ${deps.humanMs(ms)}` : ""}`;
+    let plus = 0;
+    let minus = 0;
+    calls.forEach((c) => {
+      if (!["search_replace", "write_file"].includes(c.trace.name)) return;
+      const counts = deps.consoleEditCounts(c.trace);
+      plus += counts.added;
+      minus += counts.removed;
+    });
+    const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
+    const name = deps.escapeHtml(trace.description || `${total} ${noun}`);
+    const rows = [];
+    for (let at = 0; at < calls.length;) {
+      let end = at;
+      const reading = (c) => c && c.trace.name === "read_file" && deps.toolPresentation(c.trace, live).state === "done";
+      while (reading(calls[end])) end += 1;
+      if (end - at >= 3) {
+        rows.push(readsRowHtml(calls.slice(at, end), openMap));
+        at = end;
+        continue;
+      }
+      const c = calls[at++];
+      const k = deps.toolKey(c.trace, c.index);
+      rows.push(deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true }));
     }
-    return ccGroupHtml({ items }, live, stepOpen);
+    if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`), meta));
+    const state = presentation.failed ? "is-failed" : presentation.interrupted ? "is-stopped" : presentation.running ? "is-running" : "is-done";
+    return (
+      `<li class="chat-step is-console-group is-dk-code ${state}${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<span class="chat-step-node" aria-hidden="true"></span>` +
+      `<div class="chat-step-main">` +
+      `<div class="chat-step-head">` +
+      `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${name}">${deps.rowIconHtml(trace)}<span class="chat-step-label"><span class="dk-code-name">${name}</span> · ${meta}</span>${stat ? `<span class="dk-diffstat">${stat.trim()}</span>` : ""}</button>` + `</div>` +
+      `<div class="chat-console-bundle"><ol class="chat-timeline">${rows.join("")}</ol></div>` +
+      `</div></li>`
+    );
+  }
+
+// A row whose body is one box under it, opened like a call row.
+function boxRowHtml(key, line, box, open, cls = "") {
+    return (
+      `<li class="chat-step is-console-call is-done${cls}${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<span class="chat-step-node" aria-hidden="true"></span>` +
+      `<div class="chat-step-main">${deps.toolHeadHtml({ line: line + deps.ROW_CHEV, title: "", expandable: true, open })}` +
+      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-body-only${open ? " is-expanded" : ""}">` +
+      `<span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${box}</div></div></div></div></div></li>`
+    );
+  }
+
+function readsRowHtml(reads, openMap) {
+    const key = deps.toolKey(reads[0].trace, reads[0].index) + ":reads";
+    const paths = reads.map((c) => deps.shortToolPath(String(c.trace.path || ""), c.trace));
+    const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
+    const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
+    const line = `${deps.rowIconHtml(reads[0].trace)}<span class="chat-console-call"><span class="chat-tool-action">Read</span><span class="chat-console-paren">(</span>` +
+      `<span class="chat-console-val"><span class="dk-base">${reads.length} files</span>${where ? ` <span class="dk-dir">in ${deps.escapeHtml(where)}</span>` : ""}</span><span class="chat-console-paren">)</span></span>`;
+    const body = `<pre class="chat-console-out is-stdout">${deps.escapeHtml(paths.join("\n"))}</pre>`;
+    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: `${reads.length} files`, host: reads[0].trace.host || "" }), deps.stepOpenAt(openMap, key));
+  }
+
+function codeRowHtml(trace, parts, key, open, meta) {
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span><span class="chat-console-val">and what it returned</span></span>`;
+    const lines = parts.code.split("\n").length;
+    const ret = !deps.toolPresentation(trace, false).failed && parts.result.trim()
+      ? `<div class="dk-code-part"><div class="dk-code-label">Returned</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+    const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
+      `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
+    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: meta, host: trace.host || "" }), open, " is-dk-coderow");
   }
 
 // A settled thought: one line ("Thought for 4s" and its first words) that

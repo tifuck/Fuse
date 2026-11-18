@@ -774,3 +774,18 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     & > .chat-stage { transition: none !important; }
   }
 }
+
+/* A script's own line: its icon, its description in the reading color, then
+   how much it did; a failure or stop says so in its color. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code > .chat-step-main > .chat-step-head > .chat-step-toggle { gap: 0.45rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code > .chat-step-main > .chat-step-head .dk-row-ico { display: inline-flex; flex: none; align-self: center; width: 15px; height: 15px; color: var(--dk-call-quiet); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code > .chat-step-main > .chat-step-head .dk-row-ico svg { width: 15px; height: 15px; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code .dk-code-name { color: var(--dk-text, var(--mist)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code .dk-code-bad { color: var(--call-fail); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code .dk-code-stop { color: var(--dk-warn); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code.is-failed > .chat-step-main > .chat-step-head .dk-row-ico { color: var(--call-fail); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-code.is-running > .chat-step-main > .chat-step-head .dk-row-ico { color: var(--call-live, var(--dk-link)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-part + .dk-code-part { border-top: 1px solid var(--dk-line, var(--line)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-label { padding: 0.45rem 0.75rem 0; font-size: 0.78rem; font-weight: 500; color: var(--dk-text, var(--mist)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-label span { margin-left: 0.4rem; font-weight: 400; color: var(--dk-mute, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-part > .chat-console-out { margin: 0; padding: 0.3rem 0.75rem 0.55rem; }

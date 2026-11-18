@@ -167,7 +167,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
     const icon = (failed ? deps.STEP_ICONS.error : interrupted ? deps.STEP_ICONS.stop : artifact ? deps.STEP_ICONS.artifact : deps.toolIcon(trace.name, false, false));
     {
       const verbose = Boolean(opts.verbose);
-      const fold = deps.consoleFold(trace, presentation, verbose);
+      const fold = trace.name === "run_code" ? deps.consoleCodeFold(trace, presentation, opts.calls || [], live, openMap, index) : deps.consoleFold(trace, presentation, verbose);
       // An opened summary line prints a call the way an expanded row reads.
       const preview = verbose ? "" : fold.preview;
       inner = verbose ? fold.full || fold.preview : fold.full;
@@ -201,7 +201,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang${running ? " is-running" : ""}${failed ? " is-error" : ""}${fold.keep ? " is-kept" : ""}${bodyOnly ? " is-body-only" : ""}${hangOpen ? " is-expanded" : ""}">` +
             `<span class="chat-console-branch" aria-hidden="true">└</span>` +
             `<div class="chat-console-hang-body">` +
-            (status || timeout ? `<span class="chat-console-result-text">${deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
+            (status || timeout ? `<span class="chat-console-result-text">${fold.statusHtml ?? deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
             (inner ? inner : "") +
             `</div></div></div></div>`

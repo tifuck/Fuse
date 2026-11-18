@@ -159,7 +159,7 @@ SCHEMA = {
                     "description": "Milliseconds; values under 1000 are seconds. Default 300000 (5 min), max 600000.",
                 },
             },
-            "required": ["code"],
+            "required": ["code", "description"],
             "additionalProperties": False,
         },
     },
@@ -452,14 +452,13 @@ def _calls_line(done: list[dict], stopped: int) -> str:
 
 def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], stopped: int) -> tuple[str, dict]:
     logs = str(outcome.get("logs") or "")
-    # The row shows its output: the result leads, so long code never pushes it out.
     if outcome.get("ok"):
         if not outcome.get("undef"):
             text = str(outcome.get("value")) + ("\n[console]\n" + logs if logs else "")
         else:
             text = "[console]\n" + logs if logs else "(no return value: end the code with `return …`)"
         text += "\n" + _calls_line(done, stopped)
-        return text, {**rec, "status": "done", "output": f"{text}\n\n{code}"}
+        return text, {**rec, "status": "done", "output": text, "code": code}
     error = _user_lines(str(outcome.get("error") or "run_code failed.")).removeprefix("Error: ")
     lines = [f"Error: {error}"]
     if logs:
@@ -472,4 +471,4 @@ def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], st
     if stopped:
         lines.append(f"{stopped} calls still running were stopped.")
     text = "\n".join(lines)
-    return text, {**rec, "status": "error", "kind": kind or "code_error", "error": error[:400], "output": f"{text}\n\n{code}"}
+    return text, {**rec, "status": "error", "kind": kind or "code_error", "error": error[:400], "output": text, "code": code}
