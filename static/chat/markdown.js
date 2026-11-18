@@ -276,15 +276,12 @@ function parseLines(lines, offsets) {
 }
 
 // Block tokens for a message; top-level tokens carry `offset`, where the
-// line they begin on starts.
+// line they begin on starts in `src` (line endings as given).
 export function parseBlocks(src) {
-  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
-  const offsets = [];
-  let pos = 0;
-  for (const line of String(src || "").replace(/\r\n?/g, "\n").split("\n")) {
-    offsets.push(pos);
-    pos += line.length + 1;
-  }
+  const text = String(src || "");
+  const lines = text.replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
+  const offsets = [0];
+  for (const m of text.matchAll(/\r\n?|\n/g)) offsets.push(m.index + m[0].length);
   return parseLines(lines, offsets);
 }
 

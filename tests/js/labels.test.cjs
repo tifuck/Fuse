@@ -13,8 +13,17 @@ test('turn durations', () => {
 
 test('sub-second durations stay in ms and hand off above a second', () => {
   const cases = [[0, '0ms'], [450, '450ms'], [999, '999ms'], [999.6, '1.0s'], [1000, '1.0s'], [9500, '9.5s'],
-    [10_000, '10s'], [25_000, '25s'], [65_000, '1m 5s'], [-5, ''], [NaN, ''], ['x', '']];
+    [10_000, '10s'], [25_000, '25s'], [65_000, '1m 5s'], [-5, ''], [NaN, ''], ['x', ''],
+    [9940, '9.9s'], [9960, '10s'], [59_600, '1m']];
   for (const [ms, text] of cases) assert.equal(core.humanMs(ms), text, String(ms));
+});
+
+test('byte sizes take the larger unit once they round up to it, in every theme', async () => {
+  for (const theme of ['console', 'combined', 'desktop']) {
+    const { ccBytes } = (await import(`../../static/themes/${theme}/call-semantics.js`)).create({});
+    const cases = [[1023, '1023 bytes'], [1536, '1.5KB'], [1_048_575, '1MB'], [5 * 1024 ** 2, '5MB'], [1024 ** 3 - 1, '1GB']];
+    for (const [n, text] of cases) assert.equal(ccBytes(n), text, `${theme} ${n}`);
+  }
 });
 
 test('token counts abbreviate at thousand and million', () => {

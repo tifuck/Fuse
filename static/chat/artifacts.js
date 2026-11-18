@@ -35,7 +35,9 @@ function autoOpenOn() {
 
 function sizeLabel(chars) {
   const n = Number(chars) || 0;
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k chars` : `${n} chars`;
+  if (n < 1000) return `${n} chars`;
+  const k = Math.round(n / 100) / 10;
+  return `${k >= 10 ? Math.round(n / 1000) : k.toFixed(1)}k chars`;
 }
 
 function absolute(url) {
