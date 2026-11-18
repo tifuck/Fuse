@@ -49,8 +49,10 @@ SCHEMA = {
     "function": {
         "name": "run_code",
         "description": (
-            "Run JavaScript that calls the file and shell tools and returns only what the code returns; "
-            "intermediate results stay out of the conversation. Prefer it to several direct calls.\n"
+            "Run plain JavaScript, not Node.js (no require, fs, child_process or process): the file and shell "
+            "tools are async functions, e.g. `await read_file(\"src/app.py\")` or `await grep({pattern: \"TODO\"})`. "
+            "Only what the code returns comes back; intermediate results stay out of the conversation. Prefer it "
+            "to several direct calls.\n"
             "The code is the body of an async function: use await, Promise.all for independent calls, and end "
             "with return. Functions (same argument object as the tool of that name; each call is "
             "permission-checked and shown to the user like a direct call):\n"
