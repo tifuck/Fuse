@@ -158,7 +158,7 @@ def _trace_rows(message):
         details = {
             k: trace[k]
             for k in ("command", "path", "pattern", "include", "offset", "limit", "max_matches",
-                      "query", "url", "description", "model")
+                      "query", "url", "description", "model", "code")
             if trace.get(k) not in (None, "")
         }
         arguments = trace.get("arguments")

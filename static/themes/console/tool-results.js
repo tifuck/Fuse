@@ -265,6 +265,55 @@ function consoleFold(trace, presentation, verbose) {
     return { status, preview: "", full: detail() };
   }
 
+// run_code: the └ line counts its calls in the summary line's words; opened,
+// the calls hang under it as a tree, each opening its own output, then the
+// code and what it returned.
+const CODE_CALL_WORDS = {
+    glob: ["searched for", "pattern", "patterns"], grep: ["searched for", "pattern", "patterns"], read_file: ["read", "file", "files"],
+    list_dir: ["listed", "directory", "directories"], search_replace: ["edited", "file", "files"], write_file: ["wrote", "file", "files"],
+    run_terminal_command: ["ran", "shell command", "shell commands"], read_result: ["read", "kept result", "kept results"],
+  };
+function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
+    const { running, failed, interrupted } = presentation;
+    const parts = deps.codeRunParts(trace);
+    const counts = parts.calls.length ? parts.calls : [...calls.reduce((m, c) => m.set(c.trace.name, (m.get(c.trace.name) || 0) + 1), new Map())];
+    const total = counts.reduce((n, [, k]) => n + k, 0);
+    const merged = new Map();
+    for (const [name, n] of counts) {
+      const words = CODE_CALL_WORDS[name] || ["used", name.replaceAll("_", " "), name.replaceAll("_", " ")];
+      merged.set(words.join("|"), [words, (merged.get(words.join("|"))?.[1] || 0) + n]);
+    }
+    const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
+    const noun = (n) => `${n === 1 ? "call" : "calls"}`;
+    const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
+    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : " · no calls ran"}`)
+      : interrupted ? `Interrupted · <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      : running ? (total ? `Running · <b>${total}</b> ${noun(total)} so far` : "Running…")
+      : total ? `<b>${total}</b> ${noun(total)}: ${what}` : "No calls";
+    const row = (rowKey, branch, head, body, state, tool) => {
+      const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
+      return `<div class="chat-console-codecall is-${state}" data-step="${deps.escapeHtml(rowKey)}"${tool ? ` data-tool="${tool}"` : ""}><div class="chat-step-main"><div class="chat-step-head">` +
+        (body ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open}">` : `<div class="chat-step-toggle">`) +
+        `<span class="chat-console-branch" aria-hidden="true">${branch}</span>${head}${body ? "</button>" : "</div>"}</div>` +
+        (body ? `<div class="chat-step-reveal${open ? " is-open" : ""}"><div class="chat-step-reveal-inner">${body}</div></div>` : "") + `</div></div>`;
+    };
+    const rows = calls.map((c) => {
+      const p = deps.toolPresentation(c.trace, live);
+      const exit = deps.shellExitCode(c.trace);
+      const meta = p.running ? "" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
+      const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? ` <span class="chat-console-dim">${consoleStatusHtml(meta)}</span>` : ""}`;
+      return row(c.key, "├", head, consoleDetailHtml(c.trace, p.failed, p.running), p.state, c.trace.name);
+    });
+    if (parts.code) {
+      const ret = !failed && parts.result.trim()
+        ? `<div class="chat-console-codepart"><span class="chat-console-dim">Returned</span><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+      const n = parts.code.split("\n").length;
+      rows.push(row(`${key}:code`, "└", `<span class="chat-tool-action">Code</span> <span class="chat-console-dim">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? " and what it returned" : ""}</span>`,
+        `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`, "done"));
+    }
+    return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: rows.length ? `<div class="chat-console-codetree">${rows.join("")}</div>` : "" };
+  }
+
 function consoleStatusHtml(text) {
     return deps.escapeHtml(text)
       .replace(/^(Read|Wrote|Added|Removed|Found|Listed) (\d[\d,]*)/, "$1 <b>$2</b>")
@@ -483,5 +532,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleCodeFold, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

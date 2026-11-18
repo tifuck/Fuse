@@ -148,6 +148,8 @@ function toolRowLabel(trace) {
   }
 
 function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
+    // Combined still prints a script's source under what it returned.
+    if (trace.name === "run_code" && typeof trace.code === "string") trace = { ...trace, output: `${trace.output || ""}\n\n${trace.code}` };
     const presentation = deps.toolPresentation(trace, live);
     const { running, interrupted, failed } = presentation;
     const artifact = ["create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(trace.name);

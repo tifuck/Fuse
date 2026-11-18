@@ -210,8 +210,11 @@ function ccGroupHtml(group, live, openMap) {
     const branches = [];
     const prs = [];
     const others = new Map();
-    // The line counts calls only; thoughts sit among the rows, unnamed.
-    group.items.forEach((item) => {
+    // The line counts calls only; thoughts sit among the rows, unnamed. A
+    // script counts as the calls it made; one that made none, as a script.
+    const counted = group.items.flatMap((item) => item.calls?.length
+      ? item.calls.map((entry) => ({ type: "tool", entry, cls: deps.ccToolClass(entry.trace) })) : [item]);
+    counted.forEach((item) => {
       if (item.type !== "tool") return;
       const trace = item.entry.trace;
       const presentation = deps.toolPresentation(trace, live);
@@ -313,6 +316,7 @@ function ccGroupHtml(group, live, openMap) {
     const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
+      : item.calls ? scriptRowHtml(item, live, openMap)
       : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     return (
       `<li class="chat-step is-console-group is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
@@ -362,6 +366,15 @@ function consoleActivityEntriesHtml(entries, msg, live) {
       }
       i += 1;
       if (entry.type !== "tool" || AGENT_TOOLS.has(entry.trace.name)) continue;
+      // A script is one call of the line; the calls it made (chat_output.py
+      // orders them after it) open under its row. A running one is the status
+      // line until it ends, like any call.
+      if (entry.trace.name === "run_code") {
+        const calls = [];
+        while (i < entries.length && entries[i].type === "tool" && entries[i].trace.parent === entry.trace.id) calls.push(entries[i++]);
+        if (!deps.toolPresentation(entry.trace, live).running) items.push({ type: "tool", entry, cls: null, key: deps.toolKey(entry.trace, entry.index), calls });
+        continue;
+      }
       // The call running now is the status line (live-status.js), not a row:
       // it joins the summary when it ends. A background one stays counted.
       // A Wait blocks on its command, so it is the call running now too.
@@ -377,6 +390,75 @@ function consoleActivityEntriesHtml(entries, msg, live) {
       return items.map((item) => thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
     }
     return ccGroupHtml({ items }, live, stepOpen);
+  }
+
+// A script's row reads like any call: its description, then how many calls
+// it made (or why it ended). It opens to those calls, three or more reads in
+// a row as one row, then its code and what it returned.
+function scriptRowHtml(item, live, openMap) {
+    const { entry: { trace }, calls, key } = item;
+    const presentation = deps.toolPresentation(trace, live);
+    const open = deps.stepOpenAt(openMap, key);
+    const parts = deps.codeRunParts(trace);
+    const total = parts.calls.length ? parts.calls.reduce((n, [, k]) => n + k, 0) : calls.length;
+    const result = presentation.failed ? String(trace.error || "failed").split("\n")[0]
+      : presentation.interrupted ? "Interrupted" : `${total} ${total === 1 ? "call" : "calls"}`;
+    const rows = [];
+    for (let at = 0; at < calls.length;) {
+      let end = at;
+      const reading = (c) => c && c.trace.name === "read_file" && deps.toolPresentation(c.trace, live).state === "done";
+      while (reading(calls[end])) end += 1;
+      if (end - at >= 3) {
+        rows.push(readsRowHtml(calls.slice(at, end), openMap));
+        at = end;
+        continue;
+      }
+      const c = calls[at++];
+      const k = deps.toolKey(c.trace, c.index);
+      rows.push(deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true }));
+    }
+    if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`), deps.escapeHtml(result)));
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-console-val">${deps.escapeHtml(trace.description || "Script")}</span></span>` +
+      `<span class="chat-console-result-text">${deps.escapeHtml(result)}</span>`;
+    return (
+      `<li class="chat-step is-console-call is-dk-script is-${presentation.state}${open ? " is-console-expanded" : ""}" data-tool="run_code" data-state="${presentation.state}" data-step="${deps.escapeHtml(key)}">` +
+      `<span class="chat-step-node" aria-hidden="true"></span>` +
+      `<div class="chat-step-main">${deps.toolHeadHtml({ ...presentation, line: line + deps.ROW_CHEV, title: trace.description || "", expandable: true, open })}` +
+      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-body-only${open ? " is-expanded" : ""}">` +
+      `<span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body"><ol class="chat-timeline dk-script-calls">${rows.join("")}</ol></div></div></div></div></div></li>`
+    );
+  }
+
+// A row whose body is one box under it, opened like a call row.
+function boxRowHtml(key, line, box, open, cls = "") {
+    return (
+      `<li class="chat-step is-console-call is-done${cls}${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<span class="chat-step-node" aria-hidden="true"></span>` +
+      `<div class="chat-step-main">${deps.toolHeadHtml({ line: line + deps.ROW_CHEV, title: "", expandable: true, open })}` +
+      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-body-only${open ? " is-expanded" : ""}">` +
+      `<span class="chat-console-branch" aria-hidden="true">└</span><div class="chat-console-hang-body">${box}</div></div></div></div></div></li>`
+    );
+  }
+
+function readsRowHtml(reads, openMap) {
+    const key = deps.toolKey(reads[0].trace, reads[0].index) + ":reads";
+    const paths = reads.map((c) => deps.shortToolPath(String(c.trace.path || ""), c.trace));
+    const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
+    const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
+    const line = `${deps.rowIconHtml(reads[0].trace)}<span class="chat-console-call"><span class="chat-tool-action">Read</span><span class="chat-console-paren">(</span>` +
+      `<span class="chat-console-val"><span class="dk-base">${reads.length} files</span>${where ? ` <span class="dk-dir">in ${deps.escapeHtml(where)}</span>` : ""}</span><span class="chat-console-paren">)</span></span>`;
+    const body = `<pre class="chat-console-out is-stdout">${deps.escapeHtml(paths.join("\n"))}</pre>`;
+    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: `${reads.length} files`, host: reads[0].trace.host || "" }), deps.stepOpenAt(openMap, key));
+  }
+
+function codeRowHtml(trace, parts, key, open, meta) {
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span><span class="chat-console-val">and what it returned</span></span>`;
+    const lines = parts.code.split("\n").length;
+    const ret = !deps.toolPresentation(trace, false).failed && parts.result.trim()
+      ? `<div class="dk-code-part"><div class="dk-code-label">Returned</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+    const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
+      `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
+    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: meta, host: trace.host || "" }), open, " is-dk-coderow");
   }
 
 // A settled thought: one line ("Thought for 4s" and its first words) that
