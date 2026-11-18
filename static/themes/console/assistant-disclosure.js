@@ -146,7 +146,11 @@ function renderAssistant(msg, live) {
         collapseConsoleGroup(openGroup, msg);
         return;
       }
-      const btn = event.target.closest("[data-step-toggle]");
+      // A folded call's line under it opens the call too, as its header does.
+      const folded = !String(window.getSelection() || "").trim() && !event.target.closest("a, button")
+        && event.target.closest(".chat-step.is-console-call > .chat-step-main .chat-console-hang:not(.is-expanded)");
+      const btn = event.target.closest("[data-step-toggle]")
+        || (folded && folded.closest(".chat-step.is-console-call").querySelector(":scope > .chat-step-main > .chat-step-head [data-step-toggle]"));
       if (!btn || event.target.closest(".chat-step-open")) return;
       if ((event.target.closest("a"))) return;
       const li = btn.closest("[data-step]");

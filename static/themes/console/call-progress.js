@@ -5,7 +5,8 @@ function ccCallClockHtml(trace, presentation) {
     if (!name || deps.isSearchTool(name) || name === "spawn_subagent") return "";
     // A background launch returns at once; its clock runs only while its
     // process does. (A Wait on it is flagged background too and keeps its own.)
-    if (name === "run_terminal_command" && deps.toolBackground(trace) && !presentation.running) return "";
+    // Its finish (backgroundResult) shows how long the command ran.
+    if (name === "run_terminal_command" && deps.toolBackground(trace) && !presentation.running && !trace.backgroundResult) return "";
     // A monitor's call returns at once and then keeps watching, so it ticks
     // while it does. Every running clock anchors on the server's started_ms.
     if (presentation.running || (name === "monitor" && deps.executionPending(trace))) {
@@ -18,7 +19,9 @@ function ccCallClockHtml(trace, presentation) {
     if (name === "get_subagent_output") return "";
     // A Wait's elapsed_ms and duration_ms belong to the command it waited on;
     // its own time is the call's.
-    const ms = Number(name === "run_terminal_command"
+    const ms = Number(name === "run_terminal_command" && trace.backgroundResult
+      ? trace.execution_duration_ms ?? trace.latency_ms ?? trace.duration_ms
+      : name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
     return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> | ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
@@ -151,7 +154,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
       const out = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
       const tail = out ? out.split("\n").slice(-4).map((line) => deps.ccClip(deps.ccFlat(line), 200)) : [];
       const note = deps.ccTimeoutNote(trace);
-      const rows = [...hint.split("\n"), ...tail];
+      const rows = [...hint.split("\n"), ...tail].slice(-1);
       const html = rows.map((line, i) => `<div class="chat-console-dim">${deps.escapeHtml(line)}${i === rows.length - 1 && note ? ` <span class="chat-console-timeout">${deps.escapeHtml(note)}</span>` : ""}</div>`).join("");
       return { status: "", preview: `<div class="chat-console-progress">${html}</div>`, full: "" };
     }
@@ -159,28 +162,33 @@ function consoleOnlyFold(trace, presentation, verbose) {
       const background = deps.toolBackground(trace);
       if (running) {
         if (background) return { status: "Backgrounded agent", preview: "", full: "" };
-        const progress = ccAgentProgressHtml(trace);
-        return progress ? { status: "", preview: progress, full: "" } : { status: "Initializing…", preview: "", full: "" };
+        return { status: ccAgentLastCall(trace.agent_recent) || "Initializing…", preview: "", full: ccAgentProgressHtml(trace) };
       }
       if (failed) {
         const fold = deps.ccErrorFold(String(trace.error || trace.summary || "Subagent failed").split("\n"));
-        const progress = ccAgentProgressHtml(trace);
-        return { ...fold, preview: progress + fold.preview };
+        return { ...fold, full: ccAgentProgressHtml(trace) + fold.full };
       }
-      return { status: ccAgentDoneText(trace), preview: "", full: "" };
+      const report = deps.consoleDetailHtml(trace, false, false);
+      return { status: ccAgentDoneText(trace), preview: "", full: deps.consoleSameText(report, "") ? "" : report };
     }
     if (name === "run_terminal_command") {
       if (deps.toolBackground(trace)) {
         if (running && !["interrupted", "cancelled"].includes(trace.status)) return { status: "Running in the background", preview: "", full: "", keep: true };
         if (["interrupted", "cancelled"].includes(trace.status)) return { ...ccInterruptedFold(trace, true), keep: true };
-        // Ended: say how, not what the launch said. (Interrupted is above.)
+        // Ended: say how, not what the launch said, then its newest output
+        // line. (Interrupted is above.)
         const out = deps.consoleDetailHtml(trace, false, false);
         const exit = deps.shellExitCode(trace);
-        const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : "Failed in the background")
-          : `Ran in the background${exit !== null && exit !== 0 ? ` | exit code ${exit}` : ""}`;
+        const code = exit !== null ? ` (exit ${exit})` : "";
+        const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : `Failed in the background${code}`)
+          : `Completed in the background${code}`;
         const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-        const shown = body ? deps.consoleTailHtml(body.split("\n"), 4).html : "";
-        return { status, preview: shown, full: deps.consoleSameText(out, "") ? "" : out, keep: true };
+        const line = body ? deps.consoleLastLine(body.split("\n")) : null;
+        return {
+          status: line ? `${status} | ${line.text}` : status,
+          statusHtml: line ? `${deps.escapeHtml(status)}<span class="chat-console-dim"> | </span>${line.html}` : undefined,
+          preview: "", full: deps.consoleSameText(out, "") || (line && !line.more) ? "" : out, keep: true,
+        };
       }
       const raw = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output)
         : [trace.preview, trace.summary].find((value) => { const text = String(value || "").trim(); return text && text !== "still running" && text !== "background task started"; }) || "";
@@ -195,16 +203,10 @@ function consoleOnlyFold(trace, presentation, verbose) {
       }
       // No file diff here: a working-tree snapshot around the call cannot tell
       // its edits from another agent's in the same repository.
-      const note = deps.consoleTruncationNote(trace);
-      if (empty) return { status: meaning.message || (note ? "" : "(No output)"), preview: note, full: "", keep: Boolean(note) };
-      const tail = deps.consoleTailHtml(lines);
-      const body = tail.clipped ? deps.consoleDetailHtml(trace, false, false) + deps.consoleTruncationNote(trace, " is-full-note") : "";
-      return {
-        status: "",
-        keep: Boolean(note),
-        preview: tail.html + note,
-        full: body,
-      };
+      if (empty) return { status: meaning.message || "(No output)", preview: "", full: "" };
+      // Folded, one line: the newest output line; the open prints it all.
+      const line = deps.consoleLastLine(lines);
+      return { status: line.text, statusHtml: line.html, preview: "", full: line.more ? deps.consoleDetailHtml(trace, false, false) : "" };
     }
     if (name === "read_file" && !running && !failed && !interrupted) {
       const body = deps.consoleFileBody(trace);
@@ -212,7 +214,7 @@ function consoleOnlyFold(trace, presentation, verbose) {
     }
     if (name === "run_terminal_command" && trace.backgroundResult && !running) {
       const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-      if (body) return { status: deps.consoleResultLine(trace, presentation), preview: deps.consoleTailHtml(body.split("\n"), 4, false).html, full: "", keep: true };
+      if (body) return { status: deps.consoleResultLine(trace, presentation), preview: "", full: deps.consoleDetailHtml(trace, false, false), keep: true };
     }
     if (failed && name !== "run_terminal_command" && name !== "get_command_output") {
       return deps.ccErrorFold(ccFailure(trace).error.split("\n"));
@@ -226,16 +228,8 @@ function ccInterruptedFold(trace, shell) {
     const text = ccInterruptedText(trace);
     const kept = shell && typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
     if (!kept) return { status: text, preview: "", full: "", keep: false };
-    const tail = deps.consoleTailHtml(kept.split("\n"));
-    const note = (extra = "") => `<div class="chat-console-result-text is-stop-note${extra}">${deps.escapeHtml(text)}</div>`;
-    return {
-      status: "",
-      preview: tail.html + note(),
-      // The opened body repeats the reason under the whole output; folded,
-      // only the preview's copy shows.
-      full: tail.hidden > 0 ? deps.consoleDetailHtml(trace, false, false) + note(" is-full-note") : "",
-      keep: true,
-    };
+    // Folded, one line: why it stopped; the open prints the kept output.
+    return { status: text, preview: "", full: deps.consoleDetailHtml(trace, false, false), keep: true };
   }
 
 // What a failed call prints as its error, and what as its output. A call that
@@ -398,7 +392,8 @@ function consoleAutoStepsHtml(msg) {
           i = j;
           continue;
         }
-        out.push(deps.consoleWakeNoticeHtml(trace));
+        // A finished background command prints as the call it is; a monitor's end stays a notice.
+        out.push(trace.name === "monitor" ? deps.consoleWakeNoticeHtml(trace) : deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null));
         continue;
       }
       out.push(deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null));

@@ -119,6 +119,16 @@ function consoleTailHtml(lines, n = 3, toggle = true) {
     return { html: more + consoleStdoutHtml(cut), hidden, clipped };
   }
 
+// A folded command's one line: its newest non-blank output line, and how
+// many lines the open adds.
+function consoleLastLine(lines) {
+    const at = lines.findLastIndex((line) => line.trim());
+    const last = at < 0 ? "" : lines[at];
+    const more = lines.filter((line) => line.trim()).length - 1;
+    const count = more > 0 ? ` <span class="chat-console-dim">… +${more} ${more === 1 ? "line" : "lines"}</span>` : "";
+    return { text: deps.ccFlat(last.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")), html: deps.renderAnsi(last.trim()) + count, more: more > 0 || last.length > 120 };
+  }
+
 function consoleTruncationNote(trace, extra = "") {
     if (typeof trace?.output !== "string") return "";
     const retained = Array.from(trace.output).length;
@@ -152,7 +162,7 @@ function consoleFold(trace, presentation, verbose) {
       // sits under it.
       const info = deps.toolImageInfo(trace);
       return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : info || "Image preview unavailable",
-        preview: info ? deps.toolImageHtml(trace) : "", full: "" };
+        preview: "", full: info ? deps.toolImageHtml(trace) : "" };
     }
     {
       const own = deps.consoleOnlyFold(trace, presentation, verbose);
@@ -182,7 +192,7 @@ function consoleFold(trace, presentation, verbose) {
       const body = consoleFileBody(trace);
       if (!body) return { status, preview: "", full: "" };
       const note = consoleTruncationNote(trace);
-      return { status, preview: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body, 10)}</div>${note}`, full: "", keep: Boolean(note) };
+      return { status, preview: "", full: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body, 10)}</div>${note}` };
     }
     if (name === "kill_command" || name === "kill_subagent") return { status, preview: "", full: "" };
     if (name === "search_replace" || name === "write_file") {
@@ -192,17 +202,12 @@ function consoleFold(trace, presentation, verbose) {
         const added = Number(trace.added ?? trace.lines_added);
         const removed = Number(trace.removed ?? trace.lines_removed);
         const text = consoleChangeText(Number.isFinite(added) ? added : counted.added, Number.isFinite(removed) ? removed : counted.removed);
-        return { status: text || (name === "write_file" ? status : "Updated"), preview: consoleDiffHtml(diff, { numbers: name !== "search_replace" || /^@@\s+-\d+/.test(diff) }), full: "" };
+        return { status: text || (name === "write_file" ? status : "Updated"), preview: "", full: consoleDiffHtml(diff, { numbers: name !== "search_replace" || /^@@\s+-\d+/.test(diff) }) };
       }
       if (name === "search_replace") return { status, preview: "", full: "" };
       const body = typeof trace.content === "string" ? trace.content.replace(/\s+$/, "") : "";
       if (!body) return { status, preview: "", full: "" };
-      const total = body.split("\n").length;
-      return {
-        status,
-        preview: deps.fileBodyHtml(trace, body, 10),
-        full: total > 10 ? `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body)}</div>` : "",
-      };
+      return { status, preview: "", full: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body)}</div>` };
     }
     if (shell) {
       // A failure prints its error once (ccFailure), then any output of its own.
@@ -228,17 +233,15 @@ function consoleFold(trace, presentation, verbose) {
       const head = nonzero ? `Exit code ${exit}` : failed ? failedHead
         : wait ? (deps.executionState(trace) !== "running" ? "" : stillRunning ? "Still running" : "Returned while the command was still running")
         : deps.toolBackground(trace) ? status : "";
-      const note = typeof consoleTruncationNote === "function" ? consoleTruncationNote(trace) : "";
-      if (empty) return { status: head || (note ? "" : "(No output)"), preview: note, full: "", keep: nonzero || Boolean(note) };
-      const tail = consoleTailHtml(lines);
-      const clipped = tail.clipped;
-      const foot = nonzero || failed ? `<span class="chat-console-result-text">${consoleStatusHtml(head)}</span>` : "";
+      if (empty) return { status: head || "(No output)", preview: "", full: "", keep: nonzero };
+      // Folded, one line: how it ended, else its newest line of output.
+      const line = consoleLastLine(lines);
       return {
-        status: foot ? "" : head,
-        keep: nonzero || Boolean(note),
-        preview: tail.html + foot + note,
-        // The opened body hides the preview, so it repeats the exit and notice.
-        full: clipped ? consoleDetailHtml(trace, false, running) + foot + consoleTruncationNote(trace, " is-full-note") : "",
+        status: head || line.text,
+        statusHtml: head ? undefined : line.html,
+        keep: Boolean(head),
+        preview: "",
+        full: head || line.more ? consoleDetailHtml(trace, false, running) : "",
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {
@@ -532,5 +535,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleCodeFold, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }
