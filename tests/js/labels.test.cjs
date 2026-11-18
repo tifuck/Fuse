@@ -61,19 +61,15 @@ test('agent rows say stopping only while the stopped agent is still live', () =>
   assert.equal(live.agentStatusText({ status: 'completed', cancel_requested: true, cancel_requested_at: ago(40) }), 'completed');
 });
 
-test('desktop status line: the thought heading', async () => {
-  const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
-  const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
-  const status = (await import('../../static/themes/desktop/live-status.js')).create({ ccFlat: words.ccFlat });
-  assert.equal(status.thoughtHeading('**Reading the schema**\nfirst\n\n**Checking the FK delete rules**\nThe dump…'), 'Checking the FK delete rules');
-  assert.equal(status.thoughtHeading('### Planning the backup:\nsteps'), 'Planning the backup');
-  assert.equal(status.thoughtHeading('no heading, **bold** inline only'), '');
+test('desktop status line: a thought is one word, whatever it says', async () => {
+  const status = (await import('../../static/themes/desktop/live-status.js')).create({});
   const thinking = { segments: [{ type: 'reasoning', text: 'x\n**Checking the FK delete rules**\ny' }] };
-  assert.equal(status.ccThinkingState(thinking, 'thinking'), 'Checking the FK delete rules');
+  assert.equal(status.ccThinkingState(thinking, 'thinking'), 'thinking', 'no heading from the thought');
   assert.equal(status.ccThinkingState({ segments: [{ type: 'reasoning', text: 'plain' }] }, 'thinking'), 'thinking');
+  assert.equal(status.ccThinkingState(thinking, 'writing'), '', 'only while thinking');
 });
 
-test('desktop status line: one word between calls, each line held long enough to read, a long command clocked', async (t) => {
+test('desktop status line: one word between calls, each line held long enough to read, the turn clock throughout', async (t) => {
   const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
   const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
   let now = 1_000_000;
@@ -83,7 +79,6 @@ test('desktop status line: one word between calls, each line held long enough to
     ccFlat: words.ccFlat, ccRunningForm: words.ccRunningForm, ccLiveText: () => '', ccPathHint: () => '',
     currentActivity: () => activity, liveElapsedSeconds: () => 5, ccDuration: (ms) => `${ms / 1000}s`,
     isSearchTool: () => false, toolBackground: () => false, executionState: () => '', displayCommand: (trace) => trace.command,
-    ccSince: (trace) => trace.started_ms,
   });
   const msg = { segments: [{ type: 'reasoning', text: 'plain' }], tools: [] };
   const line = () => status.formatConsoleLiveStatus(msg);
@@ -94,13 +89,7 @@ test('desktop status line: one word between calls, each line held long enough to
   assert.equal(line().verb, 'Thinking…', 'a line shown 300ms ago stays up');
   now += 500;
   assert.equal(line().verb, 'Running the test suite twice…');
-  assert.equal(line().meta, null, 'a short command has no clock');
-  now += 29_199;
-  assert.equal(line().meta, null, 'nor one just under 30s');
-  now += 1;
-  assert.deepEqual(line().meta, { took: '30s' }, 'from 30s it counts its own time');
-  now += 1_999;
-  assert.deepEqual(line().meta, { took: '31s' }, 'in whole seconds');
+  assert.deepEqual(line().meta, { clock: '5s' }, 'a command keeps the turn clock; its own time is in the live pane');
   // The call ends, the request goes out, the thought starts: no past tense, one word.
   for (const phase of ['working', 'waiting', 'starting', 'thinking']) {
     activity = { phase };

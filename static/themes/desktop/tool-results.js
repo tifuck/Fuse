@@ -550,5 +550,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleEditCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleEditCounts, consoleEditDiff, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

@@ -41,16 +41,14 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
     if (cmd.hidden !== !arg) cmd.hidden = !arg;
-    // A long-running command's own clock, straight after its text.
-    let took = el.querySelector(":scope > .dk-live-took");
-    if (!took) {
-      took = document.createElement("span");
-      took.className = "dk-live-took";
-      el.insertBefore(took, tail);
+    // The chevron after the text: shown while the line opens the live pane.
+    if (!el.querySelector(":scope > .dk-live-chev")) {
+      const chev = document.createElement("span");
+      chev.className = "dk-live-chev";
+      chev.setAttribute("aria-hidden", "true");
+      chev.innerHTML = '<svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      el.insertBefore(chev, tail);
     }
-    const tookText = meta?.took || "";
-    if (took.textContent !== tookText) took.textContent = tookText;
-    if (took.hidden !== !tookText) took.hidden = !tookText;
     // The clock, at the line's far end.
     const clock = meta?.clock || "";
     if (tail.textContent !== clock) tail.textContent = clock;
@@ -99,68 +97,222 @@ function swapVerb(el, verb, text) {
     }, () => {});
   }
 
-// The running command's line opens to what it runs, where, its deadline and
-// its newest output. It closes by itself when another call takes the line.
-const detail = { open: false, id: "", trace: null };
-function liveDetailHtml(trace) {
-    const deadline = deps.ccTimeoutNote(trace).replace(/^\(timeout: (.*)\)$/, "Times out after $1");
+// The live pane. Opened, the status line heads a card over the reply's
+// newest calls, oldest at the top: a call that starts is the next entry, so
+// moving on opens, closes and moves nothing, and the card keeps one height.
+// Open is a remembered choice, not a call's: it holds for every later call,
+// the thinking between them, the next reply and a reload.
+const PANE_KEY = "fuse.desktop.livePane";
+const PANE_CALLS = 8;
+const PANE_LINES = 40;
+const PANE_MS = 240;
+const PANE_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+const PANE_SKIP = new Set(["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"]);
+const PANE_DOTS = '<span class="dk-fe-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+let paneOpen = false;
+try { paneOpen = localStorage.getItem(PANE_KEY) === "1"; } catch (_) {}
+
+// The calls the summary rows count (no subagent calls, no todo or tool-search
+// bookkeeping), newest last.
+function paneTraces(msg) {
+    const traces = Array.isArray(msg?.tools) ? msg.tools : [];
+    return traces.filter((trace) => trace && !PANE_SKIP.has(trace.name) && !["silent", "todo"].includes(deps.ccToolClass(trace)?.kind)).slice(-PANE_CALLS);
+  }
+
+// How a call stands, at the end of its line: running (dots, then its own
+// time), how it ended, what an edit changed, or how long it took.
+function paneState(trace) {
+    const presentation = deps.toolPresentation(trace, true);
+    if (presentation.running) {
+      if (deps.toolBackground(trace)) return { text: "in the background" };
+      const ms = Date.now() - deps.ccSince(trace);
+      return { text: ms >= 2000 ? deps.ccDuration(ms) : "", running: true };
+    }
+    if (presentation.interrupted) return { text: "Stopped" };
+    const exit = deps.shellExitCode(trace);
+    if (presentation.failed || (exit && deps.ccExitMeaning(deps.displayCommand(trace), exit).isError)) return { text: exit ? `Exit ${exit}` : "Failed", bad: true };
+    if (trace.name === "search_replace" || trace.name === "write_file") {
+      const { added, removed } = deps.consoleEditCounts(trace);
+      if (added || removed) return { html: `<span class="dk-plus">+${added}</span> <span class="dk-minus">−${removed}</span>` };
+    }
+    const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms ?? trace.latency_ms);
+    return { text: ms > 0 ? deps.humanMs(ms) : "" };
+  }
+
+// What a call shows under its line: a command's newest output, an edit's
+// change, a search's first matches or results. Anything else is its line.
+function paneBody(trace) {
+    const name = trace.name;
+    if (name === "search_replace" || name === "write_file") {
+      const diff = deps.consoleEditDiff(trace);
+      return diff ? { html: deps.consoleDiffHtml(diff, { limit: 12, numbers: false }) } : null;
+    }
+    if (deps.isSearchTool(name)) {
+      const results = Array.isArray(trace.results) ? trace.results.slice(0, 4) : [];
+      return { lines: results.map((r) => `<b>${deps.escapeHtml(deps.pageHost(r.url) || "")}</b>  ${deps.escapeHtml(r.title || r.url || "")}`) };
+    }
     const out = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
-    const tail = out ? out.split("\n").slice(-8).join("\n") : "";
-    // The same box as an opened call in the transcript (tool-rows.js).
-    return deps.callBoxHtml({
-      input: deps.displayCommand(trace), prompt: true, label: "command",
-      body: `<pre class="chat-console-out dk-live-out">${tail ? deps.renderAnsi(tail) : '<span class="dk-live-wait">Waiting for output</span>'}</pre>`,
-      state: deps.escapeHtml(deadline), host: trace.host || "", cwd: trace.cwd || "",
-    });
+    if (!out) return null;
+    const rows = out.split("\n");
+    if (["run_terminal_command", "get_command_output", "monitor"].includes(name)) return { lines: rows.slice(-PANE_LINES).map(deps.renderAnsi) };
+    if (["grep", "glob", "list_dir"].includes(name)) return { lines: rows.slice(0, 6).map(deps.escapeHtml) };
+    return null;
   }
-function renderLiveDetail(dock) {
-    let panel = dock.querySelector(":scope > [data-live-detail]");
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.className = "dk-live-detail";
-      panel.dataset.liveDetail = "";
-      dock.append(panel);
-    }
-    const html = detail.open && detail.trace ? liveDetailHtml(detail.trace) : "";
-    if (panel._html !== html) {
-      panel._html = html;
-      panel.innerHTML = html;
-    }
-    if (panel.hidden !== !html) panel.hidden = !html;
-    dock.classList.toggle("is-detail-open", Boolean(html));
+
+function paneLine(html) {
+    const line = document.createElement("div");
+    line.className = "dk-fe-ln";
+    line.innerHTML = html || " ";
+    return line;
   }
-function syncLiveDetail(dock, trace) {
-    if (!dock) return;
+
+function paneEntry() {
+    const el = document.createElement("div");
+    el.className = "dk-fe";
+    el.innerHTML = '<div class="dk-fe-head"><span class="dk-fe-ico"></span><span class="dk-fe-in"></span><span class="dk-fe-state"></span></div><div class="dk-fe-out"></div>';
+    [el._icoEl, el._inEl, el._state] = el.firstChild.children;
+    el._out = el.lastChild;
+    return el;
+  }
+
+// Brings one entry up to date in place; true when anything on it changed.
+function syncPaneEntry(el, trace) {
+    let changed = false;
+    const ico = deps.rowIconHtml(trace);
+    if (el._ico !== ico) {
+      el._ico = ico;
+      el._icoEl.innerHTML = ico;
+    }
+    const input = deps.callInput(trace);
+    const text = input.input ? `${input.prompt ? '<span class="dk-fe-pr">$ </span>' : ""}${deps.escapeHtml(deps.ccFlat(input.input))}` : deps.escapeHtml(deps.toolRowLabel(trace));
+    if (el._text !== text) {
+      el._text = text;
+      el._inEl.innerHTML = text;
+      changed = true;
+    }
+    const state = paneState(trace);
+    const stateHtml = state.html || (state.running && !state.text ? PANE_DOTS : deps.escapeHtml(state.text));
+    if (el._stateHtml !== stateHtml) {
+      el._stateHtml = stateHtml;
+      el._state.innerHTML = stateHtml;
+      el._state.classList.toggle("is-bad", Boolean(state.bad));
+      el.classList.toggle("is-done", !state.running);
+    }
+    const body = paneBody(trace);
+    if (body?.html) {
+      if (el._html === body.html) return changed;
+      el._html = body.html;
+      el._lines = null;
+      el._out.innerHTML = body.html;
+      return true;
+    }
+    if (el._html) {
+      el._html = null;
+      el._out.replaceChildren();
+    }
+    const lines = body?.lines || [];
+    const old = el._lines || [];
+    let same = 0;
+    while (same < old.length && same < lines.length && old[same] === lines[same]) same += 1;
+    if (same === old.length && same === lines.length) return changed;
+    // Output grows at its end: the lines already drawn stay (a selection in
+    // them survives); only a grown last line and the new ones are drawn.
+    if (same >= old.length - 1 && lines.length >= old.length) {
+      if (same < old.length) el._out.lastChild.innerHTML = lines[same] || " ";
+      for (let i = old.length; i < lines.length; i += 1) el._out.append(paneLine(lines[i]));
+    } else el._out.replaceChildren(...lines.map(paneLine));
+    el._lines = lines;
+    return true;
+  }
+
+// The card: the status line and, under it, the pane, which folds open and shut.
+function paneParts(dock) {
+    if (dock._pane) return dock._pane;
     const head = dock.querySelector("[data-dock-status]");
-    if (!dock._detailBound) {
-      dock._detailBound = true;
-      const toggle = (event) => {
-        if (!detail.trace || !event.target.closest("[data-dock-status]")) return;
-        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        detail.open = !detail.open;
-        head.setAttribute("aria-expanded", String(detail.open));
-        renderLiveDetail(dock);
-      };
-      dock.addEventListener("click", toggle);
-      dock.addEventListener("keydown", toggle);
+    const card = document.createElement("div");
+    card.className = "dk-live-card";
+    const fold = document.createElement("div");
+    fold.className = "dk-pane";
+    fold.id = "dk-live-pane";
+    fold.inert = true;
+    fold.innerHTML = '<div class="dk-pane-in"><div class="dk-feed" role="group" aria-label="Calls"><div class="dk-feed-lines"></div></div></div>';
+    head.before(card);
+    card.append(head, fold);
+    head.setAttribute("aria-controls", fold.id);
+    const pane = dock._pane = { head, fold, feed: fold.querySelector(".dk-feed"), lines: fold.querySelector(".dk-feed-lines"), entries: new Map(), msgId: null };
+    const toggle = (event) => {
+      if (!dock.classList.contains("is-detailable") || !event.target.closest("[data-dock-status]")) return;
+      if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      paneOpen = !paneOpen;
+      try { localStorage.setItem(PANE_KEY, paneOpen ? "1" : "0"); } catch (_) {}
+      showPane(dock, pane);
+    };
+    dock.addEventListener("click", toggle);
+    dock.addEventListener("keydown", toggle);
+    return pane;
+  }
+
+function showPane(dock, pane) {
+    const open = paneOpen && pane.entries.size > 0;
+    if (pane.head.hasAttribute("role")) pane.head.setAttribute("aria-expanded", String(open));
+    if (dock.classList.contains("is-pane-open") === open) return;
+    dock.classList.toggle("is-pane-open", open);
+    pane.fold.inert = !open;
+    // A followed transcript keeps its end in view while the pane folds.
+    followLiveDockSlide(PANE_MS);
+  }
+
+function syncLivePane(dock, msg) {
+    const pane = paneParts(dock);
+    if (pane.msgId !== msg.id) {
+      pane.msgId = msg.id;
+      pane.entries.clear();
+      pane.lines.replaceChildren();
     }
-    const id = trace ? String(trace.id || deps.executionIdentity(trace)) : "";
-    if (id !== detail.id) Object.assign(detail, { open: false, id });
-    detail.trace = trace;
-    dock.classList.toggle("is-detailable", Boolean(trace));
-    if (trace) {
-      if (head.getAttribute("role") !== "button") {
-        head.setAttribute("role", "button");
-        head.tabIndex = 0;
+    // Changes slide: what was on screen moves to where it now sits.
+    const moving = dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
+    const before = moving ? pane.lines.getBoundingClientRect().top : 0;
+    const keep = new Set();
+    const added = [];
+    let changed = false;
+    paneTraces(msg).forEach((trace) => {
+      const key = String(trace.id || deps.executionIdentity(trace));
+      keep.add(key);
+      let el = pane.entries.get(key);
+      if (!el) {
+        el = paneEntry();
+        pane.entries.set(key, el);
+        pane.lines.append(el);
+        added.push(el);
       }
-      head.setAttribute("aria-expanded", String(detail.open));
-    } else if (head.hasAttribute("role")) {
-      head.removeAttribute("role");
-      head.removeAttribute("tabindex");
-      head.removeAttribute("aria-expanded");
+      if (syncPaneEntry(el, trace)) changed = true;
+    });
+    for (const [key, el] of pane.entries) {
+      if (keep.has(key)) continue;
+      el.remove();
+      pane.entries.delete(key);
+      changed = true;
     }
-    renderLiveDetail(dock);
+    // Read from the top until it fills, then from the newest line up.
+    pane.feed.classList.toggle("is-full", pane.lines.offsetHeight > pane.feed.clientHeight);
+    if (moving && changed) {
+      pane.lines.getAnimations().forEach((a) => a.cancel());
+      const dy = before - pane.lines.getBoundingClientRect().top;
+      if (Math.abs(dy) > 0.5) pane.lines.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: PANE_MS, easing: PANE_EASE });
+      added.forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: PANE_MS, easing: "ease-out" }));
+    }
+    const detailable = pane.entries.size > 0;
+    dock.classList.toggle("is-detailable", detailable);
+    if (detailable && pane.head.getAttribute("role") !== "button") {
+      pane.head.setAttribute("role", "button");
+      pane.head.tabIndex = 0;
+    } else if (!detailable && pane.head.hasAttribute("role")) {
+      pane.head.removeAttribute("role");
+      pane.head.removeAttribute("tabindex");
+      pane.head.removeAttribute("aria-expanded");
+    }
+    showPane(dock, pane);
   }
 
 function setLivePhase(dock, phase) {
@@ -310,10 +462,10 @@ function liveDockMotionMs() {
     return 0;
   }
 
-function followLiveDockSlide() {
+function followLiveDockSlide(ms = liveDockMotionMs()) {
     if (!deps.thread || !deps.stickToBottom) return;
     if (deps.liveDockFollowFrame) cancelAnimationFrame(deps.liveDockFollowFrame);
-    const until = performance.now() + liveDockMotionMs();
+    const until = performance.now() + ms;
     const step = (now) => {
       if (deps.stickToBottom && deps.thread) deps.scrollThread();
       if (now < until) deps.liveDockFollowFrame = requestAnimationFrame(step);
@@ -397,7 +549,7 @@ function syncLiveDock() {
       {
         const line = deps.formatConsoleLiveStatus(msg, groups);
         setLiveLabelText(deps.liveDockLabel, line.verb, line.meta, line.arg);
-        syncLiveDetail(deps.liveDock, line.command || null);
+        syncLivePane(deps.liveDock, msg);
       }
       if (instant) {
         if (deps.liveDockShowFrame) cancelAnimationFrame(deps.liveDockShowFrame);

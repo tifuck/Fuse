@@ -355,5 +355,5 @@ const TOOL_KIND = {
     read_transcript: "read",
   };
 
-  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, callBoxHtml, rowIconHtml, ROW_CHEV, toolRowLabel, toolStepHtml, TOOL_KIND };
+  return { toolImage, toolImageInfo, toolImageHtml, toolDetailHtml, detailSectionHtml, callBoxHtml, callInput, rowIconHtml, ROW_CHEV, toolRowLabel, toolStepHtml, TOOL_KIND };
 }

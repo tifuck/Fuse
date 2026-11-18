@@ -151,8 +151,7 @@ function syncConsoleClocks(root) {
     root.querySelectorAll("[data-cc-clock]").forEach((el) => {
       const since = Number(el.dataset.since) || 0;
       const kind = el.dataset.ccClock;
-      const text = kind === "think" ? ccThinkClock(Number(el.dataset.base) || 0, since)
-        : kind === "work" ? deps.ccDuration(Math.max(1000, (Number(el.dataset.base) || 0) + (since ? Date.now() - since : 0)))
+      const text = kind === "work" ? deps.ccDuration(Math.max(1000, (Number(el.dataset.base) || 0) + (since ? Date.now() - since : 0)))
         : kind === "suffix" ? ccShellSuffix(since, Number(el.dataset.lines) || 0)
         : ccElapsedText(since);
       if (el.textContent !== text) el.textContent = text;
@@ -188,12 +187,9 @@ function rollingCountHtml(id, n) {
     return `<b class="dk-roll" data-from="${roll.from}" style="--dk-roll-at:-${age}ms"><span>${n}</span></b>`;
   }
 
-function ccGroupHtml(group, msg, live, active, openMap, thinking) {
-    // A live thought's line keeps the key it will have once the thought lands.
-    const key = "cgroup-" + (group.items[0]?.key || `think-${group.liveThought}`);
-
-
-    const open = group.items.length > 0 && group.items.some((item) => deps.stepOpenAt(openMap, "cgroup-" + item.key));
+function ccGroupHtml(group, live, openMap) {
+    const key = "cgroup-" + group.items[0].key;
+    const open = group.items.some((item) => deps.stepOpenAt(openMap, "cgroup-" + item.key));
     let search = 0;
     let readOps = 0;
     let list = 0;
@@ -202,8 +198,6 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     let gitOpBash = 0;
     let plus = 0;
     let minus = 0;
-    let thought = false;
-    let errored = false;
     let failedCalls = 0;
     let stillRunning = 0;
     let stillCommands = false;
@@ -221,7 +215,6 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
       if (item.type !== "tool") return;
       const trace = item.entry.trace;
       const presentation = deps.toolPresentation(trace, live);
-      if (presentation.failed) errored = true;
       // A background command still running is not "ran" yet: it is counted
       // apart, "(1 still running)", and joins the count when it ends.
       if (presentation.running) {
@@ -272,23 +265,15 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         readOps += 1;
       }
     });
-    if (active && thinking && !group.items.length) thought = true;
     // Path reads count distinct files (two reads of one path are one file);
     // shell reads (cat, head, …) have no path to dedupe and count their calls.
     // Both sides always count: a path read plus a shell read is two files.
     const reads = readPaths.size + readOps;
     const images = imagePaths.size;
     const shells = Math.max(0, bash - gitOpBash);
-    if (!thought && !search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size && !others.size && !stillRunning) return "";
+    if (!search && !reads && !images && !list && !shells && !gitOpBash && !todos && !edited.size && !wrote.size && !others.size && !stillRunning) return "";
 
     const parts = [];
-    if (thought) {
-      const since = active && thinking ? thinking.since : 0;
-      const clock = since
-        ? `<b data-cc-clock="think" data-base="0" data-since="${since}">${ccThinkClock(0, since)}</b>`
-        : `<b>${ccThinkClock(0, 0)}</b>`;
-      parts.push(`${active ? "Thinking" : "Thought"} for ${clock}`);
-    }
     const add = (verb, rest) => {
       const word = parts.length ? verb : verb.charAt(0).toUpperCase() + verb.slice(1);
       parts.push(rest ? `${deps.escapeHtml(word)} ${rest}` : deps.escapeHtml(word));
@@ -318,8 +303,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     // Desktop: the line never names the newest call; it counts them.
     const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
     const noun = stillCommands ? (stillRunning === 1 ? "command" : "commands") : (stillRunning === 1 ? "monitor" : "monitors");
-    const label = !parts.length && stillRunning ? `${stillRunning} ${noun} still running`
-      : parts.join(", ") + (thought && active ? "…" : "");
+    const label = !parts.length && stillRunning ? `${stillRunning} ${noun} still running` : parts.join(", ");
     // The diff counts end the line even when its text is cut short.
     const diffstat = stat && parts.length ? `<span class="dk-diffstat">${stat.trim()}</span>` : "";
     // Ledger: the line truncates, its tallies stay pinned at the end.
@@ -329,30 +313,13 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
     const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
-      : item.type === "live-think"
-        ? ccGroupHtml({ items: [], liveThought: item.segmentIndex }, msg, live, active, openMap, thinking)
-        : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
-    // Only a streaming thought's line is live; a summary line is settled text.
-    const state = active && !group.items.length ? `is-running${errored ? " is-errored" : ""}` : "is-done";
-    // A streaming thought: the transcript fills [data-reason-preview] and
-    // keeps it pinned to the newest line (thinking-disclosure.js).
-    if (!group.items.length && group.liveThought !== undefined) {
-      return (
-        `<li class="chat-step is-console-group is-console-live-think ${state}" data-step="think-${group.liveThought}">` +
-        `<span class="chat-step-node" aria-hidden="true"></span>` +
-        `<div class="chat-step-main">` +
-        `<div class="chat-step-head"><button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="false"><span class="chat-step-label">${label}</span></button></div>` +
-        `<div class="chat-think-window"><div class="chat-console-think-peek" data-reason-preview="${group.liveThought}" role="group" aria-label="Live thinking"><div class="chat-console-thought chat-think-markdown"></div></div></div>` +
-        `</div></li>`
-      );
-    }
+      : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     return (
-      `<li class="chat-step is-console-group ${state}${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<li class="chat-step is-console-group is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
-      `<div class="chat-step-head">` + (group.items.length
-        ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${title}"><span class="chat-step-label">${label}</span>${diffstat}${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</button>`
-        : `<div class="chat-step-toggle" title="${title}"><span class="chat-step-label">${label}</span>${diffstat}${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</div>`) + `</div>` +
+      `<div class="chat-step-head">` +
+      `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open ? "true" : "false"}" title="${title}"><span class="chat-step-label">${label}</span>${diffstat}${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</button>` + `</div>` +
       // A failed or interrupted member says so on its own row once the line
       // is opened; the folded line is only its summary.
       `<div class="chat-console-bundle"><ol class="chat-timeline">${rows}</ol></div>` +
@@ -365,7 +332,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
 // the newest included; it opens to one line per call, thoughts among them.
 // Only reply text ends a line. Subagent calls stay out: the agents pane
 // shows them.
-function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
+function consoleActivityEntriesHtml(entries, msg, live) {
     const stepOpen = msg.stepOpen || {};
     const times = deps.consoleFreezeThoughtTimes(msg, live);
     const segs = deps.assistantSegments(msg);
@@ -385,11 +352,10 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
         // Thinking hidden: the status line says when the model is thinking.
         if (!deps.showThinking) continue;
         const last = run[run.length - 1];
+        // A thought still streaming is only the status line's one word; it
+        // joins the transcript once it ends.
+        if (streamingLast && last.segmentIndex === lastReasonIndex) continue;
         const key = `think-${last.segmentIndex}`;
-        if (streamingLast && last.segmentIndex === lastReasonIndex) {
-          items.push({ type: "live-think", key, segmentIndex: last.segmentIndex });
-          continue;
-        }
         const text = run.map((item) => String(item.text || "").trim()).filter(Boolean).join("\n\n");
         if (text) items.push({ type: "think", key, text, ms: times[key] || 1000, segmentIndex: last.segmentIndex });
         continue;
@@ -406,15 +372,11 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
       if (cls?.kind === "silent" && !deps.toolPresentation(entry.trace, live).interrupted) continue;
       items.push({ type: "tool", entry, cls, key: deps.toolKey(entry.trace, entry.index) });
     }
-    const clock = msg._thoughtClock || { liveStart: 0 };
-    const thinking = { since: Date.now() - Math.max(0, (deps.liveElapsedSeconds(msg, live) || 0) * 1000 - (clock.liveStart || 0)) };
     // No call yet: a thought is its own line, since the summary counts calls.
     if (!items.some((item) => item.type === "tool")) {
-      return items.map((item) => item.type === "live-think"
-        ? ccGroupHtml({ items: [], liveThought: item.segmentIndex }, msg, live, Boolean(blockLive), stepOpen, thinking)
-        : thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
+      return items.map((item) => thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(stepOpen, item.key))).join("");
     }
-    return ccGroupHtml({ items }, msg, live, Boolean(blockLive), stepOpen, thinking);
+    return ccGroupHtml({ items }, live, stepOpen);
   }
 
 // A settled thought: one line ("Thought for 4s" and its first words) that

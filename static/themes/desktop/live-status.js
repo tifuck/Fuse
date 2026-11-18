@@ -15,27 +15,9 @@ function formatActivityElapsed(secondsF, live) {
     return ` for ${formatActivityClock(secondsF)}`;
   }
 
-// The thought's newest heading ("**Checking the FK delete rules**" or a
-// markdown heading line), which says what the model is working out.
-function thoughtHeading(text) {
-    const lines = String(text || "").split("\n");
-    for (let i = lines.length - 1; i >= 0; i -= 1) {
-      const m = /^\s*(?:#{1,6}\s+(.+?)\s*#*|\*\*(.+?)\*\*:?)\s*$/.exec(lines[i]);
-      const heading = m ? deps.ccFlat(m[1] || m[2]).replace(/[\s.:…]+$/, "") : "";
-      if (heading) return heading;
-    }
-    return "";
-  }
-
+// A thought is one word, whatever it says: the line never streams it.
 function ccThinkingState(msg, phase) {
-    if (phase !== "thinking") return "";
-    // The newest thought: its run of reasoning segments.
-    const segs = Array.isArray(msg.segments) ? msg.segments : [];
-    let end = segs.length - 1;
-    while (end >= 0 && segs[end]?.type !== "reasoning") end -= 1;
-    let text = "";
-    for (let k = end; k >= 0 && segs[k]?.type === "reasoning"; k -= 1) text = `${segs[k].text || ""}\n${text}`;
-    return thoughtHeading(segs.length ? text : msg.reasoning) || "thinking";
+    return phase === "thinking" ? "thinking" : "";
   }
 
 // A call by what it acts on: "Reading app/main.py", "Editing static/chat.js".
@@ -67,28 +49,22 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const elapsed = opts && opts.seconds != null ? opts.seconds : deps.liveElapsedSeconds(msg, true);
     const seconds = Math.max(0, Math.floor(elapsed || 0));
     const line = heldLine(msg, liveLine(msg, status), status.phase === "stopping");
-    // The line names what is happening; only the turn's clock follows it. A
-    // running command has its own clock instead, once it has run a while.
-    const meta = line.command ? (line.took ? { took: line.took } : null)
-      : seconds >= 1 ? { clock: deps.ccDuration(seconds * 1000) } : null;
+    // The line names what is happening; the turn's clock ends it, whatever is
+    // running. A call's own time is in the live pane (live-dock.js).
+    const meta = seconds >= 1 ? { clock: deps.ccDuration(seconds * 1000) } : null;
     return { ...line, meta };
   }
 
-// A command's clock shows only once it has run this long, then counts up.
-const COMMAND_CLOCK_MS = 30_000;
-
 function liveLine(msg, status) {
     // A running command: what it is for ("Running the unit tests"), else the
-    // command in parentheses ("Running command (npm test)"). Opening the line
+    // command in parentheses ("Running command (npm test)"). The live pane
     // shows the command. It joins the summary line above once it ends.
     const command = status.phase !== "thinking" && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
     const arg = command ? deps.ccFlat(deps.displayCommand(command)) : "";
     if (arg) {
       const description = deps.ccFlat(command.description);
       const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      const ms = Date.now() - deps.ccSince(command);
-      const took = ms >= COMMAND_CLOCK_MS ? deps.ccDuration(Math.floor(ms / 1000) * 1000) : "";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg, took, command };
+      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg };
     }
     const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
     const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : "Working";
@@ -154,5 +130,5 @@ const CC_SPINNER_STATES = {
     read_artifact: "reading artifact", search_models: "finding models",
   };
 
-  return { formatActivityClock, formatActivityElapsed, thoughtHeading, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };
+  return { formatActivityClock, formatActivityElapsed, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };
 }
