@@ -153,7 +153,9 @@ html:where(.is-chat-root[data-chat-view="console"]).is-chat-root,
   padding: 0.75rem 0 2rem;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-log[hidden] { display: none; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-turn { min-width: 0; position: relative; }
+/* A turn off screen skips style, layout and paint; once drawn it keeps its
+   last height, so the scrollbar and the jump to the bottom hold still. */
+:where(html.is-chat-root[data-chat-view="console"]) .chat-turn { min-width: 0; position: relative; content-visibility: auto; contain-intrinsic-size: auto 240px; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-turn.is-user {
   display: flex;
   flex-direction: column;
