@@ -1,6 +1,7 @@
 """Streaming parse: deltas split across provider frames land intact in the
 stored reply, the reasoning, and the tool calls the executor receives."""
-from app import chats
+from app import chat_output, chats
+from app.chat_generation import parsing
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
 
 from ._support import fake_tools, split_frames, tool_thread
@@ -86,3 +87,45 @@ def test_special_tokens_never_reach_the_stored_reply(fresh_db):
         thread_id, _ = run_async(run_turn(uid, "q"))
 
     assert chats.get_thread(uid, thread_id)["messages"][-1]["content"] == "Final answer"
+
+
+def _stream(*deltas):
+    out = chat_output.Output({})
+    for delta in deltas:
+        out.apply({"choices": [{"delta": delta}]})
+    return out.stored(light=True)
+
+
+def test_think_tags_in_code_or_mid_reply_stay_in_the_reply():
+    # Prose that names a tag, even split across frames, is not a thought: one
+    # opens only where the round's text starts.
+    reply = _stream({"content": "Qwen wraps its thoughts in `<thi"}, {"content": "nk>` tags. Strip them."})
+    assert reply["content"] == "Qwen wraps its thoughts in `<think>` tags. Strip them."
+    assert reply["reasoning"] == ""
+    # Inside a thought, a closing tag quoted in code (its span still open at
+    # a frame end) does not end it; the real one does.
+    reply = _stream({"content": "<think>the tag is `</thi"}, {"content": "nk"}, {"content": ">` here\n</think>Answer."})
+    assert reply["reasoning"] == "the tag is `</think>` here\n"
+    assert reply["content"] == "Answer."
+
+
+def test_reasoning_sent_under_two_keys_is_kept_once():
+    reply = _stream({"reasoning_content": "plan", "reasoning": "plan"}, {"content": "ok"})
+    assert reply["reasoning"] == "plan"
+
+
+def test_named_tool_call_deltas_append_fragments_that_parse_alone():
+    calls = {}
+    for fragment in ('{"a": ', "{}", "}"):
+        parsing._take_calls(calls, [{"index": 0, "function": {"name": "web_search", "arguments": fragment}}])
+    assert calls[0]["function"]["arguments"] == '{"a": {}}'
+    # A named delta that resends the whole arguments so far replaces them.
+    calls = {}
+    for fragment in ('{"a": ', '{"a": 1}'):
+        parsing._take_calls(calls, [{"index": 0, "function": {"name": "web_search", "arguments": fragment}}])
+    assert calls[0]["function"]["arguments"] == '{"a": 1}'
+
+
+def test_text_tool_call_is_held_from_its_first_unclosed_opener():
+    visible, held = parsing.drop_tool_xml('hi <tool_call>{"name": "a" <tool_call>{"name"')
+    assert (visible, held) == ("hi ", '<tool_call>{"name": "a" <tool_call>{"name"')

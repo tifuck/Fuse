@@ -8,6 +8,7 @@ import re
 import time
 
 from . import chat_schema, chats
+from .chat_generation.parsing import in_md_code
 
 
 _THINK = re.compile(r"</?(?:think|thinking|thought|reasoning)>", re.I)
@@ -56,6 +57,10 @@ class Output:
         self.message = msg
         self._think_inside = False
         self._think_pending = ""
+        # A think tag opens a thought only before the round's first visible
+        # text; _think_from is where the open thought starts in reasoning.
+        self._think_ready = True
+        self._think_from = 0
         self._xml_pending = ""
         self._last_source = None
         # Aggregates (content/reasoning) are maintained incrementally on the
@@ -181,18 +186,49 @@ class Output:
         self._xml_pending = ""
         offset = 0
         for match in _THINK.finditer(data):
-            self._append_text("reasoning" if self._think_inside else "content", data[offset:match.start()], "tagged")
-            self._think_inside = not match[0].startswith("</")
+            toggles = self._think_toggles(data, offset, match)
+            if toggles is None:
+                # A code span before the closing tag may still close: hold
+                # from the tag until its line settles.
+                self._append_tagged(data[offset:match.start()])
+                self._think_pending = data[match.start():]
+                self._append_text("reasoning", self._think_pending, "tagged")
+                return
+            if not toggles:
+                continue
+            self._append_tagged(data[offset:match.start()])
+            self._think_inside = not self._think_inside
+            self._think_from = len(self.message.get("reasoning") or "")
             offset = match.end()
         rest = data[offset:]
         last_lt = rest.rfind("<")
         if last_lt >= 0 and ">" not in rest[last_lt:]:
-            self._append_text("reasoning" if self._think_inside else "content", rest[:last_lt], "tagged")
+            self._append_tagged(rest[:last_lt])
             self._think_pending = rest[last_lt:]
             self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged")
         else:
-            self._append_text("reasoning" if self._think_inside else "content", rest, "tagged")
+            self._append_tagged(rest)
         self._scrub_tool_xml()
+
+    def _append_tagged(self, text):
+        if not self._think_inside and text.strip():
+            self._think_ready = False
+        self._append_text("reasoning" if self._think_inside else "content", text, "tagged")
+
+    def _think_toggles(self, data, offset, match):
+        """Whether a think tag in the reply opens or closes a thought; None
+        while that cannot be told yet. Reasoning models open one where a
+        round's text starts, so a tag after visible text is prose naming it
+        (left as written, never a switch that hides the rest of the reply). A
+        thought closes at a closing tag outside markdown code."""
+        closing = match[0].startswith("</")
+        if not self._think_inside:
+            return not closing and self._think_ready and not data[offset:match.start()].strip()
+        if not closing:
+            return False
+        head = (self.message.get("reasoning") or "")[self._think_from:]
+        quoted = in_md_code(head + data[offset:], len(head) + match.start() - offset)
+        return None if quoted is None else not quoted
 
     def _scrub_tool_xml(self):
         if self._think_inside:
@@ -247,6 +283,7 @@ class Output:
         }]
         self._think_inside = False
         self._think_pending = ""
+        self._think_ready = True
         self._xml_pending = ""
         self._last_source = None
         self._agg_dirty = False
@@ -279,6 +316,7 @@ class Output:
         self._round_tool_chars = 0
         self._stream_out = 0
         self._round_chars = 0
+        self._think_ready = True
         self._reset_live()
         self._draft = None
 
@@ -540,18 +578,20 @@ class Output:
         delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
         message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
         content = _take(delta.get("content")) or ("" if choice.get("delta") is not None else _take(message.get("content")))
-        reasoning = [_take(delta.get(key)) or _take(message.get(key)) or _take(obj.get(key))
-                     for key in ("reasoning_content", "reasoning", "thinking", "reasoning_text")]
-        if content or any(reasoning):
+        # Some providers (vllm-mlx) send the same text under two keys: the
+        # first one set is the reasoning, as consume reads it.
+        reasoning = next((text for text in (_take(delta.get(key)) or _take(message.get(key)) or _take(obj.get(key))
+                                            for key in ("reasoning_content", "reasoning", "thinking", "reasoning_text"))
+                          if text), "")
+        if content or reasoning:
             # Output supersedes a retry notice. Dropping it before appending
             # lets a resumed stream continue the same text segment.
             while msg["segments"] and _is_notice(msg["segments"][-1]):
                 msg["segments"].pop()
         content = self._restored("content", content)
-        reasoning = [self._restored(("reasoning", i), text) for i, text in enumerate(reasoning)]
+        reasoning = self._restored("reasoning", reasoning)
         pending = self._remove_pending()
-        for text in reasoning:
-            self._append_text("reasoning", text, "native")
+        self._append_text("reasoning", reasoning, "native")
         self._append_content(content, pending)
         self._ensure_aggregates()
         if max(len(msg["content"]), len(msg["reasoning"])) > chats.ASSISTANT_CONTENT_MAX:
