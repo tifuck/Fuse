@@ -17,6 +17,8 @@ const TERM = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M3 4.5l3.
 const EYE = '<svg viewBox="0 0 16 16" width="16" height="16"><path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8s-2.3 4.2-6.2 4.2S1.8 8 1.8 8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 // Toggles whose sheet may close while they sit in a closed menu or a folded bar.
 const SHEET_TOGGLES = "[data-skills-toggle], [data-view-toggle], [data-memory-toggle], [data-artifact-toggle]";
+// Text that ticks on its own: row clocks, ages and spinner glyphs.
+const TICKS = ".chat-agents-time, [data-age-stamp], .chat-console-spin";
 
 function load() {
   try {
@@ -47,6 +49,8 @@ export function create(deps) {
   let justDragged = false;
   const inertSaved = new Map();
   const seen = { terminal: "" };
+  let chromeFrame = 0;
+  let watch = null;
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
   const setAttr = (el, name, value) => { if (el && el.getAttribute(name) !== value) el.setAttribute(name, value); };
@@ -519,13 +523,17 @@ export function create(deps) {
     });
     document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.("[data-history-item]")) rowFocus = null; }, true);
     const historyList = q("[data-history-list]");
-    if (historyList) new MutationObserver(() => {
+    if (historyList) new MutationObserver((records) => {
+      if (records.every(({ target }) => target.closest?.(TICKS))) return;
       if (!rowFocus || (document.activeElement && document.activeElement !== document.body)) return;
       const item = [...historyList.querySelectorAll("[data-history-item]")].find((el) => rowKey(el) === rowFocus.key);
       if (item) rowControls(item)[rowFocus.at]?.focus({ preventScroll: true });
     }).observe(historyList, { childList: true, subtree: true });
-    // Rows, lists and the todo tray change outside the run clock.
-    const watch = new MutationObserver(() => syncChrome());
+    // Rows, lists and the todo tray change outside the run clock; a clock or
+    // spinner ticking in a row changes nothing drawn here.
+    watch = new MutationObserver((records) => {
+      if (records.some(({ target }) => !target.closest?.(TICKS))) scheduleChrome();
+    });
     const rail = q("[data-theme-rail]");
     if (rail) watch.observe(rail, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"] });
     watch.observe(deps.root, { attributes: true, attributeFilter: ["class"] });
@@ -545,7 +553,7 @@ export function create(deps) {
       });
     }).observe(deps.root, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["aria-expanded"] });
     const list = q("[data-history-list]");
-    if (list) new MutationObserver(syncPins).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-pinned", "aria-current"] });
+    if (list) new MutationObserver((records) => { if (records.some(({ target }) => !target.closest?.(TICKS))) syncPins(); }).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-pinned", "aria-current"] });
     const picker = q("[data-wallpaper-picker]");
     if (picker) new MutationObserver(() => {
       if (!picker.hidden || !pickerReturn) return;
@@ -678,7 +686,9 @@ export function create(deps) {
     setText(q("[data-theme-term-name]"), command ? `$ ${command}` : "");
     const output = String(job.output || job.preview || "");
     const key = `${jobId(job)}:${output.length}`;
-    if (key !== seen.terminal) {
+    // Drawn only where it shows: the output page (every page, on a phone's sheet).
+    const shown = store.open && (page === "output" || mode() === "sheet");
+    if (shown && key !== seen.terminal) {
       seen.terminal = key;
       const pre = q("[data-theme-term-out]");
       if (pre) {
@@ -766,8 +776,20 @@ export function create(deps) {
     if (btn && btn.title !== title) btn.title = title;
   }
 
+  // Runtime ticks and DOM changes ask for a sync; at most one runs a frame.
+  function scheduleChrome() {
+    if (!chromeFrame) chromeFrame = requestAnimationFrame(() => { chromeFrame = 0; syncChrome(); });
+  }
+
+  // A clock tick changes only main's time while a run is on and a live
+  // command's age; idle, it has nothing to redraw.
+  function tickChrome() {
+    if (deps.streaming || deps.runIsActive?.(deps.activeRun) || (deps.jobsRows || []).some(jobLive)) scheduleChrome();
+  }
+
   function syncChrome() {
     if (!deps.root) return;
+    if (chromeFrame) { cancelAnimationFrame(chromeFrame); chromeFrame = 0; }
     bind();
     const artifact = deps.root.classList.contains("is-artifact");
     // An artifact takes the window: an open Activity steps aside and comes back after.
@@ -840,7 +862,9 @@ export function create(deps) {
     }
     if (open) baseSig = sig;
     toggle?.classList.toggle("has-notes", sig !== baseSig);
+    // What this sync wrote is drawn already: it must not ask for another.
+    watch?.takeRecords();
   }
 
-  return { syncChrome };
+  return { scheduleChrome, syncChrome, tickChrome };
 }

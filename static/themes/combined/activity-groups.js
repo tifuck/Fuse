@@ -198,12 +198,23 @@ function syncConsoleClocks(root) {
     });
   }
 
+// The live clock asks workClocksLive, then syncWorkClocks, on each tick:
+// one search of the page serves both.
+let workClocks = null;
+function liveWorkClocks() {
+    if (!workClocks) {
+      workClocks = document.querySelectorAll('[data-cc-clock="work"]');
+      queueMicrotask(() => { workClocks = null; });
+    }
+    return workClocks;
+  }
+
 function workClocksLive() {
-    return Boolean(document.querySelector('[data-cc-clock="work"]'));
+    return liveWorkClocks().length > 0;
   }
 
 function syncWorkClocks() {
-    document.querySelectorAll('[data-cc-clock="work"]').forEach((el) => {
+    liveWorkClocks().forEach((el) => {
       const base = Number(el.dataset.base) || 0;
       const since = Number(el.dataset.since) || 0;
       const text = deps.ccDuration(Math.max(1000, base + (since ? Date.now() - since : 0)));
