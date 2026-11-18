@@ -27,10 +27,10 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap {
   font: 400 calc(0.8625rem * var(--chat-text-scale, 1))/1.6 var(--sans);
 }
 
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout) * {
+html[data-chat-font] .chat-console-out:not(.is-web, .is-structured), html[data-chat-font] .chat-console-out:not(.is-web, .is-structured) *,
+html[data-chat-font] .chat-console-preview, html[data-chat-font] .chat-console-preview *,
+html[data-chat-font] .chat-console-lines, html[data-chat-font] .chat-console-lines *,
+html[data-chat-font] .chat-console-stdout, html[data-chat-font] .chat-console-stdout * {
   font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
 }
 

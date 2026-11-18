@@ -32,10 +32,10 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-recap {
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-recap-copy { grid-column: 2; min-width: 0; }
 
 
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout) * {
+html[data-chat-font] .chat-console-out:not(.is-web, .is-structured), html[data-chat-font] .chat-console-out:not(.is-web, .is-structured) *,
+html[data-chat-font] .chat-console-preview, html[data-chat-font] .chat-console-preview *,
+html[data-chat-font] .chat-console-lines, html[data-chat-font] .chat-console-lines *,
+html[data-chat-font] .chat-console-stdout, html[data-chat-font] .chat-console-stdout * {
   font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
 }
 

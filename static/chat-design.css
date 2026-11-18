@@ -109,15 +109,23 @@ html[data-chat-theme="ivory"] {
 }
 html[data-chat-scheme="light"] { --diff-add: #2c8a4b; --diff-del: #c8453b; --call-done: #2c8a4b; --call-fail: #c8453b; }
 html[data-chat-theme="custom"] { --sans: "Bricolage Grotesque", sans-serif; --mono: "Red Hat Mono", ui-monospace, monospace; }
-html:where(:not(.is-chat-root))[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
-  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output),
-html:where(:not(.is-chat-root))[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
-  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output) * {
+/* One plain selector per element, not a :is() list over "*": the ancestor
+   filter then rejects them on every element outside code at once. */
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings pre, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings pre *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings code, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings code *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings kbd, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings kbd *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings samp, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings samp *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .hljs, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .hljs *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-code, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-code *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-out, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-out *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-cmd, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-cmd *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-command, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-tool-command *,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-terminal-output, html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-terminal-output * {
   font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
 }
 /* A code block's language label and copy button are chrome, not code. */
-html:where(:not(.is-chat-root))[data-chat-font] .chat-code .chat-code-head,
-html:where(:not(.is-chat-root))[data-chat-font] .chat-code .chat-code-head * { font-family: var(--mono) !important; }
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-code .chat-code-head,
+html:where(:not(.is-chat-root))[data-chat-font] body.is-settings .chat-code .chat-code-head * { font-family: var(--mono) !important; }
 
 :where(html:not(.is-chat-root)) body.is-chat,
 :where(html:not(.is-chat-root)) body.is-settings { background: var(--ink); }

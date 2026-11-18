@@ -1,9 +1,17 @@
 /* combined theme copy of static/chat-design.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
-html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
-  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output),
-html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] :is(pre, code, kbd, samp, .hljs, .chat-code,
-  .chat-tool-out, .chat-tool-cmd, .chat-tool-command, .chat-terminal-output) * {
+/* One plain selector per element, not a :is() list over "*": the ancestor
+   filter then rejects them on every element outside code at once. */
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] pre, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] pre *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] code, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] code *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] kbd, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] kbd *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] samp, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] samp *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .hljs, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .hljs *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-code, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-code *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-out, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-out *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-cmd, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-cmd *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-command, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-tool-command *,
+html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-terminal-output, html:where(.is-chat-root[data-chat-view="combined"])[data-chat-font] .chat-terminal-output * {
   font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
 }
 /* A code block's language label and copy button are chrome, not code. */
