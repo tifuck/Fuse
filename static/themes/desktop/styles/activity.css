@@ -94,7 +94,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The transcript keeps a centered column with margins beside it. */
   &[data-theme-insp="dock"][data-theme-rail-state="open"] { --chat-col: clamp(32rem, calc(100vw - var(--dk-side-w) - var(--dk-insp-open) - 8rem), 90rem); }
   &[data-theme-insp="dock"]:not([data-theme-rail-state="open"]) .dk-insp { visibility: hidden; }
-  &[data-theme-insp="dock"].dk-slide:not([data-theme-rail-state="open"]) .dk-insp { transition: visibility 0s linear var(--dk-slide, 260ms); }
   /* Over the chat: a panel from the right edge. */
   &[data-theme-insp="over"] .dk-insp {
     position: fixed;
@@ -293,9 +292,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-fold svg { color: var(--dk-mute); transition: transform 0.22s var(--dk-ease); }
   & .dk-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
   & .dk-grp-sub { flex: 1; min-width: 0; overflow: hidden; color: var(--dk-mute); font: 12.5px var(--sans); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-grp-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 260ms var(--dk-ease); }
+  & .dk-grp-body { display: grid; grid-template-rows: 1fr; }
   & .dk-grp.is-folded .dk-grp-body { grid-template-rows: 0fr; }
-  & .dk-grp-in { min-height: 0; overflow: hidden; }
+  & .dk-grp-in { min-height: 0; overflow: hidden; transition: opacity 200ms ease; }
+  & .dk-grp.is-folded .dk-grp-in { opacity: 0; }
   & .dk-seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 8px; background: var(--dk-raise); }
   & .dk-seg button {
     height: 24px;
@@ -772,7 +772,7 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & :is(.dk-ldot, .chat-agents-dot)::after { animation: none; }
-    & :is(.dk-insp, .dk-scrim, .dk-grp-body, .dk-fold svg, .dk-ptab-ink, .dk-ar, .dk-jr, .chat-artifact, .dk-pbar i, .dk-meter > i),
+    & :is(.dk-insp, .dk-scrim, .dk-grp-in, .dk-fold svg, .dk-ptab-ink, .dk-ar, .dk-jr, .chat-artifact, .dk-pbar i, .dk-meter > i),
     & > .chat-stage { transition: none !important; }
   }
 }

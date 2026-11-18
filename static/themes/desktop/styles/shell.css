@@ -84,8 +84,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & :is(.dk-ib, .dk-tb, .dk-act, .dk-code, .dk-open, .dk-more, .dk-tab, .dk-send, .dk-mi, .dk-card-x, .dk-act-btn, .dk-title-btn, .dk-seg button):focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
 
   /* ---- Window layout: sidebar | stage | artifact | Activity ----
-     The sidebar is a column at every width above a phone: opening it (a
-     click, or the hover peek) widens its column and the chat slides over.
+     The sidebar is a column at every width above a phone. Opening it
+     switches the columns at once (animating them would lay the whole
+     window out every frame) and the list slides into its column; the
+     hover peek leaves the columns alone and slides the list over the chat
+     (base/chat-history.css).
      Activity is a column only when docked (activity.css says when); the
      artifact's column is activity.css's too. */
   @media (min-width: 801px) {
@@ -95,21 +98,19 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
       grid-template-rows: minmax(0, 1fr);
       overflow: clip;
     }
-    /* chrome.js adds dk-slide once the page has settled: loading never slides. */
-    &.dk-slide { transition: grid-template-columns var(--dk-slide) var(--ease-glide); }
-    &.is-artifact-resizing { transition: none; }
-    &.history-collapsed:not(.history-peek) { --dk-side-w: 0px; }
+    &.history-collapsed { --dk-side-w: 0px; }
     &[data-theme-insp="dock"][data-theme-rail-state="open"] { --dk-insp-w: var(--dk-insp-open); }
     & .chat-history { grid-row: 1; justify-self: end; width: clamp(12.5rem, var(--chat-history), 100vw - 24rem); }
     & > .chat-stage { grid-column: 2; grid-row: 1; }
-    /* Collapsed, the list waits off the left edge; the peek is a pinned
-       sidebar until the pointer leaves, and its own toggle pins it. */
-    &.history-collapsed .chat-history { position: relative; inset: auto; z-index: auto; display: flex; box-shadow: none; transform: none; transition: none; }
-    &.history-collapsed:not(.history-peek) .chat-history { visibility: hidden; }
-    &.dk-slide.history-collapsed:not(.history-peek) .chat-history { transition: visibility 0s linear var(--dk-slide); }
+    /* chrome.js adds dk-slide once the page has settled: loading never slides. */
+    &.dk-slide:not(.history-collapsed) .chat-history {
+      transition: transform var(--dk-slide) var(--ease-glide);
+      @starting-style { transform: translateX(-100%); }
+    }
     &.history-peek .chat-history-edge { display: none; }
+    &.history-peek .chat-history { box-shadow: 8px 0 28px rgb(0 0 0 / 0.24); }
   }
-  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide { transition: none; } }
+  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide:not(.history-collapsed) .chat-history { transition: none; } }
 
   /* ---- Sidebar ---- */
   /* No rule against the stage: its tint is the edge, and the top bar and
@@ -361,7 +362,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-head::after { content: none; }
   & .dk-head .chat-history-toggle { width: 28px; height: 28px; }
   /* Collapsed, the toggle clears the 12px edge that peeks the sidebar. */
-  &.history-collapsed:not(.history-peek) .dk-head { padding-left: 12px; }
+  &.history-collapsed .dk-head { padding-left: 12px; }
   /* The sidebar owns its toggle while it is open. */
   @media (min-width: 801px) {
     &:is(:not(.history-collapsed), .history-peek) .dk-head .chat-history-toggle { display: none; }
@@ -753,7 +754,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-card::before { content: ""; position: absolute; inset: -5px calc(-1 * var(--dk-pane-out)) 0; border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
   & .chat-live-dock.is-pane-open .dk-live-card::before { opacity: 1; }
   & .chat-live-dock .dk-live-card > * { position: relative; }
-  & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease; }
+  & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: opacity 180ms ease; }
   & .chat-live-dock.is-pane-open .dk-pane { grid-template-rows: 1fr; opacity: 1; }
   & .chat-live-dock .dk-pane-in { min-height: 0; overflow: hidden; }
   & .chat-live-dock .dk-now { padding: 2px 0 10px; }
@@ -1051,8 +1052,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
   --dk-glass-tone: var(--ink);
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.5);
 }
-/* Dragging the sidebar edge resizes its column live, without the slide. */
-html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view="desktop"] { transition: none; }
 @media (prefers-reduced-transparency: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"],
   html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
