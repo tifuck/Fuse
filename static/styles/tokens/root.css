@@ -40,4 +40,11 @@
   --ease-snap: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
 }
+/* Hover lands at once and fades only on the way out. Hover feedback
+   (background, color, border, shadow, a revealed control's opacity)
+   transitions over --dur-hover: --dur-1 normally, 0s while the element is
+   hovered (a rule that reveals a child on its parent's hover sets it too).
+   Not inherited, so setting it never restyles a subtree. */
+@property --dur-hover { syntax: "<time>"; inherits: false; initial-value: 120ms; }
+:hover { --dur-hover: 0s; }
 

@@ -266,8 +266,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 0.15rem; font-size: var(--dk-meta); color: var(--dk-mute, var(--mute)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; margin-left: 6px; opacity: 0; transition: opacity var(--dur-1, 120ms) ease; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; --dur-hover: 0s; }
 @media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }

@@ -158,7 +158,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     padding: 0;
     border-radius: 6px;
     color: var(--dk-mute);
-    transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+    transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
   & .dk-tab:hover { color: var(--dk-text); }
   & .dk-tab:not([aria-selected="true"]):hover { background: var(--dk-hover); }
@@ -241,7 +241,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     height: 28px;
     border-radius: 7px;
     color: color-mix(in srgb, var(--dk-text) 82%, var(--dk-mute));
-    transition: background-color var(--dur-1) ease, color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+    transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
   }
   & .dk-row:hover { background: var(--dk-hover); }
   & .dk-row:is(.is-on, .is-menu) { background: var(--dk-sel); color: var(--dk-text); }
@@ -281,11 +281,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-mute);
     font-size: 13px;
     opacity: 0;
-    transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease, color var(--dur-1) ease;
+    transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
   /* Hover or focus: ⋯ gets its own slot at the row's end, so it never covers
      the title or the project name. */
-  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; }
+  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; --dur-hover: 0s; }
   & .dk-row:is(:hover, :focus-within, .is-menu) .dk-open { padding-right: 30px; }
   & .dk-more:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-row .rename { width: 100%; height: 26px; padding: 0 7px; border: 1px solid var(--dk-link); border-radius: 7px; background: var(--dk-side); color: var(--dk-text); font: 13.5px var(--sans); }
@@ -737,7 +737,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
   & .chat-live-dock.is-detailable [data-dock-status]:hover :is(.dk-live-arg, .dk-live-chev) { color: var(--dk-text); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
-  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color 150ms ease; }
+  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color var(--dur-hover) ease; }
   & .chat-live-dock .dk-live-chev svg { width: 14px; height: 14px; }
   & .chat-live-dock.is-detailable .dk-live-chev { display: inline-flex; }
   & .chat-live-dock.is-pane-open .dk-live-chev { transform: rotate(90deg); }

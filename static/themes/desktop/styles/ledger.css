@@ -82,7 +82,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-step.is-console-call .chat-tool-host { display: none !important; }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step.is-console-call > .chat-step-main > .chat-step-head { display: flex !important; align-items: center; gap: 0; min-height: var(--dk-call-row); }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step.is-console-call > .chat-step-main > .chat-step-head > :is(button.chat-step-toggle, .chat-step-static) { flex: 1 1 auto; min-width: 0; min-height: var(--dk-call-row); margin-block: 0; }
-  & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: color var(--dur-1, 120ms) ease; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: color var(--dur-hover) ease; }
   & .chat-console-bundle .chat-step.is-console-call .chat-console-call .chat-console-val { color: color-mix(in srgb, var(--dk-text, var(--mist)) 82%, var(--dk-mute, var(--mute))); }
   @media (hover: hover) {
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }

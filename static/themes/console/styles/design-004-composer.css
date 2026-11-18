@@ -52,7 +52,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-send {
   border-radius: 0;
   background: none;
   color: var(--brass);
-  transition: color var(--dur-1) ease;
+  transition: color var(--dur-hover) ease;
 }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-send:disabled {

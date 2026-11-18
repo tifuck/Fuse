@@ -116,7 +116,7 @@
   border-radius: 6px;
   background: none;
   color: var(--chat-secondary);
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-collapse:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 7%, transparent); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-collapse:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
@@ -157,7 +157,7 @@
   color: var(--mute);
   font-size: 0.8125rem;
   font-weight: 500;
-  transition: background-color var(--dur-1) ease, color var(--dur-1) ease, box-shadow var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, box-shadow var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-tab:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-tab[aria-selected="true"] {
@@ -176,7 +176,7 @@
   border-radius: 6px;
   background: none;
   color: var(--chat-secondary);
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-bar .chat-new { color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-bar .chat-new svg { width: 0.875rem; height: 0.875rem; }
@@ -248,7 +248,7 @@
   font-size: 0.6875rem;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition: color var(--dur-1) ease;
+  transition: color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-filters select:hover,
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-filters select:has(option:not(:first-child):checked) { color: var(--mist); }
@@ -296,7 +296,7 @@
   align-items: center;
   width: 100%;
   border-radius: 6px;
-  transition: background-color var(--dur-1) ease;
+  transition: background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item + .chat-history-item { margin-top: 1px; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }
@@ -317,7 +317,7 @@
   font-size: 0.8125rem;
   line-height: 1.3;
   text-align: left;
-  transition: color var(--dur-1) ease, padding-right var(--dur-1) var(--ease-snap);
+  transition: color var(--dur-hover) ease, padding-right var(--dur-1) var(--ease-snap);
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:hover > button.open { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.has-snip > button.open { min-height: 2.5rem; }

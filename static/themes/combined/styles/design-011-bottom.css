@@ -125,7 +125,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-text {
   font: 13px/var(--queue-row) var(--sans);
   color: var(--mute);
-  transition: color var(--dur-1, 120ms) ease;
+  transition: color var(--dur-hover) ease;
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:first-child .chat-queue-text { color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:hover, :focus-within) .chat-queue-text { color: var(--mist); }
@@ -147,7 +147,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
   color: var(--mist);
   background: color-mix(in srgb, var(--mist) 8%, transparent);
 }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-action[data-queue-send] { transition: color var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-action[data-queue-send] { transition: color var(--dur-hover) ease, opacity var(--dur-1, 120ms) ease; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { color: var(--cb-accent-text); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-action[data-queue-send]:hover {
   color: var(--brass);

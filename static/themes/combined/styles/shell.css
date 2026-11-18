@@ -157,7 +157,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     font-weight: 500;
     font-size: 12.5px;
   }
-  & .cb-tab { transition: color var(--dur-1) ease; }
+  & .cb-tab { transition: color var(--dur-hover) ease; }
   & .cb-tab[aria-selected="true"] { color: var(--mist); }
   & .cb-tab .chat-run-spin:not([hidden]) { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
   & .cb-tab .chat-run-spin > * { display: none; }
@@ -219,7 +219,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     height: 28px;
     border-radius: 7px;
     color: color-mix(in srgb, var(--mist) 78%, var(--mute));
-    transition: background-color var(--dur-1) ease, color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+    transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
   }
   & .cb-row:hover { background: var(--cb-hover); }
   & .cb-row:is(.is-on, .is-menu) { background: var(--cb-on); color: var(--mist); }
@@ -278,9 +278,9 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     background: none;
     color: var(--mute);
     opacity: 0;
-    transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease, color var(--dur-1) ease;
+    transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
-  & .cb-row:is(:hover, :focus-within, .is-menu) .cb-more { opacity: 1; }
+  & .cb-row:is(:hover, :focus-within, .is-menu) .cb-more { opacity: 1; --dur-hover: 0s; }
   & .cb-more:hover { background: var(--cb-hover); color: var(--mist); }
   & .cb-row .rename {
     width: 100%;

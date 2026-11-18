@@ -44,7 +44,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-font] .chat-code .
   border-radius: 6px;
   background: none;
   color: var(--chat-secondary);
-  transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn svg { width: 1.0625rem; height: 1.0625rem; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-bar-btn > span {
@@ -811,7 +811,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   color: var(--mist);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-1, 120ms) ease, background-color var(--dur-1, 120ms) ease;
+  transition: border-color var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):hover { background: var(--ap-hover); border-color: color-mix(in srgb, var(--mist) 22%, var(--line)); }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
@@ -1004,7 +1004,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
-  transition: background-color var(--dur-1, 120ms) ease, border-color var(--dur-1, 120ms) ease;
+  transition: background-color var(--dur-hover) ease, border-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]::after {
   content: "";

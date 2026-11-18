@@ -13,7 +13,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn {
   line-height: 0;
   cursor: pointer;
   touch-action: none;
-  transition: color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+  transition: color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn:hover { color: var(--mist); }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-mic-btn:active { scale: 0.92; }
@@ -108,7 +108,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn {
   color: var(--mute);
   line-height: 0;
   cursor: pointer;
-  transition: color var(--dur-1) ease, background-color var(--dur-1) ease;
+  transition: color var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn.is-done { color: var(--brass); }

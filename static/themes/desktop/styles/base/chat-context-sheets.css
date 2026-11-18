@@ -75,7 +75,7 @@
   background: none;
   color: var(--chat-secondary, var(--mute));
   line-height: 0;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 @media (hover: hover) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-menu-close:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
@@ -370,7 +370,7 @@
   padding: 0.5rem 0.75rem;
   border-radius: 7px;
   cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-tab:hover { color: var(--mist); background: var(--raise); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-tab.is-on {

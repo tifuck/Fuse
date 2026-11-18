@@ -59,7 +59,7 @@
   color: var(--mist);
   line-height: 0;
   touch-action: manipulation;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html:not(.is-chat-root)) .chat-lightbox-close:hover,
 :where(html:not(.is-chat-root)) .chat-lightbox-close:focus-visible {
@@ -112,7 +112,7 @@
   background: transparent;
   color: color-mix(in srgb, var(--mute) 55%, var(--ink));
   opacity: 0.32;
-  transition: color 140ms ease, opacity 140ms ease, filter 140ms ease;
+  transition: color var(--dur-hover) ease, opacity 140ms ease, filter 140ms ease;
 }
 :where(html:not(.is-chat-root)) .chat-search-btn svg { display: block; }
 /* Off is struck through, not just dimmer: the state cannot rest on colour. */

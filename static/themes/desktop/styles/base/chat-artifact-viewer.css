@@ -95,7 +95,7 @@
   font-size: 0.8rem;
   text-decoration: none;
   white-space: nowrap;
-  transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-tool.is-icon,
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-head .chat-menu-close { width: var(--chat-bar-btn); min-width: var(--chat-bar-btn); padding: 0; }

@@ -47,7 +47,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover);
   }
   & .dk-runbtn:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-runbtn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
@@ -307,7 +307,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 500 12px var(--sans);
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--dur-hover), color var(--dur-hover);
   }
   & .dk-seg button:hover { color: var(--dk-text); }
   & .dk-seg button[aria-pressed="true"] { background: var(--dk-card); color: var(--dk-text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.28); }
@@ -365,7 +365,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     align-items: start;
     padding: 0 6px 0 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 60%, transparent);
-    transition: background 0.12s, opacity 0.3s var(--dk-ease), translate 0.3s var(--dk-ease);
+    transition: background var(--dur-hover), opacity 0.3s var(--dk-ease), translate 0.3s var(--dk-ease);
     @starting-style { opacity: 0; translate: 0 -3px; }
   }
   & :is(.dk-ar, .dk-jr):last-child { border-bottom: 0; }
@@ -438,7 +438,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 14px/1 var(--sans);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    transition: opacity 0.15s, background var(--dur-hover), color var(--dur-hover);
   }
   & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) :is(.chat-agents-act, .chat-jobs-kill),
   & .dk-ar :is(.chat-agents-act.is-resume, .chat-agents-act.is-urgent) { opacity: 1; }
@@ -564,7 +564,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 500 12.5px var(--sans);
     white-space: nowrap;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color var(--dur-hover), background var(--dur-hover);
   }
   & .dk-btn:hover { border-color: color-mix(in srgb, var(--dk-text) 26%, var(--dk-card-line)); }
   & .dk-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
