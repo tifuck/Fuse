@@ -141,6 +141,7 @@ export function createDesktopTheme(runtime) {
     get ccLiveText() { return theme.ccLiveText; },
     get ccPathHint() { return theme.ccPathHint; },
     get ccRunningForm() { return theme.ccRunningForm; },
+    get ccSince() { return theme.ccSince; },
     get displayCommand() { return theme.displayCommand; },
     get currentActivity() { return theme.currentActivity; },
     get currentRunSpin() { return runtime.currentRunSpin; },

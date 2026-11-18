@@ -38,18 +38,6 @@ function ccThinkingState(msg, phase) {
     return thoughtHeading(segs.length ? text : msg.reasoning) || "thinking";
   }
 
-// Between calls (the model reading a result) the line keeps the newest
-// action, in the past tense: "Ran the test suite twice", "Read app/main.py".
-const DONE_WORDS = { Reading: "Read", Viewing: "Viewed", Searching: "Searched", Finding: "Found", Listing: "Listed", Running: "Ran", Editing: "Edited", Writing: "Wrote" };
-function lastActionText(msg) {
-    const traces = Array.isArray(msg && msg.tools) ? msg.tools : [];
-    const last = traces[traces.length - 1];
-    if (!last) return "";
-    const description = last.name === "run_terminal_command" ? deps.ccFlat(last.description) : "";
-    if (description) return deps.ccRunningForm(description) ? deps.ccInflect(description).done : description;
-    return actionText(last).replace(/^\w+/, (word) => DONE_WORDS[word] || word);
-  }
-
 // A call by what it acts on: "Reading app/main.py", "Editing static/chat.js".
 function actionText(trace) {
     const live = deps.ccLiveText(trace);
@@ -58,7 +46,7 @@ function actionText(trace) {
     return path ? `${trace.name === "write_file" ? "Writing" : "Editing"} ${path}` : "";
   }
 
-function ccSpinnerState(status, msg) {
+function ccSpinnerState(status) {
     let state = "";
     if (status.phase === "queued") state = "queued";
     else if (status.phase === "stopping") state = "stopping";
@@ -66,7 +54,10 @@ function ccSpinnerState(status, msg) {
       : deps.isSearchTool(status.current.name) ? "searching the web" : actionText(status.current) || CC_SPINNER_STATES[status.current.name] || "running tool";
     else if (status.phase === "calling") state = !status.tool ? "calling tool"
       : deps.isSearchTool(status.tool) ? "searching the web" : CC_SPINNER_STATES[status.tool] || `calling ${status.tool}`;
-    else if (status.phase === "waiting" || status.phase === "starting") state = lastActionText(msg);
+    // Between calls (one ended, the next request is out, no token yet) the
+    // model reads what came back: one word for the whole gap, the one a
+    // thought keeps when it starts, so none of its steps flashes by.
+    else if (status.phase === "working" || status.phase === "waiting" || status.phase === "starting") state = "thinking";
     else if (status.phase === "writing") state = "writing the reply";
     return state;
   }
@@ -75,24 +66,50 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const status = deps.currentActivity(msg, groups, true);
     const elapsed = opts && opts.seconds != null ? opts.seconds : deps.liveElapsedSeconds(msg, true);
     const seconds = Math.max(0, Math.floor(elapsed || 0));
-    // A running command is the line itself and nothing follows it: what it is
-    // for ("Running the unit tests"), else the command in parentheses
-    // ("Running command (npm test)"). Opening the line shows the command. It
-    // joins the summary line above once it ends.
+    const line = heldLine(msg, liveLine(msg, status), status.phase === "stopping");
+    // The line names what is happening; only the turn's clock follows it. A
+    // running command has its own clock instead, once it has run a while.
+    const meta = line.command ? (line.took ? { took: line.took } : null)
+      : seconds >= 1 ? { clock: deps.ccDuration(seconds * 1000) } : null;
+    return { ...line, meta };
+  }
+
+// A command's clock shows only once it has run this long, then counts up.
+const COMMAND_CLOCK_MS = 30_000;
+
+function liveLine(msg, status) {
+    // A running command: what it is for ("Running the unit tests"), else the
+    // command in parentheses ("Running command (npm test)"). Opening the line
+    // shows the command. It joins the summary line above once it ends.
     const command = status.phase !== "thinking" && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
     const arg = command ? deps.ccFlat(deps.displayCommand(command)) : "";
     if (arg) {
       const description = deps.ccFlat(command.description);
       const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), meta: null, arg: description ? "" : arg, command };
+      const ms = Date.now() - deps.ccSince(command);
+      const took = ms >= COMMAND_CLOCK_MS ? deps.ccDuration(Math.floor(ms / 1000) * 1000) : "";
+      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg, took, command };
     }
-    // Everything else names what is happening; only the clock follows it.
-    const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status, msg);
+    const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
     const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : "Working";
-    const settled = (status.phase === "waiting" || status.phase === "starting") && state;
-    const verb = settled || /(…|\.\.\.)$/.test(word) ? word : `${word}…`;
-    const meta = seconds >= 1 ? { clock: deps.ccDuration(seconds * 1000) } : null;
-    return { verb, meta, arg: "" };
+    return { verb: /(…|\.\.\.)$/.test(word) ? word : `${word}…`, arg: "" };
+  }
+
+// A line stays up at least HOLD_MS, so a state that lasts a blink (a call
+// ending, the next request going out) is skipped, never flashed. The newest
+// line lands on a later sync (the live clock syncs every 250 ms). A stop is
+// the user's own action and shows at once.
+const HOLD_MS = 700;
+function heldLine(msg, line, now) {
+    const shown = msg._liveLine;
+    const at = Date.now();
+    if (shown && shown.verb === line.verb && shown.arg === line.arg) {
+      shown.line = line;
+      return line;
+    }
+    if (shown && !now && at - shown.at < HOLD_MS) return shown.line;
+    msg._liveLine = { verb: line.verb, arg: line.arg, line, at };
+    return line;
   }
 
 function syncActivityElapsed(article, msg, live) {
@@ -137,5 +154,5 @@ const CC_SPINNER_STATES = {
     read_artifact: "reading artifact", search_models: "finding models",
   };
 
-  return { formatActivityClock, formatActivityElapsed, thoughtHeading, ccThinkingState, lastActionText, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };
+  return { formatActivityClock, formatActivityElapsed, thoughtHeading, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };
 }
