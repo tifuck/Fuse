@@ -333,6 +333,20 @@ def test_a_run_waits_only_so_long_for_a_free_worker(monkeypatch):
     assert trace["kind"] == "busy" and "busy" in text
 
 
+def test_a_zero_or_negative_timeout_means_the_default(monkeypatch):
+    seen = []
+    real = code_mode._execute
+
+    async def execute(code, timeout_s, *rest):
+        seen.append(timeout_s)
+        return await real(code, timeout_s, *rest)
+
+    monkeypatch.setattr(code_mode, "_execute", execute)
+    for timeout in (0, -5):
+        run_code("return 1;", Runner(), timeout=timeout)
+    assert seen == [code_mode.DEFAULT_TIMEOUT_MS / 1000] * 2
+
+
 def test_time_spent_on_a_permission_prompt_does_not_count_toward_the_deadline():
     async def body():
         prompt_open = asyncio.Event()

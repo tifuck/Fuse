@@ -1592,9 +1592,12 @@ def _browse_view(path: str, parent: str, home: str, entries: list) -> dict:
         clean.append({"name": name[:255], "kind": kind})
     if path != "/" and not parent:
         if "\\" in path and not path.startswith("/"):
-            parent = path.rsplit("\\", 1)[0]
+            trimmed = path.rstrip("\\")
+            parent = trimmed.rsplit("\\", 1)[0] if "\\" in trimmed else ""
             if len(parent) == 2 and parent[1] == ":":
                 parent += "\\"
+            elif parent.startswith("\\\\") and parent.count("\\") < 3:
+                parent = ""  # \\server alone is no folder: a share root has no parent
         else:
             parent = path.rsplit("/", 1)[0] or "/"
             if path == "/":
@@ -2013,8 +2016,11 @@ async def _sftp_read_window(handle, offset: int, limit: int) -> tuple[bytes, boo
                 block = block[at:]
             room = _SSH_OUT_MAX - len(result)
             result.extend(block[:room])
-            if result.count(b"\n") > limit or len(result) >= _SSH_OUT_MAX:
+            if result.count(b"\n") > limit:
                 return bytes(result), True
+            if len(result) >= _SSH_OUT_MAX:
+                # A window that fills exactly at EOF is the whole rest of the file.
+                return bytes(result), len(block) > room or bool(await handle.read(1))
     raise WorkspaceError("read scan exceeds 64 MiB; narrow the file or use grep")
 
 
@@ -2323,7 +2329,6 @@ async def _read(user_id, host_id, alias, args, root, *, windows: bool = False, m
     lines = text.split("\n")
     if lines and lines[-1] == "":
         lines.pop()
-    lines = [line.removesuffix("\r") for line in lines]
     if not lines and offset > 1:
         raise WorkspaceError(f"offset {offset} is beyond the end of the file")
     if bytes_truncated and len(lines) <= limit:
@@ -2343,6 +2348,7 @@ async def _read(user_id, host_id, alias, args, root, *, windows: bool = False, m
             "preview": body[:800],
             "next_offset": offset + len(chunk) if more else None,
         }
+    chunk = [line.removesuffix("\r") for line in chunk]
     body = _read_render(chunk, offset, total=total, more=more, max_chars=chars)
     return _label(alias, body), {
         "name": "read_file",

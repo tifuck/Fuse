@@ -67,6 +67,21 @@ def test_read_caps_a_page_by_lines_and_by_bytes(ssh_host):
     assert f"Use offset={len(shown) + 1} to continue." in body
 
 
+def test_a_page_that_fills_the_byte_window_exactly_at_eof_is_the_end(ssh_host):
+    put(ssh_host, "wide.txt", ("x" * 16383 + "\n") * 4)  # exactly one 64 KiB SFTP window
+    body, _ = call(ssh_host, "read_file", path="wide.txt")
+    assert body.endswith("(End of file — 4 lines.)")
+
+
+def test_raw_reads_keep_crlf_line_endings(ssh_host):
+    put(ssh_host, "win.txt", "one\r\ntwo\r\nthree")
+    for args, want in (({}, "one\r\ntwo\r\nthree"), ({"offset": 2, "limit": 1}, "two\r\n")):
+        text, _ = asyncio.run(workspace.execute(
+            "read_file", json.dumps({"path": "win.txt", **args}), user_id=ssh_host.uid,
+            bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root, raw=True))
+        assert workspace.unlabel_host(ssh_host.alias, text) == want
+
+
 def test_read_refuses_directories_missing_files_and_binary_data(ssh_host):
     ssh_host.fs.makedirs(posixpath.join(ssh_host.root, "sub"))
     put(ssh_host, "blob.bin", b"\x7fELF\x00\x01\x02")
@@ -348,6 +363,14 @@ def test_connector_crlf_edit_is_retried_with_crlf_and_never_as_a_write(agent_hos
     assert rec["status"] == "error" and "not unique" in text
     assert "write" not in [op for op, _ in agent_host.connector.calls]
     assert agent_host.fs.read(path) == b"1\r\n2\r\n"
+
+
+def test_browse_has_no_up_from_a_windows_drive_or_share_root(agent_host):
+    for path in ("C:\\", "\\\\srv\\share\\"):
+        agent_host.connector.overrides["browse"] = {
+            "ok": True, "out": json.dumps({"path": path, "parent": "", "home": "", "entries": []})}
+        view = asyncio.run(workspace.browse(agent_host.uid, agent_host.host_id, path))
+        assert view["path"] == path and view["parent"] == ""
 
 
 def test_the_fake_host_itself_refuses_unconfined_paths(ssh_host):
