@@ -35,6 +35,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-band-h: 30px;
   /* Between the composer card and its controls row. */
   --dk-band-gap: 3px;
+  /* How far the composer card reaches past the transcript text's edges (its
+     controls row stays on them); always inside the dock's gutter. */
+  --dk-card-out: min(10px, calc(var(--console-gutter) - 4px));
   --chat-history: 15rem;
   /* The reading column takes most of the window and keeps growing on wide
      displays; the sidebar and inspector still clip it (min(…, 100% - gutter)). */
@@ -481,7 +484,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     content: "";
     position: absolute;
     z-index: 0;
-    inset: 0 0 calc(var(--dk-band-h) + var(--dk-band-gap));
+    inset: 0 calc(-1 * var(--dk-card-out)) calc(var(--dk-band-h) + var(--dk-band-gap));
     /* The old prompt glyph's margins would pull the card in under the buttons. */
     margin: 0;
     pointer-events: none;
@@ -500,6 +503,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* No row flexes: the shared attach list's 100% basis would squeeze the controls band out from under the card. */
   & .dk-box > * { flex: none; }
   & .dk-box .chat-attach-list:not([hidden]) { padding: 8px 8px 0; }
+  & :is(.dk-box > .chat-attach-list, .dk-row1) { margin-inline: calc(-1 * var(--dk-card-out)); }
   & .dk-row1 { position: relative; display: block; min-width: 0; padding: 2px 0; }
   /* Stash sits at the card's top-left, above +, while it shows (text in the
      box, or stashed prompts); the card is then tall enough for both. */
@@ -516,12 +520,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--dk-band-h); min-width: 0; margin-top: var(--dk-band-gap); }
   /* + leads the card, mic and send end it, level with its last line. */
   & .dk-row2 :is([data-chat-attach], [data-chat-mic], [data-chat-send]) { position: absolute; bottom: calc(100% + var(--dk-band-gap) + 6px); }
-  & .dk-row2 [data-chat-attach] { left: 6px; }
-  & .dk-row2 [data-chat-send] { right: 6px; }
-  & .dk-row2 [data-chat-mic] { right: 38px; }
-  /* Inset like + and send above them, so the row's ends line up with the card's. */
-  & .dk-group-l { margin-left: 6px; }
-  & .dk-group-r { margin-right: 6px; }
+  & .dk-row2 [data-chat-attach] { left: calc(6px - var(--dk-card-out)); }
+  & .dk-row2 [data-chat-send] { right: calc(6px - var(--dk-card-out)); }
+  & .dk-row2 [data-chat-mic] { right: calc(38px - var(--dk-card-out)); }
+  /* The mode's text and the context ring sit on the transcript text's edges:
+     out by the chip's padding and the ring's inset in its button. */
+  & .dk-group-l { margin-left: -8px; }
+  & .dk-group-r { margin-right: -6px; }
   & :is(.dk-group-l, .dk-group-r) { display: flex; align-items: center; gap: 4px; min-width: 0; }
   & .dk-group-l { flex: 0 1 auto; }
   & .dk-group-r { flex: 1 1 auto; justify-content: flex-end; }
@@ -622,9 +627,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 44px; padding: 10px 88px 10px 46px; font-size: 16px; }
     & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + var(--dk-band-gap) + 6px); }
     & .dk-box:has(.dk-row1 [data-chat-stash]:not([hidden])) .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 86px; }
-    & .dk-row2 [data-chat-attach] { left: 6px; }
-    & .dk-row2 [data-chat-send] { right: 8px; bottom: calc(100% + var(--dk-band-gap) + 8px); }
-    & .dk-row2 [data-chat-mic] { right: 44px; }
+    & .dk-row2 [data-chat-attach] { left: calc(6px - var(--dk-card-out)); }
+    & .dk-row2 [data-chat-send] { right: calc(8px - var(--dk-card-out)); bottom: calc(100% + var(--dk-band-gap) + 8px); }
+    & .dk-row2 [data-chat-mic] { right: calc(44px - var(--dk-card-out)); }
+    & .dk-group-r { margin-right: -10px; }
     & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
     & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
     & .dk-send { width: 32px; height: 32px; }
