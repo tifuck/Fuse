@@ -2615,6 +2615,8 @@ async def _grep(user_id, host_id, alias, args, root, *, windows: bool = False):
         if clipped:
             notes.append(_clip_note("grep"))
         strip_root = root
+        # The connector stops at exactly max_matches: a full result may be cut.
+        probed = False
     else:
         cwd, target = _search_target(path, root, windows=windows)
         include = _scope_glob(include, path, target)
@@ -2630,9 +2632,10 @@ async def _grep(user_id, host_id, alias, args, root, *, windows: bool = False):
         if clipped:
             notes.append(_clip_note("grep"))
         strip_root = ""
+        probed = True
     rows, hidden, more = _format_search_lines(
         out, root=strip_root, windows=windows, grep=True, hide_secrets=not target_secret,
-        cap_lines=max_matches, mode=mode,
+        cap_lines=max_matches, mode=mode, probed=probed,
     )
     if mode != "content":
         rows = sorted(rows)[:max_matches]
@@ -2695,6 +2698,7 @@ async def _glob(user_id, host_id, alias, args, root, *, windows: bool = False):
             notes.append(_clip_note("glob"))
         strip_root = root
         order = native_order
+        probed = False
     else:
         cwd, target = _search_target(path, root, windows=windows)
         pattern = _scope_glob(pattern, path, target)
@@ -2709,7 +2713,8 @@ async def _glob(user_id, host_id, alias, args, root, *, windows: bool = False):
         if clipped:
             notes.append(_clip_note("glob"))
         strip_root = ""
-    text = _glob_result(out, root=strip_root, windows=windows, notes=notes, order=order)
+        probed = True
+    text = _glob_result(out, root=strip_root, windows=windows, notes=notes, order=order, probed=probed)
     return _label(alias, text or "(no matches)"), {
         "name": "glob",
         "status": "done",
