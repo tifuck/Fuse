@@ -712,6 +712,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-arg::before { content: "("; }
   & .chat-live-dock .dk-live-arg::after { content: ")"; }
   & .chat-live-dock .dk-live-arg > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .chat-live-dock .dk-live-took { flex: none; margin-left: 0.75ch; color: var(--dk-mute); font: var(--dk-meta)/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock .dk-live-took[hidden] { display: none; }
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
   & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }

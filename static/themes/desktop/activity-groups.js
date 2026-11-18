@@ -44,9 +44,23 @@ function turnActionsHtml(msg, latest) {
     return `<span class="dk-acts">${buttons}</span>`;
   }
 // When the reply ended ("Just now", "5m ago"); the full time in its title.
+// A settled reply is not repainted, so its time moves on by itself.
+let agoTimer = 0;
+function syncAgo() {
+    const els = document.querySelectorAll("time.dk-ago");
+    if (!els.length) {
+      clearInterval(agoTimer);
+      agoTimer = 0;
+    }
+    els.forEach((el) => {
+      const text = agoText(el.dateTime);
+      if (text && el.textContent !== text) el.textContent = text;
+    });
+  }
 function agoHtml(msg) {
     const ago = agoText(msg.endedAt);
     if (!ago) return "";
+    agoTimer ||= setInterval(syncAgo, 30_000);
     const when = new Date(msg.endedAt);
     return `<time class="dk-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString())}">${deps.escapeHtml(ago)}</time>`;
   }

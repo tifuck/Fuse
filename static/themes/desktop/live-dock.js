@@ -41,6 +41,16 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
     if (cmd.hidden !== !arg) cmd.hidden = !arg;
+    // A long-running command's own clock, straight after its text.
+    let took = el.querySelector(":scope > .dk-live-took");
+    if (!took) {
+      took = document.createElement("span");
+      took.className = "dk-live-took";
+      el.insertBefore(took, tail);
+    }
+    const tookText = meta?.took || "";
+    if (took.textContent !== tookText) took.textContent = tookText;
+    if (took.hidden !== !tookText) took.hidden = !tookText;
     // The clock, at the line's far end.
     const clock = meta?.clock || "";
     if (tail.textContent !== clock) tail.textContent = clock;
