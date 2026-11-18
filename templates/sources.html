@@ -339,9 +339,10 @@
 {% endmacro %}
 
 {# One provider in the rail. The section tabs in app.js show its pane
-   (#pool-<id>) and hide the rest. #}
-{% macro rail_link(id, title, sub, n=0, alert=False) -%}
-<a href="#pool-{{ id }}"><img class="provider-logo" src="{{ provider_logo_url(id) }}" alt="" aria-hidden="true"><span class="sources-rail-name">{{ title }}</span>{% if alert %}<span class="sources-rail-alert" title="An account of yours is signed out"></span>{% elif n %}<span class="sources-rail-n">{{ n }}</span>{% endif %}<small>{{ sub }}</small></a>
+   (#pool-<id>) and hide the rest. A provider you have not connected is a
+   hidden tab: Add source opens it through its link. #}
+{% macro rail_link(id, title, sub, n=0, alert=False, hidden=False) -%}
+<a href="#pool-{{ id }}"{% if hidden %} hidden{% endif %}><img class="provider-logo" src="{{ provider_logo_url(id) }}" alt="" aria-hidden="true"><span class="sources-rail-name">{{ title }}</span>{% if alert %}<span class="sources-rail-alert" title="An account of yours is signed out"></span>{% elif n %}<span class="sources-rail-n">{{ n }}</span>{% endif %}<small>{{ sub }}</small></a>
 {%- endmacro %}
 
 {% set pools = [
@@ -356,13 +357,23 @@
   ('nanogpt', 'NanoGPT', nanogpt_ok, nanogpt_accounts, nanogpt_pool, 'needs a NanoGPT sign-in'),
   ('refuseless', 'Refuseless', refuseless_ok, refuseless_accounts, refuseless_pool, 'needs your Refuseless API key'),
 ] %}
-{% set rail = namespace(yours=[], open=[], unset=[]) %}
-{% for p in pools %}
-  {% if p[3]|selectattr('mine')|list %}{% set rail.yours = rail.yours + [p] %}{% elif p[2] %}{% set rail.open = rail.open + [p] %}{% else %}{% set rail.unset = rail.unset + [p] %}{% endif %}
-{% endfor %}
 {% macro pool_use(pool) -%}
   {{ 'pool ' ~ pool.percent_label if pool.available and pool.percent is not none else pool.count_label }}
 {%- endmacro %}
+{# Every source as (id, title, status line, how many of yours, how many of
+   yours are signed out): the rail lists those with any of yours, the picker
+   lists them all. #}
+{% set src = namespace(all=[]) %}
+{% for id, title, ok, accts, pool, need in pools %}
+  {% set own = accts|selectattr('mine')|list %}
+  {% set sub = (own|length ~ ' yours · ' ~ pool_use(pool)) if own else ('unlocked · ' ~ pool_use(pool) if ok else need) %}
+  {% set src.all = src.all + [(id, title, sub, own|length, own|rejectattr('authed')|list|length)] %}
+{% endfor %}
+{% set src.all = src.all + [
+  ('openrouter', 'OpenRouter', 'key linked' if openrouter_account else 'personal API key', 1 if openrouter_account else 0, 0),
+  ('explabs', 'Experiential Labs', 'key linked' if explabs_account else 'personal API key', 1 if explabs_account else 0, 0),
+] %}
+{% set connected = src.all|selectattr('3')|list %}
 
 <div class="stack-y sources-page">
   <details class="sources-how">
@@ -374,26 +385,31 @@
   {% endif %}
 
   <div class="sources-dir">
-  <nav class="sources-rail" data-section-tabs aria-label="Providers" aria-orientation="vertical"{% if flash_pane %} data-start="pool-{{ flash_pane }}"{% endif %}>
-    {% if rail.yours %}<p class="sources-rail-group" aria-hidden="true">Your accounts</p>{% endif %}
-    {% for id, title, ok, accts, pool, need in rail.yours %}
-    {% set own = accts|selectattr('mine')|list %}
-    {{ rail_link(id, title, own|length ~ ' yours · ' ~ pool_use(pool), own|length, own|rejectattr('authed')|list) }}
+  <button type="button" class="btn sources-add" data-dialog-open="source-picker" aria-haspopup="dialog">Add source</button>
+  <nav class="sources-rail" data-section-tabs aria-label="Connected sources" aria-orientation="vertical"{% if flash_pane %} data-start="pool-{{ flash_pane }}"{% endif %}>
+    {% if connected %}
+    <p class="sources-rail-group" aria-hidden="true">Connected</p>
+    {% else %}
+    <p class="sources-rail-empty">Nothing connected yet.</p>
+    <a href="#sources-start" hidden></a>
+    {% endif %}
+    {% for id, title, sub, n, signed_out in connected %}
+    {{ rail_link(id, title, sub, n, signed_out) }}
     {% endfor %}
-    {% if rail.open %}<p class="sources-rail-group" aria-hidden="true">Unlocked</p>{% endif %}
-    {% for id, title, ok, accts, pool, need in rail.open %}
-    {{ rail_link(id, title, pool_use(pool), accts|length) }}
+    {% for id, title, sub, n, signed_out in src.all|rejectattr('3') %}
+    {{ rail_link(id, title, sub, hidden=True) }}
     {% endfor %}
-    {% if rail.unset %}<p class="sources-rail-group" aria-hidden="true">Not set up</p>{% endif %}
-    {% for id, title, ok, accts, pool, need in rail.unset %}
-    {{ rail_link(id, title, need) }}
-    {% endfor %}
-    <p class="sources-rail-group" aria-hidden="true">Personal keys</p>
-    {{ rail_link('openrouter', 'OpenRouter', 'key linked' if openrouter_account else 'no key') }}
-    {{ rail_link('explabs', 'Experiential Labs', 'key linked' if explabs_account else 'no key') }}
   </nav>
   <div class="sources-pane">
     <button type="button" class="sources-back" data-sources-back>All sources</button>
+
+    {% if not connected %}
+    <section class="pool stack-y sources-start" id="sources-start">
+      <h2>Nothing connected yet</h2>
+      <p class="sources-note">Connect a subscription or add an API key to use its models. Some providers may already be unlocked through accounts others share; Add source shows each one's status.</p>
+      <button type="button" class="btn" data-dialog-open="source-picker" aria-haspopup="dialog">Add source</button>
+    </section>
+    {% endif %}
 
     <section class="pool stack-y" id="pool-grok">
       {% call pool_head(grok_ui, 'x.ai', 'grok', pool_state(grok_ok, grok_reason, grok_ui, 'needs SuperGrok', 'No SuperGrok subscription'), [('Pool usage', grok_pool)]) %}{{ add_button('grok-connect-dialog', 'Add account', pending) }}{% endcall %}
@@ -784,6 +800,24 @@
   </div>
   </div>
 </div>
+
+<dialog class="modal source-picker" id="source-picker" aria-labelledby="source-picker-title" data-source-picker>
+  <div class="modal-shell">
+    <header class="modal-head">
+      <div>
+        <h2 id="source-picker-title">Add a source</h2>
+      </div>
+      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close Add a source">Close</button>
+    </header>
+    <input type="search" class="source-picker-find" placeholder="Search providers" aria-label="Search providers" autocomplete="off" autofocus role="combobox" aria-expanded="true" aria-controls="source-picker-list" aria-autocomplete="list" data-source-find>
+    <ul class="source-picker-list" id="source-picker-list" role="listbox" aria-label="Providers">
+      {% for id, title, sub, n, signed_out in src.all|sort(attribute='1') %}
+      <li><a href="#pool-{{ id }}" id="source-pick-{{ id }}" role="option" aria-selected="false" data-source-pick data-name="{{ title|lower }}"><img class="provider-logo" src="{{ provider_logo_url(id) }}" alt="" aria-hidden="true"><span class="source-picker-name">{{ title }}</span>{% if n %}<span class="badge on">Connected</span>{% endif %}<small>{{ sub }}</small></a></li>
+      {% endfor %}
+    </ul>
+    <p class="source-picker-none" data-source-none hidden>No provider name starts with that.</p>
+  </div>
+</dialog>
 
 <dialog class="modal device-modal" id="grok-connect-dialog" aria-labelledby="grok-connect-title"{% if pending or grok_flash_msg %} data-auto-open{% endif %}{% if pending %} data-device-poll data-endpoint="/sources/grok/poll" data-interval="{{ pending_interval }}"{% endif %}>
   <div class="modal-shell">

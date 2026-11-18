@@ -316,19 +316,27 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 }
 .sources-how summary:hover, .sources-how[open] summary { color: var(--mist); }
 .sources-how .sources-note { margin-top: 0.35rem; }
+/* Add source and the connected sources in the first column; the open
+   provider beside them, spanning both rows (1fr takes its extra height). */
 .sources-dir {
   display: grid;
   grid-template-columns: 14rem minmax(0, 1fr);
-  gap: 1.5rem;
+  grid-template-rows: auto 1fr;
+  gap: 0.75rem 1.5rem;
   align-items: start;
 }
+.sources-add { grid-column: 1; grid-row: 1; width: 100%; }
+.sources-add::before { content: "+"; margin-right: 0.45rem; font-weight: 600; }
 .sources-rail {
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
   padding-right: 0.75rem;
   border-right: 1px solid var(--line);
 }
+.sources-rail-empty { margin: 0.2rem 0.55rem; color: var(--mute); font: 0.74rem/1.4 var(--mono); }
 .sources-rail-group {
   margin: 0.9rem 0.55rem 0.25rem;
   color: var(--mute);
@@ -348,6 +356,7 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   color: var(--mist);
   text-decoration: none;
 }
+.sources-rail a[hidden] { display: none; }
 .sources-rail a:hover { background: color-mix(in srgb, var(--mist) 4%, transparent); }
 .sources-rail a.on { background: var(--raise); box-shadow: inset 2px 0 0 var(--brass); }
 .sources-rail a:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
@@ -363,8 +372,10 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sources-pane { container: pools / inline-size; min-width: 0; }
+.sources-pane { grid-column: 2; grid-row: 1 / span 2; container: pools / inline-size; min-width: 0; }
 .sources-pane > [hidden] { display: none; }
+.sources-start { align-items: flex-start; }
+.sources-start h2 { margin: 0; font: 600 1.1rem/1.25 var(--mono); }
 .sources-back {
   display: none;
   align-items: center;
@@ -383,9 +394,11 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 /* A phone: the rail is the first screen (data-view="list") and a provider
    opens in its place ("pane"), each row larger and marked to open. */
 @container sources (max-width: 40rem) {
-  .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+  .sources-dir { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .sources-dir > * { grid-column: 1; grid-row: auto; }
   .sources-dir[data-view="list"] .sources-pane,
-  .sources-dir[data-view="pane"] .sources-rail { display: none; }
+  .sources-dir[data-view="pane"] :is(.sources-rail, .sources-add) { display: none; }
+  .sources-add { min-height: 2.75rem; }
   .sources-page:has(> .sources-dir[data-view="pane"]) > .sources-how { display: none; }
   .sources-back { display: inline-flex; }
   .sources-rail { padding-right: 0; border-right: 0; }
@@ -405,6 +418,44 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   .sources-rail-name { font-size: 0.92rem; }
   .sources-rail small { grid-column: 2 / 4; font-size: 0.74rem; }
 }
+
+/* Add a source: a search over every provider and the list it narrows. */
+.source-picker-find { width: 100%; margin-top: 0.85rem; }
+.source-picker-list {
+  max-height: min(24rem, 55dvh);
+  margin: 0.6rem 0 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.source-picker-list li[hidden] { display: none; }
+.source-picker-list a {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.7rem;
+  min-height: 3rem;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--mist);
+  text-decoration: none;
+}
+.source-picker-list a:hover,
+.source-picker-list a[aria-selected="true"] { background: var(--raise); }
+.source-picker-list a[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--brass); }
+.source-picker-list .provider-logo { grid-row: 1 / span 2; width: 1.25rem; height: 1.25rem; }
+.source-picker-name { font: 500 0.9rem/1.3 var(--mono); }
+.source-picker-list small {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--mute);
+  font: 0.72rem/1.3 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-picker-none { margin: 0.75rem 0 0; color: var(--mute); font-size: 0.8rem; }
 .sources-page .pool { gap: 0.55rem; }
 .sources-page .pool-head {
   display: grid;

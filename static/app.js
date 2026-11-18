@@ -668,6 +668,12 @@ document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((
       a.setAttribute("aria-selected", on ? "true" : "false");
       a.tabIndex = on ? 0 : -1;
     });
+    // A hidden tab (Sources: a provider opened from Add source) leaves the
+    // first visible one as the way in by keyboard.
+    if (links[ids.indexOf(id)].hidden) {
+      const first = links.find((a) => !a.hidden);
+      if (first) first.tabIndex = 0;
+    }
     ids.forEach((other) => members(other).forEach((el) => { el.hidden = other !== id; }));
     try { sessionStorage.setItem(key, id); } catch (_) {}
     if (push) history.replaceState(history.state, "", "#" + id);
@@ -687,10 +693,11 @@ document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((
   nav.addEventListener("keydown", (event) => {
     const step = steps[event.key];
     if (!step) return;
-    const i = links.indexOf(document.activeElement);
+    const live = links.filter((a) => !a.hidden);
+    const i = live.indexOf(document.activeElement);
     if (i < 0) return;
     event.preventDefault();
-    const next = links[(i + step + links.length) % links.length];
+    const next = live[(i + step + live.length) % live.length];
     show(next.getAttribute("href").slice(1), true);
     next.focus();
   });
@@ -759,6 +766,53 @@ document.querySelectorAll(".sources-dir").forEach((dir) => {
     dir.dataset.view = history.state && history.state.sourcesPane ? "pane" : "list";
     toTop();
   });
+});
+
+// Add source: every provider A to Z, narrowed as you type to the names that
+// start with what you typed; arrows and Enter pick without the mouse. Picking
+// opens that provider's pane through its (possibly hidden) rail link.
+document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
+  const find = dialog.querySelector("[data-source-find]");
+  const items = Array.from(dialog.querySelectorAll("[data-source-pick]"));
+  const none = dialog.querySelector("[data-source-none]");
+  const shown = () => items.filter((a) => !a.parentElement.hidden);
+  let active = 0;
+  function mark(i) {
+    const list = shown();
+    active = Math.max(0, Math.min(i, list.length - 1));
+    items.forEach((a) => a.setAttribute("aria-selected", String(a === list[active])));
+    if (!list[active]) return find.removeAttribute("aria-activedescendant");
+    find.setAttribute("aria-activedescendant", list[active].id);
+    if (dialog.open) list[active].scrollIntoView({ block: "nearest" });
+  }
+  function filter() {
+    const q = find.value.trim().toLowerCase();
+    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.startsWith(q); });
+    none.hidden = shown().length > 0;
+    mark(0);
+  }
+  find.addEventListener("input", filter);
+  find.addEventListener("keydown", (event) => {
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    if (step) {
+      event.preventDefault();
+      mark(active + step);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const pick = shown()[active];
+      if (pick) pick.click();
+    }
+  });
+  dialog.addEventListener("click", (event) => {
+    const pick = event.target.closest("[data-source-pick]");
+    if (!pick) return;
+    event.preventDefault();
+    dialog.close();
+    const tab = document.querySelector(`[data-section-tabs] a[href="${pick.getAttribute("href")}"]`);
+    if (tab) tab.click();
+  });
+  dialog.addEventListener("close", () => { find.value = ""; filter(); });
+  filter();
 });
 
 document.querySelectorAll('[role="tablist"]:not(.settings-jump):not([data-section-tabs])').forEach((list, n) => {
