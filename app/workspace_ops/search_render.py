@@ -13,7 +13,7 @@ import posixpath
 import re
 
 from .common import WorkspaceError, _agent_error, _first_lines, _pipe_ok_exit
-from .search_cmds import _GLOB_MAX_PATHS, _GREP_TIMEOUT
+from .search_cmds import _GLOB_MAX_PATHS, _GREP_MAX_LINES, _GREP_TIMEOUT
 
 
 _CONNECTOR_CLIP = "[fuse-agent: output truncated]"
@@ -173,19 +173,41 @@ def _relative_line(line: str, root: str, *, windows: bool) -> str:
     return line
 
 
-_MATCH_LINE = re.compile(r"^(.*?):(\d+):")
-_CONTEXT_LINE = re.compile(r"^(.*?)-(\d+)-")
+# A content line is path:N:text (match) or path-N-text (context). Either
+# separator can also sit inside the file name or the text, so every place
+# one fits is a possible end of the path.
+_GREP_LINE_SPLIT = re.compile(r"(?=([:-])(\d+)\1)")
 
 
-def _grep_line_path(line: str, mode: str = "content") -> str:
+def _grep_line_parses(line: str) -> list[tuple[str, int, bool]]:
+    """Every (path, line number, is_match) reading of a content line."""
+    return [(line[:m.start()], int(m.group(2)), m.group(1) == ":") for m in _GREP_LINE_SPLIT.finditer(line) if m.start()]
+
+
+def _grep_line_paths(line: str, mode: str = "content") -> list[str]:
+    """Every path the line may belong to; a secret check must test them all."""
     if mode == "files_with_matches":
-        return line
+        return [line]
     if mode == "count":
-        return line.rsplit(":", 1)[0]
-    match = _MATCH_LINE.match(line) or _CONTEXT_LINE.match(line)
-    if match:
-        return match.group(1)
-    return line.split(":", 1)[0]
+        return [line.rsplit(":", 1)[0]]
+    return [path for path, _n, _m in _grep_line_parses(line)] or [line.split(":", 1)[0]]
+
+
+def _grep_match_flags(lines: list[str]) -> list[bool]:
+    """Which content lines are matches. A context block is one file on
+    consecutive line numbers, so the reading that continues a neighbour's
+    (same path, line number one apart) is the true one; '--' parses as
+    nothing and ends a block. A line with no such neighbour is a match:
+    context never prints without its match next to it."""
+    parses = [_grep_line_parses(line) for line in lines]
+    flags: list[bool] = []
+    for i, own in enumerate(parses):
+        near = {(p, n + 1) for p, n, _m in parses[i - 1]} if i else set()
+        if i + 1 < len(parses):
+            near |= {(p, n - 1) for p, n, _m in parses[i + 1]}
+        pick = [c for c in own if (c[0], c[1]) in near] or [c for c in own if c[2]] or own
+        flags.append(bool(pick) and pick[0][2])
+    return flags
 
 
 def _format_search_lines(
@@ -197,49 +219,56 @@ def _format_search_lines(
     hide_secrets: bool,
     cap_lines: int,
     mode: str = "content",
+    probed: bool = False,
 ) -> tuple[list[str], int, bool]:
     """Normalize raw result lines. Returns (lines, hidden_secret_count, more).
 
     For grep content output with context, only match lines (path:N:) count
-    toward cap_lines; context (path-N-) and '--' separators ride along."""
+    toward cap_lines; context (path-N-) and '--' separators ride along.
+    At most cap_lines results are kept. probed: the host was asked for one
+    result (and one context line) past the cap, so more means one arrived;
+    otherwise a full cap may be partial."""
     from ..permissions import is_secret_path
 
+    raw_lines = (out or "").splitlines()
+    lines = [_relative_line(raw.rstrip("\r"), root, windows=windows) for raw in raw_lines if raw.strip()]
+    content = grep and mode == "content"
+    is_match = _grep_match_flags(lines) if content else [True] * len(lines)
     rows: list[str] = []
     hidden = 0
     matches = 0
+    more = probed and content and len(raw_lines) > _GREP_MAX_LINES
     last_sep = last_match = -1
-    for raw in (out or "").splitlines():
-        if not raw.strip():
-            continue
-        line = _relative_line(raw.rstrip("\r"), root, windows=windows)
+    for line, match in zip(lines, is_match):
         if grep and line == "--":
             if rows and rows[-1] != "--":
                 last_sep = len(rows)
                 rows.append(line)
             continue
+        if match and matches + hidden >= cap_lines:
+            # rg -m counts per file and a context search's head cap is
+            # lines: stop at cap_lines matches, without the leading
+            # context already kept for this one.
+            if content and last_sep > last_match:
+                del rows[last_sep:]
+            more = True
+            break
         if hide_secrets:
-            loc = _grep_line_path(line, mode) if grep else line
-            full_path = ntpath.join(root, loc) if windows else posixpath.join(root, loc)
-            if is_secret_path(full_path):
-                if not grep or mode != "content" or _MATCH_LINE.match(line):
+            locs = _grep_line_paths(line, mode) if grep else [line]
+            if any(is_secret_path(ntpath.join(root, loc) if windows else posixpath.join(root, loc)) for loc in locs):
+                if match:
                     hidden += 1
                 continue
         if len(line) > _SEARCH_LINE_CHARS:
             line = line[:_SEARCH_LINE_CHARS] + f"… [line clipped at {_SEARCH_LINE_CHARS} chars]"
-        if not grep or mode != "content" or _MATCH_LINE.match(line):
-            if grep and mode == "content" and matches + hidden >= cap_lines:
-                # rg -m counts per file and a context search's head cap is
-                # lines: stop at cap_lines matches, without the leading
-                # context already kept for this one.
-                if last_sep > last_match:
-                    del rows[last_sep:]
-                break
+        if match:
             matches += 1
             last_match = len(rows)
         rows.append(line)
     while rows and rows[-1] == "--":
         rows.pop()
-    more = matches + hidden >= cap_lines
+    if not probed:
+        more = matches + hidden >= cap_lines
     return rows, hidden, more
 
 
@@ -280,9 +309,12 @@ def _glob_order_arg(args: dict) -> str:
     return order
 
 
-def _glob_result(out: str, *, root: str = "", windows: bool = False, notes: list[str] | None = None, order: str = "path") -> str:
+def _glob_result(
+    out: str, *, root: str = "", windows: bool = False, notes: list[str] | None = None, order: str = "path",
+    probed: bool = False,
+) -> str:
     rows, _hidden, more = _format_search_lines(
-        out, root=root, windows=windows, grep=False, hide_secrets=False, cap_lines=_GLOB_MAX_PATHS,
+        out, root=root, windows=windows, grep=False, hide_secrets=False, cap_lines=_GLOB_MAX_PATHS, probed=probed,
     )
     rows = rows[:_GLOB_MAX_PATHS]
     if order == "path":

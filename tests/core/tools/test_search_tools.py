@@ -119,6 +119,47 @@ def test_grep_caps_matches_and_says_how_to_see_more(ssh_host):
     assert "-m 5" in asked(ssh_host)
 
 
+def test_a_line_is_withheld_when_any_reading_of_its_path_is_a_secret_file(ssh_host):
+    # Context lines whose text holds :N:, and file names holding -N-, read
+    # as other paths; every reading is checked.
+    answer(ssh_host, "./.pgpass-1-db.local:5432:app:PGPASS_LINE\n./.pgpass:2:needle\n--\n"
+                     "./deploy-1-prod.pem-4-PEM_LINE\n./deploy-1-prod.pem:5:needle\n--\n./app.py:1:needle\n")
+
+    body = call(ssh_host, "grep", pattern="needle", no_ignore=True, context=1)
+
+    assert "PGPASS_LINE" not in body and "PEM_LINE" not in body and "pgpass" not in body
+    assert rows(body) == ["app.py:1:needle"]
+    assert "(2 result(s)" in body
+
+
+def test_context_lines_with_times_or_ports_do_not_use_up_the_match_cap(ssh_host):
+    answer(ssh_host, "./a.py-1-at 12:30:00\n./a.py:2:needle\n./a.py-3-host:6379:0\n--\n"
+                     "./b.py-9-x\n./b.py:10:needle\n./b.py-11-y\n")
+
+    body = call(ssh_host, "grep", pattern="needle", max_matches=2, context=1)
+
+    assert {"a.py:2:needle", "b.py:10:needle", "a.py-3-host:6379:0"} <= set(rows(body))
+
+
+def test_a_result_of_exactly_the_cap_is_not_called_partial(ssh_host):
+    from app.workspace_ops.search_render import _format_search_lines, _glob_result
+
+    answer(ssh_host, "")
+    call(ssh_host, "grep", pattern="hit", max_matches=5)
+    assert "head -n 6" in asked(ssh_host)  # one past the cap tells full from cut
+
+    def grep(out):
+        return _format_search_lines(out, root="", windows=False, grep=True, hide_secrets=False,
+                                    cap_lines=2, probed=True)
+
+    assert grep("a.py:1:x\nb.py:2:y\n") == (["a.py:1:x", "b.py:2:y"], 0, False)
+    assert grep("a.py:1:x\nb.py:2:y\nc.py:3:z\n") == (["a.py:1:x", "b.py:2:y"], 0, True)
+    exact = _glob_result("".join(f"f{i:03d}\n" for i in range(400)), probed=True)
+    over = _glob_result("".join(f"f{i:03d}\n" for i in range(401)), probed=True)
+    assert "(showing" not in exact and len(rows(exact)) == 400
+    assert "(showing the first 400 paths" in over and len(rows(over)) == 400
+
+
 def test_glob_patterns_are_relative_to_path(ssh_host):
     answer(ssh_host, "./web/main.py\n")
     assert rows(call(ssh_host, "glob", pattern="app/web/*.py", path="app")) == ["app/web/main.py"]
