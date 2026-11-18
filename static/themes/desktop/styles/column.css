@@ -116,22 +116,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :first-child { grid-column: 1; min-width: 0; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > :not(:first-child) { grid-column: 4; grid-row: 1; justify-self: end; margin-left: 0.5rem; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret:not(.is-empty) {
-  display: inline-grid !important;
-  place-items: center;
-  align-self: center;
-  width: 1rem;
-  height: 1rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--dk-mute, var(--mute));
-  opacity: 1;
-  cursor: pointer;
-}
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head:is(:hover, :focus-within) > .chat-step-caret { color: var(--dk-text, var(--mist)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret svg { width: 0.7rem; height: 0.7rem; opacity: 1; transform: rotate(-90deg); transition: transform var(--dur-1, 120ms) ease; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret[aria-expanded="true"] svg { transform: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > .chat-step-caret { display: none !important; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main :is(.chat-step-reveal, .chat-step-reveal-inner, .chat-step-reveal .chat-console-hang, .chat-step-reveal .chat-console-hang-body) { display: contents; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-reveal { grid-column: 1 / -1; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call .chat-console-hang-body > * { grid-column: 1 / -1; min-width: 0; }
@@ -187,7 +172,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-red .chat-console-notice-text { color: var(--call-fail); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-notice.is-gold .chat-console-notice-text { color: var(--call-idle); }
 
-/* Folded work: one muted line, the chevron after it ("Ran 2 commands ▸").
+/* Folded work: one muted line ("Ran 2 commands").
    Unfolded: an indented column, no rule or band. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group { padding-block: 0; background: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-agents:not(.is-console-expanded) .chat-console-agent-tree { display: none; }
@@ -195,21 +180,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle:hover { color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label { color: inherit; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label b { color: inherit; font-weight: 400; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[data-step-toggle]::after {
-  content: "";
-  flex: none;
-  width: 0.32rem;
-  height: 0.32rem;
-  margin: 0 0.2rem 0.12em 0.55rem;
-  border: solid currentColor;
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(-45deg);
-  transition: transform var(--dur-1, 120ms) ease;
-}
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[aria-expanded="true"]::after { transform: rotate(45deg); }
-@media (prefers-reduced-motion: reduce) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle, html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group > .chat-step-main > .chat-step-head > button.chat-step-toggle[data-step-toggle]::after { transition: none; }
-}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-plus { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step-label .dk-minus { color: var(--dk-del, var(--fault)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-console-bundle, .chat-console-agent-tree, .is-agent-report .chat-console-hang-body) {

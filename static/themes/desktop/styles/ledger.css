@@ -255,13 +255,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-call { margin-right: auto; }
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { margin-left: 0; padding-left: 12px; text-align: right; }
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-took ~ .chat-console-result-text { margin-left: 10px; padding-left: 0; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev { display: inline-flex; flex: none; align-self: center; width: 12px; height: 12px; margin-left: 8px; color: var(--dk-call-quiet); opacity: 0; transition: transform var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev svg { width: 12px; height: 12px; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev.is-empty { visibility: hidden; }
-  & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:is(:hover, :focus-within) .dk-row-chev,
-  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { opacity: 1; }
-  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { transform: rotate(90deg); }
-  @media (prefers-reduced-motion: reduce) { & .chat-console-bundle .chat-step-label > .dk-row-chev { transition: none; } }
 
   & .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded { margin: 2px 0 6px var(--dk-row-indent); width: auto; }
   & .chat-console-bundle .chat-step.is-dk-thought .chat-console-hang.is-expanded { margin: 1px 0 6px var(--dk-row-indent); }
