@@ -24,10 +24,6 @@
       </div>
       <div class="chat-rewind-list" data-chat-rewind-list></div>
     </div>
-    <div class="chat-queue" data-chat-queue hidden role="region" aria-label="Queued messages">
-      <p class="chat-queue-kicker">Queued <span data-chat-queue-count></span></p>
-      <ul class="chat-queue-list" data-chat-queue-list></ul>
-    </div>
     <div class="chat-context-alert" data-context-alert hidden role="status">
       <p data-context-alert-text></p>
       <button type="button" class="btn sm" data-context-alert-compact>Compact now</button>
@@ -38,6 +34,10 @@
     </div>
     <div class="chat-agent-live-todos" data-agent-live-todos hidden role="region" aria-label="Subagent todo list"></div>
     <div class="cb-wallpicker" data-wallpaper-picker hidden></div>
+    <div class="chat-queue" data-chat-queue hidden role="region" aria-label="Queued messages">
+      <p class="chat-queue-hold" data-chat-queue-hold hidden><span>Paused because you stopped the reply.</span><button type="button" data-queue-resume>Resume</button></p>
+      <ol class="chat-queue-list" data-chat-queue-list></ol>
+    </div>
     <div class="chat-box cb-box" data-chat-box>
       <div class="chat-attach-list" data-chat-attach-list hidden></div>
       <input id="chat-file" data-chat-file type="file" hidden multiple accept="image/jpeg,image/png,image/gif,image/webp,image/*,application/pdf,text/plain,text/markdown,text/csv,text/html,application/json,.md,.txt,.csv,.json,.py,.js,.ts,.css,.html">

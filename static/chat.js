@@ -669,6 +669,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         }
         return;
       }
+      const step = event.target.closest("[data-perm-step-btn]");
+      if (step) {
+        perms.stepPermCard(Number(step.getAttribute("data-perm-step-btn")));
+        return;
+      }
       const more = event.target.closest("[data-perm-extend]");
       if (more) {
         const card = more.closest("[data-perm-card]");
@@ -975,6 +980,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         if (S.queuedTurns[index] && !turns.queueItemSending(S.queuedTurns[index])) turns.removeQueuedTurn(index);
       }
     });
+    S.queueEl?.querySelector("[data-queue-resume]")?.addEventListener("click", () => turns.resumeQueue());
     const closeQueueMenu = () => { if (S.queueMenuId) { S.queueMenuId = ""; turns.renderQueue(); } };
     document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.(".chat-queue-more-wrap")) closeQueueMenu(); });
     document.addEventListener("keydown", (event) => { if (event.key === "Escape" && S.queueMenuId) closeQueueMenu(); });

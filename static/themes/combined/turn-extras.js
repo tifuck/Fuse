@@ -37,18 +37,23 @@ export function create(deps) {
   // One queued message. q: {index, open, sending, held, streaming, state}.
   function queueItemHtml(item, q) {
     const off = q.sending ? " disabled" : "";
-    return `<li class="chat-queue-item${item.immediate ? " is-immediate" : ""}${q.sending ? " is-sending" : ""}${q.held ? " is-held" : ""}" data-queue-index="${q.index}" data-queue-id="${esc(item.id)}" aria-busy="${q.sending}">` +
-      `<span class="chat-queue-dot" aria-hidden="true"></span>` +
-      `<span class="chat-queue-text" title="${esc(item.text)}">${esc(item.text || "Attached files")}</span>` +
-      `<span class="chat-queue-state" role="status">${q.state}</span>` +
-      '<span class="chat-queue-actions">' +
-      `<button type="button" class="chat-queue-action" data-queue-send="${q.index}" title="${q.streaming ? "Stop the current reply and send this message now" : "Send this message now"}"${!q.streaming && !q.held ? " hidden" : ""}${q.sending || (!q.streaming && !q.held) ? " disabled" : ""}>Send now</button>` +
+    // Fixed columns (number, text, state, actions) so every row's right edge
+    // lines up; Send now keeps its slot even when there is nothing to send now.
+    const canSend = q.streaming || q.held;
+    return `<li class="chat-qrow${item.immediate ? " is-immediate" : ""}${q.sending ? " is-sending" : ""}${q.held ? " is-held" : ""}" data-queue-index="${q.index}" data-queue-id="${esc(item.id)}" aria-busy="${q.sending}">` +
+      `<span class="chat-qrow-n mono" aria-hidden="true">${q.index + 1}</span>` +
+      `<span class="chat-qrow-text" title="${esc(item.text)}">${esc(item.text || "Attached files")}</span>` +
+      '<span class="chat-qrow-meta">' +
+      (q.attached ? `<span class="chat-qrow-att" title="${q.attached} attached"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>${q.attached}<span class="visually-hidden"> attached</span></span>` : "") +
+      `<span class="chat-queue-state" role="status">${q.state}</span></span>` +
+      '<span class="chat-qrow-actions">' +
+      `<button type="button" class="chat-qrow-btn is-send" data-queue-send="${q.index}" aria-label="Send now" title="${q.streaming ? "Stop the current reply and send this message now" : "Send this message now"}"${q.sending || !canSend ? " disabled" : ""}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
       '<span class="chat-queue-more-wrap">' +
-      `<button type="button" class="chat-queue-more" data-queue-more="${q.index}" aria-haspopup="menu" aria-expanded="${q.open}" aria-label="More actions for: ${esc((item.text || "Attached files").slice(0, 40))}" title="Edit or cancel"${off}>` +
-      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="3.5" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="12.5" r="1.3" fill="currentColor"/></svg></button>' +
+      `<button type="button" class="chat-qrow-btn" data-queue-more="${q.index}" aria-haspopup="menu" aria-expanded="${q.open}" aria-label="Edit or remove: ${esc((item.text || "Attached files").slice(0, 40))}" title="Edit or remove"${off}>` +
+      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></button>' +
       `<span class="chat-queue-menu" role="menu"${q.open ? "" : " hidden"}>` +
       `<button type="button" class="chat-queue-action" role="menuitem" data-queue-edit="${q.index}"${off}>Edit</button>` +
-      `<button type="button" class="chat-queue-action" role="menuitem" data-queue-cancel="${q.index}"${off}>Cancel</button>` +
+      `<button type="button" class="chat-queue-action" role="menuitem" data-queue-cancel="${q.index}"${off}>Remove</button>` +
       "</span></span></span></li>";
   }
 

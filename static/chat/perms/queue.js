@@ -2,6 +2,8 @@
 import { S } from '../state.js';
 
 let permTick = 0;
+// The ask shown when several wait: the others are reached with its arrows.
+let permFront = "";
 
 // Cards already announced, and those already warned at 15 seconds left.
 const permSpoken = new Set();
@@ -300,48 +302,34 @@ export function createQueue(ctx) {
       const id = el.getAttribute("data-perm-card");
       if (!want.has(id)) el.remove();
     });
-    pending.forEach((rec, index) => {
-      let el = permQueueList.querySelector(`[data-perm-card="${CSS.escape(rec.id)}"]`);
-      const sig = permCardSignature(rec);
-      const depth = Math.min(index, 2);
-      if (index > 2) {
-        if (el) el.remove();
-        return;
-      }
-      if (!el) {
-        permQueueList.insertAdjacentHTML("beforeend", ui.permQueueCardHtml(rec));
-        el = permQueueList.lastElementChild;
-        speakPerm(rec);
-      } else if (el.getAttribute("data-perm-sig") !== sig) {
+    pending.forEach(speakPerm);
+    let index = pending.findIndex((rec) => rec.id === permFront);
+    if (index < 0) index = 0;
+    const front = pending[index];
+    permFront = front ? front.id : "";
+    [...permQueueList.children].forEach((el) => {
+      if (el.getAttribute("data-perm-card") !== permFront) el.remove();
+    });
+    if (front) {
+      let el = permQueueList.firstElementChild;
+      const sig = permCardSignature(front);
+      if (!el || el.getAttribute("data-perm-sig") !== sig) {
         const wrap = document.createElement("template");
-        wrap.innerHTML = ui.permQueueCardHtml(rec);
+        wrap.innerHTML = ui.permQueueCardHtml(front);
         const next = wrap.content.firstElementChild;
-        el.replaceWith(next);
+        if (el) el.replaceWith(next);
+        else permQueueList.append(next);
         el = next;
       }
-      if (el) {
-        el.setAttribute("data-perm-sig", sig);
-        el.classList.toggle("is-front", index === 0);
-        el.inert = index !== 0;
-        el.style.setProperty("--perm-depth", String(depth));
+      const step = el.querySelector("[data-perm-step]");
+      if (step) {
+        step.hidden = pending.length < 2;
+        const text = step.querySelector("[data-perm-step-text]");
+        if (text) text.textContent = `${index + 1} of ${pending.length}`;
       }
-      if (el && permQueueList.children[index] !== el) permQueueList.insertBefore(el, permQueueList.children[index] || null);
-    });
+    }
     const hasPending = pending.length > 0;
     permQueueEl.hidden = !hasPending;
-    permQueueEl.classList.toggle("is-stacked", pending.length > 1);
-    let badge = permQueueEl.querySelector("[data-perm-queue-count]");
-    if (pending.length > 1) {
-      if (!badge) {
-        badge = document.createElement("span");
-        badge.className = "chat-perm-queue-count mono";
-        badge.setAttribute("data-perm-queue-count", "");
-        permQueueEl.insertBefore(badge, permQueueList);
-      }
-      badge.textContent = pending.length + " waiting";
-    } else if (badge) {
-      badge.remove();
-    }
     paintPermCountdowns();
     if (hasPending) startPermTick();
     else stopPermTick();
@@ -404,6 +392,14 @@ export function createQueue(ctx) {
     else if (!anyPending) stopPermTick();
   }
 
+    function stepPermCard(delta) {
+    const pending = [...S.permCards.values()].filter((rec) => rec.status === "pending");
+    if (pending.length < 2) return;
+    const index = Math.max(0, pending.findIndex((rec) => rec.id === permFront));
+    permFront = pending[(index + delta + pending.length) % pending.length].id;
+    renderPermQueue();
+  }
+
     // "More time" restarts the card's minute (the server caps how long one
   // request may be held).
   async function extendPermCard(id) {
@@ -455,6 +451,7 @@ export function createQueue(ctx) {
     renderPermQueue,
     seedPendingFromServer,
     seedPendingPermCards,
+    stepPermCard,
     sweepStuckPermCards,
     syncPermChip,
     syncPermQueueFromMessage,
