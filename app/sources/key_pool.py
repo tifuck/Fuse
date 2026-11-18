@@ -86,6 +86,7 @@ class KeyState:
         "consecutive_errors",
         "consecutive_auth_errors",
         "last_backoff",        # last applied backoff seconds (for decay math)
+        "last_decay_at",       # epoch seconds of the last error decay
     )
 
     def __init__(self, key: str):
@@ -104,6 +105,7 @@ class KeyState:
         self.consecutive_errors = 0
         self.consecutive_auth_errors = 0
         self.last_backoff = 0.0
+        self.last_decay_at = 0.0
 
     # -- serialisation -----------------------------------------------------
 
@@ -123,6 +125,7 @@ class KeyState:
             "consecutive_errors": self.consecutive_errors,
             "consecutive_auth_errors": self.consecutive_auth_errors,
             "last_backoff": self.last_backoff,
+            "last_decay_at": self.last_decay_at,
         }
 
     @classmethod
@@ -142,6 +145,7 @@ class KeyState:
         s.consecutive_errors = data.get("consecutive_errors", 0)
         s.consecutive_auth_errors = data.get("consecutive_auth_errors", 0)
         s.last_backoff = data.get("last_backoff", 0.0)
+        s.last_decay_at = data.get("last_decay_at", 0.0)
 
         # Migration on load: expire stale cooldowns/rests.
         now = time.time()
@@ -240,9 +244,11 @@ class KeyState:
         """Decay error counters if idle long enough. Returns True if changed."""
         now = time.time()
         changed = False
+        # Idle since the last error or the last decay, so each idle window
+        # decays once instead of on every sweep after the first.
+        idle = now - max(self.last_error_at, self.last_decay_at)
 
         if self.consecutive_errors > 0 and self.last_backoff > 0:
-            idle = now - self.last_error_at
             if idle > decay_factor * self.last_backoff:
                 self.consecutive_errors = max(0, self.consecutive_errors // 2)
                 self.last_backoff = max(1.0, self.last_backoff // 2)
@@ -254,11 +260,12 @@ class KeyState:
         # leave the key permanently one failure away from being disabled. Decay
         # one auth error per idle window (decay_factor minutes by default).
         if self.consecutive_auth_errors > 0:
-            idle = now - self.last_error_at
             if idle > decay_factor * 60.0:
                 self.consecutive_auth_errors -= 1
                 changed = True
 
+        if changed:
+            self.last_decay_at = now
         return changed
 
     # -- introspection -----------------------------------------------------
