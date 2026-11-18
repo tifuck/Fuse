@@ -244,7 +244,7 @@ def _interval_seconds(item: dict) -> int:
     expr = item.get("cron_expr") or ""
     if not expr:
         return MIN_CODING_INTERVAL
-    gap = cron.implied_min_gap(expr, item.get("timezone") or "UTC", utcnow(), 12)
+    gap = cron.implied_min_gap(expr, item.get("timezone") or "UTC", utcnow())
     return int(gap) if gap else MIN_CODING_INTERVAL
 
 
@@ -338,11 +338,16 @@ def _assert_interval(item: dict) -> None:
     if kind == "once":
         return
     expr = item.get("cron_expr") or ""
-    gap = cron.implied_min_gap(expr, item["timezone"], utcnow(), 12)
+    gap = cron.implied_min_gap(expr, item["timezone"], utcnow())
     if gap is None:
         raise ScheduleError("could not project cron fires")
     if gap < minimum:
         raise ScheduleError("interval too frequent")
+
+
+# The fields _assert_interval reads, after _normalize derives cron_expr from
+# the builder fields.
+_INTERVAL_FIELDS = ("target", "allow_coding", "recur_kind", "cron_expr", "every_seconds", "timezone")
 
 
 def _normalize(user_id: int, raw: dict, *, existing: dict | None = None, conn=None) -> dict:
@@ -439,7 +444,10 @@ def _normalize(user_id: int, raw: dict, *, existing: dict | None = None, conn=No
         "enabled": enabled,
         "paused": paused,
     }
-    _assert_interval(item)
+    # An edit that keeps the cadence (pause, rename, reword) is not re-judged:
+    # a schedule saved under older rules must stay editable.
+    if existing is None or any(item[k] != existing.get(k) for k in _INTERVAL_FIELDS):
+        _assert_interval(item)
     unknown = set(_VAR_TOKEN.findall(prompt)) - _BUILTINS - set(variables)
     if unknown:
         raise ScheduleError("unknown variable " + sorted(unknown)[0])
@@ -513,12 +521,6 @@ def create_schedule(user_id: int, raw: dict) -> dict:
     return found
 
 
-_PATCH_INTERVAL_KEYS = {
-    "allow_coding", "target", "project_id", "recur_kind", "cron_expr",
-    "every_seconds", "timezone", "builder", "at_local", "weekdays", "once_at",
-}
-
-
 def patch_schedule(user_id: int, token, raw: dict) -> dict:
     if not limiter.allow(f"schedules:{user_id}", 30, 60):
         raise ScheduleError("too many schedule changes", 429)
@@ -533,8 +535,6 @@ def patch_schedule(user_id: int, token, raw: dict) -> dict:
         # _normalize falls back to existing per field. Pre-merging the stored
         # cron_expr made every PATCH look like a custom cron edit.
         item = _normalize(user_id, raw, existing=existing, conn=conn)
-        if set(raw) & _PATCH_INTERVAL_KEYS:
-            _assert_interval(item)
         timing = ("recur_kind", "cron_expr", "every_seconds", "timezone", "at_local", "weekdays", "once_at",
                   "enabled", "paused")
         if existing.get("next_fire_at") and item["next_fire_at"] and all(item[k] == existing.get(k) for k in timing):

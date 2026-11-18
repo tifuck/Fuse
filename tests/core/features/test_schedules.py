@@ -86,6 +86,21 @@ def test_renaming_keeps_the_next_run_but_a_new_cadence_recomputes_it(fresh_db):
         assert faster["next_fire_at"] == "2026-10-20T07:20:00Z"
 
 
+def test_an_edit_that_keeps_the_cadence_is_not_refused_by_the_interval_floor(fresh_db):
+    uid = quick_user()
+    item = make_schedule(uid, recur_kind="cron", cron_expr="0 9 * * *", allow_coding=True)
+    # Saved under older rules: 01:55 EST to 03:00 EDT is five minutes.
+    db.execute("UPDATE chat_schedules SET cron_expr=?, timezone=? WHERE id=?",
+               ("0,55 1,3 * * *", "America/New_York", item["id"]))
+    assert schedules.patch_schedule(uid, item["public_id"], {"paused": True})["paused"] is True
+    # The form resends the unchanged cadence with every save.
+    renamed = schedules.patch_schedule(uid, item["public_id"], {
+        "name": "renamed", "recur_kind": "cron", "cron_expr": "0,55 1,3 * * *", "timezone": "America/New_York"})
+    assert renamed["name"] == "renamed"
+    with pytest.raises(ScheduleError, match="frequent"):
+        schedules.patch_schedule(uid, item["public_id"], {"timezone": "Europe/Berlin"})
+
+
 def test_pausing_clears_the_next_run_and_preview(fresh_db):
     uid = quick_user()
     with clock("2026-10-20T06:00:00Z"):

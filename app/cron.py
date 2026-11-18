@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 CronError = ValueError
@@ -119,6 +120,19 @@ def _local_utc(wall: datetime, tz: ZoneInfo) -> datetime | None:
     return inst
 
 
+def _date_or(expr: str) -> bool:
+    """dom/dow follow POSIX: when both fields are restricted, a match in either
+    is enough. A field that starts with `*` (`*/2`) is not restricted."""
+    parts = (expr or "").strip().split()
+    return not parts[2].startswith("*") and not parts[4].startswith("*")
+
+
+def _date_ok(local, dom: set[int], dow: set[int], date_or: bool) -> bool:
+    day_ok = local.day in dom
+    dow_ok = (local.isoweekday() % 7) in dow
+    return (day_ok or dow_ok) if date_or else (day_ok and dow_ok)
+
+
 def next_fire(expr: str, tz_name: str, after_utc: datetime) -> datetime | None:
     """Next UTC instant strictly after after_utc where the local clock in tz_name matches expr.
 
@@ -131,8 +145,7 @@ def next_fire(expr: str, tz_name: str, after_utc: datetime) -> datetime | None:
     """
     minute, hour, dom, month, dow = parse_cron(expr)
     tz = parse_tz(tz_name)
-    parts = (expr or "").strip().split()
-    date_or = not parts[2].startswith("*") and not parts[4].startswith("*")
+    date_or = _date_or(expr)
     if after_utc.tzinfo is None:
         after_utc = after_utc.replace(tzinfo=timezone.utc)
     cursor = (after_utc.replace(second=0, microsecond=0) + timedelta(minutes=1))
@@ -140,10 +153,7 @@ def next_fire(expr: str, tz_name: str, after_utc: datetime) -> datetime | None:
     limit = after_utc + timedelta(days=366 * 8)
     while cursor <= limit:
         local = cursor.astimezone(tz)
-        day_ok = local.day in dom
-        dow_ok = (local.isoweekday() % 7) in dow
-        date_ok = (day_ok or dow_ok) if date_or else (day_ok and dow_ok)
-        if local.month not in month or not date_ok:
+        if local.month not in month or not _date_ok(local, dom, dow, date_or):
             wall = datetime(local.year, local.month, local.day) + timedelta(days=1)
         elif local.hour not in hour:
             # Step to the next local hour boundary in real time: a wall-clock
@@ -175,14 +185,86 @@ def next_n(expr: str, tz_name: str, after_utc: datetime, n: int = 5) -> list[dat
     return out
 
 
-def implied_min_gap(expr: str, tz_name: str, after_utc: datetime, samples: int = 12) -> int | None:
-    times = next_n(expr, tz_name, after_utc, samples)
-    if len(times) < 2:
-        return None
-    gaps = [(b - a).total_seconds() for a, b in zip(times, times[1:])]
-    if not gaps:
-        return None
-    return int(min(gaps))
+def implied_min_gap(expr: str, tz_name: str, after_utc: datetime) -> int | None:
+    """Smallest real gap in seconds between consecutive fires over a full cycle
+    of the pattern: within a day, across day, month and year ends, and through
+    DST shifts. None when it fires less than twice.
+
+    Leap days and weekday alignment repeat every 28 years (1901-2099) and zone
+    rules repeat yearly, so 28 years from after_utc's year cover every case.
+    """
+    if after_utc.tzinfo is None:
+        after_utc = after_utc.replace(tzinfo=timezone.utc)
+    return _min_gap(expr, tz_name, after_utc.year)
+
+
+# The catch-up grace asks on every fire claim; the answer depends on the year
+# only through the cycle's start.
+@lru_cache(maxsize=256)
+def _min_gap(expr: str, tz_name: str, year: int) -> int | None:
+    minute, hour, dom, month, dow = parse_cron(expr)
+    tz = parse_tz(tz_name)
+    date_or = _date_or(expr)
+    slots = [timedelta(hours=h, minutes=m) for h in sorted(hour) for m in sorted(minute)]
+    same_day = min((b - a for a, b in zip(slots, slots[1:])), default=None)
+    one_day = timedelta(days=1)
+    floor = timedelta(minutes=1)
+    best = None
+    prev_last = None
+    # Offset of the next local midnight, kept for the following day.
+    next_off = None
+    midnight = datetime(year, 1, 1)
+    end = datetime(year + 28, 1, 1)
+    while midnight < end and best != floor:
+        if midnight.month not in month:
+            midnight = (midnight.replace(day=1) + timedelta(days=32)).replace(day=1)
+            next_off = None
+            continue
+        if not _date_ok(midnight, dom, dow, date_or):
+            midnight += one_day
+            next_off = None
+            continue
+        off = next_off if next_off is not None else midnight.replace(tzinfo=tz).utcoffset()
+        next_off = (midnight + one_day).replace(tzinfo=tz).utcoffset()
+        if off == next_off:
+            # The offset holds all day (fold=0 reads a DST gap or fold at a
+            # midnight with the earlier offset, so an edge shift differs).
+            first, last = midnight + slots[0] - off, midnight + slots[-1] - off
+            gap = same_day
+        else:
+            # One shift today: find the first wall minute on the new offset.
+            # Slots in the window before it fall in a spring-forward gap and
+            # never fire, or in a fall-back fold and fire at both occurrences.
+            lo, hi = 0, 1440
+            while hi - lo > 1:
+                mid = (lo + hi) // 2
+                if (midnight + timedelta(minutes=mid)).replace(tzinfo=tz).utcoffset() == off:
+                    lo = mid
+                else:
+                    hi = mid
+            shift = timedelta(minutes=hi)
+            window = abs(next_off - off)
+            fires = set()
+            for t in slots:
+                if t >= shift:
+                    fires.add(midnight + t - next_off)
+                elif t < shift - window:
+                    fires.add(midnight + t - off)
+                elif next_off < off:
+                    fires.update((midnight + t - off, midnight + t - next_off))
+            fires = sorted(fires)
+            if not fires:
+                midnight += one_day
+                continue
+            first, last = fires[0], fires[-1]
+            gap = min((b - a for a, b in zip(fires, fires[1:])), default=None)
+        if prev_last is not None:
+            gap = first - prev_last if gap is None else min(gap, first - prev_last)
+        if gap is not None:
+            best = gap if best is None else min(best, gap)
+        prev_last = last
+        midnight += one_day
+    return int(best.total_seconds()) if best is not None else None
 
 
 def utcnow() -> datetime:
