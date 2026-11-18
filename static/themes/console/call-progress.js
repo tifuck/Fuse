@@ -5,7 +5,8 @@ function ccCallClockHtml(trace, presentation) {
     if (!name || deps.isSearchTool(name) || name === "spawn_subagent") return "";
     // A background launch returns at once; its clock runs only while its
     // process does. (A Wait on it is flagged background too and keeps its own.)
-    if (name === "run_terminal_command" && deps.toolBackground(trace) && !presentation.running) return "";
+    // Its finish (backgroundResult) shows how long the command ran.
+    if (name === "run_terminal_command" && deps.toolBackground(trace) && !presentation.running && !trace.backgroundResult) return "";
     // A monitor's call returns at once and then keeps watching, so it ticks
     // while it does. Every running clock anchors on the server's started_ms.
     if (presentation.running || (name === "monitor" && deps.executionPending(trace))) {
@@ -18,7 +19,9 @@ function ccCallClockHtml(trace, presentation) {
     if (name === "get_subagent_output") return "";
     // A Wait's elapsed_ms and duration_ms belong to the command it waited on;
     // its own time is the call's.
-    const ms = Number(name === "run_terminal_command"
+    const ms = Number(name === "run_terminal_command" && trace.backgroundResult
+      ? trace.execution_duration_ms ?? trace.latency_ms ?? trace.duration_ms
+      : name === "run_terminal_command"
       ? trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms
       : name === "get_command_output" ? trace.call_duration_ms : trace.call_duration_ms ?? trace.duration_ms);
     return Number.isFinite(ms) && ms >= 2000 ? `<span class="chat-console-took"> | ${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "";
@@ -172,12 +175,20 @@ function consoleOnlyFold(trace, presentation, verbose) {
       if (deps.toolBackground(trace)) {
         if (running && !["interrupted", "cancelled"].includes(trace.status)) return { status: "Running in the background", preview: "", full: "", keep: true };
         if (["interrupted", "cancelled"].includes(trace.status)) return { ...ccInterruptedFold(trace, true), keep: true };
-        // Ended: say how, not what the launch said. (Interrupted is above.)
+        // Ended: say how, not what the launch said, then its newest output
+        // line. (Interrupted is above.)
         const out = deps.consoleDetailHtml(trace, false, false);
         const exit = deps.shellExitCode(trace);
-        const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : "Failed in the background")
-          : `Ran in the background${exit !== null && exit !== 0 ? ` | exit code ${exit}` : ""}`;
-        return { status, preview: "", full: deps.consoleSameText(out, "") ? "" : out, keep: true };
+        const code = exit !== null ? ` (exit ${exit})` : "";
+        const status = failed ? (deps.executionState(trace) === "timed_out" ? "Timed out in the background" : `Failed in the background${code}`)
+          : `Completed in the background${code}`;
+        const body = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
+        const line = body ? deps.consoleLastLine(body.split("\n")) : null;
+        return {
+          status: line ? `${status} | ${line.text}` : status,
+          statusHtml: line ? `${deps.escapeHtml(status)}<span class="chat-console-dim"> | </span>${line.html}` : undefined,
+          preview: "", full: deps.consoleSameText(out, "") || (line && !line.more) ? "" : out, keep: true,
+        };
       }
       const raw = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output)
         : [trace.preview, trace.summary].find((value) => { const text = String(value || "").trim(); return text && text !== "still running" && text !== "background task started"; }) || "";
@@ -381,7 +392,8 @@ function consoleAutoStepsHtml(msg) {
           i = j;
           continue;
         }
-        out.push(deps.consoleWakeNoticeHtml(trace));
+        // A finished background command prints as the call it is; a monitor's end stays a notice.
+        out.push(trace.name === "monitor" ? deps.consoleWakeNoticeHtml(trace) : deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null));
         continue;
       }
       out.push(deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null));

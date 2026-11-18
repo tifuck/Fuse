@@ -56,7 +56,6 @@ export function createConsoleTheme(runtime) {
     get cleanToolOutput() { return theme.cleanToolOutput; },
     get consoleAutoStepsHtml() { return theme.consoleAutoStepsHtml; },
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
-    get consoleTailHtml() { return theme.consoleTailHtml; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
     get executionIdentity() { return runtime.executionIdentity; },
