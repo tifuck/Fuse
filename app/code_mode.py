@@ -150,6 +150,8 @@ def _user_lines(stack: str) -> str:
     text = "\n".join(out)
     if "is not defined" in text:
         text += f"\n(run_code provides only: {', '.join(HELPERS)}.)"
+    elif text.startswith("Not supported") or "Error: Not supported" in text:
+        text += f"\n(import() is not available: run_code is not Node.js. Use the async helpers: {', '.join(HELPERS)}.)"
     elif "is not a function" in text or "[object Promise]" in text:
         text += "\n(Each helper is async: write `await read_file(...)`, and `await Promise.all(...)` over a map.)"
     return text
