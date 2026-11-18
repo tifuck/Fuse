@@ -232,12 +232,24 @@ function consoleSpinGlyph(sidebar) {
     return sidebar && glyph === "✢" ? "✳" : glyph;
   }
 
+// The glyphs that tick: the status lines' and the "Jump to latest" pill's
+// while shown, and every shown run spinner's, each kept as setConsoleSpin
+// fills its slot.
+function spinTicks(mark) {
+    const slot = mark.parentElement;
+    if (!mark.isConnected || !slot || slot.hidden) return false;
+    const dock = [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
+      .find(([, spin]) => spin === slot)?.[0];
+    return dock ? !dock.hidden : "runSpin" in slot.dataset;
+  }
+
 function consoleSpinMarks() {
-    return [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
-      .filter(([dock, spin]) => dock && spin && !dock.hidden && !spin.hidden)
-      .map(([, spin]) => spin.querySelector(":scope > .chat-console-spin"))
-      .concat([...deps.root.querySelectorAll("[data-run-spin]:not([hidden]) > .chat-console-spin")])
-      .filter(Boolean);
+    const marks = [];
+    for (const mark of spinMarks) {
+      if (!mark.isConnected) spinMarks.delete(mark);
+      else if (spinTicks(mark)) marks.push(mark);
+    }
+    return marks;
   }
 
 function stopConsoleSpin() {
@@ -258,7 +270,11 @@ function setConsoleSpin(el) {
       mark.textContent = consoleSpinGlyph("runSpin" in el.dataset);
       el.replaceChildren(mark);
     }
-    if (deps.consoleSpinTimer || deps.reduceMotion.matches) return;
+    if (!spinMarks.has(mark)) {
+      spinMarks.forEach((old) => { if (!old.isConnected) spinMarks.delete(old); });
+      spinMarks.add(mark);
+    }
+    if (deps.consoleSpinTimer || deps.reduceMotion.matches || !spinTicks(mark)) return;
     deps.consoleSpinTimer = window.setInterval(() => {
       const marks = consoleSpinMarks();
       if (!marks.length) {
@@ -266,7 +282,10 @@ function setConsoleSpin(el) {
         return;
       }
       deps.consoleSpinFrame = (deps.consoleSpinFrame + 1) % CONSOLE_SPIN_FRAMES.length;
-      marks.forEach((spin) => { spin.textContent = consoleSpinGlyph("runSpin" in spin.parentElement.dataset); });
+      marks.forEach((spin) => {
+        const glyph = consoleSpinGlyph("runSpin" in spin.parentElement.dataset);
+        if (spin.textContent !== glyph) spin.textContent = glyph;
+      });
     }, 110);
   }
 
@@ -347,6 +366,8 @@ function activityLabel(msg, groups, live) {
 const CONSOLE_SPIN_FRAMES = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
 
 const CONSOLE_SPIN_STILL = "✻";
+
+const spinMarks = new Set();
 
   return { setLiveLabelText, setLivePhase, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }
