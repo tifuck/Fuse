@@ -104,23 +104,20 @@ html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[dat
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code :is(.hljs-built_in, .hljs-number) { color: color-mix(in srgb, var(--fault) 90%, var(--mist)); }
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-code .hljs-comment { color: color-mix(in srgb, var(--mute) 80%, var(--mist)); }
 
-/* Under a settled reply: prose, then the recap, then the action row. */
+/* Under a settled reply: its prose, then one paragraph. It opens with what
+   the turn took and when ("Done in 37s, 9m ago."), the recap runs on from
+   there, and the actions (copy, fork, pin, read aloud) sit at the right of
+   its first line. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant { display: flex; flex-direction: column; gap: 0.3rem; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant > .chat-assistant { display: contents; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant .chat-foot { order: 2; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant > [data-recap] { order: 1; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-recap {
-  display: block;
-  margin: 0.2rem 0 0;
-  color: var(--mute);
-  font: 400 calc(0.9375rem * 0.92 * var(--chat-text-scale, 1))/1.6 var(--chat-view-font, var(--sans));
-}
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-recap-label { font-weight: 600; }
-
-/* The action row: copy, fork, pin, read aloud, when it ended, the work time. */
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.6rem; font-size: calc(0.76rem * var(--chat-text-scale, 1)); color: var(--mute); }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-foot { display: flow-root; min-height: 0; margin: 0; color: var(--mute); font: 400 calc(0.9375rem * 0.92 * var(--chat-text-scale, 1))/1.6 var(--chat-view-font, var(--sans)); letter-spacing: normal; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-foot :is(.chat-foot-meta, .chat-console-turn, .chat-recap, .chat-recap-copy) { display: inline; overflow: visible; white-space: normal; margin: 0; font: inherit; letter-spacing: inherit; color: inherit; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-recap::before { content: " "; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-turn-lead { color: var(--mist); font-weight: 500; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-outcome { font-style: normal; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-outcome.is-failed { color: var(--fault); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-console-turn-mark { display: none; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-acts { display: inline-flex; align-items: center; gap: 2px; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-acts { float: right; display: inline-flex; align-items: center; gap: 2px; margin: -0.15rem 0 0 0.6rem; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act {
   display: inline-grid;
   place-items: center;
@@ -136,7 +133,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act[aria-pressed="true"] { background: var(--raise); color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-ago { margin-left: 0.35rem; color: var(--mute); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-work { color: var(--mute); }
 /* Fork copies the whole chat, so it sits under the last reply only. */
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-turn.is-assistant:has(~ .chat-turn.is-assistant) [data-theme-turn-act="fork"] { display: none; }

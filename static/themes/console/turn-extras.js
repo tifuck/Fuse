@@ -18,7 +18,7 @@ export function create(deps) {
   }
 
   function recapHtml(text) {
-    return `<p class="chat-recap" aria-label="Work recap" data-recap><span class="chat-recap-copy"><span class="chat-recap-label">Recap: </span><em class="chat-recap-text">${esc(text)}</em></span></p>`;
+    return `<p class="chat-recap" aria-label="Work recap" data-recap><span class="chat-recap-copy"><span class="chat-recap-text">${esc(text)}</span></span></p>`;
   }
 
   // A compaction checkpoint as its own turn.

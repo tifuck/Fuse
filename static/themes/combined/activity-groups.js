@@ -1,23 +1,26 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
+// A settled reply's sentence, which its recap runs on from:
+// "Done in 37s at 41 tok/s, 9m ago." Its actions float at the right.
 function ccTurnLineHtml(msg, latest) {
     if (msg.elapsedMs == null) return "";
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
-      return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
+      return `<span class="cb-turn-lead">Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish.</span>`;
     }
-    // A stopped or failed turn never finished, so it says so instead of "done".
+    // A stopped or failed turn never finished, so it says so instead of "Done".
     const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
+    const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
-    return `${turnActionsHtml(msg)}<span class="cb-work">${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+    const ago = turnAgoHtml(msg);
+    return `${turnActionsHtml(msg)}<span class="cb-turn-lead">${outcome ? `<em class="cb-outcome is-${outcome.toLowerCase()}">${outcome}</em> after ${took}` : `Done in ${took}`}` +
+      `${speed ? ` at <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
+      `${ago ? `, ${ago}` : ""}.${still ? ` ${deps.escapeHtml(still)} still running.` : ""}</span>`;
   }
 
-// A settled reply's action row: copy, fork, pin, read aloud, then when it
-// ended ("Just now", full time in the title). A subagent's reply keeps copy
+// A settled reply's actions: copy, fork, pin, read aloud. A subagent's reply keeps copy
 // and read aloud. The buttons run through window.FuseChatActions.
 const TURN_ACTIONS = [
   ["copy", "Copy reply", '<rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/>'],
@@ -43,10 +46,14 @@ function turnActionsHtml(msg) {
       .filter(([kind]) => (kind !== "speak" || speech) && (!msg.noActions || kind === "copy" || kind === "speak"))
       .map(([kind, label, icon]) => `<button type="button" class="cb-act" data-theme-turn-act="${kind}" aria-label="${label}" title="${label}"${kind === "speak" ? ' aria-pressed="false"' : ""}>` +
         `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></button>`).join("");
+    return `<span class="cb-acts">${buttons}</span>`;
+  }
+
+// When a settled reply ended ("Just now"), the full time in its title.
+function turnAgoHtml(msg) {
     const when = new Date(msg.endedAt || "");
-    const ago = msg.endedAt && !Number.isNaN(when.getTime())
+    return msg.endedAt && !Number.isNaN(when.getTime())
       ? `<time class="cb-ago" datetime="${deps.escapeHtml(when.toISOString())}" title="${deps.escapeHtml(when.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}">${deps.escapeHtml(agoText(when))}</time>` : "";
-    return `<span class="cb-acts">${buttons}${ago}</span>`;
   }
 
 function replyText(turn) {
@@ -512,5 +519,5 @@ const CC_PR_VERBS = { created: "created", edited: "edited", merged: "merged", co
 
 const CC_LIVE_TOOLS = new Set(["run_terminal_command", "read_file", "grep", "glob", "list_dir"]);
 
-  return { ccTurnLineHtml, turnActionsHtml, ccShellHint, ccPathHint, ccActivityText, ccRunning, ccSince, ccHeadline, ccLiveText, ccElapsedText, ccShellSuffix, ccThinkClock, syncConsoleClocks, workClocksLive, syncWorkClocks, ccGroupHtml, consoleActivityEntriesHtml, CC_PR_VERBS, CC_LIVE_TOOLS };
+  return { ccTurnLineHtml, turnActionsHtml, turnAgoHtml, ccShellHint, ccPathHint, ccActivityText, ccRunning, ccSince, ccHeadline, ccLiveText, ccElapsedText, ccShellSuffix, ccThinkClock, syncConsoleClocks, workClocksLive, syncWorkClocks, ccGroupHtml, consoleActivityEntriesHtml, CC_PR_VERBS, CC_LIVE_TOOLS };
 }
