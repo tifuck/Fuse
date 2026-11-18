@@ -669,6 +669,8 @@ document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((
       a.tabIndex = on ? 0 : -1;
     });
     ids.forEach((other) => members(other).forEach((el) => { el.hidden = other !== id; }));
+    // A rail that scrolls sideways (Sources on a phone) brings the open tab into view.
+    if (nav.scrollWidth > nav.clientWidth) links[ids.indexOf(id)].scrollIntoView({ block: "nearest", inline: "nearest" });
     try { sessionStorage.setItem(key, id); } catch (_) {}
     if (push) history.replaceState(null, "", "#" + id);
     const scroller = nav.closest(".settings-scroll");
