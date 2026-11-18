@@ -563,6 +563,11 @@ _SYNONYMS = {
     "find_model": "search_models",
     "lookup_model": "search_models",
     "list_models": "search_models",
+    "execute_code": "run_code",
+    "run_js": "run_code",
+    "run_javascript": "run_code",
+    "javascript": "run_code",
+    "code_mode": "run_code",
 }
 
 
@@ -951,6 +956,7 @@ async def execute_tool(
     enabled: list[str] | None = None,
     on_started: Callable[[dict], None] | None = None,
     gate=None,
+    raw: bool = False,
 ) -> tuple[str, dict]:
     try:
         args = json.loads(arguments or "{}")
@@ -1315,6 +1321,7 @@ async def execute_tool(
             thread_id=thread_id,
             on_started=on_started,
             gate=gate,
+            raw=raw,
         )
         hid = rec.pop("host_id", None)
         promote_path = rec.pop("promote_path", "")

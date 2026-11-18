@@ -539,6 +539,51 @@ def edge_thread() -> list[dict]:
     ]
 
 
+CODE = """const names = (await glob({pattern: "services/*.json"})).split("\\n").filter(Boolean);
+const rows = await Promise.all(names.map(async (p) => ({p, ...JSON.parse(await read_file(p))})));
+const slow = rows.filter((r) => r.timeout_ms * (r.retries + 1) > 60000).map((r) => r.p);
+for (const p of slow) await search_replace({path: p, old_string: '"retries": 3', new_string: '"retries": 1'});
+const t = await run_terminal_command({command: "make check", description: "Run the checks"});
+return {slow, exit: t.exit_code};"""
+CODE_RESULT = '{\n  "slow": [\n    "services/a.json"\n  ],\n  "exit": 0\n}\n[Fuse: 6 calls: glob×1, read_file×3, search_replace×1, run_terminal_command×1]'
+RETRY_DIFF = "@@ -2,3 +2,3 @@\n   \"timeout_ms\": 30000,\n-  \"retries\": 3,\n+  \"retries\": 1,\n   \"backoff\": \"exponential\""
+
+
+def code_thread() -> list[dict]:
+    """run_code rows: a run with each kind of call under it, a bulk run of
+    40 reads, and a run whose code failed."""
+    run = tool("run_code", description="Find slow retry policies and lower them", output=f"{CODE}\n\n{CODE_RESULT}",
+               duration_ms=1840)
+    calls = [
+        tool("glob", parent=run["id"], pattern="services/*.json", path=PROJECT,
+             output="services/a.json\nservices/b.json\nservices/c.json"),
+        *[tool("read_file", parent=run["id"], path=f"{PROJECT}/services/{n}.json",
+               output=f'{{\n  "timeout_ms": {t},\n  "retries": {r},\n  "backoff": "exponential"\n}}')
+          for n, t, r in (("a", 30000, 3), ("b", 5000, 0), ("c", 12000, 2))],
+        tool("search_replace", parent=run["id"], path=f"{PROJECT}/services/a.json", preview=RETRY_DIFF, lines_added=1, lines_removed=1),
+        tool("run_terminal_command", parent=run["id"], command="make check", description="Run the checks", cwd=PROJECT,
+             exit_code=0, execution_duration_ms=900, output="lint ok\nunit ok"),
+    ]
+    bulk = tool("run_code", description="Count TODOs in every module", duration_ms=3100,
+                output='const files = (await glob({pattern: "app/*.py"})).split("\\n").filter(Boolean);\n'
+                       'return (await Promise.all(files.map(async (p) => (await read_file(p)).split("TODO").length - 1)))'
+                       '.reduce((a, b) => a + b, 0);\n\n17\n[Fuse: 41 calls: glob×1, read_file×40]')
+    bulk_calls = [tool("glob", parent=bulk["id"], pattern="app/*.py", path=PROJECT,
+                       output="\n".join(f"app/module_{i:02d}.py" for i in range(40)))]
+    bulk_calls += [tool("read_file", parent=bulk["id"], path=f"{PROJECT}/app/module_{i:02d}.py",
+                        output=f"# module {i}\n# TODO: tidy\nVALUE = {i}") for i in range(40)]
+    failed = tool("run_code", status="error", kind="code_error", description="Parse every config",
+                  error="line 1: SyntaxError: missing ) after argument list",
+                  output="return files.map((p) => JSON.parse(p);\n\nError: line 1: SyntaxError: missing ) after argument list\n"
+                         "No tool calls finished before the error.")
+    return [
+        user("Lower the retry count on any service whose worst-case wait is over a minute, then run the checks."),
+        reply("Scanning the service configs in one pass.\n\n", run, *calls,
+              "One service was over a minute (`services/a.json`, 30 s × 4 tries); its retries are now 1 and the checks pass.\n\n",
+              failed, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.", minutes_ago=5, elapsed_s=41),
+    ]
+
+
 THREADS = [
     ("QA · Long markdown", lambda: [user("Why did the background command never report back?"), reply(MARKDOWN, minutes_ago=300, elapsed_s=48)]),
     ("QA · Summary lines", summary_thread),
@@ -551,6 +596,7 @@ THREADS = [
     ("QA · Subagents", agents_thread),
     ("QA · File edits and output", edits_thread),
     ("QA · Claude Code rows", rows_thread),
+    ("QA · Code mode", code_thread),
     ("QA · Edge cases", edge_thread),
 ]
 

@@ -20,7 +20,7 @@ import traceback
 
 from fastapi import Request
 
-from .. import chats
+from .. import chats, code_mode
 from ..chat_tools import ARTIFACT_TOOL_IDS
 from ..secret_swap import REFUSED
 
@@ -62,11 +62,15 @@ _DURATION_SUFFIX_TOOLS = frozenset(
 )
 
 
-# Same-step ordering domains (see _run_tools.worker).
+# Same-step ordering domains (see _run_tools.worker). run_code names no host
+# (""), so it orders against every host's calls.
 _HOST_MUTATING_TOOLS = frozenset(
-    {"write_file", "search_replace", "run_terminal_command", "monitor", "kill_command"}
+    {"write_file", "search_replace", "run_terminal_command", "monitor", "kill_command", "run_code"}
 )
 _HOST_READ_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob"})
+# A read run_code made shows this much on its row: the code got the whole
+# text, and a run of hundreds of reads must not store each one in full.
+_CHILD_READ_OUTPUT_MAX = 2_000
 
 
 def _host_key(arguments: str) -> str:
@@ -197,8 +201,13 @@ async def run_tools(
     queue: asyncio.Queue = asyncio.Queue()
     cancel = asyncio.Event()
     persist_lock = asyncio.Lock()
+    # run_code's calls: event_id -> the run_code row's event_id.
+    parents: dict[str, str] = {}
+    child_counts: dict[str, int] = {}
 
     def emit(obj) -> None:
+        if isinstance(obj, dict) and obj.get("event") == "tool" and obj.get("id") in parents:
+            obj = {**obj, "parent": parents[obj["id"]]}
         queue.put_nowait(obj)
 
     from .. import permissions as permissions_mod
@@ -246,7 +255,8 @@ async def run_tools(
             emit({"event": "tool", **job.trace})
             return
         emit(_running_event(job))
-        await persist_now()
+        if not job.parent:
+            await persist_now()
         raw_args = (job.arguments or "").strip()
         if raw_args:
             try:
@@ -324,27 +334,35 @@ async def run_tools(
                 job.trace = {**job.trace, **trace, "id": job.event_id}
                 emit({"event": "tool", "id": job.event_id, **trace})
 
-            text, trace = await execute_tool(
-                job.name,
-                arguments,
-                user_id=user_id,
-                allowed_urls=allowed_urls,
-                on_query_done=on_progress if phase == "search" else None,
-                cancel=cancel,
-                budgets=budgets,
-                thread_id=thread_id,
-                bound_host_id=session.get("bound_host_id") if session else bound_host_id,
-                bound_cwd=(session.get("bound_cwd") if session else bound_cwd) or "",
-                coding=bool(session.get("coding")) if session else coding,
-                loaded=loaded,
-                parent_run_id=parent_run_id,
-                http_request=request,
-                user=user,
-                session=session,
-                enabled=session.get("enabled_tools") if session else None,
-                on_started=on_started,
-                gate=perm_gate,
-            )
+            run_coding = bool(session.get("coding")) if session else coding
+            if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
+                text, trace = await code_mode.run(
+                    arguments, call=lambda name, args: run_child(job, name, args), cancel=cancel,
+                )
+            else:
+                text, trace = await execute_tool(
+                    job.name,
+                    arguments,
+                    user_id=user_id,
+                    allowed_urls=allowed_urls,
+                    on_query_done=on_progress if phase == "search" else None,
+                    cancel=cancel,
+                    budgets=budgets,
+                    thread_id=thread_id,
+                    bound_host_id=session.get("bound_host_id") if session else bound_host_id,
+                    bound_cwd=(session.get("bound_cwd") if session else bound_cwd) or "",
+                    coding=run_coding,
+                    loaded=loaded,
+                    parent_run_id=parent_run_id,
+                    http_request=request,
+                    user=user,
+                    session=session,
+                    enabled=session.get("enabled_tools") if session else None,
+                    on_started=on_started,
+                    gate=perm_gate,
+                    # run_code's reads hand the code raw text, not numbered lines.
+                    **({"raw": True} if job.parent and job.name == "read_file" else {}),
+                )
             latency_ms = int((time.monotonic() - started) * 1000)
             trace = dict(trace)
             image = trace.pop("image", None)
@@ -392,7 +410,8 @@ async def run_tools(
             if trace.get("status") == "running" and job.name in ("get_command_output", "get_subagent_output"):
                 trace.update(status="done", execution_status="running", background=True)
             output = trace.get("output") if isinstance(trace.get("output"), str) else (text or "")
-            trace["output"] = output[-chats.TOOL_OUTPUT_MAX:] if trace.get("output_mode") == "tail" else output[:chats.TOOL_OUTPUT_MAX]
+            keep = _CHILD_READ_OUTPUT_MAX if job.parent and job.name in _HOST_READ_TOOLS else chats.TOOL_OUTPUT_MAX
+            trace["output"] = output[-keep:] if trace.get("output_mode") == "tail" else output[:keep]
             trace["output_retained_chars"] = len(trace["output"])
             if trace.get("output_mode") == "tail" and trace.get("output_start") is not None:
                 trace["output_start"] += len(output) - len(trace["output"])
@@ -400,7 +419,7 @@ async def run_tools(
             trace["truncated"] = bool(trace.get("truncated") or trace["output_chars"] > len(trace["output"]))
             # Every executed tool reports its wall-clock duration; shell jobs
             # carry timing inside their result envelope already.
-            if latency_ms >= 1000 and job.name in _DURATION_SUFFIX_TOOLS:
+            if latency_ms >= 1000 and job.name in _DURATION_SUFFIX_TOOLS and not job.parent:
                 text = f"{text or ''}\n[duration {latency_ms}ms]" if (text or "").strip() else (text or "")
             if swap is not None:
                 # Learn values from the fullest copy first, so a result the
@@ -459,7 +478,10 @@ async def run_tools(
                 latency_ms=int((time.monotonic() - started) * 1000),
                 exception=traceback.format_exc(limit=30),
             )
-        await persist_now()
+        # A read run_code made changes nothing a resume needs; its edits and
+        # commands are checkpointed like direct calls.
+        if not job.parent or job.name in _HOST_MUTATING_TOOLS:
+            await persist_now()
         tool_trace = dict(job.trace)
         extra_perm = None
         if job.name == "propose_skill" and tool_trace.get("status") == "done" and tool_trace.get("proposal_id"):
@@ -480,6 +502,17 @@ async def run_tools(
         emit({"event": "tool", "id": job.event_id, **tool_trace})
         if extra_perm:
             emit(extra_perm)
+
+    async def run_child(parent: ToolJob, name: str, args: dict) -> tuple[str, dict]:
+        """One run_code call as a job of this round, through run_job."""
+        n = child_counts[parent.event_id] = child_counts.get(parent.event_id, 0) + 1
+        child = ToolJob(orig_index=parent.orig_index, call_id=parent.call_id, name=name,
+                        arguments=json.dumps(args, ensure_ascii=False), event_id=f"{parent.event_id}_c{n}",
+                        parent=parent.event_id)
+        parents[child.event_id] = parent.event_id
+        jobs.append(child)
+        await run_job(child, _job_phase(name))
+        return child.text, child.trace
 
     def _job_phase(name: str) -> str:
         if name == "web_search":

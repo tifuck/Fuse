@@ -71,6 +71,9 @@ class ToolJob:
     image: dict | None = None
     # A host-list call split into one job per host: the call as the model sent it.
     call_arguments: str = ""
+    # A call made by run_code: the run_code job's event_id. It shares that
+    # job's call_id, so the model sees one call and only the code's result.
+    parent: str = ""
 
 
 def jobs_from_calls(calls: list[dict], completion_i: int) -> list[ToolJob]:
@@ -291,7 +294,29 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
     return list(groups.values())[:MAX_TOOL_CALLS]
 
 
+def _code_result(group: list[ToolJob]) -> str:
+    head = group[0]
+    if head.done and head.text and head.text != "Tool interrupted.":
+        return _tool_result_clip(head.name, head.text)
+    # Cut off mid-run (a stop or a restart): name what already changed.
+    changed = [j for j in group[1:] if j.done and j.name in ("write_file", "search_replace", "run_terminal_command")
+               and j.trace.get("status") not in ("error", "interrupted")]
+    lines = []
+    for j in changed:
+        try:
+            args = json.loads(j.arguments or "{}")
+        except (ValueError, RecursionError):
+            args = {}
+        subject = " ".join(str(args.get("path") or args.get("command") or "").split())[:120]
+        lines.append(f"- {j.name} {subject}".rstrip())
+    text = "Tool interrupted: the code stopped before it finished."
+    return _tool_result_clip(head.name, text + (" These calls had already completed:\n" + "\n".join(lines) if lines
+                                               else " No file edit or command had completed."))
+
+
 def _call_result(group: list[ToolJob]) -> str:
+    if group[0].name == "run_code" and not group[0].parent:
+        return _code_result(group)
     if len(group) == 1:
         return _tool_result_clip(group[0].name, group[0].text or "")
     parts = []

@@ -569,7 +569,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             vault_ok = bool(agent.get("vault_unlocked"))
         else:
             vault_ok = vault_unlocked_for(user["id"])
-    from .agent_catalog import sanitize_loaded
+    from .agent_catalog import CODE_MODE, sanitize_loaded
 
     loaded_tools: list[str] = sanitize_loaded(agent.get("loaded_tools") if isinstance(agent.get("loaded_tools"), list) else [])
     # Site switch and the account's Settings › Chat defaults toggle.
@@ -694,6 +694,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
         secrets_swapped=swap is not None,
+        code_mode=CODE_MODE,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
     prompt_snapshot = copy.deepcopy(snapshot) if isinstance(snapshot, dict) and isinstance(snapshot.get("system"), str) else {}
@@ -1914,6 +1915,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     )
                 await persist_jobs()
                 for job in jobs:
+                    if getattr(job, "parent", ""):
+                        # Code catching a missed call is not the model failing.
+                        continue
                     trace = job.trace if isinstance(getattr(job, "trace", None), dict) else {}
                     st = trace.get("status") or ""
                     # over_call_cap is a server-side refusal, not a model or

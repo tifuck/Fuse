@@ -93,6 +93,18 @@ change: each pool merges its live catalog into its seed list.
   `wallpaperPickerHtml` and keeps the `data-wallpaper-*` hooks. Desktop
   also opens it from Sidebar › Customize.
 
+## run_code (code mode)
+
+Coding agents get `run_code`: JavaScript whose workspace calls are real tool
+calls. `app/code_mode.py` starts one `app/code_worker.py` process per run (a
+`mini-racer` V8 isolate, jitless, empty environment, no root, killed at its
+deadline); each helper call comes back over the pipe and
+`tool_runner.run_tools` runs it as a child `ToolJob` of the same round
+(`parent` set, same `call_id`), so the gate, confinement, secret swap and rows
+apply as to a direct call. Only the parent's text reaches the model
+(`tool_jobs._call_result`); child traces carry `parent`. `CODE_MODE=false`, or
+a missing `mini-racer`, turns it off.
+
 ## Stored transcripts
 
 - Large inline images in `chat_runs.provider_messages`/`request` and

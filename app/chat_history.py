@@ -148,7 +148,8 @@ def _row_hash(row):
 def _trace_rows(message):
     rows = []
     for index, trace in enumerate(message.get("tools") or []):
-        if not isinstance(trace, dict) or not trace.get("name") or trace.get("name") == "fuse-steer":
+        # A call run_code made was part of its run_code call, not one of the model's.
+        if not isinstance(trace, dict) or not trace.get("name") or trace.get("name") == "fuse-steer" or trace.get("parent"):
             continue
         ident = "hist_" + hashlib.sha256(f"{message.get('id')}:{index}".encode()).hexdigest()[:24]
         # Keep the scoping arguments too: a recovered read_file without its

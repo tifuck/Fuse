@@ -69,6 +69,8 @@ app/monitor.py                   tools
 app/permissions.py               tools
 app/jev.py                       tools
 app/file_images.py               tools
+app/code_mode.py                 tools
+app/code_worker.py               tools
 app/ssh_pool.py                  tools
 app/async_work.py                tools
 

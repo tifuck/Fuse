@@ -1108,7 +1108,12 @@ async def _run(request, user, run):
                     fuse_event = fuse.get("event") if fuse else None
                     tool_status = fuse_event == "tool" and fuse.get("status")
                     got_usage = (not had_usage) and isinstance(output.message.get("usage"), dict)
-                    if tool_status in ("running", "done", "error", "interrupted") or fuse_event in ("context", "activity", "permission") or got_usage:
+                    if tool_status and fuse.get("parent"):
+                        # run_code's calls publish at once; their row write rides
+                        # the throttled snapshot (hundreds per run would each
+                        # rewrite the whole message).
+                        await flush(durable=False)
+                    elif tool_status in ("running", "done", "error", "interrupted") or fuse_event in ("context", "activity", "permission") or got_usage:
                         await flush()
                     elif fuse_event == "heartbeat":
                         # Publish now; the row write is throttled (liveness has

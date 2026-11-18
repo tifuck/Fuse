@@ -56,7 +56,8 @@ who may use their account.
 
 **🖥️ Coding agent**<br>
 Works on your Linux and Windows machines through an outbound-only connector
-or SSH, and asks before it acts.
+or SSH, and asks before it acts. Bulk work runs as sandboxed JavaScript
+(`run_code`), so only the results reach the model.
 
 </td>
 </tr>

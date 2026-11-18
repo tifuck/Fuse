@@ -127,7 +127,7 @@ const CC_SPINNER_STATES = {
     write_file: "writing file", read_url: "fetching", spawn_subagent: "running agent", get_subagent_output: "waiting for agent",
     kill_subagent: "stopping agent", list_subagents: "listing agents", monitor: "watching",
     create_artifact: "building artifact", update_artifact: "building artifact", edit_artifact: "editing artifact",
-    read_artifact: "reading artifact", search_models: "finding models",
+    read_artifact: "reading artifact", search_models: "finding models", run_code: "running code",
   };
 
   return { formatActivityClock, formatActivityElapsed, ccThinkingState, ccSpinnerState, formatConsoleLiveStatus, syncActivityElapsed, activitySpinSet, syncActivitySpin, CC_SPINNER_STATES };

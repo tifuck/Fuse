@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # Site switch for memory (app/memory.py). Off removes it from every chat,
     # whatever each account chose; saved memories stay stored.
     memory_enabled: bool = True
+    # Site switch for run_code (app/code_mode.py). Off removes the tool from
+    # every coding agent; it is also off when mini-racer cannot load.
+    code_mode: bool = True
     # Append raw Devin stream frames to data/devin-stream-debug.log.
     fuse_devin_debug: bool = False
 

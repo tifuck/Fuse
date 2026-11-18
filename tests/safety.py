@@ -11,7 +11,7 @@ was wiped. Independent layers keep that from happening again:
   tests/core/__init__.py, tests/legacy/__init__.py, the browser fixture)
   ends the process before app code is imported unless it runs in that unit.
 - install_process_guard(): no test may start a process or signal one it
-  did not start. Every way Python starts one raises, except the two exact
+  did not start. Every way Python starts one raises, except the exact
   app workers in ALLOWED (and, in the xdist controller only, the exact
   execnet worker bootstrap).
 
@@ -42,9 +42,13 @@ _APP = Path(__file__).resolve().parents[1] / "app"
 # interpreter, never a shell, never "-c".
 #   app/file_images.py:  [python, <app>/file_images.py, frame, max_side, max_bytes]
 #   app/search/engine.py: [python, -I, <app>/search/pdf_worker.py, max_bytes]
+#   app/code_mode.py:     [python, -I, <app>/code_worker.py, heap_mb] (a V8
+#                         isolate with no I/O; its tool calls come back to
+#                         the test's own fakes over the pipe)
 ALLOWED = (
     ((), str(_APP / "file_images.py"), 3),
     (("-I",), str(_APP / "search" / "pdf_worker.py"), 1),
+    (("-I",), str(_APP / "code_worker.py"), 1),
 )
 
 REFUSAL = "tests may not start processes"

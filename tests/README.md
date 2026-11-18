@@ -38,7 +38,8 @@ Since then:
 - **No processes.** `tests/safety.py` makes every way to start a process
   (os, posix, subprocess, pty, asyncio) raise in test processes, and every
   signal to a process the test did not start. The only exceptions are the
-  two app workers listed there (image decoder, PDF extractor): exact argv,
+  app workers listed there (image decoder, PDF extractor, run_code's V8
+  worker, whose tool calls come back to the test's fakes): exact argv,
   never a shell; and, in the xdist controller only, execnet's exact worker
   bootstrap.
 - **Data in the run dir.** App files under `ROOT/data` are redirected to the

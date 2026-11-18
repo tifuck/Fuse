@@ -101,7 +101,7 @@ function toolSubject(trace) {
 function toolAction(trace) {
     const labels = { read_file: "Read", list_dir: "List", grep: "Grep", glob: "Glob", write_file: "Write", search_replace: "Edit",
       run_terminal_command: "Shell", get_command_output: "Output", kill_command: "Stop", monitor: "Watch", spawn_subagent: "Agent",
-      get_subagent_output: "Result", kill_subagent: "Stop", list_subagents: "Agents", search_models: "Models", search_tools: "Tools",
+      get_subagent_output: "Result", kill_subagent: "Stop", list_subagents: "Agents", search_models: "Models", search_tools: "Tools", run_code: "Code",
       load_skill: "Skill", propose_skill: "Draft", todo_write: "Tasks", scratch: "Scratch", remember: "Remember", recall: "Recall", forget: "Forget", read_transcript: "Transcript", read_url: "Page", web_search: "Search", search: "Search",
       create_artifact: "Create", update_artifact: "Update", edit_artifact: "Edit", read_artifact: "Read", "fuse-steer": "Notice" };
     return labels[trace.name] || String(trace.name || "Tool").replaceAll("_", " ");

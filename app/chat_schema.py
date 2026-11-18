@@ -998,6 +998,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             "project_root", "platform", "offset", "limit", "include", "max_matches", "call_duration_ms", "execution_duration_ms",
             "agent_work_ms",
             "permission_id",
+            "parent",
             "todos",
             "source",
             "event_count",
@@ -1041,6 +1042,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             "remember",
             "recall",
             "forget",
+            "run_code",
         ):
             # Unknown calls are still real failed steps, and must survive replay.
             if (not isinstance(name, str) or not name.strip() or len(name) > 64 or _has_surrogate(name)
@@ -1089,6 +1091,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             ("state", 32),
             ("output_mode", 16),
             ("permission_id", 64),
+            ("parent", 64),
             ("subagent_type", 32),
             ("edit_diff", TOOL_EDIT_DIFF_MAX),
         ):

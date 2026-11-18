@@ -285,6 +285,29 @@ _PARALLEL = (
     "whole file when you need its structure; otherwise read the region you need rather than many tiny "
     "slices."
 )
+# run_code first: models take the first tool rule as their default.
+_RUN_CODE = (
+    "- `run_code` is the default for file and shell work that takes more than one call or returns more than "
+    "you will read. It runs JavaScript in which read_file, list_dir, grep, glob, write_file, search_replace "
+    "and run_terminal_command are async functions taking the same arguments as the tools; only what the code "
+    "returns reaches you. Use it to search and then read the hits, scan or count across many files, make the "
+    "same edit in several files, look something up and act on it, or run a command and keep only the lines "
+    "that matter. Chain dependent calls with await, run independent ones with Promise.all, and return only "
+    "what you need, with path:line for anything you will cite or edit.\n"
+    "- Call a tool directly when its whole result is what you need: a file you will study or edit by hand "
+    "(direct read_file shows line numbers and images) or a command whose full output matters. Also for what "
+    "run_code cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
+    "artifacts, todo_write, scratch, skills.\n"
+    "- Edit from code only when the change is mechanical or you have already read the text you replace. "
+    "Calls from code are permission-checked and shown to the user like direct calls."
+)
+_RUN_CODE_READ_ONLY = (
+    "- `run_code` is the default for searches and reads that take more than one call or return more than you "
+    "will read. It runs JavaScript in which read_file, list_dir, grep and glob are async functions taking the "
+    "same arguments as the tools; only what the code returns reaches you. Chain dependent calls with await, "
+    "run independent ones with Promise.all, and return only what you need, with path:line for anything you "
+    "will cite. Call a tool directly for a file you will study in full."
+)
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
     "ls/find/rg/grep/cat/sed — for listing, searching, reading, and editing files. They cost fewer "
@@ -667,16 +690,17 @@ def expand_slash_messages(messages: list[dict], *, project_session: bool, bound_
 _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 
-def _loaded_line(names: list[str], read_only: bool = False) -> str:
+def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
+    use = "Use them directly or inside `run_code`" if code else "Call them directly"
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
         return (
-            "Loaded tools: " + ", ".join(names) + ". Call them directly; `search_tools` cannot add "
+            "Loaded tools: " + ", ".join(names) + f". {use}; `search_tools` cannot add "
             "tools beyond your role's."
         )
     if names:
         line = (
-            "Loaded tools: " + ", ".join(names) + ". Call them directly without `search_tools`. "
+            "Loaded tools: " + ", ".join(names) + f". {use} without `search_tools`. "
             "`search_tools` still loads other packs or answers query hosts / query skills."
         )
         if not any(name in names for name in _FILE_TOOL_NAMES):
@@ -747,6 +771,7 @@ def build_system_prompt(
     memory_project: bool = False,
     temp_dir: str = "",
     secrets_swapped: bool = False,
+    code_mode: bool = False,
 ) -> str:
     sources = ["User instructions", "profile notes", "this-chat notes"]
     memory_block = "" if subagent else memory_section(memory, memory_index, project=memory_project)
@@ -808,11 +833,12 @@ def build_system_prompt(
     read_only = kind in ("explore", "plan")
     if coding and not read_only:
         parts.append("How to work:\n" + (_ACT_CHILD if subagent else _ACT_MAIN) + "\n" + _TASK_METHOD)
-        parts.append("Tools:\n" + _FILE_TOOLS_OVER_SHELL + "\n" + _PARALLEL + "\n" + _EDITS)
+        parts.append("Tools:\n" + (_RUN_CODE + "\n" if code_mode else "") + _FILE_TOOLS_OVER_SHELL + "\n" + _PARALLEL
+                     + "\n" + _EDITS)
         parts.append(_SHELL + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
         parts.append(_RISKY_CHILD if subagent else _RISKY_MAIN)
     elif coding:
-        parts.append("Tools:\n" + _PARALLEL)
+        parts.append("Tools:\n" + (_RUN_CODE_READ_ONLY + "\n" if code_mode else "") + _PARALLEL)
         if kind == "explore":
             parts.append(_SHELL + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:
@@ -825,7 +851,7 @@ def build_system_prompt(
     _loaded = [str(n) for n in (loaded_tools or []) if isinstance(n, str)]
     if coding and project_session:
         parts.append(session_frame(project_session=True, bound_label=bound_label))
-        parts.append(_loaded_line(_loaded, read_only))
+        parts.append(_loaded_line(_loaded, read_only, code_mode))
         if host_catalog:
             parts.append(
                 "Connected machines (alias, user@host, auth type, allowed roots, project paths; never secrets)."
@@ -847,7 +873,7 @@ def build_system_prompt(
                 "rules."
             )
     elif coding:
-        parts.append(_loaded_line(_loaded, read_only))
+        parts.append(_loaded_line(_loaded, read_only, code_mode))
         parts.append(session_frame(project_session=False))
         if host_catalog:
             parts.append(

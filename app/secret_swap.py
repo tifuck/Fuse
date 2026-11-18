@@ -46,8 +46,10 @@ from .crypto import DecryptionError, decrypt, encrypt
 logger = logging.getLogger(__name__)
 
 MARK = "_fuse_tok"
-# Arguments of these leave for third parties: they keep the fake.
-NO_RESTORE = frozenset({"web_search", "read_url"})
+# Arguments of these keep the fake: web tools send them to third parties, and
+# run_code's own calls are restored one by one, so the code never holds a
+# real value it could transform past the swap.
+NO_RESTORE = frozenset({"web_search", "read_url", "run_code"})
 REFUSED = ("[Fuse] This tool call was NOT executed: one of its values is incomplete or altered. "
            "Re-issue it with the exact values from the conversation.")
 
