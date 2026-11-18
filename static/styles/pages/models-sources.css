@@ -355,6 +355,7 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   white-space: nowrap;
 }
 .sources-pane { container: pools / inline-size; min-width: 0; }
+.sources-pane > [hidden] { display: none; }
 @container sources (max-width: 46rem) {
   .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .sources-rail {
