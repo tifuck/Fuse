@@ -449,9 +449,10 @@ function updateAssistant(article, msg, live) {
     }
     const usageBits = deps.formatTurnMeta(msg);
     const turnLine = (!live) && hasOutput ? deps.ccTurnLineHtml(msg, msg === deps.messages[deps.messages.length - 1]) : "";
-    // Every settled reply gets the action row; the work time follows when known.
+    // Every settled reply gets its actions and when it ended; the work time follows when known.
+    const ago = deps.turnAgoHtml(msg);
     const footHtml = turnLine ? `<span class="chat-console-turn">${turnLine}</span>`
-      : !live && hasOutput ? `<span class="chat-console-turn">${deps.turnActionsHtml(msg)}` + (usageBits.length ? `<span class="cb-work">${usageBits
+      : !live && hasOutput ? `<span class="chat-console-turn">${deps.turnActionsHtml(msg)}<span class="cb-turn-lead">${ago}</span>` + (usageBits.length ? `<span class="cb-work">${ago ? " · " : ""}${usageBits
         .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
         .join('<span class="chat-foot-dot" aria-hidden="true">·</span>')}</span>` : "") + "</span>"
       : "";

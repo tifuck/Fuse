@@ -76,6 +76,8 @@ class ToolJob:
     # A call made by run_code: the run_code job's event_id. It shares that
     # job's call_id, so the model sees one call and only the code's result.
     parent: str = ""
+    # A run_code result too long for the model: its kept whole text (code_mode.keep).
+    result_id: str = ""
 
 
 def jobs_from_calls(calls: list[dict], completion_i: int) -> list[ToolJob]:
@@ -321,10 +323,22 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
         last["content"] = f"{last['content']}\n\n{tip}"
 
 
+def _code_clip(text: str, result_id: str = "") -> str:
+    """A run_code result over the limit: the head, then what was cut and how
+    to get the rest without running the code again."""
+    if len(text) <= TOOL_RESULT_CHARS:
+        return text
+    cut = TOOL_RESULT_CHARS - 400
+    rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {cut}}})` (kept 30 "
+            "minutes), or return a narrower result." if result_id else " Return a narrower result.")
+    return text[:cut] + (f"\n[Fuse: result cut at {cut} of {len(text)} characters. The code's calls already ran, so do "
+                         f"not run its edits or commands again.{rest}]")
+
+
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     if head.done and head.text and head.text != "Tool interrupted.":
-        return _tool_result_clip(head.name, head.text)
+        return _code_clip(head.text, head.result_id)
     # Cut off mid-run (a stop or a restart): what changed, and what may have.
     lines = []
     for j in group[1:]:

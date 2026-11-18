@@ -270,6 +270,21 @@ function setConsoleSpin(el) {
     }, 110);
   }
 
+// The turn's highest machine load, for its done line (activity-groups.js).
+// shortcut: kept on the message in this page only, so a reload loses it;
+// store it with the turn if it should outlive the page.
+function keepHostPeak(msg) {
+    const card = deps.liveDock.querySelector("[data-host-stats]:not([hidden])");
+    if (!card || !card.dataset.cpu) return;
+    const peak = (msg._hostPeak ||= { cpu: 0, ram: 0, cpuTone: "", ramTone: "" });
+    for (const key of ["cpu", "ram"]) {
+      const value = Number(card.dataset[key]) || 0;
+      if (value < peak[key]) continue;
+      peak[key] = value;
+      peak[key + "Tone"] = card.querySelector(`[data-hs-${key}]`)?.style.color || "";
+    }
+  }
+
 function syncLiveDock() {
     deps.scheduleTodoSync();
     if (!deps.liveDock) return;
@@ -296,6 +311,7 @@ function syncLiveDock() {
         const line = deps.formatConsoleLiveStatus(msg, groups);
         setLiveLabelText(deps.liveDockLabel, line.verb, line.meta);
       }
+      keepHostPeak(msg);
       if ((deps.liveDockSpin)) setConsoleSpin(deps.liveDockSpin);
       else if (deps.liveDockSpin) deps.applySpinEl(deps.liveDockSpin, deps.activitySpinSet(msg), "dock", true, msg._spinOrigin);
       if (instant) {

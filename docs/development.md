@@ -104,7 +104,10 @@ comes back over the pipe and `tool_runner.run_tools` runs it as a child
 confinement, secret swap and rows apply as to a direct call. Only the parent's
 text reaches the model (`tool_jobs._call_result`); child traces carry `parent`
 and sit under their run_code row; a run's reads past the first 40 draw no row.
-The deadline stops while a permission prompt waits. A server running as root
+The deadline stops while a permission prompt waits. A result over 24,000
+characters reaches the model cut, with an id; `code_mode.keep` holds the whole
+(secret-swapped) text in memory for 30 minutes, per user and chat, and a later
+run reads the rest with `read_result(id, {offset, limit})`. A server running as root
 also gives each worker its own empty network namespace and uid 65534; without
 root the worker keeps the server's uid. `CODE_MODE=false`, or a missing
 `mini-racer`, turns it off.

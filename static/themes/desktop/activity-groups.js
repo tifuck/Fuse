@@ -1,25 +1,25 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-// A finished reply's line: when it ended, then (darker) what it took, then
-// its actions: "4m ago · worked 3m 53s". usage: the stored-reply stand-in
-// for the work time.
+// A finished reply's line: what it took, then when it ended, then its
+// actions: "Done in 3m 53s · 4m ago". usage: the stored-reply stand-in for
+// the work time.
 function ccTurnLineHtml(msg, latest, usage = "") {
-    // One run of text, so it reads and copies as one line: "4m ago · worked 3m 53s".
+    // One run of text, so it reads and copies as one line: "Done in 3m 53s · 4m ago".
     const ago = agoHtml(msg);
     const lead = ago ? " · " : "";
+    // A stopped or failed turn never finished: its outcome leads
+    // ("Interrupted after 26s"), the one tinted word.
+    const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
     if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
-    // A stopped or failed turn never finished: its outcome is the verb
-    // ("interrupted after 26s"), the one tinted word.
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
-    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> after ${took}` : `worked ${took}`;
+    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome === "interrupted" ? "Interrupted" : "Failed"}</em> after ${took}` : `Done in ${took}`;
     const still = latest ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
-    return `<span class="dk-turn-text">${ago}<span class="dk-took">${lead}${doing}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span></span>${turnActionsHtml(msg, latest)}`;
+    return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
   }
 
 // A finished reply's actions: copy, fork, pin, read aloud. Desktop's

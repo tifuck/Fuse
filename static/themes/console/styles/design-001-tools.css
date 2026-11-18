@@ -31,9 +31,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-recap {
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-recap-copy { grid-column: 2; min-width: 0; }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-recap-label { font-weight: 650; }
-
-html[data-chat-console="true"] .chat[data-view="console"] .chat-recap-text { font-style: italic; }
 
 html[data-chat-font] :is(
   .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),

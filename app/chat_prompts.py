@@ -293,12 +293,18 @@ _LOCATE = (
     "slices."
 )
 _PARALLEL = _BATCH + _LOCATE
+# Code mode's locate rule: the same search order, inside one snippet.
+_LOCATE_CODE = (
+    "- Locate, then read, in one snippet: glob for file names, grep with output_mode files_with_matches for the "
+    "files that mention something, read just those files, and return the lines you need. `list_dir` with depth "
+    "2-3 shows a project's layout."
+)
 
 
-def _code_mode(work: str, helpers: str, exceptions: str) -> str:
-    """The run_code section: what it is, why, when not, how. Short and in
-    that order, so a weak model can follow it; it comes before the other
-    tool rules, which models read as the default."""
+def _code_mode(work: str, helpers: str, uses: str, exceptions: str) -> str:
+    """The run_code section: what it is, why, what for, when not, how. Short
+    and in that order, so a weak model can follow it; it comes before the
+    other tool rules, which models read as the default."""
     return (
         f"Code mode (`run_code`): use it for almost all {work}.\n"
         f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
@@ -307,12 +313,15 @@ def _code_mode(work: str, helpers: str, exceptions: str) -> str:
         "context, so you stay fast and accurate in big projects; and you filter, count and compare in code "
         "instead of by reading. Each call is still permission-checked and shown to the user. At worst it costs "
         "about the same as calling the tools directly.\n"
-        f"- When not to use it: {exceptions} Also for what code cannot do: background commands, monitor, "
-        "get_command_output, kill_command, web, subagents, artifacts, todo_write, scratch, skills.\n"
+        f"- Use it for: {uses}\n"
+        f"- When not to use it: {exceptions} If you do not know how big the project is, treat it as large. Code "
+        "also cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
+        "artifacts, todo_write, scratch, skills.\n"
         "- How: plain JavaScript, not Node.js (no require, import, fs, child_process or process). Write "
         "`await read_file(\"src/app.py\")`, run independent calls together with `await Promise.all(...)`, and "
-        "end with `return`. Return findings with path:line (line numbers come from grep, or are the index + 1 "
-        "after splitting a file's text), not whole files. Example:\n"
+        "end with `return`. Inside a backtick string `${x}` is JavaScript: write shell commands and edit text "
+        "that contains `${` or backticks as '…' or \"…\" strings. Return findings with path:line (line numbers "
+        "come from grep, or are the index + 1 after splitting a file's text), not whole files. Example:\n"
         "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter(Boolean);\n"
         "  const found = [];\n"
         "  for (const f of files) {\n"
@@ -326,6 +335,9 @@ def _code_mode(work: str, helpers: str, exceptions: str) -> str:
 _CODE_MODE = _code_mode(
     "file and shell work",
     "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command",
+    "finding where something is defined or used (grep, read the matches, return the lines); answering a question "
+    "about the code; reading or comparing several files; the same edit in several files (grep for them, then "
+    "search_replace each); running tests or a build and returning only the failures.",
     "call a tool directly only when the project is tiny (a handful of files), or for a single one-line edit when "
     "you already know the file and the exact text to change.",
 )
@@ -722,6 +734,7 @@ _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
     use = "Use them inside `run_code` (directly only for the exceptions in Code mode)" if code else "Call them directly"
+    no_search = "; they need no `search_tools` call." if code else " without `search_tools`."
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
         return (
@@ -730,7 +743,7 @@ def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) 
         )
     if names:
         line = (
-            "Loaded tools: " + ", ".join(names) + f". {use} without `search_tools`. "
+            "Loaded tools: " + ", ".join(names) + f". {use}{no_search} "
             "`search_tools` still loads other packs or answers query hosts / query skills."
         )
         if not any(name in names for name in _FILE_TOOL_NAMES):
@@ -866,7 +879,7 @@ def build_system_prompt(
         parts.append("How to work:\n" + (_ACT_CHILD if subagent else _ACT_MAIN) + "\n" + _TASK_METHOD)
         if code_mode:
             parts.append(_CODE_MODE)
-            parts.append("Tools:\n" + _FILE_TOOLS_IN_CODE + "\n" + _BATCH_CODE + _LOCATE + "\n" + _EDITS)
+            parts.append("Tools:\n" + _FILE_TOOLS_IN_CODE + "\n" + _BATCH_CODE + _LOCATE_CODE + "\n" + _EDITS)
         else:
             parts.append("Tools:\n" + _FILE_TOOLS_OVER_SHELL + "\n" + _PARALLEL + "\n" + _EDITS)
         parts.append(shell + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
@@ -876,9 +889,11 @@ def build_system_prompt(
             helpers = "read_file, list_dir, grep, glob and run_terminal_command" if kind == "explore" \
                 else "read_file, list_dir, grep and glob"
             parts.append(_code_mode("searching and reading", helpers,
+                                    "finding where something is defined or used (grep, read the matches, return the "
+                                    "lines); answering a question about the code; reading or comparing several files.",
                                     "call a tool directly only when the project is tiny (a handful of files), or to "
                                     "read one file you already know in full."))
-            parts.append("Tools:\n" + _BATCH_CODE + _LOCATE)
+            parts.append("Tools:\n" + _BATCH_CODE + _LOCATE_CODE)
         else:
             parts.append("Tools:\n" + _PARALLEL)
         if kind == "explore":

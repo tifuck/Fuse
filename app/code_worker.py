@@ -30,8 +30,10 @@ ARG_CHARS = 400_000
 MESSAGE_LIMIT = 4 * 1024 * 1024
 # A line the parent sends: a helper's result (read_file returns up to 2 MB).
 REPLY_LIMIT = 64 * 1024 * 1024
-# What the outcome carries back; the model is shown far less of either.
-RESULT_CHARS = 100_000
+# What the outcome carries back; the model is shown far less of either (the
+# rest of the value stays readable with read_result). Even escaped as \u
+# pairs, a value this long still fits one MESSAGE_LIMIT line.
+RESULT_CHARS = 300_000
 LOG_CHARS = 10_000
 # CPU seconds; time spent awaiting helpers costs none.
 CPU_SECONDS = 120
@@ -62,6 +64,8 @@ const __tool = (name, key) => async (args, content) => {
   if (!reply.ok) throw new Error(reply.error);
   return reply.value;
 };
+// The rest of an earlier run's cut result (the parent keeps it a while).
+const read_result = (id, opts) => __tool("read_result", "")({...(opts || {}), id});
 """.replace("%FIX%", _FIX) + "".join(
     f"const {name} = __tool({json.dumps(name)}, {json.dumps(_STRING_ARG.get(name, ''))});\n" for name in HELPERS)
 

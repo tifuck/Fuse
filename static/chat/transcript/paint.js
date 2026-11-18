@@ -189,12 +189,14 @@ export function createPaint(ctx) {
     const byAnchor = new Map(S.threadRecaps.map(row => [String(row.anchor_id), String(row.text || "")]));
     for (const article of target ? [target] : S.log.children) {
       const text = byAnchor.get(article.dataset.messageId);
-      let node = article.querySelector(":scope > [data-recap]");
+      // A theme may give the recap a home in the reply ([data-recap-home]); else the article's end.
+      const home = article.querySelector(":scope > * > [data-recap-home]") || article;
+      let node = home.querySelector(":scope > [data-recap]");
       if (!text || article.hasAttribute("data-deferred-message")) { node?.remove(); continue; }
       if (node?.dataset.text !== text) {
         const fresh = fromHtml(ui.recapHtml(text));
         fresh.dataset.text = text;
-        if (node) node.replaceWith(fresh); else article.appendChild(fresh);
+        if (node) node.replaceWith(fresh); else home.appendChild(fresh);
       }
     }
   }

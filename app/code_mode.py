@@ -18,8 +18,10 @@ import importlib.util
 import json
 import logging
 import re
+import secrets
 import signal
 import sys
+import time
 from pathlib import Path
 
 from .code_worker import ARG_CHARS, CPU_SECONDS, HELPERS, MESSAGE_LIMIT, OFFSET
@@ -47,6 +49,51 @@ WORKERS = 8
 SLOT_WAIT_S = 30
 _slots: tuple | None = None
 _INSTALLED = importlib.util.find_spec("py_mini_racer") is not None
+# A result cut for the model is kept whole for a while, so a later run_code
+# can read the rest (read_result) instead of running the code again. Memory
+# only: a restart drops them, and the oldest go first past KEEP_CHARS.
+KEEP_S = 1800
+KEEP_CHARS = 32_000_000
+READ_PAGE = 20_000
+_kept: collections.OrderedDict[str, tuple[float, tuple, str]] = collections.OrderedDict()
+_kept_chars = 0
+_clock = time.monotonic
+
+
+def keep(owner: tuple, text: str) -> str:
+    """Keep a whole result for its owner (user, thread); returns its id."""
+    global _kept_chars
+    _forget(_clock())
+    ident = "r_" + secrets.token_hex(6)
+    _kept[ident] = (_clock() + KEEP_S, owner, text)
+    _kept_chars += len(text)
+    while _kept_chars > KEEP_CHARS and len(_kept) > 1:
+        _kept_chars -= len(_kept.popitem(last=False)[1][2])
+    return ident
+
+
+def _forget(now: float) -> None:
+    global _kept_chars
+    # Entries expire in the order they were kept (one TTL for all).
+    while _kept and next(iter(_kept.values()))[0] <= now:
+        _kept_chars -= len(_kept.popitem(last=False)[1][2])
+
+
+def _read_kept(owner: tuple, raw: str) -> dict:
+    try:
+        args = json.loads(raw)
+        ident = str(args.get("id") or "")
+        offset = max(0, int(args.get("offset") or 0))
+        limit = max(1, int(args.get("limit") or READ_PAGE))
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        return {"ok": False, "error": "read_result takes an id and optional {offset, limit} numbers."}
+    _forget(_clock())
+    entry = _kept.get(ident)
+    if entry is None or entry[1] != owner:
+        return {"ok": False, "error": f"no kept result {ident}: results are kept for {KEEP_S // 60} minutes in this "
+                                        "chat and lost when the server restarts. Run the code again with a narrower "
+                                        "result (only if repeating its calls is safe)."}
+    return {"ok": True, "value": entry[2][offset:offset + limit]}
 
 
 def available() -> bool:
@@ -58,13 +105,13 @@ SCHEMA = {
     "function": {
         "name": "run_code",
         "description": (
-            "Use this for almost all file and shell work. Write a short JavaScript snippet whose calls below are "
-            "real tool calls; only what it returns comes back to you, so one call does the work of many and the "
-            "files it reads stay out of your context.\n"
+            "Use this for almost all file and shell work: a short JavaScript snippet whose calls below are real "
+            "tool calls; only what it returns comes back to you.\n"
             "Plain JavaScript, not Node.js: no require, import, fs, child_process, process or timers. Await each "
-            "call, use Promise.all for independent ones, and end with return. Each function takes the same "
-            "argument object as the tool of that name (a string is the path, pattern or command), and each call is "
-            "permission-checked and shown to the user like a direct call:\n"
+            "call, use Promise.all for independent ones, and end with return. Write shell commands and code-heavy "
+            "edit text as '…' or \"…\" strings: in a backtick string ${x} is JavaScript (or escape it as \\${x}). "
+            "Each function takes the same arguments as the tool of that name (a string is the path, pattern or "
+            "command):\n"
             "declare function read_file(a: {path: string, offset?: number, limit?: number, host?: string} | string): "
             "Promise<string>; // raw text, no line numbers; the whole file (up to 2 MB) unless limit is given\n"
             "declare function grep(a: {pattern: string, path?: string, include?: string, output_mode?: \"content\" | "
@@ -78,16 +125,17 @@ SCHEMA = {
             "string): Promise<string>; // receipt; write_file(path, content) works too\n"
             "declare function search_replace(a: {path: string, old_string?: string, new_string?: string, "
             "replace_all?: boolean, edits?: {old_string: string, new_string: string, replace_all?: boolean}[], "
-            "host?: string}): Promise<string>; // receipt\n"
+            "host?: string}): Promise<string>; // receipt with the edited lines\n"
             "declare function run_terminal_command(a: {command: string, cwd?: string, timeout?: number, "
             "description?: string, host?: string} | string): Promise<{status: string, exit_code: number | null, "
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
+            "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
+            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes)\n"
             "A line in (parentheses) in grep, glob or list_dir text is a note, not a result. A failed call throws "
             "an Error with the tool's message; catch it where a miss is expected. console.log output comes back "
-            "too. Limits: 500 calls; 5 minutes (timeout, in ms, up to 10 minutes; time spent waiting on a "
-            "permission prompt does not count); 400,000 characters of arguments per call; 32 MB of results per "
-            "run; a returned value over 24,000 characters is cut, so return findings, not file bodies.\n"
+            "too. Limits: 500 calls, 5 minutes (timeout, in ms, up to 10). A returned value over 24,000 "
+            "characters is cut, so return findings, not file bodies.\n"
             "Example:\n"
             "const files = (await grep({pattern: \"fetchUser\\\\(\", output_mode: \"files_with_matches\"}))"
             ".split(\"\\n\").filter((p) => p && !p.startsWith(\"(\"));\n"
@@ -166,6 +214,16 @@ def _value(name: str, text: str, trace: dict):
     return value
 
 
+# Undefined names that mean "run_code is not Node.js" or "that is a tool, not
+# a helper"; any other undefined name is most often a shell or file `${x}`
+# left inside a backtick string, which JavaScript filled in itself.
+_NOT_HERE = frozenset({
+    "require", "module", "exports", "process", "Buffer", "__dirname", "__filename", "fs", "path", "os",
+    "child_process", "fetch", "setTimeout", "setInterval", "monitor", "get_command_output", "kill_command",
+    "web_search", "read_url", "spawn_subagent", "todo_write", "scratch", "load_skill", "search_tools",
+})
+
+
 def _user_lines(stack: str) -> str:
     """V8 positions as the model's own line numbers; frames in the prelude
     (a helper throwing) are dropped, and a Node habit gets its fix."""
@@ -179,7 +237,12 @@ def _user_lines(stack: str) -> str:
     fix = " Fix the code and call run_code again."
     # A helper the code shadowed (`const { grep } = globalThis`) is undefined, not un-awaited.
     shadowed = re.search(r"\b(\w+) is not a function", text)
-    if "is not defined" in text:
+    undefined = re.search(r"\b(\w+) is not defined", text)
+    if undefined and undefined.group(1) not in _NOT_HERE:
+        name = undefined.group(1)
+        text += (f"\n(If `${{{name}}}` sits in a backtick string meant for the shell or for file text, JavaScript "
+                 f"filled it in: use a '…' or \"…\" string there, or write \\${{{name}}}.{fix})")
+    elif undefined:
         text += f"\n(run_code provides only: {', '.join(HELPERS)}, e.g. `await read_file(\"a.py\")`.{fix})"
     elif text.startswith("Not supported") or "Error: Not supported" in text:
         text += f"\n(import() is not available: run_code is not Node.js. Use {', '.join(HELPERS)}.{fix})"
@@ -192,10 +255,11 @@ def _user_lines(stack: str) -> str:
     return text
 
 
-async def run(arguments: str, *, call, paused=None) -> tuple[str, dict]:
+async def run(arguments: str, *, call, paused=None, owner: tuple = ()) -> tuple[str, dict]:
     """One run_code call. call(name, args) -> (text, trace) runs a nested tool
     call as a job of this round and returns its finished result; paused() is
-    true while a permission prompt waits, which stops the deadline's clock.
+    true while a permission prompt waits, which stops the deadline's clock;
+    owner (user, thread) is whose kept results read_result may read.
     An exception the runner lets escape (a checkpoint that keeps failing)
     stops the code and propagates."""
     try:
@@ -219,13 +283,13 @@ async def run(arguments: str, *, call, paused=None) -> tuple[str, dict]:
         return msg, {**rec, "status": "error", "kind": "busy", "error": msg}
     try:
         outcome, kind, done, stopped = await _execute(
-            code, _timeout_ms(args.get("timeout")) / 1000, call, paused or (lambda: False))
+            code, _timeout_ms(args.get("timeout")) / 1000, call, paused or (lambda: False), owner)
     finally:
         slots.release()
     return _result(code, rec, outcome, kind, done, stopped)
 
 
-async def _execute(code: str, timeout_s: float, call, paused):
+async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     done: list[dict] = []
     tasks: set[asyncio.Task] = set()
     children = asyncio.Semaphore(CHILD_CONCURRENCY)
@@ -294,6 +358,10 @@ async def _execute(code: str, timeout_s: float, call, paused):
             messages += 1
             if messages > 2 * MAX_CALLS:
                 return {"ok": False, "error": f"the code made over {2 * MAX_CALLS} tool calls, most of them refused."}
+            if name == "read_result":
+                # The model's own earlier output, already swapped: no host, no tool job.
+                send({"reply": n, "body": json.dumps(_read_kept(owner, raw))})
+                continue
             if name not in HELPERS:
                 refuse(n, f"{name} is not available in run_code (available: {', '.join(HELPERS)}).")
                 continue

@@ -435,6 +435,7 @@ export function createCombinedTheme(runtime) {
     get tracesSig() { return runtime.tracesSig; },
     get transcriptDomOptions() { return runtime.transcriptDomOptions; },
     get turnActionsHtml() { return theme.turnActionsHtml; },
+    get turnAgoHtml() { return theme.turnAgoHtml; },
   }));
   Object.assign(theme, createWorkPanels({
     get agentActivitySummary() { return runtime.agentActivitySummary; },

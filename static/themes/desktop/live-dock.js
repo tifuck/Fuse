@@ -97,26 +97,40 @@ function swapVerb(el, verb, text) {
     }, () => {});
   }
 
-// The live pane. Opened, the status line heads a card over the reply's
-// newest calls, oldest at the top: a call that starts is the next entry, so
-// moving on opens, closes and moves nothing, and the card keeps one height.
+// The live pane. Opened, the status line heads a card with what that line
+// names and nothing else: the call running now (its input, how it stands, its
+// newest output or change) or the thought being written. When the line moves
+// on, the card swaps to the new one, its height easing between the two; a line
+// with nothing to show (the reply being written) leaves just the line.
 // Open is a remembered choice, not a call's: it holds for every later call,
 // the thinking between them, the next reply and a reload.
 const PANE_KEY = "fuse.desktop.livePane";
-const PANE_CALLS = 8;
 const PANE_LINES = 40;
 const PANE_MS = 240;
 const PANE_EASE = "cubic-bezier(0.2, 0, 0, 1)";
-const PANE_SKIP = new Set(["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"]);
 const PANE_DOTS = '<span class="dk-fe-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
 let paneOpen = false;
 try { paneOpen = localStorage.getItem(PANE_KEY) === "1"; } catch (_) {}
 
-// The calls the summary rows count (no subagent calls, no todo or tool-search
-// bookkeeping), newest last.
-function paneTraces(msg) {
+// The call the line names (key: its id). A run_code call shows the call its
+// code is making now, its newest, until it makes one.
+function paneTrace(msg, key) {
     const traces = Array.isArray(msg?.tools) ? msg.tools : [];
-    return traces.filter((trace) => trace && !PANE_SKIP.has(trace.name) && !["silent", "todo"].includes(deps.ccToolClass(trace)?.kind)).slice(-PANE_CALLS);
+    const trace = key ? traces.find((t) => String(t?.id ?? "") === key) : null;
+    if (trace?.name !== "run_code") return trace || null;
+    for (let i = traces.length - 1; i >= 0; i -= 1) if (String(traces[i]?.parent ?? "") === key) return traces[i];
+    return trace;
+  }
+
+// The thought being written: the newest run of reasoning, as plain text.
+function paneThought(msg) {
+    const segs = Array.isArray(msg?.segments) ? msg.segments : [];
+    let end = segs.length - 1;
+    while (end >= 0 && segs[end]?.type !== "reasoning") end -= 1;
+    const parts = [];
+    for (let k = end; k >= 0 && segs[k]?.type === "reasoning"; k -= 1) parts.unshift(String(segs[k].text || "").trim());
+    const text = segs.length ? parts.filter(Boolean).join("\n\n") : String(msg?.reasoning || "");
+    return text.replace(/\*\*|^#{1,6}\s+/gm, "").replace(/\n{3,}/g, "\n\n").trim();
   }
 
 // How a call stands, at the end of its line: running (dots, then its own
@@ -139,8 +153,8 @@ function paneState(trace) {
     return { text: ms > 0 ? deps.humanMs(ms) : "" };
   }
 
-// What a call shows under its line: a command's newest output, an edit's
-// change, a search's first matches or results. Anything else is its line.
+// What a call shows under its line: a command's newest output (tail: read
+// from the bottom), an edit's change, a search's first matches or results.
 function paneBody(trace) {
     const name = trace.name;
     if (name === "search_replace" || name === "write_file") {
@@ -154,7 +168,7 @@ function paneBody(trace) {
     const out = typeof trace.output === "string" ? deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "") : "";
     if (!out) return null;
     const rows = out.split("\n");
-    if (["run_terminal_command", "get_command_output", "monitor"].includes(name)) return { lines: rows.slice(-PANE_LINES).map(deps.renderAnsi) };
+    if (["run_terminal_command", "get_command_output", "monitor"].includes(name)) return { lines: rows.slice(-PANE_LINES).map(deps.renderAnsi), tail: true };
     if (["grep", "glob", "list_dir"].includes(name)) return { lines: rows.slice(0, 6).map(deps.escapeHtml) };
     return null;
   }
@@ -166,18 +180,30 @@ function paneLine(html) {
     return line;
   }
 
-function paneEntry() {
+// One item: a call (its line over its output) or a thought (its text).
+function paneItem(thought) {
     const el = document.createElement("div");
-    el.className = "dk-fe";
-    el.innerHTML = '<div class="dk-fe-head"><span class="dk-fe-ico"></span><span class="dk-fe-in"></span><span class="dk-fe-state"></span></div><div class="dk-fe-out"></div>';
-    [el._icoEl, el._inEl, el._state] = el.firstChild.children;
-    el._out = el.lastChild;
+    el.className = thought ? "dk-now dk-think" : "dk-now dk-fe";
+    el.innerHTML = (thought ? "" : '<div class="dk-fe-head"><span class="dk-fe-ico"></span><span class="dk-fe-in"></span><span class="dk-fe-state"></span></div>') +
+      `<div class="dk-fe-out${thought ? " is-tail" : ""}"><div class="dk-fe-lines"></div></div>`;
+    if (!thought) [el._icoEl, el._inEl, el._state] = el.firstChild.children;
+    el._box = el.lastChild;
+    el._out = el._box.firstChild;
     return el;
   }
 
-// Brings one entry up to date in place; true when anything on it changed.
-function syncPaneEntry(el, trace) {
-    let changed = false;
+// A thought grows at its end: the text already drawn stays (a selection in it
+// survives) and only the new words are added.
+function syncPaneThought(el, text) {
+    const shown = el._text || "";
+    if (text === shown) return;
+    if (shown && text.startsWith(shown)) el._out.append(text.slice(shown.length));
+    else el._out.textContent = text;
+    el._text = text;
+  }
+
+// Brings a call's item up to date in place.
+function syncPaneCall(el, trace) {
     const ico = deps.rowIconHtml(trace);
     if (el._ico !== ico) {
       el._ico = ico;
@@ -188,7 +214,6 @@ function syncPaneEntry(el, trace) {
     if (el._text !== text) {
       el._text = text;
       el._inEl.innerHTML = text;
-      changed = true;
     }
     const state = paneState(trace);
     const stateHtml = state.html || (state.running && !state.text ? PANE_DOTS : deps.escapeHtml(state.text));
@@ -199,12 +224,13 @@ function syncPaneEntry(el, trace) {
       el.classList.toggle("is-done", !state.running);
     }
     const body = paneBody(trace);
+    el._box.classList.toggle("is-tail", Boolean(body?.tail));
     if (body?.html) {
-      if (el._html === body.html) return changed;
+      if (el._html === body.html) return;
       el._html = body.html;
       el._lines = null;
       el._out.innerHTML = body.html;
-      return true;
+      return;
     }
     if (el._html) {
       el._html = null;
@@ -214,7 +240,7 @@ function syncPaneEntry(el, trace) {
     const old = el._lines || [];
     let same = 0;
     while (same < old.length && same < lines.length && old[same] === lines[same]) same += 1;
-    if (same === old.length && same === lines.length) return changed;
+    if (same === old.length && same === lines.length) return;
     // Output grows at its end: the lines already drawn stay (a selection in
     // them survives); only a grown last line and the new ones are drawn.
     if (same >= old.length - 1 && lines.length >= old.length) {
@@ -222,7 +248,6 @@ function syncPaneEntry(el, trace) {
       for (let i = old.length; i < lines.length; i += 1) el._out.append(paneLine(lines[i]));
     } else el._out.replaceChildren(...lines.map(paneLine));
     el._lines = lines;
-    return true;
   }
 
 // The card: the status line and, under it, the pane, which folds open and shut.
@@ -235,13 +260,16 @@ function paneParts(dock) {
     fold.className = "dk-pane";
     fold.id = "dk-live-pane";
     fold.inert = true;
-    fold.innerHTML = '<div class="dk-pane-in"><div class="dk-feed" role="group" aria-label="Calls"><div class="dk-feed-lines"></div></div></div>';
+    fold.innerHTML = '<div class="dk-pane-in" role="group" aria-label="Running now"></div>';
     head.before(card);
     card.append(head, fold);
     head.setAttribute("aria-controls", fold.id);
-    const pane = dock._pane = { head, fold, feed: fold.querySelector(".dk-feed"), lines: fold.querySelector(".dk-feed-lines"), entries: new Map(), msgId: null };
+    head.setAttribute("role", "button");
+    head.tabIndex = 0;
+    dock.classList.add("is-detailable");
+    const pane = dock._pane = { head, fold, inner: fold.firstChild, item: null, key: "" };
     const toggle = (event) => {
-      if (!dock.classList.contains("is-detailable") || !event.target.closest("[data-dock-status]")) return;
+      if (!event.target.closest("[data-dock-status]")) return;
       if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       paneOpen = !paneOpen;
@@ -254,64 +282,57 @@ function paneParts(dock) {
   }
 
 function showPane(dock, pane) {
-    const open = paneOpen && pane.entries.size > 0;
-    if (pane.head.hasAttribute("role")) pane.head.setAttribute("aria-expanded", String(open));
-    if (dock.classList.contains("is-pane-open") === open) return;
-    dock.classList.toggle("is-pane-open", open);
-    pane.fold.inert = !open;
+    pane.head.setAttribute("aria-expanded", String(paneOpen));
+    if (dock.classList.contains("is-pane-open") === paneOpen) return;
+    dock.classList.toggle("is-pane-open", paneOpen);
+    pane.fold.inert = !paneOpen;
     // A followed transcript keeps its end in view while the pane folds.
     followLiveDockSlide(PANE_MS);
   }
 
-function syncLivePane(dock, msg) {
+// line: the status line as shown (live-status.js), with the call it names
+// (key) and its phase.
+function syncLivePane(dock, msg, line) {
     const pane = paneParts(dock);
-    if (pane.msgId !== msg.id) {
-      pane.msgId = msg.id;
-      pane.entries.clear();
-      pane.lines.replaceChildren();
-    }
-    // Changes slide: what was on screen moves to where it now sits.
-    const moving = dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
-    const before = moving ? pane.lines.getBoundingClientRect().top : 0;
-    const keep = new Set();
-    const added = [];
-    let changed = false;
-    paneTraces(msg).forEach((trace) => {
-      const key = String(trace.id || deps.executionIdentity(trace));
-      keep.add(key);
-      let el = pane.entries.get(key);
-      if (!el) {
-        el = paneEntry();
-        pane.entries.set(key, el);
-        pane.lines.append(el);
-        added.push(el);
+    const text = line.phase === "thinking" ? paneThought(msg) : "";
+    const trace = text || line.phase === "thinking" ? null : paneTrace(msg, line.key);
+    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : "";
+    const moving = paneOpen && dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
+    const fill = () => {
+      if (text) syncPaneThought(pane.item, text);
+      else if (trace) syncPaneCall(pane.item, trace);
+    };
+    if (pane.key !== key) {
+      // Another line: its item replaces the last, the height easing between.
+      const h0 = moving ? pane.inner.offsetHeight : 0;
+      pane.inner.getAnimations().forEach((a) => a.cancel());
+      pane.item?.remove();
+      pane.key = key;
+      pane.item = key ? paneItem(Boolean(text)) : null;
+      if (pane.item) {
+        pane.inner.append(pane.item);
+        fill();
       }
-      if (syncPaneEntry(el, trace)) changed = true;
-    });
-    for (const [key, el] of pane.entries) {
-      if (keep.has(key)) continue;
-      el.remove();
-      pane.entries.delete(key);
-      changed = true;
+      if (moving) {
+        const h1 = pane.inner.offsetHeight;
+        if (h0 !== h1) pane.inner.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: PANE_MS, easing: PANE_EASE });
+        pane.item?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: PANE_MS, easing: "ease-out" });
+        followLiveDockSlide(PANE_MS);
+      }
+    } else if (pane.item) {
+      // The same line: new output slides in from below once the box is full.
+      const out = pane.item._out;
+      const before = moving ? out.getBoundingClientRect().top : 0;
+      fill();
+      if (moving) {
+        const dy = before - out.getBoundingClientRect().top;
+        if (Math.abs(dy) > 0.5) {
+          out.getAnimations().forEach((a) => a.cancel());
+          out.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: PANE_MS, easing: PANE_EASE });
+        }
+      }
     }
-    // Read from the top until it fills, then from the newest line up.
-    pane.feed.classList.toggle("is-full", pane.lines.offsetHeight > pane.feed.clientHeight);
-    if (moving && changed) {
-      pane.lines.getAnimations().forEach((a) => a.cancel());
-      const dy = before - pane.lines.getBoundingClientRect().top;
-      if (Math.abs(dy) > 0.5) pane.lines.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: PANE_MS, easing: PANE_EASE });
-      added.forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: PANE_MS, easing: "ease-out" }));
-    }
-    const detailable = pane.entries.size > 0;
-    dock.classList.toggle("is-detailable", detailable);
-    if (detailable && pane.head.getAttribute("role") !== "button") {
-      pane.head.setAttribute("role", "button");
-      pane.head.tabIndex = 0;
-    } else if (!detailable && pane.head.hasAttribute("role")) {
-      pane.head.removeAttribute("role");
-      pane.head.removeAttribute("tabindex");
-      pane.head.removeAttribute("aria-expanded");
-    }
+    if (pane.item) pane.item._box.classList.toggle("is-full", pane.item._out.offsetHeight > pane.item._box.clientHeight);
     showPane(dock, pane);
   }
 
@@ -549,7 +570,7 @@ function syncLiveDock() {
       {
         const line = deps.formatConsoleLiveStatus(msg, groups);
         setLiveLabelText(deps.liveDockLabel, line.verb, line.meta, line.arg);
-        syncLivePane(deps.liveDock, msg);
+        syncLivePane(deps.liveDock, msg, line);
       }
       if (instant) {
         if (deps.liveDockShowFrame) cancelAnimationFrame(deps.liveDockShowFrame);
@@ -601,5 +622,5 @@ const CONSOLE_SPIN_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 const CONSOLE_SPIN_STILL = "⠿";
 
-  return { setLiveLabelText, setLivePhase, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
+  return { setLiveLabelText, setLivePhase, paneTrace, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }

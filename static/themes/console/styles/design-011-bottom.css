@@ -233,23 +233,18 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu .chat-queue-action { padding: 0 0.55rem; }
 }
 
-/* Machine stats (static/chat/hoststats.js): a tmux-style status line under
-   the input bar, the full width of the dock. The machine in a green block,
-   the loads in fixed-width slots so nothing shifts as numbers change, and
-   the recent CPU as block characters on the right. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats {
-  display: flex; align-items: stretch; width: 100%; height: 20px; margin: 0;
-  background: color-mix(in srgb, var(--mist) 5%, transparent);
-  font: 11px/1 var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; white-space: nowrap;
-  color: var(--mute); text-transform: lowercase; cursor: default; user-select: none;
+/* Machine stats (static/chat/hoststats.js): at the right end of the live
+   status line, so they show only while a turn runs. Still one row on a
+   phone: the stats give way before the clock and tokens, ram first (a slice
+   that does not fit wraps out of the one-row box). */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-live-dock .chat-host-stats {
+  display: flex; flex-wrap: wrap; flex: 0 1000 auto; min-width: 0; height: var(--console-row);
+  margin-left: auto; padding-left: 1ch; column-gap: 1ch; overflow: hidden;
+  font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--mute); cursor: default; user-select: none;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice { display: flex; align-items: center; gap: 1ch; padding: 0 1ch; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-slice b { display: inline-block; width: 4ch; font-weight: 500; text-align: right; color: var(--mist); text-transform: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host { padding: 0 1.5ch; background: color-mix(in srgb, #3ecf8e 18%, transparent); color: #8fe39b; font-weight: 500; text-transform: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-host i { display: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net { gap: 1ch; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-net > span { display: inline-flex; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist { margin-left: auto; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist b { width: 24ch; overflow: hidden; font-weight: 400; letter-spacing: 0; color: color-mix(in srgb, var(--mist) 55%, transparent); }
-@media (max-width: 720px) { html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .hs-hist { display: none; } }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats .hs-slice { display: inline-flex; align-items: center; gap: 1ch; height: var(--console-row); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats .hs-slice b { min-width: 4ch; font-weight: 400; text-align: right; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn:has(> .chat-console-turn-peak) { grid-template-columns: var(--console-col) minmax(0, 1fr) auto; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn-peak { padding-left: 1ch; color: var(--mute); font-variant-numeric: tabular-nums; white-space: nowrap; }

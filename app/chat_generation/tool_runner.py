@@ -26,7 +26,7 @@ from ..secret_swap import REFUSED
 
 from .parsing import _ARG_LIMIT_FILE, _ARG_OVERFLOW
 from .stream import _SENTINEL, HEARTBEAT_S
-from .tool_jobs import MAX_TOOL_CALLS, ToolJob, _redact_tool_args, _running_event, jobs_from_calls
+from .tool_jobs import MAX_TOOL_CALLS, TOOL_RESULT_CHARS, ToolJob, _redact_tool_args, _running_event, jobs_from_calls
 
 logger = logging.getLogger(__name__)
 
@@ -349,6 +349,7 @@ async def run_tools(
             if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
                 text, trace = await code_mode.run(
                     arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
+                    owner=(user_id, thread_id),
                 )
             else:
                 text, trace = await execute_tool(
@@ -440,6 +441,9 @@ async def run_tools(
                 text = await asyncio.to_thread(swap.tokenize, text or "")
             job.text, job.trace = text, {**job.trace, **trace, "id": job.event_id,
                                       "duration_ms": trace.get("duration_ms", latency_ms), "call_duration_ms": latency_ms}
+            if job.name == "run_code" and not job.parent and len(text or "") > TOOL_RESULT_CHARS:
+                # The model gets the head; the whole (swapped) text stays readable for a while.
+                job.result_id = code_mode.keep((user_id, thread_id), text)
             job.done = True
             if trace.get("status") in ("error", "interrupted"):
                 await _record_failure(

@@ -221,6 +221,9 @@ export function createHostStats() {
     const cpu = Math.round(d.cpu);
     const ram = Math.round(pct(memUsed, memTotal));
     last = d;
+    // The raw loads, for a theme that keeps the turn's peak (console live-dock.js).
+    card.dataset.cpu = cpu;
+    card.dataset.ram = ram;
     card.classList.remove("is-stale");
     set(el.alias, alias || "machine");
     if (el.diskSlice) el.diskSlice.hidden = !d.disk;

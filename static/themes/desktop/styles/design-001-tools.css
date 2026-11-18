@@ -18,21 +18,14 @@
   object-fit: contain;
 }
 
-/* The recap reads like the prose it sums up, quieter: same edge and face,
-   right under the reply and above its action row. */
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) { display: flex; flex-direction: column; }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) > .chat-assistant { display: contents; }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant:has(> [data-recap]) [data-foot] { order: 2; }
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-turn.is-assistant > [data-recap] { order: 1; }
-
+/* The recap sits under the reply's line ("Done in 37s · 9m ago"), at the
+   prose's edge and in the line's quieter colour: its body under its heading. */
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap {
   display: block;
-  margin: 0.5rem 0 0.2rem;
+  margin: 0.1rem 0 0.2rem;
   color: var(--dk-mute, var(--mute));
   font: 400 calc(0.8625rem * var(--chat-text-scale, 1))/1.6 var(--sans);
 }
-
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap-label { font-weight: 600; }
 
 html[data-chat-font] :is(
   .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),

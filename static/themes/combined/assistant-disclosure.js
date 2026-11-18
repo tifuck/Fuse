@@ -32,7 +32,7 @@ function renderAssistant(msg, live) {
       '<ul class="chat-notice" data-notice role="status" aria-label="Fuse status" hidden></ul>' +
       '<p class="chat-error" data-err hidden></p>' +
       '<div class="chat-error-actions" data-err-actions hidden><button type="button" class="chat-error-continue" data-continue>Continue</button></div>' +
-      '<div class="chat-foot" data-foot hidden><span class="chat-foot-meta" data-meta></span></div>' +
+      '<div class="chat-foot" data-foot data-recap-home hidden><span class="chat-foot-meta" data-meta></span></div>' +
       "</div>";
     article.addEventListener("click", (event) => {
       const summaryBtn = event.target.closest("[data-activity-summary]");
