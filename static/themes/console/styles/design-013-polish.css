@@ -1,4 +1,4 @@
-/* Console polish over the working area: even sizes on tool rows, cards that stand out, prettier tables. */
+/* Console polish over the working area (loaded last): even sizes on tool rows, cards that stand out, prettier tables. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: calc(0.78rem * var(--chat-text-scale, 1)); }
 
 /* Tool rows and prompts: one size, so host tags, timings and notes stop shrinking. Replies keep their markdown scale. */
@@ -14,7 +14,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-cha
 
 /* Permission card: unmistakable against the black transcript. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card {
-  background: color-mix(in srgb, var(--perm-color, var(--brass)) 7%, #0c0c0c) !important;
+  background: color-mix(in srgb, var(--perm-color, var(--brass)) 7%, var(--panel)) !important;
   border-color: color-mix(in srgb, var(--perm-color, var(--brass)) 80%, var(--line)) !important;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--perm-color, var(--brass)) 30%, transparent), 0 0 24px color-mix(in srgb, var(--perm-color, var(--brass)) 12%, transparent) !important;
 }
@@ -33,13 +33,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-fil
 /* Artifact card: same card, readable meta line. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-artifact-card-meta, .chat-artifact-card-open) { font-size: 0.72rem !important; }
 
-/* Markdown tables: a box-drawn grid with a ═ header rule, quiet rows, highlight on hover. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md table { font-size: var(--tty); border: 1px solid color-mix(in srgb, var(--mist) 22%, var(--ink)); font-variant-numeric: tabular-nums; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(th, td) { padding: 0.4rem 0.95rem !important; font-size: var(--tty) !important; border: 0 !important; border-left: 1px solid color-mix(in srgb, var(--mist) 12%, var(--ink)) !important; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(th, td):first-child { border-left: 0 !important; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md th { background: color-mix(in srgb, var(--brass) 6%, #111) !important; color: var(--brass) !important; font-weight: 600; text-align: left; border-bottom: 3px double color-mix(in srgb, var(--brass) 45%, var(--ink)) !important; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td { border-top: 1px solid color-mix(in srgb, var(--mist) 9%, var(--ink)) !important; }
+/* Markdown tables: a filled header strip over a panel, row rules only, in the palette's own greys. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md table { border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); background: var(--panel); font-size: var(--tty); font-variant-numeric: tabular-nums; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(th, td) { padding: 0.5rem 1rem !important; font-size: var(--tty) !important; text-align: left; border: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md th { background: var(--raise) !important; color: var(--mist) !important; font-weight: 600; border-bottom: 1px solid color-mix(in srgb, var(--mist) 20%, var(--line)) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td { color: color-mix(in srgb, var(--mist) 80%, var(--ink)); border-top: 1px solid var(--line) !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:first-child td { border-top: 0 !important; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--mist) 3%, transparent); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover td { background: color-mix(in srgb, var(--brass) 8%, transparent); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); font-weight: 500; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover td { background: color-mix(in srgb, var(--mist) 5%, transparent); }
