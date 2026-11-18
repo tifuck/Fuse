@@ -48,8 +48,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   border: 1px solid var(--glass-line, var(--line));
   border-radius: 10px;
   background: var(--glass-bg, color-mix(in srgb, var(--panel) 68%, transparent));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 122%));
-  backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 122%));
   box-shadow:
     0 18px 48px rgb(0 0 0 / 34%),
     inset 0 1px 0 color-mix(in srgb, var(--mist) 18%, transparent),

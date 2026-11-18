@@ -36,8 +36,6 @@
   isolation: isolate;
   border-color: var(--glass-line);
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow:
     0 18px 48px rgb(0 0 0 / 34%),
     inset 0 1px 0 color-mix(in srgb, var(--mist) 18%, transparent),
@@ -94,7 +92,6 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-box,
   :where(html.is-chat-root[data-chat-view="console"]) .chat:not(.is-empty) .chat-sync {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

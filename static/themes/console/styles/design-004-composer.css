@@ -136,16 +136,12 @@ html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-console="tru
 
 html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
   background: var(--glass-bg, color-mix(in srgb, var(--panel) 56%, transparent));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 124%));
-  backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 124%));
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .chat[data-view="console"] .chat-box,
 html[data-chat-console="true"] .chat[data-view="console"] .chat-box,
 html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     background: color-mix(in srgb, var(--panel) 94%, var(--ink));
   }
 }
