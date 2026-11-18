@@ -643,10 +643,11 @@ if (docsJump) {
 
 // Section tabs: a .settings-jump nav of #anchors becomes real tabs, so a page
 // with several long sections (Settings, admin Providers and Pools) shows one at
-// a time instead of scrolling the whole shell to an anchor. A section belongs
-// to a tab by its id or by data-section="<id>". The open tab survives a form
-// post (sessionStorage per path) and is linkable (#id).
-document.querySelectorAll("nav.settings-jump").forEach((nav) => {
+// a time instead of scrolling the whole shell to an anchor. The Sources rail
+// ([data-section-tabs]) is the same thing drawn as a vertical list. A section
+// belongs to a tab by its id or by data-section="<id>". The open tab survives
+// a form post (sessionStorage per path) and is linkable (#id).
+document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((nav) => {
   const links = Array.from(nav.querySelectorAll('a[href^="#"]'));
   if (!links.length) return;
   const ids = links.map((a) => a.getAttribute("href").slice(1));
@@ -667,9 +668,15 @@ document.querySelectorAll("nav.settings-jump").forEach((nav) => {
       a.setAttribute("aria-selected", on ? "true" : "false");
       a.tabIndex = on ? 0 : -1;
     });
+    // A hidden tab (Sources: a provider opened from Add source) leaves the
+    // first visible one as the way in by keyboard.
+    if (links[ids.indexOf(id)].hidden) {
+      const first = links.find((a) => !a.hidden);
+      if (first) first.tabIndex = 0;
+    }
     ids.forEach((other) => members(other).forEach((el) => { el.hidden = other !== id; }));
     try { sessionStorage.setItem(key, id); } catch (_) {}
-    if (push) history.replaceState(null, "", "#" + id);
+    if (push) history.replaceState(history.state, "", "#" + id);
     const scroller = nav.closest(".settings-scroll");
     if (scroller && push) scroller.scrollTop = 0;
     document.dispatchEvent(new CustomEvent("fuse-section-tab", { detail: { id } }));
@@ -681,16 +688,23 @@ document.querySelectorAll("nav.settings-jump").forEach((nav) => {
     show(a.getAttribute("href").slice(1), true);
     a.focus();
   });
+  const steps = { ArrowRight: 1, ArrowLeft: -1 };
+  if (nav.getAttribute("aria-orientation") === "vertical") Object.assign(steps, { ArrowDown: 1, ArrowUp: -1 });
   nav.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-    const i = links.indexOf(document.activeElement);
+    const step = steps[event.key];
+    if (!step) return;
+    const live = links.filter((a) => !a.hidden);
+    const i = live.indexOf(document.activeElement);
     if (i < 0) return;
     event.preventDefault();
-    const next = links[(i + (event.key === "ArrowRight" ? 1 : links.length - 1)) % links.length];
+    const next = live[(i + step + live.length) % live.length];
     show(next.getAttribute("href").slice(1), true);
     next.focus();
   });
+  // #id first, then the tab the server picked (data-start: where a form's
+  // message is), then the last one open.
   let start = location.hash.slice(1);
+  if (!ids.includes(start)) start = nav.dataset.start || "";
   if (!ids.includes(start)) {
     try { start = sessionStorage.getItem(key) || ""; } catch (_) { start = ""; }
   }
@@ -720,11 +734,88 @@ document.querySelectorAll("[data-page-tabs]").forEach((nav) => {
   });
 });
 
+// Sources on a phone: the rail is the first screen and a provider opens in its
+// place as a back layer (FuseBack), so All sources and the phone's back both
+// return to the list. Wider, both show side by side and data-view does
+// nothing; the All sources button only shows narrow.
+document.querySelectorAll(".sources-dir").forEach((dir) => {
+  const nav = dir.querySelector("[data-section-tabs]");
+  const back = dir.querySelector("[data-sources-back]");
+  const narrow = () => getComputedStyle(back).display !== "none";
+  const toTop = () => { const scroller = dir.closest(".settings-scroll"); if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0); };
+  const toList = () => {
+    dir.dataset.view = "list";
+    window.FuseBack.whenSettled(() => history.replaceState(history.state, "", location.pathname + location.search));
+    toTop();
+  };
+  const opened = [location.hash.slice(1), nav.dataset.start].some((id) => id && dir.querySelector(`.sources-pane > #${CSS.escape(id)}`));
+  dir.dataset.view = opened ? "pane" : "list";
+  nav.addEventListener("click", (event) => {
+    if (!event.target.closest('a[href^="#"]')) return;
+    if (narrow() && dir.dataset.view === "list") {
+      window.FuseBack.open("sources-pane", toList);
+      toTop();
+    }
+    dir.dataset.view = "pane";
+  }, true);
+  back.addEventListener("click", () => {
+    window.FuseBack.drop("sources-pane");
+    toList();
+  });
+});
+
+// Add source: every provider A to Z, narrowed as you type to the names that
+// start with what you typed; arrows and Enter pick without the mouse. Picking
+// opens that provider's pane through its (possibly hidden) rail link.
+document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
+  const find = dialog.querySelector("[data-source-find]");
+  const items = Array.from(dialog.querySelectorAll("[data-source-pick]"));
+  const none = dialog.querySelector("[data-source-none]");
+  const shown = () => items.filter((a) => !a.parentElement.hidden);
+  let active = 0;
+  function mark(i) {
+    const list = shown();
+    active = Math.max(0, Math.min(i, list.length - 1));
+    items.forEach((a) => a.setAttribute("aria-selected", String(a === list[active])));
+    if (!list[active]) return find.removeAttribute("aria-activedescendant");
+    find.setAttribute("aria-activedescendant", list[active].id);
+    if (dialog.open) list[active].scrollIntoView({ block: "nearest" });
+  }
+  function filter() {
+    const q = find.value.trim().toLowerCase();
+    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.startsWith(q); });
+    none.hidden = shown().length > 0;
+    mark(0);
+  }
+  find.addEventListener("input", filter);
+  find.addEventListener("keydown", (event) => {
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    if (step) {
+      event.preventDefault();
+      mark(active + step);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const pick = shown()[active];
+      if (pick) pick.click();
+    }
+  });
+  dialog.addEventListener("click", (event) => {
+    const pick = event.target.closest("[data-source-pick]");
+    if (!pick) return;
+    event.preventDefault();
+    dialog.close();
+    const tab = document.querySelector(`[data-section-tabs] a[href="${pick.getAttribute("href")}"]`);
+    if (tab) tab.click();
+  });
+  dialog.addEventListener("close", () => { find.value = ""; filter(); });
+  filter();
+});
+
 // Every other tablist (settings sections have their own above): one tab stop
 // on the selected tab, arrow/Home/End keys select a neighbour by clicking it so
 // each page's own handler runs, and the tab's panel (aria-controls) is a
 // tabpanel labelled by the tab that is showing it.
-document.querySelectorAll('[role="tablist"]:not(.settings-jump)').forEach((list, n) => {
+document.querySelectorAll('[role="tablist"]:not(.settings-jump):not([data-section-tabs])').forEach((list, n) => {
   const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
   if (!tabs.length) return;
   tabs.forEach((tab, i) => { tab.id ||= `tab-${n}-${i}`; });
@@ -1559,39 +1650,7 @@ window.fuseHold = function fuseHold(restore, same = () => true) {
   });
 })();
 
-(function sourceMineFilter() {
-  function byGroup(attr, group) {
-    return Array.from(document.querySelectorAll(`[${attr}]`)).filter((el) => el.getAttribute("data-mine-group") === group);
-  }
-
-  function tablesFor(input) {
-    const group = input.getAttribute("data-mine-group") || "";
-    if (group) return byGroup("data-source-table", group);
-    const next = input.closest(".stack-y")?.querySelector("[data-source-table]");
-    return next ? [next] : [];
-  }
-
-  function inputsFor(input) {
-    const group = input.getAttribute("data-mine-group") || "";
-    if (!group) return [input];
-    return byGroup("data-mine-only", group);
-  }
-
-  function apply(input) {
-    const on = Boolean(input.checked);
-    inputsFor(input).forEach((el) => {
-      el.checked = on;
-    });
-    tablesFor(input).forEach((table) => {
-      table.classList.toggle("is-mine-only", on);
-    });
-  }
-
-  document.querySelectorAll("[data-mine-only]").forEach((input) => {
-    input.addEventListener("change", () => apply(input));
-    apply(input);
-  });
-
+(function sourceShareForm() {
   // A private donor uses only their own accounts (the server enforces it too),
   // so "Nobody" locks the routing choice to "Only your accounts".
   document.querySelectorAll("[data-share-form]").forEach((form) => {

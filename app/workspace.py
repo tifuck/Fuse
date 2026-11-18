@@ -159,6 +159,8 @@ _READ_DEFAULT_LIMIT = 2000
 _READ_MAX_LINES = 2000
 _READ_MAX_BYTES = 50 * 1024
 _READ_MAX_CHARS = _READ_MAX_BYTES  # rendered bytes, including "N: " prefixes
+# read_file inside run_code: raw text, the whole file up to this many characters.
+_RAW_READ_MAX = 2_000_000
 _LIST_MAX_ENTRIES = 400
 # Vendor/build trees rg would still walk when there is no .gitignore, and that
 # grep -R always walks. Same names the Windows connector skips in WalkDir.
@@ -605,7 +607,7 @@ def _relax_paths(args: dict, base: str, windows: bool, name: str = "") -> None:
             args[key] = posixpath.normpath(posixpath.join(b, raw))
 
 
-async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None, bound_cwd="", run_id: str = "", thread_id: int | None = None, on_started=None, gate=None) -> tuple[str, dict]:
+async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None, bound_cwd="", run_id: str = "", thread_id: int | None = None, on_started=None, gate=None, raw: bool = False) -> tuple[str, dict]:
     try:
         args = _args(arguments)
     except WorkspaceError as exc:
@@ -705,6 +707,12 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
             text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started)
         elif name == "monitor":
             text, rec = await _monitor(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started)
+        elif name == "read_file" and raw:
+            body, page = await _read_raw(user_id, host_id, alias, args, root, windows=windows, max_chars=_RAW_READ_MAX)
+            if len(body) > _RAW_READ_MAX:
+                raise WorkspaceError(f"file is larger than {_RAW_READ_MAX} characters; pass offset and limit to read part of it")
+            text, rec = _label(alias, body), {"name": "read_file", "status": "done", "host": alias,
+                                              "path": page.get("path") or args.get("path"), "preview": body[:800]}
         elif name == "read_file":
             text, rec = await _read(user_id, host_id, alias, args, root, windows=windows)
         elif name == "list_dir":
@@ -780,32 +788,43 @@ async def read_text_file(path: str, *, host: str | None, user_id: int, bound_hos
         if verdict.root is not None:
             _relax_paths(args, root, windows, "read_file")
             root = verdict.root
-    body, offset, rec = "", 1, {}
     try:
-        while len(body) <= max_chars:
-            try:
-                labeled, rec = await _read(
-                    user_id, host_id, alias, {"path": args["path"], "offset": offset, "limit": _READ_MAX_LINES}, root,
-                    windows=windows, max_chars=max_chars + 1, raw=True,
-                )
-            except WorkspaceError as exc:
-                # A file of exactly N full pages: the page after it is EOF.
-                if offset > 1 and "beyond the end of the file" in str(exc):
-                    break
-                raise
-            chunk = unlabel_host(alias, labeled)
-            if body and chunk and not body.endswith("\n"):
-                body += "\n"
-            body += chunk
-            next_offset = rec.get("next_offset") if isinstance(rec, dict) else None
-            if next_offset is None:
-                break
-            offset = next_offset
+        body, rec = await _read_raw(user_id, host_id, alias, args, root, windows=windows, max_chars=max_chars)
     except VaultLocked:
         raise WorkspaceError("vault locked") from None
     if len(body) > max_chars:
         raise WorkspaceError(f"file is too large to publish (max {max_chars} bytes)")
     return body, f"{alias}:{rec.get('path') or path}"
+
+
+async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_chars: int) -> tuple[str, dict]:
+    """A file's text without line numbers or host label: the offset/limit
+    window when limit is given, else everything from offset in raw pages.
+    Stops once the text passes max_chars; the caller refuses an oversize body."""
+    offset = _int_arg(args, "offset", 1, 1, 10_000_000)
+    limited = args.get("limit") is not None
+    left = _int_arg(args, "limit", _READ_MAX_LINES, 1, _READ_MAX_LINES) if limited else None
+    body, rec = "", {}
+    while len(body) <= max_chars:
+        try:
+            labeled, rec = await _read(
+                user_id, host_id, alias, {"path": args["path"], "offset": offset, "limit": left or _READ_MAX_LINES}, root,
+                windows=windows, max_chars=max_chars + 1, raw=True,
+            )
+        except WorkspaceError as exc:
+            # A file of exactly N full pages: the page after it is EOF.
+            if body and "beyond the end of the file" in str(exc):
+                break
+            raise
+        chunk = unlabel_host(alias, labeled)
+        if body and chunk and not body.endswith("\n"):
+            body += "\n"
+        body += chunk
+        next_offset = rec.get("next_offset") if isinstance(rec, dict) else None
+        if next_offset is None or limited:
+            break
+        offset = next_offset
+    return body, rec
 
 
 def _shell_cwd(args: dict, root: str, *, windows: bool = False) -> str:

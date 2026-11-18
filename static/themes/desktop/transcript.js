@@ -41,8 +41,8 @@ function dropCardLinks(text, ids) {
       (line, id) => (ids.has(id) ? "" : line));
   }
 
-function activityEntriesHtml(entries, msg, live, blockKey, blockLive = false) {
-    return deps.consoleActivityEntriesHtml(entries, msg, live, blockLive);
+function activityEntriesHtml(entries, msg, live) {
+    return deps.consoleActivityEntriesHtml(entries, msg, live);
 
   }
 
@@ -60,7 +60,7 @@ function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive
     msg.activityOpenMap ||= {};
     if (!(key in msg.activityOpenMap)) msg.activityOpenMap[key] = defaultOpen;
     const open = msg.activityOpenMap?.[key] ?? defaultOpen;
-    const steps = activityEntriesHtml(entries, msg, turnLive || Boolean(msg.tools_live), key, live);
+    const steps = activityEntriesHtml(entries, msg, turnLive || Boolean(msg.tools_live));
     const classes = ["chat-activity"];
     if (open || true) classes.push("is-open");
     // A model wait/background handoff must not hide already-rendered tools.

@@ -19,3 +19,5 @@ sqlglot==28.10.1
 regex>=2024.11.6
 # HTML5 tree builder (lexbor) for read_url page extraction.
 selectolax==1.0.0
+# V8 isolate for run_code (app/code_worker.py); without it run_code is off.
+mini-racer==0.14.1

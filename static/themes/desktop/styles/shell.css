@@ -6,6 +6,8 @@
    Last in design.css: it settles every earlier rule of this theme. Nested
    under one scope (same specificity as the theme's other rules, plus each
    selector's own). */
+/* The stage's width as a length, worked out on the composer's dock. */
+@property --dk-stage-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette. */
   --dk-canvas: color-mix(in srgb, var(--ink) 93%, var(--mist));
@@ -448,6 +450,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The card's edges are the transcript text's: the log's gutter, and the
      log is centred left of the scrollbar's gutter. */
   & .chat-dock { padding: 4px var(--console-gutter) 0; background: none; }
+  /* The card itself reaches up to 20px past those edges (its controls row
+     stays on them), as far as the stage has room: 4px short of its edge or
+     the scrollbar. The 100% is the box's width, wherever it is used. */
+  & .chat-stage { container-type: inline-size; }
+  & .chat-dock { --dk-stage-w: 100cqw; --dk-card-out: clamp(0px, calc((var(--dk-stage-w) - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
   &:not(.is-empty) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
   /* The transcript runs on behind the composer's glass, as under the model
      picker: the dock overlaps the scroller down to 12px above the card's
@@ -481,7 +488,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     content: "";
     position: absolute;
     z-index: 0;
-    inset: 0 0 calc(var(--dk-band-h) + var(--dk-band-gap));
+    inset: 0 calc(-1 * var(--dk-card-out)) calc(var(--dk-band-h) + var(--dk-band-gap));
     /* The old prompt glyph's margins would pull the card in under the buttons. */
     margin: 0;
     pointer-events: none;
@@ -500,6 +507,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* No row flexes: the shared attach list's 100% basis would squeeze the controls band out from under the card. */
   & .dk-box > * { flex: none; }
   & .dk-box .chat-attach-list:not([hidden]) { padding: 8px 8px 0; }
+  & :is(.dk-box > .chat-attach-list, .dk-row1) { margin-inline: calc(-1 * var(--dk-card-out)); }
   & .dk-row1 { position: relative; display: block; min-width: 0; padding: 2px 0; }
   /* Stash sits at the card's top-left, above +, while it shows (text in the
      box, or stashed prompts); the card is then tall enough for both. */
@@ -516,12 +524,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row2 { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--dk-band-h); min-width: 0; margin-top: var(--dk-band-gap); }
   /* + leads the card, mic and send end it, level with its last line. */
   & .dk-row2 :is([data-chat-attach], [data-chat-mic], [data-chat-send]) { position: absolute; bottom: calc(100% + var(--dk-band-gap) + 6px); }
-  & .dk-row2 [data-chat-attach] { left: 6px; }
-  & .dk-row2 [data-chat-send] { right: 6px; }
-  & .dk-row2 [data-chat-mic] { right: 38px; }
-  /* Inset like + and send above them, so the row's ends line up with the card's. */
-  & .dk-group-l { margin-left: 6px; }
-  & .dk-group-r { margin-right: 6px; }
+  & .dk-row2 [data-chat-attach] { left: calc(6px - var(--dk-card-out)); }
+  & .dk-row2 [data-chat-send] { right: calc(6px - var(--dk-card-out)); }
+  & .dk-row2 [data-chat-mic] { right: calc(38px - var(--dk-card-out)); }
+  /* The mode's text and the context ring sit on the transcript text's edges:
+     out by the chip's padding and the ring's inset in its button. */
+  & .dk-group-l { margin-left: -8px; }
+  & .dk-group-r { margin-right: -6px; }
   & :is(.dk-group-l, .dk-group-r) { display: flex; align-items: center; gap: 4px; min-width: 0; }
   & .dk-group-l { flex: 0 1 auto; }
   & .dk-group-r { flex: 1 1 auto; justify-content: flex-end; }
@@ -622,9 +631,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 44px; padding: 10px 88px 10px 46px; font-size: 16px; }
     & .dk-row2 :is([data-chat-attach], [data-chat-mic]) { bottom: calc(100% + var(--dk-band-gap) + 6px); }
     & .dk-box:has(.dk-row1 [data-chat-stash]:not([hidden])) .dk-compose :is(textarea, .chat-compose-mirror) { min-height: 86px; }
-    & .dk-row2 [data-chat-attach] { left: 6px; }
-    & .dk-row2 [data-chat-send] { right: 8px; bottom: calc(100% + var(--dk-band-gap) + 8px); }
-    & .dk-row2 [data-chat-mic] { right: 44px; }
+    & .dk-row2 [data-chat-attach] { left: calc(6px - var(--dk-card-out)); }
+    & .dk-row2 [data-chat-send] { right: calc(8px - var(--dk-card-out)); bottom: calc(100% + var(--dk-band-gap) + 8px); }
+    & .dk-row2 [data-chat-mic] { right: calc(44px - var(--dk-card-out)); }
+    & .dk-group-r { margin-right: -10px; }
     & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
     & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
     & .dk-send { width: 32px; height: 32px; }
@@ -709,16 +719,54 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
   & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }
-  /* The running command opens to its details; nothing follows its text. */
-  & .chat-live-dock { flex-wrap: wrap; }
+  /* The live pane (live-dock.js). Opened, the status line heads a card that
+     reaches past the text edges like the composer; under it the reply's
+     newest calls at one fixed height, read from the top until it fills, then
+     from the newest line up. The line's text never moves when it opens. */
+  /* The card reaches as far past the text as the composer card: up to 20px,
+     4px short of the stage's edge or the scrollbar (100% is the card's width). */
+  & .chat-live-dock { flex-wrap: wrap; --dk-pane-out: clamp(0px, calc((100cqw - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
-  & .chat-live-dock.is-detailable [data-dock-status]:hover .dk-live-arg { color: var(--dk-text); }
+  & .chat-live-dock.is-detailable [data-dock-status]:hover :is(.dk-live-arg, .dk-live-chev) { color: var(--dk-text); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
-  & .chat-live-dock .dk-live-detail { flex: 1 0 100%; min-width: 0; margin: 4px 0 6px; }
-  & .chat-live-dock .dk-live-detail[hidden] { display: none; }
+  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color 150ms ease; }
+  & .chat-live-dock .dk-live-chev svg { width: 14px; height: 14px; }
+  & .chat-live-dock.is-detailable .dk-live-chev { display: inline-flex; }
+  & .chat-live-dock.is-pane-open .dk-live-chev { transform: rotate(90deg); }
+  & .chat-live-dock .dk-live-card { position: relative; flex: 1 1 100%; min-width: 0; }
+  & .chat-live-dock .dk-live-card::before { content: ""; position: absolute; inset: -5px calc(-1 * var(--dk-pane-out)) 0; border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
+  & .chat-live-dock.is-pane-open .dk-live-card::before { opacity: 1; }
+  & .chat-live-dock .dk-live-card > * { position: relative; }
+  & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease; }
+  & .chat-live-dock.is-pane-open .dk-pane { grid-template-rows: 1fr; opacity: 1; }
+  & .chat-live-dock .dk-pane-in { min-height: 0; overflow: hidden; }
+  & .chat-live-dock .dk-feed { display: flex; flex-direction: column; height: calc(8 * 19px); margin: 2px 0 10px; overflow: hidden; color: var(--dk-mute); font: 12px/19px var(--code); }
+  & .chat-live-dock .dk-feed.is-full { justify-content: flex-end; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px); mask-image: linear-gradient(to bottom, transparent, #000 32px); }
+  & .chat-live-dock .dk-feed-lines { flex: none; }
+  & .chat-live-dock .dk-fe + .dk-fe { margin-top: 6px; }
+  & .chat-live-dock .dk-fe-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--dk-text); transition: color 300ms ease; }
+  & .chat-live-dock .dk-fe.is-done .dk-fe-head { color: var(--dk-mute); }
+  & .chat-live-dock :is(.dk-fe-ico, .dk-row-ico, .dk-row-ico svg) { display: inline-flex; flex: none; width: 13px; height: 13px; }
+  & .chat-live-dock .dk-fe-ico { color: var(--dk-mute); }
+  & .chat-live-dock .dk-fe-in { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .chat-live-dock .dk-fe-pr { color: var(--dk-dim); }
+  & .chat-live-dock .dk-fe-state { flex: none; color: var(--dk-dim); font: var(--dk-meta)/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  & .chat-live-dock .dk-fe-state.is-bad, & .chat-live-dock .dk-fe-state .dk-minus { color: var(--dk-del); }
+  & .chat-live-dock .dk-fe-state .dk-plus { color: var(--dk-add); }
+  & .chat-live-dock .dk-fe-dots { display: inline-flex; gap: 3px; }
+  & .chat-live-dock .dk-fe-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: dk-pulse 1.2s ease-in-out infinite; }
+  & .chat-live-dock .dk-fe-dots i:nth-child(2) { animation-delay: 0.15s; }
+  & .chat-live-dock .dk-fe-dots i:nth-child(3) { animation-delay: 0.3s; }
+  & .chat-live-dock .dk-fe-out { padding-left: 21px; transition: opacity 300ms ease; }
+  & .chat-live-dock .dk-fe.is-done .dk-fe-out { opacity: 0.6; }
+  & .chat-live-dock .dk-fe-ln { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+  & .chat-live-dock .dk-fe-ln b { color: var(--dk-text); font-weight: 400; }
+  & .chat-live-dock .dk-fe-out .chat-console-lines { margin: 0; font: inherit; }
+  @media (prefers-reduced-motion: reduce) {
+    & .chat-live-dock :is(.dk-pane, .dk-live-chev, .dk-fe-head, .dk-fe-out) { transition: none; }
+    & .chat-live-dock .dk-live-card::before { transition: none; }
+  }
   & .dk-row-cmd { margin-bottom: 4px; color: var(--dk-text); font: 12px/1.5 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
-  & .chat-live-dock .dk-live-out { max-height: 10.5rem; white-space: pre; }
-  & .chat-live-dock .dk-live-wait { color: var(--dk-mute); font-family: var(--sans); }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
   @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .dk-pending-status .chat-status-verb) { animation: none; background-position: 50% 0; } }

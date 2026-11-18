@@ -4,9 +4,15 @@ from __future__ import annotations
 import json
 import re
 
+from . import code_mode
+
 # read_transcript is disabled, not removed: True re-advertises it and lets calls run.
 READ_TRANSCRIPT_ENABLED = False
-ALWAYS_ON_CODING = ("search_tools", "load_skill", "todo_write", "scratch",
+# run_code (site switch + mini-racer installed) leads the coding tools (the
+# web tools come before them when search is on): the model takes the first
+# file tool it sees as its default.
+CODE_MODE = code_mode.available()
+ALWAYS_ON_CODING = (*(("run_code",) if CODE_MODE else ()), "search_tools", "load_skill", "todo_write", "scratch",
                     *(("read_transcript",) if READ_TRANSCRIPT_ENABLED else ()))
 WORKSPACE_NAMES = (
     "read_file",
@@ -925,6 +931,8 @@ SCHEMAS = {
 READ_TRANSCRIPT_SCHEMA = SCHEMAS.pop("read_transcript")
 if READ_TRANSCRIPT_ENABLED:
     SCHEMAS["read_transcript"] = READ_TRANSCRIPT_SCHEMA
+if CODE_MODE:
+    SCHEMAS["run_code"] = code_mode.SCHEMA
 
 SKILLS: dict[str, str] = {}
 

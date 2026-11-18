@@ -48,9 +48,11 @@
     return (project && (project.logo_url || project.project_logo_url)) || "";
   }
 
-  /* The project's icon at the caller's size: a pastel of its colour (mixed
-     toward white, so custom colours get one too), or its logo. Extra classes
-     keep each page's existing glyph sizing (chat rows use .chat-history-glyph). */
+  /* The project's icon at the caller's size, or its logo. The folder is a tint
+     of the project's colour that follows the page's color-scheme: a pastel
+     (mixed toward white) on light themes, a deeper shade (toward black) on
+     dark ones, so custom colours get both. Extra classes keep each page's
+     existing glyph sizing (chat rows use .chat-history-glyph). */
   function icon(project, opts) {
     const size = (opts && opts.size) || 16;
     const cls = ["fp-icon", (opts && opts.className) || ""].join(" ").trim();
@@ -60,8 +62,8 @@
     }
     return (
       `<svg class="${esc(cls)}" viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true" style="--fp-color:${colorFor(project)}">` +
-      `<path d="${FOLDER_BACK}" style="fill:color-mix(in oklch, var(--fp-color) 72%, #fff)"/>` +
-      `<path d="${FOLDER_FRONT}" style="fill:color-mix(in oklch, var(--fp-color) 52%, #fff)"/></svg>`
+      `<path d="${FOLDER_BACK}" style="fill:light-dark(color-mix(in oklch, var(--fp-color) 72%, #fff), color-mix(in oklch, var(--fp-color) 50%, #000))"/>` +
+      `<path d="${FOLDER_FRONT}" style="fill:light-dark(color-mix(in oklch, var(--fp-color) 52%, #fff), color-mix(in oklch, var(--fp-color) 72%, #000))"/></svg>`
     );
   }
 

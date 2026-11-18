@@ -21,6 +21,7 @@ function consoleVerb(name, trace) {
     if (name === "spawn_subagent") return "Agent";
     if (name === "get_subagent_output") return "Wait";
     if (name === "list_subagents") return "Agents";
+    if (name === "run_code") return "Code";
     if (name === "search_models") return "Models";
     if (name === "load_skill") return "Skill";
     if (name === "propose_skill") return "Draft";

@@ -9,6 +9,7 @@ here too."""
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import time
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field
 
 from ..chat_prompts import _text_of
 from ..chat_tools import ARTIFACT_TOOL_IDS
+from ..code_mode import MUTATING, subject
 
 from .parsing import _native_reasoning
 
@@ -71,6 +73,9 @@ class ToolJob:
     image: dict | None = None
     # A host-list call split into one job per host: the call as the model sent it.
     call_arguments: str = ""
+    # A call made by run_code: the run_code job's event_id. It shares that
+    # job's call_id, so the model sees one call and only the code's result.
+    parent: str = ""
 
 
 def jobs_from_calls(calls: list[dict], completion_i: int) -> list[ToolJob]:
@@ -291,7 +296,54 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
     return list(groups.values())[:MAX_TOOL_CALLS]
 
 
+# A turn that makes this many direct file calls without a run_code that
+# worked gets one tip, naming those calls, on its next tool result: a model
+# that gives up on code after one failed run is nudged back. It rides the
+# conversation, so the cached system prompt is untouched.
+CODE_TIP_AFTER = 3
+_CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
+
+
+def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collections.Counter | None:
+    """Direct file calls so far this turn, per tool; None once a run_code call has worked."""
+    if any(j.name == "run_code" and j.trace.get("status") == "done" for j in jobs):
+        return None
+    return seen + collections.Counter(j.name for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS)
+
+
+def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
+    calls = ", ".join(f"{n} {name}" for name, n in seen.most_common())
+    tip = (f"[Fuse] Tip: you have made {sum(seen.values())} direct file calls this turn ({calls}). Switch to "
+           "run_code for the rest of this task: one snippet does all of these in a single step and returns only "
+           "what you need.")
+    last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
+    if last is not None:
+        last["content"] = f"{last['content']}\n\n{tip}"
+
+
+def _code_result(group: list[ToolJob]) -> str:
+    head = group[0]
+    if head.done and head.text and head.text != "Tool interrupted.":
+        return _tool_result_clip(head.name, head.text)
+    # Cut off mid-run (a stop or a restart): what changed, and what may have.
+    lines = []
+    for j in group[1:]:
+        if j.name not in MUTATING or (j.done and j.trace.get("status") == "error"):
+            continue
+        try:
+            args = json.loads(j.arguments or "{}")
+        except (ValueError, RecursionError):
+            args = {}
+        unknown = not j.done or j.trace.get("status") == "interrupted"
+        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + (": outcome unknown" if unknown else ": done"))
+    text = "Tool interrupted: the code stopped before it finished."
+    return _tool_result_clip(head.name, text + (" Its edits and commands:\n" + "\n".join(lines) if lines
+                                               else " It had started no file edit or command."))
+
+
 def _call_result(group: list[ToolJob]) -> str:
+    if group[0].name == "run_code" and not group[0].parent:
+        return _code_result(group)
     if len(group) == 1:
         return _tool_result_clip(group[0].name, group[0].text or "")
     parts = []

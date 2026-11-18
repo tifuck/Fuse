@@ -201,6 +201,13 @@ export function create(deps) {
     syncTabs(i);
   }
 
+  // A phone's sheet opens on the page with the most to show: running work,
+  // else the plan, else Activity.
+  function firstTab() {
+    const { agentsLive, jobsLive, plan } = syncGroups();
+    return agentsLive + jobsLive > 0 || !plan ? "activity" : "plan";
+  }
+
   function syncTabs(index) {
     const pages = q("[data-theme-pages]");
     if (!pages) return;
@@ -341,7 +348,9 @@ export function create(deps) {
       }
       const fromMenu = Boolean(t.closest("[data-theme-menu]"));
       if (t.matches("[data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar]")) {
-        setOpen(!isOpen(), t);
+        const open = !isOpen();
+        setOpen(open, t);
+        if (open && mode() === "sheet") goTab(firstTab());
       } else if (t.matches("[data-theme-inspector-close]")) {
         setOpen(false);
       } else if (t.matches("[data-theme-insp-back]")) {

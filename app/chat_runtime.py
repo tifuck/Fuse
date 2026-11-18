@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextlib
 import copy
 import json
@@ -84,6 +85,7 @@ from .chat_generation.policy import (
 from .chat_generation import cache_watch
 from .chat_generation.consume import _add_usage, consume_round as _consume_round
 from .chat_generation.tool_jobs import (
+    CODE_TIP_AFTER,
     CODING_UNLIMITED,
     READ_RESULT_CHARS,
     SKILL_RESULT_CHARS,
@@ -99,7 +101,9 @@ from .chat_generation.tool_jobs import (
     _tool_messages,
     _tool_result_clip,
     _tool_rounds_done,
+    add_code_tip,
     apply_skill_preload,
+    code_tip_count,
     fold_preload_skill,
     jobs_from_calls,
 )
@@ -569,7 +573,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             vault_ok = bool(agent.get("vault_unlocked"))
         else:
             vault_ok = vault_unlocked_for(user["id"])
-    from .agent_catalog import sanitize_loaded
+    from .agent_catalog import CODE_MODE, sanitize_loaded
 
     loaded_tools: list[str] = sanitize_loaded(agent.get("loaded_tools") if isinstance(agent.get("loaded_tools"), list) else [])
     # Site switch and the account's Settings › Chat defaults toggle.
@@ -694,6 +698,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
         secrets_swapped=swap is not None,
+        code_mode=CODE_MODE,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
     prompt_snapshot = copy.deepcopy(snapshot) if isinstance(snapshot, dict) and isinstance(snapshot.get("system"), str) else {}
@@ -1090,6 +1095,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         event_base = max(event_base, trace_next["round"] - start_i)
         resumes_left = MAX_RESUME_RETRIES
         stall_fails = 0
+        # Direct file calls this turn, until the one run_code tip is given.
+        code_tip_seen = collections.Counter() if coding and CODE_MODE else None
         idle_stalls = 0
         length_salvages = 0
         empty_retries = 0
@@ -1795,6 +1802,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     length_salvages = 0
                 tool_msgs = _tool_messages(jobs, content=str(summary.get("content") or ""))
                 tool_msgs[0].update(_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess))
+                if code_tip_seen is not None:
+                    code_tip_seen = code_tip_count(jobs, code_tip_seen)
+                    if code_tip_seen is not None and code_tip_seen.total() >= CODE_TIP_AFTER:
+                        add_code_tip(tool_msgs, code_tip_seen)
+                        code_tip_seen = None
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:
@@ -1914,6 +1926,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     )
                 await persist_jobs()
                 for job in jobs:
+                    if job.parent:
+                        # Code catching a missed call is not the model failing.
+                        continue
                     trace = job.trace if isinstance(getattr(job, "trace", None), dict) else {}
                     st = trace.get("status") or ""
                     # over_call_cap is a server-side refusal, not a model or
