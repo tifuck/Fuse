@@ -10,7 +10,7 @@ const { createPersist } = require('../../static/chat/sync/persist.js');
 const { createPaint } = require('../../static/chat/transcript/paint.js');
 const { createQueue } = require('../../static/chat/turns/queue.js');
 const { createSend } = require('../../static/chat/turns/send.js');
-const { createRender } = require('../../static/chat/sidebar/render.js');
+const { createRender, longestRun } = require('../../static/chat/sidebar/render.js');
 const { runIsActive } = require('../../static/chat/traces/semantics.js');
 const { readQueue } = require('../../static/chat/turns/queue-store.js');
 
@@ -321,4 +321,16 @@ test('a failed retry puts its text and files back in the empty composer', async 
   assert.equal(await send.completeTurn('old', files.slice(), { undoSnap: [], truncatedTo: 0 }), false);
   assert.equal(S.input.value, 'old');
   assert.deepEqual(S.pendingAttachments, files);
+});
+
+test('a history repaint keeps the longest run of rows already in order and moves only the rest', () => {
+  const kept = (seq) => [...longestRun(seq)].sort((a, b) => a - b);
+  assert.deepEqual(kept([0, 1, 2, 3]), [0, 1, 2, 3]);
+  // One row climbs to the top: only it moves.
+  assert.deepEqual(kept([2, 0, 1, 3]), [1, 2, 3]);
+  // One row sinks: the rows it passed stay put.
+  assert.deepEqual(kept([1, 2, 3, 0]), [0, 1, 2]);
+  // New rows (-1) are always inserted.
+  assert.deepEqual(kept([-1, 0, -1, 1]), [1, 3]);
+  assert.deepEqual(kept([]), []);
 });

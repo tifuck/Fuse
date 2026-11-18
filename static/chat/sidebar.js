@@ -15,7 +15,7 @@ export function createSidebar(ctx) {
   });
   const threads = createThreads({ ...ctx,
     spinners: { currentThreadBusy: (...args) => spinners.currentThreadBusy(...args) },
-    render: { setHistoryTab: (...args) => render.setHistoryTab(...args), filteredHistory: (...args) => render.filteredHistory(...args), renderHistory: (...args) => render.renderHistory(...args), resetSearchLists: (...args) => render.resetSearchLists(...args), refreshThreads: (...args) => render.refreshThreads(...args) },
+    render: { setHistoryTab: (...args) => render.setHistoryTab(...args), filteredHistory: (...args) => render.filteredHistory(...args), renderHistory: (...args) => render.renderHistory(...args), forgetRow: (...args) => render.forgetRow(...args), resetSearchLists: (...args) => render.resetSearchLists(...args), refreshThreads: (...args) => render.refreshThreads(...args) },
     projects: { sidebarProject: (...args) => projects.sidebarProject(...args), resolveProjectInfo: (...args) => projects.resolveProjectInfo(...args), projectIcon: (...args) => projects.projectIcon(...args), projectWorkspaceDetails: (...args) => projects.projectWorkspaceDetails(...args), editProject: (...args) => projects.editProject(...args), moveToProject: (...args) => projects.moveToProject(...args) },
     undo,
     drawer,
