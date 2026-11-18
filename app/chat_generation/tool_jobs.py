@@ -300,7 +300,7 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
 # worked gets one tip, naming those calls, on its next tool result: a model
 # that gives up on code after one failed run is nudged back. It rides the
 # conversation, so the cached system prompt is untouched.
-CODE_TIP_AFTER = 5
+CODE_TIP_AFTER = 3
 _CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
 
 

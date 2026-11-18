@@ -296,17 +296,19 @@ _LOCATE = (
 _PARALLEL = _BATCH + _LOCATE
 # run_code first: models take the first tool rule as their default.
 _RUN_CODE = (
-    "- Use `run_code` by default for file and shell work. Reach for it whenever you would loop over files, "
-    "read the hits of a search, parse or count across files, repeat an edit in several files, or run a command "
-    "whose output you will filter, and whenever you are about to make two or more file or shell calls in a "
-    "row. Its code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): "
+    "- `run_code` is your default for file and shell work: projects here have dozens to hundreds of files, and "
+    "run_code keeps their contents out of your context. Start a task with it to explore (lay out the tree, "
+    "grep, read the matches and return only what matters), and use it whenever you would loop over files, read "
+    "the hits of a search, parse or count across files, repeat an edit in several files, or run a command whose "
+    "output you will filter, and whenever you are about to make two or more file or shell calls in a row. Its "
+    "code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): "
     "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command are async functions "
     "taking the same argument object as the tools, e.g. `await read_file({path: \"app.py\"})`, and only what "
     "the code returns reaches you. Chain dependent calls with await, run independent ones with Promise.all, "
     "and return compact findings, with path:line for anything you will cite or edit (line numbers come from "
     "grep output, or are the index + 1 after splitting a file's text).\n"
-    "- Call a tool directly only for a single call whose whole result you need: one file you will study or "
-    "edit by hand (direct read_file shows line numbers and images), or one command whose full output matters. "
+    "- Make a direct call only when that one call's whole result is what you need next: a file you are about "
+    "to edit by hand (direct read_file shows line numbers and images), or a command whose full output matters. "
     "Also for what run_code cannot do: background commands, monitor, get_command_output, kill_command, web, "
     "subagents, artifacts, todo_write, scratch, skills.\n"
     "- A mechanical change across files (a rename, a version bump, the same fix in several places) is one "
@@ -316,13 +318,14 @@ _RUN_CODE = (
 )
 # HELPERS: the role's own calls (explore has a shell, plan does not).
 _RUN_CODE_READ_ONLY = (
-    "- Use `run_code` by default for searches and reads. Reach for it whenever you would loop over files, read "
-    "the hits of a search, or filter long output, and whenever you are about to make two or more calls in a "
-    "row. Its code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): HELPERS "
-    "are async functions taking the same argument object as the tools, and only what the code returns reaches "
-    "you. Chain dependent calls with await, run independent ones with Promise.all, and return compact findings, "
-    "with path:line for anything you will cite (line numbers come from grep output, or are the index + 1 after "
-    "splitting a file's text). Call a tool directly for a file you will study in full."
+    "- `run_code` is your default for searches and reads: projects here have dozens to hundreds of files. Start "
+    "with it to explore, and use it whenever you would loop over files, read the hits of a search, or filter "
+    "long output, and whenever you are about to make two or more calls in a row. Its code is plain JavaScript, "
+    "not Node.js (no require, import, child_process, fs or process): HELPERS are async functions taking the "
+    "same argument object as the tools, and only what the code returns reaches you. Chain dependent calls with "
+    "await, run independent ones with Promise.all, and return compact findings, with path:line for anything you "
+    "will cite (line numbers come from grep output, or are the index + 1 after splitting a file's text). Call a "
+    "tool directly for a file you will study in full."
 )
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
