@@ -136,7 +136,7 @@ class Runner:
 
 
 def run_code(code, runner, owner=(), **extra):
-    return asyncio.run(code_mode.run(json.dumps({"code": code, **extra}), call=runner, owner=owner))
+    return asyncio.run(code_mode.run(json.dumps({"code": code, "description": "Run the test", **extra}), call=runner, owner=owner))
 
 
 def test_a_failed_call_throws_into_the_code_and_an_uncaught_one_lists_what_finished():
@@ -159,6 +159,15 @@ def test_the_row_keeps_the_code_apart_from_what_the_model_got():
 
     assert trace["output"] == text and "return 1 + 1;" not in text
     assert chats._parse_tool_traces([trace], strict=True)[0]["code"] == "return 1 + 1;"
+
+
+def test_code_without_a_description_does_not_run():
+    runner = Runner()
+
+    for extra in ({}, {"description": "  "}):
+        text, trace = asyncio.run(code_mode.run(json.dumps({"code": "await read_file('a');", **extra}), call=runner))
+        assert trace["kind"] == "invalid_arguments" and "needs a description" in text
+    assert runner.calls == []
 
 
 def test_only_the_workspace_helpers_reach_the_runner():
@@ -202,7 +211,7 @@ def test_a_script_that_never_yields_is_stopped_without_holding_the_event_loop():
 
         other = asyncio.ensure_future(other_work())
         # The 1 s minimum timeout is the point of the test.
-        text, trace = await code_mode.run(json.dumps({"code": "while (true) {}", "timeout": 1}), call=Runner())
+        text, trace = await code_mode.run(json.dumps({"code": "while (true) {}", "description": "Spin", "timeout": 1}), call=Runner())
         stop.set()
         await other
         return text, trace, turns
@@ -227,7 +236,7 @@ class _Connected:
 def one_round(h, code, **session):
     """One tool round holding a single run_code call, through the real runner
     and tools on the fake host: (the model's result, jobs, emitted events)."""
-    call = {"id": "call-1", "type": "function", "function": {"name": "run_code", "arguments": json.dumps({"code": code})}}
+    call = {"id": "call-1", "type": "function", "function": {"name": "run_code", "arguments": json.dumps({"code": code, "description": "Run the test"})}}
     make_project(h.uid, h.host_id, h.root)
     _, thread_id = new_thread(h.uid)
 
@@ -336,7 +345,7 @@ def test_time_spent_on_a_permission_prompt_does_not_count_toward_the_deadline():
             return "From host box:\napproved", {"name": name, "status": "done", "host": "box"}
 
         # The 1 s minimum timeout against a 1.5 s prompt is the point of the test.
-        return await code_mode.run(json.dumps({"code": "return await read_file('a');", "timeout": 1}),
+        return await code_mode.run(json.dumps({"code": "return await read_file('a');", "description": "Read a", "timeout": 1}),
                                    call=call, paused=prompt_open.is_set)
 
     text, trace = asyncio.run(body())

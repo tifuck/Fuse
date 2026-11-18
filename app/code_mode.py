@@ -270,7 +270,12 @@ async def run(arguments: str, *, call, paused=None, owner: tuple = ()) -> tuple[
     if not isinstance(code, str) or not code.strip():
         msg = "run_code needs code: the body of an async JavaScript function."
         return msg, {"name": "run_code", "status": "error", "kind": "invalid_arguments", "error": msg}
-    rec = {"name": "run_code", "description": str(args.get("description") or "")[:200]}
+    description = args.get("description")
+    if not isinstance(description, str) or not description.strip():
+        # The row the user sees is named by it; nothing runs without one.
+        msg = "run_code needs a description: what the code does, in 3-10 words. Call it again with one."
+        return msg, {"name": "run_code", "status": "error", "kind": "invalid_arguments", "error": msg}
+    rec = {"name": "run_code", "description": description.strip()[:200]}
     if not available():
         msg = "run_code is not available on this server; use the tools directly."
         return msg, {**rec, "status": "error", "kind": "unavailable", "error": msg}
