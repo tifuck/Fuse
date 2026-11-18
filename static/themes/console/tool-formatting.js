@@ -342,6 +342,10 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(transcriptRange(trace), 90);
     } else if (["remember", "recall", "forget"].includes(name)) {
       inner = consoleArgText(trace.title || "memory", 90);
+    } else if (name === "run_code") {
+      // A run saved before description was required shows its first line of
+      // code, the way Bash(…) shows its command.
+      inner = consoleArgText(trace.description || codeRunParts(trace).code.split("\n").map((line) => line.trim()).find(Boolean) || "", 140);
     } else if (name === "load_skill") {
       // Skill(name), or Skill(name / file) for a supporting file; the line
       // under it says what the skill is for.
