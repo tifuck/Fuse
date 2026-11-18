@@ -28,28 +28,19 @@ function clock(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function overlayHtml() {
-  const bars = Array.from({ length: BANDS * 2 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
-  return `<svg class="dictation-mic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">`
-    + `<rect x="5.6" y="1.8" width="4.8" height="8.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>`
-    + `<path d="M3.4 7.6a4.6 4.6 0 0 0 9.2 0M8 12.2v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
-    + `<span class="dictation-bars" aria-hidden="true">${bars}</span>`
-    + `<span class="dictation-time" data-dictation-time>0:00</span>`
-    + `<button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc">`
-    + `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>`
-    + `<button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done · Enter or ${HOTKEY_LABEL}">`
-    + `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.6 8.4l2.9 2.9 5.9-6.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
-}
-
 export function createDictation({ picker }) {
   const button = S.root.querySelector("[data-chat-mic]");
-  if (!button || !S.chatBox) return null;
+  // The theme's composer holds the overlay's markup: <template data-dictation>.
+  const markup = S.form && S.form.querySelector("template[data-dictation]");
+  if (!button || !S.chatBox || !markup) return null;
   const overlay = document.createElement("div");
   overlay.className = "dictation";
   overlay.hidden = true;
   overlay.setAttribute("role", "status");
   overlay.setAttribute("aria-label", "Dictation");
-  overlay.innerHTML = overlayHtml();
+  overlay.append(markup.content.cloneNode(true));
+  overlay.querySelector(".dictation-bars").innerHTML = Array.from({ length: BANDS * 2 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
+  overlay.querySelector("[data-dictation-done]").title += ` or ${HOTKEY_LABEL}`;
   S.form.append(overlay);
   const bars = [...overlay.querySelectorAll(".dictation-bars i")];
   const timeEl = overlay.querySelector("[data-dictation-time]");
