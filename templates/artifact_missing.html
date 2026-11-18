@@ -3,8 +3,13 @@
 {% block page_title %}Artifact{% endblock %}
 {% block body %}
 <section class="panel">
+  {% if expired %}
+  <h2>Deleted</h2>
+  <p class="empty">{{ expired }}</p>
+  {% else %}
   <h2>Not found</h2>
   <p class="empty">This page does not exist, or you do not have access.</p>
+  {% endif %}
   {% if user %}<p class="aside"><a href="/chat">Back to chat</a></p>{% endif %}
 </section>
 {% endblock %}

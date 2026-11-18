@@ -232,24 +232,46 @@ def test_a_visibility_change_survives_a_concurrent_page_update(fresh_db):
     assert (row["visibility"], int(row["current_version"])) == ("public", 2)
 
 
-def test_a_chat_lists_its_own_or_its_projects_artifacts_oldest_first(fresh_db):
+def test_a_chat_lists_only_its_own_artifacts_even_in_a_project(fresh_db):
     uid, other = quick_user(), quick_user("other@core.test")
     project = make_project(uid, make_host(uid))
-    a, b, plain = (chats.create_thread(uid, model="offline", title=t)["id"] for t in ("a", "b", "plain"))
-    pk = {t: chats.resolve_thread_pk(uid, t) for t in (a, b, plain)}
-    db.execute("UPDATE chat_threads SET project_id=? WHERE id IN (?,?)", (project, pk[a], pk[b]))
+    a, b, fresh, plain = (chats.create_thread(uid, model="offline", title=t)["id"] for t in ("a", "b", "fresh", "plain"))
+    pk = {t: chats.resolve_thread_pk(uid, t) for t in (a, b, fresh, plain)}
+    db.execute("UPDATE chat_threads SET project_id=? WHERE id IN (?,?,?)", (project, pk[a], pk[b], pk[fresh]))
     first, second, solo, loose = (make(uid, title=t, thread_id=pk.get(th))["identifier"]
                                   for t, th in (("first", a), ("second", b), ("solo", plain), ("loose", None)))
 
     def ids(user=uid, **kw):
         return [item["identifier"] for item in artifacts.list_in_scope(user, **kw)]
 
-    assert ids(thread_id=a) == [first, second]
-    assert ids(project_id=project) == [first, second]
+    assert ids(thread_id=a) == [first]
+    assert ids(thread_id=b) == [second]
+    assert ids(thread_id=fresh) == []
     assert ids(thread_id=plain) == [solo]
     assert ids() == []
     assert loose not in ids(thread_id=a) + ids(thread_id=plain)
     assert ids(other, thread_id=a) == []
+
+
+def test_unopened_artifacts_expire_to_a_stub_that_goes_with_its_chats(fresh_db):
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline", title="t")["id"]
+    pk = chats.resolve_thread_pk(uid, thread)
+    stale, opened, recent = (make(uid, title=t, thread_id=pk) for t in ("stale", "opened", "recent"))
+    old = "2026-01-01T00:00:00Z"
+    db.execute("UPDATE artifacts SET created_at=?, updated_at=? WHERE id IN (?,?)", (old, old, stale["id"], opened["id"]))
+    artifacts.touch(artifacts.get_owned(uid, opened["identifier"]))
+
+    assert artifacts.expire_idle() == {"expired": 1, "stubs_removed": 0}
+    assert [i["identifier"] for i in artifacts.list_in_scope(uid, thread_id=thread)] == [opened["identifier"], recent["identifier"]]
+    with pytest.raises(ArtifactError) as err:
+        artifacts.read_source(uid, stale["identifier"])
+    assert err.value.status_code == 410 and "without being opened" in err.value.detail
+    assert db.fetchone("SELECT COUNT(*) AS n FROM artifact_versions WHERE artifact_id=?", (stale["id"],))["n"] == 0
+    # Deleting the chat drops its links (a cascade on the real schema): the stub goes too.
+    db.execute("DELETE FROM artifact_threads WHERE thread_id=?", (pk,))
+    assert artifacts.expire_idle() == {"expired": 0, "stubs_removed": 1}
+    assert artifacts.get_owned(uid, stale["identifier"]) is None
 
 
 def test_a_model_cannot_publish_and_needs_an_answer_to_change_a_shared_page(fresh_db):

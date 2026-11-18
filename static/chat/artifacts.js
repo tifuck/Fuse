@@ -571,8 +571,10 @@ export function createArtifacts(ctx) {
     });
     if (res.status === 304) return null;
     if (!res.ok) {
-      const error = new Error(res.status === 404 ? "This artifact was deleted or archived, or is not yours." : `Could not load the artifact (${res.status}).`);
-      error.status = res.status;
+      // 410: its pages expired; the server says why. The panel treats it as missing.
+      const gone = res.status === 410 ? (await res.json().catch(() => null))?.detail : "";
+      const error = new Error(gone || (res.status === 404 ? "This artifact was deleted or archived, or is not yours." : `Could not load the artifact (${res.status}).`));
+      error.status = res.status === 410 ? 404 : res.status;
       throw error;
     }
     return { tag: res.headers.get("ETag") || "", meta: await res.json() };
@@ -826,8 +828,8 @@ export function createArtifacts(ctx) {
     if (open) el.menu.querySelector("button:not([hidden]), a:not([hidden])")?.focus();
   }
 
-  // /artifacts: this chat's artifacts, or in a project session its project's,
-  // oldest first. Other chats' artifacts live on the /artifacts page.
+  // /artifacts: this chat's artifacts only, oldest first; a new chat has none,
+  // even in a project. Other chats' artifacts live on the /artifacts page.
   async function openList() {
     S.artifactMode = "list";
     listItems = null;
@@ -835,9 +837,7 @@ export function createArtifacts(ctx) {
     else syncArtifactUi();
     renderList();
     try {
-      const scope = S.currentId ? `?thread=${encodeURIComponent(S.currentId)}`
-        : S.pendingProject ? `?project=${encodeURIComponent(S.pendingProject.project_id)}` : "";
-      const data = scope ? await net.api("/artifacts/list" + scope) : { items: [] };
+      const data = S.currentId ? await net.api(`/artifacts/list?thread=${encodeURIComponent(S.currentId)}`) : { items: [] };
       listItems = Array.isArray(data.items) ? data.items : [];
     } catch (error) {
       listItems = [];

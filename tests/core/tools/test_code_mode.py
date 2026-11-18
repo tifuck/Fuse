@@ -146,11 +146,11 @@ def test_a_failed_call_throws_into_the_code_and_an_uncaught_one_lists_what_finis
         return "From host box:\nsaved", {"name": name, "status": "done", "host": "box"}
 
     text, trace = run_code("try { await read_file('missing.txt'); } catch (e) { return 'caught: ' + e.message; }", Runner(answer))
-    assert trace["status"] == "done" and text.startswith("caught: file not found")
+    assert trace["status"] == "done" and text.startswith("caught: read_file missing.txt: file not found")
 
     text, trace = run_code("await write_file({path: 'out.txt', content: 'x'});\nawait read_file('missing.txt');", Runner(answer))
     assert trace["status"] == "error" and trace["kind"] == "code_error"
-    assert text.startswith("Error: file not found") and "line 2" in text
+    assert text.startswith("Error: read_file missing.txt: file not found") and "line 2" in text
     assert "- write_file out.txt: done" in text and "- read_file missing.txt: error" in text
 
 
@@ -278,7 +278,7 @@ def test_calls_from_code_keep_the_agent_roles_limits(ssh_host):
     text, jobs, _ = one_round(ssh_host, 'try { await write_file({path: "x.txt", content: "x"}); return "wrote"; } '
                                         'catch (e) { return e.message; }', subagent_type="explore")
 
-    assert text.startswith("explore subagents cannot write files")
+    assert text.startswith("write_file x.txt: explore subagents cannot write files")
     assert not ssh_host.fs.exists(f"{ssh_host.root}/x.txt")
     assert [j.name for j in jobs] == ["run_code", "write_file"] and jobs[1].parent == jobs[0].event_id
 
@@ -444,3 +444,44 @@ def test_kept_results_expire_and_the_oldest_go_first_past_the_cap(monkeypatch):
     now[0] += code_mode.KEEP_S
     assert code_mode._read_kept((1, 1), json.dumps({"id": second}))["ok"] is False
     assert code_mode._kept_chars == 0
+
+
+def test_a_cut_result_keeps_its_calls_line():
+    text = "x" * 30_000 + "\n[Fuse: 3 calls: read_file×3]"
+    head = ToolJob(0, "call-1", "run_code", "{}", "ts_0_0", text=text, done=True, trace={"status": "done"})
+
+    _, result = tool_jobs._tool_messages([head])
+
+    assert len(result["content"]) <= tool_jobs.TOOL_RESULT_CHARS
+    assert result["content"].endswith("\n[Fuse: 3 calls: read_file×3]") and "result cut at" in result["content"]
+
+
+def test_a_run_that_only_reads_a_kept_result_counts_that_read(monkeypatch):
+    monkeypatch.setattr(code_mode, "_kept", collections.OrderedDict())
+    monkeypatch.setattr(code_mode, "_kept_chars", 0)
+    ident = code_mode.keep((1, 1), "abcdef")
+
+    text, _ = run_code(f'return await read_result("{ident}", {{offset: 2, limit: 2}});', Runner(), owner=(1, 1))
+
+    assert text == "cd\n[Fuse: 1 calls: read_result×1]"
+
+
+
+def test_a_helper_call_with_wrong_argument_names_is_refused_with_the_names_it_takes():
+    runner = Runner()
+    text, _ = run_code("return await read_file({file: 'a.py'});", runner)
+    assert "read_file has no argument file; it takes path" in text and runner.calls == []
+
+    text, _ = run_code("return await write_file({path: 'a.txt'});", runner)
+    assert "write_file needs content" in text and runner.calls == []
+
+
+def test_a_type_mistake_gets_the_type_hint_and_a_comma_path_gets_the_path_hint():
+    text, _ = run_code("return (await glob('*.py')).sort();", Runner())
+    assert ".split(" in text and "Each helper is async" not in text
+
+    def missing(name, args):
+        return "From host box:\nNo such file or directory", {"name": name, "status": "error", "host": "box"}
+
+    text, _ = run_code("return await grep({pattern: 'x', path: 'a.py,b.py'});", Runner(missing))
+    assert "grep a.py,b.py: No such file or directory (path is one file or directory" in text

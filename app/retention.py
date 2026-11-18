@@ -8,7 +8,9 @@ in the window (a pinned session keeps its project out), and take their open
 sessions with them (restoring brings those back).
 Deletion only ever removes items that are already archived, counted from
 when they were archived. Instance-wide ceilings (RETENTION_FORCE_*) apply
-on top of what users choose and can only shorten it.
+on top of what users choose and can only shorten it, and CHAT_MAX_IDLE_DAYS
+deletes any chat idle that long, archived or not, pinned or not, whatever the
+user chose. Artifacts expire on their own clock (artifacts.expire_idle).
 """
 from __future__ import annotations
 
@@ -62,6 +64,7 @@ def _limits() -> dict:
     return {
         "archive_days": max(0, int(getattr(settings, "retention_force_archive_days", 0) or 0)),
         "delete_days": max(0, int(getattr(settings, "retention_force_delete_days", 0) or 0)),
+        "idle_days": max(0, int(getattr(settings, "chat_max_idle_days", 0) or 0)),
     }
 
 
@@ -188,10 +191,12 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
     archive_projects = prefs.get("archive_projects", True) or forced_archive
     now = now or datetime.now(timezone.utc)
     stats = {"archived_chats": 0, "archived_projects": 0, "deleted_chats": 0, "deleted_projects": 0}
-    if not hours and not days:
+    idle_days = int(limits.get("idle_days") or 0)
+    if not hours and not days and not idle_days:
         return stats
     cutoff = _iso(now - timedelta(hours=hours)) if hours else ""
     delete_cutoff = _iso(now - timedelta(days=days)) if days else ""
+    idle_cutoff = _iso(now - timedelta(days=idle_days)) if idle_days else ""
 
     with db.tx() as conn:
         conn.execute("BEGIN")
@@ -308,6 +313,22 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
                 deleted = False
             if deleted:
                 stats["deleted_chats"] += 1
+    if idle_cutoff:
+        # Mandatory: no user setting or pin keeps a chat this idle. A schedule's
+        # thread belongs to the schedule; a busy one is in use.
+        for t in threads:
+            if t["schedule_id"] is not None or t["id"] in busy:
+                continue
+            if not t["last_active"] or t["last_active"] >= idle_cutoff:
+                continue
+            # The snapshot's revision: a chat used (or archived) since is left
+            # for the next sweep to judge.
+            try:
+                deleted = chats.delete_thread(user_id, t["id"], expected_revision=int(t["revision"]), cancel_active=False)
+            except chats.ChatValidationError:
+                deleted = False
+            if deleted:
+                stats["deleted_chats"] += 1
     if any(stats.values()):
         logger.info("retention user=%s %s", user_id, stats)
     return stats
@@ -339,7 +360,16 @@ def sweep(*, now: datetime | None = None) -> dict:
     pruned = prune_history(now=now)
     if any(pruned.values()):
         logger.info("retention pruned history %s", pruned)
-    if limits["archive_days"] or limits["delete_days"]:
+    from . import artifacts
+
+    try:
+        expired = artifacts.expire_idle(now=now)
+    except Exception:
+        logger.exception("artifact expiry failed")
+    else:
+        if any(expired.values()):
+            logger.info("retention artifacts %s", expired)
+    if limits["archive_days"] or limits["delete_days"] or limits["idle_days"]:
         rows = db.fetchall("SELECT id FROM users")
     else:
         rows = db.fetchall("SELECT id FROM users WHERE retention_archive_hours>0 OR retention_delete_days>0")

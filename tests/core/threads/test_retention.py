@@ -96,6 +96,21 @@ def test_a_chat_used_after_the_sweep_read_it_stays_open(fresh_db):
     assert _state(uid) == {"in use": "open"}
 
 
+def test_chats_idle_past_the_mandatory_limit_delete_whatever_the_user_chose(fresh_db):
+    uid = make_user()
+    off = {**PREFS, "archive_hours": 0, "delete_days": 0, "limits": {"archive_days": 0, "delete_days": 0, "idle_days": 30}}
+    _chat(uid, "idle", idle_days=31)
+    _chat(uid, "pinned", idle_days=31, pinned=1)
+    _chat(uid, "archived", idle_days=40, archived_days=1)
+    _chat(uid, "recent", idle_days=29)
+    _chat(uid, "scheduled", idle_days=60, schedule_id=424242)
+
+    stats = retention.sweep_user(uid, off, now=NOW)
+
+    assert stats["deleted_chats"] == 3
+    assert _state(uid) == {"recent": "open", "scheduled": "open"}
+
+
 def test_the_sweep_touches_only_its_user_and_off_means_off(fresh_db):
     uid, other = make_user(), make_user("other@core.test")
     _chat(uid, "mine", idle_days=5)

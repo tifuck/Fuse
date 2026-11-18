@@ -116,7 +116,8 @@ SCHEMA = {
             "Promise<string>; // raw text, no line numbers; the whole file (up to 2 MB) unless limit is given\n"
             "declare function grep(a: {pattern: string, path?: string, include?: string, output_mode?: \"content\" | "
             "\"files_with_matches\" | \"count\", case_insensitive?: boolean, max_matches?: number, host?: string} | "
-            "string): Promise<string>; // path:line:text lines\n"
+            "string): Promise<string>; // path:line:text lines; path is one file or directory (for several, use "
+            "include with braces, e.g. \"*.{py,js}\", or one call each)\n"
             "declare function glob(a: {pattern: string, path?: string, host?: string} | string): Promise<string>; "
             "// one path per line\n"
             "declare function list_dir(a?: {path?: string, depth?: number, host?: string} | string): Promise<string>; "
@@ -131,9 +132,12 @@ SCHEMA = {
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
             "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
-            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes)\n"
+            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes): the text "
+            "that run returned, not its variables, so take only the part you need\n"
             "A line in (parentheses) in grep, glob or list_dir text is a note, not a result. A failed call throws "
-            "an Error with the tool's message; catch it where a miss is expected. console.log output comes back "
+            "an Error with the tool's message; catch it where a miss is expected. In Promise.all one failure "
+            "rejects the whole batch and ends the code, stopping calls still running: add .catch(...) to calls "
+            "that may fail, or use Promise.allSettled. console.log output comes back "
             "too. Limits: 500 calls, 5 minutes (timeout, in ms, up to 10). A returned value over 24,000 "
             "characters is cut, so return findings, not file bodies.\n"
             "Example:\n"
@@ -224,6 +228,38 @@ _NOT_HERE = frozenset({
 })
 
 
+_EXAMPLE_ARGS = {
+    "read_file": '{path: "src/app.py"}', "list_dir": '{path: "src"}', "grep": '{pattern: "TODO", path: "src"}',
+    "glob": '{pattern: "**/*.py"}', "write_file": '{path: "a.txt", content: "..."}',
+    "search_replace": '{path: "a.py", old_string: "x", new_string: "y"}',
+    "run_terminal_command": '{command: "npm test", description: "Run the tests"}',
+}
+
+
+def _bad_args(name: str, args: dict) -> str:
+    """A helper call whose argument names the tool would not take, said with
+    the names it does take."""
+    from .agent_catalog import schema
+
+    params = ((schema(name) or {}).get("function") or {}).get("parameters") or {}
+    known, required = list(params.get("properties") or {}), params.get("required") or []
+    unknown = [key for key in args if key not in known]
+    missing = [key for key in required if key not in args]
+    if not unknown and not missing:
+        return ""
+    what = f"has no argument {', '.join(unknown)}" if unknown else f"needs {', '.join(missing)}"
+    return f"{name} {what}; it takes {', '.join(known)}, e.g. {name}({_EXAMPLE_ARGS[name]})."
+
+
+def _call_error(name: str, args: dict, message: str) -> str:
+    """A failed helper call as the code sees it: which call, what the tool said."""
+    message = message.strip()[:ERROR_CHARS] or "failed"
+    path = str(args.get("path") or "")
+    if "," in path and re.search(r"no such file|not found|does not exist", message, re.I):
+        message += " (path is one file or directory: make one call per path, or use include with braces)"
+    return " ".join(f"{name} {subject(args)}".split()) + f": {message}"
+
+
 def _user_lines(stack: str) -> str:
     """V8 positions as the model's own line numbers; frames in the prelude
     (a helper throwing) are dropped, and a Node habit gets its fix."""
@@ -250,6 +286,11 @@ def _user_lines(stack: str) -> str:
         name = shadowed.group(1)
         text += (f"\n({name} is already defined in run_code: call it as `await {name}({{...}})` and do not declare, "
                  f"destructure or import it.{fix})")
+    elif re.search(r"\.(split|trim|includes|match|replace|slice|startsWith|endsWith|map|filter|forEach|sort|join|"
+                   r"length) is not a function|Cannot read properties of undefined \(reading '(split|trim|length)'\)", text):
+        text += ("\n(Helpers return text, except run_terminal_command, which returns {status, exit_code, output}: use "
+                 "its .output. Split glob, grep and list_dir text into lines with .split(\"\\n\") before array methods, "
+                 f"and await every call.{fix})")
     elif "is not a function" in text or "[object Promise]" in text:
         text += f"\n(Each helper is async: write `await read_file(...)`, and `await Promise.all(...)` over a map.{fix})"
     return text
@@ -336,7 +377,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
         done.append({"name": name, "subject": subject(call_args), "status": str(trace.get("status") or "")})
         received += len(text or "")
         if trace.get("status") in ("error", "interrupted"):
-            body = {"ok": False, "error": _unlabel(text, trace)[:ERROR_CHARS] or f"{name} failed."}
+            body = {"ok": False, "error": _call_error(name, call_args, _unlabel(text, trace))}
         else:
             body = {"ok": True, "value": _value(name, text, trace)}
         send({"reply": n, "body": json.dumps(body)})
@@ -365,7 +406,9 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 return {"ok": False, "error": f"the code made over {2 * MAX_CALLS} tool calls, most of them refused."}
             if name == "read_result":
                 # The model's own earlier output, already swapped: no host, no tool job.
-                send({"reply": n, "body": json.dumps(_read_kept(owner, raw))})
+                page = _read_kept(owner, raw)
+                done.append({"name": "read_result", "subject": "", "status": "done" if page["ok"] else "error"})
+                send({"reply": n, "body": json.dumps(page)})
                 continue
             if name not in HELPERS:
                 refuse(n, f"{name} is not available in run_code (available: {', '.join(HELPERS)}).")
@@ -379,7 +422,9 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             except (ValueError, RecursionError):
                 call_args = None
             if not isinstance(call_args, dict):
-                refuse(n, f"{name} takes one argument object.")
+                refuse(n, f"{name} takes one argument object, e.g. {name}({_EXAMPLE_ARGS[name]}).")
+            elif bad := _bad_args(name, call_args):
+                refuse(n, bad)
             elif name == "run_terminal_command" and call_args.get("background"):
                 refuse(n, "background commands are not available in run_code; call run_terminal_command directly.")
             elif started >= MAX_CALLS:
@@ -416,8 +461,13 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 outcome = None
             if outcome is not None and not outcome.get("ok"):
                 kind = "memory" if "memory limit" in str(outcome.get("error") or "").lower() else "code_error"
+                if kind == "memory":
+                    outcome["error"] = (f"the code used its {HEAP_MB} MB of memory. Keep only what you need from each "
+                                        "file instead of holding them all, or split the work across runs.")
         elif not finished:
-            kind, outcome = "timeout", {"ok": False, "error": f"run_code timed out after {int(timeout_s * 1000)}ms."}
+            kind, outcome = "timeout", {"ok": False, "error": (
+                f"run_code timed out after {int(timeout_s * 1000)}ms. Pass a larger timeout (up to {MAX_TIMEOUT_MS}) or "
+                "do less per run; run a long build or test with run_terminal_command directly.")}
     finally:
         aborted.cancel()
         reader.cancel()
@@ -437,9 +487,10 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
         raise crashed[0]
     if outcome is None and not kind:
         if proc.returncode in (-signal.SIGXCPU, -signal.SIGKILL):
-            kind, error = "cpu", f"the code used its {CPU_SECONDS} s CPU limit."
+            kind, error = "cpu", f"the code used its {CPU_SECONDS} s CPU limit, most likely in an endless loop."
         else:
-            kind, error = "worker", "the code runner stopped unexpectedly."
+            kind, error = "worker", ("the code runner stopped unexpectedly. Call run_code again; if it stops again, "
+                                     "use the tools directly.")
             logger.warning("run_code worker ended with %s: %s", proc.returncode,
                            stderr_tail.decode("utf-8", "replace").strip()[-500:])
         outcome = {"ok": False, "error": error}
