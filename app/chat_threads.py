@@ -449,7 +449,7 @@ def _snippet(raw: str, needle: str) -> str:
         # Cut at spaces so neither edge shows half a word.
         start = max(0, idx - 42)
         if start:
-            start = text.find(" ", start, idx) + 1 or idx
+            start = text.find(" ", start, idx) + 1 or start
         end = idx + len(needle) + 64
         cut = text.rfind(" ", idx + len(needle), end + 1) if end < len(text) else -1
         if cut > 0:

@@ -160,8 +160,10 @@ function humanMs(ms) {
   if (!Number.isFinite(n) || n < 0) return "";
   const rounded = Math.round(n);
   if (rounded < 1000) return `${rounded}ms`;
-  const secs = rounded / 1000;
-  if (secs < 60) return `${secs < 10 ? secs.toFixed(1) : Math.round(secs)}s`;
+  const tenths = Math.round(rounded / 100) / 10;
+  if (tenths < 10) return `${tenths.toFixed(1)}s`;
+  const secs = Math.round(rounded / 1000);
+  if (secs < 60) return `${secs}s`;
   return formatTurnDuration(n);
 }
 

@@ -183,6 +183,11 @@ test('command envelopes parse monitors and signals and keep output off the metad
   assert.equal(done.command, 'log watch', 'a source: line is the monitor target');
   assert.equal(done.duration_ms, null, 'non-numeric duration is absent, not NaN');
   assert.equal(done.exit_code, null);
+  const [bare] = sem.parseCommandResults('<monitor_event id="mon-2" count="5">\nurl: wss://h/ws\n\nline\n</monitor_event>');
+  assert.deepEqual([bare.duration_ms, bare.timeout_ms, bare.event_count], [null, null, 5], 'missing lines are absent, not 0');
+  const trace = { name: 'monitor', child_id: 'mon-2', latency_ms: 4200 };
+  sem.applyCommandResult(trace, bare);
+  assert.equal(trace.latency_ms, 4200, 'an event without a duration keeps the real latency');
   assert.equal(sem.parseCommandResults('no envelopes here').length, 0);
   assert.equal(sem.parseCommandResults('<command_result id="x">no close').length, 0);
 });
