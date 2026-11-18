@@ -809,13 +809,13 @@
       </div>
       <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close Add a source">Close</button>
     </header>
-    <input type="search" class="source-picker-find" placeholder="Search providers" aria-label="Search providers" autocomplete="off" autofocus role="combobox" aria-expanded="true" aria-controls="source-picker-list" aria-autocomplete="list" data-source-find>
+    <div class="source-picker-search"><input type="search" placeholder="Search providers" aria-label="Search providers" autocomplete="off" autofocus role="combobox" aria-expanded="true" aria-controls="source-picker-list" aria-autocomplete="list" data-source-find></div>
+    <p class="source-picker-none" data-source-none hidden>No provider name starts with that.</p>
     <ul class="source-picker-list" id="source-picker-list" role="listbox" aria-label="Providers">
       {% for id, title, sub, n, signed_out in src.all|sort(attribute='1') %}
       <li><a href="#pool-{{ id }}" id="source-pick-{{ id }}" role="option" aria-selected="false" data-source-pick data-name="{{ title|lower }}"><img class="provider-logo" src="{{ provider_logo_url(id) }}" alt="" aria-hidden="true"><span class="source-picker-name">{{ title }}</span>{% if n %}<span class="badge on">Connected</span>{% endif %}<small>{{ sub }}</small></a></li>
       {% endfor %}
     </ul>
-    <p class="source-picker-none" data-source-none hidden>No provider name starts with that.</p>
   </div>
 </dialog>
 

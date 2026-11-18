@@ -420,7 +420,8 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 }
 
 /* Add a source: a search over every provider and the list it narrows. */
-.source-picker-find { width: 100%; margin-top: 0.85rem; }
+.source-picker-search { margin-top: 0.85rem; }
+.source-picker-search input { box-sizing: border-box; width: 100%; font-size: max(16px, 0.85rem); }
 .source-picker-list {
   max-height: min(24rem, 55dvh);
   margin: 0.6rem 0 0;
