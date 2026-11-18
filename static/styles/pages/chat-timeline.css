@@ -209,8 +209,10 @@
   transition: transform 200ms ease, opacity 150ms ease;
 }
 :where(html:not(.is-chat-root)) .chat-step-head:has([aria-expanded="true"]) .chat-step-chevron { transform: rotate(0deg); }
-:where(html:not(.is-chat-root)) .chat-step-toggle:hover ~ .chat-step-caret .chat-step-chevron,
-:where(html:not(.is-chat-root)) .chat-step-caret:hover .chat-step-chevron { opacity: 1; }
+:where(html:not(.is-chat-root)) .chat-step-head:hover { --hover-step-head: 1; }
+@container style(--hover-step-head: 1) {
+  :where(html:not(.is-chat-root)) .chat-step-head.chat-step-head .chat-step-caret .chat-step-chevron { opacity: 1; }
+}
 :where(html:not(.is-chat-root)) .chat-step-state {
   grid-column: 2;
   justify-self: start;
@@ -280,7 +282,6 @@
 }
 :where(html:not(.is-chat-root)) .chat-shimmer,
 :where(html:not(.is-chat-root)) .chat-activity.is-live .chat-activity-text,
-:where(html:not(.is-chat-root)) .chat-activity.is-live .chat-activity-summary:hover .chat-activity-text,
 :where(html:not(.is-chat-root)) .chat-step.is-running .chat-step-label {
   background-image: linear-gradient(
     108deg,

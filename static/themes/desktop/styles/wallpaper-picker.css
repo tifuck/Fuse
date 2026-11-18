@@ -39,7 +39,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-wp-thumb { display: block; width: 76px; height: 44px; overflow: hidden; border: 1px solid var(--dk-card-line); border-radius: 8px; background: var(--dk-side); }
   & .dk-wp-thumb[data-kind="none"] { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--dk-mute) 14%, transparent) 6px 7px), var(--dk-side); }
   & .dk-wp-thumb > canvas { display: block; width: 100%; height: 100%; }
-  & .dk-wp-card:hover .dk-wp-thumb { border-color: var(--dk-mute); }
+  & .dk-wp-card:hover { --hover-wp-card: 1; }
+  @container style(--hover-wp-card: 1) {
+    & .dk-wp-card.dk-wp-card .dk-wp-thumb { border-color: var(--dk-mute); }
+  }
   & .dk-wp-card:is(.is-active, .is-on, :hover) { color: var(--dk-text); }
   & .dk-wp-card.is-active .dk-wp-thumb { outline: 2px solid var(--dk-text); outline-offset: 2px; }
   & .dk-wp-name { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-align: center; overflow-wrap: anywhere; }

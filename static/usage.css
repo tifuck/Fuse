@@ -309,7 +309,7 @@ html[data-chat-theme="ivory"] .uz {
 .uz-tabs button.on::after { content: ""; position: absolute; inset: auto 0 -1px; height: 2px; border-radius: 2px; background: var(--brass); }
 .uz-rows td.uz-cell-name { width: 100%; max-width: 0; }
 .uz-rows .uz-name strong { max-width: 100%; }
-.uz-row:hover td { background: var(--uz-hover); }
+.uz-row:hover { background: var(--uz-hover); }
 .uz-row.is-open td { border-bottom-color: transparent; }
 .uz-row-toggle {
   display: flex;
@@ -502,7 +502,7 @@ html[data-chat-theme="ivory"] .uz {
   .uz-rows, .uz-rows tbody, .uz-recent, .uz-recent tbody { display: block; }
   .uz-rows tr.uz-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 0.85rem; padding: 0.55rem 0 0.6rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
   .uz-rows tr.uz-row.is-open { border-bottom-color: transparent; }
-  .uz-rows tr.uz-row:hover td { background: none; }
+  .uz-rows tr.uz-row:hover { background: none; }
   .uz-rows td { display: block; padding: 0; border: 0; }
   .uz-rows td.uz-cell-name { grid-column: 1 / 4; max-width: none; min-width: 0; }
   .uz-rows td.uz-cell-tokens { grid-column: 4; grid-row: 1; align-self: center; }

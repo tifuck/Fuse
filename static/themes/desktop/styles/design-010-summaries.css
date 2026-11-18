@@ -113,7 +113,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent.is-error .chat-console-agent-sub .chat-console-dim { color: var(--fault); }
 
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent:hover .chat-console-agent-name { color: var(--ink-strong, var(--mist)); text-decoration: underline; text-underline-offset: 2px; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent:hover { --hover-agent: 1; }
+@container style(--hover-agent: 1) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent.chat-console-agent .chat-console-agent-name { color: var(--ink-strong, var(--mist)); text-decoration: underline; text-underline-offset: 2px; }
+}
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn {
   color: color-mix(in srgb, var(--mist) 58%, var(--ink));

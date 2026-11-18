@@ -441,7 +441,10 @@
 .hosts-proj-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(html:not(.is-chat-root)) .hosts-proj-name .badge { flex-shrink: 0; }
 .hosts-proj-icon { flex-shrink: 0; }
-.hosts-proj-open:hover .hosts-proj-label { color: var(--brass); }
+.hosts-proj-open:hover { --hover-hosts-proj: 1; }
+@container style(--hover-hosts-proj: 1) {
+  .hosts-proj-open.hosts-proj-open .hosts-proj-label { color: var(--brass); }
+}
 .hosts-proj-path {
   min-width: 0;
   overflow: hidden;
@@ -458,7 +461,9 @@
   .hosts-proj-open { grid-template-columns: minmax(0, 1fr); row-gap: 0.15rem; }
   .hosts-proj-go { display: none; }
 }
-.hosts-proj-open:hover .hosts-proj-go { color: var(--brass); }
+@container style(--hover-hosts-proj: 1) {
+  .hosts-proj-open.hosts-proj-open .hosts-proj-go { color: var(--brass); }
+}
 .hosts-ibtn {
   display: grid;
   place-items: center;

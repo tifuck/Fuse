@@ -349,10 +349,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     cursor: pointer;
   }
   & .dk-th-ctx { grid-column: 3; }
-  & .dk-th-num:hover { background: var(--dk-hover); color: var(--dk-text); }
+  & .dk-th-num:hover { background: var(--dk-hover); color: var(--dk-text); --dk-th-sort: 0.55; }
   & .dk-th-num:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
-  & .dk-th-num svg { opacity: 0; transition: transform 0.2s var(--dk-ease), opacity 0.15s; }
-  & .dk-th-num:hover svg { opacity: 0.55; }
+  & .dk-th-num svg { opacity: var(--dk-th-sort, 0); --dur-hover: inherit; transition: transform 0.2s var(--dk-ease), opacity var(--dur-hover); }
   & .dk-th-num[aria-sort] { color: var(--dk-text); }
   & .dk-th-num[aria-sort] svg { opacity: 1; }
   & .dk-th-num[aria-sort="ascending"] svg { transform: rotate(180deg); }
@@ -438,10 +437,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 14px/1 var(--sans);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, background var(--dur-hover), color var(--dur-hover);
+    transition: opacity var(--dur-hover), background var(--dur-hover), color var(--dur-hover);
   }
-  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) :is(.chat-agents-act, .chat-jobs-kill),
   & .dk-ar :is(.chat-agents-act.is-resume, .chat-agents-act.is-urgent) { opacity: 1; }
+  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) { --dk-act-row-lit: 1; }
+  @container style(--dk-act-row-lit: 1) {
+    & :is(.dk-ar, .dk-jr).dk-jr :is(.chat-agents-act, .chat-jobs-kill) { opacity: 1; --dur-hover: 0s; }
+  }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):hover { background: var(--dk-sel); color: var(--dk-text); }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):focus-visible { opacity: 1; outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .dk-ar .chat-agents-act.is-resume { color: var(--dk-link); }

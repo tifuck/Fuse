@@ -238,8 +238,11 @@
 }
 @media (hover: hover) {
   :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-star:not(.is-on) { opacity: 0; }
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-row:hover .chat-picker-star,
   :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-row > .is-active + .chat-picker-star { opacity: 1; }
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-row:hover { --hover-picker-row: 1; }
+  @container style(--hover-picker-row: 1) {
+    :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-row.chat-picker-row .chat-picker-star { opacity: 1; }
+  }
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-picker-thinking-host {
   flex: 0 0 auto;

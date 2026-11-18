@@ -101,7 +101,10 @@
   white-space: nowrap;
 }
 :where(html:not(.is-chat-root)) .proj-card-title .badge { flex-shrink: 0; }
-.proj-open:hover .proj-card-name { color: var(--brass); }
+.proj-open:hover { --hover-proj-open: 1; }
+@container style(--hover-proj-open: 1) {
+  .proj-open.proj-open .proj-card-name { color: var(--brass); }
+}
 .proj-card-path {
   overflow: hidden;
   color: var(--mute);

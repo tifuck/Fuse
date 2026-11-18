@@ -47,4 +47,4 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td { color: color-mix(in srgb, var(--mist) 80%, var(--ink)); border-top: 1px solid var(--line) !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:first-child td { border-top: 0 !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover td { background: color-mix(in srgb, var(--mist) 5%, transparent); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }

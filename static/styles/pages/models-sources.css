@@ -52,13 +52,16 @@
   font-size: 0.68rem;
   opacity: 0;
 }
-.catalog-ids button:hover .catalog-copy,
 .catalog-ids button:focus-visible .catalog-copy,
 .catalog-ids button.copy.ok .catalog-copy { opacity: 1; }
+.catalog-ids button:hover { --hover-catalog-id: 1; }
+@container style(--hover-catalog-id: 1) {
+  .catalog-ids button .catalog-copy { opacity: 1; }
+}
 .catalog-ids button.copy.ok .catalog-copy { color: var(--ok); }
-.catalog-family.is-locked .rank-name strong,
+.catalog-family.is-locked .rank-name strong { color: var(--catalog-locked-name, var(--mute)); }
 .catalog-family.is-locked .rank-name span { color: var(--mute); }
-.catalog-family.is-locked button:hover .rank-name strong { color: var(--mist); }
+.catalog-family.is-locked button:hover { --catalog-locked-name: var(--mist); }
 
 .source-email {
   font-family: var(--mono);
@@ -197,7 +200,7 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   font-variant-numeric: tabular-nums;
 }
 .source-table tbody tr:first-child td { border-top: 0; }
-.source-table tbody tr:hover td {
+.source-table tbody tr:hover {
   background: color-mix(in srgb, var(--mist) 3.5%, transparent);
 }
 .source-col-account { width: auto; }

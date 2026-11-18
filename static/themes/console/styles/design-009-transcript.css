@@ -184,7 +184,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 /* Touch screens keep :hover on the last tapped line, which then stayed bright
    after it folded. */
 @media (hover: hover) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-done:hover .chat-step-label { color: var(--mist); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-done:hover { --hover-step-done: 1; }
+  @container style(--hover-step-done: 1) {
+    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-done.is-done .chat-step-label { color: var(--mist); }
+  }
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group > .chat-step-main > .chat-console-hang {
@@ -318,7 +321,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 }
 
 @media (hover: hover) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover .chat-step-label { color: var(--mist); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle:hover { --hover-step-toggle: 1; }
+  @container style(--hover-step-toggle: 1) {
+    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-live-think > .chat-step-main > .chat-step-head > .chat-step-toggle.chat-step-toggle .chat-step-label { color: var(--mist); }
+  }
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .chat-step-label {
