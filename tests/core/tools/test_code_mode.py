@@ -379,7 +379,7 @@ def test_the_run_code_tip_names_the_direct_calls_once_and_never_after_a_run_code
     assert tool_jobs.code_tip_count(jobs("run_code", "read_file"), seen) is None
     msgs = [{"role": "assistant"}, {"role": "tool", "content": "ok"}]
     tool_jobs.add_code_tip(msgs, seen)
-    assert "3 direct file calls (2 read_file, 1 grep)" in msgs[1]["content"]
+    assert "3 direct file calls this turn (2 read_file, 1 grep)" in msgs[1]["content"]
 
 
 def test_recovered_history_replays_run_code_but_not_the_calls_it_made():
