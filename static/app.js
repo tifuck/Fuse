@@ -734,37 +734,33 @@ document.querySelectorAll("[data-page-tabs]").forEach((nav) => {
   });
 });
 
-// Every other tablist (settings sections have their own above): one tab stop
-// on the selected tab, arrow/Home/End keys select a neighbour by clicking it so
-// each page's own handler runs, and the tab's panel (aria-controls) is a
-// tabpanel labelled by the tab that is showing it.
 // Sources on a phone: the rail is the first screen and a provider opens in its
-// place, with All sources (and the browser's back) to return. Wider, both show
-// side by side and data-view does nothing; the back button only shows narrow.
+// place as a back layer (FuseBack), so All sources and the phone's back both
+// return to the list. Wider, both show side by side and data-view does
+// nothing; the All sources button only shows narrow.
 document.querySelectorAll(".sources-dir").forEach((dir) => {
   const nav = dir.querySelector("[data-section-tabs]");
   const back = dir.querySelector("[data-sources-back]");
   const narrow = () => getComputedStyle(back).display !== "none";
   const toTop = () => { const scroller = dir.closest(".settings-scroll"); if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0); };
+  const toList = () => {
+    dir.dataset.view = "list";
+    window.FuseBack.whenSettled(() => history.replaceState(history.state, "", location.pathname + location.search));
+    toTop();
+  };
   const opened = [location.hash.slice(1), nav.dataset.start].some((id) => id && dir.querySelector(`.sources-pane > #${CSS.escape(id)}`));
   dir.dataset.view = opened ? "pane" : "list";
   nav.addEventListener("click", (event) => {
     if (!event.target.closest('a[href^="#"]')) return;
     if (narrow() && dir.dataset.view === "list") {
-      history.pushState({ sourcesPane: true }, "");
+      window.FuseBack.open("sources-pane", toList);
       toTop();
     }
     dir.dataset.view = "pane";
   }, true);
   back.addEventListener("click", () => {
-    if (history.state && history.state.sourcesPane) return history.back();
-    dir.dataset.view = "list";
-    history.replaceState(null, "", location.pathname + location.search);
-    toTop();
-  });
-  window.addEventListener("popstate", () => {
-    dir.dataset.view = history.state && history.state.sourcesPane ? "pane" : "list";
-    toTop();
+    window.FuseBack.drop("sources-pane");
+    toList();
   });
 });
 
@@ -815,6 +811,10 @@ document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
   filter();
 });
 
+// Every other tablist (settings sections have their own above): one tab stop
+// on the selected tab, arrow/Home/End keys select a neighbour by clicking it so
+// each page's own handler runs, and the tab's panel (aria-controls) is a
+// tabpanel labelled by the tab that is showing it.
 document.querySelectorAll('[role="tablist"]:not(.settings-jump):not([data-section-tabs])').forEach((list, n) => {
   const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
   if (!tabs.length) return;

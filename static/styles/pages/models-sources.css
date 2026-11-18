@@ -419,7 +419,9 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   .sources-rail small { grid-column: 2 / 4; font-size: 0.74rem; }
 }
 
-/* Add a source: a search over every provider and the list it narrows. */
+/* Add a source: a search over every provider and the list it narrows. The
+   dialog hangs from the top so it stays put while typing shrinks the list. */
+dialog.source-picker { margin-top: min(12vh, 6rem); }
 .source-picker-search { margin-top: 0.85rem; }
 .source-picker-search input { box-sizing: border-box; width: 100%; font-size: max(16px, 0.85rem); }
 .source-picker-list {
