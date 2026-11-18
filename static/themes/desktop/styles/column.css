@@ -300,9 +300,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 @media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { flex: none; white-space: nowrap; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took > .dk-sep { padding: 0 0.45ch; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: var(--dk-warn); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: var(--dk-del, var(--fault)); }

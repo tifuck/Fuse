@@ -4,10 +4,10 @@ export function create(deps) {
 // its actions: "4m ago · worked 3m 53s". usage: the stored-reply stand-in
 // for the work time.
 function ccTurnLineHtml(msg, latest, usage = "") {
+    // One run of text, so it reads and copies as one line: "4m ago · worked 3m 53s".
     const ago = agoHtml(msg);
-    const sep = '<span class="dk-sep">·</span>';
-    const lead = ago ? sep : "";
-    if (msg.elapsedMs == null) return `${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}${turnActionsHtml(msg, latest)}`;
+    const lead = ago ? " · " : "";
+    if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     if (pendingAgents) {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
@@ -19,7 +19,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
     const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> after ${took}` : `worked ${took}`;
     const still = latest ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
-    return `${ago}<span class="dk-took">${lead}${doing}${still ? `${sep}${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
+    return `<span class="dk-turn-text">${ago}<span class="dk-took">${lead}${doing}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span></span>${turnActionsHtml(msg, latest)}`;
   }
 
 // A finished reply's actions: copy, fork, pin, read aloud. Desktop's
