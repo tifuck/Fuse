@@ -25,7 +25,17 @@
 
   function insideFenceOrUrl(text, caret) {
     const before = text.slice(0, caret);
-    const line = before.split("\n").pop() || "";
+    const lines = before.split("\n");
+    const line = lines.pop() || "";
+    // An open fence above the caret: a bare line of the same character, at least as long, closes it.
+    let fence = "";
+    for (const l of lines) {
+      const m = l.match(/^\s*(`{3,}|~{3,})(.*)$/);
+      if (!m) continue;
+      if (!fence) fence = m[1];
+      else if (m[1][0] === fence[0] && m[1].length >= fence.length && !m[2].trim()) fence = "";
+    }
+    if (fence) return true;
     let ticks = 0;
     for (const ch of line) if (ch === "`") ticks += 1;
     if (ticks % 2 === 1) return true;

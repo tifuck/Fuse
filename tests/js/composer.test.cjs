@@ -81,6 +81,9 @@ test('completion triggers: path only for known paths, @ for mentions, / for slas
   assert.equal(t.kind, 'path');
   assert.ok(complete.items(t, ctx).some((r) => r.insert.endsWith('/src')));
   assert.equal(complete.joinPath('/root/fuse/', 'src'), '/root/fuse/src');
+  assert.equal(complete.trigger('```bash\ncat @src', 16, ctx), null, 'no completion inside a fenced block');
+  assert.equal(complete.trigger('~~~\n```\ncat src/', 16, ctx), null, 'another fence character does not close it');
+  assert.equal(complete.trigger('```bash\nx\n```\n@', 15, ctx).kind, 'at', 'a closed fence ends the block');
 });
 
 test('@ completes skills by bare slug, even with an empty query', () => {

@@ -195,9 +195,10 @@ function ccGenSpeed(out, ms, est) {
 function ccBytes(n) {
     const bytes = Math.max(0, Math.round(Number(n) || 0));
     const fixed = (value) => value.toFixed(1).replace(/\.0$/, "");
+    const fits = (value) => Number(value.toFixed(1)) < 1024;
     if (bytes < 1024) return `${bytes} bytes`;
-    if (bytes < 1024 * 1024) return `${fixed(bytes / 1024)}KB`;
-    if (bytes < 1024 ** 3) return `${fixed(bytes / 1024 / 1024)}MB`;
+    if (fits(bytes / 1024)) return `${fixed(bytes / 1024)}KB`;
+    if (fits(bytes / 1024 / 1024)) return `${fixed(bytes / 1024 / 1024)}MB`;
     return `${fixed(bytes / 1024 ** 3)}GB`;
   }
 
