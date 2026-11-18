@@ -6,6 +6,8 @@
    Last in design.css: it settles every earlier rule of this theme. Nested
    under one scope (same specificity as the theme's other rules, plus each
    selector's own). */
+/* The stage's width as a length, worked out on the composer's dock. */
+@property --dk-stage-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette. */
   --dk-canvas: color-mix(in srgb, var(--ink) 93%, var(--mist));
@@ -35,9 +37,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-band-h: 30px;
   /* Between the composer card and its controls row. */
   --dk-band-gap: 3px;
-  /* How far the composer card reaches past the transcript text's edges (its
-     controls row stays on them); always inside the dock's gutter. */
-  --dk-card-out: min(10px, calc(var(--console-gutter) - 4px));
   --chat-history: 15rem;
   /* The reading column takes most of the window and keeps growing on wide
      displays; the sidebar and inspector still clip it (min(…, 100% - gutter)). */
@@ -451,6 +450,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The card's edges are the transcript text's: the log's gutter, and the
      log is centred left of the scrollbar's gutter. */
   & .chat-dock { padding: 4px var(--console-gutter) 0; background: none; }
+  /* The card itself reaches up to 20px past those edges (its controls row
+     stays on them), as far as the stage has room: 4px short of its edge or
+     the scrollbar. The 100% is the box's width, wherever it is used. */
+  & .chat-stage { container-type: inline-size; }
+  & .chat-dock { --dk-stage-w: 100cqw; --dk-card-out: clamp(0px, calc((var(--dk-stage-w) - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
   &:not(.is-empty) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
   /* The transcript runs on behind the composer's glass, as under the model
      picker: the dock overlaps the scroller down to 12px above the card's
