@@ -1,11 +1,12 @@
 // Fuse Desktop shell logic (fuse-desktop/*.js): context menu, permission
-// gate, site URL check and the post-update notice.
+// gate, site URL check, the post-update notice and GPU rendering state.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { contextMenuTemplate } = require('../../fuse-desktop/context-menu.js');
 const { allowPermission } = require('../../fuse-desktop/permissions.js');
 const { checkSiteUrl, isFuseHealth, serverOrigin } = require('../../fuse-desktop/site-url.js');
 const { MAX_INSTALL_TRIES, launchNotice } = require('../../fuse-desktop/update-notice.js');
+const { GPU_CRASH_LIMIT, GPU_CRASH_WINDOW_MS, countGpuCrash, gpuForcedOff, launchRendering, parseRendering } = require('../../fuse-desktop/rendering.js');
 
 function fakeContents() {
   const calls = [];
@@ -121,6 +122,45 @@ test('update notice: a failed install warns, counts the try, and the last one li
   assert.equal(launchNotice(state, '1.0.7', true).toast, null, 'warned once per attempt');
   const last = launchNotice({ version: '1.0.7', pending: { to: '1.0.8', tries: MAX_INSTALL_TRIES - 1, installing: true } }, '1.0.7', true);
   assert.deepEqual([last.toast.kind, last.toast.href, last.state.pending.tries], ['err', '/download', MAX_INSTALL_TRIES]);
+});
+
+test('rendering: GPU on unless saved off; a missing or corrupt file is GPU on', () => {
+  assert.deepEqual(parseRendering('{"gpu":false,"fellBack":true}'), { gpu: false, fellBack: true });
+  assert.deepEqual(parseRendering('{"gpu":false}'), { gpu: false, fellBack: false });
+  for (const text of ['', 'garbage', '{"gpu":', 'null', '{}']) assert.deepEqual(parseRendering(text), { gpu: true, fellBack: false }, text);
+});
+
+test('rendering: FUSE_DISABLE_GPU=1 or --disable-gpu turns the GPU off for the launch', () => {
+  const none = () => false;
+  assert.equal(gpuForcedOff({}, none), false);
+  assert.equal(gpuForcedOff({ FUSE_DISABLE_GPU: '1' }, none), true);
+  assert.equal(gpuForcedOff({ FUSE_DISABLE_GPU: '0' }, none), false);
+  assert.equal(gpuForcedOff({}, (name) => name === 'disable-gpu'), true);
+});
+
+test('rendering: GPU crashes within the window fall back; clean exits and other processes do not count', () => {
+  const gpu = { type: 'GPU', reason: 'crashed' };
+  let crashes = [];
+  for (const details of [{ type: 'GPU', reason: 'clean-exit' }, { type: 'Utility', reason: 'crashed' }]) {
+    const counted = countGpuCrash(crashes, details, 1000);
+    assert.deepEqual(counted, { crashes, fallBack: false }, details.type + ' ' + details.reason);
+  }
+  for (let i = 1; i < GPU_CRASH_LIMIT; i++) {
+    const counted = countGpuCrash(crashes, i === 1 ? gpu : { type: 'GPU', reason: 'killed' }, i * 1000);
+    assert.equal(counted.fallBack, false);
+    crashes = counted.crashes;
+  }
+  assert.equal(countGpuCrash(crashes, gpu, GPU_CRASH_LIMIT * 1000).fallBack, true);
+  const later = countGpuCrash(crashes, gpu, 1000 + GPU_CRASH_WINDOW_MS);
+  assert.deepEqual([later.fallBack, later.crashes.length], [false, GPU_CRASH_LIMIT - 1], 'the oldest crash aged out');
+});
+
+test('rendering: the fallback notice shows once', () => {
+  const first = launchRendering({ gpu: false, fellBack: true });
+  assert.deepEqual(first, { state: { gpu: false, fellBack: false }, notice: true });
+  assert.equal(launchRendering(first.state).notice, false);
+  assert.equal(launchRendering({ gpu: true, fellBack: false }).notice, false);
+  assert.equal(launchRendering({ gpu: false, fellBack: false }).notice, false, 'turned off by hand');
 });
 
 test('a script row splits what the model got from its source and counts its calls', async () => {
