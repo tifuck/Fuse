@@ -68,9 +68,11 @@ _HOST_MUTATING_TOOLS = frozenset(
     {"write_file", "search_replace", "run_terminal_command", "monitor", "kill_command", "run_code"}
 )
 _HOST_READ_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob"})
-# A read run_code made shows this much on its row: the code got the whole
-# text, and a run of hundreds of reads must not store each one in full.
-_CHILD_READ_OUTPUT_MAX = 2_000
+# Reads run_code made: each shows this much on its row (the code got the
+# whole text), and only the first of them in a run get a row at all, so a
+# run of hundreds of reads cannot fill the message's trace list.
+_CHILD_READ_OUTPUT_MAX = 1_000
+_CHILD_READ_ROWS = 40
 
 
 def _host_key(arguments: str) -> str:
@@ -201,12 +203,21 @@ async def run_tools(
     queue: asyncio.Queue = asyncio.Queue()
     cancel = asyncio.Event()
     persist_lock = asyncio.Lock()
-    # run_code's calls: event_id -> the run_code row's event_id.
+    # run_code's calls: event_id -> the run_code row's event_id; the reads
+    # past _CHILD_READ_ROWS draw no row (unshown).
     parents: dict[str, str] = {}
     child_counts: dict[str, int] = {}
+    child_reads: dict[str, int] = {}
+    unshown: set[str] = set()
+    # Permission prompts waiting for the user: run_code's deadline stops for them.
+    asking: set[str] = set()
 
     def emit(obj) -> None:
+        if isinstance(obj, dict) and obj.get("event") == "permission" and obj.get("kind") == "tool_permission":
+            (asking.add if obj.get("status") == "pending" else asking.discard)(str(obj.get("id") or ""))
         if isinstance(obj, dict) and obj.get("event") == "tool" and obj.get("id") in parents:
+            if obj["id"] in unshown:
+                return
             obj = {**obj, "parent": parents[obj["id"]]}
         queue.put_nowait(obj)
 
@@ -337,7 +348,7 @@ async def run_tools(
             run_coding = bool(session.get("coding")) if session else coding
             if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
                 text, trace = await code_mode.run(
-                    arguments, call=lambda name, args: run_child(job, name, args), cancel=cancel,
+                    arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
                 )
             else:
                 text, trace = await execute_tool(
@@ -510,9 +521,17 @@ async def run_tools(
                         arguments=json.dumps(args, ensure_ascii=False), event_id=f"{parent.event_id}_c{n}",
                         parent=parent.event_id)
         parents[child.event_id] = parent.event_id
+        if name in _HOST_READ_TOOLS:
+            child_reads[parent.event_id] = child_reads.get(parent.event_id, 0) + 1
+            if child_reads[parent.event_id] > _CHILD_READ_ROWS:
+                unshown.add(child.event_id)
         jobs.append(child)
         await run_job(child, _job_phase(name))
-        return child.text, child.trace
+        # The code has the result now; the round keeps only what summaries
+        # need (a 2 MB read or a 400 KB write must not stay for the round).
+        text, child.text = child.text, ""
+        child.arguments = json.dumps({k: args[k] for k in ("path", "pattern", "command") if k in args}, ensure_ascii=False)
+        return text, child.trace
 
     def _job_phase(name: str) -> str:
         if name == "web_search":

@@ -35,7 +35,8 @@
 //                       the server. Nothing runs:
 //                         running  the last reply is still being worked on: status
 //                                  line, clocks, a call still running (use with
-//                                  --thread "live command")
+//                                  --thread "live command", or "live code" for
+//                                  a run_code whose calls are still running)
 //                         ask      a pending permission prompt
 //                         error    the last reply failed at the provider
 //                         agents   the agents pane (Desktop inspector, Combined

@@ -502,9 +502,7 @@ export function createApply(ctx) {
       if (traces.mergeSubagentWait(msg, event, "running")) return;
       if (byId < 0) msg.tools.push(traces.mergeToolEvent(null, event, "running"));
       else msg.tools[byId] = traces.mergeToolEvent(msg.tools[byId], event, "running");
-      if (Array.isArray(msg.segments) && event.id && !msg.segments.some((part) => part.type === "tool" && part.id === event.id)) {
-        msg.segments.push({ type: "tool", id: event.id });
-      }
+      addToolSegment(msg, event.id, event.parent);
       if (!passive) artifacts.startArtifactBuild(event);
       return;
     }
@@ -512,10 +510,20 @@ export function createApply(ctx) {
     const rec = traces.mergeToolEvent(byId >= 0 ? msg.tools[byId] : null, event, event.status || "done");
     if (byId >= 0) msg.tools[byId] = rec;
     else msg.tools.push(rec);
-    if (Array.isArray(msg.segments) && rec.id && !msg.segments.some((part) => part.type === "tool" && part.id === rec.id)) {
-      msg.segments.push({ type: "tool", id: rec.id });
-    }
+    addToolSegment(msg, rec.id, event.parent);
     if (!passive) artifacts.noteArtifactResult(rec);
+  }
+
+  // A call run_code made sits under it, after its earlier calls (ids
+  // <parent>_cN), as the server orders the stored segments (chat_output.py).
+  function addToolSegment(msg, id, parent) {
+    if (!Array.isArray(msg.segments) || !id || msg.segments.some((part) => part.type === "tool" && part.id === id)) return;
+    let at = -1;
+    if (parent) msg.segments.forEach((part, i) => {
+      if (part.type === "tool" && (part.id === parent || String(part.id).startsWith(`${parent}_c`))) at = i;
+    });
+    if (at < 0) msg.segments.push({ type: "tool", id });
+    else msg.segments.splice(at + 1, 0, { type: "tool", id });
   }
 
   return {

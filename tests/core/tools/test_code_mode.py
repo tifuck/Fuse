@@ -4,15 +4,22 @@ End to end: a real durable turn (provider faked at app.api.invoke_chat) on
 the fake SSH host (in-memory files, scripted shell, nothing executed). The
 code runs in the real worker process (a V8 isolate with no I/O); each call it
 makes comes back to the turn's tool runner and reaches the fake host like a
-direct call. Unit cases drive code_mode.run with a recording fake runner.
+direct call. Round cases run one tool round through tool_runner.run_tools
+with the real tools on the fake host. Unit cases drive code_mode.run with a
+recording fake runner.
 """
 import asyncio
+import collections
 import json
 import re
 
-from app import chat_prompts, chats, code_mode, hosts
+import pytest
+
+from app import agent_catalog, chat_history, chat_output, chat_prompts, chat_tools, chats, code_mode, hosts, workspace
+from app.chat_generation import tool_jobs, tool_runner
+from app.chat_generation.tool_jobs import ToolJob
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames, tool_call_frames
-from tests.core.tools._support import make_project
+from tests.core.tools._support import make_project, new_thread
 
 OPENAI = "sk-proj-" + "Q7v2Lp9X" * 6
 GITHUB = "ghp_" + "R4m8Tz2Kc9" * 3 + "W1x5Yb"
@@ -180,10 +187,193 @@ def test_a_script_that_never_yields_is_stopped_without_holding_the_event_loop():
     assert turns > 100, "the server's event loop stalled while the script spun"
 
 
-def test_the_coding_prompt_leads_with_run_code_only_when_it_is_available():
+def test_the_coding_prompt_names_run_code_only_when_it_is_available():
     base = dict(instructions="", profile="", thread_context="", tools=[], coding=True, project_session=True,
                 bound_label="box", loaded_tools=["read_file"])
-    on = chat_prompts.build_system_prompt(**base, code_mode=True)
-    off = chat_prompts.build_system_prompt(**base, code_mode=False)
-    assert "Use `run_code` by default" in on and "inside `run_code`" in on
-    assert "run_code" not in off
+    assert "run_code" in chat_prompts.build_system_prompt(**base, code_mode=True)
+    assert "run_code" not in chat_prompts.build_system_prompt(**base, code_mode=False)
+
+
+class _Connected:
+    async def is_disconnected(self):
+        return False
+
+
+def one_round(h, code, **session):
+    """One tool round holding a single run_code call, through the real runner
+    and tools on the fake host: (the model's result, jobs, emitted events)."""
+    call = {"id": "call-1", "type": "function", "function": {"name": "run_code", "arguments": json.dumps({"code": code})}}
+    make_project(h.uid, h.host_id, h.root)
+    _, thread_id = new_thread(h.uid)
+
+    async def go():
+        jobs, events = None, []
+        async for item in tool_runner.run_tools(
+                [call], user_id=h.uid, allowed_urls=set(), request=_Connected(), completion_i=0, budgets={},
+                thread_id=thread_id,
+                loaded=list(agent_catalog.WORKSPACE_NAMES), execute_tool=chat_tools.execute_tool,
+                session={"coding": True, "bound_host_id": h.host_id, "bound_cwd": h.root, "run_id": "", **session}):
+            if isinstance(item, list):
+                jobs = item
+            else:
+                events.append(item)
+        return jobs, events
+
+    jobs, events = asyncio.run(go())
+    return tool_jobs._tool_messages(jobs)[1]["content"], jobs, events
+
+
+def test_reads_from_code_are_raw_windows_or_whole_files_up_to_the_cap(ssh_host, monkeypatch):
+    monkeypatch.setattr(workspace, "_RAW_READ_MAX", 50_000)
+    ssh_host.fs.write(f"{ssh_host.root}/big.txt", "".join(f"line {i}\n" for i in range(1, 3001)))
+    ssh_host.fs.write(f"{ssh_host.root}/huge.txt", "x" * 79 + "\n" * 1 + ("y" * 79 + "\n") * 800)
+    text, _, _ = one_round(ssh_host, """
+const whole = await read_file("big.txt");
+const part = await read_file({path: "big.txt", offset: 2, limit: 2});
+let huge = "read";
+try { await read_file("huge.txt"); } catch (e) { huge = e.message; }
+return JSON.stringify({count: whole.trimEnd().split("\\n").length, last: whole.trimEnd().split("\\n").pop(), part, huge});""")
+
+    got = json.loads(text.split("\n[Fuse:")[0])
+    assert got["count"] == 3000 and got["last"] == "line 3000"
+    assert got["part"] == "line 2\nline 3\n"
+    assert "larger than 50000 characters" in got["huge"]
+
+
+def test_calls_from_code_keep_the_agent_roles_limits(ssh_host):
+    text, jobs, _ = one_round(ssh_host, 'try { await write_file({path: "x.txt", content: "x"}); return "wrote"; } '
+                                        'catch (e) { return e.message; }', subagent_type="explore")
+
+    assert text.startswith("explore subagents cannot write files")
+    assert not ssh_host.fs.exists(f"{ssh_host.root}/x.txt")
+    assert [j.name for j in jobs] == ["run_code", "write_file"] and jobs[1].parent == jobs[0].event_id
+
+
+def test_a_long_run_shows_its_first_reads_and_keeps_no_copy_of_their_text(ssh_host):
+    ssh_host.fs.write(f"{ssh_host.root}/a.txt", "alpha\n" * 10)
+    text, jobs, events = one_round(ssh_host, """
+let n = 0;
+for (let i = 0; i < 45; i++) n += (await read_file("a.txt")).length;
+await write_file({path: "total.txt", content: String(n)});
+return n;""")
+
+    assert text.startswith("2700") and ssh_host.fs.text(f"{ssh_host.root}/total.txt") == "2700"
+    rows = {e["id"]: e["name"] for e in events if e.get("event") == "tool" and e.get("parent")}
+    assert list(rows.values()).count("read_file") == tool_runner._CHILD_READ_ROWS and "write_file" in rows.values()
+    assert len(jobs) == 1 + 45 + 1 and all(j.text == "" for j in jobs[1:])
+
+
+class Runner:
+    """Stand-in for the tool runner's call(name, args): records and answers."""
+
+    def __init__(self, answer=None):
+        self.calls = []
+        self.answer = answer or (lambda name, args: ("From host box:\nok", {"name": name, "status": "done", "host": "box"}))
+
+    async def __call__(self, name, args):
+        self.calls.append((name, args))
+        return self.answer(name, args)
+
+
+def run_code(code, runner, **extra):
+    return asyncio.run(code_mode.run(json.dumps({"code": code, **extra}), call=runner))
+
+
+def test_oversized_arguments_and_calls_past_the_cap_never_reach_the_runner():
+    runner = Runner()
+    text, _ = run_code('try { await write_file({path: "big", content: "x".repeat(400001)}); } catch (e) { return e.message; }', runner)
+    assert "over 400000 characters" in text and runner.calls == []
+
+    text, _ = run_code("let ok = 0;\nfor (let i = 0; i < 501; i++) { try { await read_file(`f${i}`); ok++; } "
+                       "catch (e) { return `${ok} then ${e.message}`; } }", runner)
+    assert text.startswith("500 then run_code allows at most 500 tool calls") and len(runner.calls) == 500
+
+
+def test_the_worker_arg_limit_matches_a_direct_calls():
+    from app.chat_generation.parsing import _ARG_LIMIT_FILE
+    from app.code_worker import ARG_CHARS
+
+    assert ARG_CHARS == _ARG_LIMIT_FILE
+
+
+def test_a_failure_that_escapes_the_runner_stops_the_code_and_propagates():
+    def answer(name, args):
+        raise RuntimeError("checkpoint failed")
+
+    runner = Runner(answer)
+    with pytest.raises(RuntimeError, match="checkpoint failed"):
+        run_code("await write_file({path: 'a', content: 'x'});\nawait write_file({path: 'b', content: 'y'});", runner)
+    assert [args["path"] for _, args in runner.calls] == ["a"]
+
+
+def test_a_run_waits_only_so_long_for_a_free_worker(monkeypatch):
+    monkeypatch.setattr(code_mode, "WORKERS", 0)
+    monkeypatch.setattr(code_mode, "SLOT_WAIT_S", 0.01)
+    monkeypatch.setattr(code_mode, "_slots", None)
+
+    text, trace = run_code("return 1;", Runner())
+    assert trace["kind"] == "busy" and "busy" in text
+
+
+def test_time_spent_on_a_permission_prompt_does_not_count_toward_the_deadline():
+    async def body():
+        prompt_open = asyncio.Event()
+
+        async def call(name, args):
+            prompt_open.set()
+            # The user takes longer than the run's whole timeout to answer.
+            await asyncio.sleep(1.5)
+            prompt_open.clear()
+            return "From host box:\napproved", {"name": name, "status": "done", "host": "box"}
+
+        # The 1 s minimum timeout against a 1.5 s prompt is the point of the test.
+        return await code_mode.run(json.dumps({"code": "return await read_file('a');", "timeout": 1}),
+                                   call=call, paused=prompt_open.is_set)
+
+    text, trace = asyncio.run(body())
+    assert trace["status"] == "done" and text.startswith("approved")
+
+
+def test_a_run_cut_off_mid_way_tells_the_model_which_changes_happened():
+    head = ToolJob(0, "call-1", "run_code", json.dumps({"code": "..."}), "ts_0_0")
+    wrote = ToolJob(0, "call-1", "write_file", json.dumps({"path": "a.txt"}), "ts_0_0_c1", parent="ts_0_0", done=True,
+                    trace={"status": "done"})
+    running = ToolJob(0, "call-1", "run_terminal_command", json.dumps({"command": "make deploy"}), "ts_0_0_c2", parent="ts_0_0")
+    read = ToolJob(0, "call-1", "read_file", json.dumps({"path": "b.txt"}), "ts_0_0_c3", parent="ts_0_0", done=True,
+                   trace={"status": "done"})
+
+    assistant, result = tool_jobs._tool_messages([head, wrote, running, read])
+
+    assert [c["function"]["name"] for c in assistant["tool_calls"]] == ["run_code"]
+    assert result["content"].startswith("Tool interrupted")
+    assert "- write_file a.txt: done" in result["content"] and "- run_terminal_command make deploy: outcome unknown" in result["content"]
+    assert "b.txt" not in result["content"]
+
+
+def test_the_run_code_tip_names_the_direct_calls_once_and_never_after_run_code():
+    def jobs(*names):
+        return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}") for i, name in enumerate(names)]
+
+    seen = tool_jobs.code_tip_count(jobs("read_file", "read_file", "grep", "web_search"), collections.Counter())
+    assert seen == collections.Counter(read_file=2, grep=1)
+    assert tool_jobs.code_tip_count(jobs("run_code", "read_file"), seen) is None
+    msgs = [{"role": "assistant"}, {"role": "tool", "content": "ok"}]
+    tool_jobs.add_code_tip(msgs, seen)
+    assert "3 direct file calls (2 read_file, 1 grep)" in msgs[1]["content"]
+
+
+def test_recovered_history_replays_run_code_but_not_the_calls_it_made():
+    message = {"id": "m1", "tools": [{"id": "ts_0_0", "name": "run_code", "status": "done", "output": "42"},
+                                      {"id": "ts_0_0_c1", "name": "read_file", "status": "done", "path": "a", "parent": "ts_0_0"}]}
+
+    rows = chat_history._trace_rows(message)
+    assert [r["tool_calls"][0]["function"]["name"] for r in rows if r["role"] == "assistant"] == ["run_code"]
+
+
+def test_a_call_run_code_made_is_placed_under_it_even_when_another_call_ran_meanwhile():
+    out = chat_output.Output({"message": {}})
+    for event in ({"id": "ts_0_0", "name": "run_code"}, {"id": "ts_0_0_c1", "name": "read_file", "parent": "ts_0_0"},
+                  {"id": "ts_0_1", "name": "web_search"}, {"id": "ts_0_0_c2", "name": "grep", "parent": "ts_0_0"}):
+        out.apply({"fuse": {"event": "tool", "status": "running", **event}})
+
+    assert [part["id"] for part in out.message["segments"] if part["type"] == "tool"] == ["ts_0_0", "ts_0_0_c1", "ts_0_0_c2", "ts_0_1"]

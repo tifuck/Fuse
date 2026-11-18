@@ -551,8 +551,8 @@ RETRY_DIFF = "@@ -2,3 +2,3 @@\n   \"timeout_ms\": 30000,\n-  \"retries\": 3,\n+ 
 
 def code_thread() -> list[dict]:
     """run_code rows: a run with each kind of call under it, a bulk run of
-    40 reads, and a run whose code failed."""
-    run = tool("run_code", description="Find slow retry policies and lower them", output=f"{CODE}\n\n{CODE_RESULT}",
+    40 reads, a run whose code failed and one the user stopped mid-way."""
+    run = tool("run_code", description="Find slow retry policies and lower them", output=f"{CODE_RESULT}\n\n{CODE}",
                duration_ms=1840)
     calls = [
         tool("glob", parent=run["id"], pattern="services/*.json", path=PROJECT,
@@ -565,9 +565,10 @@ def code_thread() -> list[dict]:
              exit_code=0, execution_duration_ms=900, output="lint ok\nunit ok"),
     ]
     bulk = tool("run_code", description="Count TODOs in every module", duration_ms=3100,
-                output='const files = (await glob({pattern: "app/*.py"})).split("\\n").filter(Boolean);\n'
+                output='17\n[Fuse: 41 calls: glob×1, read_file×40]\n\n'
+                       'const files = (await glob({pattern: "app/*.py"})).split("\\n").filter(Boolean);\n'
                        'return (await Promise.all(files.map(async (p) => (await read_file(p)).split("TODO").length - 1)))'
-                       '.reduce((a, b) => a + b, 0);\n\n17\n[Fuse: 41 calls: glob×1, read_file×40]')
+                       '.reduce((a, b) => a + b, 0);')
     bulk_calls = [tool("glob", parent=bulk["id"], pattern="app/*.py", path=PROJECT,
                        output="\n".join(f"app/module_{i:02d}.py" for i in range(40)))]
     bulk_calls += [tool("read_file", parent=bulk["id"], path=f"{PROJECT}/app/module_{i:02d}.py",
@@ -576,11 +577,39 @@ def code_thread() -> list[dict]:
                   error="line 1: SyntaxError: missing ) after argument list",
                   output="Error: line 1: SyntaxError: missing ) after argument list\nNo tool calls finished before the error.\n\n"
                          "return files.map((p) => JSON.parse(p);")
+    stopped = tool("run_code", status="interrupted", description="Bump the version and build", error="Interrupted by the user")
+    stopped_calls = [
+        tool("search_replace", parent=stopped["id"], path=f"{PROJECT}/package.json", lines_added=1, lines_removed=1,
+             preview='@@ -2,3 +2,3 @@\n   "name": "demo",\n-  "version": "2.3.9",\n+  "version": "2.4.0",\n   "private": true'),
+        tool("run_terminal_command", parent=stopped["id"], status="interrupted", command="npm run build",
+             description="Build the release", cwd=PROJECT, error="Interrupted by the user"),
+    ]
     return [
         user("Lower the retry count on any service whose worst-case wait is over a minute, then run the checks."),
         reply("Scanning the service configs in one pass.\n\n", run, *calls,
               "One service was over a minute (`services/a.json`, 30 s × 4 tries); its retries are now 1 and the checks pass.\n\n",
               failed, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.", minutes_ago=5, elapsed_s=41),
+        user("Bump the version to 2.4.0 and build it."),
+        reply("Bumping the version and building in one pass.\n\n", stopped, *stopped_calls, minutes_ago=3, elapsed_s=12,
+              stopped=True),
+    ]
+
+
+def live_code_thread() -> list[dict]:
+    """A run_code caught mid-run: two of its calls done, its test run still
+    going. Nothing runs on the server; the QA browser's --fake running tells
+    the page it is."""
+    run = tool("run_code", status="running", description="Rename fetchUser to loadUser and run the tests")
+    return [
+        user("Rename fetchUser to loadUser everywhere, then run the tests."),
+        reply(
+            "Renaming in one pass, then running the tests.\n\n", run,
+            tool("grep", parent=run["id"], pattern="fetchUser\\(", path=PROJECT, output="src/api/users.js\nsrc/ui/profile.js"),
+            tool("search_replace", parent=run["id"], path=f"{PROJECT}/src/api/users.js", lines_added=1, lines_removed=1,
+                 preview="@@ -1,3 +1,3 @@\n-export async function fetchUser(id) {\n+export async function loadUser(id) {\n   return api.get(id);"),
+            tool("run_terminal_command", parent=run["id"], status="running", command="npm test", description="Run the tests",
+                 cwd=PROJECT, timeout_ms=120000, output="PASS src/api/users.test.js\nPASS src/ui/profile.test.js"),
+            live=True),
     ]
 
 
@@ -588,6 +617,7 @@ THREADS = [
     ("QA · Long markdown", lambda: [user("Why did the background command never report back?"), reply(MARKDOWN, minutes_ago=300, elapsed_s=48)]),
     ("QA · Summary lines", summary_thread),
     ("QA · Live command", live_thread),
+    ("QA · Live code", live_code_thread),
     ("QA · Live agents", live_agents_thread),
     ("QA · Notices and attachments", notices_thread),
     ("QA · Artifacts", artifacts_thread),

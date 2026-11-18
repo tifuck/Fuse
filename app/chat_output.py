@@ -448,7 +448,18 @@ class Output:
                                 part.get("type") == "tool" and part.get("id") == clean[0]["id"]
                                 for part in msg["segments"]
                             ):
-                                msg["segments"].append({"type": "tool", "id": clean[0]["id"]})
+                                segment = {"type": "tool", "id": clean[0]["id"]}
+                                # A call run_code made sits under it, after its earlier
+                                # calls (ids <parent>_cN), even when other calls of the
+                                # step ran meanwhile; static/chat/sync/apply.js matches.
+                                parent = clean[0].get("parent")
+                                at = max((i for i, part in enumerate(msg["segments"]) if parent and part.get("type") == "tool"
+                                          and (part.get("id") == parent or str(part.get("id") or "").startswith(f"{parent}_c"))),
+                                         default=None)
+                                if at is None:
+                                    msg["segments"].append(segment)
+                                else:
+                                    msg["segments"].insert(at + 1, segment)
             if kind == "permission":
                 ident = str(event.get("id") or "")[:64]
                 if ident:

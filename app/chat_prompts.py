@@ -296,15 +296,15 @@ _LOCATE = (
 _PARALLEL = _BATCH + _LOCATE
 # run_code first: models take the first tool rule as their default.
 _RUN_CODE = (
-    "- Use `run_code` by default for file and shell work. Rule: if you are about to make two or more file or "
-    "shell calls, or one whose output you only need part of, write one run_code call instead. Its code is "
-    "plain JavaScript, not Node.js (no require, child_process, fs or process): read_file, "
-    "list_dir, grep, glob, write_file, search_replace and run_terminal_command are async functions taking the "
-    "same argument object as the tools, e.g. `await read_file({path: \"app.py\"})`, and only what the code "
-    "returns reaches you. Typical uses: search, then read the hits; scan, parse or count across many files; "
-    "the same edit in several files (grep for them, then search_replace each); look something up and act on "
-    "it; run the tests and return only the failures. Chain dependent calls with await, run independent ones "
-    "with Promise.all, and return compact findings with path:line for anything you will cite or edit.\n"
+    "- Use `run_code` by default for file and shell work. Reach for it whenever you would loop over files, "
+    "read the hits of a search, parse or count across files, repeat an edit in several files, or run a command "
+    "whose output you will filter, and whenever you are about to make two or more file or shell calls in a "
+    "row. Its code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): "
+    "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command are async functions "
+    "taking the same argument object as the tools, e.g. `await read_file({path: \"app.py\"})`, and only what "
+    "the code returns reaches you. Chain dependent calls with await, run independent ones with Promise.all, "
+    "and return compact findings, with path:line for anything you will cite or edit (line numbers come from "
+    "grep output, or are the index + 1 after splitting a file's text).\n"
     "- Call a tool directly only for a single call whose whole result you need: one file you will study or "
     "edit by hand (direct read_file shows line numbers and images), or one command whose full output matters. "
     "Also for what run_code cannot do: background commands, monitor, get_command_output, kill_command, web, "
@@ -314,14 +314,15 @@ _RUN_CODE = (
     "first, by hand or in the code, when you are not sure of the exact text. Calls from code are "
     "permission-checked and shown to the user like direct calls."
 )
+# HELPERS: the role's own calls (explore has a shell, plan does not).
 _RUN_CODE_READ_ONLY = (
-    "- Use `run_code` by default for searches and reads. Rule: if you are about to make two or more calls, or "
-    "one whose output you only need part of, write one run_code call instead. Its code is plain JavaScript, "
-    "not Node.js (no require, child_process, fs or process): read_file, list_dir, "
-    "grep and glob are async functions taking the same argument object as the tools, and only what the code "
-    "returns reaches you. Chain dependent calls with await, run independent ones with Promise.all, and return "
-    "compact findings with path:line for anything you will cite. Call a tool directly for a file you will "
-    "study in full."
+    "- Use `run_code` by default for searches and reads. Reach for it whenever you would loop over files, read "
+    "the hits of a search, or filter long output, and whenever you are about to make two or more calls in a "
+    "row. Its code is plain JavaScript, not Node.js (no require, import, child_process, fs or process): HELPERS "
+    "are async functions taking the same argument object as the tools, and only what the code returns reaches "
+    "you. Chain dependent calls with await, run independent ones with Promise.all, and return compact findings, "
+    "with path:line for anything you will cite (line numbers come from grep output, or are the index + 1 after "
+    "splitting a file's text). Call a tool directly for a file you will study in full."
 )
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
@@ -354,6 +355,8 @@ _SHELL = (
     "- Quote paths that contain spaces. Chain dependent steps with `&&`; put independent commands in "
     "separate calls in the same step."
 )
+_SHELL_SPLIT = "put independent commands in separate calls in the same step."
+_SHELL_SPLIT_CODE = "run independent commands together in one run_code with Promise.all."
 _WAIT = (
     "- Waiting: never sleep or poll. A command runs in the foreground (2 min unless you pass "
     "`timeout`, up to 10 min) and moves to the background on its own if it is still going, or "
@@ -846,16 +849,20 @@ def build_system_prompt(
             "Answer helpfully. Prefer concise, sourced answers when you used search.",
         ]
     read_only = kind in ("explore", "plan")
+    shell = _SHELL.replace(_SHELL_SPLIT, _SHELL_SPLIT_CODE) if code_mode else _SHELL
     if coding and not read_only:
         parts.append("How to work:\n" + (_ACT_CHILD if subagent else _ACT_MAIN) + "\n" + _TASK_METHOD)
         parts.append("Tools:\n" + (_RUN_CODE + "\n" if code_mode else "") + _FILE_TOOLS_OVER_SHELL + "\n"
                      + (_BATCH_CODE + _LOCATE if code_mode else _PARALLEL) + "\n" + _EDITS)
-        parts.append(_SHELL + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
+        parts.append(shell + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
         parts.append(_RISKY_CHILD if subagent else _RISKY_MAIN)
     elif coding:
-        parts.append("Tools:\n" + (_RUN_CODE_READ_ONLY + "\n" + _BATCH_CODE + _LOCATE if code_mode else _PARALLEL))
+        helpers = "read_file, list_dir, grep, glob and run_terminal_command" if kind == "explore" \
+            else "read_file, list_dir, grep and glob"
+        parts.append("Tools:\n" + (_RUN_CODE_READ_ONLY.replace("HELPERS", helpers) + "\n" + _BATCH_CODE + _LOCATE
+                                   if code_mode else _PARALLEL))
         if kind == "explore":
-            parts.append(_SHELL + "\n" + _WAIT + "\n" + _IDLE_CHILD)
+            parts.append(shell + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:
         hosts = _HOSTS.replace(_PRINT_SECRETS, _PRINT_SECRETS_SWAPPED) if secrets_swapped else _HOSTS
         parts.append(hosts if kind == "plan" else hosts + _HOSTS_SHELL)

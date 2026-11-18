@@ -9,6 +9,7 @@ here too."""
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import time
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field
 
 from ..chat_prompts import _text_of
 from ..chat_tools import ARTIFACT_TOOL_IDS
+from ..code_mode import MUTATING, subject
 
 from .parsing import _native_reasoning
 
@@ -295,45 +297,47 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
 
 
 # A turn that makes this many direct file calls without trying run_code gets
-# one tip on its next tool result. It rides the conversation, so the cached
-# system prompt is untouched.
+# one tip, naming those calls, on its next tool result. It rides the
+# conversation, so the cached system prompt is untouched.
 CODE_TIP_AFTER = 5
-CODE_TIP = ("[Fuse] Tip: run_code does several reads, searches and edits in one call and returns only what "
-            "the code returns. Prefer it for the rest of this work unless you need a whole result.")
 _CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
 
 
-def code_tip_count(jobs: list[ToolJob], seen: int) -> int | None:
-    """Direct file calls so far this turn; None once the model has used run_code."""
+def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collections.Counter | None:
+    """Direct file calls so far this turn, per tool; None once the model has used run_code."""
     if any(j.name == "run_code" for j in jobs):
         return None
-    return seen + sum(1 for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS)
+    return seen + collections.Counter(j.name for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS)
 
 
-def add_code_tip(tool_msgs: list[dict]) -> None:
+def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
+    calls = ", ".join(f"{n} {name}" for name, n in seen.most_common())
+    tip = (f"[Fuse] Tip: this turn has made {sum(seen.values())} direct file calls ({calls}). One run_code call "
+           "does that kind of work in a single step (Promise.all over the files, a loop of edits) and returns only "
+           "what you need. Use it for the rest of this work unless you need a whole file or output.")
     last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
     if last is not None:
-        last["content"] = f"{last['content']}\n\n{CODE_TIP}"
+        last["content"] = f"{last['content']}\n\n{tip}"
 
 
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     if head.done and head.text and head.text != "Tool interrupted.":
         return _tool_result_clip(head.name, head.text)
-    # Cut off mid-run (a stop or a restart): name what already changed.
-    changed = [j for j in group[1:] if j.done and j.name in ("write_file", "search_replace", "run_terminal_command")
-               and j.trace.get("status") not in ("error", "interrupted")]
+    # Cut off mid-run (a stop or a restart): what changed, and what may have.
     lines = []
-    for j in changed:
+    for j in group[1:]:
+        if j.name not in MUTATING or (j.done and j.trace.get("status") == "error"):
+            continue
         try:
             args = json.loads(j.arguments or "{}")
         except (ValueError, RecursionError):
             args = {}
-        subject = " ".join(str(args.get("path") or args.get("command") or "").split())[:120]
-        lines.append(f"- {j.name} {subject}".rstrip())
+        unknown = not j.done or j.trace.get("status") == "interrupted"
+        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + (": outcome unknown" if unknown else ": done"))
     text = "Tool interrupted: the code stopped before it finished."
-    return _tool_result_clip(head.name, text + (" These calls had already completed:\n" + "\n".join(lines) if lines
-                                               else " No file edit or command had completed."))
+    return _tool_result_clip(head.name, text + (" Its edits and commands:\n" + "\n".join(lines) if lines
+                                               else " It had started no file edit or command."))
 
 
 def _call_result(group: list[ToolJob]) -> str:

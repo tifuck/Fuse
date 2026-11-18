@@ -401,7 +401,7 @@ const OTHER_KIND = {
     read_url: "fetch", monitor: "monitor", get_command_output: "wait", kill_command: "stop", load_skill: "skill",
     propose_skill: "draft", create_artifact: "artifact", update_artifact: "artifact", edit_artifact: "artifact",
     read_artifact: "artifact-read", remember: "remember", recall: "recall", forget: "forget", scratch: "scratch",
-    read_transcript: "transcript", search_models: "models",
+    read_transcript: "transcript", search_models: "models", run_code: "script",
   };
 const OTHER_WORDS = {
     fetch: ["fetched", "fetching", "page", "pages"], web: ["ran", "running", "web search", "web searches"],
@@ -411,7 +411,8 @@ const OTHER_WORDS = {
     "artifact-read": ["read", "reading", "artifact", "artifacts"], remember: ["saved", "saving", "memory", "memories"],
     recall: ["recalled", "recalling", "memory", "memories"], forget: ["forgot", "forgetting", "memory", "memories"],
     scratch: ["used", "using", "scratch note", "scratch notes"], transcript: ["read", "reading", "transcript", "transcripts"],
-    models: ["searched", "searching", "model list", "model lists"], tool: ["used", "using", "tool", "tools"],
+    models: ["searched", "searching", "model list", "model lists"], script: ["ran", "running", "script", "scripts"],
+    tool: ["used", "using", "tool", "tools"],
   };
 
 const CC_PR_VERBS = { created: "created", edited: "edited", merged: "merged", commented: "commented on", closed: "closed",
