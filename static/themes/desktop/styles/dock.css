@@ -146,7 +146,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-doc
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow-btn:disabled { opacity: 0.35; color: var(--mute); cursor: default; background: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow-btn:focus-visible, html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-queue-hold button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-more-wrap { position: relative; display: inline-flex; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-menu { position: absolute; right: 0; bottom: calc(100% + 4px); top: auto; z-index: 30; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-menu { position: absolute; top: 50%; right: calc(100% + 4px); bottom: auto; left: auto; z-index: 30; transform: translateY(-50%); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-menu:not([hidden]) { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: calc(var(--ask-r) * 0.6); background: var(--dk-card); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-menu .chat-queue-action { all: unset; padding: 3px 10px; border-radius: 5px; color: var(--mist); font: 13px var(--sans); white-space: nowrap; cursor: pointer; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow .chat-queue-menu .chat-queue-action:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--mist) 8%, transparent); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock > :is(.chat-queue, .chat-perm-queue) { align-self: stretch; width: auto; max-width: none; margin-inline: calc(-1 * var(--dk-card-out, 0px)); }
 
 @media (max-width: 640px) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-ask-head { flex-wrap: wrap; row-gap: 8px; }
