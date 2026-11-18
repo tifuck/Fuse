@@ -342,10 +342,6 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(transcriptRange(trace), 90);
     } else if (["remember", "recall", "forget"].includes(name)) {
       inner = consoleArgText(trace.title || "memory", 90);
-    } else if (name === "run_code") {
-      // A run saved before description was required names its call count.
-      const n = codeRunParts(trace).calls.reduce((sum, [, k]) => sum + k, 0);
-      inner = consoleArgText(trace.description || (n ? `${n} ${n === 1 ? "call" : "calls"}` : ""), 140);
     } else if (name === "load_skill") {
       // Skill(name), or Skill(name / file) for a supporting file; the line
       // under it says what the skill is for.

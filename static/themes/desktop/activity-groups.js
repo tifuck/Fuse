@@ -420,7 +420,7 @@ function codeLineHtml(entry, calls, live, openMap) {
       minus += counts.removed;
     });
     const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
-    const name = deps.escapeHtml(trace.description || `${total} ${noun}`);
+    const name = deps.escapeHtml(trace.description || "Script");
     const rows = [];
     for (let at = 0; at < calls.length;) {
       let end = at;
