@@ -8,6 +8,8 @@ never-completing calls, not by sleeps.
 """
 import asyncio
 import base64
+import re
+import time
 from types import SimpleNamespace
 from urllib.parse import quote
 
@@ -242,6 +244,30 @@ def test_bulk_collapses_duplicates_reports_short_and_clipped_queries(monkeypatch
     assert len(engines.calls["ddg"]) == engine.MAX_QUERIES_PER_BULK
 
 
+@pytest.mark.parametrize("raw, sent", [
+    ("Please Please Me album", "Please Please Me album"),
+    ("Tell Me Why lyrics", "Tell Me Why lyrics"),
+    ("What Is Love Haddaway lyrics", "What Is Love Haddaway lyrics"),
+    ("what is rust ownership?", "what is rust ownership"),
+    ("best album please", "best album please"),
+    ("can you please find me cheap flights", "cheap flights"),
+    ("can you google the weather in Paris", "the weather in Paris"),
+    ("Google Cloud pricing", "Google Cloud pricing"),
+    ("linux find command", "linux find command"),
+    ("find google maps api", "find google maps api"),
+])
+def test_only_leading_filler_is_stripped_and_sanitizing_twice_changes_nothing(raw, sent):
+    assert engine.sanitize_query(raw) == sent
+    assert engine.sanitize_query(sent) == sent
+
+
+def test_the_cache_key_is_the_query_as_sent(monkeypatch):
+    engines = Engines(monkeypatch, ddg=[hit("https://a.example/")])
+    run(search_bulk(["find google maps api"], user_id=1))
+    run(search_bulk(["maps api"], user_id=1))
+    assert engines.calls["ddg"] == ["find google maps api", "maps api"], "another query's cached results are never served"
+
+
 def test_operators_reach_web_engines_but_not_hn_or_wikipedia(monkeypatch):
     engines = Engines(monkeypatch)
     run(search_bulk(['how to configure "max_form_parts" werkzeug -flask'], user_id=1))
@@ -360,6 +386,16 @@ def test_recency_reaches_every_engine_and_is_inferred_from_the_query(web):
     run(search_bulk(["how to profile rust code"], user_id=1))
     assert "df" not in sent(web, "https://lite.duckduckgo.com/lite/")[0].url.params
     assert "numericFilters" not in sent(web, "https://hn.algolia.com/")[0].url.params
+
+
+def test_a_recency_over_a_month_is_not_narrowed_to_the_past_month(web):
+    all_engines(web)
+    before = int(time.time() // 86400)
+    run(search_bulk(["rust edition history"], user_id=1, recency_days=200))
+    after = int(time.time() // 86400)
+    start, end = re.fullmatch(r'ex1:"ez5_(\d+)_(\d+)"', sent(web, "https://www.bing.com/search")[0].url.params["filters"]).groups()
+    assert before <= int(end) <= after and int(end) - int(start) == 200
+    assert "age" not in sent(web, "https://search.yahoo.com/search")[0].url.params, "Yahoo has no wider filter than a month"
 
 
 def test_brave_runs_with_a_key_and_stops_after_an_auth_failure(web, monkeypatch):

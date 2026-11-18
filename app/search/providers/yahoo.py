@@ -79,9 +79,10 @@ class YahooProvider:
         elif recency_days is not None and recency_days <= 7:
             params["fr2"] = "time"
             params["age"] = "1w"
-        elif recency_days is not None:
+        elif recency_days is not None and recency_days <= 31:
             params["fr2"] = "time"
             params["age"] = "1m"
+        # Yahoo offers no wider age filter: longer windows search all dates.
         try:
             for attempt in range(2):
                 resp = await safe_get(
