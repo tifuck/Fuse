@@ -276,21 +276,10 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 .source-table tr.is-held td:first-child {
   box-shadow: inset 2px 0 0 var(--fault);
 }
-.source-empty-row { display: none; }
-.source-empty-row td {
-  color: var(--mute);
-  text-align: center;
-  white-space: normal;
-  padding: 0.9rem 0.7rem;
-}
 /* Accounts an admin sees that are not in their own routing (private or
    sharers-only donors): readable, but quieter than the ones they use. */
 .source-table tr.is-unrouted td { color: var(--mute); }
 .source-table tr.is-unrouted .source-account-name { opacity: 0.8; }
-.source-table-scroll.is-mine-only tbody tr[data-mine="0"] { display: none; }
-.source-table-scroll.is-mine-only:not(:has(tr[data-mine="1"])) .source-empty-row {
-  display: table-row;
-}
 .source-card .metric-value {
   font-size: clamp(1.15rem, 2vw, 1.45rem);
   margin: 0.28rem 0 0.2rem;
@@ -310,26 +299,85 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 .sources-page .stack-y > .section-heading { margin-bottom: 0; }
 
 
-/* —— Sources › Subscriptions ——
-   One block per provider. The header is three fixed columns — identity and
-   status, the pool's usage meters, then Sharing and the add action — so
-   every provider lines up with the next. Breakpoints follow the panel's own
-   width (it sits beside the settings rail), not the viewport. */
+/* —— Sources ——
+   A rail of providers beside one provider at a time: the section tabs in
+   app.js show the pane the rail picks (#pool-<kind>). In a pane the header is
+   three fixed columns — identity and status, the pool's usage meters, then
+   Sharing and the add action. Breakpoints follow the page's and the pane's
+   own widths (they sit beside the settings rail), not the viewport. */
 .sources-note { margin: 0; color: var(--mute); font-size: 0.76rem; }
-.sources-page [data-tab-panel="pool"] { container: pools / inline-size; }
+.sources-page { container: sources / inline-size; }
+.sources-dir {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.sources-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--line);
+}
+.sources-rail-group {
+  margin: 0.9rem 0.55rem 0.25rem;
+  color: var(--mute);
+  font: 500 0.62rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sources-rail-group:first-child { margin-top: 0.2rem; }
+.sources-rail a {
+  display: grid;
+  grid-template-columns: 1.05rem minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.55rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  color: var(--mist);
+  text-decoration: none;
+}
+.sources-rail a:hover { background: color-mix(in srgb, var(--mist) 4%, transparent); }
+.sources-rail a.on { background: var(--raise); box-shadow: inset 2px 0 0 var(--brass); }
+.sources-rail a:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
+.sources-rail .provider-logo { width: 1.05rem; height: 1.05rem; }
+.sources-rail-name { overflow: hidden; font: 500 0.82rem/1.3 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.sources-rail-n { color: var(--mute); font: 0.7rem/1 var(--mono); }
+.sources-rail-alert { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--fault); }
+.sources-rail small {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--mute);
+  font: 0.66rem/1.3 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sources-pane { container: pools / inline-size; min-width: 0; }
+@container sources (max-width: 46rem) {
+  .sources-dir { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .sources-rail {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 0 0.5rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .sources-rail :is(.sources-rail-group, small) { display: none; }
+  .sources-rail a { flex: none; }
+}
 .sources-page .pool { gap: 0.55rem; }
 .sources-page .pool-head {
   display: grid;
   grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr) minmax(17.5rem, auto);
   align-items: center;
   gap: 0.75rem 1.5rem;
-  margin: 0.6rem 0 0;
-  padding: 0.85rem 0 0.35rem;
-  border-top: 1px solid var(--line);
+  padding-bottom: 0.35rem;
 }
 .pool-id { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
-.pool-id h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0; font: 600 0.95rem/1.25 var(--mono); }
-.pool-id .provider-logo { width: 1.05rem; height: 1.05rem; }
+.pool-id h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0; font: 600 1.1rem/1.25 var(--mono); }
+.pool-id .provider-logo { width: 1.15rem; height: 1.15rem; }
 .pool-state {
   display: flex;
   flex-direction: column;
@@ -378,16 +426,6 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 .pool-actions form { margin: 0; }
 /* "Add key" and "Add account" share a width so Sharing lines up per pool. */
 .pool-actions .btn { min-width: 7rem; }
-/* The table's own toolbar: the view filter sits with what it filters. */
-.pool-table-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  color: var(--mute);
-  font: 0.7rem/1.3 var(--mono);
-}
-.pool-table-bar label.pool-switch { padding-right: 0.15rem; font-size: 0.74rem; }
 .pool-sub {
   display: flex;
   align-items: baseline;
@@ -425,7 +463,6 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   .source-table tbody tr:first-child { border-top: 0; }
   .source-table tbody td,
   .source-table tbody td.num { display: block; padding: 0; border: 0; text-align: left; }
-  .source-table tbody tr.source-empty-row { display: none; }
   .source-table td.source-account { grid-area: acct; }
   .source-table td.source-act { grid-area: act; align-self: start; }
   .source-table td.source-status { grid-area: status; }
@@ -445,7 +482,6 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   }
   .source-table tr.is-held td:first-child { box-shadow: none; }
   .source-table tr.is-held { box-shadow: inset 2px 0 0 var(--fault); }
-  .source-table-scroll.is-mine-only:not(:has(tr[data-mine="1"])) tbody tr.source-empty-row { display: block; }
 }
 /* "Add a … account" under an empty pool: one quiet line, not a box. */
 .sources-page section > .panel:has(> .empty:only-child) { padding: 0.55rem 0.85rem; background: transparent; border-style: dashed; }

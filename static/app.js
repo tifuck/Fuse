@@ -643,10 +643,11 @@ if (docsJump) {
 
 // Section tabs: a .settings-jump nav of #anchors becomes real tabs, so a page
 // with several long sections (Settings, admin Providers and Pools) shows one at
-// a time instead of scrolling the whole shell to an anchor. A section belongs
-// to a tab by its id or by data-section="<id>". The open tab survives a form
-// post (sessionStorage per path) and is linkable (#id).
-document.querySelectorAll("nav.settings-jump").forEach((nav) => {
+// a time instead of scrolling the whole shell to an anchor. The Sources rail
+// ([data-section-tabs]) is the same thing drawn as a vertical list. A section
+// belongs to a tab by its id or by data-section="<id>". The open tab survives
+// a form post (sessionStorage per path) and is linkable (#id).
+document.querySelectorAll("nav.settings-jump, nav[data-section-tabs]").forEach((nav) => {
   const links = Array.from(nav.querySelectorAll('a[href^="#"]'));
   if (!links.length) return;
   const ids = links.map((a) => a.getAttribute("href").slice(1));
@@ -681,12 +682,15 @@ document.querySelectorAll("nav.settings-jump").forEach((nav) => {
     show(a.getAttribute("href").slice(1), true);
     a.focus();
   });
+  const steps = { ArrowRight: 1, ArrowLeft: -1 };
+  if (nav.getAttribute("aria-orientation") === "vertical") Object.assign(steps, { ArrowDown: 1, ArrowUp: -1 });
   nav.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const step = steps[event.key];
+    if (!step) return;
     const i = links.indexOf(document.activeElement);
     if (i < 0) return;
     event.preventDefault();
-    const next = links[(i + (event.key === "ArrowRight" ? 1 : links.length - 1)) % links.length];
+    const next = links[(i + step + links.length) % links.length];
     show(next.getAttribute("href").slice(1), true);
     next.focus();
   });
@@ -724,7 +728,7 @@ document.querySelectorAll("[data-page-tabs]").forEach((nav) => {
 // on the selected tab, arrow/Home/End keys select a neighbour by clicking it so
 // each page's own handler runs, and the tab's panel (aria-controls) is a
 // tabpanel labelled by the tab that is showing it.
-document.querySelectorAll('[role="tablist"]:not(.settings-jump)').forEach((list, n) => {
+document.querySelectorAll('[role="tablist"]:not(.settings-jump):not([data-section-tabs])').forEach((list, n) => {
   const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
   if (!tabs.length) return;
   tabs.forEach((tab, i) => { tab.id ||= `tab-${n}-${i}`; });
@@ -1559,39 +1563,7 @@ window.fuseHold = function fuseHold(restore, same = () => true) {
   });
 })();
 
-(function sourceMineFilter() {
-  function byGroup(attr, group) {
-    return Array.from(document.querySelectorAll(`[${attr}]`)).filter((el) => el.getAttribute("data-mine-group") === group);
-  }
-
-  function tablesFor(input) {
-    const group = input.getAttribute("data-mine-group") || "";
-    if (group) return byGroup("data-source-table", group);
-    const next = input.closest(".stack-y")?.querySelector("[data-source-table]");
-    return next ? [next] : [];
-  }
-
-  function inputsFor(input) {
-    const group = input.getAttribute("data-mine-group") || "";
-    if (!group) return [input];
-    return byGroup("data-mine-only", group);
-  }
-
-  function apply(input) {
-    const on = Boolean(input.checked);
-    inputsFor(input).forEach((el) => {
-      el.checked = on;
-    });
-    tablesFor(input).forEach((table) => {
-      table.classList.toggle("is-mine-only", on);
-    });
-  }
-
-  document.querySelectorAll("[data-mine-only]").forEach((input) => {
-    input.addEventListener("change", () => apply(input));
-    apply(input);
-  });
-
+(function sourceShareForm() {
   // A private donor uses only their own accounts (the server enforces it too),
   // so "Nobody" locks the routing choice to "Only your accounts".
   document.querySelectorAll("[data-share-form]").forEach((form) => {

@@ -113,12 +113,6 @@ label.check input[type="checkbox"] {
 label.check.is-locked {
   opacity: 0.7;
 }
-.pool-switch.source-mine-filter {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0;
-}
 label.pool-switch {
   display: inline-flex;
   flex-direction: row;

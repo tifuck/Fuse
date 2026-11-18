@@ -146,21 +146,6 @@
 <button type="button" class="btn sm{{ '' if pending else ' ghost' }}" data-dialog-open="{{ dialog }}">{{ 'Continue linking' if pending else label }}</button>
 {%- endmacro %}
 
-{# "Show only mine" filters the table under it (view only). It shows only
-   when that table mixes the user's accounts with other people's. #}
-{% macro table_bar(accounts, group='') %}
-{% set mine = accounts|selectattr('mine')|list %}
-{% if mine and mine|length < accounts|length %}
-<div class="pool-table-bar">
-  <span>{{ accounts|length }} accounts · {{ mine|length }} yours</span>
-  <label class="pool-switch source-mine-filter" title="View only: hides other people's accounts in the table. Routing is unchanged.">
-    <input type="checkbox" data-mine-only{% if group %} data-mine-group="{{ group }}"{% endif %}>
-    <span>Show only mine</span>
-  </label>
-</div>
-{% endif %}
-{% endmacro %}
-
 {% macro source_account_name(a) -%}
   {%- if a.email %}{{ a.email }}{% else %}{{ a.label }}{% endif -%}
 {%- endmacro %}
@@ -256,9 +241,9 @@
   </div>
 {% endmacro %}
 
-{% macro source_table(accounts, kind, revoke_path, confirm, empty, ui=None, group='', show_filter=True) %}
+{% macro source_table(accounts, kind, revoke_path, confirm, empty, ui=None) %}
 {% if accounts %}
-<div class="source-table-scroll" data-source-table{% if group %} data-mine-group="{{ group }}"{% endif %}>
+<div class="source-table-scroll">
   <table class="source-table">
     <colgroup>
       <col class="source-col-account">
@@ -284,7 +269,7 @@
       {% for a in accounts %}
       {% set skipped = ui and a.id in ui.skip %}
       {% set unrouted = skipped or (a.routable is defined and not a.routable) %}
-      <tr class="{% if a.mine %}is-mine{% endif %}{% if a.held or not a.authed %} is-held{% endif %}{% if unrouted %} is-unrouted{% endif %}" data-mine="{{ '1' if a.mine else '0' }}"{% if unrouted %} title="Not used for your requests"{% endif %}>
+      <tr class="{% if a.mine %}is-mine{% endif %}{% if a.held or not a.authed %} is-held{% endif %}{% if unrouted %} is-unrouted{% endif %}"{% if unrouted %} title="Not used for your requests"{% endif %}>
         <td class="source-account" title="{{ source_account_name(a) }}">
           <span class="source-account-line">
             <span class="source-account-name">{{ source_account_name(a) }}</span>
@@ -334,9 +319,6 @@
         </td>
       </tr>
       {% endfor %}
-      <tr class="source-empty-row" data-mine-empty>
-        <td colspan="7">No accounts of yours in this list.</td>
-      </tr>
     </tbody>
   </table>
 </div>
@@ -345,19 +327,69 @@
 {% endif %}
 {% endmacro %}
 
-<div class="stack-y sources-page" data-tab-root>
-  <nav class="usage-tabs" role="tablist" aria-label="Source kinds" data-page-tabs>
-    <button type="button" role="tab"{% if not openrouter_flash_msg and not explabs_flash_msg %} class="on" aria-selected="true"{% else %} aria-selected="false"{% endif %} data-tab="pool">Subscriptions</button>
-    <button type="button" role="tab"{% if explabs_flash_msg %} class="on" aria-selected="true"{% else %} aria-selected="false"{% endif %} data-tab="explabs">Experiential Labs</button>
-    <button type="button" role="tab"{% if openrouter_flash_msg %} class="on" aria-selected="true"{% else %} aria-selected="false"{% endif %} data-tab="openrouter">OpenRouter</button>
+{# A pool's accounts: yours first, then everyone else's. #}
+{% macro pool_accounts(accounts, kind, revoke_path, confirm, empty, ui=None) %}
+{% set own = accounts|selectattr('mine')|list %}
+{% set rest = accounts|rejectattr('mine')|list %}
+{% if own %}<h3 class="pool-sub">Your accounts <span>{{ own|length }}</span></h3>
+{{ source_table(own, kind, revoke_path, confirm, empty, ui) }}{% endif %}
+{% if rest %}<h3 class="pool-sub">Other people's accounts <span>{{ rest|length }}</span></h3>
+{{ source_table(rest, kind, revoke_path, confirm, empty, ui) }}{% endif %}
+{% if not accounts %}{{ source_table(accounts, kind, revoke_path, confirm, empty, ui) }}{% endif %}
+{% endmacro %}
+
+{# One provider in the rail. The section tabs in app.js show its pane
+   (#pool-<id>) and hide the rest. #}
+{% macro rail_link(id, title, sub, n=0, alert=False) -%}
+<a href="#pool-{{ id }}"><img class="provider-logo" src="{{ provider_logo_url(id) }}" alt="" aria-hidden="true"><span class="sources-rail-name">{{ title }}</span>{% if alert %}<span class="sources-rail-alert" title="An account of yours is signed out"></span>{% elif n %}<span class="sources-rail-n">{{ n }}</span>{% endif %}<small>{{ sub }}</small></a>
+{%- endmacro %}
+
+{% set pools = [
+  ('grok', 'x.ai', grok_ok, accounts, grok_pool, 'needs SuperGrok'),
+  ('chatgpt', 'OpenAI', chatgpt_ok, chatgpt_accounts, chatgpt_paid_pool, 'needs a ChatGPT sign-in'),
+  ('zai', 'Z.AI', zai_ok, zai_accounts, zai_pool, 'needs a Coding Plan key'),
+  ('devin', 'Devin', devin_ok, devin_accounts, devin_pool, 'needs a Devin sign-in'),
+  ('kimi', 'Kimi', kimi_ok, kimi_accounts, kimi_pool, 'needs a Kimi membership'),
+  ('mimo', 'Xiaomi', mimo_ok, mimo_accounts, mimo_pool, 'needs a Token Plan'),
+  ('claude', 'Claude', claude_ok, claude_accounts, claude_pool, 'needs a Claude sign-in'),
+  ('cursor', 'Cursor', cursor_ok, cursor_accounts, cursor_pool, 'needs a Cursor sign-in'),
+  ('nanogpt', 'NanoGPT', nanogpt_ok, nanogpt_accounts, nanogpt_pool, 'needs a NanoGPT sign-in'),
+  ('refuseless', 'Refuseless', refuseless_ok, refuseless_accounts, refuseless_pool, 'needs your Refuseless API key'),
+] %}
+{% set rail = namespace(yours=[], open=[], unset=[]) %}
+{% for p in pools %}
+  {% if p[3]|selectattr('mine')|list %}{% set rail.yours = rail.yours + [p] %}{% elif p[2] %}{% set rail.open = rail.open + [p] %}{% else %}{% set rail.unset = rail.unset + [p] %}{% endif %}
+{% endfor %}
+{% macro pool_use(pool) -%}
+  {{ 'pool ' ~ pool.percent_label if pool.available and pool.percent is not none else pool.count_label }}
+{%- endmacro %}
+
+<div class="stack-y sources-page">
+  <p class="sources-note">New conversations start on your own accounts and fall back to accounts shared with you, least used first; each conversation then stays on one account to keep its prompt cache. <b>Sharing</b> on each pool sets who else may use yours. Z.AI also unlocks with a live x.ai or OpenAI account you share.</p>
+  {% if pool_flash_msg %}
+  <p class="callout {% if pool_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ pool_flash_msg }}</p>
+  {% endif %}
+
+  <div class="sources-dir">
+  <nav class="sources-rail" data-section-tabs aria-label="Providers" aria-orientation="vertical">
+    {% if rail.yours %}<p class="sources-rail-group" aria-hidden="true">Your accounts</p>{% endif %}
+    {% for id, title, ok, accts, pool, need in rail.yours %}
+    {% set own = accts|selectattr('mine')|list %}
+    {{ rail_link(id, title, own|length ~ ' yours · ' ~ pool_use(pool), own|length, own|rejectattr('authed')|list) }}
+    {% endfor %}
+    {% if rail.open %}<p class="sources-rail-group" aria-hidden="true">Unlocked</p>{% endif %}
+    {% for id, title, ok, accts, pool, need in rail.open %}
+    {{ rail_link(id, title, pool_use(pool), accts|length) }}
+    {% endfor %}
+    {% if rail.unset %}<p class="sources-rail-group" aria-hidden="true">Not set up</p>{% endif %}
+    {% for id, title, ok, accts, pool, need in rail.unset %}
+    {{ rail_link(id, title, need) }}
+    {% endfor %}
+    <p class="sources-rail-group" aria-hidden="true">Personal keys</p>
+    {{ rail_link('openrouter', 'OpenRouter', 'key linked' if openrouter_account else 'no key') }}
+    {{ rail_link('explabs', 'Experiential Labs', 'key linked' if explabs_account else 'no key') }}
   </nav>
-
-  <div data-tab-panel="pool" class="stack-y{% if openrouter_flash_msg or explabs_flash_msg %} hidden{% endif %}">
-    <p class="sources-note">New conversations start on your own accounts and fall back to accounts shared with you, least used first; each conversation then stays on one account to keep its prompt cache. <b>Sharing</b> on each pool sets who else may use yours. Z.AI also unlocks with a live x.ai or OpenAI account you share.</p>
-    {% if pool_flash_msg %}
-    <p class="callout {% if pool_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ pool_flash_msg }}</p>
-    {% endif %}
-
+  <div class="sources-pane">
 
     <section class="pool stack-y" id="pool-grok">
       {% call pool_head(grok_ui, 'x.ai', 'grok', pool_state(grok_ok, grok_reason, grok_ui, 'needs SuperGrok', 'No SuperGrok subscription'), [('Pool usage', grok_pool)]) %}{{ add_button('grok-connect-dialog', 'Add account', pending) }}{% endcall %}
@@ -366,8 +398,7 @@
       {% elif grok_reason == 'unauthed' %}
       <p class="callout fault">The linked Grok sign-in is no longer valid. Remove it and add the account again.</p>
       {% endif %}
-      {{ table_bar(accounts) }}
-      {{ source_table(accounts, 'x.ai', '/sources/grok', 'Remove this Grok account from the shared pool?', 'Optional — Grok is already unlocked. Add a SuperGrok account if you want to donate one.' if grok_ok and grok_reason == 'open' else ('Add a Grok account with an active SuperGrok subscription to join the shared pool.' if grok_ui.uses_shared else 'Add a Grok account with an active SuperGrok subscription. This pool is limited to accounts you link.'), grok_ui) }}
+      {{ pool_accounts(accounts, 'x.ai', '/sources/grok', 'Remove this Grok account from the shared pool?', 'Optional — Grok is already unlocked. Add a SuperGrok account if you want to donate one.' if grok_ok and grok_reason == 'open' else ('Add a Grok account with an active SuperGrok subscription to join the shared pool.' if grok_ui.uses_shared else 'Add a Grok account with an active SuperGrok subscription. This pool is limited to accounts you link.'), grok_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-chatgpt">
@@ -375,14 +406,20 @@
       {% if chatgpt_own_failed %}
       <p class="callout fault">{% if chatgpt_own_failed == 1 %}A ChatGPT account you linked is no longer signed in.{% else %}{{ chatgpt_own_failed }} ChatGPT accounts you linked are no longer signed in.{% endif %} They stay out of the pool until you remove them and add them again.</p>
       {% endif %}
-      {{ table_bar(chatgpt_accounts, 'chatgpt') }}
-      {% if chatgpt_paid_accounts %}
-      {% if chatgpt_free_accounts %}<h3 class="pool-sub">Paid plans <span>{{ chatgpt_paid_accounts|length }}</span></h3>{% endif %}
-      {{ source_table(chatgpt_paid_accounts, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', 'No paid OpenAI accounts in this list.', chatgpt_ui, 'chatgpt', False) }}
+      {% set own = chatgpt_accounts|selectattr('mine')|list %}
+      {% set paid = chatgpt_paid_accounts|rejectattr('mine')|list %}
+      {% set free = chatgpt_free_accounts|rejectattr('mine')|list %}
+      {% if own %}
+      <h3 class="pool-sub">Your accounts <span>{{ own|length }}</span></h3>
+      {{ source_table(own, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
       {% endif %}
-      {% if chatgpt_free_accounts %}
-      <h3 class="pool-sub">Free / Go plans <span>{{ chatgpt_free_accounts|length }}</span></h3>
-      {{ source_table(chatgpt_free_accounts, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', 'No Free or Go accounts in this list.', chatgpt_ui, 'chatgpt', False) }}
+      {% if paid %}
+      <h3 class="pool-sub">Other people's paid plans <span>{{ paid|length }}</span></h3>
+      {{ source_table(paid, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
+      {% endif %}
+      {% if free %}
+      <h3 class="pool-sub">Other people's Free / Go plans <span>{{ free|length }}</span></h3>
+      {{ source_table(free, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
       {% endif %}
       {% if not chatgpt_accounts %}
       <section class="panel"><p class="empty">{% if chatgpt_ok and chatgpt_reason == 'open' %}Optional — OpenAI is already unlocked. Add a ChatGPT account if you want to donate one.{% elif chatgpt_ui.uses_shared %}Add a ChatGPT account (Plus or Pro unlocks every model) to join the shared pool.{% else %}Add a ChatGPT account. This pool is limited to accounts you link.{% endif %}</p></section>
@@ -399,8 +436,7 @@
       {% if zai_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ zai_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(zai_accounts) }}
-      {{ source_table(zai_accounts, 'Z.AI', '/sources/zai', 'Remove this Z.AI key from the shared pool?', 'Optional — GLM is already unlocked. Add a Coding Plan key if you want to donate one to the pool.' if zai_ok else ('Add a GLM Coding Plan API key, or share a live x.ai or OpenAI account.' if zai_ui.uses_shared else 'Add a GLM Coding Plan API key. This pool is limited to keys you link.'), zai_ui) }}
+      {{ pool_accounts(zai_accounts, 'Z.AI', '/sources/zai', 'Remove this Z.AI key from the shared pool?', 'Optional — GLM is already unlocked. Add a Coding Plan key if you want to donate one to the pool.' if zai_ok else ('Add a GLM Coding Plan API key, or share a live x.ai or OpenAI account.' if zai_ui.uses_shared else 'Add a GLM Coding Plan API key. This pool is limited to keys you link.'), zai_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-devin">
@@ -411,8 +447,7 @@
       {% if devin_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ devin_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(devin_accounts) }}
-      {{ source_table(devin_accounts, 'Devin', '/sources/devin', 'Remove this Devin account from the shared pool?', 'Optional — Devin is already unlocked. Add an account if you want to donate one.' if devin_ok and devin_reason == 'open' else ('Sign in to Devin to unlock its catalog. No API key needed.' if devin_ui.uses_shared else 'Add a Devin account. This pool is limited to accounts you link.'), devin_ui) }}
+      {{ pool_accounts(devin_accounts, 'Devin', '/sources/devin', 'Remove this Devin account from the shared pool?', 'Optional — Devin is already unlocked. Add an account if you want to donate one.' if devin_ok and devin_reason == 'open' else ('Sign in to Devin to unlock its catalog. No API key needed.' if devin_ui.uses_shared else 'Add a Devin account. This pool is limited to accounts you link.'), devin_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-kimi">
@@ -425,8 +460,7 @@
       {% if kimi_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ kimi_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(kimi_accounts) }}
-      {{ source_table(kimi_accounts, 'Kimi', '/sources/kimi', 'Remove this Kimi account from the shared pool?', 'Optional — Kimi is already unlocked. Add a membership if you want to donate one.' if kimi_ok and kimi_reason == 'open' else ('Add a Kimi membership via device sign-in, or paste a Kimi Code console API key.' if kimi_ui.uses_shared else 'Add a Kimi membership. This pool is limited to accounts you link.'), kimi_ui) }}
+      {{ pool_accounts(kimi_accounts, 'Kimi', '/sources/kimi', 'Remove this Kimi account from the shared pool?', 'Optional — Kimi is already unlocked. Add a membership if you want to donate one.' if kimi_ok and kimi_reason == 'open' else ('Add a Kimi membership via device sign-in, or paste a Kimi Code console API key.' if kimi_ui.uses_shared else 'Add a Kimi membership. This pool is limited to accounts you link.'), kimi_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-mimo">
@@ -439,8 +473,7 @@
       {% if mimo_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ mimo_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(mimo_accounts) }}
-      {{ source_table(mimo_accounts, 'Xiaomi', '/sources/mimo', 'Remove this Xiaomi account from the shared pool?', 'Optional — Xiaomi is already unlocked. Add a Token Plan if you want to donate one.' if mimo_ok and mimo_reason == 'open' else ('Sign in with Xiaomi, or paste the Token Plan key from the console (tp-… or ttp-…).' if mimo_ui.uses_shared else 'Add a Xiaomi Token Plan. This pool is limited to accounts you link.'), mimo_ui) }}
+      {{ pool_accounts(mimo_accounts, 'Xiaomi', '/sources/mimo', 'Remove this Xiaomi account from the shared pool?', 'Optional — Xiaomi is already unlocked. Add a Token Plan if you want to donate one.' if mimo_ok and mimo_reason == 'open' else ('Sign in with Xiaomi, or paste the Token Plan key from the console (tp-… or ttp-…).' if mimo_ui.uses_shared else 'Add a Xiaomi Token Plan. This pool is limited to accounts you link.'), mimo_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-claude">
@@ -451,8 +484,7 @@
       {% if claude_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ claude_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(claude_accounts) }}
-      {{ source_table(claude_accounts, 'Claude', '/sources/claude', 'Remove this Claude account from the shared pool?', 'Optional — Claude is already unlocked. Add an account if you want to donate one.' if claude_ok and claude_reason == 'open' else ('Sign in with the same Claude account you use for Claude Code.' if claude_ui.uses_shared else 'Add a Claude account. This pool is limited to accounts you link.'), claude_ui) }}
+      {{ pool_accounts(claude_accounts, 'Claude', '/sources/claude', 'Remove this Claude account from the shared pool?', 'Optional — Claude is already unlocked. Add an account if you want to donate one.' if claude_ok and claude_reason == 'open' else ('Sign in with the same Claude account you use for Claude Code.' if claude_ui.uses_shared else 'Add a Claude account. This pool is limited to accounts you link.'), claude_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-cursor">
@@ -463,8 +495,7 @@
       {% if cursor_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ cursor_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(cursor_accounts) }}
-      {{ source_table(cursor_accounts, 'Cursor', '/sources/cursor', 'Remove this Cursor account from the shared pool?', 'Optional — Cursor is already unlocked. Add an account if you want to donate one.' if cursor_ok and cursor_reason == 'open' else ('Sign in with Cursor to unlock its models. No API key needed.' if cursor_ui.uses_shared else 'Add a Cursor account. This pool is limited to accounts you link.'), cursor_ui) }}
+      {{ pool_accounts(cursor_accounts, 'Cursor', '/sources/cursor', 'Remove this Cursor account from the shared pool?', 'Optional — Cursor is already unlocked. Add an account if you want to donate one.' if cursor_ok and cursor_reason == 'open' else ('Sign in with Cursor to unlock its models. No API key needed.' if cursor_ui.uses_shared else 'Add a Cursor account. This pool is limited to accounts you link.'), cursor_ui) }}
     </section>
 
     <section class="pool stack-y" id="pool-nanogpt">
@@ -476,8 +507,7 @@
       {% if nanogpt_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ nanogpt_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(nanogpt_accounts) }}
-      {{ source_table(nanogpt_accounts, 'NanoGPT', '/sources/nanogpt', 'Remove this NanoGPT account from Fuse? Also delete its OAuth: Fuse key on nano-gpt.com/api to revoke it there.', 'Optional — NanoGPT subscription models are already unlocked. Sign in to add your own account.' if nanogpt_ok and nanogpt_reason == 'open' else 'Sign in with NanoGPT to use its models. No API key to copy.', nanogpt_ui) }}
+      {{ pool_accounts(nanogpt_accounts, 'NanoGPT', '/sources/nanogpt', 'Remove this NanoGPT account from Fuse? Also delete its OAuth: Fuse key on nano-gpt.com/api to revoke it there.', 'Optional — NanoGPT subscription models are already unlocked. Sign in to add your own account.' if nanogpt_ok and nanogpt_reason == 'open' else 'Sign in with NanoGPT to use its models. No API key to copy.', nanogpt_ui) }}
       {% if nanogpt_owner %}
       <article class="panel source-card" data-or-scope>
         <div class="section-heading">
@@ -559,15 +589,19 @@
       {% if refuseless_flash_kind == 'ok' %}
       <p class="callout ok" role="alert">{{ refuseless_flash_msg }}</p>
       {% endif %}
-      {{ table_bar(refuseless_accounts) }}
-      {{ source_table(refuseless_accounts, 'Refuseless', '/sources/refuseless', 'Remove this Refuseless key from Fuse? It stays valid on Refuseless until you revoke it there.', 'Link your Refuseless API key to use its models. Fuse checks it against your credit balance, never with a paid request.', refuseless_ui) }}
+      {{ pool_accounts(refuseless_accounts, 'Refuseless', '/sources/refuseless', 'Remove this Refuseless key from Fuse? It stays valid on Refuseless until you revoke it there.', 'Link your Refuseless API key to use its models. Fuse checks it against your credit balance, never with a paid request.', refuseless_ui) }}
       {% if refuseless_ok %}
       <p class="usage-sub">{{ refuseless_models }} model{{ 's' if refuseless_models != 1 else '' }} in the live lineup, shown as <code>refuseless/…</code> · <a href="/models">Models</a></p>
       {% endif %}
     </section>
-  </div>
 
-  <div data-tab-panel="openrouter" class="stack-y{% if not openrouter_flash_msg %} hidden{% endif %}">
+    <section class="pool stack-y" id="pool-openrouter">
+    <header class="pool-head">
+      <div class="pool-id">
+        <h2><img class="provider-logo" src="{{ provider_logo_url('openrouter') }}" alt="" aria-hidden="true">OpenRouter</h2>
+        <p class="pool-state{% if openrouter_account %} is-ok{% endif %}"><b>{% if openrouter_account %}Key linked{% else %}No key{% endif %}</b><span>personal, never shared</span></p>
+      </div>
+    </header>
     <p class="sources-note">Your own key. Models you turn on show in your picker as <code>openrouter/…</code> and bill to it.</p>
     {% if not openrouter_user_key %}
     <p class="callout">Add your OpenRouter key to choose models and providers.</p>
@@ -703,8 +737,15 @@
       </form>
     </article>
     {% endif %}
-  </div>
-  <div data-tab-panel="explabs" class="stack-y{% if not explabs_flash_msg %} hidden{% endif %}">
+    </section>
+
+    <section class="pool stack-y" id="pool-explabs">
+    <header class="pool-head">
+      <div class="pool-id">
+        <h2><img class="provider-logo" src="{{ provider_logo_url('explabs') }}" alt="" aria-hidden="true">Experiential Labs</h2>
+        <p class="pool-state{% if explabs_account %} is-ok{% endif %}"><b>{% if explabs_account %}Key linked{% else %}No key{% endif %}</b><span>personal, never shared</span></p>
+      </div>
+    </header>
     <p class="sources-note">Your own key, never shared. Only <code>explabs/…</code> models use it; subscription pools never fall back to it.</p>
     {% if explabs_flash_msg %}
     <p class="callout {% if explabs_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ explabs_flash_msg }}</p>
@@ -735,6 +776,8 @@
       {% if explabs_access.last_error %}<p class="callout fault">{{ explabs_access.last_error }}</p>{% endif %}
     </article>
     {% endif %}
+    </section>
+  </div>
   </div>
 </div>
 
