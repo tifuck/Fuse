@@ -26,6 +26,29 @@ test('byte sizes take the larger unit once they round up to it, in every theme',
   }
 });
 
+test('think tags split as the server does: openers only at the start, closers outside code', () => {
+  const split = (text) => { const r = core.splitThink(text); return [r.reasoning, r.content, r.inThink]; };
+  const F = '```';
+  assert.deepEqual(split('<think>plan</think>Answer'), ['plan', 'Answer', false]);
+  assert.deepEqual(split('<think>plan so f'), ['plan so f', '', true], 'a streaming thought stays open');
+  assert.deepEqual(split('<think>a</think> <thinking>b</thinking>C'), ['ab', ' C', false]);
+  assert.deepEqual(split('Use <think> tags.\nMore'), ['', 'Use <think> tags.\nMore', false], 'an opener after visible text is prose');
+  assert.deepEqual(split('Write `</think>` here'), ['', 'Write `</think>` here', false], 'quoted in an inline span');
+  assert.deepEqual(split(`${F}\n<think>x</think>\n${F}\nok`), ['', `${F}\n<think>x</think>\n${F}\nok`, false], 'quoted in a fence');
+  assert.deepEqual(split('<think>tag `</think>` ends</think>Done'), ['tag `</think>` ends', 'Done', false]);
+  assert.deepEqual(split('opened by the prompt</think>Answer'), ['', 'opened by the promptAnswer', false], 'a bare closer is dropped');
+  assert.deepEqual(split('<think>a `b </think>'), ['a `b </think>', '', true], 'a span that may still close holds the closer as text');
+  assert.deepEqual(split('<think>a `b </think>\nAnswer'), ['a `b ', '\nAnswer', false], 'until its line settles');
+  assert.deepEqual(split('<think>a</thi'), ['a</thi', '', true], 'a partial tag is text');
+});
+
+test('reasoning deltas take the first key set, never several', () => {
+  const reasoning = (delta) => core.deltaParts({ choices: [{ delta }] }).reasoning;
+  assert.equal(reasoning({ reasoning_content: 'same', reasoning: 'same' }), 'same');
+  assert.equal(reasoning({ reasoning_content: '', thinking: 't' }), 't');
+  assert.equal(core.deltaParts({ choices: [{ delta: {} }], reasoning_text: 'top' }).reasoning, 'top');
+});
+
 test('token counts abbreviate at thousand and million', () => {
   const cases = [[0, '0'], [999, '999'], [1000, '1k'], [1500, '1.5k'], [9999, '10k'], [10_500, '11k'],
     [999_999, '1M'], [1_000_000, '1M'], [1_500_000, '1.5M'], [12_000_000, '12M'], [-7, '0'], [NaN, '0']];
