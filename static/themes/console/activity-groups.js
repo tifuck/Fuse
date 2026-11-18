@@ -15,7 +15,15 @@ function ccTurnLineHtml(msg, latest) {
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
     return `${head}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
       `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
+      `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>` +
+      ccPeakHtml(msg._hostPeak);
+  }
+
+// The machine's peak load during the turn (live-dock.js keepHostPeak).
+function ccPeakHtml(peak) {
+    if (!peak) return "";
+    const value = (key) => `<span style="color: ${deps.escapeHtml(peak[key + "Tone"])}">${peak[key]}%</span>`;
+    return `<span class="chat-console-turn-peak">peak cpu ${value("cpu")} ram ${value("ram")}</span>`;
   }
 
 function ccShellHint(trace) {
