@@ -135,8 +135,8 @@ class Runner:
         return self.answer(name, args)
 
 
-def run_code(code, runner, **extra):
-    return asyncio.run(code_mode.run(json.dumps({"code": code, **extra}), call=runner))
+def run_code(code, runner, owner=(), **extra):
+    return asyncio.run(code_mode.run(json.dumps({"code": code, **extra}), call=runner, owner=owner))
 
 
 def test_a_failed_call_throws_into_the_code_and_an_uncaught_one_lists_what_finished():
@@ -281,22 +281,6 @@ return n;""")
     assert len(jobs) == 1 + 45 + 1 and all(j.text == "" for j in jobs[1:])
 
 
-class Runner:
-    """Stand-in for the tool runner's call(name, args): records and answers."""
-
-    def __init__(self, answer=None):
-        self.calls = []
-        self.answer = answer or (lambda name, args: ("From host box:\nok", {"name": name, "status": "done", "host": "box"}))
-
-    async def __call__(self, name, args):
-        self.calls.append((name, args))
-        return self.answer(name, args)
-
-
-def run_code(code, runner, **extra):
-    return asyncio.run(code_mode.run(json.dumps({"code": code, **extra}), call=runner))
-
-
 def test_oversized_arguments_and_calls_past_the_cap_never_reach_the_runner():
     runner = Runner()
     text, _ = run_code('try { await write_file({path: "big", content: "x".repeat(400001)}); } catch (e) { return e.message; }', runner)
@@ -414,3 +398,33 @@ def test_a_cut_run_code_result_says_the_calls_already_ran():
 
     assert len(result["content"]) <= tool_jobs.TOOL_RESULT_CHARS
     assert "of 30000 characters" in result["content"] and "do not run its edits or commands again" in result["content"]
+
+
+def test_a_cut_result_is_kept_for_its_chat_and_a_later_run_reads_the_rest(ssh_host):
+    text, jobs, _ = one_round(ssh_host, 'return Array.from({length: 4000}, (_, i) => `row ${i}`).join("\\n");')
+    head = jobs[0]
+    assert head.result_id and f'read_result("{head.result_id}"' in text and len(text) <= tool_jobs.TOOL_RESULT_CHARS
+
+    owner = code_mode._kept[head.result_id][1]
+    assert owner[0] == ssh_host.uid
+    rest, _ = run_code(f'return await read_result("{head.result_id}", {{offset: 30000, limit: 9}});', Runner(), owner=owner)
+    assert rest.startswith(head.text[30000:30009])
+
+    other, _ = run_code(f'try {{ return await read_result("{head.result_id}"); }} catch (e) {{ return e.message; }}',
+                        Runner(), owner=(ssh_host.uid, -1))
+    assert other.startswith(f"no kept result {head.result_id}")
+
+
+def test_kept_results_expire_and_the_oldest_go_first_past_the_cap(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(code_mode, "_clock", lambda: now[0])
+    monkeypatch.setattr(code_mode, "_kept", collections.OrderedDict())
+    monkeypatch.setattr(code_mode, "_kept_chars", 0)
+    monkeypatch.setattr(code_mode, "KEEP_CHARS", 10)
+    first = code_mode.keep((1, 1), "aaaaaa")
+    second = code_mode.keep((1, 1), "bbbbbb")
+    assert first not in code_mode._kept and second in code_mode._kept
+
+    now[0] += code_mode.KEEP_S
+    assert code_mode._read_kept((1, 1), json.dumps({"id": second}))["ok"] is False
+    assert code_mode._kept_chars == 0

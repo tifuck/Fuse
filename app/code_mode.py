@@ -18,8 +18,10 @@ import importlib.util
 import json
 import logging
 import re
+import secrets
 import signal
 import sys
+import time
 from pathlib import Path
 
 from .code_worker import ARG_CHARS, CPU_SECONDS, HELPERS, MESSAGE_LIMIT, OFFSET
@@ -47,6 +49,51 @@ WORKERS = 8
 SLOT_WAIT_S = 30
 _slots: tuple | None = None
 _INSTALLED = importlib.util.find_spec("py_mini_racer") is not None
+# A result cut for the model is kept whole for a while, so a later run_code
+# can read the rest (read_result) instead of running the code again. Memory
+# only: a restart drops them, and the oldest go first past KEEP_CHARS.
+KEEP_S = 1800
+KEEP_CHARS = 32_000_000
+READ_PAGE = 20_000
+_kept: collections.OrderedDict[str, tuple[float, tuple, str]] = collections.OrderedDict()
+_kept_chars = 0
+_clock = time.monotonic
+
+
+def keep(owner: tuple, text: str) -> str:
+    """Keep a whole result for its owner (user, thread); returns its id."""
+    global _kept_chars
+    _forget(_clock())
+    ident = "r_" + secrets.token_hex(6)
+    _kept[ident] = (_clock() + KEEP_S, owner, text)
+    _kept_chars += len(text)
+    while _kept_chars > KEEP_CHARS and len(_kept) > 1:
+        _kept_chars -= len(_kept.popitem(last=False)[1][2])
+    return ident
+
+
+def _forget(now: float) -> None:
+    global _kept_chars
+    # Entries expire in the order they were kept (one TTL for all).
+    while _kept and next(iter(_kept.values()))[0] <= now:
+        _kept_chars -= len(_kept.popitem(last=False)[1][2])
+
+
+def _read_kept(owner: tuple, raw: str) -> dict:
+    try:
+        args = json.loads(raw)
+        ident = str(args.get("id") or "")
+        offset = max(0, int(args.get("offset") or 0))
+        limit = max(1, int(args.get("limit") or READ_PAGE))
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        return {"ok": False, "error": "read_result takes an id and optional {offset, limit} numbers."}
+    _forget(_clock())
+    entry = _kept.get(ident)
+    if entry is None or entry[1] != owner:
+        return {"ok": False, "error": f"no kept result {ident}: results are kept for {KEEP_S // 60} minutes in this "
+                                        "chat and lost when the server restarts. Run the code again with a narrower "
+                                        "result (only if repeating its calls is safe)."}
+    return {"ok": True, "value": entry[2][offset:offset + limit]}
 
 
 def available() -> bool:
@@ -85,6 +132,8 @@ SCHEMA = {
             "description?: string, host?: string} | string): Promise<{status: string, exit_code: number | null, "
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
+            "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
+            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes)\n"
             "A line in (parentheses) in grep, glob or list_dir text is a note, not a result. A failed call throws "
             "an Error with the tool's message; catch it where a miss is expected. console.log output comes back "
             "too. Limits: 500 calls; 5 minutes (timeout, in ms, up to 10 minutes; time spent waiting on a "
@@ -209,10 +258,11 @@ def _user_lines(stack: str) -> str:
     return text
 
 
-async def run(arguments: str, *, call, paused=None) -> tuple[str, dict]:
+async def run(arguments: str, *, call, paused=None, owner: tuple = ()) -> tuple[str, dict]:
     """One run_code call. call(name, args) -> (text, trace) runs a nested tool
     call as a job of this round and returns its finished result; paused() is
-    true while a permission prompt waits, which stops the deadline's clock.
+    true while a permission prompt waits, which stops the deadline's clock;
+    owner (user, thread) is whose kept results read_result may read.
     An exception the runner lets escape (a checkpoint that keeps failing)
     stops the code and propagates."""
     try:
@@ -236,13 +286,13 @@ async def run(arguments: str, *, call, paused=None) -> tuple[str, dict]:
         return msg, {**rec, "status": "error", "kind": "busy", "error": msg}
     try:
         outcome, kind, done, stopped = await _execute(
-            code, _timeout_ms(args.get("timeout")) / 1000, call, paused or (lambda: False))
+            code, _timeout_ms(args.get("timeout")) / 1000, call, paused or (lambda: False), owner)
     finally:
         slots.release()
     return _result(code, rec, outcome, kind, done, stopped)
 
 
-async def _execute(code: str, timeout_s: float, call, paused):
+async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     done: list[dict] = []
     tasks: set[asyncio.Task] = set()
     children = asyncio.Semaphore(CHILD_CONCURRENCY)
@@ -311,6 +361,10 @@ async def _execute(code: str, timeout_s: float, call, paused):
             messages += 1
             if messages > 2 * MAX_CALLS:
                 return {"ok": False, "error": f"the code made over {2 * MAX_CALLS} tool calls, most of them refused."}
+            if name == "read_result":
+                # The model's own earlier output, already swapped: no host, no tool job.
+                send({"reply": n, "body": json.dumps(_read_kept(owner, raw))})
+                continue
             if name not in HELPERS:
                 refuse(n, f"{name} is not available in run_code (available: {', '.join(HELPERS)}).")
                 continue
