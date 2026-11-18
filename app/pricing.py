@@ -159,6 +159,31 @@ def _tier(threshold: int, rates: tuple) -> dict:
     }
 
 
+_DEFAULT_PRICING = (
+    (CHATGPT_PROVIDER, DEFAULT_CHATGPT_PRICING),
+    (GROK_PROVIDER, DEFAULT_GROK_PRICING),
+    (ZAI_PROVIDER, DEFAULT_ZAI_PRICING),
+    (DEVIN_PROVIDER, DEFAULT_DEVIN_PRICING),
+    (KIMI_PROVIDER, DEFAULT_KIMI_PRICING),
+    (MIMO_PROVIDER, DEFAULT_MIMO_PRICING),
+    (CLAUDE_PROVIDER, DEFAULT_CLAUDE_PRICING),
+)
+
+
+def _long_threshold(provider: str) -> int:
+    if provider == GROK_PROVIDER:
+        return _GROK_LONG_THRESHOLD
+    if provider == CLAUDE_PROVIDER:
+        return _CLAUDE_LONG_THRESHOLD
+    return _LONG_CONTEXT_THRESHOLD
+
+
+def default_tiers(provider: str, model: str) -> list[dict] | None:
+    """The built-in long-context tiers for a model, None when it has none."""
+    _base, long_rates = dict(_DEFAULT_PRICING).get(provider, {}).get(model, (None, None))
+    return [_tier(_long_threshold(provider), long_rates)] if long_rates else None
+
+
 def _default_row_matches(existing, *, inp: str, cached: str | None, write: str | None, out: str, tiers: list[dict] | None, threshold: int) -> bool:
     """Full-tuple comparison of a seeded row against the current defaults.
 
@@ -209,18 +234,8 @@ def ensure_default_prices() -> list[str]:
     over a changed built-in default.
     """
     seeded = []
-    for provider, defaults in (
-        (CHATGPT_PROVIDER, DEFAULT_CHATGPT_PRICING),
-        (GROK_PROVIDER, DEFAULT_GROK_PRICING),
-        (ZAI_PROVIDER, DEFAULT_ZAI_PRICING),
-        (DEVIN_PROVIDER, DEFAULT_DEVIN_PRICING),
-        (KIMI_PROVIDER, DEFAULT_KIMI_PRICING),
-        (MIMO_PROVIDER, DEFAULT_MIMO_PRICING),
-        (CLAUDE_PROVIDER, DEFAULT_CLAUDE_PRICING),
-    ):
-        threshold = _GROK_LONG_THRESHOLD if provider == GROK_PROVIDER else _LONG_CONTEXT_THRESHOLD
-        if provider == CLAUDE_PROVIDER:
-            threshold = _CLAUDE_LONG_THRESHOLD
+    for provider, defaults in _DEFAULT_PRICING:
+        threshold = _long_threshold(provider)
         for model, (base, long_rates) in defaults.items():
             inp, cached, write, out = base
             existing = db.fetchone(

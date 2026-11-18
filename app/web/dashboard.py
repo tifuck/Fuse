@@ -201,8 +201,11 @@ async def save_pricing(
     if input_v is None or output_v is None:
         raise HTTPException(400, "Input and output rates are required")
     # Repricing walks the model's whole history: never on the event loop.
+    # The form edits base rates only: an existing row keeps its long-context
+    # tiers, and a new row starts with the built-in ones.
     await asyncio.to_thread(
-        db.save_model_price, provider, model, input_v, cached_v, output_v, reasoning_v, cache_write_rate=write_v
+        db.save_model_price, provider, model, input_v, cached_v, output_v, reasoning_v,
+        cache_write_rate=write_v, tiers=pricing_mod.default_tiers(provider, model), keep_long_context=True,
     )
     return RedirectResponse("/admin/pricing", status_code=303)
 
