@@ -719,12 +719,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
   & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }
-  /* The live pane (live-dock.js). Opened, the status line heads a card that
-     reaches past the text edges like the composer; under it the reply's
-     newest calls at one fixed height, read from the top until it fills, then
-     from the newest line up. The line's text never moves when it opens. */
-  /* The card reaches as far past the text as the composer card: up to 20px,
-     4px short of the stage's edge or the scrollbar (100% is the card's width). */
+  /* The live pane (live-dock.js). Opened, the status line heads a card over
+     what the line names and nothing else: the running call (its line, its
+     newest output or change) or the thought being written. The line's text
+     never moves when it opens. The card reaches as far past the text as the
+     composer card: up to 20px, 4px short of the stage's edge or the
+     scrollbar (100% is the card's width). */
   & .chat-live-dock { flex-wrap: wrap; --dk-pane-out: clamp(0px, calc((100cqw - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
   & .chat-live-dock.is-detailable [data-dock-status]:hover :is(.dk-live-arg, .dk-live-chev) { color: var(--dk-text); }
@@ -740,10 +740,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease; }
   & .chat-live-dock.is-pane-open .dk-pane { grid-template-rows: 1fr; opacity: 1; }
   & .chat-live-dock .dk-pane-in { min-height: 0; overflow: hidden; }
-  & .chat-live-dock .dk-feed { display: flex; flex-direction: column; height: calc(8 * 19px); margin: 2px 0 10px; overflow: hidden; color: var(--dk-mute); font: 12px/19px var(--code); }
-  & .chat-live-dock .dk-feed.is-full { justify-content: flex-end; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 32px); mask-image: linear-gradient(to bottom, transparent, #000 32px); }
-  & .chat-live-dock .dk-feed-lines { flex: none; }
-  & .chat-live-dock .dk-fe + .dk-fe { margin-top: 6px; }
+  & .chat-live-dock .dk-now { padding: 2px 0 10px; }
+  & .chat-live-dock .dk-fe { color: var(--dk-mute); font: 12px/19px var(--code); }
   & .chat-live-dock .dk-fe-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--dk-text); transition: color 300ms ease; }
   & .chat-live-dock .dk-fe.is-done .dk-fe-head { color: var(--dk-mute); }
   & .chat-live-dock :is(.dk-fe-ico, .dk-row-ico, .dk-row-ico svg) { display: inline-flex; flex: none; width: 13px; height: 13px; }
@@ -757,11 +755,19 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-fe-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: dk-pulse 1.2s ease-in-out infinite; }
   & .chat-live-dock .dk-fe-dots i:nth-child(2) { animation-delay: 0.15s; }
   & .chat-live-dock .dk-fe-dots i:nth-child(3) { animation-delay: 0.3s; }
-  & .chat-live-dock .dk-fe-out { padding-left: 21px; transition: opacity 300ms ease; }
+  /* Its output: at most 8 lines. A command's (and a thought) reads from the
+     bottom, the newest line last; the rest read from the top. */
+  & .chat-live-dock .dk-fe-out { display: flex; flex-direction: column; max-height: calc(8 * 19px); overflow: hidden; transition: opacity 300ms ease; }
+  & .chat-live-dock .dk-fe .dk-fe-out { padding-left: 21px; }
+  & .chat-live-dock .dk-fe-out.is-tail { justify-content: flex-end; }
+  & .chat-live-dock .dk-fe-out.is-full { -webkit-mask-image: linear-gradient(to top, transparent, #000 28px); mask-image: linear-gradient(to top, transparent, #000 28px); }
+  & .chat-live-dock .dk-fe-out.is-tail.is-full { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px); mask-image: linear-gradient(to bottom, transparent, #000 28px); }
+  & .chat-live-dock .dk-fe-lines { flex: none; }
   & .chat-live-dock .dk-fe.is-done .dk-fe-out { opacity: 0.6; }
   & .chat-live-dock .dk-fe-ln { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln b { color: var(--dk-text); font-weight: 400; }
   & .chat-live-dock .dk-fe-out .chat-console-lines { margin: 0; font: inherit; }
+  & .chat-live-dock .dk-think .dk-fe-out { max-height: calc(6 * 1.5em); color: var(--dk-mute); font: var(--dk-meta)/1.5 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (prefers-reduced-motion: reduce) {
     & .chat-live-dock :is(.dk-pane, .dk-live-chev, .dk-fe-head, .dk-fe-out) { transition: none; }
     & .chat-live-dock .dk-live-card::before { transition: none; }

@@ -55,7 +55,10 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     return { ...line, meta };
   }
 
+// The line also carries what it names, for the live pane (live-dock.js): the
+// call (key: its id) and the phase.
 function liveLine(msg, status) {
+    const key = status.current ? String(status.current.id ?? "") : "";
     // A running command: what it is for ("Running the unit tests"), else the
     // command in parentheses ("Running command (npm test)"). The live pane
     // shows the command. It joins the summary line above once it ends.
@@ -64,11 +67,11 @@ function liveLine(msg, status) {
     if (arg) {
       const description = deps.ccFlat(command.description);
       const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg };
+      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg, key, phase: status.phase };
     }
     const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
     const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : "Working";
-    return { verb: /(…|\.\.\.)$/.test(word) ? word : `${word}…`, arg: "" };
+    return { verb: /(…|\.\.\.)$/.test(word) ? word : `${word}…`, arg: "", key, phase: status.phase };
   }
 
 // A line stays up at least HOLD_MS, so a state that lasts a blink (a call

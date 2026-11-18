@@ -83,12 +83,14 @@ test('desktop status line: one word between calls, each line held long enough to
   const msg = { segments: [{ type: 'reasoning', text: 'plain' }], tools: [] };
   const line = () => status.formatConsoleLiveStatus(msg);
   assert.equal(line().verb, 'Thinking…');
+  assert.equal(line().phase, 'thinking');
   assert.deepEqual(line().meta, { clock: '5s' }, 'the turn clock');
-  activity = { phase: 'working', current: { name: 'run_terminal_command', description: 'Run the test suite twice', command: 'make test', started_ms: now } };
+  activity = { phase: 'working', current: { id: 'run-1', name: 'run_terminal_command', description: 'Run the test suite twice', command: 'make test', started_ms: now } };
   now += 300;
   assert.equal(line().verb, 'Thinking…', 'a line shown 300ms ago stays up');
   now += 500;
   assert.equal(line().verb, 'Running the test suite twice…');
+  assert.equal(line().key, 'run-1', 'the line names its call, for the live pane');
   assert.deepEqual(line().meta, { clock: '5s' }, 'a command keeps the turn clock; its own time is in the live pane');
   // The call ends, the request goes out, the thought starts: no past tense, one word.
   for (const phase of ['working', 'waiting', 'starting', 'thinking']) {
@@ -103,6 +105,19 @@ test('desktop status line: one word between calls, each line held long enough to
   assert.equal(line().verb, 'Queued…', 'held');
   activity = { phase: 'stopping' };
   assert.equal(line().verb, 'Stopping…', 'a stop shows at once');
+});
+
+test('desktop live pane: only what the line names, never a log of calls', async () => {
+  const dock = (await import('../../static/themes/desktop/live-dock.js')).create({});
+  const msg = { tools: [{ id: 'a', name: 'read_file' }, { id: 'b', name: 'run_terminal_command' }, { id: 'c', name: 'run_code' },
+    { id: 'c1', name: 'grep', parent: 'c' }, { id: 'c2', name: 'read_file', parent: 'c' }] };
+  assert.equal(dock.paneTrace(msg, 'b').id, 'b', 'the call the line names, not the newest');
+  assert.equal(dock.paneTrace(msg, ''), null, 'a line that names no call shows none');
+  assert.equal(dock.paneTrace(msg, 'c').id, 'c2', 'code shows the call it is making now');
+  assert.equal(dock.paneTrace({ tools: [{ id: 'c', name: 'run_code' }] }, 'c').id, 'c', 'until it makes one');
+  const thought = { segments: [{ type: 'reasoning', text: 'old' }, { type: 'tool', id: 'a' },
+    { type: 'reasoning', text: '**Checking the loop**\nIt exits' }, { type: 'reasoning', text: 'then more' }] };
+  assert.equal(dock.paneThought(thought), 'Checking the loop\nIt exits\n\nthen more', 'the newest thought only, without its markdown marks');
 });
 
 test('desktop rows read as sentences: a described command in the past tense, a file by name then folder', async () => {
