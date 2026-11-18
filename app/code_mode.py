@@ -177,10 +177,16 @@ def _user_lines(stack: str) -> str:
         out.append(re.sub(r"<anonymous>:(\d+)", lambda m: f"line {int(m.group(1)) - OFFSET}", line))
     text = "\n".join(out)
     fix = " Fix the code and call run_code again."
+    # A helper the code shadowed (`const { grep } = globalThis`) is undefined, not un-awaited.
+    shadowed = re.search(r"\b(\w+) is not a function", text)
     if "is not defined" in text:
         text += f"\n(run_code provides only: {', '.join(HELPERS)}, e.g. `await read_file(\"a.py\")`.{fix})"
     elif text.startswith("Not supported") or "Error: Not supported" in text:
         text += f"\n(import() is not available: run_code is not Node.js. Use {', '.join(HELPERS)}.{fix})"
+    elif shadowed and shadowed.group(1) in HELPERS:
+        name = shadowed.group(1)
+        text += (f"\n({name} is already defined in run_code: call it as `await {name}({{...}})` and do not declare, "
+                 f"destructure or import it.{fix})")
     elif "is not a function" in text or "[object Promise]" in text:
         text += f"\n(Each helper is async: write `await read_file(...)`, and `await Promise.all(...)` over a map.{fix})"
     return text

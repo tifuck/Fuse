@@ -54,8 +54,10 @@ const console = {};
 console.log = console.info = console.warn = console.error = console.debug = (...parts) => {
   __logs.push(parts.map((p) => typeof p === "string" ? p : JSON.stringify(p)).join(" "));
 };
-const __tool = (name, key) => async (args) => {
+const __tool = (name, key) => async (args, content) => {
   if (typeof args === "string" && key) args = {[key]: args};
+  // write_file(path, content), the habit of every file API.
+  else if (name === "write_file" && typeof args === "string" && typeof content === "string") args = {path: args, content};
   const reply = JSON.parse(await __call(name, JSON.stringify(args === undefined ? {} : args)));
   if (!reply.ok) throw new Error(reply.error);
   return reply.value;

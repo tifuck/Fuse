@@ -164,6 +164,24 @@ def test_only_the_workspace_helpers_reach_the_runner():
     assert runner.calls == []
 
 
+def test_a_helper_the_code_shadowed_gets_its_own_fix_not_the_await_hint():
+    text, _ = run_code("const { grep } = globalThis;\nreturn await grep('TODO');", Runner())
+
+    assert "grep is not a function" in text and "grep is already defined in run_code" in text
+    assert "Each helper is async" not in text
+    text, _ = run_code("return (await read_file('a')).lines();", Runner())
+    assert "Each helper is async" in text
+
+
+def test_write_file_takes_a_path_and_content_as_well_as_an_object():
+    runner = Runner()
+
+    text, trace = run_code("await write_file('out.txt', 'hi');\nawait write_file({path: 'b.txt', content: ''});\nreturn 'ok';", runner)
+
+    assert trace["status"] == "done" and text.startswith("ok")
+    assert runner.calls == [("write_file", {"path": "out.txt", "content": "hi"}), ("write_file", {"path": "b.txt", "content": ""})]
+
+
 def test_a_script_that_never_yields_is_stopped_without_holding_the_event_loop():
     async def body():
         turns = 0
@@ -350,12 +368,14 @@ def test_a_run_cut_off_mid_way_tells_the_model_which_changes_happened():
     assert "b.txt" not in result["content"]
 
 
-def test_the_run_code_tip_names_the_direct_calls_once_and_never_after_run_code():
-    def jobs(*names):
-        return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}") for i, name in enumerate(names)]
+def test_the_run_code_tip_names_the_direct_calls_once_and_never_after_a_run_code_that_worked():
+    def jobs(*names, status="done"):
+        return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}", trace={"status": status}) for i, name in enumerate(names)]
 
     seen = tool_jobs.code_tip_count(jobs("read_file", "read_file", "grep", "web_search"), collections.Counter())
     assert seen == collections.Counter(read_file=2, grep=1)
+    # A model that gives up on code after a failed run still gets the tip.
+    assert tool_jobs.code_tip_count(jobs("run_code", status="error"), seen) == seen
     assert tool_jobs.code_tip_count(jobs("run_code", "read_file"), seen) is None
     msgs = [{"role": "assistant"}, {"role": "tool", "content": "ok"}]
     tool_jobs.add_code_tip(msgs, seen)
