@@ -1,0 +1,89 @@
+/* Terminal pass: everything in the working area reads as one terminal grid. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: calc(0.78rem * var(--chat-text-scale, 1)); }
+
+/* One cell size: a terminal has no small print and no big headings. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is([data-chat-log], [data-chat-box], [data-perm-queue]) :not(svg, svg *, img) { font-size: var(--tty) !important; letter-spacing: 0 !important; text-transform: none !important; }
+
+/* An opened call or group prints inline; it does not become a grey panel. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-group.is-console-expanded,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-console-expanded { background: none !important; }
+
+/* Buttons are bracketed words, inverted on hover like a TUI selection. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-error-continue, .chat-skill-card .btn, .chat-perm-act, .chat-code-head button, .chat-artifact-card-open) {
+  min-height: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important;
+  background: none !important; box-shadow: none !important; color: var(--mist) !important;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-error-continue, .chat-skill-card .btn, .chat-perm-act)::before { content: "[ "; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-error-continue, .chat-skill-card .btn, .chat-perm-act)::after { content: " ]"; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-error-continue, .chat-skill-card .btn, .chat-perm-act):hover { background: var(--mist) !important; color: var(--ink) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-skill-card .btn:not(.ghost), .chat-perm-act.is-allow) { color: var(--brass, #a5d8ff) !important; font-weight: 700; }
+
+/* Permission prompt: a single-line box, tags in brackets, the command as a $ line. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card { background: none !important; box-shadow: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-perm-card-dot, .chat-perm-card-bar) { display: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-perm-card-agent, .chat-perm-card-kind) { display: inline !important; height: auto !important; width: auto !important; min-width: 0 !important; background: none !important; padding: 0 !important; border: 0 !important; color: var(--mute) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-perm-card-agent, .chat-perm-card-kind)::before { content: "["; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-perm-card-agent, .chat-perm-card-kind)::after { content: "]"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-perm-card-grant, .chat-perm-card-cmd) { background: none !important; border: 0 !important; padding-inline: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card-cmd::before { content: "$ "; color: var(--mute); }
+
+/* A failed request prints like a failed call: red bullet, tree branch. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error { background: none !important; border: 0 !important; padding: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error-title::before { content: "● "; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error-detail { padding-left: 2ch; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error-detail::before { content: "└ "; color: var(--mute); }
+
+/* Attachments are [name ext] tokens, not chips. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-user-file.is-file { background: none !important; border: 0 !important; padding: 0 !important; box-shadow: none !important; min-height: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-user-file.is-file svg { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-file-name::before { content: "["; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-file-ext { border: 0 !important; padding: 0 !important; background: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-file-ext::after { content: "]"; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-user-file.is-image { border: 0 !important; }
+
+/* Code blocks: a fence label and indented code, no card. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code { background: none !important; border: 0 !important; box-shadow: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code-head { background: none !important; border: 0 !important; min-height: 0 !important; padding: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code-head > span::before { content: "```"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code-head button svg { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code-head button { width: auto !important; white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code-head button::after { content: "[copy]"; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-code pre { background: none !important; padding: 0.2rem 0 0.2rem 2ch !important; }
+
+/* Artifact: one line, no card or icon tile. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card { background: none !important; border: 0 !important; padding: 0 !important; min-height: 0 !important; box-shadow: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card-icon { display: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card { display: block !important; width: auto !important; text-align: left; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card * { display: inline !important; position: static !important; margin: 0 1ch 0 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card .chat-artifact-card-icon { display: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card-title::before { content: "▸ "; color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card-open::before { content: "["; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-artifact-card-open::after { content: "]"; }
+
+/* Skill proposal: an outlined form, no filled panels; the checkbox is [x]. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-skill-card { background: none !important; box-shadow: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-skill-card :is(input:not([type="checkbox"]), textarea) { background: none !important; box-shadow: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-skill-card input[type="checkbox"] { appearance: none; width: auto; height: auto; margin: 0; border: 0; background: none !important; font: inherit; color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-skill-card input[type="checkbox"]::before { content: "[ ]"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-skill-card input[type="checkbox"]:checked::before { content: "[x]"; }
+
+/* Composer: words and glyphs instead of drawn icons. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-send, .chat-stash-btn, .chat-mic-btn) svg,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-chev { display: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] :is(.chat-attach-btn, .chat-search-btn, .chat-perm-btn, .chat-context, .chat-send, .chat-stash-btn, .chat-mic-btn):not([hidden]) { display: inline-flex !important; align-items: center; width: auto !important; min-width: 0 !important; height: auto !important; min-height: 2rem; padding-inline: 0.6ch !important; line-height: normal !important; opacity: 1 !important; filter: none !important; scale: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: none !important; color: var(--mute); font-family: var(--mono); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-send::before { display: none !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-attach-btn::after { content: "+"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-search-btn::after { content: "web:off"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-search-btn.is-on::after { content: "web:on"; color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-perm-btn-label { display: inline !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-context::after { content: "ctx"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-stash-btn::after { content: "stash"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-mic-btn::after { content: "mic"; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-send::after { content: "↵ send"; color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-send.is-stop::after { content: "■ stop"; color: var(--fault); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-send:disabled::after { color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-btn small::before { content: "("; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-btn small::after { content: ")"; }
+
+/* Rendered lists in tool output kept their markers clipped ("ı." for "1."). */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] .chat-step ol { list-style-position: inside; padding-left: 0; }

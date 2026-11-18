@@ -178,7 +178,7 @@ function currentActivity(msg, groups, live) {
       phase = "done";
       if (!total) label = msg && msg.reasoning ? "Thought" : "Worked";
       else if (counts.done === total) label = `Completed ${total} ${total === 1 ? "action" : "actions"}`;
-      else label = `${total} ${total === 1 ? "action" : "actions"} · ${deps.countsLabel(counts)}`;
+      else label = `${total} ${total === 1 ? "action" : "actions"} | ${deps.countsLabel(counts)}`;
     }
     const tool = phase === "calling" ? String(activity.tool || "") : "";
     return { phase, label, current, tool, live: Boolean(live && !stopping), busy: Boolean(live) };

@@ -5,7 +5,7 @@ function permissionCardHtml(perm, msg) {
     if (perm.kind === "tool_permission") return "";
     const status = perm.status || "pending";
     const pending = status === "pending";
-    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" · ") || "SKILL.md";
+    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" | ") || "SKILL.md";
     const replace = perm.overwrite
       ? `<label class="chat-skill-check"><input type="checkbox" data-perm-replace><span>Replace your existing <code>${deps.escapeHtml(perm.slug || "")}</code>${perm.origin_existing ? ` (${deps.escapeHtml(perm.origin_existing)})` : ""}</span></label>`
       : "";
@@ -35,7 +35,7 @@ function permQueueCardHtml(rec) {
       ? `<span class="chat-perm-card-agent is-sub">Subagent</span><span class="chat-perm-card-who">${deps.escapeHtml(rec.requester)}</span>`
       : `<span class="chat-perm-card-agent">Main</span>`;
     const bits = [copy.action, copy.host, copy.why].filter(Boolean);
-    const meta = bits.length ? `<span class="chat-perm-card-meta">${deps.escapeHtml(bits.join(" · "))}</span>` : "";
+    const meta = bits.length ? `<span class="chat-perm-card-meta">${deps.escapeHtml(bits.join(" | "))}</span>` : "";
     const grant = copy.path
       ? `<p class="chat-perm-card-grant"><span class="chat-perm-card-kind">${deps.escapeHtml(copy.noun)}</span><span class="mono chat-perm-card-path" title="${deps.escapeHtml(copy.path)}">${deps.escapeHtml(copy.path)}</span></p>`
       : "";
