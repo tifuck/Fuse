@@ -185,6 +185,27 @@ def test_state_is_saved_by_key_hash_and_a_rebuild_keeps_live_cooldowns(make_pool
     assert (restored.states["keyA"].state, restored.states["keyA"].disabled_reason) == (DISABLED, DISABLED_WEEKLY)
 
 
+def test_error_counters_decay_once_per_idle_window_not_every_sweep(make_pool):
+    state = make_pool("key").states["key"]
+    with patch("app.sources.key_pool.time.time", return_value=NOW):
+        state.mark_error("server_500", 10)
+        state.mark_error("server_500", 10)
+        state.consecutive_errors = 8
+    with patch("app.sources.key_pool.time.time", return_value=NOW + 101):
+        assert state.decay_errors(10.0) is True
+    with patch("app.sources.key_pool.time.time", return_value=NOW + 131):
+        assert state.decay_errors(10.0) is False  # the next window (10 * 5s) has not passed
+    assert (state.consecutive_errors, state.last_backoff) == (4, 5)
+
+    auth = make_pool("auth").states["auth"]
+    auth.consecutive_auth_errors, auth.last_error_at = 2, NOW
+    with patch("app.sources.key_pool.time.time", return_value=NOW + 601):
+        assert auth.decay_errors(10.0) is True
+    with patch("app.sources.key_pool.time.time", return_value=NOW + 631):
+        assert auth.decay_errors(10.0) is False
+    assert auth.consecutive_auth_errors == 1
+
+
 def test_a_spent_quota_comes_back_when_its_window_ends_but_an_auth_disable_does_not(make_pool):
     pool = make_pool("spent", "revoked")
     with patch("app.sources.key_pool.time.time", return_value=NOW):

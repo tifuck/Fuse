@@ -63,10 +63,12 @@ def _unsupported_param(obj) -> str | None:
                 texts.append(val)
     elif isinstance(err, str):
         texts.append(err)
+    phrase = "unsupported parameter:"
     for text in texts:
         lower = text.lower()
-        if "unsupported parameter:" in lower:
-            tail = text.split(":", 1)[1].strip()
+        start = lower.find(phrase)
+        if start >= 0:
+            tail = text[start + len(phrase):].strip()
             name = tail.split()[0].strip(".,;\"'`") if tail else ""
             return name or None
         marker = " is not supported"
@@ -75,6 +77,17 @@ def _unsupported_param(obj) -> str | None:
             name = text[:idx].strip().split()[-1].strip(".,;\"'`")
             return name or None
     return None
+
+
+def _event_error(event: dict) -> dict:
+    """A Responses `error` event's message and code: nested under "error" or
+    at the event's top level."""
+    err = event.get("error") if isinstance(event.get("error"), dict) else {}
+    return {
+        "message": err.get("message") or event.get("message"),
+        "code": err.get("code") or err.get("type") or event.get("code"),
+        "type": err.get("type"),
+    }
 
 
 def _usage_from_response(u: dict) -> dict:
@@ -397,9 +410,9 @@ class _Translator:
             self.error_code = str(err.get("code") or err.get("type") or incomplete.get("reason") or "")
             return b"__ERROR__"
         if etype == "error":
-            err = event.get("error") if isinstance(event.get("error"), dict) else {}
-            self.error = str(err.get("message") or event.get("message") or "upstream error")
-            self.error_code = str(err.get("code") or err.get("type") or event.get("code") or "")
+            err = _event_error(event)
+            self.error = str(err["message"] or "upstream error")
+            self.error_code = str(err["code"] or "")
             return b"__ERROR__"
         return None
 
@@ -564,8 +577,8 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
                 request_fault = etype == "response.incomplete" or _request_caused(err)
                 break
             elif etype == "error":
-                err = event.get("error") if isinstance(event.get("error"), dict) else {}
-                translator.error = str(err.get("message") or "upstream error")
+                err = _event_error(event)
+                translator.error = str(err["message"] or "upstream error")
                 request_fault = _request_caused(err)
                 break
     except (UpstreamProtocolError, httpx.HTTPError) as exc:
