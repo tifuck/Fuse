@@ -107,6 +107,11 @@ def test_think_tags_in_code_or_mid_reply_stay_in_the_reply():
     reply = _stream({"content": "<think>the tag is `</thi"}, {"content": "nk"}, {"content": ">` here\n</think>Answer."})
     assert reply["reasoning"] == "the tag is `</think>` here\n"
     assert reply["content"] == "Answer."
+    # A bare close (the template opened the thought in the prompt) is dropped;
+    # one quoted in code, its span still open at a frame end, stays.
+    reply = _stream({"content": "plan</thi"}, {"content": "nk>Use `</think"}, {"content": ">` to end it."})
+    assert reply["content"] == "planUse `</think>` to end it."
+    assert reply["reasoning"] == ""
 
 
 def test_reasoning_sent_under_two_keys_is_kept_once():

@@ -192,12 +192,12 @@ class Output:
                 # from the tag until its line settles.
                 self._append_tagged(data[offset:match.start()])
                 self._think_pending = data[match.start():]
-                self._append_text("reasoning", self._think_pending, "tagged")
+                self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged")
                 return
             if not toggles:
                 continue
             self._append_tagged(data[offset:match.start()])
-            self._think_inside = not self._think_inside
+            self._think_inside = not match[0].startswith("</")
             self._think_from = len(self.message.get("reasoning") or "")
             offset = match.end()
         rest = data[offset:]
@@ -216,17 +216,21 @@ class Output:
         self._append_text("reasoning" if self._think_inside else "content", text, "tagged")
 
     def _think_toggles(self, data, offset, match):
-        """Whether a think tag in the reply opens or closes a thought; None
-        while that cannot be told yet. Reasoning models open one where a
-        round's text starts, so a tag after visible text is prose naming it
-        (left as written, never a switch that hides the rest of the reply). A
-        thought closes at a closing tag outside markdown code."""
+        """Whether a think tag in the reply is markup (dropped; an opener, or
+        a closer inside a thought, switches); None while that cannot be told
+        yet. Reasoning models open one where a round's text starts, so an
+        opener after visible text is prose naming it (left as written, never
+        a switch that hides the rest of the reply). A closing tag outside
+        markdown code is markup: it ends a thought, or is the bare close of
+        one a template opened in the prompt."""
         closing = match[0].startswith("</")
-        if not self._think_inside:
-            return not closing and self._think_ready and not data[offset:match.start()].strip()
         if not closing:
-            return False
-        head = (self.message.get("reasoning") or "")[self._think_from:]
+            return not self._think_inside and self._think_ready and not data[offset:match.start()].strip()
+        if self._think_inside:
+            head = (self.message.get("reasoning") or "")[self._think_from:]
+        else:
+            segments = self.message["segments"]
+            head = segments[-1].get("text") or "" if segments and segments[-1].get("type") == "content" else ""
         quoted = in_md_code(head + data[offset:], len(head) + match.start() - offset)
         return None if quoted is None else not quoted
 
