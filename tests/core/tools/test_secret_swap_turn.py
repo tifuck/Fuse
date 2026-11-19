@@ -62,3 +62,34 @@ def test_a_swapping_chat_runs_and_shows_real_values_the_model_never_reads(ssh_ho
     assert "Never print full secret values" not in system and "swap" not in system.lower()
     # The next turn replays the reply once, as the model wrote it.
     assert sent(bodies[2]).count(f"Deployed with {model['key']}. CI token: {model['gh']}") == 1
+
+
+def test_a_failed_call_is_logged_for_admins_with_stand_ins_only(ssh_host):
+    from app import tool_failures
+
+    uid = ssh_host.uid
+    hosts.set_settings(uid, agent_coding=True)
+    chats.set_user_context(uid, secret_swap=True)
+    project = make_project(uid, ssh_host.host_id, ssh_host.root)
+    thread = chats.create_thread(uid, model="offline", tools=[], kind="project",
+                                 host_id=ssh_host.host_id, project_id=project)
+    command = f"./deploy.sh --key {OPENAI}"
+    ssh_host.shell.on(command, out=f"ci token {GITHUB}\n", code=None)  # no exit status: the call fails
+
+    def first(body):
+        key = re.search(r"sk-proj-[A-Za-z0-9_-]{48}", sent(body)).group(0)
+        return tool_call_frames([("call-1", "run_terminal_command", {"command": f"./deploy.sh --key {key}"})])
+
+    async def body():
+        with fake_provider(first, text_frames("It failed.")):
+            _, run = await run_turn(uid, f"deploy with OPENAI_API_KEY={OPENAI}", thread=thread)
+        return run
+
+    run = run_async(body())
+
+    assert run["status"] == "completed"
+    assert ssh_host.shell.reached == [command]
+    [row] = tool_failures.recent()
+    logged = json.dumps(row)
+    assert row["tool_name"] == "run_terminal_command" and "./deploy.sh --key sk-proj-" in logged
+    assert OPENAI not in logged and GITHUB not in logged

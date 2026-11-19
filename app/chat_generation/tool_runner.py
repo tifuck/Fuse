@@ -137,7 +137,7 @@ async def _record_failure(
 ) -> None:
     """Log one failed tool call. Best effort; must never break the stream."""
     try:
-        from .. import tool_failures
+        from .. import secret_swap, tool_failures
 
         trace = trace or {}
         if job is not None:
@@ -146,12 +146,26 @@ async def _record_failure(
             call_id = call_id or job.call_id
         if name in ARTIFACT_TOOL_IDS or not name:
             arguments = _redact_tool_args(name, arguments)
+        logged = {
+            "error": error or str(trace.get("error") or ""),
+            "arguments": arguments,
+            "trace": trace,
+            "exception": exception or str(trace.get("exception") or ""),
+            "reasoning": str(diag.get("reasoning") or ""),
+            "user_text": str(diag.get("user_text") or ""),
+        }
+        # Every admin reads this log: a swapping chat's values go in as their
+        # stand-ins (the trace holds the real command and output). Unreadable
+        # pairs raise, and nothing is logged.
+        swap = await asyncio.to_thread(secret_swap.for_thread, user_id, thread_id)
+        if swap is not None:
+            logged = await asyncio.to_thread(swap.tokenize_value, logged)
         await asyncio.to_thread(
             tool_failures.record,
             tool_name=name or "unknown",
-            error=error or str(trace.get("error") or ""),
+            error=logged["error"],
             kind=kind or str(trace.get("kind") or ""),
-            arguments=arguments,
+            arguments=logged["arguments"],
             call_id=call_id,
             user_id=user_id,
             thread_id=thread_id,
@@ -162,10 +176,10 @@ async def _record_failure(
             round_index=diag.get("round"),
             phase=phase,
             latency_ms=latency_ms if latency_ms is not None else trace.get("latency_ms"),
-            trace=trace,
-            exception=exception or str(trace.get("exception") or ""),
-            reasoning=str(diag.get("reasoning") or ""),
-            user_text=str(diag.get("user_text") or ""),
+            trace=logged["trace"],
+            exception=logged["exception"],
+            reasoning=logged["reasoning"],
+            user_text=logged["user_text"],
         )
     except Exception:
         logger.debug("tool failure log skipped", exc_info=True)
