@@ -169,7 +169,10 @@ function updateAssistant(article, msg, live) {
     const sources = [...sourceMap.values()].map((row) => ({ ...row, cited: content.includes(row.url) }));
     const citations = article.querySelector("[data-citations]");
     const inActivity = Boolean(traces.length);
-    citations.hidden = inActivity || !sources.length || !msg.content;
+    // Hidden states are compared before they are written: a streamed frame
+    // repeats them all, and a repeated write is still a DOM mutation.
+    const noCitations = inActivity || !sources.length || !msg.content;
+    if (citations.hidden !== noCitations) citations.hidden = noCitations;
     const sourceGrid = article.querySelector("[data-source-grid]");
     const sourceSignature = JSON.stringify(sources);
     if (sourceGrid._src !== sourceSignature) {
@@ -187,7 +190,7 @@ function updateAssistant(article, msg, live) {
         cardsEl._sig = cardSig;
         cardsEl.innerHTML = cards.map(artifactCardHtml).join("");
       }
-      cardsEl.hidden = !cards.length;
+      if (cardsEl.hidden !== !cards.length) cardsEl.hidden = !cards.length;
     }
     const toolById = new Map(traces.map((trace, index) => [trace.id, { trace, index }]));
     const permById = new Map((msg.permissions || []).map((perm) => [perm.id, perm]));
@@ -419,13 +422,13 @@ function updateAssistant(article, msg, live) {
       .map((t) => deps.normErr(t.error || "failed"));
     const errDup = Boolean(errText && toolFailKeys.includes(deps.normErr(errText)));
     if (errText && !errDup) {
-      err.hidden = false;
+      if (err.hidden) err.hidden = false;
       if (err._text !== errText) {
         err._text = errText;
         err.dataset.tone = deps.parseProviderError(errText).tone;
         err.innerHTML = deps.providerErrorHtml(errText);
       }
-    } else {
+    } else if (!err.hidden || err._text) {
       err.hidden = true;
       err._text = "";
       err.textContent = "";
@@ -437,7 +440,8 @@ function updateAssistant(article, msg, live) {
     const errActions = article.querySelector("[data-err-actions]");
     if (errActions) {
       const last = deps.messages[deps.messages.length - 1] === msg || (msg.id && deps.messages.at(-1)?.id === msg.id);
-      errActions.hidden = !(errText && !live && last);
+      const noActions = !(errText && !live && last);
+      if (errActions.hidden !== noActions) errActions.hidden = noActions;
       const button = errActions.querySelector("[data-continue]");
       if (button && !button._bound) {
         button._bound = true;
@@ -457,7 +461,7 @@ function updateAssistant(article, msg, live) {
       meta.innerHTML = usageBits
         .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
         .join('<span class="chat-foot-dot" aria-hidden="true">|</span>');
-    } else {
+    } else if (!foot.hidden) {
       foot.hidden = true;
     }
   }

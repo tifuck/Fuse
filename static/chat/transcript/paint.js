@@ -42,6 +42,8 @@ function markArriving(article) {
 // times per second across many subagents; state updates stay eager and
 // cheap, while the DOM repaint runs at most once per animation frame.
 let _paintLastQueued = false;
+// What the artifact pane last read from the streamed reply's calls.
+let _artifactSeen = "";
 
 export function createPaint(ctx) {
   const { agents, artifacts, composer, context, follow, sidebar, traces, ui } = ctx;
@@ -267,8 +269,15 @@ export function createPaint(ctx) {
     const viewport = follow.captureThreadViewport();
     ui.updateAssistant(last, msg, messageRunLive(msg));
     paintRecaps(last);
-    artifacts.rememberLatestArtifact();
-    setActive(true);
+    // A streamed frame leaves the pane and the header alone unless what they
+    // show moved: a write there, even of the same text, restyles the transcript.
+    const artifactSig = `${S.currentId}:${msg.id}:${S.streaming}:${S.partialTranscript}:` + (msg.tools || []).map((trace) =>
+      `${trace.id}:${trace.status}:${trace.identifier || ""}:${trace.version ?? ""}:${trace.title || ""}:${trace.icon || ""}:${trace.visibility || ""}:${trace.artifact_gone || ""}`).join("|");
+    if (_artifactSeen !== artifactSig) {
+      _artifactSeen = artifactSig;
+      artifacts.rememberLatestArtifact();
+    }
+    if (S.log.hidden || !S.root.classList.contains("is-active") || S.root.classList.contains("is-composing")) setActive(true);
     composer.syncComposer();
     if (S.streaming) {
       const now = Date.now();
