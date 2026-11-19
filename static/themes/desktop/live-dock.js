@@ -51,7 +51,7 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     // The clock, at the line's far end.
     const clock = meta?.clock || "";
-    if (tail.textContent !== clock) tail.textContent = clock;
+    FuseChatDOM.setText(tail, clock);
     if (tail.title !== "Elapsed") tail.title = "Elapsed";
     const hideTail = !clock;
     // Toggling hidden on every tick reflows the in-flow dock and can flip the
@@ -76,7 +76,7 @@ function swapVerb(el, verb, text) {
     verb._swap = null;
     const w0 = verb.getBoundingClientRect().width;
     const box = { left: verb.offsetLeft, top: verb.offsetTop, width: verb.offsetWidth, height: verb.offsetHeight };
-    verb.textContent = text;
+    FuseChatDOM.setText(verb, text);
     if (!old || !text || !w0 || deps.reduceMotion.matches) return;
     const run = { anims: [], ghost: document.createElement("span") };
     verb._swap = run;
@@ -202,7 +202,7 @@ function syncPaneThought(el, text, grow) {
     const shown = el._text || "";
     if (text === shown) return;
     grow?.();
-    if (shown && text.startsWith(shown)) el._out.append(text.slice(shown.length));
+    if (shown && text.startsWith(shown) && el._out.lastChild?.nodeType === 3) el._out.lastChild.appendData(text.slice(shown.length));
     else el._out.textContent = text;
     el._text = text;
   }
@@ -289,7 +289,7 @@ function paneParts(dock) {
   }
 
 function showPane(dock, pane) {
-    pane.head.setAttribute("aria-expanded", String(paneOpen));
+    if (pane.head.getAttribute("aria-expanded") !== String(paneOpen)) pane.head.setAttribute("aria-expanded", String(paneOpen));
     if (dock.classList.contains("is-pane-open") === paneOpen) return;
     dock.classList.toggle("is-pane-open", paneOpen);
     pane.fold.inert = !paneOpen;
@@ -563,10 +563,10 @@ function setConsoleSpin(el) {
         stopConsoleSpin();
         return;
       }
+      if (document.hidden) return;
       deps.consoleSpinFrame = (deps.consoleSpinFrame + 1) % CONSOLE_SPIN_FRAMES.length;
       marks.forEach((spin) => {
-        const glyph = consoleSpinGlyph("runSpin" in spin.parentElement.dataset);
-        if (spin.textContent !== glyph) spin.textContent = glyph;
+        FuseChatDOM.setText(spin, consoleSpinGlyph("runSpin" in spin.parentElement.dataset));
       });
     }, 110);
   }
@@ -588,7 +588,7 @@ function syncLiveDock() {
         deps.liveDockHideTimer = 0;
       }
       deps.liveDock.hidden = false;
-      deps.liveDock.setAttribute("aria-hidden", "false");
+      if (deps.liveDock.getAttribute("aria-hidden") !== "false") deps.liveDock.setAttribute("aria-hidden", "false");
       const groups = deps.groupTraces(Array.isArray(msg.tools) ? msg.tools : []);
       const status = currentActivity(msg, groups, true);
       setLivePhase(deps.liveDock, status.phase);

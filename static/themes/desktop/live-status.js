@@ -97,11 +97,11 @@ function syncActivityElapsed(article, msg, live) {
     const text = formatActivityElapsed(deps.liveElapsedSeconds(msg, live), live);
     elapsedEls.forEach((el) => {
       if (el.closest("[data-live-status]")) {
-        if (el.textContent !== text) el.textContent = text;
+        FuseChatDOM.setText(el, text);
         return;
       }
       const next = el.closest("[data-activity]")?.classList.contains("is-waiting") ? "" : text;
-      if (el.textContent !== next) el.textContent = next;
+      FuseChatDOM.setText(el, next);
     });
   }
 
