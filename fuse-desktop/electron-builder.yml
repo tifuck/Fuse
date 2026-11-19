@@ -17,6 +17,7 @@ files:
   - context-menu.js
   - site-url.js
   - permissions.js
+  - rendering.js
   - load-error.html
   - connect.html
   - package.json
