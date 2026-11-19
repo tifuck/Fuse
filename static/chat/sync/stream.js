@@ -197,9 +197,10 @@ export function createStream(ctx) {
           // Updates only exist once a steer split the reply (display_parts);
           // they resize frozen-prefix articles above the reading position, so
           // hold the viewport across the synchronous repaint.
-          const updateViewport = transcript.captureThreadViewport();
+          const updates = payload.updates || [];
+          const updateViewport = updates.length ? transcript.captureThreadViewport() : null;
           let reconciled = false;
-          for (const update of payload.updates || []) {
+          for (const update of updates) {
             const index = S.messages.findIndex((item) => item.id === update.id);
             if (index < 0) { await apply.reconcileThread(); reconciled = true; break; }
             Object.assign(S.messages[index], update);
@@ -209,7 +210,7 @@ export function createStream(ctx) {
           // A snapshot just applied set the cursors (newer than this event)
           // and restored its own viewport.
           if (!reconciled) {
-            transcript.restoreThreadViewport(updateViewport);
+            if (updateViewport) transcript.restoreThreadViewport(updateViewport);
             S.viewCursor = event.id;
             S.threadWatermark = event.id;
           }
