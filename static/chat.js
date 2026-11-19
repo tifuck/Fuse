@@ -835,9 +835,9 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       : null;
   }, { passive: true });
 
-    S.log.addEventListener("touchmove", (event) => {
-    const pane = event.target.closest(".chat-code pre");
-    if (!pane || !codeTouch || event.touches.length !== 1) return;
+    function handOffCodeScroll(event) {
+    const pane = event.currentTarget;
+    if (!codeTouch || event.touches.length !== 1) return;
     const deltaY = event.touches[0].clientY - codeTouch.y;
     const deltaX = event.touches[0].clientX - codeTouch.x;
     codeTouch = { x: event.touches[0].clientX, y: event.touches[0].clientY };
@@ -848,7 +848,21 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       event.preventDefault();
       S.thread.scrollTop -= deltaY;
     }
-  }, { passive: false });
+  }
+
+    // The listener that may veto a scroll sits on the panes themselves: on the
+  // whole transcript it made every touch scroll there wait on the main thread.
+  function armCodePanes(node) {
+    if (node.nodeType !== 1) return;
+    if (node.matches(".chat-code pre")) node.addEventListener("touchmove", handOffCodeScroll, { passive: false });
+    else if (node.firstElementChild) node.querySelectorAll(".chat-code pre").forEach(armCodePanes);
+  }
+
+    armCodePanes(S.log);
+
+    new MutationObserver((records) => {
+    for (const record of records) record.addedNodes.forEach(armCodePanes);
+  }).observe(S.log, { childList: true, subtree: true });
 
     S.log.addEventListener("touchend", () => { codeTouch = null; }, { passive: true });
 
