@@ -31,6 +31,8 @@ html[data-chat-view="desktop"] body.is-settings {
 
   /* —— Ground —— */
   & :is(.settings-stage, .settings-scroll) { background: var(--dk-canvas); }
+  /* Page parts that paint the ground (sticky bars, wells) take the canvas. */
+  & .settings-scroll { --ink: var(--dk-canvas); }
   & .settings-shell { letter-spacing: 0; font-family: var(--sans); color: var(--mist); }
 
   /* —— Rail = sessions sidebar —— */
@@ -107,6 +109,9 @@ html[data-chat-view="desktop"] body.is-settings {
     border-radius: 10px;
     box-shadow: none;
   }
+  & .settings-shell :is(.skills-main, .art-list, .proj-list, .hosts-empty, .uz-facts-box, .uz-key-create, .param-table, .error-grid, .dl-hero, .dl-list, .dl-alt) { border-color: var(--dk-card-line); border-radius: 10px; background: var(--dk-card); overflow: clip; }
+  & .settings-shell :is(.skills-tab, .skills-find, .proj-search, .catalog-find) { border-color: var(--dk-card-line); border-radius: 7px; }
+  & .settings-shell .skills-switch, & .settings-shell .skills-switch::after { border-radius: 999px; }
   & .settings-shell :is(.panel h2, .section-heading h2, .uz-card-head h2) { font: 600 14px/1.4 var(--sans); letter-spacing: 0; }
   & .settings-shell :is(.usage-sub, .uz-sub, .set-head p, .set-label span) { color: var(--mute); font-size: 12.5px; line-height: 1.5; }
   & .settings-shell :is(.metric-label, .eyebrow, .uz-label) {

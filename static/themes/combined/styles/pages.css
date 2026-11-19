@@ -101,6 +101,9 @@ html[data-chat-view="combined"] body.is-settings {
     border-radius: 12px;
     box-shadow: none;
   }
+  & .settings-shell :is(.skills-main, .art-list, .proj-list, .hosts-empty, .uz-facts-box, .uz-key-create, .param-table, .error-grid, .dl-hero, .dl-list, .dl-alt) { border-radius: 12px; overflow: clip; }
+  & .settings-shell :is(.skills-tab, .skills-find, .proj-search, .catalog-find) { border-radius: 8px; }
+  & .settings-shell .skills-switch, & .settings-shell .skills-switch::after { border-radius: 999px; }
   & .settings-shell :is(.panel h2, .section-heading h2, .uz-card-head h2) { font: 600 15px/1.4 var(--sans); letter-spacing: 0; }
   & .settings-shell :is(.usage-sub, .uz-sub, .set-head p, .set-label span) { color: var(--mute); font-size: 13px; line-height: 1.5; }
   & .settings-shell :is(.metric-label, .eyebrow, .uz-label) {
