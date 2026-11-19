@@ -247,7 +247,7 @@ html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
   & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"])), select) { min-height: 32px; padding: 0.35rem 0.65rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) select { padding-right: 1.8rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) textarea { padding: 0.55rem 0.7rem; line-height: 1.55; }
-  & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input, select, textarea):focus { border-color: var(--dk-link); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--dk-link) 22%, transparent); }
+  & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input, select, textarea):focus:not(:is(.fp-search, .proj-search, .skills-find, .catalog-find) *) { border-color: var(--dk-link); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--dk-link) 22%, transparent); }
   & :is(.settings-shell, dialog.modal, .fp-dialog, .chat-sheet) input[type="file"] { padding: 0.3rem; font-size: 12.5px; }
   & :is(.settings-shell, dialog.modal, .fp-dialog, .chat-sheet) input[type="file"]::file-selector-button {
     margin-right: 0.6rem;

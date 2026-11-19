@@ -39,8 +39,6 @@ function setLiveLabelText(el, text, meta, arg = "") {
       cmd.append(document.createElement("span"));
       el.insertBefore(cmd, tail);
     }
-    if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
-    if (cmd.hidden !== !arg) cmd.hidden = !arg;
     // The clock, at the line's far end.
     const clock = meta?.clock || "";
     FuseChatDOM.setText(tail, clock);
@@ -49,16 +47,18 @@ function setLiveLabelText(el, text, meta, arg = "") {
     // Toggling hidden on every tick reflows the in-flow dock and can flip the
     // transcript extent by a rounding pixel; only touch it on a real change.
     if (tail.hidden !== hideTail) tail.hidden = hideTail;
-    if (verb.textContent === text) return;
-    swapVerb(el, verb, text);
+    if (verb.textContent === text && cmd.firstChild.textContent === arg) return;
+    swapLabel(el, verb, cmd, text, arg);
   }
 
-// The status changing fades: the status element keeps the new text (its
-// shimmer, ellipsis and textContent untouched); the old text leaves in an
-// aria-hidden copy laid over it, clipped to the line.
-const SWAP_MS = 180;
+// The status changing rolls over: the old words rise and blur out of the line
+// in an aria-hidden copy clipped to it, the new ones rise into place. The
+// status element keeps the new text (its shimmer, ellipsis and textContent
+// untouched). The command in parentheses moves with its status.
+const SWAP_OUT_MS = 140;
+const SWAP_IN_MS = 220;
 const SWAP_EASE = "cubic-bezier(.2, .8, .2, 1)";
-function swapVerb(el, verb, text) {
+function swapLabel(el, verb, cmd, text, arg) {
     const old = verb.textContent;
     const live = verb._swap;
     if (live) {
@@ -66,23 +66,32 @@ function swapVerb(el, verb, text) {
       live.ghost.remove();
     }
     verb._swap = null;
-    const w0 = verb.getBoundingClientRect().width;
-    const box = { left: verb.offsetLeft, top: verb.offsetTop, width: verb.offsetWidth, height: verb.offsetHeight };
+    const right = cmd.hidden ? verb.offsetLeft + verb.offsetWidth : cmd.offsetLeft + cmd.offsetWidth;
+    const box = { left: verb.offsetLeft, width: right - verb.offsetLeft };
+    const ghost = document.createElement("span");
+    ghost.className = "dk-verb-ghost";
+    ghost.setAttribute("aria-hidden", "true");
+    const was = document.createElement("span");
+    was.className = "dk-ghost-verb";
+    was.textContent = old;
+    ghost.append(was);
+    if (!cmd.hidden) ghost.append(cmd.cloneNode(true));
     FuseChatDOM.setText(verb, text);
-    if (!old || !text || !w0 || deps.reduceMotion.matches) return;
-    const run = { anims: [], ghost: document.createElement("span") };
+    if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
+    if (cmd.hidden !== !arg) cmd.hidden = !arg;
+    if (!old || !text || !box.width || deps.reduceMotion.matches) return;
+    const run = { anims: [], ghost };
     verb._swap = run;
-    run.ghost.className = "dk-verb-ghost";
-    run.ghost.setAttribute("aria-hidden", "true");
-    Object.assign(run.ghost.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
-    const out = document.createElement("span");
-    out.textContent = old;
-    run.ghost.append(out);
-    el.append(run.ghost);
-    run.anims.push(out.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.98)" }], { duration: SWAP_MS * 0.8, easing: "ease-out", fill: "forwards" }));
-    const landed = verb.animate([{ opacity: 0, transform: "scale(.98)" }, { opacity: 1, transform: "none" }], { duration: SWAP_MS, easing: SWAP_EASE });
-    run.anims.push(landed);
-    landed.finished.then(() => {
+    Object.assign(ghost.style, { left: `${box.left}px`, width: `${box.width}px` });
+    el.append(ghost);
+    const gone = { opacity: 0, transform: "translateY(-0.45em)", filter: "blur(2px)" };
+    const coming = { opacity: 0, transform: "translateY(0.45em)", filter: "blur(2px)" };
+    const shown = { opacity: 1, transform: "none", filter: "blur(0)" };
+    run.anims.push(ghost.animate([shown, gone], { duration: SWAP_OUT_MS, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }));
+    const landed = [verb, ...(cmd.hidden ? [] : [cmd])].map((node) =>
+      node.animate([coming, shown], { duration: SWAP_IN_MS, delay: 40, easing: SWAP_EASE, fill: "backwards" }));
+    run.anims.push(...landed);
+    landed[0].finished.then(() => {
       if (verb._swap !== run) return;
       run.ghost.remove();
       verb._swap = null;
@@ -100,6 +109,7 @@ const PANE_KEY = "fuse.desktop.livePane";
 const PANE_LINES = 40;
 const PANE_MS = 240;
 const PANE_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+const PANE_IDLE = { thinking: "Thinking", writing: "The reply is coming in above" };
 const PANE_DOTS = '<span class="dk-fe-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
 let paneOpen = false;
 try { paneOpen = localStorage.getItem(PANE_KEY) === "1"; } catch (_) {}
@@ -153,6 +163,15 @@ function paneBody(trace) {
       const diff = deps.consoleEditDiff(trace);
       return diff ? { html: deps.consoleDiffHtml(diff, { limit: 12, numbers: false }) } : null;
     }
+    if (name === "run_code") {
+      // Before its first call, what it will run.
+      const code = deps.codeRunParts(trace).code.replace(/\s+$/, "");
+      return code ? { lines: code.split("\n").slice(0, PANE_LINES).map(deps.escapeHtml) } : null;
+    }
+    if (name === "read_file" && trace.image) {
+      const info = deps.toolImageInfo(trace);
+      return info ? { html: `${deps.toolImageHtml(trace)}<div class="dk-fe-ln">${deps.escapeHtml(info)}</div>` } : null;
+    }
     if (deps.isSearchTool(name)) {
       const results = Array.isArray(trace.results) ? trace.results.slice(0, 4) : [];
       return { lines: results.map((r) => `<b>${deps.escapeHtml(deps.pageHost(r.url) || "")}</b>  ${deps.escapeHtml(r.title || r.url || "")}`) };
@@ -161,8 +180,17 @@ function paneBody(trace) {
     if (!out) return null;
     const rows = out.split("\n");
     if (["run_terminal_command", "get_command_output", "monitor"].includes(name)) return { lines: rows.slice(-PANE_LINES).map(deps.renderAnsi), tail: true };
-    if (["grep", "glob", "list_dir"].includes(name)) return { lines: rows.slice(0, 6).map(deps.escapeHtml) };
+    if (["grep", "glob", "list_dir", "read_file"].includes(name)) return { lines: rows.slice(0, 6).map(deps.escapeHtml) };
     return null;
+  }
+
+// What an empty item says: what the call is doing until it has output.
+const IMAGE_PATH = /\.(png|jpe?g|webp|gif|bmp|tiff?|ico|apng)$/i;
+function paneEmpty(trace) {
+    if (!deps.toolPresentation(trace, true).running) return "No output";
+    if (trace.name === "read_file") return IMAGE_PATH.test(String(trace.path || "")) ? "Loading the image" : "Reading the file";
+    if (deps.isSearchTool(trace.name) || ["grep", "glob", "list_dir"].includes(trace.name)) return "Searching";
+    return "Waiting for output";
   }
 
 function paneLine(html) {
@@ -172,8 +200,9 @@ function paneLine(html) {
     return line;
   }
 
-// One item: a call (its line over its output) or a thought (its text).
-function paneItem(thought) {
+// One item: a call (its line over its output) or a thought (its text). Until
+// it has any, it says so (empty), so an open pane never shrinks to the line.
+function paneItem(thought, empty = "Waiting for output") {
     const el = document.createElement("div");
     el.className = thought ? "dk-now dk-think" : "dk-now dk-fe";
     el.innerHTML = (thought ? "" : '<div class="dk-fe-head"><span class="dk-fe-ico"></span><span class="dk-fe-in"></span><span class="dk-fe-state"></span></div>') +
@@ -181,6 +210,7 @@ function paneItem(thought) {
     if (!thought) [el._icoEl, el._inEl, el._state] = el.firstChild.children;
     el._box = el.lastChild;
     el._out = el._box.firstChild;
+    el._out.dataset.empty = empty;
     // Faded at its cut edge once the output overflows the box: measured as
     // it changes size, after layout, rather than on every sync.
     el._fit = new ResizeObserver(() => el._box.classList.toggle("is-full", el._out.offsetHeight > el._box.clientHeight));
@@ -220,6 +250,8 @@ function syncPaneCall(el, trace, grow) {
       el._state.classList.toggle("is-bad", Boolean(state.bad));
       el.classList.toggle("is-done", !state.running);
     }
+    const empty = paneEmpty(trace);
+    if (el._out.dataset.empty !== empty) el._out.dataset.empty = empty;
     const body = paneBody(trace);
     el._box.classList.toggle("is-tail", Boolean(body?.tail));
     if (body?.html) {
@@ -295,7 +327,7 @@ function syncLivePane(dock, msg, line) {
     const pane = paneParts(dock);
     const text = line.phase === "thinking" ? paneThought(msg) : "";
     const trace = text || line.phase === "thinking" ? null : paneTrace(msg, line.key);
-    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : "";
+    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : `idle:${line.phase}`;
     const moving = paneOpen && dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
     const fill = (grow) => {
       if (text) syncPaneThought(pane.item, text, grow);
@@ -308,11 +340,9 @@ function syncLivePane(dock, msg, line) {
       pane.item?._fit.disconnect();
       pane.item?.remove();
       pane.key = key;
-      pane.item = key ? paneItem(Boolean(text)) : null;
-      if (pane.item) {
-        pane.inner.append(pane.item);
-        fill();
-      }
+      pane.item = paneItem(!trace, trace || text ? undefined : PANE_IDLE[line.phase]);
+      pane.inner.append(pane.item);
+      fill();
       if (moving) {
         const h1 = pane.inner.offsetHeight;
         if (h0 !== h1) pane.inner.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: PANE_MS, easing: PANE_EASE });

@@ -92,6 +92,17 @@ def _shell_prefix(cwd: str) -> str:
 _PGID_DIR = "$HOME/.cache/fuse/jobs"
 
 
+# Python writes its output as it goes instead of in blocks to the pipe, so a
+# running command's output shows live. A value the host already set wins.
+_UNBUFFERED_SH = 'export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"; '
+_UNBUFFERED_PS = "if (-not $env:PYTHONUNBUFFERED) { $env:PYTHONUNBUFFERED = '1' }; "
+
+
+def _unbuffered(command: str, windows: bool = False) -> str:
+    """A connector command with _UNBUFFERED_* in front (connectors set no env)."""
+    return (_UNBUFFERED_PS if windows else _UNBUFFERED_SH) + command
+
+
 def _ssh_job_script(cwd: str, command: str, token: str = "") -> str:
     """bash script for an SSH command: stdin closed (a prompt fails fast
     instead of hanging until the deadline), non-interactive env, and a cwd
@@ -101,6 +112,7 @@ def _ssh_job_script(cwd: str, command: str, token: str = "") -> str:
     lines = [
         "exec </dev/null",
         "export GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive PAGER=cat GIT_PAGER=cat",
+        _UNBUFFERED_SH.rstrip("; "),
     ]
     if token:
         lines += [

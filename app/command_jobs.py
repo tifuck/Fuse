@@ -164,6 +164,14 @@ def _append_err(rec: dict, text: str) -> None:
     rec["err"] = buf if len(buf) <= monitor_mod.ERR_TAIL_CHARS else buf[-monitor_mod.ERR_TAIL_CHARS:]
 
 
+def _append_err_live(rec: dict, text: str) -> None:
+    # Display only: a connector's stderr while the command runs. Its result
+    # merges the same text into out at exit.
+    buf = (rec.get("err_live") or "") + text
+    rec["err_live"] = buf[-OUT_TAIL_CHARS:]
+    rec["err_live_chars"] = int(rec.get("err_live_chars") or 0) + len(text)
+
+
 def elapsed_ms(rec: dict) -> int:
     return int((time.monotonic() - rec["started"]) * 1000)
 
@@ -592,6 +600,7 @@ async def _supervise(rec: dict, runner) -> None:
         rec["output_incomplete"] = bool(value)
 
     sink.incomplete = incomplete
+    sink.err_live = lambda text: _append_err_live(rec, text)
     batcher = None
     writer = None
     if _is_monitor(rec):
