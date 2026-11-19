@@ -154,7 +154,7 @@ test('desktop live pane: what the line names, a run_code with the calls its code
   assert.equal(dock.paneThought(thought), 'Checking the loop\nIt exits\n\nthen more', 'the newest thought only, without its markdown marks');
 });
 
-test('desktop rows read as sentences: a described command in the past tense, a file by name then folder', async () => {
+test('desktop rows read as sentences: a described command in the past tense once it finished, a file by name then folder', async () => {
   const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
   const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
   const rows = (await import('../../static/themes/desktop/tool-formatting.js')).create({
@@ -166,8 +166,8 @@ test('desktop rows read as sentences: a described command in the past tense, a f
   const text = (trace, presentation = { state: 'done' }) => rows.consoleCallHtml(trace, presentation).replace(/<[^>]*>|[()]/g, '');
   const run = { name: 'run_terminal_command', command: 'make test', description: 'Run the test suite twice' };
   assert.equal(text(run), 'Ranthe test suite twice', 'the inflected verb is its own word, the rest the subject');
-  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Ranthe test suite twice', 'a failed one reads in the past tense too');
-  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Ranthe test suite twice', 'so does one cut short');
+  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Runthe test suite twice', 'a failed one reads as written: it did not do what it says');
+  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Runthe test suite twice', 'so does one cut short');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }, { state: 'error', failed: true }), 'Readmain.py in app');
   assert.equal(text({ ...run, description: 'Unit tests' }), 'RanUnit tests', 'no verb to inflect: the verb stays its own word');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');
