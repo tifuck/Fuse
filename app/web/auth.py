@@ -110,7 +110,7 @@ async def logout(request: Request):
     await chat_events.close_session(uid, request.session.get("csrf"))
     try:
         from .. import host_events
-        await host_events.close_user(uid)
+        await host_events.close_session(uid, request.session.get("sid"))
     except Exception:
         logger.exception("host events close on logout failed")
     if uid:
