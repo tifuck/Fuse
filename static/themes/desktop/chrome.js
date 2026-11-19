@@ -4,10 +4,17 @@
 // controls, and Activity: the agents table, background commands, the plan and
 // a command's output, drawn here from the runtime's live state. Activity
 // opens only when the user asks (the choice is kept in localStorage); the
-// button says what is running instead. Wide it docks beside the chat,
-// narrower it slides over it, and on phones it is a bottom sheet that drags
-// and whose pages swipe sideways.
+// button says what is running instead. Above a phone it docks beside the
+// chat and pushes it aside, beside an artifact it slides over it, and on
+// phones it is a bottom sheet that drags
+// and whose pages swipe sideways. Hovering the button docks it for a look
+// (dk-insp-peek) until the pointer leaves; a click on it or in it pins it.
 const DOCK = "(min-width: 1100px)";
+const WIDE = "(min-width: 801px)";
+// Hover peek: the pointer rests on the Activity button this long before the
+// panel slides in, and it stays this long after the pointer leaves.
+const PEEK_OPEN_MS = 60;
+const PEEK_CLOSE_MS = 250;
 const PHONE = "(max-width: 640px)";
 const STORE = "fuse.chat.desktop.activity.v1";
 const PAGES = ["activity", "plan", "output"];
@@ -47,6 +54,9 @@ export function create(deps) {
   let wasArtifact = false;
   let openBeforeArtifact = null;
   let justDragged = false;
+  let peek = false;
+  let peekOpenTimer = 0;
+  let peekCloseTimer = 0;
   const inertSaved = new Map();
   const seen = { terminal: "" };
   let chromeFrame = 0;
@@ -65,14 +75,43 @@ export function create(deps) {
     try { localStorage.setItem(STORE, JSON.stringify(store)); } catch (_) {}
   }
 
-  // dock: a column beside the chat; over: a panel over it; sheet: a phone's bottom sheet.
+  // dock: a column beside the chat that pushes it aside; over: a panel over
+  // it (beside an artifact, or a narrow window); sheet: a phone's bottom sheet.
   function mode() {
     if (matches(PHONE)) return "sheet";
-    return matches(DOCK) && !deps.root.classList.contains("is-artifact") ? "dock" : "over";
+    return matches(WIDE) && !deps.root.classList.contains("is-artifact") ? "dock" : "over";
+  }
+
+  // Hovering the Activity button docks it for a look without pinning it;
+  // a click on the button or anywhere in the panel pins it.
+  function setPeek(on) {
+    clearTimeout(peekOpenTimer);
+    clearTimeout(peekCloseTimer);
+    peekOpenTimer = 0;
+    const next = Boolean(on) && !store.open && mode() === "dock";
+    if (next === peek) return;
+    peek = next;
+    syncChrome();
+  }
+
+  // The pointer back on the button or the panel, a popup, or a field being
+  // typed in keeps it open. The push moves the button, so ask :hover, not
+  // the enter and leave events.
+  function schedulePeekClose() {
+    clearTimeout(peekCloseTimer);
+    peekCloseTimer = setTimeout(() => {
+      if (!peek) return;
+      const active = document.activeElement;
+      const held = q("[data-theme-inspector]:hover, [data-theme-rail]:hover") || document.querySelector("body > .chat-pop, dialog[open]") ||
+        (q("[data-theme-rail]")?.contains(active) && active.matches("input, select, textarea"));
+      if (held) schedulePeekClose();
+      else setPeek(false);
+    }, PEEK_CLOSE_MS);
   }
 
   function setOpen(open, from) {
     if (from) opener = from;
+    peek = false;
     store.open = Boolean(open);
     openBeforeArtifact = null;
     if (!open) {
@@ -352,7 +391,7 @@ export function create(deps) {
       }
       const fromMenu = Boolean(t.closest("[data-theme-menu]"));
       if (t.matches("[data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar]")) {
-        const open = !isOpen();
+        const open = peek || !isOpen();
         setOpen(open, t);
         if (open && mode() === "sheet") goTab(firstTab());
       } else if (t.matches("[data-theme-inspector-close]")) {
@@ -446,6 +485,29 @@ export function create(deps) {
       // A menu item did its work: the menu closes; toggles hand focus back to ⋯.
       if (fromMenu) toggleMenu(false, t.matches("[role=menuitemcheckbox]"));
     });
+    // Real travel only, as the sidebar's peek: a button appearing under a
+    // resting pointer fires pointerover but no movement. The top bar is
+    // redrawn, so listen on the root.
+    const PEEK_ZONE = "[data-theme-inspector], [data-theme-rail]";
+    deps.root.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "mouse" || event.buttons || !(event.movementX || event.movementY)) return;
+      if (!event.target.closest?.("[data-theme-inspector]")) return;
+      if (store.open || peek || peekOpenTimer || mode() !== "dock") return;
+      peekOpenTimer = setTimeout(() => setPeek(true), PEEK_OPEN_MS);
+    });
+    deps.root.addEventListener("pointerout", (event) => {
+      const from = event.target.closest?.(PEEK_ZONE);
+      if (!from || from.contains(event.relatedTarget)) return;
+      if (!peek) setPeek(false);
+      else schedulePeekClose();
+    });
+    // Using the peeked panel (an agent, a fold, a command) pins it; its ✕ closes it.
+    deps.root.addEventListener("click", (event) => {
+      if (peek && event.target.closest?.("[data-theme-rail]") && !event.target.closest("[data-theme-inspector-close]")) setOpen(true);
+    }, true);
+    document.addEventListener("pointerdown", (event) => {
+      if (peek && !event.target.closest?.("[data-theme-rail], [data-theme-inspector], .chat-pop, dialog")) setPeek(false);
+    }, true);
     q("[data-theme-menu]")?.addEventListener("keydown", menuKey);
     q("[data-theme-menu]")?.addEventListener("focusout", (event) => {
       if (event.relatedTarget && !event.relatedTarget.closest?.(".dk-menu-wrap")) toggleMenu(false);
@@ -484,6 +546,7 @@ export function create(deps) {
     }, true);
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (peek) { event.preventDefault(); setPeek(false); return; }
       // Over the chat it closes; docked, it closes when the focus is in it.
       const inside = q("[data-theme-rail]")?.contains(document.activeElement);
       if ((inside || mode() !== "dock") && isOpen() && !document.querySelector("body > .chat-pop, dialog[open]")) {
@@ -510,6 +573,7 @@ export function create(deps) {
     }, true);
     [DOCK, PHONE, "(max-width: 800px)"].forEach((query) => window.matchMedia(query).addEventListener?.("change", () => {
       q("[data-theme-pages]")?.scrollTo({ left: 0 });
+      if (mode() !== "dock") peek = false;
       syncChrome();
     }));
     document.addEventListener("fuse-appearance", syncScheme);
@@ -844,13 +908,15 @@ export function create(deps) {
     syncTitle();
     syncPins();
     show(q("[data-theme-agent-back]"), deps.root.classList.contains("is-agent-view"));
-    const next = store.open ? "open" : "closed";
+    if (peek && (store.open || how !== "dock")) peek = false;
+    const next = store.open || peek ? "open" : "closed";
+    deps.root.classList.toggle("dk-insp-peek", peek);
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
     syncLayer(next, how);
     if (how === "sheet" && next === "open") syncTabs();
     deps.root.classList.toggle("dk-has-term", terminal);
     const open = next === "open";
-    setAttr(toggle, "aria-pressed", String(open));
+    setAttr(toggle, "aria-pressed", String(store.open));
     // New work while it is shut only puts a dot on the button.
     const todos = q("[data-live-todos]");
     const sig = [counts.tasks && (deps.agentsRows || []).length, counts.tasks && (deps.jobsRows || []).map((row) => `${jobId(row)}:${row.state}`).join(","),

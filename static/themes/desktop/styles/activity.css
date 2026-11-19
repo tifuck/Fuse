@@ -95,7 +95,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   /* The transcript keeps a centered column with margins beside it. */
   &[data-theme-insp="dock"][data-theme-rail-state="open"] { --chat-col: clamp(32rem, calc(100vw - var(--dk-side-w) - var(--dk-insp-open) - 8rem), 90rem); }
-  &[data-theme-insp="dock"]:not([data-theme-rail-state="open"]) .dk-insp { visibility: hidden; }
+  /* Hidden once its column has slid shut. */
+  &[data-theme-insp="dock"]:not([data-theme-rail-state="open"]) .dk-insp { visibility: hidden; transition: visibility 0s linear var(--dk-slide, 0s); }
   /* Over the chat: a panel from the right edge. */
   &[data-theme-insp="over"] .dk-insp {
     position: fixed;

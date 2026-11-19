@@ -10,6 +10,8 @@
 @property --dk-stage-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
 /* Follows --dock-h, so like it (tokens/root.css) it is not inherited. */
 @property --dk-under { syntax: "*"; inherits: false; }
+/* A length, so docking Activity can slide its column open (and push the chat). */
+@property --dk-insp-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette: the canvas a breath above its
      background, the sidebar a shade darker than the canvas. */
@@ -94,8 +96,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      window out every frame) and the list slides into its column; the
      hover peek leaves the columns alone and slides the list over the chat
      (base/chat-history.css).
-     Activity is a column only when docked (activity.css says when); the
-     artifact's column is activity.css's too. */
+     Activity is a column only when docked (activity.css says when); its
+     column slides open and closed, pushing the chat. The artifact's column
+     is activity.css's too. */
   @media (min-width: 801px) {
     & {
       --dk-slide: 260ms;
@@ -105,6 +108,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     }
     &.history-collapsed { --dk-side-w: 0px; }
     &[data-theme-insp="dock"][data-theme-rail-state="open"] { --dk-insp-w: var(--dk-insp-open); }
+    &.dk-slide[data-theme-insp="dock"] { transition: --dk-insp-w var(--dk-slide) var(--ease-glide); }
     & .chat-history { grid-row: 1; justify-self: end; width: clamp(12.5rem, var(--chat-history), 100vw - 24rem); }
     & > .chat-stage { grid-column: 2; grid-row: 1; }
     /* chrome.js adds dk-slide once the page has settled: loading never slides. */
@@ -115,7 +119,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     &.history-peek .chat-history-edge { display: none; }
     &.history-peek .chat-history { box-shadow: 8px 0 28px rgb(0 0 0 / 0.24); }
   }
-  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide:not(.history-collapsed) .chat-history { transition: none; } }
+  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide:not(.history-collapsed) .chat-history, &.dk-slide[data-theme-insp="dock"] { transition: none; } }
 
   /* ---- Sidebar ---- */
   /* No rule against the stage: its tint is the edge, and the top bar and
