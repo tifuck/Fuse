@@ -165,8 +165,12 @@ def _chat_thread_pk(user, thread_id):
     return pk
 
 
-def _chat_public_thread(thread):
-    return {**thread, "run": _chat_public_run(thread.get("run"))}
+def _chat_public_thread(thread, pack=False):
+    public = {**thread, "run": _chat_public_run(thread.get("run"))}
+    if pack:
+        public["messages"] = chats.pack_segment_text(public.get("messages"))
+        public["segments_packed"] = True
+    return public
 
 
 @router.post("/chat/threads/{thread_id}/turns")
@@ -217,8 +221,11 @@ async def chat_turn(request: Request, thread_id: str):
         # Claude Code names a session from its first prompt while the turn
         # runs; the sweep skips threads that already have a title.
         chat_titles.notify(pk)
-    return JSONResponse({**result, "thread": _chat_public_thread(result["thread"]) if result["thread"] else None,
-                         "run": _chat_public_run(result["run"])}, headers={"Cache-Control": "no-store"})
+    # Like the snapshot (?pack=1): the reply is the whole transcript.
+    pack = request.query_params.get("pack") == "1"
+    thread = await asyncio.to_thread(_chat_public_thread, result["thread"], pack) if result["thread"] else None
+    return JSONResponse({**result, "thread": thread, "run": _chat_public_run(result["run"])},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/threads/{thread_id}/queue")
@@ -239,8 +246,10 @@ async def chat_queue_put(request: Request, thread_id: str):
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     thread = await asyncio.to_thread(chats.get_thread, user["id"], pk) if sent else None
+    pack = request.query_params.get("pack") == "1"
     return JSONResponse({"ok": True, "sent": sent, "held": held,
-                         "thread": _chat_public_thread(thread) if thread else None}, headers={"Cache-Control": "no-store"})
+                         "thread": await asyncio.to_thread(_chat_public_thread, thread, pack) if thread else None},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.delete("/chat/threads/{thread_id}/queue/{item_id}")
@@ -582,10 +591,7 @@ async def chat_thread_get(request: Request, thread_id: str):
     if thread.get("unread"):
         await asyncio.to_thread(chats.mark_thread_read, user["id"], thread_id)
         thread["unread"] = False
-    public = _chat_public_thread(thread)
-    if request.query_params.get("pack") == "1":
-        public["messages"] = await asyncio.to_thread(chats.pack_segment_text, public.get("messages"))
-        public["segments_packed"] = True
+    public = await asyncio.to_thread(_chat_public_thread, thread, request.query_params.get("pack") == "1")
     if request.query_params.get("stream") != "1":
         return JSONResponse(public, headers={"Cache-Control": "no-store"})
     return _thread_stream(public)
