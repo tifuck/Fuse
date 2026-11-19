@@ -41,14 +41,6 @@ function setLiveLabelText(el, text, meta, arg = "") {
     }
     if (cmd.firstChild.textContent !== arg) cmd.firstChild.textContent = arg;
     if (cmd.hidden !== !arg) cmd.hidden = !arg;
-    // The chevron after the text: shown while the line opens the live pane.
-    if (!el.querySelector(":scope > .dk-live-chev")) {
-      const chev = document.createElement("span");
-      chev.className = "dk-live-chev";
-      chev.setAttribute("aria-hidden", "true");
-      chev.innerHTML = '<svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      el.insertBefore(chev, tail);
-    }
     // The clock, at the line's far end.
     const clock = meta?.clock || "";
     FuseChatDOM.setText(tail, clock);
