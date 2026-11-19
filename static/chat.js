@@ -1405,16 +1405,31 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     if (S.jobsListEl) S.jobsListEl.addEventListener("click", agents.onJobsClick);
 
+    // None of the polls below read anything in a hidden tab; the tab catches
+  // up once when it shows again.
+  const jobsDue = () => Boolean(S.currentId && (S.agentsOpen || S.jobsRows.length || traces.hasRunningBgTraces()));
+  const agentTraceLive = () => S.messages.some((msg) =>
+    (msg.tools || []).some((trace) => ["spawn_subagent", "get_subagent_output"].includes(trace.name) && trace.child_id && traces.toolRunning(trace, false)));
+
     setInterval(() => {
-    if (S.currentId && (S.agentsOpen || S.jobsRows.length || traces.hasRunningBgTraces())) agents.refreshJobs();
+    // With the pane open on live rows, the strip's tick reads the commands too.
+    if (!document.hidden && jobsDue() && !(S.agentsOpen && S.agentsRows.some((row) => agents.agentLive(row.status)))) agents.refreshJobs();
   }, 3000);
 
     // agent.tick events drive the closed-panel list now; the poll is only a
   // fallback for missed started/ended events (socket resync, older server).
+  // Live rows are already read by the strip's own tick (agents/live.js).
   setInterval(() => {
-    if (S.currentId && !S.agentsOpen && (S.agentsRows.some((row) => agents.agentLive(row.status)) || S.messages.some((msg) =>
-      (msg.tools || []).some((trace) => ["spawn_subagent", "get_subagent_output"].includes(trace.name) && trace.child_id && traces.toolRunning(trace, false))))) agents.refreshAgents();
+    if (!document.hidden && S.currentId && !S.agentsOpen && !S.agentsRows.some((row) => agents.agentLive(row.status)) && agentTraceLive()) agents.refreshAgents();
   }, 10000);
+
+    document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !S.currentId) return;
+    if (S.agentsOpen && S.agentViewId && S.agentViewFailCount < 3 && (!S.agentRun || agents.agentLive(S.agentRun.status))) agents.pollAgentView();
+    // refreshAgents reads the commands too.
+    if (S.agentsOpen || S.agentsRows.some((row) => agents.agentLive(row.status)) || agentTraceLive()) agents.refreshAgents();
+    else if (jobsDue()) agents.refreshJobs();
+  });
 
     // Transport heartbeats alone do not prove that this particular run is alive.
   // A quiet current run gets an authoritative snapshot; the server's existing
