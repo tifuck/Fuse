@@ -281,3 +281,11 @@ def test_one_401_cools_an_account_and_a_second_within_the_hour_disables_it():
         assert pool_pick.auth_failure_confirmed(9) is True
     with _at(5000):
         assert pool_pick.auth_failure_confirmed(9) is False  # strikes reset after confirming
+
+
+def test_a_success_between_two_401s_clears_the_first_strike():
+    with _at(1000):
+        assert pool_pick.auth_failure_confirmed(9) is False
+    pool_pick.forget_error(9)  # the account served a request since
+    with _at(1000 + pool_pick.AUTH_CONFIRM_WINDOW - 1):
+        assert pool_pick.auth_failure_confirmed(9) is False

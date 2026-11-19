@@ -7,12 +7,16 @@
 // a popover above the bar that Esc or a click elsewhere closes.
 const WIDE = "(min-width: 1040px)";
 const KEY = "fuse.chat.combined.rail.v1";
+// Text that ticks on its own: row clocks, ages and spinner glyphs.
+const TICKS = ".chat-agents-time, [data-age-stamp], .chat-console-spin";
 
 export function create(deps) {
   let railOpen = null; // null until the first sync reads the saved choice
   let bound = false;
   let menuUsed = false;
   let opener = null; // what Escape refocuses when it shuts the popover
+  let chromeFrame = 0;
+  let watch = null;
   const q = (sel) => deps.root.querySelector(sel);
   const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
   const wide = () => window.matchMedia(WIDE).matches;
@@ -211,13 +215,17 @@ export function create(deps) {
     });
     document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.("[data-history-item]")) rowFocus = null; }, true);
     const historyList = q("[data-history-list]");
-    if (historyList) new MutationObserver(() => {
+    if (historyList) new MutationObserver((records) => {
+      if (records.every(({ target }) => target.closest?.(TICKS))) return;
       if (!rowFocus || (document.activeElement && document.activeElement !== document.body)) return;
       const item = [...historyList.querySelectorAll("[data-history-item]")].find((el) => rowKey(el) === rowFocus.key);
       if (item) rowControls(item)[rowFocus.at]?.focus({ preventScroll: true });
     }).observe(historyList, { childList: true, subtree: true });
-    // Rows, lists, the todo tray and the title change outside the run clock.
-    const watch = new MutationObserver(() => syncChrome());
+    // Rows, lists, the todo tray and the title change outside the run clock; a
+    // clock or spinner ticking in a row changes nothing drawn here.
+    watch = new MutationObserver((records) => {
+      if (records.some(({ target }) => !target.closest?.(TICKS))) scheduleChrome();
+    });
     const rail = q("[data-theme-rail]");
     if (rail) watch.observe(rail, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"] });
     const title = q("[data-chat-title]");
@@ -321,8 +329,19 @@ export function create(deps) {
     list.scrollTop = rows[at].offsetTop;
   }
 
+  // Runtime ticks and DOM changes ask for a sync; at most one runs a frame.
+  function scheduleChrome() {
+    if (!chromeFrame) chromeFrame = requestAnimationFrame(() => { chromeFrame = 0; syncChrome(); });
+  }
+
+  // A clock tick changes only the run's own time; idle, it has nothing to redraw.
+  function tickChrome() {
+    if (busy().run) scheduleChrome();
+  }
+
   function syncChrome() {
     if (!deps.root) return;
+    if (chromeFrame) { cancelAnimationFrame(chromeFrame); chromeFrame = 0; }
     bind();
     if (railOpen === null) railOpen = wide() && saved();
     const state = busy();
@@ -334,7 +353,9 @@ export function create(deps) {
     syncStatus(state);
     syncContext();
     syncTitle();
+    // What this sync wrote is drawn already: it must not ask for another.
+    watch?.takeRecords();
   }
 
-  return { syncChrome };
+  return { scheduleChrome, syncChrome, tickChrome };
 }

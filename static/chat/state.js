@@ -123,7 +123,6 @@ function initState() {
   S.agentViewEl = S.root.querySelector("[data-agent-view]");
   S.queueEl = S.root.querySelector("[data-chat-queue]");
   S.queueListEl = S.root.querySelector("[data-chat-queue-list]");
-  S.queueCountEl = S.root.querySelector("[data-chat-queue-count]");
   S.agentLogEl = S.root.querySelector("[data-agent-log]");
   S.agentBodyEl = S.root.querySelector("[data-agent-log-body]");
   S.agentLiveDock = S.root.querySelector("[data-agent-live-dock]");

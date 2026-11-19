@@ -147,13 +147,19 @@ def test_legacy_long_context_columns_apply_from_the_threshold(fresh_db):
     source_id, cred = _pool_credential(uid)
     db.save_model_price("zai", "long", 1_000_000, 100_000, 2_000_000, None, long_context_threshold=128_000,
                         long_input_rate=3_000_000, long_output_rate=9_000_000)
+    db.save_model_price("zai", "long-no-cache", 1_000_000, None, 2_000_000, None, long_context_threshold=128_000,
+                        long_input_rate=3_000_000, long_output_rate=9_000_000)
 
     short = _record(uid, source_id, cred, "long", prompt_tokens=127_999, completion_tokens=1000)
     long = _record(uid, source_id, cred, "long", prompt_tokens=128_000, cached_tokens=28_000, completion_tokens=1000)
+    no_cache = _record(uid, source_id, cred, "long-no-cache", prompt_tokens=128_000, cached_tokens=28_000,
+                       completion_tokens=1000)
 
     assert short["estimated_cost_micros"] == 127_999 + 1000 * 2
-    # No long-context cached rate: cached tokens bill as long-context input.
-    assert long["estimated_cost_micros"] == 128_000 * 3 + 1000 * 9
+    # No long-context cached rate: like a tier, the published base cached rate
+    # still applies; only an unpublished one bills as long-context input.
+    assert long["estimated_cost_micros"] == 100_000 * 3 + 28_000 // 10 + 1000 * 9
+    assert no_cache["estimated_cost_micros"] == 128_000 * 3 + 1000 * 9
 
 
 def test_estimates_round_to_the_nearest_micro_per_event(fresh_db):

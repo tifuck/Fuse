@@ -4,6 +4,7 @@ import base64
 import html as html_lib
 import logging
 import re
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -136,8 +137,12 @@ class BingProvider:
             params["filters"] = "ex1:\"ez1\""
         elif recency_days is not None and recency_days <= 7:
             params["filters"] = "ex1:\"ez2\""
-        elif recency_days is not None:
+        elif recency_days is not None and recency_days <= 31:
             params["filters"] = "ex1:\"ez3\""
+        elif recency_days is not None:
+            # Custom range: ez5_<start>_<end> in days since the Unix epoch.
+            today = int(time.time() // 86400)
+            params["filters"] = f"ex1:\"ez5_{today - recency_days}_{today}\""
         try:
             resp = await safe_get(
                 client,

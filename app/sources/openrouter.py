@@ -12,7 +12,7 @@ from ..config import settings
 from ..crypto import encrypt
 from ..proxy import openai_chat
 from .base import ChatResult
-from .pool_pick import auth_failure_confirmed
+from .pool_pick import auth_failure_confirmed, forget_error
 
 BASE_URL = "https://openrouter.ai/api/v1"
 CATALOG_TTL = 600
@@ -935,6 +935,8 @@ class OpenRouterSource:
             payload,
             close_client=True,
         )
+        if status == 200:
+            forget_error(cred["id"])
         if stream is not None:
             return ChatResult(status=200, stream=stream, credential_id=cred["id"], model=upstream)
         if _is_auth_failure(status, obj):

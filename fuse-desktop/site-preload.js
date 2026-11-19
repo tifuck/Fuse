@@ -14,6 +14,34 @@ window.addEventListener("DOMContentLoaded", () => {
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "data-chat-theme", "data-chat-backdrop", "data-chat-scheme"] });
 });
 
+// Appearance › Use hardware acceleration (templates/_appearance_body.html), a
+// template a browser never draws. main.js saves it and offers the restart.
+async function placeGpuToggle() {
+  const templates = document.querySelectorAll("template[data-desktop-gpu]");
+  if (!templates.length) return;
+  const state = await ipcRenderer.invoke("site-gpu-state").catch(() => null);
+  if (!state) return;
+  for (const template of templates) template.replaceWith(template.content.cloneNode(true));
+  showGpuState(state);
+}
+
+function showGpuState({ on, forced }) {
+  for (const input of document.querySelectorAll("[data-desktop-gpu-toggle]")) {
+    input.checked = on;
+    input.disabled = forced;
+  }
+  if (!forced) return;
+  for (const note of document.querySelectorAll("[data-desktop-gpu-note]")) {
+    note.textContent = "Off for this launch: Fuse was started with FUSE_DISABLE_GPU=1 or --disable-gpu.";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", placeGpuToggle);
+ipcRenderer.on("gpu-state", (_event, state) => showGpuState(state));
+document.addEventListener("change", (event) => {
+  if (event.target.matches && event.target.matches("[data-desktop-gpu-toggle]")) ipcRenderer.send("site-gpu", event.target.checked);
+});
+
 // A clicked alert asks for the window: the page's window.focus() neither
 // restores a minimized Electron window nor raises it over other apps.
 window.addEventListener("fuse:raise", () => ipcRenderer.send("site-raise"));

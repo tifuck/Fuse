@@ -185,7 +185,9 @@ def _timeout_ms(raw) -> int:
         value = int(raw)
     except (TypeError, ValueError, OverflowError):
         return DEFAULT_TIMEOUT_MS
-    if 0 < value < 1000:
+    if value <= 0:
+        return DEFAULT_TIMEOUT_MS
+    if value < 1000:
         value *= 1000
     return max(1000, min(value, MAX_TIMEOUT_MS))
 

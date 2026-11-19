@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
@@ -497,7 +498,9 @@ def usage_analytics(
     utc_offset = int(end_dt.astimezone(display_zone.get()).utcoffset().total_seconds())
     # The one scan of the window, at hour (or finer) grain: series, models,
     # providers, users, sources and the heatmap all fold out of these rows.
-    granule = min(bucket_seconds, 3600)
+    # The grain divides the offset too: a +5:30 or +5:45 viewer's midnight
+    # falls inside a UTC hour.
+    granule = math.gcd(min(bucket_seconds, 3600), utc_offset)
     where, args = _window_filters(user_id, start, end, provider, all_users, subject_id=subject_id)
     # A weekday x hour pattern needs a week of history even when the chosen
     # range is shorter, so short ranges scan seven days for the heatmap.
@@ -585,7 +588,7 @@ def usage_analytics(
         granule_at = int(item["bucket"])
         by_bucket.setdefault(_bucket_of(granule_at, bucket_seconds, utc_offset), []).append(item)
         if not short:
-            hour = by_hour.setdefault(granule_at, [0, 0])
+            hour = by_hour.setdefault(granule_at - granule_at % 3600, [0, 0])
             hour[0] += item["tokens"]
             hour[1] += item["requests"]
         pid = item["provider"]
@@ -903,6 +906,7 @@ def fuse_view(row, *, week: str | None = None) -> dict:
     output = int(row["output_tokens"] or 0) or max(completion, int(row["reasoning_tokens"] or 0))
     reasoning = min(int(row["reasoning_tokens"] or 0), output)
     cached = min(int(row["cached_tokens"] or 0), prompt)
+    cache_write = min(int(row["cache_write_tokens"] or 0), max(prompt - cached, 0))
     total = int(row["total_tokens"] or 0) or (prompt + output)
     requests = int(row["requests"] or 0)
     this_week = str(row["week_start"] or "") == week
@@ -924,7 +928,7 @@ def fuse_view(row, *, week: str | None = None) -> dict:
     priced = int(coverage["priced"] or 0) if coverage else 0
     return {
         "prompt_tokens": prompt,
-        "uncached_tokens": max(prompt - cached, 0),
+        "uncached_tokens": max(prompt - cached - cache_write, 0),
         "cached_tokens": cached,
         "completion_tokens": completion,
         "output_tokens": output,

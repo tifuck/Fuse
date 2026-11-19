@@ -40,6 +40,7 @@ function ageInfo(item, unread = false) {
 
 export function createSpinners(ctx) {
   const { agents, render, threads, ui } = ctx;
+  let runSpinNodes = [];
     function pickRandomSpin() {
     const pool = S.ACTIVITY_SPINNERS.filter((s) => !S.recentSpinIds.includes(s.id));
     const source = pool.length ? pool : S.ACTIVITY_SPINNERS;
@@ -143,7 +144,7 @@ export function createSpinners(ctx) {
     function startRunSpinClock() {
     if (S.runSpinTimer || S.reduceMotion.matches) return;
     S.runSpinTimer = window.setInterval(() => {
-      const nodes = [...S.root.querySelectorAll("[data-run-spin]")].filter((el) => !el.hidden);
+      const nodes = runSpinNodes.filter((el) => el.isConnected && !el.hidden);
       if (!nodes.length) {
         stopRunSpinClock();
         return;
@@ -166,7 +167,9 @@ export function createSpinners(ctx) {
       btn.classList.toggle("is-busy", busy);
       btn.setAttribute("aria-busy", busy ? "true" : "false");
     });
-    S.root.querySelectorAll("[data-run-spin]").forEach((el) => {
+    // Every list paint ends here, so the clock's targets stay current.
+    runSpinNodes = [...S.root.querySelectorAll("[data-run-spin]")];
+    runSpinNodes.forEach((el) => {
       if (!el.hidden) fillSpinEl(el, el.getAttribute("data-run-spin") || "run", false);
     });
     const any = chatBusy || projectBusy;

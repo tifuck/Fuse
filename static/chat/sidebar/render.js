@@ -25,6 +25,47 @@ function splitPinned(items) {
 // Sorts unsent drafts above every dated row.
 const DRAFT_AT = "9999-12-31T00:00:00Z";
 
+// A row's markup with the run spinner's glyph left out: the theme ticks it
+// in place, so it says nothing about whether the row changed.
+function paintedMarkup(el) {
+  if (!el.querySelector("[data-run-spin]")) return el.outerHTML;
+  const copy = el.cloneNode(true);
+  copy.querySelectorAll("[data-run-spin]").forEach((slot) => slot.replaceChildren());
+  return copy.outerHTML;
+}
+
+function nodeKey(el, markup) {
+  if (!el.hasAttribute("data-history-item")) return "html:" + markup;
+  return "row:" + ["thread", "draft", "project"].map((k) => el.dataset[k] ?? "").join("|");
+}
+
+// Indexes (into seq) of one longest increasing run of seq's non-negative values.
+function longestRun(seq) {
+  const tails = [];
+  const prev = new Array(seq.length).fill(-1);
+  seq.forEach((v, i) => {
+    if (v < 0) return;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (seq[tails[mid]] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  });
+  const keep = new Set();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) keep.add(i);
+  return keep;
+}
+
+// A pinned row being dragged moves with the finger instead of scrolling the
+// list. Only pinned rows listen, so no other scroll waits on the page.
+function vetoPinScroll(event) {
+  if (S.pinDrag && S.pinDrag.dragging) event.preventDefault();
+}
+
 function historyIcons() {
   return {
     folder:
@@ -36,6 +77,14 @@ function historyIcons() {
 
 export function createRender(ctx) {
   const { composer, net, overlays, projects, spinners, sync, threads, ui } = ctx;
+  // What each list node was painted from (paintedMarkup); a node whose
+  // markup comes out the same again stays, so hover, focus and a live
+  // spinner carry over.
+  const paintedFrom = new WeakMap();
+  let paintedHtml = "";
+  let paintedNodes = [];
+  let historyFrame = 0;
+
     function providerLogo(type) {
     const src = S.logoByType.get(type) || "/static/icon.svg";
     return `<img class="provider-logo" src="${escapeHtml(src)}" alt="" aria-hidden="true" draggable="false">`;
@@ -233,7 +282,21 @@ export function createRender(ctx) {
     spinners.syncRunSpinners();
   }
 
-    function renderHistory() {
+    // Every caller in a frame shares one paint.
+  function renderHistory() {
+    if (!S.historyList || historyFrame) return;
+    historyFrame = requestAnimationFrame(() => {
+      historyFrame = 0;
+      drawHistory();
+    });
+  }
+
+    // A row rewritten outside a paint (rename) is redrawn by the next one.
+  function forgetRow(row) {
+    paintedFrom.delete(row);
+  }
+
+    function drawHistory() {
     if (!S.historyList) return;
     if (S.renaming) return;
     // A repaint would rebuild the nodes under an active pin drag; the drop
@@ -338,7 +401,42 @@ export function createRender(ctx) {
   }
 
     function paint(blocks) {
-    S.historyList.innerHTML = ui.historyListHtml(blocks);
+    const list = S.historyList;
+    const html = ui.historyListHtml(blocks);
+    const kids = list.childNodes;
+    if (html === paintedHtml && kids.length === paintedNodes.length &&
+      paintedNodes.every((node, i) => kids[i] === node && paintedFrom.has(node))) return;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    const spare = new Map();
+    for (const node of list.children) {
+      const markup = paintedFrom.get(node);
+      if (markup === undefined) continue;
+      const key = nodeKey(node, markup);
+      if (!spare.has(key)) spare.set(key, []);
+      spare.get(key).push(node);
+    }
+    const next = [...tpl.content.children].map((fresh) => {
+      const markup = paintedMarkup(fresh);
+      const old = spare.get(nodeKey(fresh, markup))?.shift();
+      if (old && paintedFrom.get(old) === markup) return old;
+      paintedFrom.set(fresh, markup);
+      if (fresh.hasAttribute("data-pinned")) fresh.addEventListener("touchmove", vetoPinScroll, { passive: false });
+      return fresh;
+    });
+    // Drop what goes, then move only the nodes outside the longest run
+    // already in order.
+    const keep = new Set(next);
+    [...kids].forEach((node) => { if (!keep.has(node)) node.remove(); });
+    const at = new Map([...kids].map((node, i) => [node, i]));
+    const stay = longestRun(next.map((node) => at.get(node) ?? -1));
+    let ref = null;
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (!stay.has(i)) list.insertBefore(next[i], ref);
+      ref = next[i];
+    }
+    paintedHtml = html;
+    paintedNodes = next;
     syncHistoryFooter();
   }
 
@@ -416,6 +514,7 @@ export function createRender(ctx) {
   return {
     draftMenu,
     filteredHistory,
+    forgetRow,
     providerLogo,
     queueSearch,
     refreshThreads,
@@ -429,4 +528,4 @@ export function createRender(ctx) {
   };
 }
 
-export { historyIcons, runningFirst };
+export { historyIcons, longestRun, runningFirst };

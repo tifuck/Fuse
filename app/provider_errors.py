@@ -17,6 +17,7 @@ Sources for every code and sentence below: each provider's error reference
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -416,7 +417,7 @@ def _epoch(value) -> float | None:
         return None
     if isinstance(value, (int, float)) or (isinstance(value, str) and re.fullmatch(r"\d+(?:\.\d+)?", value.strip())):
         num = float(value)
-        if num <= 0:
+        if not math.isfinite(num) or num <= 0:
             return None
         return num / 1000.0 if num > 1e11 else num
     if isinstance(value, str) and value.strip():
@@ -431,6 +432,9 @@ def _epoch(value) -> float | None:
 
 
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
+# Longest wait a reset is taken at: past a year it is a bogus value, and an
+# unbounded one overflows the timestamps built from it.
+MAX_WAIT = 366 * 86400.0
 
 
 def _duration(value: str) -> float | None:
@@ -448,18 +452,21 @@ def retry_after_seconds(value, now: float | None = None) -> float | None:
     if not text:
         return None
     try:
-        return max(0.0, float(text))
+        seconds = float(text)
     except ValueError:
         pass
+    else:
+        return min(max(0.0, seconds), MAX_WAIT) if math.isfinite(seconds) else None
     try:
         when = parsedate_to_datetime(text)
     except (TypeError, ValueError):
         return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, when.timestamp() - (now if now is not None else time.time()))
+    return min(max(0.0, when.timestamp() - (now if now is not None else time.time())), MAX_WAIT)
 
 
+_TRY_AGAIN_SPAN = re.compile(r"try again in ((?:\d+(?:\.\d+)?(?:ms|h|m|s))+)\b", re.I)  # 20s, 1m30s
 _TRY_AGAIN = re.compile(r"try again in (\d+(?:\.\d+)?)\s*(ms|milliseconds?|s|secs?|seconds?|m|mins?|minutes?)\b", re.I)
 _TRY_AGAIN_ZH = re.compile(r"请约\s*(\d+(?:\.\d+)?)\s*秒后重试")  # MiMo TPM limit
 # Z.AI 1308/1310: "Your limit will reset at 2026-11-01 08:37:16", Beijing time.
@@ -494,6 +501,9 @@ def _reset_at(provider, err, meta, h, message, now) -> float | None:
     hit = _TRY_AGAIN_ZH.search(message)
     if hit:
         return now + float(hit.group(1))
+    hit = _TRY_AGAIN_SPAN.search(message)
+    if hit:
+        return now + _duration(hit.group(1).lower())
     hit = _TRY_AGAIN.search(message)
     if hit:
         unit = hit.group(2).lower()
@@ -501,7 +511,10 @@ def _reset_at(provider, err, meta, h, message, now) -> float | None:
         return now + float(hit.group(1)) * scale
     hit = _ZAI_RESET.search(message) if provider == "zai" else None
     if hit:
-        return datetime.fromisoformat(hit.group(1)).replace(tzinfo=_BEIJING).timestamp()
+        try:
+            return datetime.fromisoformat(hit.group(1)).replace(tzinfo=_BEIJING).timestamp()
+        except ValueError:
+            return None
     return None
 
 
@@ -561,6 +574,8 @@ def classify(provider: str, status: int, body, headers=None, *, now: float | Non
     if kind is None:
         return None
     reset_at = _reset_at(provider, err, meta, h, message, now)
+    if reset_at:
+        reset_at = min(reset_at, now + MAX_WAIT)
     retry_after = max(0.0, reset_at - now) if reset_at else None
     # A "rate limit" that clears in hours is a spent allowance.
     if kind == "rate_limit" and retry_after and retry_after > 3600:

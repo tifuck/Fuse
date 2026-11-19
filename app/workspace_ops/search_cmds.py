@@ -214,10 +214,13 @@ def _remote_timeout_prefix(seconds: int | None) -> str:
 
 
 def _grep_line_cap(mode: str, max_matches: int, context: int) -> int:
-    """head -n bound: result lines, not matches, when context lines are shown."""
+    """head -n bound: result lines, not matches, when context lines are shown.
+    One past the cap, so the reader can tell a full result from a cut one:
+    the next match, or a line past _GREP_MAX_LINES. A match takes at most
+    2 * context + 2 lines with its context and '--'."""
     if mode != "content" or not context:
-        return max_matches
-    return min(_GREP_MAX_LINES, max_matches * (2 * context + 2))
+        return max_matches + 1
+    return min(_GREP_MAX_LINES, (max_matches + 1) * (2 * context + 2)) + 1
 
 
 def _enter_dir_sh(target: str, include: str = "") -> str:
@@ -385,8 +388,8 @@ def _glob_search_cmd(
         + _remote_timeout_prefix(timeout_s)
         + f"TGT={_quote_host_path(path)}; "
         + 'if [ -d "$TGT" ]; then cd -- "$TGT" || exit 2; TGT=.; fi; '
-        + f"if command -v rg >/dev/null 2>&1; then {rg} | head -n {_GLOB_MAX_PATHS}; "
-        f'elif [ -d "$TGT" ]; then {fallback} | head -n {_GLOB_MAX_PATHS}; '
+        + f"if command -v rg >/dev/null 2>&1; then {rg} | head -n {_GLOB_MAX_PATHS + 1}; "
+        f'elif [ -d "$TGT" ]; then {fallback} | head -n {_GLOB_MAX_PATHS + 1}; '
         f'elif [ -e "$TGT" ]; then printf \'%s\\n\' "$TGT"; '
         + _MISSING_TARGET_SH
     )

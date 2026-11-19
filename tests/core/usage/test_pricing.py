@@ -3,6 +3,7 @@ built-in defaults, auto-pricing from another spelling or the OpenRouter
 catalog, and the OpenRouter sync. Every save reprices the model's history.
 """
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -71,6 +72,28 @@ def test_builtin_defaults_seed_once_refresh_stale_rows_and_keep_manual_edits(fre
     db.execute("UPDATE model_prices SET cached_input_micros_per_million=1 WHERE provider='grok' AND model='grok-4.7'")
     assert pricing.ensure_default_prices() == ["grok/grok-4.7"]
     assert _price("grok", "grok-4.7")["cached_input_micros_per_million"] == 500_000
+    assert rollup_drift() == {}
+
+
+def test_a_manual_rate_edit_keeps_long_context_tiers_and_a_new_row_starts_with_the_builtin_ones(fresh_db):
+    uid = user()
+    tier = [{"min_prompt_tokens": 100_000, "input_rate": 3_000_000, "cached_rate": None,
+             "cache_write_rate": None, "output_rate": 6_000_000}]
+    db.save_model_price("grok", "grok-x", 1_000_000, None, 2_000_000, None, tiers=tier, origin="openrouter")
+    _use(uid, "grok", "grok-x", prompt_tokens=100_000, completion_tokens=1000)
+    _use(uid, "chatgpt", "gpt-5.5", prompt_tokens=272_000, completion_tokens=1000)
+
+    # What the pricing page saves: base rates only.
+    for provider, model in (("grok", "grok-x"), ("chatgpt", "gpt-5.5")):
+        db.save_model_price(provider, model, 2_000_000, None, 4_000_000, None,
+                            tiers=pricing.default_tiers(provider, model), keep_long_context=True)
+
+    edited = _price("grok", "grok-x")
+    assert (edited["origin"], edited["input_micros_per_million"]) == ("manual", 2_000_000)
+    assert [t["input_rate"] for t in json.loads(edited["tiers_json"])] == [3_000_000]
+    assert _cost("grok", "grok-x") == (100_000 * 3 + 1000 * 6, 1)
+    # gpt-5.5's built-in tier from 272K: $10 in, $45 out.
+    assert _cost("chatgpt", "gpt-5.5") == (272_000 * 10 + 1000 * 45, 1)
     assert rollup_drift() == {}
 
 

@@ -94,6 +94,14 @@ test('a stream can freeze every block before the boundary: split parses match th
   }
 });
 
+test('the stable boundary is an offset into the text as given, CRLF included', async () => {
+  const { parseBlocks, stableBoundary } = await md();
+  const text = `Intro\r\n\r\n${T}js\r\nx = 1\r\n${T}\r\n\r\nSome prose`;
+  const tail = text.slice(stableBoundary(text));
+  assert.equal(tail, 'Some prose');
+  assert.deepEqual(kinds(parseBlocks(tail)), ['paragraph'], 'prose after a fence is not drawn as code');
+});
+
 test('composer marks keep every character and style what the sent message renders', async () => {
   const { marksHtml } = await import('../../static/chat/composer/marks.js');
   const text = (html) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');

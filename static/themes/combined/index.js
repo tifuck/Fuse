@@ -480,8 +480,8 @@ export function createCombinedTheme(runtime) {
     get runIsActive() { return runtime.runIsActive; },
     get streaming() { return runtime.streaming; },
   }));
-  // The status pill and rail follow every live-dock and work-clock sync.
-  const withChrome = (fn) => (...args) => { const out = fn(...args); theme.syncChrome(); return out; };
+  // The status pill and rail follow every live-dock and work-clock sync, once a frame.
+  const withChrome = (fn, sync = theme.scheduleChrome) => (...args) => { const out = fn(...args); sync(); return out; };
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,
@@ -522,7 +522,7 @@ export function createCombinedTheme(runtime) {
     syncActivitySpin: theme.syncActivitySpin,
     syncConsoleClocks: theme.syncConsoleClocks,
     syncLiveDock: withChrome(theme.syncLiveDock),
-    syncWorkClocks: withChrome(theme.syncWorkClocks),
+    syncWorkClocks: withChrome(theme.syncWorkClocks, theme.tickChrome),
     thinkingPosition: theme.thinkingPosition,
     todoBarHtml: theme.todoBarHtml,
     todoRowsHtml: theme.todoRowsHtml,

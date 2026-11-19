@@ -542,13 +542,11 @@ def _estimated_cost(
         if long_context and _pget(price, "long_output_micros_per_million") is not None
         else _pget(price, "output_micros_per_million") or 0
     )
-    cache_known = bool(_pget(price, "long_cached_input_known" if long_context else "cached_input_known"))
-    cached_rate = int(
-        _pget(price, "long_cached_input_micros_per_million")
-        if long_context and cache_known
-        else _pget(price, "cached_input_micros_per_million") if cache_known
-        else input_rate
-    )
+    cache_known = bool(_pget(price, "cached_input_known"))
+    cached_rate = int(_pget(price, "cached_input_micros_per_million") or 0) if cache_known else input_rate
+    # Like a tier: no long-context cached rate keeps the published base rate.
+    if long_context and _pget(price, "long_cached_input_known"):
+        cached_rate = int(_pget(price, "long_cached_input_micros_per_million") or 0)
     write_known = bool(_pget(price, "cache_write_known"))
     write_rate = int(_pget(price, "cache_write_micros_per_million") or 0) if write_known else input_rate
     if tier is not None:
@@ -596,13 +594,19 @@ def save_model_price(
     long_output_rate: int | None = None,
     origin: str = "manual",
     openrouter_id: str | None = None,
+    keep_long_context: bool = False,
 ) -> None:
     """Upsert a price row and reprice matching estimated history.
 
     Manual rows win: an 'openrouter'-origin sync never overwrites a row whose
     current origin is 'manual'. The dashboard documents that contract.
+
+    keep_long_context leaves an existing row's tiers and long_* columns as
+    stored (the pricing page edits base rates only); the passed values then
+    apply only when the row is new.
     """
     ts = now()
+    current = "model_prices" if keep_long_context else "excluded"
     tiers_json = json.dumps(
         [
             {
@@ -622,7 +626,7 @@ def save_model_price(
     # row until it commits) is in it.
     with tx() as write_conn:
         write_conn.execute(
-            """INSERT INTO model_prices
+            f"""INSERT INTO model_prices
                (provider, model, input_micros_per_million, cached_input_micros_per_million,
                 cache_write_micros_per_million, output_micros_per_million, reasoning_micros_per_million,
                 cached_input_known, cache_write_known, reasoning_known, long_context_threshold,
@@ -639,12 +643,12 @@ def save_model_price(
                   cached_input_known=excluded.cached_input_known,
                   cache_write_known=excluded.cache_write_known,
                   reasoning_known=excluded.reasoning_known,
-                  long_context_threshold=excluded.long_context_threshold,
-                  long_input_micros_per_million=excluded.long_input_micros_per_million,
-                  long_cached_input_micros_per_million=excluded.long_cached_input_micros_per_million,
-                  long_output_micros_per_million=excluded.long_output_micros_per_million,
-                  long_cached_input_known=excluded.long_cached_input_known,
-                  tiers_json=excluded.tiers_json,
+                  long_context_threshold={current}.long_context_threshold,
+                  long_input_micros_per_million={current}.long_input_micros_per_million,
+                  long_cached_input_micros_per_million={current}.long_cached_input_micros_per_million,
+                  long_output_micros_per_million={current}.long_output_micros_per_million,
+                  long_cached_input_known={current}.long_cached_input_known,
+                  tiers_json={current}.tiers_json,
                   origin=excluded.origin,
                   openrouter_id=excluded.openrouter_id,
                   synced_at=excluded.synced_at,

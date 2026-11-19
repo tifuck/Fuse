@@ -87,8 +87,8 @@ function swapVerb(el, verb, text) {
     out.textContent = old;
     run.ghost.append(out);
     el.append(run.ghost);
-    run.anims.push(out.animate([{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(4px)" }], { duration: SWAP_MS * 0.8, easing: "ease-out", fill: "forwards" }));
-    const landed = verb.animate([{ opacity: 0, filter: "blur(4px)", transform: "scale(.98)" }, { opacity: 1, filter: "blur(0)", transform: "none" }], { duration: SWAP_MS, easing: SWAP_EASE });
+    run.anims.push(out.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.98)" }], { duration: SWAP_MS * 0.8, easing: "ease-out", fill: "forwards" }));
+    const landed = verb.animate([{ opacity: 0, transform: "scale(.98)" }, { opacity: 1, transform: "none" }], { duration: SWAP_MS, easing: SWAP_EASE });
     run.anims.push(landed);
     landed.finished.then(() => {
       if (verb._swap !== run) return;
@@ -189,21 +189,26 @@ function paneItem(thought) {
     if (!thought) [el._icoEl, el._inEl, el._state] = el.firstChild.children;
     el._box = el.lastChild;
     el._out = el._box.firstChild;
+    // Faded at its cut edge once the output overflows the box: measured as
+    // it changes size, after layout, rather than on every sync.
+    el._fit = new ResizeObserver(() => el._box.classList.toggle("is-full", el._out.offsetHeight > el._box.clientHeight));
+    el._fit.observe(el._out);
     return el;
   }
 
 // A thought grows at its end: the text already drawn stays (a selection in it
 // survives) and only the new words are added.
-function syncPaneThought(el, text) {
+function syncPaneThought(el, text, grow) {
     const shown = el._text || "";
     if (text === shown) return;
+    grow?.();
     if (shown && text.startsWith(shown)) el._out.append(text.slice(shown.length));
     else el._out.textContent = text;
     el._text = text;
   }
 
 // Brings a call's item up to date in place.
-function syncPaneCall(el, trace) {
+function syncPaneCall(el, trace, grow) {
     const ico = deps.rowIconHtml(trace);
     if (el._ico !== ico) {
       el._ico = ico;
@@ -227,20 +232,22 @@ function syncPaneCall(el, trace) {
     el._box.classList.toggle("is-tail", Boolean(body?.tail));
     if (body?.html) {
       if (el._html === body.html) return;
+      grow?.();
       el._html = body.html;
       el._lines = null;
       el._out.innerHTML = body.html;
       return;
     }
-    if (el._html) {
-      el._html = null;
-      el._out.replaceChildren();
-    }
     const lines = body?.lines || [];
     const old = el._lines || [];
     let same = 0;
     while (same < old.length && same < lines.length && old[same] === lines[same]) same += 1;
-    if (same === old.length && same === lines.length) return;
+    if (!el._html && same === old.length && same === lines.length) return;
+    grow?.();
+    if (el._html) {
+      el._html = null;
+      el._out.replaceChildren();
+    }
     // Output grows at its end: the lines already drawn stay (a selection in
     // them survives); only a grown last line and the new ones are drawn.
     if (same >= old.length - 1 && lines.length >= old.length) {
@@ -298,14 +305,15 @@ function syncLivePane(dock, msg, line) {
     const trace = text || line.phase === "thinking" ? null : paneTrace(msg, line.key);
     const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : "";
     const moving = paneOpen && dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
-    const fill = () => {
-      if (text) syncPaneThought(pane.item, text);
-      else if (trace) syncPaneCall(pane.item, trace);
+    const fill = (grow) => {
+      if (text) syncPaneThought(pane.item, text, grow);
+      else if (trace) syncPaneCall(pane.item, trace, grow);
     };
     if (pane.key !== key) {
       // Another line: its item replaces the last, the height easing between.
       const h0 = moving ? pane.inner.offsetHeight : 0;
       pane.inner.getAnimations().forEach((a) => a.cancel());
+      pane.item?._fit.disconnect();
       pane.item?.remove();
       pane.key = key;
       pane.item = key ? paneItem(Boolean(text)) : null;
@@ -321,10 +329,11 @@ function syncLivePane(dock, msg, line) {
       }
     } else if (pane.item) {
       // The same line: new output slides in from below once the box is full.
+      // Measured only when there is new output to slide.
       const out = pane.item._out;
-      const before = moving ? out.getBoundingClientRect().top : 0;
-      fill();
-      if (moving) {
+      let before = null;
+      fill(() => { if (moving && before === null) before = out.getBoundingClientRect().top; });
+      if (before !== null) {
         const dy = before - out.getBoundingClientRect().top;
         if (Math.abs(dy) > 0.5) {
           out.getAnimations().forEach((a) => a.cancel());
@@ -332,7 +341,6 @@ function syncLivePane(dock, msg, line) {
         }
       }
     }
-    if (pane.item) pane.item._box.classList.toggle("is-full", pane.item._out.offsetHeight > pane.item._box.clientHeight);
     showPane(dock, pane);
   }
 
@@ -507,12 +515,22 @@ function consoleSpinGlyph() {
     return deps.reduceMotion.matches ? CONSOLE_SPIN_STILL : CONSOLE_SPIN_FRAMES[deps.consoleSpinFrame % CONSOLE_SPIN_FRAMES.length];
   }
 
+// The glyphs that tick: the "Jump to latest" pill's and every shown run
+// spinner's, each kept as setConsoleSpin fills its slot.
+function spinTicks(mark) {
+    const slot = mark.parentElement;
+    if (!mark.isConnected || !slot || slot.hidden) return false;
+    if (slot === deps.latestSpin) return Boolean(deps.latestPill && !deps.latestPill.hidden);
+    return "runSpin" in slot.dataset;
+  }
+
 function consoleSpinMarks() {
-    return [[deps.latestPill, deps.latestSpin]]
-      .filter(([dock, spin]) => dock && spin && !dock.hidden && !spin.hidden)
-      .map(([, spin]) => spin.querySelector(":scope > .chat-console-spin"))
-      .concat([...deps.root.querySelectorAll("[data-run-spin]:not([hidden]) > .chat-console-spin")])
-      .filter(Boolean);
+    const marks = [];
+    for (const mark of spinMarks) {
+      if (!mark.isConnected) spinMarks.delete(mark);
+      else if (spinTicks(mark)) marks.push(mark);
+    }
+    return marks;
   }
 
 function stopConsoleSpin() {
@@ -533,7 +551,12 @@ function setConsoleSpin(el) {
       mark.textContent = consoleSpinGlyph("runSpin" in el.dataset);
       el.replaceChildren(mark);
     }
-    if (deps.consoleSpinTimer || deps.reduceMotion.matches) return;
+    if (el.matches(UNSHOWN_SPIN)) return;
+    if (!spinMarks.has(mark)) {
+      spinMarks.forEach((old) => { if (!old.isConnected) spinMarks.delete(old); });
+      spinMarks.add(mark);
+    }
+    if (deps.consoleSpinTimer || deps.reduceMotion.matches || !spinTicks(mark)) return;
     deps.consoleSpinTimer = window.setInterval(() => {
       const marks = consoleSpinMarks();
       if (!marks.length) {
@@ -541,7 +564,10 @@ function setConsoleSpin(el) {
         return;
       }
       deps.consoleSpinFrame = (deps.consoleSpinFrame + 1) % CONSOLE_SPIN_FRAMES.length;
-      marks.forEach((spin) => { spin.textContent = consoleSpinGlyph("runSpin" in spin.parentElement.dataset); });
+      marks.forEach((spin) => {
+        const glyph = consoleSpinGlyph("runSpin" in spin.parentElement.dataset);
+        if (spin.textContent !== glyph) spin.textContent = glyph;
+      });
     }, 110);
   }
 
@@ -621,6 +647,11 @@ function activityLabel(msg, groups, live) {
 const CONSOLE_SPIN_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const CONSOLE_SPIN_STILL = "⠿";
+
+// Slots whose glyph this view never shows (styles/shell.css): a session row's,
+// where the Chaos canvas spins instead, and a tab's, drawn as a dot.
+const UNSHOWN_SPIN = ".dk-live, .dk-tab .chat-run-spin";
+const spinMarks = new Set();
 
   return { setLiveLabelText, setLivePhase, paneTrace, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }

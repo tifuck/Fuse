@@ -6,6 +6,8 @@ import re
 import socket
 from urllib.parse import parse_qs, quote, urlparse, urlunparse
 
+import idna
+
 _BLOCKED_HOSTS = {
     "localhost",
     "metadata.google.internal",
@@ -37,9 +39,36 @@ def is_blocked_host(host: str) -> bool:
     return not _is_global(ip)
 
 
+_V4_COMPATIBLE = ipaddress.ip_network("::/96")
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
+
+
+def ascii_host(host: str) -> str:
+    """The host in its ASCII (UTS-46 IDNA) form, '' if it has none."""
+    host = (host or "").strip().lower().rstrip(".")
+    if host.isascii():
+        return host
+    try:
+        return idna.encode(host, uts46=True).decode("ascii").lower().rstrip(".")
+    except (idna.IDNAError, UnicodeError):
+        return ""
+
+
 def _is_global(ip) -> bool:
+    if ip.version == 4:
+        return ip.is_global
     # Python 3.12 calls ::ffff:100.64.0.1 global though 100.64.0.1 is not.
-    return (getattr(ip, "ipv4_mapped", None) or ip).is_global
+    if ip.ipv4_mapped:
+        return ip.ipv4_mapped.is_global
+    if ip.is_site_local or ip in _NAT64_LOCAL:
+        return False
+    # IPv4-compatible, NAT64, 6to4 and Teredo addresses reach the IPv4 hosts
+    # they embed (64:ff9b::7f00:1 is 127.0.0.1 through a NAT64 gateway).
+    embedded = [ip.sixtofour, *(ip.teredo or ())]
+    if ip in _V4_COMPATIBLE or ip in _NAT64:
+        embedded.append(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
+    return ip.is_global and all(v4.is_global for v4 in embedded if v4 is not None)
 
 
 def _netloc(host: str, port: int | None, scheme: str) -> str:
@@ -64,7 +93,7 @@ def public_http_url(raw: str, *, https_only: bool = False) -> str:
         return ""
     if parsed.username or parsed.password:
         return ""
-    host = (parsed.hostname or "").lower().rstrip(".")
+    host = ascii_host(parsed.hostname or "")
     if is_blocked_host(host):
         return ""
     if port not in (None, 80, 443):
@@ -131,10 +160,11 @@ def domain_pattern(raw: str) -> str:
     if "/" in text or "@" in text or ":" in text or " " in text:
         return ""
     if text.startswith("*."):
-        rest = text[2:]
+        rest = ascii_host(text[2:])
         if not rest or not _DOMAIN_RE.match(rest):
             return ""
         return "*." + rest
+    text = ascii_host(text)
     if not text or not _DOMAIN_RE.match(text):
         return ""
     return text
@@ -172,6 +202,7 @@ def domain_allowed(host: str, *, blacklist: list[str] | None = None, whitelist: 
             blacklist = stored_black
         if whitelist is None:
             whitelist = stored_white
+    host = ascii_host(host)
     if any(host_matches(host, item) for item in blacklist):
         return False
     if whitelist and not any(host_matches(host, item) for item in whitelist):

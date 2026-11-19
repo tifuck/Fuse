@@ -377,6 +377,7 @@ export function createThreads(ctx) {
     // S.renaming would freeze the list.
     if (!row?.isConnected) return;
     S.renaming = true;
+    render.forgetRow(row);
     const inputEl = document.createElement("input");
     inputEl.className = "rename";
     inputEl.setAttribute("aria-label", "Rename chat");

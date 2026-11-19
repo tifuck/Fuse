@@ -31,18 +31,46 @@ function safeUrl(raw) {
 // (`writing`), whole otherwise.
 
 
+// Markdown code as the server reads it (in_md_code, app/chat_generation/parsing.py):
+// fences close on a line of at least as many of the opening character.
+const MD_CODE = /^[ \t]{0,3}(`{3,})(?!`)[^\n]*(?:\n|(?![\s\S]))[\s\S]*?(?:^[ \t]{0,3}\1`*[ \t]*(?=\n|$)|(?![\s\S]))|^[ \t]{0,3}(~{3,})(?!~)[^\n]*(?:\n|(?![\s\S]))[\s\S]*?(?:^[ \t]{0,3}\2~*[ \t]*(?=\n|$)|(?![\s\S]))|(?<!`)(`+)(?!`)[^\n]+?(?<!`)\3(?!`)/gm;
+
+// Whether text[at] sits in markdown code; null while an inline span opened
+// before it on its (last) line may still close.
+function inMdCode(text, at) {
+  const spans = [...text.matchAll(MD_CODE)].map((m) => [m.index, m.index + m[0].length]);
+  if (spans.some(([lo, hi]) => lo <= at && at < hi)) return true;
+  if (text.includes("\n", at)) return false;
+  const line = Math.max(text.lastIndexOf("\n", at - 1) + 1, ...spans.filter(([, hi]) => hi <= at).map(([, hi]) => hi));
+  return text.slice(line, at).includes("`") ? null : false;
+}
+
+// Think tags as the server splits them (app/chat_output.py): an opener before
+// any visible text opens a thought; a closer outside code ends one (or is
+// dropped outside one); every other tag stays as written. A closer that code
+// may still swallow stays text until the next delta settles it.
 function splitThink(text) {
   const re = /<\/?(?:think|thinking|thought|reasoning)>/gi;
   let reasoning = "";
   let content = "";
   let inThink = false;
+  let from = 0;
   let i = 0;
   let match;
   while ((match = re.exec(text))) {
     const chunk = text.slice(i, match.index);
+    const closing = match[0][1] === "/";
+    let toggles;
+    if (!closing) toggles = !inThink && !(content + chunk).trim();
+    else {
+      const head = inThink ? reasoning.slice(from) : content;
+      toggles = inMdCode(head + text.slice(i), head.length + match.index - i) === false;
+    }
+    if (!toggles) continue;
     if (inThink) reasoning += chunk;
     else content += chunk;
-    inThink = match[0][1] !== "/";
+    inThink = !closing;
+    from = reasoning.length;
     i = match.index + match[0].length;
   }
   const tail = text.slice(i);
@@ -77,8 +105,10 @@ function deltaParts(obj) {
     return "";
   };
   content = take(delta.content) || (choice.delta ? "" : take(message.content));
+  // Some providers send the same text under two keys: the first one set is the reasoning.
   for (const key of ["reasoning_content", "reasoning", "thinking", "reasoning_text"]) {
-    reasoning += take(delta[key]) || take(message[key]) || take(obj[key]);
+    reasoning = take(delta[key]) || take(message[key]) || take(obj[key]);
+    if (reasoning) break;
   }
   return {
     content,
@@ -160,8 +190,10 @@ function humanMs(ms) {
   if (!Number.isFinite(n) || n < 0) return "";
   const rounded = Math.round(n);
   if (rounded < 1000) return `${rounded}ms`;
-  const secs = rounded / 1000;
-  if (secs < 60) return `${secs < 10 ? secs.toFixed(1) : Math.round(secs)}s`;
+  const tenths = Math.round(rounded / 100) / 10;
+  if (tenths < 10) return `${tenths.toFixed(1)}s`;
+  const secs = Math.round(rounded / 1000);
+  if (secs < 60) return `${secs}s`;
   return formatTurnDuration(n);
 }
 

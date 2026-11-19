@@ -669,6 +669,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         }
         return;
       }
+      const step = event.target.closest("[data-perm-step-btn]");
+      if (step) {
+        perms.stepPermCard(Number(step.getAttribute("data-perm-step-btn")));
+        return;
+      }
       const more = event.target.closest("[data-perm-extend]");
       if (more) {
         const card = more.closest("[data-perm-card]");
@@ -975,6 +980,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         if (S.queuedTurns[index] && !turns.queueItemSending(S.queuedTurns[index])) turns.removeQueuedTurn(index);
       }
     });
+    S.queueEl?.querySelector("[data-queue-resume]")?.addEventListener("click", () => turns.resumeQueue());
     const closeQueueMenu = () => { if (S.queueMenuId) { S.queueMenuId = ""; turns.renderQueue(); } };
     document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.(".chat-queue-more-wrap")) closeQueueMenu(); });
     document.addEventListener("keydown", (event) => { if (event.key === "Escape" && S.queueMenuId) closeQueueMenu(); });
@@ -1995,7 +2001,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     // Mouse drags a pinned row straight away; a finger must hold still first,
     // so a plain swipe keeps scrolling the list. Once the hold arms the drag,
-    // the touchmove veto below keeps the browser from claiming the gesture.
+    // the pinned rows' touchmove veto (sidebar/render.js) keeps the browser
+    // from claiming the gesture.
     S.historyList.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || S.pinDrag) return;
       // Reordering needs the whole pinned section visible: search, the archive
@@ -2036,9 +2043,6 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       }
       movePinnedDrag(event);
     }, { passive: true });
-    S.historyList.addEventListener("touchmove", (event) => {
-      if (S.pinDrag && S.pinDrag.dragging) event.preventDefault();
-    }, { passive: false });
     window.addEventListener("pointerup", (event) => {
       if (!S.pinDrag || (S.pinDrag.dragging && event.pointerId !== S.pinDrag.id)) return;
       endPinDrag(S.pinDrag.dragging);

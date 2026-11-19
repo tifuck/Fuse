@@ -4,7 +4,7 @@ import pytest
 
 from app import chat_store, chats, db
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, make_user, quick_user, run_async, run_turn, text_frames
 
 from ._support import events, pk, runs_of
 
@@ -187,3 +187,15 @@ def test_list_and_search_report_running_and_escape_wildcards(fresh_db):
     assert [t["title"] for t in chats.search_threads(uid, "%")] == ["100% done"]
     hits = chats.search_threads(uid, "work")
     assert [t["title"] for t in hits] == ["100% done"] and "work" in hits[0]["snippet"]
+
+
+def test_search_snippet_keeps_leading_context_without_a_space(fresh_db):
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline", title="Long word")
+    text = "abcdefghij" * 10 + "needle"
+    chat_store.start_turn(uid, thread["id"], text, thread["revision"], None)
+
+    hits = chats.search_threads(uid, "needle")
+
+    assert [t["title"] for t in hits] == ["Long word"]
+    assert hits[0]["snippet"] == "…" + text[-48:]

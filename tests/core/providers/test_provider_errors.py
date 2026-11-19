@@ -75,11 +75,24 @@ def test_fuse_stream_failures_are_stalls_or_interruptions_and_keep_their_words()
     ({"retry-after": format_datetime(datetime.fromtimestamp(NOW + 90, timezone.utc), usegmt=True)}, {}, 90.0),
     ({"x-ratelimit-reset-tokens": "1m30s", "x-ratelimit-reset-requests": "20ms"}, {}, 90.0),
     ({}, {"error": {"message": "Rate limit reached. Please try again in 20s."}}, 20.0),
+    ({}, {"error": {"message": "Rate limit reached. Please try again in 1m30s."}}, 90.0),
     ({}, {"error": {"message": "x", "resets_at": int((NOW + 45) * 1000)}}, 45.0),
 ])
 def test_reset_times_come_from_every_documented_place(headers, body, wait):
     info = provider_errors.classify("openai", 429, body, headers, now=NOW)
     assert info["retry_after"] == pytest.approx(wait)
+
+
+@pytest.mark.parametrize("headers,wait", [
+    ({"retry-after": "inf"}, None),
+    ({"retry-after": "nan"}, None),
+    ({"retry-after": "1e300"}, provider_errors.MAX_WAIT),
+    ({"anthropic-ratelimit-unified-reset": "9" * 400}, None),
+    ({"anthropic-ratelimit-unified-reset": "9" * 20}, provider_errors.MAX_WAIT),
+])
+def test_an_unbounded_reset_is_dropped_or_capped_and_never_breaks_annotate(headers, wait):
+    _body, info = provider_errors.annotate("openai", 429, {"error": {"message": "slow"}}, headers, now=NOW)
+    assert info["retry_after"] == wait
 
 
 def test_a_rate_limit_that_clears_in_hours_is_a_spent_allowance():

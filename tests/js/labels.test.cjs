@@ -13,8 +13,40 @@ test('turn durations', () => {
 
 test('sub-second durations stay in ms and hand off above a second', () => {
   const cases = [[0, '0ms'], [450, '450ms'], [999, '999ms'], [999.6, '1.0s'], [1000, '1.0s'], [9500, '9.5s'],
-    [10_000, '10s'], [25_000, '25s'], [65_000, '1m 5s'], [-5, ''], [NaN, ''], ['x', '']];
+    [10_000, '10s'], [25_000, '25s'], [65_000, '1m 5s'], [-5, ''], [NaN, ''], ['x', ''],
+    [9940, '9.9s'], [9960, '10s'], [59_600, '1m']];
   for (const [ms, text] of cases) assert.equal(core.humanMs(ms), text, String(ms));
+});
+
+test('byte sizes take the larger unit once they round up to it, in every theme', async () => {
+  for (const theme of ['console', 'combined', 'desktop']) {
+    const { ccBytes } = (await import(`../../static/themes/${theme}/call-semantics.js`)).create({});
+    const cases = [[1023, '1023 bytes'], [1536, '1.5KB'], [1_048_575, '1MB'], [5 * 1024 ** 2, '5MB'], [1024 ** 3 - 1, '1GB']];
+    for (const [n, text] of cases) assert.equal(ccBytes(n), text, `${theme} ${n}`);
+  }
+});
+
+test('think tags split as the server does: openers only at the start, closers outside code', () => {
+  const split = (text) => { const r = core.splitThink(text); return [r.reasoning, r.content, r.inThink]; };
+  const F = '```';
+  assert.deepEqual(split('<think>plan</think>Answer'), ['plan', 'Answer', false]);
+  assert.deepEqual(split('<think>plan so f'), ['plan so f', '', true], 'a streaming thought stays open');
+  assert.deepEqual(split('<think>a</think> <thinking>b</thinking>C'), ['ab', ' C', false]);
+  assert.deepEqual(split('Use <think> tags.\nMore'), ['', 'Use <think> tags.\nMore', false], 'an opener after visible text is prose');
+  assert.deepEqual(split('Write `</think>` here'), ['', 'Write `</think>` here', false], 'quoted in an inline span');
+  assert.deepEqual(split(`${F}\n<think>x</think>\n${F}\nok`), ['', `${F}\n<think>x</think>\n${F}\nok`, false], 'quoted in a fence');
+  assert.deepEqual(split('<think>tag `</think>` ends</think>Done'), ['tag `</think>` ends', 'Done', false]);
+  assert.deepEqual(split('opened by the prompt</think>Answer'), ['', 'opened by the promptAnswer', false], 'a bare closer is dropped');
+  assert.deepEqual(split('<think>a `b </think>'), ['a `b </think>', '', true], 'a span that may still close holds the closer as text');
+  assert.deepEqual(split('<think>a `b </think>\nAnswer'), ['a `b ', '\nAnswer', false], 'until its line settles');
+  assert.deepEqual(split('<think>a</thi'), ['a</thi', '', true], 'a partial tag is text');
+});
+
+test('reasoning deltas take the first key set, never several', () => {
+  const reasoning = (delta) => core.deltaParts({ choices: [{ delta }] }).reasoning;
+  assert.equal(reasoning({ reasoning_content: 'same', reasoning: 'same' }), 'same');
+  assert.equal(reasoning({ reasoning_content: '', thinking: 't' }), 't');
+  assert.equal(core.deltaParts({ choices: [{ delta: {} }], reasoning_text: 'top' }).reasoning, 'top');
 });
 
 test('token counts abbreviate at thousand and million', () => {
