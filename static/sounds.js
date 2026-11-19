@@ -10,115 +10,109 @@
   let ctx = null;
   let master = null;
 
-  function tone(t, freq, dur, o = {}) {
+  let dry = null;
+  let room = null;
+
+  // One voice: soft linear attack, smooth exponential tail, optional pitch
+  // glide, low-pass, pan and a send into the short room.
+  function tone(t, freq, dur, peak, o = {}) {
     const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
     osc.type = o.type || "sine";
-    osc.frequency.setValueAtTime(freq, t);
-    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
-    if (o.det) osc.detune.value = o.det;
+    if (o.from) {
+      osc.frequency.setValueAtTime(o.from, t);
+      osc.frequency.exponentialRampToValueAtTime(freq, t + (o.glide || dur * 0.6));
+    } else {
+      osc.frequency.setValueAtTime(freq, t);
+    }
     let node = osc;
     if (o.lp) {
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
       filter.frequency.value = o.lp;
+      filter.Q.value = 0.4;
       osc.connect(filter);
       node = filter;
     }
-    node.connect(gain);
-    gain.connect(master);
-    envelope(gain, t, dur, o.g || 0.1, o.a);
-    osc.start(t);
-    osc.stop(t + dur + 0.02);
-  }
-
-  function noise(t, dur, o = {}) {
-    const length = Math.ceil(ctx.sampleRate * dur);
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    if (o.hp) {
-      filter.type = "highpass";
-      filter.frequency.value = o.hp;
-    } else if (o.bp) {
-      filter.type = "bandpass";
-      filter.Q.value = o.q || 1.2;
-      filter.frequency.setValueAtTime(o.bp[0], t);
-      filter.frequency.exponentialRampToValueAtTime(o.bp[1], t + dur);
-    } else {
-      filter.type = "lowpass";
-      filter.frequency.value = o.lp || 1000;
-    }
+    const attack = o.a ?? 0.004;
     const gain = ctx.createGain();
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(master);
-    envelope(gain, t, dur, o.g || 0.05, o.a);
-    src.start(t);
-    src.stop(t + dur + 0.02);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(peak, t + attack);
+    gain.gain.setTargetAtTime(0, t + attack, Math.max(0.004, dur / 4.5));
+    node.connect(gain);
+    let out = gain;
+    if (o.pan && ctx.createStereoPanner) {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = o.pan;
+      gain.connect(pan);
+      out = pan;
+    }
+    out.connect(dry);
+    if (o.send) {
+      const send = ctx.createGain();
+      send.gain.value = o.send;
+      out.connect(send);
+      send.connect(room);
+    }
+    osc.start(t);
+    osc.stop(t + attack + dur + 0.15);
   }
 
-  function envelope(gain, t, dur, peak, attack) {
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(peak, t + (attack || 0.004));
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  // Muffled: a low-passed triangle over a quieter sine.
+  function felt(t, freq, dur, peak) {
+    tone(t, freq, dur, peak, { type: "triangle", lp: freq * 1.8, a: 0.008 });
+    tone(t, freq, dur * 0.8, peak * 0.5, { a: 0.01 });
   }
 
-  // Soft mallet: the note, a fast-fading 4th partial (marimba-like) and a 4 ms strike.
-  function pluck(t, freq, dur, g) {
-    tone(t, freq, dur, { g, a: 0.002 });
-    tone(t, freq * 4, dur * 0.25, { g: g * 0.12, a: 0.001 });
-    noise(t, 0.004, { bp: [freq * 3, freq * 3], g: g * 0.3, a: 0.001 });
+  // Bright: the note and a faint, fast-fading third partial.
+  function glint(t, freq, dur, peak) {
+    tone(t, freq, dur, peak, { a: 0.002, send: 0.08 });
+    tone(t, freq * 3.01, dur * 0.3, peak * 0.12, { a: 0.001 });
   }
 
-  // Muted tap: a quick flick down onto the note through a low-pass, plus a strike.
-  function tap(t, freq, g, dur = 0.05) {
-    tone(t, freq * 1.5, dur, { type: "triangle", to: freq, lp: freq * 4, g, a: 0.001 });
-    noise(t, 0.006, { bp: [freq * 4, freq * 2], g: g * 0.3, a: 0.001 });
+  // A short, dark stereo room for the few cues that bloom.
+  function impulse(sec) {
+    const length = Math.floor(ctx.sampleRate * sec);
+    const pre = Math.floor(ctx.sampleRate * 0.012);
+    const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch += 1) {
+      const data = buffer.getChannelData(ch);
+      let lp = 0;
+      for (let i = pre; i < length; i += 1) {
+        lp += 0.35 * ((Math.random() * 2 - 1) * Math.pow(1 - (i - pre) / (length - pre), 3.2) - lp);
+        data[i] = lp;
+      }
+    }
+    return buffer;
   }
 
-  // Muted and a little detuned: the wobble reads as "off" without a buzz.
-  function dull(t, freq, dur, g) {
-    tone(t, freq, dur, { type: "triangle", lp: freq * 6, g, a: 0.003 });
-    tone(t, freq, dur, { type: "triangle", lp: freq * 6, g: g * 0.5, a: 0.003, det: 30 });
-  }
-
-  // A knuckle on wood: fast pitch drop, a hollow body and a short strike.
-  function knock(t, f = 1) {
-    tone(t, 1250 * f, 0.03, { to: 700 * f, g: 0.07, a: 0.001 });
-    tone(t, 330 * f, 0.05, { type: "triangle", lp: 1400 * f, g: 0.06, a: 0.001 });
-    noise(t, 0.008, { bp: [2400 * f, 1200 * f], g: 0.04, a: 0.001 });
-  }
+  const N = { C4: 261.63, E4: 329.63, G4: 392, A4: 440, B4: 493.88, D5: 587.33, E5: 659.26, F5: 698.46, G5: 783.99, A5: 880, B5: 987.77, C6: 1046.5, D6: 1174.66, E6: 1318.51, G6: 1567.98, C7: 2093 };
+  const FLAT = 0.944; // a little under a half-step: "off", not a melody
 
   // name: [tier, priority, vibration, synth]. "key" plays in Key moments and
   // All; "all" only in All. A higher priority swallows a lower one within 300 ms.
-  // Every pitch is from E major pentatonic, so the cues sound like one family;
-  // failures step a half-step off it. Nothing leans on lows a phone speaker drops.
+  // Short, quiet and mostly dry. Rising means start or success, falling means
+  // stop or failure, a flattened note means wrong, a repeat asks for attention.
+  // Routine acks (copy, delete, save, a subagent finishing) stay silent.
   const SOUNDS = {
-    send: ["key", 1, 0, (t) => { tone(t, 494, 0.04, { to: 1319, g: 0.08, a: 0.001 }); noise(t, 0.005, { hp: 3000, g: 0.02, a: 0.001 }); }],
-    queue: ["key", 1, 0, (t) => { tap(t, 1109, 0.05); tap(t + 0.06, 831, 0.04); }],
-    stop: ["key", 2, 12, (t) => { tap(t, 415, 0.14, 0.07); noise(t, 0.02, { lp: 900, g: 0.03 }); }],
-    stopAll: ["key", 2, [12, 70, 12], (t) => { tap(t, 415, 0.12, 0.07); tap(t + 0.08, 330, 0.1, 0.08); }],
-    done: ["key", 3, 0, (t) => { pluck(t, 494, 0.2, 0.09); pluck(t + 0.075, 659, 0.34, 0.085); }],
-    doneSoft: ["key", 3, 0, (t) => { pluck(t, 494, 0.14, 0.045); pluck(t + 0.065, 659, 0.22, 0.04); }],
-    error: ["key", 5, 20, (t) => { dull(t, 349, 0.1, 0.12); dull(t + 0.1, 330, 0.22, 0.11); }],
-    errorSoft: ["key", 5, 0, (t) => dull(t, 349, 0.16, 0.05)],
-    agentDone: ["key", 2, 0, (t) => pluck(t, 1661, 0.1, 0.085)],
-    agentFail: ["key", 2, 0, (t) => dull(t, 415, 0.14, 0.055)],
-    permission: ["key", 4, [10, 90, 10], (t) => { knock(t); knock(t + 0.11); }],
-    permWarn: ["key", 4, 10, (t) => knock(t, 1.25)],
-    copy: ["key", 1, 0, (t) => { noise(t, 0.006, { hp: 4500, g: 0.04, a: 0.001 }); pluck(t, 2637, 0.03, 0.012); }],
-    micOn: ["key", 1, 0, (t) => { pluck(t, 1109, 0.04, 0.04); pluck(t + 0.04, 1319, 0.06, 0.04); }],
-    micOff: ["key", 1, 0, (t) => { pluck(t, 1319, 0.04, 0.04); pluck(t + 0.04, 1109, 0.06, 0.04); }],
-    delete: ["key", 1, 0, (t) => { noise(t, 0.1, { bp: [2600, 380], q: 1, g: 0.06, a: 0.01 }); tap(t + 0.055, 330, 0.05, 0.05); }],
-    artifact: ["all", 1, 0, (t) => [1319, 1661, 1976].forEach((f, i) => pluck(t + i * 0.045, f, i === 2 ? 0.2 : 0.07, 0.03))],
-    saved: ["all", 1, 0, (t) => pluck(t, 988, 0.08, 0.06)],
+    send: ["key", 1, 0, (t) => tone(t, 640, 0.06, 0.1, { from: 420, glide: 0.04 })],
+    queue: ["key", 1, 0, (t) => tone(t, N.D5, 0.09, 0.08, { from: N.F5, glide: 0.05 })],
+    stop: ["key", 2, 12, (t) => tone(t, N.E4, 0.08, 0.11, { from: N.A4, glide: 0.05 })],
+    stopAll: ["key", 2, [12, 70, 12], (t) => { felt(t, N.G4, 0.06, 0.15); felt(t + 0.09, N.E4, 0.08, 0.15); }],
+    done: ["key", 3, 0, (t) => { tone(t, N.G5, 0.12, 0.08, { a: 0.003 }); tone(t + 0.07, N.C6, 0.22, 0.08, { a: 0.003, send: 0.1 }); }],
+    doneSoft: ["key", 3, 0, (t) => { tone(t, N.G5, 0.08, 0.04); tone(t + 0.06, N.C6, 0.14, 0.04); }],
+    error: ["key", 5, 20, (t) => { felt(t, N.B4, 0.07, 0.12); felt(t + 0.09, N.B4 * FLAT, 0.16, 0.12); }],
+    errorSoft: ["key", 5, 0, (t) => felt(t, N.B4 * FLAT, 0.12, 0.09)],
+    agentFail: ["key", 2, 0, (t) => { tone(t, N.B5, 0.025, 0.05, { a: 0.001 }); tone(t + 0.035, N.B5 * FLAT, 0.04, 0.05, { a: 0.001 }); }],
+    permission: ["key", 4, [10, 90, 10], (t) => { glint(t, N.D6, 0.12, 0.07); glint(t + 0.14, N.D6, 0.18, 0.07); }],
+    permWarn: ["key", 4, 10, (t) => [0, 0.09, 0.18, 0.27].forEach((d) => tone(t + d, N.D6, 0.03, 0.05, { a: 0.002 }))],
+    micOn: ["key", 1, 0, (t) => tone(t, N.A5, 0.18, 0.05, { a: 0.07, send: 0.15 })],
+    micOff: ["key", 1, 0, (t) => tone(t, N.D5, 0.12, 0.05, { a: 0.005, send: 0.15 })],
+    artifact: ["all", 1, 0, (t) => {
+      for (let i = 0; i < 6; i += 1) tone(t + i * 0.03, [N.G6, N.C7, N.E6][i % 3], 0.05, 0.025, { a: 0.002, pan: Math.random() - 0.5, send: 0.2 });
+    }],
   };
   // Bursts merge: five subagents finishing together are one sound.
-  const GAP_MS = { agentDone: 400, agentFail: 400 };
+  const GAP_MS = { agentFail: 400 };
 
   const lastAt = new Map();
   let recent = [];
@@ -148,18 +142,23 @@
       if (!Ctor) return null;
       ctx = new Ctor();
       master = ctx.createGain();
-      // A gentle top-end roll-off and a soft compressor keep every cue round
-      // and stop overlapping ones from peaking.
-      const air = ctx.createBiquadFilter();
-      air.type = "lowpass";
-      air.frequency.value = 8000;
+      master.connect(ctx.destination);
+      // A soft compressor stops overlapping cues from peaking.
       const glue = ctx.createDynamicsCompressor();
-      glue.threshold.value = -18;
-      glue.knee.value = 12;
+      glue.threshold.value = -10;
+      glue.knee.value = 8;
       glue.ratio.value = 3;
-      master.connect(air);
-      air.connect(glue);
-      glue.connect(ctx.destination);
+      glue.attack.value = 0.003;
+      glue.release.value = 0.15;
+      const trim = ctx.createGain();
+      trim.gain.value = 0.7;
+      glue.connect(trim);
+      trim.connect(master);
+      dry = ctx.createGain();
+      dry.connect(glue);
+      room = ctx.createConvolver();
+      room.buffer = impulse(0.9);
+      room.connect(glue);
     }
     if (ctx.state !== "running") ctx.resume().catch(() => {});
     return ctx;
@@ -199,16 +198,6 @@
   }
   for (const type of ["pointerdown", "keydown", "touchend"]) {
     window.addEventListener(type, unlock, { capture: true, passive: true });
-  }
-
-  // Every copy on the site goes through the clipboard API: one hook covers them all.
-  const clip = navigator.clipboard;
-  if (clip && typeof clip.writeText === "function") {
-    const write = clip.writeText.bind(clip);
-    clip.writeText = (text) => write(text).then((value) => {
-      play("copy");
-      return value;
-    });
   }
 
   // Settings › Appearance and the chat Appearance sheet (_appearance_body.html).

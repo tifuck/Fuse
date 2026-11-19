@@ -10,8 +10,8 @@ const source = readFileSync(resolve(__dirname, '../../static/sounds.js'), 'utf8'
 
 function boot({ saved, visible = true, focused = true, state = 'running', activation = false } = {}) {
   const storage = new Map(saved ? [['fuse.sounds.v1', JSON.stringify(saved)]] : []);
-  const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
-  const node = () => ({ connect() {}, start() { world.started += 1; }, stop() {}, frequency: param(), detune: {}, Q: {}, gain: param(), type: '' });
+  const param = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, setTargetAtTime() {} });
+  const node = () => ({ connect() {}, start() { world.started += 1; }, stop() {}, frequency: param(), detune: {}, Q: {}, gain: param(), pan: param(), type: '' });
   const vibrations = [];
   const copied = [];
   let now = 1_000_000;
@@ -32,7 +32,9 @@ function boot({ saved, visible = true, focused = true, state = 'running', activa
       createOscillator() { return node(); }
       createGain() { return node(); }
       createBiquadFilter() { return node(); }
-      createDynamicsCompressor() { return { ...node(), threshold: {}, knee: {}, ratio: {} }; }
+      createDynamicsCompressor() { return { ...node(), threshold: {}, knee: {}, ratio: {}, attack: {}, release: {} }; }
+      createConvolver() { return node(); }
+      createStereoPanner() { return node(); }
       createBufferSource() { return node(); }
       createBuffer(_, length) { return { getChannelData: () => new Float32Array(length) }; }
     },
@@ -47,13 +49,13 @@ test('modes: key moments hold back the "all" tier; off and zero volume are silen
   const ui = boot();
   assert.equal(ui.sound.play('done'), true);
   ui.tick(1000);
-  assert.equal(ui.sound.play('saved'), false);
+  assert.equal(ui.sound.play('artifact'), false);
   ui.sound.setPrefs({ mode: 'all' });
-  assert.equal(ui.sound.play('saved'), true);
+  assert.equal(ui.sound.play('artifact'), true);
   assert.equal(ui.sound.play('nope'), false);
   assert.equal(boot({ saved: { mode: 'off', volume: 0.7 } }).sound.play('send'), false);
   assert.equal(boot({ saved: { mode: 'key', volume: 0 } }).sound.play('send'), false);
-  for (const name of ['newChat', 'attach', 'archive', 'offline', 'online', 'undo', 'redo', 'rewind', 'compacted', 'allow', 'deny']) {
+  for (const name of ['newChat', 'attach', 'archive', 'offline', 'online', 'undo', 'redo', 'rewind', 'compacted', 'allow', 'deny', 'copy', 'delete', 'saved', 'agentDone']) {
     assert.equal(name in ui.sound.SOUNDS, false, name);
   }
 });
@@ -67,15 +69,15 @@ test('events play only in a visible, focused window; user actions play anywhere'
 
 test('repeat gaps, subagent bursts, priority and the four-a-second cap', () => {
   const ui = boot();
-  assert.equal(ui.sound.play('copy'), true);
+  assert.equal(ui.sound.play('send'), true);
   ui.tick(50);
-  assert.equal(ui.sound.play('copy'), false);
+  assert.equal(ui.sound.play('send'), false);
   ui.tick(100);
-  assert.equal(ui.sound.play('copy'), true);
+  assert.equal(ui.sound.play('send'), true);
   ui.tick(1000);
-  assert.equal(ui.sound.play('agentDone'), true);
+  assert.equal(ui.sound.play('agentFail'), true);
   ui.tick(300);
-  assert.equal(ui.sound.play('agentDone'), false, 'subagent bursts merge');
+  assert.equal(ui.sound.play('agentFail'), false, 'subagent bursts merge');
   ui.tick(1000);
   assert.equal(ui.sound.play('error'), true);
   ui.tick(100);
@@ -85,7 +87,7 @@ test('repeat gaps, subagent bursts, priority and the four-a-second cap', () => {
   ui.tick(50);
   assert.equal(ui.sound.play('error'), true, 'a higher one is never swallowed');
   const rate = boot();
-  const played = ['send', 'copy', 'micOn', 'micOff', 'queue'].map((name) => { rate.tick(130); return rate.sound.play(name); });
+  const played = ['send', 'queue', 'micOn', 'micOff', 'send'].map((name) => { rate.tick(130); return rate.sound.play(name); });
   assert.deepEqual(played, [true, true, true, true, false]);
 });
 
@@ -97,17 +99,17 @@ test('a suspended context plays only inside a user gesture, never late', async (
   assert.ok(ui.world.started > 0);
 });
 
-test('stop vibrates, plain sounds do not; every clipboard copy plays the copy sound', async () => {
+test('stop vibrates, plain sounds do not; a clipboard copy stays silent', async () => {
   const ui = boot();
   ui.sound.play('stop');
   ui.tick(1000);
   ui.sound.play('send');
   assert.deepEqual(Array.from(ui.vibrations), [12]);
   ui.tick(1000);
+  const voices = ui.world.started;
   await ui.world.navigator.clipboard.writeText('hello');
   assert.deepEqual(ui.copied, ['hello']);
-  ui.tick(50);
-  assert.equal(ui.sound.play('copy'), false, 'copy just played');
+  assert.equal(ui.world.started, voices, 'a copy starts no voice');
 });
 
 test('prefs survive bad storage and clamp volume', () => {

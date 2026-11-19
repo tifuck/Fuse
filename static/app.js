@@ -36,8 +36,6 @@ window.fuseConfirm = function fuseConfirm(message, opts) {
     };
     const onYes = (event) => {
       event.preventDefault();
-      // One sound for every confirmed delete or removal on the site.
-      if (options.danger && /^(delete|remove)\b/i.test(label)) window.fuseSound?.play("delete");
       finish(true);
     };
     const onNo = (event) => {
@@ -1258,8 +1256,7 @@ document.querySelectorAll(".probe").forEach((btn) => {
         next = next || {};
         const k = next.kind || "idle";
         if (k !== kind) {
-          if (k === "ok") window.fuseSound?.play("saved");
-          else if (k === "err") window.fuseSound?.play("errorSoft");
+          if (k === "err") window.fuseSound?.play("errorSoft");
         }
         kind = k;
         el.className = "fuse-toast is-" + k;
