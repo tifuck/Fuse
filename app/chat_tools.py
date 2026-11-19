@@ -761,7 +761,7 @@ async def _artifact_tool(name: str, args: dict, *, user_id: int, thread_id, codi
     if name != "read_artifact":
         # Every write: the gate resolves the identifier as the store does (a
         # create naming an existing artifact, by either key, is an update).
-        denied = await _artifact_public_gate(name, args, user_id=user_id, gate=gate)
+        denied = await _artifact_public_gate(name, args, user_id=user_id, gate=gate, source=source)
         if denied:
             return denied
     # Synchronous storage (pool checkout, row locks): keep it off the loop.
@@ -775,9 +775,10 @@ async def _artifact_tool(name: str, args: dict, *, user_id: int, thread_id, codi
     return text, trace
 
 
-async def _artifact_public_gate(name: str, args: dict, *, user_id: int, gate) -> tuple[str, dict] | None:
+async def _artifact_public_gate(name: str, args: dict, *, user_id: int, gate, source: str = "") -> tuple[str, dict] | None:
     """Changing a publicly shared artifact changes what everyone with the link
-    sees: ask once per chat first, as Claude Code does."""
+    sees: ask once per chat first, as Claude Code does, and every time its
+    source is a secret-named file."""
     from . import artifacts as artifacts_mod
     from . import permissions as permissions_mod
 
@@ -785,7 +786,9 @@ async def _artifact_public_gate(name: str, args: dict, *, user_id: int, gate) ->
     row = await asyncio.to_thread(artifacts_mod.get_owned, user_id, ident)
     if row is None or row["visibility"] != "public" or row["archived"]:
         return None
-    verdict = await permissions_mod.review_artifact(gate, tool=name, identifier=ident, title=row["title"])
+    secret_source = source if source and permissions_mod.is_secret_path(source) else ""
+    verdict = await permissions_mod.review_artifact(gate, tool=name, identifier=ident, title=row["title"],
+                                                    secret_source=secret_source)
     if verdict.allowed:
         return None
     kind = "interrupted" if verdict.get("kind") == "interrupted" else "permission_denied"

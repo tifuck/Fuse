@@ -1551,18 +1551,28 @@ def mark_agent_offline(user_id: int, host_id: int) -> None:
         _publish(user_id, {"type": "host", "host": view})
 
 
-def rotate_agent_token(user_id: int, host_id: int) -> str:
+async def rotate_agent_token(user_id: int, host_id: int) -> str:
+    """A new device token. The socket the old one opened is closed, so the
+    connector stays out until it reconnects with the new token."""
+    import asyncio
+
+    from . import agent_hub
+
     device = AGENT_TOKEN_PREFIX + secrets.token_urlsafe(32)
-    now = db.now()
-    with db.tx() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        result = conn.execute(
-            """UPDATE user_hosts SET device_token_hash=?, updated_at=?
-               WHERE id=? AND user_id=? AND auth_type='agent'""",
-            (token_hash(device), now, host_id, user_id),
-        )
-        if result.rowcount <= 0:
-            raise HostError("host not found", 404)
+
+    def write():
+        with db.tx() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            result = conn.execute(
+                """UPDATE user_hosts SET device_token_hash=?, updated_at=?
+                   WHERE id=? AND user_id=? AND auth_type='agent'""",
+                (token_hash(device), db.now(), host_id, user_id),
+            )
+            if result.rowcount <= 0:
+                raise HostError("host not found", 404)
+
+    await asyncio.to_thread(write)
+    await agent_hub.disconnect(user_id, host_id, "rotated")
     return device
 
 

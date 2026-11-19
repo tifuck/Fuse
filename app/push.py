@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from . import db
 from .config import ROOT, settings
@@ -67,19 +67,32 @@ _SECRET_RES = (
 )
 
 
-def valid_endpoint(endpoint) -> bool:
-    """Only browser push services may be stored and POSTed to."""
+def push_endpoint(endpoint) -> str:
+    """The endpoint rebuilt from its parsed parts when it is a browser push
+    service, else ''. Only the rebuilt form is stored and POSTed to."""
     if not isinstance(endpoint, str) or not endpoint.startswith("https://") or len(endpoint) > 2048:
-        return False
+        return ""
+    # urlsplit and requests disagree on backslashes and userinfo:
+    # 'https://10.0.0.1\\@fcm.googleapis.com/' is fcm to one and 10.0.0.1 to
+    # the other. Real endpoints are plain ASCII with neither.
+    if not endpoint.isascii() or any(c in "\\@" or c.isspace() or not c.isprintable() for c in endpoint):
+        return ""
     try:
         parts = urlsplit(endpoint)
         host = (parts.hostname or "").lower().rstrip(".")
         port = parts.port
     except ValueError:
-        return False
+        return ""
     if port not in (None, 443):
-        return False
-    return host in _PUSH_HOSTS or any(host.endswith(suffix) for suffix in _PUSH_HOST_SUFFIXES)
+        return ""
+    if not (host in _PUSH_HOSTS or any(host.endswith(suffix) for suffix in _PUSH_HOST_SUFFIXES)):
+        return ""
+    return urlunsplit(("https", host, parts.path or "/", parts.query, ""))
+
+
+def valid_endpoint(endpoint) -> bool:
+    """Only browser push services may be stored and POSTed to."""
+    return bool(push_endpoint(endpoint))
 
 
 def _redact_secrets(text: str) -> str:
@@ -205,7 +218,8 @@ def subscriptions_for(user_id: int) -> list:
 def save_subscription(user_id: int, endpoint: str, p256dh: str, auth: str, user_agent: str = "") -> None:
     """Store a device subscription. Raises ValueError when the endpoint is not
     a push service or already belongs to another account."""
-    if not valid_endpoint(endpoint):
+    endpoint = push_endpoint(endpoint)
+    if not endpoint:
         raise ValueError("endpoint is not a supported push service")
     with db.tx() as conn:
         row = conn.execute("SELECT user_id FROM push_subscriptions WHERE endpoint=?", (endpoint,)).fetchone()
@@ -248,6 +262,9 @@ def remove_others(user_id: int, keep: str = "") -> None:
 
 
 def _send_one(row, payload: str) -> bool:
+    # Rows stored before the endpoint check tightened are never POSTed to.
+    if push_endpoint(row["endpoint"]) != row["endpoint"]:
+        return False
     try:
         webpush(
             subscription_info={

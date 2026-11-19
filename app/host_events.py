@@ -61,6 +61,12 @@ async def close_user(uid, code=4401):
     await asyncio.gather(*(ws.close(code=code) for ws in sockets), return_exceptions=True)
 
 
+async def close_session(uid, sid):
+    """Logout: only the signed-out session's sockets; other sessions stay open."""
+    sockets = [ws for ws in _subscribers.get(uid, {}) if ws.session.get("sid") == sid]
+    await asyncio.gather(*(ws.close(code=4401) for ws in sockets), return_exceptions=True)
+
+
 def _origin(origin):
     try:
         parsed = urlsplit(origin)

@@ -85,7 +85,7 @@ def _read_kept(owner: tuple, raw: str) -> dict:
         ident = str(args.get("id") or "")
         offset = max(0, int(args.get("offset") or 0))
         limit = max(1, int(args.get("limit") or READ_PAGE))
-    except (ValueError, TypeError, AttributeError, RecursionError):
+    except (ValueError, TypeError, AttributeError, RecursionError, OverflowError):
         return {"ok": False, "error": "read_result takes an id and optional {offset, limit} numbers."}
     _forget(_clock())
     entry = _kept.get(ident)
@@ -93,7 +93,9 @@ def _read_kept(owner: tuple, raw: str) -> dict:
         return {"ok": False, "error": f"no kept result {ident}: results are kept for {KEEP_S // 60} minutes in this "
                                         "chat and lost when the server restarts. Run the code again with a narrower "
                                         "result (only if repeating its calls is safe)."}
-    return {"ok": True, "value": entry[2][offset:offset + limit]}
+    # Offset and limit count UTF-16 units, as the code's page.length does.
+    units = entry[2][:offset + limit].encode("utf-16-le", "surrogatepass")[2 * offset:2 * (offset + limit)]
+    return {"ok": True, "value": units.decode("utf-16-le", "surrogatepass")}
 
 
 def available() -> bool:
@@ -459,6 +461,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             else:
                 started += 1
                 task = asyncio.ensure_future(answer(n, name, call_args))
+                task.set_name(" ".join(f"{name} {subject(call_args)}".split()))
                 tasks.add(task)
                 task.add_done_callback(tasks.discard)
         return None
@@ -502,7 +505,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
         with contextlib.suppress(TimeoutError, asyncio.CancelledError):
             await asyncio.wait_for(errors, 1)
         # Calls the code left running (never awaited, or cut off) stop with it.
-        stopped = len(tasks)
+        stopped = [task.get_name() for task in tasks]
         for task in list(tasks):
             task.cancel()
         if tasks:
@@ -521,16 +524,18 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     return outcome, kind, done, stopped
 
 
-def _calls_line(done: list[dict], stopped: int) -> str:
+def _calls_line(done: list[dict], stopped: list[str]) -> str:
     counts = collections.Counter(c["name"] for c in done)
     line = (f"[Fuse: {len(done)} calls: " + ", ".join(f"{n}×{k}" for n, k in counts.items()) + "]") if done \
-        else "[Fuse: no tool calls]"
+        else "[Fuse: 0 calls: none finished]" if stopped else "[Fuse: no tool calls]"
     if stopped:
-        line += f"\n[Fuse: {stopped} calls were still running when the code ended and were stopped; await every call.]"
+        names = "; ".join(stopped[:5]) + ("; …" if len(stopped) > 5 else "")
+        line += (f"\n[Fuse: {len(stopped)} calls were still running when the code ended and were stopped ({names}); "
+                 "await every call.]")
     return line
 
 
-def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], stopped: int) -> tuple[str, dict]:
+def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], stopped: list[str]) -> tuple[str, dict]:
     logs = str(outcome.get("logs") or "")
     if outcome.get("ok"):
         if not outcome.get("undef"):
@@ -540,15 +545,17 @@ def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], st
         text += "\n" + _calls_line(done, stopped)
         return text, {**rec, "status": "done", "output": text, "code": code}
     error = _user_lines(str(outcome.get("error") or "run_code failed.")).removeprefix("Error: ")
+    # The calls come before the console output: a result over the limit is
+    # cut from its end, and which calls ran must survive the cut.
     lines = [f"Error: {error}"]
-    if logs:
-        lines.append("[console]\n" + logs)
     if done:
         lines.append(f"Calls that finished before the error ({len(done)}):")
         lines.extend(" ".join(f"- {c['name']} {c['subject']}".split()) + f": {c['status']}" for c in done[-40:])
     else:
         lines.append("No tool calls finished before the error.")
     if stopped:
-        lines.append(f"{stopped} calls still running were stopped.")
+        lines.append(f"{len(stopped)} calls still running were stopped.")
+    if logs:
+        lines.append("[console]\n" + logs)
     text = "\n".join(lines)
     return text, {**rec, "status": "error", "kind": kind or "code_error", "error": error[:400], "output": text, "code": code}

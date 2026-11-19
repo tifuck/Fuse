@@ -1105,7 +1105,7 @@ class KimiSource:
                     _chat_headers(token, extra),
                     payload,
                     close_client=True,
-                    reasoning_separate=True,
+                    reasoning_separate=False,
                 )
                 if status == 401 and extra.get("refresh_token") and not _capability_denial(obj):
                     # A capability denial is about the membership tier, not the
@@ -1123,7 +1123,7 @@ class KimiSource:
                             _chat_headers(token, extra),
                             payload,
                             close_client=True,
-                            reasoning_separate=True,
+                            reasoning_separate=False,
                         )
                 if stream is not None:
                     stream_reserved = True

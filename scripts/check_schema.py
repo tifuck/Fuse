@@ -12,7 +12,11 @@ boot refuses a missing index.
 --apply adds what is missing first, taken verbatim from schema.sql: whole
 tables, columns, indexes and foreign keys. It only ever adds, so the code still running
 keeps working. It never drops, renames, retypes or backfills; a migration
-that does (scripts/sql/) is still its own step.
+that does (scripts/sql/) is still its own step. Generated and INVISIBLE columns
+of an existing table are such a step (provider_base/provider_tail replace a
+plain provider_messages, which becomes generated): when one is missing, or a
+column schema.sql generates is plain, it names the migration, adds nothing
+and exits 1.
 """
 import re
 import sys
@@ -20,11 +24,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 SCHEMA_SQL = Path(__file__).resolve().parent / "sql" / "schema.sql"
+MIGRATIONS = SCHEMA_SQL.parent
 
 _TABLE = re.compile(r"^CREATE TABLE `([^`]+)` \($")
 _COLUMN = re.compile(r"^\s+`([^`]+)` ")
 _KEY = re.compile(r"^\s+((?:UNIQUE |FULLTEXT |SPATIAL )?KEY `([^`]+)` .*?),?$")
 _CONSTRAINT = re.compile(r"^\s+(CONSTRAINT `([^`]+)` FOREIGN KEY .*?),?$")
+_GENERATED = re.compile(r" GENERATED ALWAYS AS ")
+_MIGRATION_ONLY = re.compile(r" GENERATED ALWAYS AS | INVISIBLE\b")
 
 
 def expected_schema(text):
@@ -73,15 +80,34 @@ def missing_keys(expected, actual_columns, actual_keys, actual_constraints):
             for name in spec[kind] if name not in actual.get(table, set())]
 
 
+def pending_migrations(expected, actual_columns, actual_generated):
+    """table.column of a present table that only a migration may create or convert:
+    a missing generated or INVISIBLE column, or one schema.sql generates that is plain."""
+    return [f"{table}.{column}" for table, spec in expected.items() if table in actual_columns
+            for column, definition in spec["columns"].items()
+            if (_MIGRATION_ONLY.search(definition) and column not in actual_columns[table])
+            or (_GENERATED.search(definition) and column in actual_columns[table]
+                and column not in actual_generated.get(table, set()))]
+
+
+def migrations_naming(name):
+    """The scripts/sql/ migrations that mention both table and column of table.column."""
+    table, column = name.split(".")
+    return [path.name for path in sorted(MIGRATIONS.glob("*.sql")) if path.name != SCHEMA_SQL.name
+            and all(re.search(rf"\b{re.escape(word)}\b", path.read_text(encoding="utf-8"))
+                    for word in (table, column))]
+
+
 def additions(expected, actual_columns, actual_keys, actual_constraints):
-    """The statements that add every missing table, column, index and foreign key."""
+    """The statements that add every missing table, column, index and foreign key,
+    except the columns pending_migrations names."""
     sql = []
     for table, spec in expected.items():
         if table not in actual_columns:
             sql.append(spec["create"])
             continue
         parts = [f"ADD COLUMN {definition}" for column, definition in spec["columns"].items()
-                 if column not in actual_columns[table]]
+                 if column not in actual_columns[table] and not _MIGRATION_ONLY.search(definition)]
         parts += [f"ADD {definition}" for key, definition in spec["keys"].items()
                   if key not in actual_keys.get(table, set())]
         # Foreign keys last, after the columns and indexes they use.
@@ -112,6 +138,14 @@ def live_columns(url):
     actual = {}
     for table, column in _query(url, "SELECT table_name, column_name FROM information_schema.columns "
                                      "WHERE table_schema=DATABASE()"):
+        actual.setdefault(table, set()).add(column)
+    return actual
+
+
+def live_generated(url):
+    actual = {}
+    for table, column in _query(url, "SELECT table_name, column_name FROM information_schema.columns "
+                                     "WHERE table_schema=DATABASE() AND is_generated='ALWAYS'"):
         actual.setdefault(table, set()).add(column)
     return actual
 
@@ -161,6 +195,16 @@ def main(argv=None):
         sys.exit(f"check_schema: no CREATE TABLE in {path}")
     schema = urlsplit(url).path.strip("/")
     columns, keys, constraints = live_columns(url), live_keys(url), live_constraints(url)
+    pending = pending_migrations(expected, columns, live_generated(url))
+    if pending:
+        print(f"check_schema: {schema!r} needs a migration before the code can run (nothing was added):",
+              file=sys.stderr)
+        for name in pending:
+            found = migrations_naming(name)
+            print(f"  {name}: " + (", ".join(f"scripts/sql/{m}" for m in found) if found
+                                   else "no migration in scripts/sql/ names it"), file=sys.stderr)
+        print("Apply the migration first, then rerun.", file=sys.stderr)
+        return 1
     if do_apply:
         statements = additions(expected, columns, keys, constraints)
         if statements:

@@ -7,7 +7,7 @@ import { S } from '../state.js';
 // turn that delivers the last of them chimes. Failures always sound.
 const RUN_SOUND = { "run.completed": "done", "run.failed": "error", "run.interrupted": "error" };
 const OTHER_RUN_SOUND = { "run.completed": "doneSoft", "run.failed": "errorSoft", "run.interrupted": "errorSoft" };
-const AGENT_SOUND = { "agent.completed": "agentDone", "agent.failed": "agentFail", "agent.interrupted": "agentFail" };
+const AGENT_SOUND = { "agent.failed": "agentFail", "agent.interrupted": "agentFail" };
 
 // Only events that arrive live play: the backlog a (re)connect or gap replay
 // sends before "ready" happened while nobody was listening.

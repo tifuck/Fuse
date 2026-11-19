@@ -79,6 +79,13 @@ def disown(run_id, lost: bool = True) -> None:
 _leg: contextvars.ContextVar = contextvars.ContextVar("chat_leg", default=(None, None))
 
 
+def _owns_run(task) -> bool:
+    """A live worker that still owns its row: a disowned one (its row was
+    finalized without it) may still be unwinding, but a resume of the row
+    is a new leg with a worker of its own."""
+    return task is not None and not task.done() and not getattr(task, "_fuse_disowned", False)
+
+
 def leg_disowned(run_id) -> bool:
     """Whether the calling worker leg of run_id lost its row (disown). Thread-safe."""
     ident, task = _leg.get()
@@ -206,16 +213,19 @@ async def start(request: Request, user, run, *, previous_task=None):
         await asyncio.wait({existing}, timeout=CANCEL_GRACE_SECONDS)
         existing = _tasks.get(run["id"])
     if existing is not None and existing is not previous_task:
-        if not existing.done():
+        if _owns_run(existing):
             return existing
-        # A completed/cancelled registry entry is not a worker. Reclaim it
-        # without propagating that old task's cancellation into this new start.
-        try:
-            existing.result()
-        except (asyncio.CancelledError, Exception):
-            pass
-        if _tasks.get(run["id"]) is existing:
-            _tasks.pop(run["id"], None)
+        if existing.done():
+            # A completed/cancelled registry entry is not a worker. Reclaim it
+            # without propagating that old task's cancellation into this new start.
+            try:
+                existing.result()
+            except (asyncio.CancelledError, Exception):
+                pass
+            if _tasks.get(run["id"]) is existing:
+                _tasks.pop(run["id"], None)
+        # Else a disowned worker still unwinding: it never touches the row
+        # again (see disown), and the new leg's task replaces it below.
     pending = _starting.get(run["id"])
     if pending is not None:
         return await asyncio.shield(pending)
@@ -468,7 +478,7 @@ def reap_orphans(user_id=None):
 def _reap_one(row):
     ident = row["id"]
     task = _tasks.get(ident)
-    live = (task is not None and not task.done()) or ident in _starting
+    live = _owns_run(task) or ident in _starting
     if not live and ident in _unsettled:
         _settle_unsettled(row)
         return
@@ -1050,6 +1060,12 @@ async def _run(request, user, run):
             raise asyncio.CancelledError
         if await persist_checkpoint(output.stored(), []):
             raise asyncio.CancelledError
+        # A Stop between start()'s read and this task's registration finished
+        # the row with no worker to wake: never call the model for it.
+        row = await asyncio.to_thread(db.fetchone, "SELECT status,cancel_requested FROM chat_runs WHERE id=?", (ident,))
+        if row is None or row["cancel_requested"] or row["status"] not in chat_store.ACTIVE:
+            _cancelled.add(ident)
+            raise asyncio.CancelledError
         worker = asyncio.create_task(periodic())
         try:
             configured = agent.get("remaining_seconds")
@@ -1194,6 +1210,13 @@ async def _run(request, user, run):
                     # cannot stack "continue" prompts.
                     logger.info("Leaving run %s active for restart resume", ident)
                     return
+            if disowned():
+                current = await asyncio.to_thread(chat_store.get_run, user["id"], ident)
+                if _tasks.get(ident) is not task or (current and current["status"] in chat_store.ACTIVE):
+                    # Resumed since its row was finalized without it: the row,
+                    # its subagents, asks and wakes belong to the new leg.
+                    settled = True
+                    return
             try:
                 if not disowned():
                     await flush()
@@ -1333,7 +1356,7 @@ async def _run(request, user, run):
             # worker was still finishing. Either way it is a new leg, not
             # this one's leftover; the handoff below starts it.
             continuing = bool(current and current["status"] == "queued")
-            if current and current["status"] in chat_store.ACTIVE and not continuing:
+            if current and current["status"] in chat_store.ACTIVE and not continuing and not disowned():
                 await durable_call(chat_store.abort_active, ident, status if status in chat_store.TERMINAL else "interrupted")
             if status in chat_store.TERMINAL and not continuing:
                 child_agent = {}
@@ -1429,9 +1452,10 @@ async def _run(request, user, run):
             # row ACTIVE, so the next boot resumed and re-ran a finished turn.
             if not isinstance(exc, asyncio.CancelledError):
                 logger.exception("Chat run finalization failed for %s", ident)
-            if not settled:
-                # Once this leg's terminal row is durable, an active row is a
-                # newer leg (continuation or resume) and is not ours to end.
+            if not settled and not disowned():
+                # Once this leg's terminal row is durable (or was finalized
+                # without it), an active row is a newer leg (continuation or
+                # resume) and is not ours to end.
                 await durable_call(chat_store.abort_active, ident, status if status in chat_store.TERMINAL else "interrupted")
             if isinstance(exc, asyncio.CancelledError):
                 raise
@@ -1444,8 +1468,10 @@ async def _run(request, user, run):
                     logger.warning("Chat iterator cleanup did not finish for %s", ident)
             if _iterators.get(ident) is iterator:
                 _iterators.pop(ident, None)
-            _cancelled.discard(ident)
-            _cancel_signals.pop(ident, None)
+            if _tasks.get(ident) in (None, task):
+                _cancelled.discard(ident)
+            if _cancel_signals.get(ident, (None,))[0] is cancel_signal:
+                _cancel_signals.pop(ident, None)
             try:
                 # start() waits out a worker past this point instead of
                 # trusting it with a row requeued after the read below.
@@ -1478,7 +1504,7 @@ async def resume_queued(user_id=None):
             (user_id,),
         )
     for row in rows:
-        if row["id"] in _tasks and not _tasks[row["id"]].done():
+        if _owns_run(_tasks.get(row["id"])):
             continue
         owner = await asyncio.to_thread(accounts.get_user, row["user_id"])
         if owner is None:

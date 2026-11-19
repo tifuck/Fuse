@@ -1,11 +1,13 @@
 import asyncio
 import base64
 import binascii
+import inspect
 import json
 import logging
 import math
 import re
 import time
+from functools import partial
 
 import anyio
 from fastapi import APIRouter, HTTPException, Request
@@ -435,40 +437,73 @@ async def _tap(
             # A stream that never reached [DONE] was truncated or errored
             # inline; it is not a successful request even at HTTP 200.
             request_status = "failed"
-        extra = getattr(stream, "usage", None)
-        usage = merge_usage(usage, extra if isinstance(extra, dict) else None)
-        usage.pop("stream_status", None)
-        if not usage:
-            # No usage frame anywhere: record the explicit unknown/zero shape.
-            usage = usage_from_obj({})
-        # usage_status stays "complete" when a usage frame arrived (tokens are
-        # known even if framing truncated); without one it is unknown.
-        if usage and not any(v for k, v in usage.items() if k.endswith("tokens") and v):
-            usage["usage_status"] = "unknown"
-        elif usage:
-            usage.setdefault("usage_status", "complete")
-        record = (user_id, source_id, cred_id, model, usage)
-        options = {"key_id": key_id, "provider": provider, "requested_model": requested_model,
-                   "request_status": request_status}
+        await _settle_tap(stream, usage, request_status, user_id, source_id, cred_id, model,
+                          key_id=key_id, provider=provider, requested_model=requested_model)
+
+
+async def _settle_tap(stream, usage: dict, request_status: str, user_id: int, source_id: int, cred_id, model: str, *,
+                      key_id=None, provider: str = "", requested_model: str = "") -> None:
+    """Record a /v1 stream's usage row and close its upstream."""
+    extra = getattr(stream, "usage", None)
+    usage = merge_usage(usage, extra if isinstance(extra, dict) else None)
+    usage.pop("stream_status", None)
+    if not usage:
+        # No usage frame anywhere: record the explicit unknown/zero shape.
+        usage = usage_from_obj({})
+    # usage_status stays "complete" when a usage frame arrived (tokens are
+    # known even if framing truncated); without one it is unknown.
+    if usage and not any(v for k, v in usage.items() if k.endswith("tokens") and v):
+        usage["usage_status"] = "unknown"
+    elif usage:
+        usage.setdefault("usage_status", "complete")
+    record = (user_id, source_id, cred_id, model, usage)
+    options = {"key_id": key_id, "provider": provider, "requested_model": requested_model,
+               "request_status": request_status}
+    try:
+        # Off the event loop, and finished even if this generator is being
+        # cancelled or closed: anyio's shield stops scope re-cancellation,
+        # asyncio.shield keeps a native cancel from dropping the write.
+        with anyio.CancelScope(shield=True):
+            await asyncio.shield(asyncio.to_thread(_safe_record_usage, *record, **options))
+    except RuntimeError:
+        # No executor (loop shutting down): write inline rather than lose it.
+        _safe_record_usage(*record, **options)
+    close = getattr(stream, "aclose", None)
+    if close:
         try:
-            # Off the event loop, and finished even if this generator is being
-            # cancelled or closed: anyio's shield stops scope re-cancellation,
-            # asyncio.shield keeps a native cancel from dropping the write.
+            # After a client disconnect the enclosing anyio scope is
+            # cancelled and every further await would be re-cancelled,
+            # skipping the upstream close. Shield it, bounded.
+            with anyio.move_on_after(_CLOSE_SECONDS, shield=True):
+                await close()
+        except Exception:
+            logger.warning("Could not close upstream stream", exc_info=True)
+
+
+class _TapResponse(StreamingResponse):
+    """A /v1 stream that settles however the response ends. A client gone
+    before the first body chunk never starts the tap, so its finally (usage
+    row, upstream close, the pool account's release) would never run:
+    `settle_unstarted` does that work instead. `on_close` runs either way."""
+
+    def __init__(self, tap, settle_unstarted, **kwargs):
+        super().__init__(tap, **kwargs)
+        self._settle_unstarted = settle_unstarted
+        self.on_close: list = []
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
             with anyio.CancelScope(shield=True):
-                await asyncio.shield(asyncio.to_thread(_safe_record_usage, *record, **options))
-        except RuntimeError:
-            # No executor (loop shutting down): write inline rather than lose it.
-            _safe_record_usage(*record, **options)
-        close = getattr(stream, "aclose", None)
-        if close:
-            try:
-                # After a client disconnect the enclosing anyio scope is
-                # cancelled and every further await would be re-cancelled,
-                # skipping the upstream close. Shield it, bounded.
-                with anyio.move_on_after(_CLOSE_SECONDS, shield=True):
-                    await close()
-            except Exception:
-                logger.warning("Could not close upstream stream", exc_info=True)
+                try:
+                    if inspect.getasyncgenstate(self.body_iterator) == inspect.AGEN_CREATED:
+                        await self._settle_unstarted()
+                    else:
+                        await self.body_iterator.aclose()
+                finally:
+                    for close in self.on_close:
+                        close()
 
 
 @router.get("/v1/models")
@@ -761,17 +796,11 @@ async def dispatch_chat(request: Request, user, body: dict):
     key_id = user.get("key_id")
     omitted = {k: v for k, v in result.response_headers.items() if k in ("X-Fuse-Images-Omitted", "X-Fuse-Images-Shed")}
     if result.stream is not None:
-        return StreamingResponse(
-            _tap(
-                result.stream,
-                user["id"],
-                src.source_id,
-                result.credential_id,
-                upstream,
-                key_id=key_id,
-                provider=src.type_id,
-                requested_model=requested,
-            ),
+        record = (user["id"], src.source_id, result.credential_id, upstream)
+        options = {"key_id": key_id, "provider": src.type_id, "requested_model": requested}
+        return _TapResponse(
+            _tap(result.stream, *record, **options),
+            partial(_settle_tap, result.stream, {}, "cancelled", *record, **options),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", **omitted},
         )
@@ -840,17 +869,8 @@ async def chat_completions(request: Request):
     except BaseException:
         _release(user["id"], token)
         raise
-    if not isinstance(response, StreamingResponse):
+    if not isinstance(response, _TapResponse):
         _release(user["id"], token)
         return response
-    inner = response.body_iterator
-
-    async def held():
-        try:
-            async for chunk in inner:
-                yield chunk
-        finally:
-            _release(user["id"], token)
-
-    response.body_iterator = held()
+    response.on_close.append(partial(_release, user["id"], token))
     return response

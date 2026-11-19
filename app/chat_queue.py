@@ -45,9 +45,13 @@ def put(user_id: int, thread_id: int, raw: dict, *, release: bool = False):
     if any(type(value) is not int or not 0 <= value < 2 ** 62 for value in order):
         raise ChatValidationError("priority and created must be non-negative integers")
     with chat_tx.transaction() as conn:
+        # Items are keyed by thread: another account's thread pk must not
+        # reach (or overwrite) that thread's queue.
+        if not conn.execute("SELECT 1 FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone():
+            raise ChatValidationError("chat not found", 404)
         if conn.execute("SELECT 1 FROM chat_commands WHERE user_id=? AND command_id=?",
                         (user_id, command_id(item_id))).fetchone():
-            conn.execute("DELETE FROM chat_queue WHERE thread_id=? AND id=?", (thread_id, item_id))
+            conn.execute("DELETE FROM chat_queue WHERE thread_id=? AND id=? AND user_id=?", (thread_id, item_id, user_id))
             return None
         row = conn.execute("SELECT held, priority FROM chat_queue WHERE thread_id=? AND id=?",
                            (thread_id, item_id)).fetchone()

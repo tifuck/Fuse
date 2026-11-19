@@ -35,7 +35,12 @@ def is_blocked_host(host: str) -> bool:
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return False
+        # The resolver reads inet_aton forms (127.1, 2130706433, 0x7f.1) as
+        # the address they spell.
+        try:
+            ip = ipaddress.IPv4Address(socket.inet_aton(host))
+        except OSError:
+            return False
     return not _is_global(ip)
 
 

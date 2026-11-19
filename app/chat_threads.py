@@ -677,8 +677,8 @@ def update_thread(
         store.check_revision(row["revision"], expected_revision)
         if messages is not None and conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
             raise ChatValidationError("cannot replace messages during an active run", 409)
-        _update_thread(conn, row, title=title, model=model, archived=archived, pinned=pinned, messages=messages, context=context, tools=tools,
-                       reasoning_effort=reasoning_effort)
+        saved = _update_thread(conn, row, title=title, model=model, archived=archived, pinned=pinned, messages=messages, context=context,
+                               tools=tools, reasoning_effort=reasoning_effort)
         if memory_off is not None:
             conn.execute("UPDATE chat_threads SET memory_off=? WHERE id=?", (1 if memory_off else 0, pk))
         if bypass_permissions is not None and bool(bypass_permissions) != bool(row["bypass_permissions"] if "bypass_permissions" in row.keys() else 0):
@@ -689,7 +689,8 @@ def update_thread(
             from . import permissions as permissions_mod
 
             permissions_mod.set_auto(user_id, pk, bool(auto_permissions), conn=conn)
-        doomed = store.purge_orphan_subagents(conn, user_id, pk, messages) if messages is not None else []
+        # The rows as stored: a trace the page sent clipped keeps the server's child_id.
+        doomed = store.purge_orphan_subagents(conn, user_id, pk, saved) if messages is not None else []
         store.thread_event(conn, user_id, pk)
         if messages is not None:
             result = store.thread_view(conn, user_id, pk)
@@ -1006,6 +1007,7 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
         conn.execute("UPDATE chat_threads SET title_job_token='',title_job_until='' WHERE id=?", (row["id"],))
     elif model is not None and new_model != row["model"] and not new_state:
         conn.execute("UPDATE chat_threads SET title_attempts=0,title_attempted_at='' WHERE id=?", (row["id"],))
+    return msgs if messages is not None else None
 def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id=None,
                   cancel_active: bool = True) -> bool:
     """Delete a thread and its runs. A stale ``expected_revision`` is a no-op
@@ -1185,17 +1187,15 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
         if src is None:
             return None
         store.check_revision(int(src["revision"]), expected_revision)
-        active = conn.execute(
-            "SELECT COUNT(*) AS n FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')",
-            (pk, user_id),
-        ).fetchone()
-        if int(active["n"] if active else 0):
+        # Decide from the runs that are copied: this read locks (MariaDB), so
+        # it sees a turn that committed after the snapshot; a COUNT(*) would not.
+        runs = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? ORDER BY created_at, id", (pk, user_id)).fetchall()
+        if any(run["status"] in ("queued", "running") for run in runs):
             raise ChatValidationError("Wait for the running turn and its subagents to finish, or stop them, before forking.", 409)
         has_jobs = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'").fetchone() is not None
         jobs = conn.execute("SELECT * FROM command_jobs WHERE user_id=? AND thread_id=?", (user_id, pk)).fetchall() if has_jobs else []
         if any(job["status"] in ("queued", "running", "cancelling") for job in jobs):
             raise ChatValidationError("A background command in this chat is still running. Wait for it or stop it before forking.", 409)
-        runs = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? ORDER BY created_at, id", (pk, user_id)).fetchall()
         messages = parse_messages(src["messages"])
         id_map: dict[str, str] = {}
         for msg in messages:

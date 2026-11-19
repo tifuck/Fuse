@@ -155,7 +155,7 @@ html:where(.is-chat-root[data-chat-view="combined"]).is-chat-root,
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-log[hidden] { display: none; }
 /* A turn off screen skips style, layout and paint; once drawn it keeps its
    last height, so the scrollbar and the jump to the bottom hold still. */
-:where(html.is-chat-root[data-chat-view="combined"]) .chat-turn { min-width: 0; position: relative; content-visibility: auto; contain-intrinsic-size: auto 240px; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-turn { min-width: 0; position: relative; content-visibility: auto; contain-intrinsic-size: auto 240px; overflow-clip-margin: 2rem; }
 /* So does a call's row: one turn can hold hundreds, most of them off screen.
    Its paint is clipped to its box; the margin keeps a focus ring whole. */
 :where(html.is-chat-root[data-chat-view="combined"]) [data-chat-log] .chat-timeline > .chat-step { content-visibility: auto; contain-intrinsic-size: auto 28px; overflow-clip-margin: 0.5rem; }

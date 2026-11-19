@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import json
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -537,7 +538,7 @@ async def complete_login(raw_code: str, verifier: str, expected_state: str, dona
     code, state = parse_manual_code(raw_code)
     if not code or not state:
         return None, "Paste the full code Claude shows, including the part after #."
-    if not expected_state or state != expected_state or not verifier:
+    if not expected_state or not hmac.compare_digest(state.encode(), expected_state.encode()) or not verifier:
         return None, "Claude sign-in expired or did not match this session. Start again."
     try:
         tokens = await exchange_code(code, verifier, state)
@@ -658,6 +659,10 @@ async def refresh_due() -> None:
 
 
 async def revoke_remote(cred) -> None:
+    # Where this database does not own the tokens (dev on pooled rows) a
+    # revoke would sign the real account out everywhere.
+    if not settings.oauth_refresh_enabled:
+        return
     extra = accounts.cred_extra(cred)
     token = extra.get("refresh_token") or extra.get("access_token")
     if not token:
@@ -807,6 +812,8 @@ class ClaudeSource:
                 resp = await self._post(client, token, send)
                 status = resp.status_code
                 if status == 401 and extra.get("refresh_token"):
+                    # Read the reason first: a failed refresh reports it below.
+                    await resp.aread()
                     await resp.aclose()
                     await client.aclose()
                     ok = await refresh_one(cred)
@@ -882,7 +889,7 @@ class ClaudeSource:
                         if auth_failure_confirmed(cred["id"]):
                             disable_credential(cred["id"], extra=cred.get("extra"))
                         last.status = 502
-                        last.body = {"error": {"message": "Claude rejected the configured account"}}
+                        last.body = {"error": {"message": "Claude rejected the configured account" + (f": {detail[:300]}" if detail else "")}}
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
                         last.attempts = attempts
                         continue
