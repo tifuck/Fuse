@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from .config import ROOT, settings
-from .search.ssrf import ips_public, public_http_url
+from .search.ssrf import pin_https_url, public_http_url, public_ips
 from .security import limiter
 from .skill_parse import NAME_RE, SkillError, parse_skill_md
 
@@ -473,16 +473,19 @@ def parse_upload(filename: str, data: bytes) -> tuple[str, dict[str, bytes]]:
     raise SkillError("upload a .zip or SKILL.md")
 
 
-def _safe_https(url: str, hosts: set[str]) -> str:
+def _safe_https(url: str, hosts: set[str]) -> tuple[str, str]:
+    """(clean url, the vetted IP to connect to)."""
     clean = public_http_url(url, https_only=True)
     if not clean:
         raise SkillError("invalid url")
-    host = (urlparse(clean).hostname or "").lower().rstrip(".")
+    parsed = urlparse(clean)
+    host = (parsed.hostname or "").lower().rstrip(".")
     if host not in hosts:
         raise SkillError("invalid url")
-    if not ips_public(host):
+    addrs = public_ips(host, parsed.port or 443)
+    if not addrs:
         raise SkillError("invalid url")
-    return clean
+    return clean, addrs[0]
 
 
 def _github_cap() -> int:
@@ -501,10 +504,14 @@ async def _http_get(url: str, *, hosts: set[str], headers: dict | None = None, t
     import httpx
 
     # DNS checks block; keep them off the event loop.
-    clean = await asyncio.to_thread(_safe_https, url, hosts)
+    clean, ip = await asyncio.to_thread(_safe_https, url, hosts)
     hdrs = {"User-Agent": "Fuse/skills", "Accept": "application/json"}
     if headers:
         hdrs.update(headers)
+    # Connect to the IP just checked, not a second lookup a rebinding name
+    # could answer differently.
+    parsed = urlparse(clean)
+    hdrs["Host"] = parsed.netloc
     try:
         from .search.client import CappedTransport
 
@@ -517,7 +524,8 @@ async def _http_get(url: str, *, hosts: set[str], headers: dict | None = None, t
                 httpx.AsyncClient(timeout=timeout, follow_redirects=False, http2=False, transport=transport) as client:
             # Stream with a byte cap: size checks after a full buffered read
             # come too late to protect memory.
-            async with client.stream("GET", clean, headers=hdrs) as resp:
+            async with client.stream("GET", pin_https_url(clean, ip), headers=hdrs,
+                                     extensions={"sni_hostname": parsed.hostname}) as resp:
                 body = bytearray()
                 async for chunk in resp.aiter_bytes():
                     body += chunk

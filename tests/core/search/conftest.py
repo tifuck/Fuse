@@ -67,7 +67,9 @@ class Web:
 
 
 class Dns:
-    """getaddrinfo over a dict; unknown names fail like NXDOMAIN."""
+    """getaddrinfo over a dict; numeric hosts (127.1, 2130706433) resolve to the
+    address they spell, as the real resolver does; unknown names fail like
+    NXDOMAIN."""
 
     def __init__(self):
         self.records = {}
@@ -80,7 +82,10 @@ class Dns:
         self.lookups.append(host)
         ips = self.records.get(host)
         if ips is None:
-            raise socket.gaierror(socket.EAI_NONAME, "Name or service not known")
+            try:
+                ips = [socket.inet_ntoa(socket.inet_aton(host))]
+            except OSError:
+                raise socket.gaierror(socket.EAI_NONAME, "Name or service not known") from None
         return [
             (socket.AF_INET6 if ":" in ip else socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))
             for ip in ips
@@ -112,7 +117,8 @@ def _search_state(monkeypatch):
 @pytest.fixture(autouse=True)
 def dns(monkeypatch):
     resolver = Dns()
-    monkeypatch.setattr(ssrf, "socket", SimpleNamespace(getaddrinfo=resolver.getaddrinfo, SOCK_STREAM=socket.SOCK_STREAM))
+    monkeypatch.setattr(ssrf, "socket", SimpleNamespace(
+        getaddrinfo=resolver.getaddrinfo, inet_aton=socket.inet_aton, SOCK_STREAM=socket.SOCK_STREAM))
     return resolver
 
 
