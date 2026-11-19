@@ -187,3 +187,24 @@ def test_a_client_gone_before_the_first_byte_still_releases_its_slots_and_record
     assert not started and not api._in_flight and pool_pick.in_flight(77) == 0
     (row,) = events()
     assert (row["request_status"], row["api_key_id"]) == ("cancelled", _key_row(uid)["id"])
+
+
+def test_a_failed_over_key_is_a_failed_uncounted_row_beside_the_serving_one(v1, upstream):
+    client, uid, _raw = v1
+    sid = db.fetchone("SELECT id FROM sources WHERE type='openai'")["id"]
+    second = key(sid, "sk-upstream-key-2", label="key2")
+    first = db.fetchone("SELECT id FROM credentials WHERE source_id=? AND id<>?", (sid, second))["id"]
+
+    def answer(request):
+        if request.headers["authorization"] == "Bearer sk-upstream-key":
+            return httpx.Response(401, json={"error": {"message": "bad key"}})
+        return httpx.Response(200, json=completion("hey", usage=USAGE))
+
+    upstream.on("POST", "/chat/completions", answer)
+    got = client.post("/v1/chat/completions", json={"model": "m1", "messages": [{"role": "user", "content": "hi"}]})
+
+    assert got.status_code == 200
+    rows = {r["credential_id"]: r for r in events()}
+    assert {cid: (r["request_status"], r["count_request"]) for cid, r in rows.items()} == {
+        first: ("failed", 0), second: ("success", 1)}
+    assert {r["api_key_id"] for r in rows.values()} == {_key_row(uid)["id"]}
