@@ -32,20 +32,35 @@
   <meta name="apple-mobile-web-app-title" content="Fuse">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   {#- Self-hosted (static/fonts, @import'ed by app.css): no render-blocking
-      third-party stylesheet, and the files cache as immutable. -#}
-  <link rel="preload" href="{{ asset('fonts/bricolage-grotesque-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="{{ asset('fonts/red-hat-mono-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
+      third-party stylesheet, and the files cache as immutable. A chat or
+      settings page preloads what its theme draws with: the theme's own font
+      (theme.json) and, where a transcript opens, Red Hat Mono for its code.
+      A font picked in Appearance loads when chat-appearance.js applies it. -#}
+  {% set font_files = {'bricolage': 'bricolage-grotesque-latin', 'redhat': 'red-hat-mono-latin', 'geist': 'geist-latin'} %}
+  {% if is_chat or is_settings %}
+  {% set page_fonts = (chat_themes() | selectattr('id', 'equalto', chat_view) | map(attribute='font') | list) + (['redhat'] if is_chat and request.query_params.get('t') else []) %}
+  {% else %}
+  {% set page_fonts = ['bricolage', 'redhat'] %}
+  {% endif %}
+  {% for font in page_fonts | unique if font in font_files %}
+  <link rel="preload" href="{{ asset('fonts/' ~ font_files[font] ~ '.woff2') }}" as="font" type="font/woff2" crossorigin>
+  {% endfor %}
   <link rel="stylesheet" href="{{ asset('app.css') }}">
+  {#- Every rule in it is for a page outside chat (html:not(.is-chat-root)); a chat theme carries its own copy. -#}
+  {% if not is_chat %}
   <link rel="stylesheet" href="{{ asset('projects-ui.css') }}">
+  {% endif %}
   {% if is_chat or is_settings %}
   {#- Every theme's metadata (static/themes/*/theme.json), for chat-appearance.js and registry.js. -#}
   <script type="application/json" id="fuse-chat-themes">{{ chat_themes() | tojson }}</script>
   {% endif %}
   {% if is_settings %}
   <script src="{{ asset('chat-appearance.js') }}"></script>
-  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/theme.css') }}">
+  {#- Of a theme's stylesheets only pages.css styles these pages: the rest of
+      theme.css and design.css needs html.is-chat-root or the chat's own
+      elements (.chat[data-view], the transcript, the Appearance sheet). -#}
   <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
-  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/pages.css') }}">
   {% endif %}
   {% block head_extra %}{% endblock %}
   {#- After every stylesheet: it rewrites their phone breakpoints before first paint. -#}

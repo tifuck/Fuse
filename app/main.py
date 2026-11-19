@@ -456,6 +456,10 @@ class VersionedStaticFiles(StaticFiles):
         if response.status_code not in (200, 304):
             return response
         response.headers["Cache-Control"] = cache
+        if path.endswith(".gz"):
+            # Compressed already (the spell dictionary, which the page
+            # inflates itself): GZipMiddleware leaves this type alone.
+            response.headers["Content-Type"] = "application/gzip"
         return response
 
 
