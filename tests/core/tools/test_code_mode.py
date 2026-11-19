@@ -283,6 +283,23 @@ def test_calls_from_code_keep_the_agent_roles_limits(ssh_host):
     assert [j.name for j in jobs] == ["run_code", "write_file"] and jobs[1].parent == jobs[0].event_id
 
 
+def test_an_unattended_run_code_cannot_read_outside_the_roots(ssh_host, monkeypatch):
+    ssh_host.fs.write("/etc/hosts", "HOSTS-MARKER\n")
+    reads = []
+    real_read = workspace._read
+
+    async def recording_read(*args, **kwargs):
+        reads.append(args)
+        return await real_read(*args, **kwargs)
+
+    monkeypatch.setattr(workspace, "_read", recording_read)
+    text, jobs, _ = one_round(ssh_host, 'try { return await read_file("/etc/hosts"); } catch (e) { return e.message; }',
+                              unattended=True)
+
+    assert "Unattended run" in text and "HOSTS-MARKER" not in text
+    assert [j.name for j in jobs] == ["run_code", "read_file"] and reads == []
+
+
 def test_a_long_run_shows_its_first_reads_and_keeps_no_copy_of_their_text(ssh_host):
     ssh_host.fs.write(f"{ssh_host.root}/a.txt", "alpha\n" * 10)
     text, jobs, events = one_round(ssh_host, """

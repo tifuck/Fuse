@@ -65,6 +65,54 @@ def test_an_approved_write_into_a_read_only_project_outside_the_root_is_refused(
     assert not ssh_host.fs.exists("/srv/locked/x.txt")
 
 
+def test_an_approved_command_reaching_into_a_read_only_project_is_refused(ssh_host):
+    ssh_host.fs.makedirs("/srv/locked")
+    make_project(ssh_host.uid, ssh_host.host_id, "/srv/locked", permission_mode="read_only")
+
+    for args in ({"command": "touch /srv/locked/x"}, {"command": "touch x", "cwd": "/srv/locked"}):
+        text, rec, user = gated(ssh_host, "run_terminal_command", answer="allow", **args)
+        assert len(user.asks) == 1 and rec["status"] == "error" and "read-only" in text, args
+    assert ssh_host.shell.asked == []
+
+
+def test_dotdot_after_a_symlink_is_judged_from_the_links_target(ssh_host):
+    ssh_host.fs.makedirs("/srv/private/dir")
+    ssh_host.fs.write("/srv/private/secret.txt", "private words\n")
+    ssh_host.fs.symlink("/srv/private/dir", f"{ssh_host.root}/link")
+
+    text, rec, _ = gated(ssh_host, "run_terminal_command", command="cat link/../secret.txt", unattended=True)
+
+    assert rec["status"] == "error" and "/srv/private/secret.txt" in text
+    assert ssh_host.shell.asked == []
+
+
+def test_a_shared_artifact_published_from_a_secret_named_file_asks_every_time(ssh_host):
+    from app import artifacts, chat_tools
+
+    ident = artifacts.create(ssh_host.uid, title="Shared", html="<p>a</p>", visibility="public")["identifier"]
+    ssh_host.fs.write(f"{ssh_host.root}/page.html", "<p>page</p>")
+    ssh_host.fs.write(f"{ssh_host.root}/.env.html", "<p>API_KEY=dev</p>")
+    _, tid = new_thread(ssh_host.uid)
+
+    def publish(path, *, answer=None, unattended=False):
+        user = CardUser(ssh_host.uid, tid, answer)
+        gate = permissions.Gate(user_id=ssh_host.uid, thread_id=tid, run_id="run-a", requester=None,
+                                unattended=unattended, notify=user, cancel=None)
+        _, rec = asyncio.run(chat_tools.execute_tool(
+            "update_artifact", json.dumps({"identifier": ident, "path": path}), user_id=ssh_host.uid,
+            allowed_urls=set(), thread_id=tid, bound_host_id=ssh_host.host_id, bound_cwd=ssh_host.root,
+            coding=True, gate=gate))
+        return rec, user
+
+    rec, user = publish("page.html", answer="allow")
+    assert rec["status"] == "done" and len(user.asks) == 1
+    rec, _ = publish("page.html", unattended=True)
+    assert rec["status"] == "done"  # this chat already approved changing it
+    rec, _ = publish(".env.html", unattended=True)
+    assert rec["kind"] == "permission_denied"
+    assert "API_KEY" not in artifacts.view(artifacts.get_owned(ssh_host.uid, ident), include_html=True)["html"]
+
+
 def test_a_denylisted_command_reaches_the_host_only_on_the_users_own_allow(ssh_host):
     command = "make deploy; sudo -n true"
     ssh_host.shell.on(command, out="done\n")
