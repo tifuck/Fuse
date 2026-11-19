@@ -100,6 +100,7 @@ const PANE_KEY = "fuse.desktop.livePane";
 const PANE_LINES = 40;
 const PANE_MS = 240;
 const PANE_EASE = "cubic-bezier(0.2, 0, 0, 1)";
+const PANE_IDLE = { thinking: "Thinking", writing: "The reply is coming in above" };
 const PANE_DOTS = '<span class="dk-fe-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
 let paneOpen = false;
 try { paneOpen = localStorage.getItem(PANE_KEY) === "1"; } catch (_) {}
@@ -172,8 +173,9 @@ function paneLine(html) {
     return line;
   }
 
-// One item: a call (its line over its output) or a thought (its text).
-function paneItem(thought) {
+// One item: a call (its line over its output) or a thought (its text). Until
+// it has any, it says so (empty), so an open pane never shrinks to the line.
+function paneItem(thought, empty = "Waiting for output") {
     const el = document.createElement("div");
     el.className = thought ? "dk-now dk-think" : "dk-now dk-fe";
     el.innerHTML = (thought ? "" : '<div class="dk-fe-head"><span class="dk-fe-ico"></span><span class="dk-fe-in"></span><span class="dk-fe-state"></span></div>') +
@@ -181,6 +183,7 @@ function paneItem(thought) {
     if (!thought) [el._icoEl, el._inEl, el._state] = el.firstChild.children;
     el._box = el.lastChild;
     el._out = el._box.firstChild;
+    el._out.dataset.empty = empty;
     // Faded at its cut edge once the output overflows the box: measured as
     // it changes size, after layout, rather than on every sync.
     el._fit = new ResizeObserver(() => el._box.classList.toggle("is-full", el._out.offsetHeight > el._box.clientHeight));
@@ -295,7 +298,7 @@ function syncLivePane(dock, msg, line) {
     const pane = paneParts(dock);
     const text = line.phase === "thinking" ? paneThought(msg) : "";
     const trace = text || line.phase === "thinking" ? null : paneTrace(msg, line.key);
-    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : "";
+    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : `idle:${line.phase}`;
     const moving = paneOpen && dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
     const fill = (grow) => {
       if (text) syncPaneThought(pane.item, text, grow);
@@ -308,11 +311,9 @@ function syncLivePane(dock, msg, line) {
       pane.item?._fit.disconnect();
       pane.item?.remove();
       pane.key = key;
-      pane.item = key ? paneItem(Boolean(text)) : null;
-      if (pane.item) {
-        pane.inner.append(pane.item);
-        fill();
-      }
+      pane.item = paneItem(!trace, trace || text ? undefined : PANE_IDLE[line.phase]);
+      pane.inner.append(pane.item);
+      fill();
       if (moving) {
         const h1 = pane.inner.offsetHeight;
         if (h0 !== h1) pane.inner.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: PANE_MS, easing: PANE_EASE });
