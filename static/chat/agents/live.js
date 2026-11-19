@@ -355,7 +355,7 @@ export function createLive(ctx) {
       // socket's agent events usually beat this.
       if (S.agentsPollTick >= 4) {
         S.agentsPollTick = 0;
-        if (S.agentsRows.some((row) => agentLive(row.status))) view.refreshAgents();
+        if (!document.hidden && S.agentsRows.some((row) => agentLive(row.status))) view.refreshAgents();
       }
       syncStripTimer();
       return;
@@ -363,9 +363,14 @@ export function createLive(ctx) {
     syncAgentLiveDock();
     if (S.agentsPollTick < 2) return;
     S.agentsPollTick = 0;
+    // A hidden tab reads nothing; chat.js catches up when it shows again.
+    if (document.hidden) return;
     const wsHealthy = net.isLive() && Date.now() - S.agentLastEventAt < 3000;
-    if (S.agentViewId && (!S.agentRun || agentLive(S.agentRun.status) || S.agentViewFailCount) && !wsHealthy) view.pollAgentView();
-    view.refreshAgents();
+    // A view that failed three times in a row waits to be opened again.
+    if (S.agentViewId && S.agentViewFailCount < 3 && (!S.agentRun || agentLive(S.agentRun.status) || S.agentViewFailCount) && !wsHealthy) view.pollAgentView();
+    // A live socket reports every start and end; the rows only need reading
+    // while one of them is still moving.
+    if (!net.isLive() || S.agentsRows.some((row) => agentLive(row.status))) view.refreshAgents();
   }
 
     function setAgentsFold(open) {
@@ -421,7 +426,9 @@ export function createLive(ctx) {
     composer.scheduleFitChatBar();
   }
 
-    function resetAgents() {
+    // `load` false: the caller reads the new thread's agents itself, or its
+  // snapshot proved there are none (sidebar/threads.js).
+  function resetAgents(load = true) {
     // A new thread keeps its own scroll, not the one saved for the old thread.
     S.mainScroll = null;
     if (S.agentsOpen) setAgentsOpen(false);
@@ -442,7 +449,7 @@ export function createLive(ctx) {
     S.agentViewFailCount = 0;
     S.agentsFailCount = 0;
     syncAgentsUi();
-    view.refreshAgents();
+    if (load) view.refreshAgents();
   }
 
   return {

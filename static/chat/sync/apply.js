@@ -231,17 +231,32 @@ export function createApply(ctx) {
     status.syncStatus();
   }
 
-    async function reconcileThread() {
+    let reconciling = null;
+
+    // `shared`: the caller only wants this view confirmed (a thread just
+    // opened, the socket just ready), so the identical read already in flight
+    // answers it. A caller acting on an event it just received must not join
+    // one: that read may have been answered before the event's commit.
+    function reconcileThread(shared = false) {
     const id = S.currentId;
-    if (!id) return;
+    if (!id) return Promise.resolve();
     const gen = S.generation;
-    const load = ++S.loadEpoch;
-    let data;
     // Keep the race-healing read, but avoid rebuilding/downloading a snapshot
     // already represented by this view (including in-flight run progress).
     const query = (!S.dirty && !S.transcriptDirty
       ? "?observed_cursor=" + S.viewCursor + "&observed_thread_cursor=" + S.threadWatermark + "&pack=1"
       : "?pack=1") + net.queuedParam(id);
+    const flying = reconciling;
+    if (shared === true && flying && flying.id === id && flying.gen === gen && flying.load === S.loadEpoch && flying.query === query) return flying.read;
+    const load = ++S.loadEpoch;
+    const ticket = reconciling = { id, gen, load, query, read: readThread(id, gen, load, query) };
+    const done = () => { if (reconciling === ticket) reconciling = null; };
+    ticket.read.then(done, done);
+    return ticket.read;
+  }
+
+    async function readThread(id, gen, load, query) {
+    let data;
     try { data = net.unpackThread(await net.api("/chat/threads/" + id + query)); }
     catch (error) {
       if (id !== S.currentId || gen !== S.generation || load !== S.loadEpoch) return;

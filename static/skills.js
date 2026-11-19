@@ -419,6 +419,8 @@
     });
   }
 
+  let searchGen = 0;
+
   searchForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     showErr(searchError, "");
@@ -427,12 +429,25 @@
       showErr(searchError, "Type at least two characters.");
       return;
     }
+    // One search at a time, and only the latest may paint.
+    const gen = ++searchGen;
+    const submit = searchForm.querySelector('[type="submit"]');
+    if (submit) {
+      submit.disabled = true;
+      submit.setAttribute("aria-busy", "true");
+    }
     try {
       const data = await api("/skills/catalog?q=" + encodeURIComponent(q));
+      if (gen !== searchGen) return;
       renderHits(data.skills || []);
       if (!(data.skills || []).length) showErr(searchError, "No GitHub skills matched.");
     } catch (err) {
-      showErr(searchError, err.message);
+      if (gen === searchGen) showErr(searchError, err.message);
+    } finally {
+      if (gen === searchGen && submit) {
+        submit.disabled = false;
+        submit.removeAttribute("aria-busy");
+      }
     }
   });
 

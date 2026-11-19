@@ -46,8 +46,10 @@ function unpackThread(data) {
 // A streamed snapshot (?stream=1) is NDJSON: for long threads a partial line
 // with only the newest messages, then the complete snapshot from the same
 // server build. Resolves with the complete one.
-async function readThreadStream(res, onPartial) {
+async function readThreadStream(res, onPartial, signal) {
   const reader = res.body.getReader();
+  // The boot download was not started with this signal: end it from here.
+  signal?.addEventListener("abort", () => reader.cancel().catch(() => {}), { once: true });
   const decoder = new TextDecoder();
   let parts = [];
   let full = null;
@@ -59,6 +61,7 @@ async function readThreadStream(res, onPartial) {
   };
   for (;;) {
     const { value, done } = await reader.read();
+    if (signal?.aborted) throw signal.reason;
     if (done) break;
     // Only the new chunk is scanned for the line break; the multi-megabyte
     // second line is joined once instead of being rescanned per chunk.
@@ -131,7 +134,8 @@ export function createNet(ctx) {
     let res;
     try {
       res = (path === "/chat/sync" && await takeBootSync()) || await fetch(path, { ...opts, headers });
-    } catch (_) {
+    } catch (error) {
+      if (opts.signal?.aborted) throw error;
       if (!isLive()) markDisconnected();
       const netError = new Error("Can't connect to the backend");
       netError.status = 0;
@@ -177,19 +181,27 @@ export function createNet(ctx) {
     }
   }
 
-    async function fetchThreadSnapshot(id, onPartial) {
+    // `signal` ends the download when the navigation it serves is replaced;
+  // the caller then gets the abort as the rejection, never a second request.
+  async function fetchThreadSnapshot(id, onPartial, signal) {
     const queued = queuedParam(id);
     const boot = takeBootThread(id);
     const res = await ((!queued && boot) || fetch("/chat/threads/" + encodeURIComponent(id) + "?pack=1&stream=1" + queued, {
       headers: { "X-CSRF-Token": csrfToken() },
+      signal,
     }).catch(() => null));
+    if (signal?.aborted) {
+      res?.body?.cancel().catch(() => {});
+      throw signal.reason;
+    }
     const streamed = res && res.ok && res.body && (res.headers.get("Content-Type") || "").includes("ndjson");
     if (streamed) {
-      try { return await readThreadStream(res, onPartial); } catch (_) {}
+      try { return await readThreadStream(res, onPartial, signal); } catch (_) {}
     }
+    if (signal?.aborted) throw signal.reason;
     // Errors, redirects to sign-in and interrupted streams take the ordinary
     // request path so they surface exactly as before.
-    return unpackThread(await api("/chat/threads/" + id + "?pack=1" + queued));
+    return unpackThread(await api("/chat/threads/" + id + "?pack=1" + queued, { signal }));
   }
 
     function isLive() {
