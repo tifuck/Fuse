@@ -848,6 +848,27 @@ CREATE TABLE `user_hosts` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_notices` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `thread_id` bigint(20) DEFAULT NULL,
+  `notice_key` varchar(191) NOT NULL,
+  `kind` varchar(8) NOT NULL DEFAULT 'idle',
+  `title` varchar(200) NOT NULL DEFAULT '',
+  `body` longtext NOT NULL,
+  `data` longtext NOT NULL,
+  `created_at` varchar(32) NOT NULL,
+  `updated_at` varchar(32) NOT NULL,
+  `dismissed_at` varchar(32) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_notices_key` (`user_id`,`notice_key`),
+  KEY `user_notices_thread` (`thread_id`),
+  CONSTRAINT `user_notices_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `user_notices_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_projects` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,
