@@ -1,5 +1,5 @@
 /* —— API reference —— */
-.stage-inner:has(.api-docs) { max-width: 92rem; }
+.stage-inner:has(> :where(main) > .api-docs, > :where(.settings-shell) > :where(.settings-stage) > :where(.settings-scroll) > :where(main) > .api-docs) { max-width: 92rem; }
 .api-docs {
   display: grid;
   grid-template-columns: 12.5rem minmax(0, 1fr);
@@ -181,10 +181,9 @@
   border-radius: 6px;
   text-align: left;
 }
-.model-list button:hover { border-color: var(--line); }
+.model-list button:hover { border-color: var(--line); --model-list-hint: 1; }
 .model-list code { overflow: hidden; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
-.model-list span { color: var(--mute); font-size: 0.65rem; opacity: 0; }
-.model-list button:hover span { opacity: 1; }
+.model-list span { color: var(--mute); font-size: 0.65rem; opacity: var(--model-list-hint, 0); }
 .model-empty { margin: 0; color: var(--mute); font-size: 0.8rem; }
 .docs-callout {
   display: flex;

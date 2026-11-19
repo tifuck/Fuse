@@ -18,7 +18,7 @@
   background: var(--ink);
 }
 :where(html:not(.is-chat-root)) .chat-stage > .chat-work { margin-top: var(--chat-bar-h); }
-:where(html:not(.is-chat-root)) .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { margin-top: 0; padding-top: 0.35rem; }
+:where(html:not(.is-chat-root)) .chat-stage > .chat-work:not([hidden]) ~ .chat-thread { margin-top: 0; padding-top: 0.35rem; }
 :where(html:not(.is-chat-root)) .chat-work-agents,
 :where(html:not(.is-chat-root)) .chat-work-jobs {
   overflow-y: auto;

@@ -124,14 +124,15 @@ function parseCommandResults(text) {
       const hit = attrs.match(new RegExp(key + '="([^"]*)"'));
       return hit ? hit[1] : "";
     };
+    const num = (value) => (value === "" ? NaN : Number(value));
     const code = pick("exit_code");
-    const duration = Number(pick("duration_ms"));
-  const timeout = Number(pick("timeout_ms"));
+    const duration = num(pick("duration_ms"));
+    const timeout = num(pick("timeout_ms"));
     const rawLine = meta.split("\n").find((l) => l.startsWith("host:")) || "";
     const hm = rawLine.match(/^host:\s*(.*?)\s*(?:command|source):\s*(.*)$/);
     const target = pick("target") || (hm ? hm[2].trim() : pick("command"));
-    const events = Number(pick("events"));
-    const counted = Number.isFinite(events) ? events : Number(attr("count"));
+    const events = num(pick("events"));
+    const counted = Number.isFinite(events) ? events : num(attr("count"));
     results.push({
       id: match[2],
       tag,

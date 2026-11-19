@@ -19,10 +19,17 @@
 }
 /* A running reply's status line is the transcript's last row, so it scrolls
    away with the reply; it takes over the log's clearance above the composer. */
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-thread:has(> .chat-live-dock:not([hidden])) > .chat-log { padding-bottom: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-thread > .chat-log:has(~ .chat-live-dock:not([hidden])) { padding-bottom: 0; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-live-dock {
   padding-bottom: calc(var(--dock-h, 7rem) + var(--dock-clearance));
 }
+/* --dock-h and --chat-scroll-gutter are not inherited (tokens/root.css):
+   their readers (the header, the log, the status line, Jump to latest, the
+   composer) and the boxes between them and the chat root take them by name.
+   A new reader needs its path listed here. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat > .chat-stage,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-stage > :is(.chat-bar, .chat-thread, .chat-latest, .chat-dock),
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-thread > :is(.chat-log, .chat-live-dock) { --dock-h: inherit; --chat-scroll-gutter: inherit; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-dock {
   position: absolute;
   left: 50%;
@@ -36,8 +43,6 @@
   isolation: isolate;
   border-color: var(--glass-line);
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow:
     0 18px 48px rgb(0 0 0 / 34%),
     inset 0 1px 0 color-mix(in srgb, var(--mist) 18%, transparent),
@@ -94,7 +99,6 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-box,
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.is-empty) .chat-sync {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;

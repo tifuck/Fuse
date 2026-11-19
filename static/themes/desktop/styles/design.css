@@ -24,3 +24,5 @@
 /* Spinner faces, formerly the shared spinner-next/future.css linked after this file. */
 @import url("base/spinner-next.css");
 @import url("base/spinner-future.css");
+/* Last: the permission ask and the queue above the composer. */
+@import url("dock.css");

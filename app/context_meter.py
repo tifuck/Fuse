@@ -391,17 +391,24 @@ def _positive_int(value) -> int | None:
         return None
     return number if number >= MIN_WINDOW else None
 
-# CJK/fullwidth/emoji runs are ~1 token per char; a flat 4-char divide
-# undercounts them about 4x.
-_WIDE_CHARS = re.compile(r"[^\x00-\u2e7f]")
+# Tokens per char by script; a flat 4-char divide undercounts non-Latin text
+# 2-4x. CJK, kana, hangul, emoji and complex scripts (Indic, Thai, Lao,
+# Tibetan, Myanmar, Georgian, Ethiopic, Khmer) run about 1 token per char;
+# Greek, Cyrillic, Armenian, Hebrew, Arabic and Syriac about 1 per 2; Latin
+# and code about 1 per CHARS_PER_TOKEN. Each class rounds up.
+_WIDE_CHARS = re.compile(r"[\u0900-\u139f\u1780-\u17ff\u2e80-\U0010ffff]+")
+_HALF_CHARS = re.compile(r"[\u0370-\u08ff\u1c80-\u1c8f\u1f00-\u1fff]+")
 
 
 def estimate_text(text: str) -> int:
     if not text:
         return 0
-    wide = len(_WIDE_CHARS.findall(text))
-    narrow = len(text) - wide
-    return max(1, wide + (narrow + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
+    if text.isascii():
+        return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
+    wide = sum(map(len, _WIDE_CHARS.findall(text)))
+    half = sum(map(len, _HALF_CHARS.findall(text)))
+    narrow = len(text) - wide - half
+    return max(1, wide + (half + 1) // 2 + (narrow + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
 
 
 def estimate_file(part: dict) -> int:

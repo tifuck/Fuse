@@ -129,16 +129,17 @@ def _entry(rel: str) -> dict | None:
         # treat it as missing, never a 500.
         _forget(rel)
         return None
-    refs = []
+    refs, lazy = set(), set()
     if rel.endswith(_TEXT):
         text = data.decode("utf-8", "replace")
         for pattern in _patterns(rel):
             for match in pattern.finditer(text):
                 target = _resolve(rel, match.group(3))
                 if target and target != rel:
-                    refs.append(target)
+                    # import("x"): fetched when the code asks, not with the page.
+                    (lazy if pattern is _JS_REFS and "(" in match.group(1) else refs).add(target)
     entry = {"stamp": stamp, "checked": now, "hash": hashlib.sha256(data).hexdigest(),
-             "refs": sorted(set(refs)), "data": data if rel.endswith(_TEXT) else None}
+             "refs": sorted(refs | lazy), "lazy": lazy - refs, "data": data if rel.endswith(_TEXT) else None}
     if _files.get(rel, {}).get("hash") != entry["hash"]:
         # Any content change can move the version of every importer.
         _versions.clear()
@@ -147,7 +148,9 @@ def _entry(rel: str) -> dict | None:
     return entry
 
 
-def _closure(rel: str) -> list[str]:
+def _closure(rel: str, *, lazy: bool = True) -> list[str]:
+    """Everything ``rel`` loads; without ``lazy``, only what loads with it
+    (nothing that is reached through an import() alone)."""
     seen, stack, order = {rel}, [rel], []
     while stack:
         current = stack.pop()
@@ -156,7 +159,7 @@ def _closure(rel: str) -> list[str]:
             continue
         order.append(current)
         for ref in entry["refs"]:
-            if ref not in seen:
+            if ref not in seen and (lazy or ref not in entry["lazy"]):
                 seen.add(ref)
                 stack.append(ref)
     return order
@@ -268,9 +271,10 @@ def served(rel: str, gzip_ok: bool) -> tuple[str, bytes, str | None] | None:
 
 
 def preloads(entry: str) -> list[str]:
-    """Versioned URLs of everything ``entry`` loads (not the entry itself) of
-    the same kind, for <link rel=modulepreload|preload> hints that fetch the
-    whole graph in parallel instead of one import level per round trip."""
+    """Versioned URLs of everything ``entry`` loads with it (not the entry
+    itself, nor what only an import() reaches) of the same kind, for
+    <link rel=modulepreload|preload> hints that fetch the whole graph in
+    parallel instead of one import level per round trip."""
     entry = _norm(entry)
     if _frozen and entry in _preload_lists:
         return list(_preload_lists[entry])
@@ -278,7 +282,7 @@ def preloads(entry: str) -> list[str]:
     with _lock:
         if _entry(entry) is None:
             return []
-        members = [rel for rel in _closure(entry) if rel != entry and rel.endswith(kind)]
+        members = [rel for rel in _closure(entry, lazy=False) if rel != entry and rel.endswith(kind)]
     urls = [asset_url(rel) for rel in sorted(members)]
     if _frozen:
         _preload_lists[entry] = urls

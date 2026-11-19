@@ -2,6 +2,8 @@ fastapi>=0.115.0
 starlette==1.7.0
 uvicorn[standard]>=0.34.0
 httpx[socks]>=0.28.0
+# Imported directly for IDN hosts in app/search/ssrf.py; >= 3.7 fixes CVE-2024-3651.
+idna>=3.7
 jinja2==3.1.6
 python-multipart==0.0.32
 cryptography>=44.0.0

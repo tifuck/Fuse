@@ -15,12 +15,14 @@ a row matches whichever form it was stored in.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import threading
 from collections import OrderedDict
 
 from . import db
+from .chat_schema import ChatValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,10 @@ _FETCH_BATCH = 16
 # Without it a 2 MB request repeating one stored 6 MB image's reference
 # expanded to tens of GB before any size check.
 REHYDRATE_CHARS = 96_000_000
+# What a thread view sends in place of a stored attachment image's bytes: the
+# path of its route (web/chat.py chat_image), then the sha.
+ATTACHMENT_PATH = "/chat/images/"
+_ATTACHMENT_HEADERS = {"data:image/" + kind + ";base64": "image/" + kind for kind in ("png", "jpeg", "gif", "webp")}
 
 _cache: OrderedDict[tuple[int, str], str] = OrderedDict()
 _cache_bytes = 0
@@ -271,3 +277,94 @@ def copy_thread(conn, source_thread_id, thread_id) -> None:
         "SELECT ?, sha, user_id, url, created_at FROM chat_images WHERE thread_id=?",
         (thread_id, source_thread_id),
     )
+
+
+def _attachment_mime(url) -> str | None:
+    return _ATTACHMENT_HEADERS.get(url[:40].partition(",")[0]) if isinstance(url, str) else None
+
+
+def link_attachments(thread_id, messages):
+    """Messages for the page: each user attachment image this thread stores
+    goes as ATTACHMENT_PATH + sha in ``data``, not as its bytes.
+
+    Every snapshot repeated them, megabytes of base64 per picture. The
+    transcript keeps the bytes; restore_attachments puts them back into what
+    the page sends. An image the thread has no row for stays inline."""
+    if thread_id is None or not isinstance(messages, list):
+        return messages
+    stored = None
+    out = []
+    for msg in messages:
+        attachments = msg.get("attachments") if isinstance(msg, dict) else None
+        linked = None
+        for index, att in enumerate(attachments if isinstance(attachments, list) else ()):
+            data = att.get("data") if isinstance(att, dict) and att.get("kind") == "image" else None
+            if not _attachment_mime(data) or len(data) < MIN_CHARS or not data.isascii():
+                continue
+            if stored is None:
+                stored = {row["sha"] for row in db.fetchall("SELECT sha FROM chat_images WHERE thread_id=?", (thread_id,))}
+            if not stored:
+                return messages
+            sha = hashlib.sha256(data.encode("ascii")).hexdigest()
+            if sha in stored:
+                linked = linked or list(attachments)
+                linked[index] = {**att, "data": ATTACHMENT_PATH + sha}
+        out.append(msg if linked is None else {**msg, "attachments": linked})
+    return out
+
+
+def _linked_sha(att) -> str | None:
+    data = att.get("data") if isinstance(att, dict) and att.get("kind") == "image" else None
+    if isinstance(data, str) and data.startswith(ATTACHMENT_PATH) and is_ref(PREFIX + data[len(ATTACHMENT_PATH):]):
+        return data[len(ATTACHMENT_PATH):]
+    return None
+
+
+def restore_attachments(user_id, attachments):
+    """Attachments the page sent, with the bytes back in each image
+    link_attachments replaced.
+
+    The page echoes what a view gave it (transcript saves, edit and resend,
+    undo, queued turns). An image that is gone is refused: the message would
+    otherwise be stored, and sent to the model, without it."""
+    if not isinstance(attachments, list):
+        return attachments
+    shas = {index: sha for index, att in enumerate(attachments) if (sha := _linked_sha(att))}
+    if not shas:
+        return attachments
+    urls = lookup(user_id, shas.values())
+    out = list(attachments)
+    for index, sha in shas.items():
+        url = urls.get(sha)
+        if url is None or hashlib.sha256(url.encode("utf-8")).hexdigest() != sha:
+            raise ChatValidationError("an attached image is no longer stored; reload the chat", 409)
+        out[index] = {**attachments[index], "data": url}
+    return out
+
+
+def restore_messages(user_id, messages):
+    """restore_attachments for every message of a transcript the page sent."""
+    if not isinstance(messages, list):
+        return messages
+    out = None
+    for index, msg in enumerate(messages):
+        attachments = msg.get("attachments") if isinstance(msg, dict) else None
+        restored = restore_attachments(user_id, attachments)
+        if restored is not attachments:
+            out = out or list(messages)
+            out[index] = {**msg, "attachments": restored}
+    return messages if out is None else out
+
+
+def attachment_image(user_id, sha):
+    """(mime, bytes) of a stored image for its owner's page, else None."""
+    if not is_ref(PREFIX + sha):
+        return None
+    url = lookup(user_id, [sha]).get(sha)
+    mime = _attachment_mime(url)
+    if not mime:
+        return None
+    try:
+        return mime, base64.b64decode(url.partition(",")[2])
+    except ValueError:
+        return None

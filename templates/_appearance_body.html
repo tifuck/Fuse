@@ -153,4 +153,20 @@
     </label>
   </div>
 </section>
+{#- Fuse Desktop only: its site-preload.js puts this in place and binds it;
+    a browser never draws a template. -#}
+<template data-desktop-gpu>
+<section class="ap-section" aria-labelledby="ap-h-desktop">
+  <div class="ap-intro">
+    <h2 id="ap-h-desktop">Desktop app</h2>
+    <p>This computer only. Applies when Fuse restarts.</p>
+  </div>
+  <div class="ap-body ap-switches">
+    <label class="ap-switch">
+      <input type="checkbox" role="switch" data-desktop-gpu-toggle>
+      <span class="ap-switch-copy"><span>Use hardware acceleration</span><small data-desktop-gpu-note>Draws on the graphics card. Turn it off if the window flickers or shows coloured blocks.</small></span>
+    </label>
+  </div>
+</section>
+</template>
 

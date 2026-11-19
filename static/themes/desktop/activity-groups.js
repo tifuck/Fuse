@@ -59,7 +59,7 @@ function syncAgo() {
     }
     els.forEach((el) => {
       const text = agoText(el.dateTime);
-      if (text && el.textContent !== text) el.textContent = text;
+      if (text) FuseChatDOM.setText(el, text);
     });
   }
 function agoHtml(msg) {
@@ -154,20 +154,31 @@ function syncConsoleClocks(root) {
       const text = kind === "work" ? deps.ccDuration(Math.max(1000, (Number(el.dataset.base) || 0) + (since ? Date.now() - since : 0)))
         : kind === "suffix" ? ccShellSuffix(since, Number(el.dataset.lines) || 0)
         : ccElapsedText(since);
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 
+// The live clock asks workClocksLive, then syncWorkClocks, on each tick:
+// one search of the page serves both.
+let workClocks = null;
+function liveWorkClocks() {
+    if (!workClocks) {
+      workClocks = document.querySelectorAll('[data-cc-clock="work"]');
+      queueMicrotask(() => { workClocks = null; });
+    }
+    return workClocks;
+  }
+
 function workClocksLive() {
-    return Boolean(document.querySelector('[data-cc-clock="work"]'));
+    return liveWorkClocks().length > 0;
   }
 
 function syncWorkClocks() {
-    document.querySelectorAll('[data-cc-clock="work"]').forEach((el) => {
+    liveWorkClocks().forEach((el) => {
       const base = Number(el.dataset.base) || 0;
       const since = Number(el.dataset.since) || 0;
       const text = deps.ccDuration(Math.max(1000, base + (since ? Date.now() - since : 0)));
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 
@@ -314,12 +325,16 @@ function ccGroupHtml(group, live, openMap) {
       stillRunning && parts.length ? `<span class="dk-tally is-running">${stillRunning} still running</span>` : "",
     ].join("");
     const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
+    // One call: the line stays its opened list, header hidden, so the call
+    // reads as its own row; the same element folds to the summary when a
+    // second call joins.
+    const single = counted.filter((item) => item.type === "tool").length === 1 && !stillRunning;
     const rows = group.items.map((item) => item.type === "think"
       ? thoughtRowHtml(item.key, item.text, item.ms, item.segmentIndex, deps.stepOpenAt(openMap, item.key))
       : item.calls ? scriptRowHtml(item, live, openMap)
       : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap, { oneLine: true })).join("");
     return (
-      `<li class="chat-step is-console-group is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
+      `<li class="chat-step is-console-group is-done${single ? " is-console-expanded is-dk-single" : open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
       `<div class="chat-step-main">` +
       `<div class="chat-step-head">` +

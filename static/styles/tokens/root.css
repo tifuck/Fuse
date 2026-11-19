@@ -40,4 +40,24 @@
   --ease-snap: cubic-bezier(0.2, 0, 0, 1);
   --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
 }
+/* Hover lands at once and fades only on the way out. Hover feedback
+   (background, color, border, shadow, a revealed control's opacity)
+   transitions over --dur-hover: --dur-1 normally, 0s while the element is
+   hovered (a rule that reveals a child on its parent's hover sets it too).
+   Not inherited, so setting it never restyles a subtree. Set only on what
+   can be pointed at: on every element, each container the pointer crosses
+   would restyle too.
+   A parent's hover styles a child only through a class (".row:hover
+   .child"), never a tag ("tr:hover td", ".x:hover svg"): :hover shares one
+   invalidation set, and a tag in it restyles every such element under
+   whatever the pointer enters or leaves. */
+@property --dur-hover { syntax: "<time>"; inherits: false; initial-value: 120ms; }
+:is(a, button, summary, label, input, select, textarea, [role], [tabindex], .dk-row, .cb-row, .chat-history-item, .chat-step-open):hover { --dur-hover: 0s; }
+/* The composer's height and the transcript scrollbar's width, written on the
+   chat root as they change. Not inherited, or each write would restyle the
+   whole transcript: what reads them, and each box between that and the root,
+   asks with "inherit" (the themes' chat-glass-dock.css). No initial value, so
+   var(--dock-h, x) still falls back to x until it is written. */
+@property --dock-h { syntax: "*"; inherits: false; }
+@property --chat-scroll-gutter { syntax: "*"; inherits: false; }
 

@@ -57,7 +57,7 @@
   border: 0; border-radius: 0;
   color: var(--chat-secondary); text-align: left; font-size: calc(0.78rem * var(--chat-text-scale, 1)); line-height: 1.4;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition: color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-activity-summary:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-activity.is-waiting .chat-activity-summary,

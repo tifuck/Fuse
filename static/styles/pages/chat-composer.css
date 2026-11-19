@@ -390,7 +390,7 @@
   opacity: 0;
   transform: scale(0.92);
   touch-action: manipulation;
-  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+  transition: opacity 120ms ease, transform 120ms ease, background var(--dur-hover) ease;
 }
 :where(html:not(.is-chat-root)) .chat-user-file.is-file .chat-user-file-x {
   top: 50%;

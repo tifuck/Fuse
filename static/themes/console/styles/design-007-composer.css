@@ -55,7 +55,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
   color: color-mix(in srgb, var(--mist) 55%, var(--ink));
   font: 500 0.9rem/var(--composer-row) var(--mono);
   text-shadow: none;
-  transition: color var(--dur-1) ease;
+  transition: color var(--dur-hover) ease;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box:focus-within::before { color: var(--brass); }
@@ -81,7 +81,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-sta
   color: var(--mute);
   line-height: 0;
   cursor: pointer;
-  transition: color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+  transition: color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn[hidden] { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stash-btn:hover { color: var(--mist); }
@@ -181,7 +181,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
   padding: 0;
   overflow: hidden;
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-attach-chip:has(> .chat-attach-thumb) > span { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-attach-chip > .chat-attach-thumb ~ span { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-attach-thumb { width: 100%; height: 100%; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-attach-thumb img { width: 100%; height: 100%; border-radius: 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-attach-chip:has(> .chat-attach-thumb) [data-remove-attach] {

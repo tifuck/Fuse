@@ -64,9 +64,14 @@
   function money(micros, { zero = "$0" } = {}) {
     const d = (Number(micros) || 0) / 1e6;
     if (!d) return zero;
-    if (d >= 1000) return "$" + compactFmt.format(d);
-    if (d >= 0.01) return "$" + d.toFixed(2);
-    return "$" + d.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    const sign = d < 0 ? "-" : "";
+    const a = Math.abs(d);
+    // Thresholds apply after rounding: 999.996 is "$1K", never "$1000.00",
+    // and a nonzero cost never shows as "$0".
+    if (!Number(a.toFixed(4))) return d < 0 ? ">-$0.0001" : "<$0.0001";
+    if (Number(a.toFixed(2)) >= 1000) return sign + "$" + compactFmt.format(a);
+    if (a >= 0.01) return sign + "$" + a.toFixed(2);
+    return sign + "$" + a.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
   }
   function pct(n, digits = 1) {
     if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—";

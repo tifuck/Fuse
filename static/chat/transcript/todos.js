@@ -205,10 +205,13 @@ export function createTodos(ctx) {
     if (!btn) return;
     const sec = onScreenTodos();
     const shown = Boolean(sec.el && !sec.el.hidden);
-    btn.hidden = !shown;
-    btn.setAttribute("aria-expanded", shown && sec.expanded ? "true" : "false");
-    btn.title = sec.expanded ? "Hide todos" : "Show todos";
-    btn.querySelector("[data-todo-badge]").textContent = shown && sec.left ? String(sec.left) : "";
+    // Every live-dock sync ends here: write only what changed.
+    const expanded = shown && sec.expanded ? "true" : "false";
+    const title = sec.expanded ? "Hide todos" : "Show todos";
+    if (btn.hidden !== !shown) btn.hidden = !shown;
+    if (btn.getAttribute("aria-expanded") !== expanded) btn.setAttribute("aria-expanded", expanded);
+    if (btn.title !== title) btn.title = title;
+    FuseChatDOM.setText(btn.querySelector("[data-todo-badge]"), shown && sec.left ? String(sec.left) : "");
   }
 
   function onTodoButton() {

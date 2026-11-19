@@ -57,7 +57,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-pro
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-todo-badge { top: calc(50% - 0.7rem); }
 
 /* —— Transcript edges —— */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { padding-top: 0.75rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-stage > .chat-work:not([hidden]) ~ .chat-thread { padding-top: 0.75rem; }
 
 
 /* —— Sheets —— */

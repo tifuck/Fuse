@@ -22,10 +22,6 @@
       </div>
       <div class="chat-rewind-list" data-chat-rewind-list></div>
     </div>
-    <div class="chat-queue" data-chat-queue hidden role="region" aria-label="Queued messages">
-      <p class="chat-queue-kicker">Queued <span data-chat-queue-count></span></p>
-      <ul class="chat-queue-list" data-chat-queue-list></ul>
-    </div>
     <div class="chat-context-alert" data-context-alert hidden role="status">
       <p data-context-alert-text></p>
       <button type="button" class="btn sm" data-context-alert-compact>Compact now</button>
@@ -37,6 +33,10 @@
     <div class="chat-live-todos" data-live-todos hidden role="region" aria-label="Todo list"></div>
     <div class="chat-agent-live-todos" data-agent-live-todos hidden role="region" aria-label="Subagent todo list"></div>
     <div class="chat-wallpaper-picker" data-wallpaper-picker hidden></div>
+    <div class="chat-queue" data-chat-queue hidden role="region" aria-label="Queued messages">
+      <p class="chat-queue-hold" data-chat-queue-hold hidden><span>Paused because you stopped the reply.</span><button type="button" data-queue-resume>Resume</button></p>
+      <ol class="chat-queue-list" data-chat-queue-list></ol>
+    </div>
     <div class="chat-box" data-chat-box>
       <div class="chat-attach-list" data-chat-attach-list hidden></div>
       <label class="visually-hidden" for="chat-input">Message</label>
@@ -85,10 +85,17 @@
           {% if chat_config.speech %}
           <button type="button" class="chat-mic-btn" data-chat-mic aria-label="Dictate" aria-pressed="false" title="Dictate">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <rect x="5.6" y="1.8" width="4.8" height="8.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M3.4 7.6a4.6 4.6 0 0 0 9.2 0M8 12.2v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <rect x="5.75" y="1.75" width="4.5" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M3.5 7.5v.5a4.5 4.5 0 0 0 9 0v-.5M8 12.5v2M5.5 14.5h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="square"/>
             </svg>
           </button>
+          <template data-dictation>
+            <span class="dictation-rec" aria-hidden="true">rec</span>
+            <span class="dictation-bars" aria-hidden="true"></span>
+            <span class="dictation-time" data-dictation-time>0:00</span>
+            <button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc"><kbd>esc</kbd></button>
+            <button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done · Enter"><kbd>↵</kbd>done</button>
+          </template>
           {% endif %}
           <button type="submit" class="chat-send" data-chat-send disabled aria-label="Send">
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3.2v9.6M4.2 7l3.8-3.8L11.8 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>

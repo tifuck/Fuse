@@ -331,17 +331,39 @@ export function createMerge(ctx) {
       });
   }
 
+    // A repaint asks for every call of a reply, and most have not changed since
+  // the last one. Each call's text is kept with the fields it was made from.
+  // Calls are also changed in place (progress, agent polls, command results),
+  // so the kept fields are compared on every use: strings and numbers by
+  // value, nested lists by their own text. Nothing is trusted by identity.
+  const traceSigs = new WeakMap();
+  const sigField = (value) => (value && typeof value === "object" ? { json: JSON.stringify(value) } : value);
+  const sameField = (value, kept) => (value && typeof value === "object"
+    ? Boolean(kept) && typeof kept === "object" && JSON.stringify(value) === kept.json
+    : value === kept);
+
+    function traceSig(trace) {
+    if (!trace || typeof trace !== "object") return JSON.stringify(trace) ?? "null";
+    const running = toolPresentation(trace, true).running;
+    const keys = Object.keys(trace);
+    const kept = traceSigs.get(trace);
+    if (kept && kept.running === running && kept.keys.length === keys.length &&
+        keys.every((key, i) => key === kept.keys[i] && sameField(trace[key], kept.fields[i]))) return kept.sig;
+    let sig;
+    if (running) sig = JSON.stringify(trace);
+    else {
+      const { elapsed_ms, ...rest } = trace;
+      sig = JSON.stringify(rest);
+    }
+    traceSigs.set(trace, { running, keys, fields: keys.map((key) => sigField(trace[key])), sig });
+    return sig;
+  }
+
     function tracesSig(traces) {
     // Output, child identity, exit code and background transitions also change UI.
     // A finished call's elapsed clock is not part of that: ticking it rebuilt
     // every settled row and replayed the expand animation on each update.
-    return JSON.stringify((traces || []).map((trace) => {
-      if (!trace || typeof trace !== "object") return trace;
-      const presentation = toolPresentation(trace, true);
-      if (presentation.running) return trace;
-      const { elapsed_ms, ...rest } = trace;
-      return rest;
-    }));
+    return `[${(traces || []).map(traceSig).join(",")}]`;
   }
 
     // Every glyph that steps: the docks, the latest pill, and the sidebar's

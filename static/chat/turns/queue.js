@@ -205,7 +205,8 @@ export function createQueue(ctx) {
     const queueTop = S.queueListEl.scrollTop;
     S.queueEl.hidden = !count;
     S.root.classList.toggle("is-queued", count > 0);
-    if (S.queueCountEl) S.queueCountEl.textContent = count ? String(count) : "";
+    const holdNote = S.queueEl.querySelector("[data-chat-queue-hold]");
+    if (holdNote) holdNote.hidden = !S.queuedTurns.some((item) => held.has(item.id));
     if (!count) {
       S.queueListEl.innerHTML = "";
       composer.syncDockSpace();
@@ -214,14 +215,14 @@ export function createQueue(ctx) {
       return;
     }
     if (!S.queuedTurns.some((item) => item.id === S.queueMenuId && !inFlight.has(item.id))) S.queueMenuId = "";
-    // One line per message: the header says "Queued", so a row names only an
-    // exceptional state. Edit and Cancel live behind the row's ⋮ menu.
+    // One line per message, numbered in send order. A row names only an
+    // exceptional state; a Stop hold is said once, above the rows. Edit and
+    // Cancel live behind the row's menu.
     const html = S.queuedTurns
       .map((item, index) => {
         const sending = inFlight.has(item.id);
-        const state = [sending ? "Sending…" : item.immediate ? "Next" : held.has(item.id) ? "Stopped" : "",
-          item.attachments?.length ? `${item.attachments.length} attached` : ""].filter(Boolean).join(" · ");
-        return ui.queueItemHtml(item, { index, open: item.id === S.queueMenuId, sending, held: held.has(item.id), streaming: Boolean(S.streaming), state });
+        const state = sending ? "Sending…" : item.immediate ? "Next" : "";
+        return ui.queueItemHtml(item, { index, open: item.id === S.queueMenuId, sending, held: held.has(item.id), streaming: Boolean(S.streaming), state, attached: item.attachments?.length || 0 });
       })
       .join("");
     const template = document.createElement("template");
@@ -387,6 +388,22 @@ export function createQueue(ctx) {
     drainQueue({ follow: false });
   }
 
+    // Resume releases every Stop hold: each item goes back to the server in
+    // queue order (one at a time, so a later one cannot start first), then
+    // the queue drains as usual.
+    async function resumeQueue() {
+    const ids = heldIds();
+    if (!ids.size) return;
+    const origin = S.currentId;
+    heldMemory.delete(String(origin));
+    try { for (const id of ids) localStorage.removeItem(queueHoldKey() + '.' + id); } catch (_) {}
+    renderQueue();
+    for (const item of S.queuedTurns.slice()) {
+      if (ids.has(item.id) && !inFlight.has(item.id)) await mirror(origin, item, { release: true }).catch(() => {});
+    }
+    if (origin === S.currentId) drainQueue({ follow: false });
+  }
+
   return {
     acknowledgeQueuedTurn,
     drainQueue,
@@ -403,6 +420,7 @@ export function createQueue(ctx) {
     queueStoreKey,
     removeQueuedTurn,
     renderQueue,
+    resumeQueue,
     retireAcceptedQueue,
     sendQueuedNow,
   };

@@ -22,11 +22,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-diffstat .dk-plus { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-diffstat .dk-minus { color: var(--dk-del, var(--fault)); }
 /* One colour for the whole line: dark gray words, the counts a step lighter. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-mute, var(--mute)); font-weight: 400; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: var(--dk-grp-words, color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-grp-counts, var(--dk-mute, var(--mute))); font-weight: 400; }
 @media (hover: hover) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label { color: var(--dk-mute, var(--mute)); }
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover .chat-step-label b { color: var(--dk-text, var(--mist)); }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head:hover { --dk-grp-words: var(--dk-mute, var(--mute)); --dk-grp-counts: var(--dk-text, var(--mist)); }
 }
 /* A tap draws no browser highlight over the whole line (a blue box on
    Android); a finger on the line steps its type up a shade, as a pointer does. */
@@ -69,6 +68,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label { color: var(--dk-mute, var(--mute)); }
   & .chat-step.is-console-group.is-console-expanded:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: var(--dk-text, var(--mist)); }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle { margin: 0 0 4px; padding-left: 0; border-left: 0; }
+  /* One call: no summary line, only its row. */
+  & .chat-step.is-console-group.is-dk-single > .chat-step-main > .chat-step-head { display: none !important; }
   & .chat-step.is-console-group > .chat-step-main > .chat-console-bundle > .chat-timeline { gap: 0; }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step + .chat-step { margin-top: 0; }
 
@@ -80,7 +81,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-step.is-console-call .chat-tool-host { display: none !important; }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step.is-console-call > .chat-step-main > .chat-step-head { display: flex !important; align-items: center; gap: 0; min-height: var(--dk-call-row); }
   & :is(.chat-console-bundle > .chat-timeline, .dk-script-calls) > .chat-step.is-console-call > .chat-step-main > .chat-step-head > :is(button.chat-step-toggle, .chat-step-static) { flex: 1 1 auto; min-width: 0; min-height: var(--dk-call-row); margin-block: 0; }
-  & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: color var(--dur-1, 120ms) ease; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: color var(--dur-hover) ease; }
   & .chat-console-bundle .chat-step.is-console-call .chat-console-call .chat-console-val { color: color-mix(in srgb, var(--dk-text, var(--mist)) 82%, var(--dk-mute, var(--mute))); }
   @media (hover: hover) {
     & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
@@ -255,13 +256,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-call { margin-right: auto; }
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { margin-left: 0; padding-left: 12px; text-align: right; }
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-took ~ .chat-console-result-text { margin-left: 10px; padding-left: 0; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev { display: inline-flex; flex: none; align-self: center; width: 12px; height: 12px; margin-left: 8px; color: var(--dk-call-quiet); opacity: 0; transition: transform var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev svg { width: 12px; height: 12px; }
-  & .chat-console-bundle .chat-step-label > .dk-row-chev.is-empty { visibility: hidden; }
-  & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:is(:hover, :focus-within) .dk-row-chev,
-  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { opacity: 1; }
-  & .chat-console-bundle .chat-step.is-console-call.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { transform: rotate(90deg); }
-  @media (prefers-reduced-motion: reduce) { & .chat-console-bundle .chat-step-label > .dk-row-chev { transition: none; } }
 
   & .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded { margin: 2px 0 6px var(--dk-row-indent); width: auto; }
   & .chat-console-bundle .chat-step.is-dk-thought .chat-console-hang.is-expanded { margin: 1px 0 6px var(--dk-row-indent); }

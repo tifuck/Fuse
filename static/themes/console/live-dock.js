@@ -35,7 +35,12 @@ function setLiveLabelText(el, text, meta) {
     const nextMeta = meta || "";
     if (tail.textContent !== nextMeta) {
       // " tokens" in its own span: a narrow dock drops the word, never a number.
-      tail.replaceChildren(...nextMeta.split(/( tokens)/).filter(Boolean).map((part) => {
+      const parts = nextMeta.split(/( tokens)/).filter(Boolean);
+      const nodes = tail.childNodes;
+      // The same shape ticks in place: replacing a node restyles the transcript.
+      if (parts.length === nodes.length && parts.every((part, i) => (part === " tokens") === (nodes[i].nodeType === 1))) {
+        parts.forEach((part, i) => { if (nodes[i].nodeType === 3 && nodes[i].data !== part) nodes[i].data = part; });
+      } else tail.replaceChildren(...parts.map((part) => {
         if (part !== " tokens") return document.createTextNode(part);
         const unit = document.createElement("span");
         unit.className = "chat-status-unit";
@@ -49,7 +54,7 @@ function setLiveLabelText(el, text, meta) {
     if (tail.hidden !== hideTail) tail.hidden = hideTail;
     if (verb.textContent === text) return;
     const first = !verb.textContent;
-    verb.textContent = text;
+    FuseChatDOM.setText(verb, text);
     verb.classList.remove("is-swap");
     if (first || deps.reduceMotion.matches) return;
     void verb.offsetWidth;
@@ -232,12 +237,24 @@ function consoleSpinGlyph(sidebar) {
     return sidebar && glyph === "✢" ? "✳" : glyph;
   }
 
+// The glyphs that tick: the status lines' and the "Jump to latest" pill's
+// while shown, and every shown run spinner's, each kept as setConsoleSpin
+// fills its slot.
+function spinTicks(mark) {
+    const slot = mark.parentElement;
+    if (!mark.isConnected || !slot || slot.hidden) return false;
+    const dock = [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
+      .find(([, spin]) => spin === slot)?.[0];
+    return dock ? !dock.hidden : "runSpin" in slot.dataset;
+  }
+
 function consoleSpinMarks() {
-    return [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
-      .filter(([dock, spin]) => dock && spin && !dock.hidden && !spin.hidden)
-      .map(([, spin]) => spin.querySelector(":scope > .chat-console-spin"))
-      .concat([...deps.root.querySelectorAll("[data-run-spin]:not([hidden]) > .chat-console-spin")])
-      .filter(Boolean);
+    const marks = [];
+    for (const mark of spinMarks) {
+      if (!mark.isConnected) spinMarks.delete(mark);
+      else if (spinTicks(mark)) marks.push(mark);
+    }
+    return marks;
   }
 
 function stopConsoleSpin() {
@@ -258,15 +275,22 @@ function setConsoleSpin(el) {
       mark.textContent = consoleSpinGlyph("runSpin" in el.dataset);
       el.replaceChildren(mark);
     }
-    if (deps.consoleSpinTimer || deps.reduceMotion.matches) return;
+    if (!spinMarks.has(mark)) {
+      spinMarks.forEach((old) => { if (!old.isConnected) spinMarks.delete(old); });
+      spinMarks.add(mark);
+    }
+    if (deps.consoleSpinTimer || deps.reduceMotion.matches || !spinTicks(mark)) return;
     deps.consoleSpinTimer = window.setInterval(() => {
       const marks = consoleSpinMarks();
       if (!marks.length) {
         stopConsoleSpin();
         return;
       }
+      if (document.hidden) return;
       deps.consoleSpinFrame = (deps.consoleSpinFrame + 1) % CONSOLE_SPIN_FRAMES.length;
-      marks.forEach((spin) => { spin.textContent = consoleSpinGlyph("runSpin" in spin.parentElement.dataset); });
+      marks.forEach((spin) => {
+        FuseChatDOM.setText(spin, consoleSpinGlyph("runSpin" in spin.parentElement.dataset));
+      });
     }, 110);
   }
 
@@ -302,7 +326,7 @@ function syncLiveDock() {
         deps.liveDockHideTimer = 0;
       }
       deps.liveDock.hidden = false;
-      deps.liveDock.setAttribute("aria-hidden", "false");
+      if (deps.liveDock.getAttribute("aria-hidden") !== "false") deps.liveDock.setAttribute("aria-hidden", "false");
       const groups = deps.groupTraces(Array.isArray(msg.tools) ? msg.tools : []);
       const status = currentActivity(msg, groups, true);
       setLivePhase(deps.liveDock, status.phase);
@@ -363,6 +387,8 @@ function activityLabel(msg, groups, live) {
 const CONSOLE_SPIN_FRAMES = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
 
 const CONSOLE_SPIN_STILL = "✻";
+
+const spinMarks = new Set();
 
   return { setLiveLabelText, setLivePhase, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }

@@ -44,7 +44,7 @@ function foldInPlace(li, part, open, apply, settle) {
     // under it cannot creep however fast it is clicked.
     const anchor = prev?.anchor?.isConnected ? prev.anchor : box && nextBelow(li, box);
     const run = { anchor, y: prev?.anchor === anchor && anchor ? prev.y : anchor?.getBoundingClientRect().top,
-      gap: prev && !anchor ? prev.gap : box ? box.scrollHeight - box.scrollTop : 0, frame: 0, held: true };
+      gap: prev && !anchor ? prev.gap : box ? box.scrollHeight - box.scrollTop : 0, sizes: null, held: true };
     li._dkFold = run;
     // Following the bottom already keeps the end where it is; pinning too
     // would fight the follow as new output arrives.
@@ -73,7 +73,7 @@ function foldInPlace(li, part, open, apply, settle) {
       ], { duration: DURATION, easing: EASING });
     }
     const done = (finished) => {
-      cancelAnimationFrame(run.frame);
+      run.sizes?.disconnect();
       box?.removeEventListener("wheel", release);
       box?.removeEventListener("touchstart", release);
       part?.style.removeProperty("overflow");
@@ -98,8 +98,10 @@ function foldInPlace(li, part, open, apply, settle) {
     };
     pin();
     if (!motion) { done(true); return; }
-    const tick = () => { pin(); run.frame = requestAnimationFrame(tick); };
-    run.frame = requestAnimationFrame(tick);
+    // Pinned as the part changes size: after the frame's layout, so reading
+    // where the anchor landed forces none, and before it is painted.
+    run.sizes = new ResizeObserver(pin);
+    run.sizes.observe(part);
     motion.onfinish = () => done(true);
   }
 

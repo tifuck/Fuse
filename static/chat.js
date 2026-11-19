@@ -334,7 +334,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
   });
 
   const sidebar = createSidebar({
-    agents: { agentLive: (...args) => agents.agentLive(...args), resetAgents: (...args) => agents.resetAgents(...args), setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },
+    agents: { agentLive: (...args) => agents.agentLive(...args), refreshAgents: (...args) => agents.refreshAgents(...args), refreshJobs: (...args) => agents.refreshJobs(...args), resetAgents: (...args) => agents.resetAgents(...args), setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },
     artifacts,
     chatApi,
     composer: { closeSlash: (...args) => composer.closeSlash(...args), persist: (...args) => composer.persist(...args), refreshProjectListing: (...args) => composer.refreshProjectListing(...args), renderAttachList: (...args) => composer.renderAttachList(...args), resizeInput: (...args) => composer.resizeInput(...args), scheduleFitChatBar: (...args) => composer.scheduleFitChatBar(...args), syncComposer: (...args) => composer.syncComposer(...args), syncEmptyComposer: (...args) => composer.syncEmptyComposer(...args) },
@@ -535,8 +535,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     tick: sidebar.currentRunSpin,
   };
 
-    composer.refreshSkills();
-
+    // chat-config already inlines the list this page loaded with.
     window.addEventListener("focus", composer.refreshSkills);
 
     document.addEventListener("visibilitychange", () => {
@@ -649,7 +648,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
           };
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/confirm", { method: "POST", body: JSON.stringify(body) });
         }
-        await composer.refreshSkills();
+        await composer.refreshSkills(true);
         await sync.reconcileThread();
       } catch (error) {
         sync.showFailure("Skill was not saved", error);
@@ -667,6 +666,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
           menu.hidden = !menu.hidden;
           alwaysBtn.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
         }
+        return;
+      }
+      const step = event.target.closest("[data-perm-step-btn]");
+      if (step) {
+        perms.stepPermCard(Number(step.getAttribute("data-perm-step-btn")));
         return;
       }
       const more = event.target.closest("[data-perm-extend]");
@@ -831,9 +835,9 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       : null;
   }, { passive: true });
 
-    S.log.addEventListener("touchmove", (event) => {
-    const pane = event.target.closest(".chat-code pre");
-    if (!pane || !codeTouch || event.touches.length !== 1) return;
+    function handOffCodeScroll(event) {
+    const pane = event.currentTarget;
+    if (!codeTouch || event.touches.length !== 1) return;
     const deltaY = event.touches[0].clientY - codeTouch.y;
     const deltaX = event.touches[0].clientX - codeTouch.x;
     codeTouch = { x: event.touches[0].clientX, y: event.touches[0].clientY };
@@ -844,7 +848,21 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       event.preventDefault();
       S.thread.scrollTop -= deltaY;
     }
-  }, { passive: false });
+  }
+
+    // The listener that may veto a scroll sits on the panes themselves: on the
+  // whole transcript it made every touch scroll there wait on the main thread.
+  function armCodePanes(node) {
+    if (node.nodeType !== 1) return;
+    if (node.matches(".chat-code pre")) node.addEventListener("touchmove", handOffCodeScroll, { passive: false });
+    else if (node.firstElementChild) node.querySelectorAll(".chat-code pre").forEach(armCodePanes);
+  }
+
+    armCodePanes(S.log);
+
+    new MutationObserver((records) => {
+    for (const record of records) record.addedNodes.forEach(armCodePanes);
+  }).observe(S.log, { childList: true, subtree: true });
 
     S.log.addEventListener("touchend", () => { codeTouch = null; }, { passive: true });
 
@@ -975,6 +993,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         if (S.queuedTurns[index] && !turns.queueItemSending(S.queuedTurns[index])) turns.removeQueuedTurn(index);
       }
     });
+    S.queueEl?.querySelector("[data-queue-resume]")?.addEventListener("click", () => turns.resumeQueue());
     const closeQueueMenu = () => { if (S.queueMenuId) { S.queueMenuId = ""; turns.renderQueue(); } };
     document.addEventListener("pointerdown", (event) => { if (!event.target.closest?.(".chat-queue-more-wrap")) closeQueueMenu(); });
     document.addEventListener("keydown", (event) => { if (event.key === "Escape" && S.queueMenuId) closeQueueMenu(); });
@@ -993,6 +1012,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     perms.threadPermData = null;
     perms.permsFilter = "";
     S.navigation += 1;
+    sidebar.abortOpen();
     S.loading = false;
     S.generation += 1;
     window.clearTimeout(S.saveTimer);
@@ -1386,16 +1406,31 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     if (S.jobsListEl) S.jobsListEl.addEventListener("click", agents.onJobsClick);
 
+    // None of the polls below read anything in a hidden tab; the tab catches
+  // up once when it shows again.
+  const jobsDue = () => Boolean(S.currentId && (S.agentsOpen || S.jobsRows.length || traces.hasRunningBgTraces()));
+  const agentTraceLive = () => S.messages.some((msg) =>
+    (msg.tools || []).some((trace) => ["spawn_subagent", "get_subagent_output"].includes(trace.name) && trace.child_id && traces.toolRunning(trace, false)));
+
     setInterval(() => {
-    if (S.currentId && (S.agentsOpen || S.jobsRows.length || traces.hasRunningBgTraces())) agents.refreshJobs();
+    // With the pane open on live rows, the strip's tick reads the commands too.
+    if (!document.hidden && jobsDue() && !(S.agentsOpen && S.agentsRows.some((row) => agents.agentLive(row.status)))) agents.refreshJobs();
   }, 3000);
 
     // agent.tick events drive the closed-panel list now; the poll is only a
   // fallback for missed started/ended events (socket resync, older server).
+  // Live rows are already read by the strip's own tick (agents/live.js).
   setInterval(() => {
-    if (S.currentId && !S.agentsOpen && (S.agentsRows.some((row) => agents.agentLive(row.status)) || S.messages.some((msg) =>
-      (msg.tools || []).some((trace) => ["spawn_subagent", "get_subagent_output"].includes(trace.name) && trace.child_id && traces.toolRunning(trace, false))))) agents.refreshAgents();
+    if (!document.hidden && S.currentId && !S.agentsOpen && !S.agentsRows.some((row) => agents.agentLive(row.status)) && agentTraceLive()) agents.refreshAgents();
   }, 10000);
+
+    document.addEventListener("visibilitychange", () => {
+    if (document.hidden || !S.currentId) return;
+    if (S.agentsOpen && S.agentViewId && S.agentViewFailCount < 3 && (!S.agentRun || agents.agentLive(S.agentRun.status))) agents.pollAgentView();
+    // refreshAgents reads the commands too.
+    if (S.agentsOpen || S.agentsRows.some((row) => agents.agentLive(row.status)) || agentTraceLive()) agents.refreshAgents();
+    else if (jobsDue()) agents.refreshJobs();
+  });
 
     // Transport heartbeats alone do not prove that this particular run is alive.
   // A quiet current run gets an authoritative snapshot; the server's existing
@@ -1995,7 +2030,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     // Mouse drags a pinned row straight away; a finger must hold still first,
     // so a plain swipe keeps scrolling the list. Once the hold arms the drag,
-    // the touchmove veto below keeps the browser from claiming the gesture.
+    // the pinned rows' touchmove veto (sidebar/render.js) keeps the browser
+    // from claiming the gesture.
     S.historyList.addEventListener("pointerdown", (event) => {
       if (event.button !== 0 || S.pinDrag) return;
       // Reordering needs the whole pinned section visible: search, the archive
@@ -2036,9 +2072,6 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       }
       movePinnedDrag(event);
     }, { passive: true });
-    S.historyList.addEventListener("touchmove", (event) => {
-      if (S.pinDrag && S.pinDrag.dragging) event.preventDefault();
-    }, { passive: false });
     window.addEventListener("pointerup", (event) => {
       if (!S.pinDrag || (S.pinDrag.dragging && event.pointerId !== S.pinDrag.id)) return;
       endPinDrag(S.pinDrag.dragging);

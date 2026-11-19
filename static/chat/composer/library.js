@@ -5,7 +5,6 @@
 import { S, draftKey } from '../state.js';
 import { escapeHtml } from '../core.js';
 import { attachSheetSwipe, modalInert, returnFocus } from '../overlays.js';
-import { CATALOG } from './prompt-catalog.js';
 import { composePrompt, fillFields, firstBlank, hasBlank, listFields, shiftFields } from './library-core.js';
 
 const ICONS = {
@@ -26,8 +25,20 @@ const ICONS = {
 };
 const icon = (name, size = 16) => `<svg viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true">${ICONS[name] || ""}</svg>`;
 
-const PROMPTS = CATALOG.categories.flatMap((cat) => cat.prompts.map((prompt) => ({ ...prompt, cat })));
-const BY_ID = new Map(PROMPTS.map((p) => [p.id, p]));
+// The catalog (80 KB) is not part of the page's module graph: it loads once
+// the page is up (mount), and whatever needs it sooner waits for it.
+let CATALOG = null;
+let PROMPTS = [];
+let BY_ID = new Map();
+let loading = null;
+function loadCatalog() {
+  loading ||= import('./prompt-catalog.js').then((module) => {
+    CATALOG = module.CATALOG;
+    PROMPTS = CATALOG.categories.flatMap((cat) => cat.prompts.map((prompt) => ({ ...prompt, cat })));
+    BY_ID = new Map(PROMPTS.map((p) => [p.id, p]));
+  }, () => { loading = null; });
+  return loading;
+}
 
 export function createLibrary(ctx) {
   const { picker, sidebar, stash } = ctx;
@@ -50,7 +61,7 @@ export function createLibrary(ctx) {
   // single-line rows under a back bar. A row inserts its prompt.
   let shownCat = null;
   function renderTiles(catId = null) {
-    if (!host) return;
+    if (!host || !CATALOG) return;
     const cat = CATALOG.categories.find((c) => c.id === catId);
     shownCat = cat ? cat.id : null;
     host.innerHTML = `<div class="chat-library-body${cat ? " is-category" : ""}">` + (cat
@@ -197,9 +208,11 @@ export function createLibrary(ctx) {
     } else paintList();
   }
 
-  function open(catId, from) {
-    if (!sheet) build();
+  async function open(catId, from) {
     opener = from || document.activeElement;
+    await loadCatalog();
+    if (!CATALOG) return;
+    if (!sheet) build();
     const query = typeof catId === "string" && !CATALOG.categories.some((c) => c.id === catId) ? catId : "";
     view = { cat: query || !catId ? CATALOG.categories[0].id : catId, query, preview: null, mode: null, mods: [] };
     const search = sheet.querySelector("[data-library-search]");
@@ -285,6 +298,7 @@ export function createLibrary(ctx) {
   }
 
   async function insert(id, mode, mods = []) {
+    await loadCatalog();
     const p = BY_ID.get(id);
     if (!p) return;
     if (!usable(p)) {
@@ -391,7 +405,12 @@ export function createLibrary(ctx) {
       showCategory(null);
     });
 
-    renderTiles();
+    // An empty chat shows the tiles at once (chat.html preloads the catalog
+    // for it); a chat that is opening fetches it after its own transcript.
+    const tiles = () => loadCatalog().then(() => renderTiles());
+    if (!new URLSearchParams(window.location.search).get("t")) tiles();
+    else if (window.requestIdleCallback) window.requestIdleCallback(tiles, { timeout: 3000 });
+    else window.setTimeout(tiles, 1500);
     window.addEventListener("resize", place);
   }
 

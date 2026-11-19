@@ -69,7 +69,7 @@
   min-height: 2.25rem; padding: 0.3rem 0.85rem;
   border: 1px solid var(--line); border-radius: 999px;
   color: var(--chat-secondary); font-size: 0.8rem; cursor: pointer; list-style: none;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-citations > summary::-webkit-details-marker { display: none; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-citations > summary:hover { color: var(--mist); background: var(--panel); }

@@ -47,7 +47,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover);
   }
   & .dk-runbtn:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-runbtn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
@@ -83,6 +83,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-text);
     font: 13px/1.45 var(--sans);
   }
+  /* Until chrome.js says how it sits, it would take room in the page's flow. */
+  &:not([data-theme-insp]) .dk-insp { display: none; }
   /* Docked: a grid column that widens (shell.css), the panel riding in on its edge. */
   &[data-theme-insp="dock"] .dk-insp {
     grid-column: 4;
@@ -94,7 +96,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* The transcript keeps a centered column with margins beside it. */
   &[data-theme-insp="dock"][data-theme-rail-state="open"] { --chat-col: clamp(32rem, calc(100vw - var(--dk-side-w) - var(--dk-insp-open) - 8rem), 90rem); }
   &[data-theme-insp="dock"]:not([data-theme-rail-state="open"]) .dk-insp { visibility: hidden; }
-  &[data-theme-insp="dock"].dk-slide:not([data-theme-rail-state="open"]) .dk-insp { transition: visibility 0s linear var(--dk-slide, 260ms); }
   /* Over the chat: a panel from the right edge. */
   &[data-theme-insp="over"] .dk-insp {
     position: fixed;
@@ -293,9 +294,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-fold svg { color: var(--dk-mute); transition: transform 0.22s var(--dk-ease); }
   & .dk-fold[aria-expanded="false"] svg { transform: rotate(-90deg); }
   & .dk-grp-sub { flex: 1; min-width: 0; overflow: hidden; color: var(--dk-mute); font: 12.5px var(--sans); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-  & .dk-grp-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 260ms var(--dk-ease); }
+  & .dk-grp-body { display: grid; grid-template-rows: 1fr; }
   & .dk-grp.is-folded .dk-grp-body { grid-template-rows: 0fr; }
-  & .dk-grp-in { min-height: 0; overflow: hidden; }
+  & .dk-grp-in { min-height: 0; overflow: hidden; transition: opacity 200ms ease; }
+  & .dk-grp.is-folded .dk-grp-in { opacity: 0; }
   & .dk-seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 8px; background: var(--dk-raise); }
   & .dk-seg button {
     height: 24px;
@@ -307,7 +309,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 500 12px var(--sans);
     white-space: nowrap;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: background var(--dur-hover), color var(--dur-hover);
   }
   & .dk-seg button:hover { color: var(--dk-text); }
   & .dk-seg button[aria-pressed="true"] { background: var(--dk-card); color: var(--dk-text); box-shadow: 0 1px 2px rgb(0 0 0 / 0.28); }
@@ -349,10 +351,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     cursor: pointer;
   }
   & .dk-th-ctx { grid-column: 3; }
-  & .dk-th-num:hover { background: var(--dk-hover); color: var(--dk-text); }
+  & .dk-th-num:hover { background: var(--dk-hover); color: var(--dk-text); --dk-th-sort: 0.55; }
   & .dk-th-num:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
-  & .dk-th-num svg { opacity: 0; transition: transform 0.2s var(--dk-ease), opacity 0.15s; }
-  & .dk-th-num:hover svg { opacity: 0.55; }
+  & .dk-th-num svg { opacity: var(--dk-th-sort, 0); --dur-hover: inherit; transition: transform 0.2s var(--dk-ease), opacity var(--dur-hover); }
   & .dk-th-num[aria-sort] { color: var(--dk-text); }
   & .dk-th-num[aria-sort] svg { opacity: 1; }
   & .dk-th-num[aria-sort="ascending"] svg { transform: rotate(180deg); }
@@ -365,7 +366,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     align-items: start;
     padding: 0 6px 0 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 60%, transparent);
-    transition: background 0.12s, opacity 0.3s var(--dk-ease), translate 0.3s var(--dk-ease);
+    transition: background var(--dur-hover), opacity 0.3s var(--dk-ease), translate 0.3s var(--dk-ease);
     @starting-style { opacity: 0; translate: 0 -3px; }
   }
   & :is(.dk-ar, .dk-jr):last-child { border-bottom: 0; }
@@ -438,10 +439,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 14px/1 var(--sans);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    transition: opacity var(--dur-hover), background var(--dur-hover), color var(--dur-hover);
   }
-  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) :is(.chat-agents-act, .chat-jobs-kill),
   & .dk-ar :is(.chat-agents-act.is-resume, .chat-agents-act.is-urgent) { opacity: 1; }
+  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) :is(.chat-agents-act, .chat-jobs-kill) { opacity: 1; --dur-hover: 0s; }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):hover { background: var(--dk-sel); color: var(--dk-text); }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):focus-visible { opacity: 1; outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .dk-ar .chat-agents-act.is-resume { color: var(--dk-link); }
@@ -564,7 +565,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     font: 500 12.5px var(--sans);
     white-space: nowrap;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color var(--dur-hover), background var(--dur-hover);
   }
   & .dk-btn:hover { border-color: color-mix(in srgb, var(--dk-text) 26%, var(--dk-card-line)); }
   & .dk-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
@@ -763,14 +764,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
 /* Over a wallpaper: the groups float on the same glass as the cards. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  & .dk-grp { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .dk-grp { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim); }
   &[data-theme-insp="sheet"] .dk-insp { background: color-mix(in srgb, var(--dk-card) 92%, transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & :is(.dk-ldot, .chat-agents-dot)::after { animation: none; }
-    & :is(.dk-insp, .dk-scrim, .dk-grp-body, .dk-fold svg, .dk-ptab-ink, .dk-ar, .dk-jr, .chat-artifact, .dk-pbar i, .dk-meter > i),
+    & :is(.dk-insp, .dk-scrim, .dk-grp-in, .dk-fold svg, .dk-ptab-ink, .dk-ar, .dk-jr, .chat-artifact, .dk-pbar i, .dk-meter > i),
     & > .chat-stage { transition: none !important; }
   }
 }

@@ -22,3 +22,5 @@
 @import url("base/spinner-future.css");
 /* Last: the polish over the working area. */
 @import url("design-013-polish.css");
+/* Last: the permission ask and the queue above the composer. */
+@import url("dock.css");

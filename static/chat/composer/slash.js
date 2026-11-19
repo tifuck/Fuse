@@ -52,11 +52,25 @@ export function createSlash(ctx) {
     return { name, arguments: (match[2] || "").trim() };
   }
 
-    async function refreshSkills() {
-    try {
-      const data = await net.api("/skills/index");
+    let skillsRead = null;
+    // chat-config inlines the list as of this page load.
+    let skillsAt = Date.now();
+
+    // Tab returns fire this in pairs (focus and visibilitychange): they share
+  // one read, and a list read in the last 30 seconds is kept. `force` after
+  // a change made here always reads again.
+  function refreshSkills(force) {
+    if (force !== true) {
+      if (skillsRead) return skillsRead;
+      if (Date.now() - skillsAt < 30000) return Promise.resolve();
+    }
+    const read = skillsRead = net.api("/skills/index").then((data) => {
+      // A forced read replaced this one.
+      if (read !== skillsRead) return;
       if (data && Array.isArray(data.skills)) S.config.skills = data.skills;
-    } catch (_) {}
+      skillsAt = Date.now();
+    }).catch(() => {}).finally(() => { if (read === skillsRead) skillsRead = null; });
+    return read;
   }
 
     function slashQuery() {
