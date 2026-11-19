@@ -52,12 +52,9 @@
   font-size: 0.68rem;
   opacity: 0;
 }
+.catalog-ids button:hover .catalog-copy,
 .catalog-ids button:focus-visible .catalog-copy,
 .catalog-ids button.copy.ok .catalog-copy { opacity: 1; }
-.catalog-ids button:hover { --hover-catalog-id: 1; }
-@container style(--hover-catalog-id: 1) {
-  .catalog-ids button .catalog-copy { opacity: 1; }
-}
 .catalog-ids button.copy.ok .catalog-copy { color: var(--ok); }
 .catalog-family.is-locked .rank-name strong { color: var(--catalog-locked-name, var(--mute)); }
 .catalog-family.is-locked .rank-name span { color: var(--mute); }

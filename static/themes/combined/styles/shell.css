@@ -241,10 +241,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     white-space: nowrap;
   }
   /* The ⋯ button gets its own slot while it shows, so it never covers the title. */
-  & .cb-row:is(:hover, :focus-within, .is-menu) { --cb-row-lit: 1; }
-  @container style(--cb-row-lit: 1) {
-    & .cb-row.cb-row .cb-open { padding-right: 30px; }
-  }
+  & .cb-row:is(:hover, :focus-within, .is-menu) .cb-open { padding-right: 30px; }
   /* The age slot leads every row: 26px fits the longest age ("11mo"), so
      every title starts on one edge. */
   & .cb-age { display: grid; flex: none; place-items: center start; width: 26px; height: 14px; font: 11px var(--mono); }
@@ -283,9 +280,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     opacity: 0;
     transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
-  @container style(--cb-row-lit: 1) {
-    & .cb-row.cb-row .cb-more { opacity: 1; --dur-hover: 0s; }
-  }
+  & .cb-row:is(:hover, :focus-within, .is-menu) .cb-more { opacity: 1; --dur-hover: 0s; }
   & .cb-more:hover { background: var(--cb-hover); color: var(--mist); }
   & .cb-row .rename {
     width: 100%;
@@ -954,9 +949,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
     & .cb-sb { height: 36px; }
     & .cb-back { height: 36px; border-radius: 18px; }
     & .cb-more { position: static; flex: none; width: 36px; height: 36px; opacity: 1; }
-    @container style(--cb-row-lit: 1) {
-      & .cb-row.cb-row .cb-open { padding-right: 8px; }
-    }
+    & .cb-row:is(:hover, :focus-within, .is-menu) .cb-open { padding-right: 8px; }
     & :is(.cb-agents .chat-agents-act, .cb-jobs .chat-jobs-kill, .cb-agents .chat-agents-fold) { min-width: 36px; height: 36px; }
     & .cb-rail .chat-todo-dismiss { width: 36px; height: 36px; }
   }

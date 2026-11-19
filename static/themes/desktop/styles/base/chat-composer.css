@@ -406,18 +406,11 @@
   opacity: 1;
   transform: none;
 }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-image:hover .chat-user-file-x,
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-file:hover .chat-user-file-x,
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file-x:focus-visible {
   opacity: 1;
   transform: none;
-}
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-image:hover,
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-file:hover { --hover-user-file: 1; }
-@container style(--hover-user-file: 1) {
-  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-image.is-image .chat-user-file-x,
-  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-file.is-file .chat-user-file-x {
-    opacity: 1;
-    transform: none;
-  }
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file-x:hover { background: rgba(6, 7, 6, 0.88); color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-user-file.is-file .chat-user-file-x:hover { background: var(--ink); color: var(--mist); }

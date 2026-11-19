@@ -978,10 +978,7 @@ html:where(:not(.is-chat-root))[data-chat-scheme="light"] .provider-logo { filte
 }
 :where(html:not(.is-chat-root)) .chat .chat-web-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(html:not(.is-chat-root)) .chat .chat-web-domain { flex-shrink: 0; color: var(--mute); font: calc(0.6875rem * var(--chat-text-scale, 1))/1.4 var(--mono); }
-:where(html:not(.is-chat-root)) .chat .chat-web-row:hover { --hover-web-row: 1; }
-@container style(--hover-web-row: 1) {
-  :where(html:not(.is-chat-root)) .chat .chat-web-row.chat-web-row .chat-web-title { color: var(--brass); text-decoration: underline; text-underline-offset: 2px; }
-}
+:where(html:not(.is-chat-root)) .chat .chat-web-row:hover .chat-web-title { color: var(--brass); text-decoration: underline; text-underline-offset: 2px; }
 
 /* Group toolbar: just the expand-all switch, right-aligned. */
 :where(html:not(.is-chat-root)) .chat .chat-group-toolbar { display: flex; justify-content: flex-end; padding: 0 0.25rem 0.1rem; }

@@ -90,10 +90,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-a
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-agents-model { color: color-mix(in srgb, var(--mist) 62%, var(--ink)); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-agents-fold:hover { color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-jobs-cmd { color: color-mix(in srgb, var(--mist) 86%, var(--ink)); }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-jobs-output-link:hover { --hover-jobs-link: 1; }
-@container style(--hover-jobs-link: 1) {
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-jobs-output-link.chat-jobs-output-link .chat-jobs-cmd { color: var(--mist); }
-}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-jobs-output-link:hover .chat-jobs-cmd { color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-jobs-row:not(.is-monitor) .chat-jobs-cmd::before {
   content: "$ ";
   color: var(--mute);

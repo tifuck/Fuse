@@ -128,10 +128,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
   transition: color var(--dur-hover) ease;
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:first-child .chat-queue-text { color: var(--mist); }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:hover, :focus-within) { --queue-item-lit: 1; }
-@container style(--queue-item-lit: 1) {
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item.chat-queue-item .chat-queue-text { color: var(--mist); --dur-hover: 0s; }
-}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:hover, :focus-within) .chat-queue-text { color: var(--mist); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(.is-immediate, .is-sending) .chat-queue-text { color: var(--cb-accent-text); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item.is-sending .chat-queue-text { animation: console-queue-sending 1.4s ease-in-out infinite; }
 @keyframes console-queue-sending {
@@ -151,10 +148,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
   background: color-mix(in srgb, var(--mist) 8%, transparent);
 }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-action[data-queue-send] { transition: color var(--dur-hover) ease, opacity var(--dur-hover) ease; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:first-child, .is-held) .chat-queue-action[data-queue-send] { color: var(--cb-accent-text); }
-@container style(--queue-item-lit: 1) {
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item.chat-queue-item .chat-queue-action[data-queue-send] { color: var(--cb-accent-text); --dur-hover: 0s; }
-}
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:is(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { color: var(--cb-accent-text); }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-action[data-queue-send]:hover {
   color: var(--brass);
   background: color-mix(in srgb, var(--brass) 12%, transparent);
@@ -162,10 +156,8 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
 /* With a pointer, a later row's Send now waits under the pointer; its space
    stays, so nothing shifts when it shows. */
 @media (hover: hover) {
-  @container not style(--queue-item-lit: 1) {
-    html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:not(:first-child, .is-held) .chat-queue-action[data-queue-send] { opacity: 0; }
-    html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item.chat-queue-item .chat-queue-more:not(:disabled) { opacity: 0.6; }
-  }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:not(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { opacity: 0; }
+  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-item:not(:hover, :focus-within) .chat-queue-more:not(:disabled) { opacity: 0.6; }
 }
 /* One line per message at every width; the ⋮ menu opens beside its button so
    the scrolling list never clips it. */

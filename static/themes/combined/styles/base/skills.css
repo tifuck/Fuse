@@ -78,10 +78,7 @@
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle input:checked + .skills-switch { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle input:checked + .skills-switch::after { background: var(--brass); transform: translate(0.88rem, -50%); }
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle input:focus-visible + .skills-switch { outline: 1px solid var(--brass); outline-offset: 2px; }
-:where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle:hover { --hover-skills-toggle: 1; }
-@container style(--hover-skills-toggle: 1) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle.skills-toggle .skills-switch { border-color: color-mix(in srgb, var(--mist) 30%, var(--line)); }
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .skills-toggle:hover .skills-switch { border-color: color-mix(in srgb, var(--mist) 30%, var(--line)); }
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-search,
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-upload { display: flex; flex-direction: column; gap: 0.55rem; align-items: stretch; }
 :where(html.is-chat-root[data-chat-view="combined"]) .skills-none,

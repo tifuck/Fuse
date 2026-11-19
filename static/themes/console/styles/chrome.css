@@ -84,18 +84,13 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-his
 /* A hovered row makes room for its menu button on the title line only, so
    the project and host line under it stays put. */
 @media (hover: hover) and (min-width: 801px) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) { --history-item-lit: 1; }
-  @container style(--history-item-lit: 1) {
-    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item.chat-history-item > button.open { padding-right: 0.625rem; }
-    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item.chat-history-item .chat-history-name { padding-right: 1.4rem; }
-  }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) > button.open { padding-right: 0.625rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) .chat-history-name { padding-right: 1.4rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(.has-snip, .is-project) > button.more { top: 0.25rem; transform: none; }
   /* ⋯ reaches into the second line's end, so the host label there steps
      aside while it shows instead of sitting under it. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-host-label { transition: opacity var(--dur-hover) ease; }
-  @container style(--history-item-lit: 1) {
-    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item.chat-history-item .chat-history-host-label { opacity: 0; --dur-hover: 0s; }
-  }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) .chat-history-host-label { opacity: 0; --dur-hover: 0s; }
 }
 
 /* The Archived toggle turns into a way back while it is on. */

@@ -151,15 +151,9 @@ html:where(.is-chat-root[data-chat-view="combined"])[data-chat-view="console"] b
   -webkit-line-clamp: 2;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-go { grid-column: 3; color: var(--mute); font-size: 0.74rem; line-height: 1.2rem; white-space: nowrap; }
-:where(html.is-chat-root[data-chat-view="combined"]) .fp-card:is(:hover, :focus-visible, .is-current) { --fp-card-lit: 1; }
-@container style(--fp-card-lit: 1) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .fp-card.fp-card .fp-card-go { color: var(--brass); }
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .fp-card:is(:hover, :focus-visible, .is-current) .fp-card-go { color: var(--brass); }
 @media (hover: hover) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .fp-card .fp-card-go { visibility: hidden; }
-  @container style(--fp-card-lit: 1) {
-    :where(html.is-chat-root[data-chat-view="combined"]) .fp-card.fp-card .fp-card-go { visibility: visible; }
-  }
+  :where(html.is-chat-root[data-chat-view="combined"]) .fp-card:not(.is-current, :hover, :focus-visible) .fp-card-go { visibility: hidden; }
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-host,
 :where(html.is-chat-root[data-chat-view="combined"]) .fp-card-path,

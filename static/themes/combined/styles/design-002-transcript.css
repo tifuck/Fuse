@@ -260,10 +260,7 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step :is(.chat
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step:hover { background: none; }
 
-html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-head:hover { --hover-step-head: 1; }
-@container style(--hover-step-head: 1) {
-  html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-head.chat-step-head .chat-step-label { color: var(--mist); }
-}
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-head:hover .chat-step-label { color: var(--mist); }
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step:not(.is-think) .chat-step-toggle[aria-expanded="true"] .chat-step-label {
   white-space: pre-wrap;

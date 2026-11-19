@@ -29,11 +29,8 @@
   transform: translateY(-50%);
   transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:is(:hover, :focus-within, .is-menu) { --history-item-lit: 1; }
-@container style(--history-item-lit: 1) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.chat-history-item > button.more { opacity: 1; pointer-events: auto; color: var(--mist); --dur-hover: 0s; }
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.chat-history-item > button.open { padding-right: 1.9rem; }
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.more { opacity: 1; pointer-events: auto; color: var(--mist); --dur-hover: 0s; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.open { padding-right: 1.9rem; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item > button.more:hover { background: color-mix(in srgb, var(--mist) 10%, transparent); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item input.rename {
   flex: 1;
@@ -47,9 +44,7 @@
   /* Touch: always reachable, but quiet until the row is the open chat. */
   :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item > button.more { position: static; transform: none; width: 2.25rem; height: 2.25rem; opacity: 0.7; pointer-events: auto; }
   :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:is(.is-on, .is-menu) > button.more { opacity: 1; }
-  @container style(--history-item-lit: 1) {
-    :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.chat-history-item > button.open { padding-right: 0.625rem; }
-  }
+  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.open { padding-right: 0.625rem; }
 }
 /* Press feedback: every tap answers immediately. */
 :where(html.is-chat-root[data-chat-view="combined"]) .chat :is(.chat-send, .chat-attach-btn, .chat-search-btn, .chat-bar-btn, .chat-history-toggle, .chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-menu-close) {

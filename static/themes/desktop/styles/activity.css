@@ -440,10 +440,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     transition: opacity var(--dur-hover), background var(--dur-hover), color var(--dur-hover);
   }
   & .dk-ar :is(.chat-agents-act.is-resume, .chat-agents-act.is-urgent) { opacity: 1; }
-  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) { --dk-act-row-lit: 1; }
-  @container style(--dk-act-row-lit: 1) {
-    & :is(.dk-ar, .dk-jr).dk-jr :is(.chat-agents-act, .chat-jobs-kill) { opacity: 1; --dur-hover: 0s; }
-  }
+  & :is(.dk-ar, .dk-jr):is(:hover, :focus-within) :is(.chat-agents-act, .chat-jobs-kill) { opacity: 1; --dur-hover: 0s; }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):hover { background: var(--dk-sel); color: var(--dk-text); }
   & :is(.dk-ar .chat-agents-act, .dk-jr .chat-jobs-kill):focus-visible { opacity: 1; outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .dk-ar .chat-agents-act.is-resume { color: var(--dk-link); }

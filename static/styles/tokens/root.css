@@ -44,13 +44,13 @@
    (background, color, border, shadow, a revealed control's opacity)
    transitions over --dur-hover: --dur-1 normally, 0s while the element is
    hovered (a rule that reveals a child on its parent's hover sets it too).
-   Not inherited, so setting it never restyles a subtree.
-   A parent's hover never styles its children through a selector
-   (".row:hover .child" restyles every .child under any element the pointer
-   enters or leaves). The hovered element sets a flag that its subtree
-   inherits (".row:hover { --row-lit: 1; }") and the child's rule sits in
-   "@container style(--row-lit: 1)", repeating a class (".row.row .child")
-   to keep the specificity :hover gave it. */
+   Not inherited, so setting it never restyles a subtree. Set only on what
+   can be pointed at: on every element, each container the pointer crosses
+   would restyle too.
+   A parent's hover styles a child only through a class (".row:hover
+   .child"), never a tag ("tr:hover td", ".x:hover svg"): :hover shares one
+   invalidation set, and a tag in it restyles every such element under
+   whatever the pointer enters or leaves. */
 @property --dur-hover { syntax: "<time>"; inherits: false; initial-value: 120ms; }
-:hover { --dur-hover: 0s; }
+:is(a, button, summary, label, input, select, textarea, [role], [tabindex], .dk-row, .cb-row, .chat-history-item, .chat-step-open):hover { --dur-hover: 0s; }
 

@@ -104,10 +104,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat-brand:hover { --hover-brand: 1; }
-@container style(--hover-brand: 1) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-brand.chat-brand .chat-brand-word { color: var(--brass); }
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-brand:hover .chat-brand-word { color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-collapse {
   display: none;
   place-items: center;
@@ -322,10 +319,7 @@
   text-align: left;
   transition: color var(--dur-hover) ease, padding-right var(--dur-1) var(--ease-snap);
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:hover { --hover-history-item: 1; }
-@container style(--hover-history-item: 1) {
-  :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.chat-history-item > button.open { color: var(--mist); --dur-hover: 0s; }
-}
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item:hover > button.open { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.has-snip > button.open { min-height: 2.5rem; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-item.is-on > button.open { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-history-title { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-width: 0; overflow: hidden; }

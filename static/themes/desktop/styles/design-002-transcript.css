@@ -259,10 +259,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step :is(.chat-s
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step:hover { background: none; }
 
-html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head:hover { --hover-step-head: 1; }
-@container style(--hover-step-head: 1) {
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head.chat-step-head .chat-step-label { color: var(--mist); }
-}
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step-head:hover .chat-step-label { color: var(--mist); }
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-step:not(.is-think) .chat-step-toggle[aria-expanded="true"] .chat-step-label {
   white-space: pre-wrap;
