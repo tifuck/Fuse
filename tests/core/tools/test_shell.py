@@ -280,6 +280,33 @@ def test_a_connector_command_streams_stdout_and_labels_stderr(agent_host):
     assert [op for op, _ in agent_host.connector.calls if op.startswith("exec")][-1] == "exec_stream"
 
 
+def test_a_running_connector_command_shows_its_output_before_it_exits(agent_host):
+    finish = asyncio.Event()
+
+    async def exec_stream(args, on_chunk):
+        on_chunk("out", "collected 3 items\n")
+        on_chunk("err", "warning: slow\n")
+        await finish.wait()
+        on_chunk("out", "3 passed\n")
+        return {"ok": True, "exit": 0, "out": "", "err": "", "error": "", "truncated": False}
+
+    agent_host.connector.op_exec_stream = exec_stream
+    shown = []
+
+    async def body():
+        call = asyncio.create_task(workspace.execute(
+            "run_terminal_command", json.dumps({"command": "pytest"}), user_id=agent_host.uid,
+            bound_host_id=agent_host.host_id, bound_cwd=agent_host.root, on_output=shown.append))
+        await wait_until_async(lambda: shown)
+        finish.set()
+        return await call
+
+    _, rec = run_async(body())
+
+    assert shown[0] == {"output": "collected 3 items\n[stderr]\nwarning: slow\n"}
+    assert rec["output"] == "collected 3 items\n3 passed\n[stderr]\nwarning: slow\n"
+
+
 def test_a_connector_deadline_kill_is_a_timeout_not_an_exit(agent_host):
     agent_host.connector.overrides["exec_stream"] = {
         "ok": False, "exit": 137, "out": "partial\n", "err": "", "error": "timed out", "timeout": True,
