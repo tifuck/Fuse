@@ -272,6 +272,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 55%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead + .dk-ago { margin-left: 0.6em; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 72%, var(--dk-canvas, var(--ink))); }
