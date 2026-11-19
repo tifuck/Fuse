@@ -279,6 +279,18 @@ export function createMerge(ctx) {
       "image",
       "project_root", "platform", "include",
       "source",
+      // run_code's source, and the run_code a call was made by.
+      "code",
+      "parent",
+      "kind",
+      "suggestion",
+      "permission_id",
+      "model",
+      "subagent_type",
+      "bytes",
+      "http_status",
+      "max_events",
+      "agent_tool_uses", "agent_tokens", "agent_gen_ms", "agent_gen_out", "agent_gen_est",
     ];
     fields.forEach((key) => {
       if (event[key] != null && event[key] !== "") rec[key] = event[key];

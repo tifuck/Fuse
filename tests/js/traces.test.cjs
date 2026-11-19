@@ -385,3 +385,15 @@ test('an agent list read overtaken by a lifecycle event is dropped and replaced'
   await tick();
   assert.equal(S.agentsRows[0].status, 'completed');
 });
+
+test('a live tool event keeps the fields a stored trace has: a script and the calls it made', () => {
+  reset();
+  const m = merge();
+  const run = m.mergeToolEvent(m.mergeToolEvent(null, { id: 'r', name: 'run_code', description: 'Look' }, 'running'),
+    { id: 'r', name: 'run_code', code: 'return 1;', output: '1', kind: 'code_error' }, 'error');
+  assert.equal(run.code, 'return 1;');
+  assert.equal(run.kind, 'code_error');
+  assert.equal(run.description, 'Look', 'a later event without the field keeps it');
+  const call = m.mergeToolEvent(null, { id: 'r_c1', name: 'grep', parent: 'r', pattern: 'x' }, 'running');
+  assert.equal(m.mergeToolEvent(call, { id: 'r_c1', name: 'grep' }, 'done').parent, 'r');
+});

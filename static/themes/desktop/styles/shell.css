@@ -732,7 +732,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-arg > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
-  & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }
+  & .chat-activity.is-bare.is-working:has(> .chat-activity-panel > .chat-activity-panel-inner > .chat-timeline:empty) { display: none; }
   /* The live pane (live-dock.js). Opened, the status line heads a card over
      what the line names and nothing else: the running call (its line, its
      newest output or change) or the thought being written. The line's text
