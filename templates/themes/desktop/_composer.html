@@ -79,10 +79,10 @@
           </button>
           <template data-dictation>
             <span class="dictation-dot" aria-hidden="true"></span>
-            <span class="dictation-time" data-dictation-time>0:00</span>
             <span class="dictation-bars" aria-hidden="true"></span>
-            <button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc">Cancel</button>
-            <button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done · Enter">Done</button>
+            <span class="dictation-time" data-dictation-time>0:00</span>
+            <button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc">Cancel<kbd aria-hidden="true">Esc</kbd></button>
+            <button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done · Enter">Done<kbd aria-hidden="true">↵</kbd></button>
           </template>
           {% endif %}
           <button type="submit" class="dk-send chat-send" data-chat-send disabled aria-label="Send">

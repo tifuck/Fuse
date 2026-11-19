@@ -91,8 +91,14 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-star
   animation-delay: calc(var(--i) * -40ms);
 }
 
+/* A rule after the clock parts what it reports from the keys that end it. */
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-time {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
   min-width: 2.2rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--line);
   color: var(--mute);
   font-variant-numeric: tabular-nums;
 }
@@ -150,7 +156,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
     transform: none;
   }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec { grid-area: rec; }
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation-time { grid-area: time; min-width: 0; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; max-width: 16rem; height: 1.25rem; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars i { width: 4px; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn { justify-content: center; min-width: 4.5rem; height: 44px; padding: 0 0.9rem; border: 1px solid var(--line); color: var(--mist); touch-action: manipulation; }

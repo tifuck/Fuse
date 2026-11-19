@@ -1,6 +1,6 @@
 /* Dictation: the live panel above the composer, drawn like the app's
-   popovers: a recording dot in the theme's accent and the clock, a fine voice
-   meter, then Cancel and a filled Done. The mic itself is a .dk-tb in the
+   popovers: a recording dot in the theme's accent and what it is doing, a fine
+   voice meter and the clock, then Cancel and a filled Done with their keys. The mic itself is a .dk-tb in the
    card, the accent while live. */
 html[data-chat-view="desktop"] .chat[data-view="desktop"] [data-chat-mic] { touch-action: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-tb[data-chat-mic].is-live { color: var(--brass); }
@@ -16,7 +16,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 40px;
+  height: 44px;
   padding: 0 6px 0 14px;
   border: 1px solid var(--dk-card-line);
   border-radius: 12px;
@@ -33,7 +33,14 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation[hidden] { display: none; }
 
+/* What it is doing, after the dot. As wide as its longest word, so the
+   panel keeps its width from one state to the next. */
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation::before { content: "Listening"; min-width: 4.7em; }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-starting::before { content: "Starting"; color: var(--dk-mute); }
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishing::before { content: "Finishing"; color: var(--dk-mute); }
+
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-dot {
+  order: -1;
   flex: none;
   width: 7px;
   height: 7px;
@@ -46,8 +53,10 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation:is(.is-star
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-time {
   min-width: 30px;
+  margin-right: 4px;
   color: var(--dk-mute);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-bars {
@@ -55,7 +64,6 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-bars {
   align-items: center;
   gap: 2px;
   height: 20px;
-  margin-right: 4px;
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-bars i {
   display: block;
@@ -78,15 +86,25 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation:is(.is-star
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn {
   display: inline-flex;
   align-items: center;
-  height: 28px;
-  padding: 0 10px;
+  gap: 7px;
+  height: 32px;
+  padding: 0 7px 0 11px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: none;
   color: var(--dk-mute);
   font: inherit;
   cursor: pointer;
   transition: color var(--dur-hover) ease, background-color var(--dur-hover) ease;
+}
+/* The key that does the same, as a keycap in the button's own colour. */
+html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn kbd {
+  min-width: 18px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font: 500 11px/1 var(--mono);
+  text-align: center;
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn:hover { background: var(--dk-hover); color: var(--dk-text); }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn.is-done { background: var(--dk-text); color: var(--dk-canvas); }
@@ -127,15 +145,14 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishin
     transform: none;
     animation-name: dictation-up-desktop;
   }
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation::before { content: "Listening"; grid-area: label; overflow: hidden; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-starting::before { content: "Starting"; color: var(--dk-mute); }
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishing::before { content: "Finishing"; color: var(--dk-mute); }
+  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation::before { grid-area: label; overflow: hidden; min-width: 0; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-dot { grid-area: dot; margin-left: 4px; }
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-time { grid-area: time; min-width: 0; margin-right: 4px; }
+  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-time { grid-area: time; min-width: 0; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; height: 24px; margin-inline: 4px; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-bars i { flex: none; width: 3px; border-radius: 2px; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn { justify-content: center; height: 44px; padding: 0 12px; border-radius: 10px; background: var(--dk-hover); color: var(--dk-text); font-size: 15px; touch-action: manipulation; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn.is-done { background: var(--dk-text); color: var(--dk-canvas); }
+  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn kbd { display: none; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] [data-dictation-cancel] { grid-area: cancel; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] [data-dictation-done] { grid-area: done; }
 }
