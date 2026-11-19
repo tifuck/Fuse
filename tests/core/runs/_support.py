@@ -82,6 +82,34 @@ def held_stream(text):
         yield held
 
 
+class StatusProvider:
+    """Wraps a FakeProvider: a script step ``(status, body)`` is an upstream
+    non-200 answer with no stream; anything else goes to the wrapped one."""
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    async def __call__(self, request, user, body, **kwargs):
+        from types import SimpleNamespace
+
+        script = self.provider.script
+        if script and isinstance(script[0], tuple):
+            self.provider.bodies.append({**body, "messages": [dict(m) for m in (body.get("messages") or [])]})
+            status, payload = script.pop(0)
+            result = SimpleNamespace(status=status, body=payload, stream=None, usage={}, credential_id=None, attempts=[])
+            return user, SimpleNamespace(source_id=1, type_id="openai"), "m", "m", result
+        return await self.provider(request, user, body, **kwargs)
+
+
+@contextmanager
+def status_provider(*script):
+    """fake_provider whose script may also hold ``(status, body)`` answers."""
+    from tests.core.helpers import fake_provider
+
+    with fake_provider(*script) as provider, patch("app.api.invoke_chat", new=StatusProvider(provider)):
+        yield provider
+
+
 @contextmanager
 def no_backoff():
     """Provider-failure resumes retry at once instead of after 2-40 s."""

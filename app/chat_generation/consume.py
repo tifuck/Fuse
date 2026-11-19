@@ -387,13 +387,15 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
     content, reasoning, native, finish = _finalize_assistant_payload(
         content, reasoning, [calls[i] for i in sorted(calls)], finish, coding=coding
     )
-    if not error and not native and (
-        str(finish or "").lower() in ("error", "network_error") or _provider_error_content(content)
-    ):
-        error = _error_obj(503, {"error": {"message": (content or "upstream error").strip()}})
+    if not error and not native and _provider_error_content(content):
+        error = _error_obj(503, {"error": {"message": content.strip()}})
         content = ""
         held_out.clear()
     else:
+        if not error and not native and str(finish or "").lower() in ("error", "network_error"):
+            # The text before it already reached the client: it stays the
+            # partial a resume continues from.
+            error = _error_obj(503, {"error": {"message": "upstream error"}})
         for pending in held_out:
             yield ("out", pending)
         held_out.clear()
