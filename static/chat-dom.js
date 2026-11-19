@@ -35,6 +35,9 @@
       // Islands own listeners, markdown, scroll controllers and animation
       // state. Their dedicated updater runs after structural reconciliation.
       if (options.island?.(target, source)) return;
+      // A row that already reads as the incoming one has nothing to patch:
+      // one native compare, instead of walking every node of it here.
+      if (target.hasAttribute("data-step") && target.isEqualNode(source)) return;
       attributes(target, source);
     }
     children(target, source, options);
@@ -71,5 +74,14 @@
     template.innerHTML = html;
     children(target, template.content, options);
   }
-  window.FuseChatDOM = Object.freeze({ reconcile, patch, identity });
+  // For text that ticks or repeats. Replacing a text node under .chat makes
+  // the browser restyle the whole transcript (its :has() rules), even when
+  // the text is the same; changing the node's data does not.
+  function setText(el, text) {
+    const node = el.firstChild;
+    if (text && node && node.nodeType === 3 && !node.nextSibling) {
+      if (node.data !== text) node.data = text;
+    } else if (el.textContent !== text) el.textContent = text;
+  }
+  window.FuseChatDOM = Object.freeze({ reconcile, patch, identity, setText });
 })();

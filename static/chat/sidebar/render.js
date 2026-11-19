@@ -473,8 +473,21 @@ export function createRender(ctx) {
     }
   }
 
-    function queueSearch() {
+    let searchRead = null;
+    let searchLater = 0;
+
+    // `later`: something that can only move content matches (a run writing
+  // messages). Worth one refresh every few seconds, not one per thread event.
+  function queueSearch(later = false) {
+    if (later === true) {
+      if (!searchLater) searchLater = window.setTimeout(() => { searchLater = 0; queueSearch(); }, 5000);
+      return;
+    }
+    window.clearTimeout(searchLater);
+    searchLater = 0;
     window.clearTimeout(S.searchTimer);
+    if (searchRead) searchRead.abort();
+    searchRead = null;
     const gen = ++S.searchGen;
     const q = S.historyQuery.trim();
     if (!q) {
@@ -483,8 +496,9 @@ export function createRender(ctx) {
       return;
     }
     S.searchTimer = window.setTimeout(async () => {
+      const read = searchRead = new AbortController();
       try {
-        const data = await net.api("/chat/threads?q=" + encodeURIComponent(q));
+        const data = await net.api("/chat/threads?q=" + encodeURIComponent(q), { signal: read.signal });
         if (gen !== S.searchGen) return;
         S.searchActiveQuery = q;
         S.searchThreads = data.threads || [];

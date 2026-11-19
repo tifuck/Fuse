@@ -598,7 +598,7 @@ dialog.source-picker { margin-top: min(12vh, 6rem); }
   color: var(--mute);
 }
 .catalog-find:focus-within { border-color: var(--brass); color: var(--mist); }
-html[data-chat-console="true"] body.is-settings .settings-shell .catalog-find input[type="search"] { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; padding: 0; border: 0; background-color: transparent; }
+html[data-chat-view] body.is-settings .settings-shell .catalog-find input[type="search"] { flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; padding: 0; border: 0; background-color: transparent; }
 .catalog-sum { margin-left: auto; color: var(--mute); font-size: 0.72rem; }
 .catalog-none { margin: 0; color: var(--mute); font-size: 0.8rem; }
 details.catalog-family > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; cursor: pointer; list-style: none; }
@@ -625,5 +625,5 @@ details.catalog-family[hidden] { display: none !important; }
   .catalog-find { flex: 1 1 100%; order: 2; }
   .catalog-find input { font-size: 16px; }
   .catalog-sum { order: 3; margin-left: 0; }
-  html[data-chat-console="true"] body.is-settings .settings-shell .catalog-family .section-heading { flex-direction: row; align-items: center; }
+  html[data-chat-view] body.is-settings .settings-shell .catalog-family .section-heading { flex-direction: row; align-items: center; }
 }

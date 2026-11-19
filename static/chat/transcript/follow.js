@@ -91,12 +91,12 @@ export function createFollow(ctx) {
     const back = edge == null ? 48 : edge - 8;
     const hide = !S.messages.length || gap <= 1 || (S.stickToBottom && nearBottom()) || gap < (S.latestPill.hidden ? away : back);
     if (hide) {
-      S.latestPill.hidden = true;
+      if (!S.latestPill.hidden) S.latestPill.hidden = true;
       syncLatestSpin(false);
       return;
     }
     syncLatestSpin(edge != null);
-    S.latestPill.hidden = false;
+    if (S.latestPill.hidden) S.latestPill.hidden = false;
   }
 
     function threadFollowTarget() {

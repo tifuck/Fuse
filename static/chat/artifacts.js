@@ -79,6 +79,8 @@ export function createArtifacts(ctx) {
   const openIn = new Set();
   // A chat was just opened and the pane is to show its latest artifact.
   let follow = false;
+  // What rememberLatestArtifact last read from the chat's artifact calls.
+  let streamedSig = "";
 
   function showFailure(title, error) {
     if (ctx.sync && ctx.sync.showFailure) ctx.sync.showFailure(title, error);
@@ -88,16 +90,18 @@ export function createArtifacts(ctx) {
     if (picker && picker.setHint) picker.setHint(text);
   }
 
-  function artifactsInThread() {
+  function artifactCalls() {
     const out = [];
     (S.messages || []).forEach((msg) => {
-      (msg.tools || []).forEach((trace) => {
-        // A deleted or archived artifact is a record in the transcript, not
-        // one the pane can show, count or restore.
-        if (NAMES.has(trace.name) && normalizeId(trace.identifier) && trace.status !== "error" && !trace.artifact_gone) out.push(trace);
-      });
+      (msg.tools || []).forEach((trace) => { if (NAMES.has(trace.name)) out.push(trace); });
     });
     return out;
+  }
+
+  function artifactsInThread() {
+    // A deleted or archived artifact is a record in the transcript, not
+    // one the pane can show, count or restore.
+    return artifactCalls().filter((trace) => normalizeId(trace.identifier) && trace.status !== "error" && !trace.artifact_gone);
   }
 
   function latestArtifact() {
@@ -180,7 +184,16 @@ export function createArtifacts(ctx) {
     rememberLatestArtifact();
   }
 
-  function rememberLatestArtifact() {
+  // streamed: asked on every frame of a streaming reply. The pane is read
+  // again only when something this reads changed: the run, the pane's state
+  // or one of the chat's artifact calls.
+  function rememberLatestArtifact(streamed = false) {
+    const shown = S.currentArtifact;
+    const sig = [S.currentId, S.streaming, S.partialTranscript, follow, activity && activity.id, S.artifactOpen, S.artifactMode,
+      shown && [shown.identifier, shown.building, shown.explicit, shown.current, shown.version].join()].join(":") + ":" + artifactCalls().map((trace) =>
+      `${trace.id}:${trace.status}:${trace.identifier || ""}:${trace.version ?? ""}:${trace.title || ""}:${trace.icon || ""}:${trace.visibility || ""}:${trace.artifact_gone || ""}`).join("|");
+    if (streamed && sig === streamedSig) return;
+    streamedSig = sig;
     settleActivity();
     const all = artifactsInThread();
     const last = all.length ? all[all.length - 1] : null;
@@ -288,8 +301,8 @@ export function createArtifacts(ctx) {
     const show = (act, on, label) => {
       const item = el.menu.querySelector(`[data-artifact-act="${act}"]`);
       if (!item) return;
-      item.hidden = !on;
-      if (label) item.textContent = label;
+      if (item.hidden !== !on) item.hidden = !on;
+      if (label && item.textContent !== label) item.textContent = label;
     };
     show("share", has, pub ? "Stop sharing" : "Share with a link");
     show("copy-link", has, pub ? "Copy share link" : "Copy link (only you)");
@@ -318,51 +331,54 @@ export function createArtifacts(ctx) {
 
   function syncArtifactUi() {
     const cur = S.currentArtifact;
+    // Writes only what changed: a same-value write can still restyle the page.
+    const setText = FuseChatDOM.setText;
+    const setHidden = (node, on) => { if (node.hidden !== on) node.hidden = on; };
     if (S.currentId) openIn[S.artifactOpen ? "add" : "delete"](S.currentId);
-    if (S.artifactPanel) S.artifactPanel.hidden = !S.artifactOpen;
-    if (S.artifactBackdrop) S.artifactBackdrop.hidden = !(S.artifactOpen && window.matchMedia("(max-width: 800px)").matches);
+    if (S.artifactPanel) setHidden(S.artifactPanel, !S.artifactOpen);
+    if (S.artifactBackdrop) setHidden(S.artifactBackdrop, !(S.artifactOpen && window.matchMedia("(max-width: 800px)").matches));
     S.root.classList.toggle("is-artifact", S.artifactOpen);
     syncToggle();
     const building = Boolean(cur && cur.building);
     const listing = S.artifactMode === "list";
     const ident = cur && !cur.missing && cur.identifier;
-    if (S.artifactTitleEl) S.artifactTitleEl.textContent = listing ? "Artifacts" : (cur && cur.title) || "Artifact";
+    if (S.artifactTitleEl) setText(S.artifactTitleEl, listing ? "Artifacts" : (cur && cur.title) || "Artifact");
     if (el.listToggle) el.listToggle.setAttribute("aria-expanded", listing ? "true" : "false");
     if (S.artifactStatusEl) {
       const text = statusText();
-      S.artifactStatusEl.hidden = !text;
-      S.artifactStatusEl.textContent = text;
+      setHidden(S.artifactStatusEl, !text);
+      setText(S.artifactStatusEl, text);
     }
     if (S.artifactVisibilityEl) {
       // Private is the default; only a shared page is worth a badge.
       const shared = !listing && cur && cur.identifier && cur.visibility === "public";
-      S.artifactVisibilityEl.hidden = !shared;
-      S.artifactVisibilityEl.textContent = shared ? "shared" : "";
+      setHidden(S.artifactVisibilityEl, !shared);
+      setText(S.artifactVisibilityEl, shared ? "shared" : "");
       S.artifactVisibilityEl.classList.toggle("on", Boolean(shared));
     }
     if (S.artifactOpenLink) {
       if (ident && !listing) {
-        S.artifactOpenLink.hidden = false;
+        setHidden(S.artifactOpenLink, false);
         S.artifactOpenLink.href = "/a/" + encodeURIComponent(ident) + (cur.version ? `?v=${cur.version}` : "");
       } else {
-        S.artifactOpenLink.hidden = true;
+        setHidden(S.artifactOpenLink, true);
         S.artifactOpenLink.removeAttribute("href");
       }
     }
     if (S.artifactBuilding) {
-      S.artifactBuilding.hidden = !building || listing;
-      if (building) S.artifactBuilding.textContent = activity && activity.chars ? `Building the page… ${sizeLabel(activity.chars)}` : "Building the page…";
+      setHidden(S.artifactBuilding, !building || listing);
+      if (building) setText(S.artifactBuilding, activity && activity.chars ? `Building the page… ${sizeLabel(activity.chars)}` : "Building the page…");
     }
-    if (S.artifactFrame) S.artifactFrame.hidden = building || listing || S.artifactMode !== "preview" || !ident;
-    if (S.artifactSource) S.artifactSource.hidden = building || listing || S.artifactMode !== "source";
-    if (el.list) el.list.hidden = !listing;
+    if (S.artifactFrame) setHidden(S.artifactFrame, building || listing || S.artifactMode !== "preview" || !ident);
+    if (S.artifactSource) setHidden(S.artifactSource, building || listing || S.artifactMode !== "source");
+    if (el.list) setHidden(el.list, !listing);
     S.artifactModeBtns.forEach((btn) => {
-      btn.hidden = listing;
+      setHidden(btn, listing);
       btn.setAttribute("aria-pressed", btn.getAttribute("data-artifact-mode") === S.artifactMode ? "true" : "false");
     });
-    if (el.reload) el.reload.hidden = listing || !ident;
-    if (el.menuToggle) el.menuToggle.hidden = listing || !ident;
-    if (listing && S.artifactVersionWrap) S.artifactVersionWrap.hidden = true;
+    if (el.reload) setHidden(el.reload, listing || !ident);
+    if (el.menuToggle) setHidden(el.menuToggle, listing || !ident);
+    if (listing && S.artifactVersionWrap) setHidden(S.artifactVersionWrap, true);
     else syncVersionPicker(cur);
     syncMenu(cur);
     syncPoll();

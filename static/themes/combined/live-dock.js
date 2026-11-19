@@ -35,7 +35,12 @@ function setLiveLabelText(el, text, meta) {
     const nextMeta = meta || "";
     if (tail.textContent !== nextMeta) {
       // " tokens" in its own span: a narrow dock drops the word, never a number.
-      tail.replaceChildren(...nextMeta.split(/( tokens)/).filter(Boolean).map((part) => {
+      const parts = nextMeta.split(/( tokens)/).filter(Boolean);
+      const nodes = tail.childNodes;
+      // The same shape ticks in place: replacing a node restyles the transcript.
+      if (parts.length === nodes.length && parts.every((part, i) => (part === " tokens") === (nodes[i].nodeType === 1))) {
+        parts.forEach((part, i) => { if (nodes[i].nodeType === 3 && nodes[i].data !== part) nodes[i].data = part; });
+      } else tail.replaceChildren(...parts.map((part) => {
         if (part !== " tokens") return document.createTextNode(part);
         const unit = document.createElement("span");
         unit.className = "chat-status-unit";
@@ -49,7 +54,7 @@ function setLiveLabelText(el, text, meta) {
     if (tail.hidden !== hideTail) tail.hidden = hideTail;
     if (verb.textContent === text) return;
     const first = !verb.textContent;
-    verb.textContent = text;
+    FuseChatDOM.setText(verb, text);
     verb.classList.remove("is-swap");
     if (first || deps.reduceMotion.matches) return;
     void verb.offsetWidth;
@@ -281,10 +286,10 @@ function setConsoleSpin(el) {
         stopConsoleSpin();
         return;
       }
+      if (document.hidden) return;
       deps.consoleSpinFrame = (deps.consoleSpinFrame + 1) % CONSOLE_SPIN_FRAMES.length;
       marks.forEach((spin) => {
-        const glyph = consoleSpinGlyph("runSpin" in spin.parentElement.dataset);
-        if (spin.textContent !== glyph) spin.textContent = glyph;
+        FuseChatDOM.setText(spin, consoleSpinGlyph("runSpin" in spin.parentElement.dataset));
       });
     }, 110);
   }
@@ -306,7 +311,7 @@ function syncLiveDock() {
         deps.liveDockHideTimer = 0;
       }
       deps.liveDock.hidden = false;
-      deps.liveDock.setAttribute("aria-hidden", "false");
+      if (deps.liveDock.getAttribute("aria-hidden") !== "false") deps.liveDock.setAttribute("aria-hidden", "false");
       const groups = deps.groupTraces(Array.isArray(msg.tools) ? msg.tools : []);
       const status = currentActivity(msg, groups, true);
       setLivePhase(deps.liveDock, status.phase);

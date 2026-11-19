@@ -13,19 +13,18 @@
    Chunk map and extraction record: backdrop-manifest.json in the snapshot parent. */
 
 import { html } from "./backdrops/env.js";
-import { SCENES } from "./backdrops/scenes.js";
+import { BUILTIN, SCENES, hasScene, isWallpaper } from "./backdrops/scenes.js";
 import { sync, scanPreviews } from "./backdrops/engine.js";
 import { validateWallpaper } from "./backdrops/wallpaper-spec.js";
 import { wallpaperScene } from "./backdrops/wallpaper.js";
 
 // A data-only wallpaper spec (docs/wallpapers.md) becomes a scene under `key`.
 // Built-in scenes cannot be replaced; an invalid spec is refused with its errors.
-const BUILTIN = new Set(Object.keys(SCENES));
 function register(key, spec) {
   if (typeof key !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(key) || key === "none") {
     return { ok: false, errors: ["key: lowercase letters, digits and dashes, at most 32"] };
   }
-  if (BUILTIN.has(key)) return { ok: false, errors: [`key: "${key}" is a built-in backdrop`] };
+  if (Object.hasOwn(BUILTIN, key)) return { ok: false, errors: [`key: "${key}" is a built-in backdrop`] };
   const checked = validateWallpaper(spec);
   if (!checked.ok) return { ok: false, errors: checked.errors };
   try {
@@ -40,9 +39,9 @@ function register(key, spec) {
 window.FuseBackdrop = {
   sync,
   previews: scanPreviews,
-  animated: (kind) => Boolean(SCENES[kind]),
-  isWallpaper: (kind) => Boolean(SCENES[kind]?.spec || SCENES[kind]?.wallpaper),
-  scheme: (kind) => (SCENES[kind]?.spec || SCENES[kind]?.wallpaper ? SCENES[kind].scheme || "" : ""),
+  animated: hasScene,
+  isWallpaper,
+  scheme: (kind) => (isWallpaper(kind) ? (Object.hasOwn(BUILTIN, kind) ? BUILTIN[kind] : SCENES[kind]).scheme || "" : ""),
   register,
 };
 scanPreviews();

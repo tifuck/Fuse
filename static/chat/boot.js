@@ -104,8 +104,9 @@ export function createBoot(ctx) {
 
     const initialNavigation = S.navigation;
 
-    sync.connectSync(true)
-    .then(() => {
+    let linked = null;
+
+    const openLinked = () => linked || (linked = Promise.resolve().then(() => {
       if (S.navigation !== initialNavigation) return;
       const params = new URLSearchParams(window.location.search);
       const wanted = (params.get("t") || "").trim();
@@ -121,7 +122,16 @@ export function createBoot(ctx) {
         if (resume && (S.currentId || "") === wanted) await comeBack(resume).catch((error) => console.warn("Could not restore the view", error));
         return shown;
       });
+    }));
+
+    // The linked thread opens as soon as the history lists it (its snapshot
+    // has been downloading since <head>), not after the archive and the
+    // socket. An archived one is only known once the archive is in, and a
+    // sync that failed still opens it: both wait for connectSync, as before.
+    sync.connectSync(true, false, () => {
+      if (sidebar.threadById((new URLSearchParams(window.location.search).get("t") || "").trim())) openLinked().catch(() => {});
     })
+    .then(openLinked)
     .catch((error) => sync.showFailure("Chat history could not be loaded", error));
 
   return {

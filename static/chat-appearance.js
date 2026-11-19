@@ -50,8 +50,8 @@
     dither: "sakura", scope: "orbital", topo: "terraces", loom: "sakura", wind: "meadow",
     maze: "bamboo", ants: "circuit", pulsar: "orbital", ink: "auroralake", fern: "bamboo", sumi: "deepsea",
   };
-  // Reading fonts. Bricolage Grotesque and Red Hat Mono ship with every page
-  // (base.html); the rest load from Google Fonts only when chosen, and the
+  // Reading fonts. Bricolage Grotesque, Red Hat Mono and Geist are bundled
+  // (static/fonts); the rest load from Google Fonts only when chosen, and the
   // picker loads a tiny glyph subset of each so its cards render in their face.
   const SANS = '"Segoe UI", system-ui, sans-serif';
   const SERIF = 'Georgia, "Times New Roman", serif';
@@ -59,7 +59,7 @@
   const W3 = "wght@400;500;700";
   const FONTS = {
     bricolage: { label: "Bricolage Grotesque", kind: "sans", spec: "", bundled: true },
-    geist: { label: "Geist", kind: "sans", spec: W3 },
+    geist: { label: "Geist", kind: "sans", spec: "", bundled: true },
     instrument: { label: "Instrument Sans", kind: "sans", spec: W3 },
     figtree: { label: "Figtree", kind: "sans", spec: W3 },
     schibsted: { label: "Schibsted Grotesk", kind: "sans", spec: W3 },

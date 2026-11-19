@@ -43,6 +43,8 @@
   let popSuggestions = [];
   let ignored = new Set();
   let sessionLearned = new Set();
+  // Sent prompts that arrived before the dictionary did.
+  let unlearned = [];
   let added = loadAdded();
   let debug = false;
 
@@ -582,6 +584,8 @@
     }
     const text = env.input.value;
     lastText = text;
+    // Text that arrived without typing (a restored draft) needs the dictionary too.
+    if (text) startDictLoad();
     const caret = env.input.selectionStart;
     if (text.length > 20000) {
       const head = text.slice(0, 1000);
@@ -771,7 +775,10 @@
   }
 
   function learnFromSent(text) {
-    if (!text || dictState !== "ready") return;
+    if (!text) return;
+    // Nothing can be learned without the dictionary: kept until it loads.
+    if (dictState === "idle" || dictState === "loading") unlearned.push(text);
+    if (dictState !== "ready") return;
     const issues = new Set(check(text, { ready: true, caret: -1, learned: sessionLearned }).map((i) => i.word.toLowerCase()));
     for (const tok of tokenize(text)) {
       if (tok.kind !== "word") continue;
@@ -782,6 +789,7 @@
 
   function rebuildLearned(prompts) {
     sessionLearned = new Set();
+    unlearned = [];
     (prompts || []).forEach((p) => learnFromSent(p));
   }
 
@@ -815,12 +823,14 @@
     });
   }
 
-  function decodeWords(buf) {
-    const text = new TextDecoder("utf-8").decode(buf);
+  // 100k words: built a slice at a time, so typing is not held up meanwhile.
+  async function decodeWords(buf) {
+    const lines = new TextDecoder("utf-8").decode(buf).split(/\n+/);
     const set = new Set();
-    for (const line of text.split(/\n+/)) {
-      const w = line.trim().toLowerCase();
+    for (let i = 0; i < lines.length; i += 1) {
+      const w = lines[i].trim().toLowerCase();
       if (w) set.add(w);
+      if (i % 20000 === 19999) await new Promise((resolve) => root.setTimeout(resolve, 0));
     }
     return set;
   }
@@ -865,6 +875,7 @@
       if (set && set.size >= 1000) {
         englishSet = set;
         dictState = "ready";
+        unlearned.splice(0).forEach((text) => learnFromSent(text));
         refresh();
       } else fail();
     }).catch(fail);
@@ -872,6 +883,9 @@
 
   function bindInput() {
     const input = env.input;
+    // The dictionary (260 KB, a 100k-word Set) loads when typing starts, not
+    // with the page. Not on focus: Desktop focuses the field on load.
+    input.addEventListener("input", () => { if (input.value) startDictLoad(); });
     input.addEventListener("scroll", () => {
       if (paintFrame) return;
       paintFrame = root.requestAnimationFrame(() => {
@@ -918,8 +932,6 @@
     if (!env || !env.input) return;
     bindInput();
     syncMetrics();
-    const idle = root.requestIdleCallback || ((fn) => root.setTimeout(fn, 1200));
-    idle(() => startDictLoad(), { timeout: 1200 });
   }
 
   function dispose() {
