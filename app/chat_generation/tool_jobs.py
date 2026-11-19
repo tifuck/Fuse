@@ -337,7 +337,9 @@ def _code_clip(text: str, result_id: str = "") -> str:
     tail = _CALLS_TAIL.search(text)
     calls = tail.group(0) if tail else ""
     cut = TOOL_RESULT_CHARS - 400 - len(calls)
-    rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {cut}}})` (kept 30 "
+    # read_result counts UTF-16 units, as the code's .length does.
+    offset = len(text[:cut].encode("utf-16-le", "surrogatepass")) // 2
+    rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {offset}}})` (kept 30 "
             "minutes), or return a narrower result." if result_id else " Return a narrower result.")
     return text[:cut] + (f"\n[Fuse: result cut at {cut} of {len(text)} characters. The code's calls already ran, so do "
                          f"not run its edits or commands again.{rest}]") + calls
@@ -345,9 +347,11 @@ def _code_clip(text: str, result_id: str = "") -> str:
 
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
-    if head.done and head.text and head.text != "Tool interrupted.":
+    failed = head.trace.get("kind") == "internal_exception"
+    if head.done and head.text and head.text != "Tool interrupted." and not failed:
         return _code_clip(head.text, head.result_id)
-    # Cut off mid-run (a stop or a restart): what changed, and what may have.
+    # Cut off mid-run (a stop, a restart or a failure inside Fuse): what
+    # changed, and what may have.
     lines = []
     for j in group[1:]:
         if j.name not in MUTATING or (j.done and j.trace.get("status") == "error"):
@@ -358,7 +362,9 @@ def _code_result(group: list[ToolJob]) -> str:
             args = {}
         unknown = not j.done or j.trace.get("status") == "interrupted"
         lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + (": outcome unknown" if unknown else ": done"))
-    text = "Tool interrupted: the code stopped before it finished."
+    # Unknown outcomes first, so the clip drops finished edits before them.
+    lines.sort(key=lambda line: line.endswith(": done"))
+    text = ("Tool failed inside Fuse" if failed else "Tool interrupted") + ": the code stopped before it finished."
     return _tool_result_clip(head.name, text + (" Its edits and commands:\n" + "\n".join(lines) if lines
                                                else " It had started no file edit or command."))
 

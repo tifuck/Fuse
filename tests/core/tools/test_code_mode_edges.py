@@ -152,6 +152,20 @@ return all === want ? "same" : `differs: ${{all.length}} of ${{want.length}}`;""
     assert out.startswith("same"), out
 
 
+def test_the_cut_notes_offset_pages_back_the_rest_whole_after_emoji(kept):
+    owner = (1, 1)
+    text = "".join(f"\U0001F600 row {i}\n" for i in range(3000))
+    ident = code_mode.keep(owner, text)
+    offset = int(re.search(r"\{offset: (\d+)\}", model_text(text, ident)).group(1))
+    cut = len(model_text(text, ident).split("\n[Fuse: result cut at ")[0])
+
+    out, _ = run_code(f"""
+let off = {offset}, rest = "";
+for (;;) {{ const page = await read_result("{ident}", {{offset: off}}); if (!page) break; rest += page; off += page.length; }}
+return rest;""", Runner(), owner=owner)
+    assert out.split("\n[Fuse:")[0] == text[cut:]
+
+
 def test_outcomes_without_a_value_still_close_with_the_calls_line():
     for code, want in (("await read_file('a');\nconsole.log('a', {b: 1});\nreturn;", "[console]\na {\"b\":1}\n[Fuse: 1 calls: read_file×1]"),
                        ("await read_file('a');", "(no return value: end the code with `return …`)\n[Fuse: 1 calls: read_file×1]"),
@@ -197,7 +211,6 @@ def test_a_call_left_running_at_exit_is_named_and_never_reads_as_no_calls():
     assert "no tool calls" not in text and "write_file a.txt" in text
 
 
-@pytest.mark.xfail(strict=True, reason="bug: a run cut off after many edits lists them all and the clip drops the 'outcome unknown' call at the end")
 def test_an_interrupted_run_with_many_edits_still_names_the_unfinished_one():
     head = ToolJob(0, "call-1", "run_code", json.dumps({"code": "..."}), "ts_0_0")
     edits = [child(i + 1, "write_file", {"path": f"src/module_{i:03d}/" + "n" * 70 + ".py"}) for i in range(300)]
@@ -209,7 +222,6 @@ def test_an_interrupted_run_with_many_edits_still_names_the_unfinished_one():
     assert "- run_terminal_command make deploy: outcome unknown" in content
 
 
-@pytest.mark.xfail(strict=True, reason="bug: a run_code that failed inside Fuse reads 'Tool failed.' with no word of the edits it made")
 def test_a_run_that_failed_inside_fuse_still_names_its_edits():
     head = ToolJob(0, "call-1", "run_code", "{}", "ts_0_0", text="Tool failed.", done=True,
                    trace={"status": "error", "kind": "internal_exception"})
