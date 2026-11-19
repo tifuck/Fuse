@@ -128,6 +128,33 @@ test('spell check: hyphens split, slash commands and fences skip, the current wo
   assert.deepEqual(issues('teh fox', 7), ['teh']);
 });
 
+test('the spell dictionary loads when typing starts, not at mount, and then marks words', async () => {
+  const words = Array.from({ length: 45000 }, (_, i) => 'w' + i).concat(['hello', 'fox']).join('\n');
+  const fetched = [];
+  const listeners = {};
+  const input = { value: '', selectionStart: 0, offsetParent: {}, addEventListener: (type, fn) => { (listeners[type] ||= []).push(fn); } };
+  const loaded = script(['composer-lexicon.js', 'composer-spell.js'], {
+    setTimeout, clearTimeout, Uint8Array, TextDecoder, localStorage: { getItem: () => null, setItem: noop },
+    requestAnimationFrame: noop, cancelAnimationFrame: noop,
+    fetch: async (url) => { fetched.push(url); return { ok: true, arrayBuffer: async () => new TextEncoder().encode(words).buffer }; },
+  }).FuseComposerSpell;
+  loaded.mount({ input });
+  listeners.focus.forEach((fn) => fn());
+  await tick();
+  assert.equal(loaded.dictStatus(), 'idle');
+  assert.equal(fetched.length, 0);
+  // Sent before the dictionary exists: learned once it does.
+  loaded.rebuildLearned(['hello fox']);
+  input.value = 'helo fox ';
+  input.selectionStart = input.value.length;
+  listeners.input.forEach((fn) => fn());
+  assert.equal(loaded.dictStatus(), 'loading');
+  while (loaded.dictStatus() === 'loading') await tick();
+  assert.equal(loaded.dictStatus(), 'ready');
+  assert.equal(fetched.length, 1);
+  assert.deepEqual(Array.from(loaded.check('helo fox w44999 ', { caret: -1 }), (i) => String(i.word)), ['helo']);
+});
+
 test('spell predicates', () => {
   assert.equal(spell.isSlugWithDigit('gpt-4o'), true);
   assert.equal(spell.isSlugWithDigit('well-known'), false);
