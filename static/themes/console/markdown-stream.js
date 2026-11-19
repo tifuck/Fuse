@@ -62,12 +62,14 @@ function patchMarkdownFrom(target, html, skipCount) {
     sync(target, template.content);
   }
 
-function mdStableBoundary(text) {
+function mdStableBoundary(text, from = 0) {
     // Disclosure node IDs use document-relative offsets. Keep disclosures
     // on the full renderer until the parser exposes stable block identities.
     if (/<\/?details\b/i.test(text)) return 0;
-    // Blocks before the last one are final (static/chat/markdown.js).
-    return deps.stableBoundary(text);
+    // Blocks before the last one are final (static/chat/markdown.js). `from`
+    // is where one of them starts, so the blocks parse the same from there
+    // and the frozen text before it is not read again.
+    return from + deps.stableBoundary(text.slice(from));
   }
 
 function _mdNodeKey(node) {
@@ -79,7 +81,7 @@ function streamMarkdown(el, text, writing, catalog) {
     const reset = el._mdCatalog !== catalogKey || (el._mdText && !text.startsWith(el._mdText));
     let anchor = reset ? 0 : (el._mdAnchor || 0);
     let frozen = reset ? 0 : (el._mdFrozen || 0);
-    const want = mdStableBoundary(text);
+    const want = mdStableBoundary(text, anchor);
     if (!reset && want > anchor) {
       const deltaHtml = renderMarkdown(text.slice(anchor, want), writing, catalog);
       const probe = document.createElement("template");
