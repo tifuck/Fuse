@@ -282,7 +282,9 @@ export function createStream(ctx) {
     return true;
   }
 
-    async function connectSync(resync = !S.syncInitialized, reopen = false) {
+    // onHistory runs once the thread list of a resync is in, before the
+    // archive and the socket: the page's linked thread opens from there.
+    async function connectSync(resync = !S.syncInitialized, reopen = false, onHistory = null) {
     if (!resync && !reopen && net.isLive()) return;
     const epoch = ++S.syncEpoch;
     window.clearTimeout(S.reconnectTimer);
@@ -315,6 +317,7 @@ export function createStream(ctx) {
         sidebar.resetSearchLists();
         if (S.historyQuery) sidebar.queueSearch();
         sidebar.renderHistory();
+        if (onHistory) onHistory();
         // The archive is fetched after the sync answered, so it is never older
         // than data.cursor, and lands before the socket replays from there.
         const archive = net.api("/chat/threads?archived=1");
@@ -328,9 +331,10 @@ export function createStream(ctx) {
         // The socket must not start ahead of the thread snapshot's durable
         // cursor, or patches between the two would never be replayed.
         // Events this tab handled before the drop must not fire their side
-        // effects again (see replayGap).
+        // effects again (see replayGap). Nor, on the first sync, those the
+        // history just loaded already reflects.
         if (Number.isSafeInteger(S.viewCursor) && S.viewCursor > 0 && S.viewCursor < S.cursor) {
-          S.replayedThrough = Math.max(S.replayedThrough, Math.min(handled, S.cursor));
+          S.replayedThrough = Math.max(S.replayedThrough, handled ? Math.min(handled, S.cursor) : S.cursor);
           S.cursor = S.viewCursor;
         }
       }
