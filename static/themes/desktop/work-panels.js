@@ -28,7 +28,7 @@ const SECTION = 2e7;
 export function create(deps) {
   // agentMainRowHtml opens every render of the list; the rows that follow
   // need its counts to label the Running and Finished sections.
-  let render = { live: 0, finished: 0, labelled: false };
+  let render = { live: 0, finished: 0, labelled: false, ref: 0 };
 
   const ratioOf = (row) => (row && row.context && Number(row.context.limit) > 0
     ? Math.min(100, Math.round((Number(row.context.used) || 0) / Number(row.context.limit) * 100)) : null);
@@ -48,8 +48,15 @@ export function create(deps) {
 
   function sortKeys(row) {
     const head = familyHead(row);
-    const base = deps.agentLive(head.status) ? 0 : SECTION;
-    const secs = Math.min(SECTION / 2 - 1, Math.max(0, Math.round(deps.agentDurationSeconds(head) || 0)));
+    const live = deps.agentLive(head.status);
+    const base = live ? 0 : SECTION;
+    // Live rows sort by spawn time, which never moves: their work clocks tick
+    // and pause unevenly, so near-equal ones swapped places on every poll.
+    // Same-second spawns tie and keep spawn order. The offset is a day ahead
+    // of now so server clock skew never pushes an age below zero.
+    const born = Date.parse(head.created_at || "");
+    const age = live && Number.isFinite(born) ? render.ref - Math.floor(born / 1000) : deps.agentDurationSeconds(head);
+    const secs = Math.min(SECTION / 2 - 1, Math.max(0, Math.round(age || 0)));
     const ctx = ratioOf(head) ?? 0;
     return `--o-td:${base + SECTION / 2 - secs};--o-ta:${base + secs};--o-cd:${base + 100 - ctx};--o-ca:${base + ctx}`;
   }
@@ -125,7 +132,7 @@ export function create(deps) {
   // fills its context and clock), then the Running label. Its fold control
   // is the panel's All / Running switch.
   function agentMainRowHtml({ state, live, selected, total, expanded }) {
-    render = { live, finished: Math.max(0, total - live), labelled: false };
+    render = { live, finished: Math.max(0, total - live), labelled: false, ref: Math.floor(Date.now() / 1000) + 86400 };
     const fold = `${total} agent${total === 1 ? "" : "s"}`;
     const doing = live ? `Waiting on ${live} subagent${live === 1 ? "" : "s"}` : state === "working" ? "Working" : "Idle";
     return (
