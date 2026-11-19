@@ -45,7 +45,8 @@
   {% for font in page_fonts | unique if font in font_files %}
   <link rel="preload" href="{{ asset('fonts/' ~ font_files[font] ~ '.woff2') }}" as="font" type="font/woff2" crossorigin>
   {% endfor %}
-  <link rel="stylesheet" href="{{ asset('app.css') }}">
+  {#- /chat takes app.css without the chunks written only for other pages (static/app-chat.css). -#}
+  <link rel="stylesheet" href="{{ asset('app-chat.css' if is_chat else 'app.css') }}">
   {#- Every rule in it is for a page outside chat (html:not(.is-chat-root)); a chat theme carries its own copy. -#}
   {% if not is_chat %}
   <link rel="stylesheet" href="{{ asset('projects-ui.css') }}">
