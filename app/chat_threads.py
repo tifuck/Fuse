@@ -539,6 +539,7 @@ def create_thread(
     from . import chat_store as store
     from . import hosts
 
+    messages = chat_images.restore_messages(user_id, messages)
     request = ["create", model, messages, title, context, tools, expected_revision, kind, host_id, project_id, schedule_id,
                bypass_permissions, auto_permissions, *([memory_off] if memory_off is not None else [])]
     msgs = parse_messages(messages or [], strict=True)
@@ -646,6 +647,8 @@ def update_thread(
         if not jev.user_can_auto(user_id):
             raise ChatValidationError("auto-approve needs an OpenRouter key on /sources", 409)
 
+    # Before the transaction: the bytes come from another connection.
+    messages = chat_images.restore_messages(user_id, messages)
     with store.transaction() as conn:
         request = ["update", thread_id, title, model, archived, pinned, messages, context, tools, expected_revision, bypass_permissions, auto_permissions]
         if reasoning_effort is not None:
