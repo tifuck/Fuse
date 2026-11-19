@@ -766,7 +766,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 /* Over a wallpaper: the groups float on the same glass as the cards. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
   & .dk-grp { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim); }
-  &[data-theme-insp="sheet"] .dk-insp { background: color-mix(in srgb, var(--dk-card) 92%, transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
 }
 
 @media (prefers-reduced-motion: reduce) {

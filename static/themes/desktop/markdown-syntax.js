@@ -166,7 +166,7 @@ function renderTable(token, ctx) {
     };
     const width = token.head.length;
     const row = (cells, tag) => `<tr>${Array.from({ length: width }, (_, i) => cell(tag, cells[i] || "", i)).join("")}</tr>`;
-    return `<table><thead>${row(token.head, "th")}</thead><tbody>${token.rows.map((cells) => row(cells, "td")).join("")}</tbody></table>`;
+    return `<div class="chat-md-table"><table><thead>${row(token.head, "th")}</thead><tbody>${token.rows.map((cells) => row(cells, "td")).join("")}</tbody></table></div>`;
   }
 
 // A list item's first paragraph sits in the <li> itself; what follows (more
