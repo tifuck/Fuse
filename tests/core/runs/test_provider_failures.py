@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from app import chat_runtime, chats
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
-from ._support import fake_tools, no_backoff, tool_thread
+from ._support import fake_tools, no_backoff, split_frames, status_provider, tool_thread
 
 
 def _reply(uid, thread_id):
@@ -84,6 +84,75 @@ def test_midstream_drop_resumes_from_the_shown_text_without_repeating_it(fresh_d
     reply = _reply(uid, thread_id)
     assert reply["content"] == "The answer is 42."
     assert not reply.get("error")
+
+
+def test_midstream_drop_inside_a_think_block_keeps_the_reasoning_out_of_the_reply(fresh_db):
+    uid = quick_user()
+    with no_backoff(), fake_provider(
+        _dies_after("<think>plan ", httpx.ReadError("connection reset")),
+        text_frames("more</think>Answer"),
+    ) as provider:
+        thread_id, run = run_async(run_turn(uid, "go"))
+
+    assert run["status"] == "completed"
+    # The model continues inside the open think block it was cut off in.
+    assert provider.bodies[1]["messages"][-2] == {"role": "assistant", "content": "<think>plan "}
+    reply = _reply(uid, thread_id)
+    assert reply["content"] == "Answer"
+    assert reply["reasoning"] == "plan more"
+
+
+def test_a_non_200_answer_after_a_drop_retries_with_the_partial_once(fresh_db):
+    uid = quick_user()
+    with no_backoff(), status_provider(
+        _dies_after("The answer is ", httpx.ReadError("connection reset")),
+        (503, {"error": {"message": "upstream unavailable"}}),
+        text_frames("42."),
+    ) as provider:
+        thread_id, run = run_async(run_turn(uid, "what is it?"))
+
+    assert run["status"] == "completed"
+    assert len(provider.bodies) == 3
+    assert provider.bodies[2]["messages"] == provider.bodies[1]["messages"]
+    partials = [m for m in provider.bodies[2]["messages"] if m == {"role": "assistant", "content": "The answer is "}]
+    assert len(partials) == 1
+    reply = _reply(uid, thread_id)
+    assert reply["content"] == "The answer is 42."
+    assert not reply.get("error")
+
+
+def test_an_error_frame_after_content_resumes_from_the_shown_text(fresh_db):
+    uid = quick_user()
+    for label, tail in (
+        ("error object", [frame({"error": {"message": "upstream overloaded", "code": 503}})]),
+        ("error finish", split_frames(finish="error")),
+    ):
+        with no_backoff(), fake_provider(
+            [frame({"choices": [{"index": 0, "delta": {"content": "Hello "}}]}), *tail],
+            text_frames("world."),
+        ) as provider:
+            thread_id, run = run_async(run_turn(uid, "greet"))
+
+        assert run["status"] == "completed", label
+        assert provider.bodies[1]["messages"][-2] == {"role": "assistant", "content": "Hello "}, label
+        reply = _reply(uid, thread_id)
+        assert reply["content"] == "Hello world.", label
+        assert not reply.get("error"), label
+
+
+def test_two_drops_in_a_row_resume_without_duplicating_text(fresh_db):
+    uid = quick_user()
+    with no_backoff(), fake_provider(
+        _dies_after("A ", httpx.ReadError("connection reset")),
+        _dies_after("B ", httpx.ReadError("connection reset")),
+        text_frames("C"),
+    ) as provider:
+        thread_id, run = run_async(run_turn(uid, "count"))
+
+    assert run["status"] == "completed"
+    last = provider.bodies[2]["messages"]
+    assert [m["content"] for m in last if m.get("role") == "assistant"][-2:] == ["A ", "B "]
+    assert _reply(uid, thread_id)["content"] == "A B C"
 
 
 def test_drop_after_tool_results_resumes_without_rerunning_the_tool(fresh_db):

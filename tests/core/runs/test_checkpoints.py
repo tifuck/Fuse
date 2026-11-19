@@ -185,3 +185,73 @@ def test_checkpoints_write_only_changed_columns_and_keep_activity_apart(fresh_db
                                    [{"fuse": {"event": "activity", "phase": "tools"}}])
     assert phase.run_columns() == [{"activity", "status", "updated_at"}]
     assert json.loads(run_row(run["id"], "activity")["activity"])["phase"] == "tools"
+
+
+SAVE_FAILED = "could not save its progress"
+
+
+def test_a_transcript_save_that_keeps_failing_fails_the_turn_without_rerunning_the_tool(fresh_db):
+    from app import chat_runtime
+    from tests.core.helpers import fake_provider, run_async, run_turn, tool_call_frames
+
+    from ._support import fake_tools, tool_thread
+
+    uid = quick_user()
+    real_save = chat_store.save_turn_progress
+    attempts = []
+
+    def save(run_id, *args, **kwargs):
+        if tools.calls:
+            attempts.append(run_id)
+            raise OSError("database went away")
+        return real_save(run_id, *args, **kwargs)
+
+    with fake_tools() as tools, fake_provider(tool_call_frames([("c1", "web_search", {"query": "x"})])) as provider, \
+            patch.object(chat_runtime, "CHECKPOINT_RETRY_DELAYS", (0.0, 0.0)), \
+            patch.object(chat_store, "save_turn_progress", side_effect=save):
+        thread_id, run = run_async(run_turn(uid, "go", thread=tool_thread(uid)))
+
+    assert run["status"] == "failed"
+    assert SAVE_FAILED in run["message"]["error"]
+    assert len(attempts) >= 3, "retried before the turn ends"
+    assert len(tools.calls) == 1
+    assert len(provider.bodies) == 1
+
+
+def test_streaming_flushes_that_keep_failing_fail_the_turn(fresh_db):
+    """periodic() gives up after three failed flushes and cancels the worker;
+    the cancellation is a failure to save, not a Stop or a shutdown."""
+    import asyncio
+
+    from app import chat_runs
+    from tests.core.helpers import run_async
+
+    from ._support import held_stream, start_run
+
+    uid = quick_user()
+    real_checkpoint = chat_store.checkpoint
+    calls = []
+
+    def flaky(run_id, message, *args, **kwargs):
+        # Inline (durable) saves work; the periodic token flushes fail.
+        if kwargs.get("durable", True) is False:
+            calls.append(run_id)
+            raise OSError("database went away")
+        return real_checkpoint(run_id, message, *args, **kwargs)
+
+    async def body():
+        provider.arm()
+        thread, run, task = await start_run(uid, "write")
+        await asyncio.wait_for(provider.sent.wait(), 5)
+        await asyncio.wait_for(asyncio.wait({task}), 10)
+        return run
+
+    with held_stream("partial text") as provider, patch.object(chat_store, "checkpoint", side_effect=flaky), \
+            patch.object(chat_runs, "FLUSH_SECONDS", 0.01):
+        run = run_async(body())
+
+    stored = chat_store.get_run(uid, run["id"])
+    assert stored["status"] == "failed"
+    assert SAVE_FAILED in stored["message"]["error"]
+    assert not stored["message"].get("stopped")
+    assert len(calls) >= 3

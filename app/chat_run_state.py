@@ -1521,8 +1521,8 @@ def seal_provider_messages(messages, *, notice="Tool interrupted by server resta
                     "role": "tool",
                     "tool_call_id": cid,
                     "content": (
-                        "Tool interrupted by server restart. The spawned subagent may still be "
-                        "running — call list_subagents to check its state before spawning a duplicate."
+                        f"{notice} The spawned subagent may still be running — call "
+                        "list_subagents to check its state before spawning a duplicate."
                         if nm == "spawn_subagent" else notice
                     ),
                 }
