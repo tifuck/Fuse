@@ -103,6 +103,57 @@ def test_logout_revokes_the_session_everywhere_and_locks_the_vault(web):
     assert _signed_in(web)
 
 
+def test_logout_closes_only_its_own_projects_sockets(web, monkeypatch):
+    from app import host_events
+
+    class Socket:
+        def __init__(self, session):
+            self.session, self.closed = session, None
+
+        async def close(self, code=1000):
+            self.closed = code
+
+    uid = quick_user("ada@core.test")
+    other = Socket(dict(sign_in(web, uid)))
+    mine = Socket(dict(sign_in(web, uid)))
+    monkeypatch.setitem(host_events._subscribers, uid, {other: None, mine: None})
+    assert web.post("/logout", follow_redirects=False).status_code == 303
+    assert mine.closed == 4401 and other.closed is None
+
+
+@pytest.mark.parametrize("deleted, later, code", [(False, 1801, 1012), (True, 20, 4401)])
+def test_a_chat_stream_that_never_runs_dry_still_hits_the_cap_and_the_session_check(web, monkeypatch, deleted, later,
+                                                                                     code):
+    from types import SimpleNamespace
+
+    from starlette.websockets import WebSocketDisconnect
+
+    from app import chat_events, chat_store
+
+    uid = quick_user("ada@core.test")
+    admin = quick_user("root@core.test", admin=True)
+    sign_in(web, uid)
+    clock = [0]
+
+    def events_after(uid, cursor, limit):
+        # Every read has rows; time passes (and the account goes) mid-stream.
+        if cursor == 3:
+            if deleted:
+                accounts.delete_user(uid, actor_id=admin)
+            clock[0] = later
+        return [{"id": cursor + 1, "type": "noop", "thread_id": None, "payload": {}}]
+
+    monkeypatch.setattr(chat_events, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(chat_events, "replay_valid", lambda uid, cursor: True)
+    monkeypatch.setattr(chat_store, "events_after", events_after)
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with web.websocket_connect("wss://testserver/chat/events?cursor=0",
+                                   headers={"origin": "https://testserver"}) as ws:
+            for _ in range(200):
+                ws.receive_json()
+    assert closed.value.code == code
+
+
 def test_a_password_change_logs_out_every_other_session_but_not_the_changer(web):
     uid = make_user("ada@core.test")
     bystander = sign_in(web, uid)
