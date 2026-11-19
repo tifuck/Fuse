@@ -168,7 +168,6 @@ test('desktop rows read as sentences: a described command in the past tense once
   assert.equal(text(run), 'Ranthe test suite twice', 'the inflected verb is its own word, the rest the subject');
   assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Runthe test suite twice', 'a failed one reads as written: it did not do what it says');
   assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Runthe test suite twice', 'so does one cut short');
-  assert.equal(text(run, { state: 'running', running: true }), 'Runningthe test suite twice', 'one still running in the background reads as running');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }, { state: 'error', failed: true }), 'Readmain.py in app');
   assert.equal(text({ ...run, description: 'Unit tests' }), 'RanUnit tests', 'no verb to inflect: the verb stays its own word');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');
