@@ -8,7 +8,9 @@ import httpx
 import pytest
 
 from app.sources import kimi, pool_pick, pool_policy
-from tests.core.subscriptions._support import account, extra_of, fresh_billing, http, iso, row, run, set_extra, user
+from tests.core.subscriptions._support import (
+    account, drain, events, extra_of, fresh_billing, http, iso, row, run, set_extra, sse, text_of, user,
+)
 
 USAGE = {"prompt_tokens": 1, "completion_tokens": 1, "cached_tokens": 0}
 MSG = [{"role": "user", "content": "hi"}]
@@ -184,3 +186,29 @@ def test_catalog_puts_live_ids_first_and_keeps_dropped_ids_with_their_metadata(f
         later = run(kimi.fetch_catalog("at", "global"))
     assert later[0] == "k3" and "k4" in later
     assert kimi.model_label("k4") == "Kimi K4"  # a dropped id keeps its metadata
+
+
+def usage_frames(prompt, completion, reasoning):
+    usage = {"prompt_tokens": prompt, "completion_tokens": completion,
+             "completion_tokens_details": {"reasoning_tokens": reasoning}}
+    body = events([{"choices": [{"index": 0, "delta": {"content": "hi"}}]}, {"choices": [], "usage": usage}])
+    return httpx.Response(200, content=sse([body + "data: [DONE]\n\n"]), headers={"content-type": "text/event-stream"})
+
+
+def test_a_streamed_usage_frame_counts_reasoning_inside_completion(fresh_db, monkeypatch):
+    owner = user()
+    account("kimi", owner, oauth_extra())
+    source = kimi.KimiSource({"id": pool_policy.source_id("kimi"), "name": "Kimi"}, {}, [])
+
+    async def go():
+        result = await source.chat({"model": "k3", "messages": MSG, "stream": True}, user_id=owner)
+        return result, await drain(result)
+
+    with patch.object(kimi, "refresh_due", new_callable=AsyncMock), \
+            patch.object(kimi, "refresh_pool_quota", new_callable=AsyncMock), \
+            http(lambda request: usage_frames(10, 30, 20), monkeypatch) as calls:
+        result, frames = run(go())
+    assert [r.url.path for r in calls.requests] == ["/coding/v1/chat/completions"] and text_of(frames) == "hi"
+    usage = result.stream.usage
+    # Kimi folds reasoning into completion_tokens (no total_tokens to say so).
+    assert (usage["output_tokens"], usage["reasoning_tokens"], usage["total_tokens"]) == (30, 20, 40)

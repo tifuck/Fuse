@@ -278,3 +278,22 @@ def test_the_catalog_reads_a_paid_and_a_free_account_and_a_complete_read_drops_r
     with http(catalog(["gpt-7"], None), monkeypatch):
         # One tier failed: a partial read only adds, so nothing drops.
         assert run(source.models()) == names
+
+
+@pytest.mark.parametrize("terminal,code,prompt", [
+    ({"type": "response.failed", "response": {"error": {"code": "server_is_overloaded", "message": "busy"},
+                                              "usage": {"input_tokens": 50, "output_tokens": 2}}},
+     "server_is_overloaded", 50),
+    ({"type": "error", "error": {"code": "context_length_exceeded", "message": "too long"}}, "context_length_exceeded", None),
+])
+def test_a_mid_stream_failure_keeps_its_code_and_the_billed_prompt(pool, monkeypatch, terminal, code, prompt):
+    owner, _source = pool
+    account("chatgpt", owner, linked())
+    with http(lambda request: ok_stream({"type": "response.output_text.delta", "delta": "part"}, terminal), monkeypatch):
+        result, frames = chat_frames(pool, {"messages": HISTORY[:2]})
+    assert text_of(frames) == "part" and finish_of(frames) == []
+    assert [f["error"]["code"] for f in frames if f.get("error")] == [code]
+    collected = result.stream.usage
+    assert collected["stream_status"] == "failed" and collected.get("prompt_tokens") == prompt
+    if prompt:
+        assert collected["usage_status"] == "partial"

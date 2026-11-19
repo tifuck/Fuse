@@ -158,3 +158,12 @@ def test_a_disconnected_pool_says_what_to_reconnect_instead_of_unknown_model(poo
     assert status == 403 and detail.startswith("Refuseless: account sign-in rejected.")
     assert _refused(uid, "nanogpt/z-ai/glm-5.3") == (403, "Connect a NanoGPT account to use NanoGPT models.")
     assert _refused(uid, "no-such-model")[0] == 404
+
+
+@pytest.mark.parametrize("kind", ["grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt"])
+def test_an_admin_route_onto_any_pool_obeys_that_pools_gate(fresh_db, kind):
+    route("alias", source(kind), "up-model")
+    others = {f"allow_{k}": True for k in ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor",
+                                         "nanogpt", "refuseless") if k != kind}
+    assert _pick("alias", **others) is None
+    assert _pick("alias", **{f"allow_{kind}": True}) == (kind, "up-model")

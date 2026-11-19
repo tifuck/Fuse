@@ -14,7 +14,9 @@ from PIL import Image
 
 from app.config import settings
 from app.sources import grok, grok_version, pool_policy
-from tests.core.subscriptions._support import account, extra_of, fresh_billing, http, iso, run, set_extra, user
+from tests.core.subscriptions._support import (
+    account, drain, events, extra_of, fresh_billing, http, iso, row, run, set_extra, sse, text_of, user,
+)
 
 USAGE = {"prompt_tokens": 1, "completion_tokens": 1, "cached_tokens": 0}
 
@@ -242,3 +244,51 @@ def test_a_pinned_version_never_checks_and_force_refresh_reports_a_change(stable
     run(grok_version.refresh_due())
     assert run(grok_version.force_refresh()) is False
     assert grok_version.current_version() == "1.0.13" and len(calls.requests) == 2
+
+
+def test_a_streamed_usage_frame_adds_reasoning_to_completion(fresh_db, monkeypatch):
+    monkeypatch.setattr(settings, "grok_client_version", "1.0.46")
+    owner = user()
+    account("grok", owner, signed_in())
+    source = grok.GrokSource({"id": pool_policy.source_id("grok"), "name": "Grok"}, {}, [])
+    usage = {"prompt_tokens": 10, "completion_tokens": 30, "completion_tokens_details": {"reasoning_tokens": 20}}
+    body = events([{"choices": [{"index": 0, "delta": {"content": "hi"}}]}, {"choices": [], "usage": usage}])
+
+    async def go():
+        result = await source.chat({"model": "grok-4.7", "messages": [{"role": "user", "content": "hi"}], "stream": True},
+                                   user_id=owner)
+        return result, await drain(result)
+
+    with patch.object(grok, "refresh_pool_billing", new_callable=AsyncMock), \
+            http(lambda request: httpx.Response(200, content=sse([body + "data: [DONE]\n\n"]),
+                                                headers={"content-type": "text/event-stream"}), monkeypatch) as calls:
+        result, frames = run(go())
+    assert [r.url.path for r in calls.requests] == ["/v1/chat/completions"] and text_of(frames) == "hi"
+    got = result.stream.usage
+    # xAI reports reasoning disjoint from the visible completion.
+    assert (got["output_tokens"], got["reasoning_tokens"], got["total_tokens"]) == (50, 20, 60)
+
+
+def test_a_refresh_answer_other_than_200_never_replaces_the_tokens(fresh_db, monkeypatch):
+    cred = account("grok", user(), signed_in(expires_at=iso(-60)))
+    odd = httpx.Response(500, json={"access_token": "at-bad", "refresh_token": "rt-bad"})
+    with http(lambda request: odd, monkeypatch):
+        assert run(grok.refresh_one(row(cred))) is False
+    assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-1", "rt-1")
+
+
+def test_a_refresh_without_an_email_reads_it_from_userinfo_and_rotates_once(fresh_db, monkeypatch):
+    cred = account("grok", user(), signed_in(expires_at=iso(-60)))
+
+    def upstream(request):
+        if request.url.path == "/oauth2/userinfo":
+            return httpx.Response(200, json={"email": "g@x.test", "name": "G"})
+        return httpx.Response(200, json={"access_token": "at-2", "refresh_token": "rt-2", "expires_in": 3600})
+
+    with http(upstream, monkeypatch) as calls:
+        assert run(grok.refresh_one(row(cred))) is True
+    assert [(r.method, r.url.path) for r in calls.requests][1:] == [("GET", "/oauth2/userinfo")]
+    assert calls.requests[0].method == "POST"
+    assert calls.requests[1].headers["Authorization"] == "Bearer at-2"
+    extra = extra_of(cred)
+    assert (extra["access_token"], extra["refresh_token"], extra["email"]) == ("at-2", "rt-2", "g@x.test")

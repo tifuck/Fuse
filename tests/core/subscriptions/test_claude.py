@@ -9,8 +9,9 @@ import httpx
 import pytest
 
 from app.sources import claude, claude_catalog, claude_payload, pool_policy
+from app.web.source_routes import claude as claude_routes
 from tests.core.subscriptions._support import (
-    account, drain, extra_of, finish_of, http, iso, reasoning_of, run, set_extra, sse, text_of, tool_calls_of,
+    account, drain, extra_of, finish_of, http, iso, reasoning_of, row, run, set_extra, sse, text_of, tool_calls_of,
     usage_of, user,
 )
 
@@ -276,3 +277,54 @@ def test_catalog_keeps_first_party_models_and_earlier_ids_after_a_partial_fetch(
         later = run(claude.fetch_catalog())
     assert later[0] == "claude/claude-sonnet-5-5" and "claude/claude-opus-6" in later
     assert claude.efforts_for("claude/claude-opus-6") == ("low", "high")
+
+
+def test_a_non_stream_call_aggregates_text_usage_and_finish(pool, monkeypatch):
+    with http(lambda request: ok(*message("hello")), monkeypatch):
+        result, _frames = chat(pool, {"stream": False, "messages": [{"role": "user", "content": "go"}]})
+    choice = result.body["choices"][0]
+    assert (result.status, choice["message"]["content"], choice["finish_reason"]) == (200, "hello", "stop")
+    assert (result.body["usage"]["prompt_tokens"], result.usage["completion_tokens"]) == (10, 3)
+
+
+def test_a_non_stream_body_without_message_stop_is_a_502_with_partial_usage(pool, monkeypatch):
+    with http(lambda request: ok(*message("hello")[:-1]), monkeypatch):
+        result, _frames = chat(pool, {"stream": False, "messages": [{"role": "user", "content": "go"}]})
+    assert result.status == 502 and "terminal" in result.body["error"]["message"]
+    assert (result.usage["prompt_tokens"], result.usage["usage_status"]) == (10, "partial")
+
+
+@pytest.mark.parametrize("tail,error_type", [
+    ([{"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}], "overloaded_error"),
+    ([], "api_error"),  # cut before message_stop
+])
+def test_a_mid_stream_error_keeps_its_type_and_the_prompt_usage(pool, monkeypatch, tail, error_type):
+    events = message("partial")[:3] + tail
+    with http(lambda request: ok(*events), monkeypatch):
+        result, frames = chat(pool, {"messages": [{"role": "user", "content": "go"}]})
+    errors = [f["error"] for f in frames if f.get("error")]
+    assert text_of(frames) == "partial" and [e["type"] for e in errors] == [error_type]
+    assert finish_of(frames) == []
+    collected = result.stream.usage
+    assert (collected["stream_status"], collected["usage_status"], collected["prompt_tokens"]) == ("failed", "partial", 10)
+
+
+def test_a_401_whose_refresh_is_off_reports_claudes_reason_without_a_token_call(pool, monkeypatch):
+    monkeypatch.setattr(claude.settings, "oauth_refresh_enabled", False)
+    rejected = httpx.Response(401, json={"error": {"type": "authentication_error", "message": "OAuth token revoked"}})
+    with http(lambda request: rejected, monkeypatch) as calls:
+        result, _frames = chat(pool, {"messages": [{"role": "user", "content": "go"}]})
+    assert result.status == 502 and "OAuth token revoked" in result.body["error"]["message"]
+    assert [r.url.path for r in calls.requests] == ["/v1/messages"]
+
+
+@pytest.mark.parametrize("refresh_on,revokes", [(False, 0), (True, 1)])
+def test_removing_an_account_revokes_upstream_only_where_this_database_owns_the_tokens(pool, monkeypatch,
+                                                                                       refresh_on, revokes):
+    owner, cred, _source = pool
+    monkeypatch.setattr(claude.settings, "oauth_refresh_enabled", refresh_on)
+    monkeypatch.setattr(claude_routes, "require_user", lambda request: ({"id": owner, "is_admin": 0}, None))
+    with http(lambda request: httpx.Response(200, json={}), monkeypatch) as calls:
+        response = run(claude_routes.claude_revoke(None, cred))
+    assert response.status_code == 303 and row(cred)["disabled"] == 1
+    assert [r.url.path for r in calls.requests] == ["/v1/oauth/token/revoke"] * revokes
