@@ -996,12 +996,12 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
   /* The stage's spacer: out of the flow, the reading pane (under the bar
-     too, so the bar's glass blurs the same veiled ground and meets it with no seam),
-     at full strength from 1rem outside the column and eased (S-curve) across
-     the whole gutter. A narrow gutter still fades over at least 10rem, into
-     the column's outer edge, so the pane never stops short. */
+     too, so the bar's glass blurs the same veiled ground and meets it with no seam).
+     Full strength over the text only: the fade starts right at the content's
+     edge (the column less the log's 12px padding) and eases out across the
+     whole gutter, quick at first, then long and faint. */
   & .chat-stage::before {
-    --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
+    --f: max(0px, calc(50% - var(--chat-col) / 2 + 12px));
     --fl: var(--f);
     --fr: var(--f);
     --v: var(--ink);
@@ -1014,25 +1014,25 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     --a: var(--dk-veil-a);
     background: linear-gradient(90deg,
       color-mix(in srgb, var(--v) calc(var(--a) * var(--el, 0)), transparent),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.13), transparent) calc(var(--fl) * 0.2),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.36), transparent) calc(var(--fl) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(var(--fl) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.86), transparent) calc(var(--fl) * 0.8),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.05)), transparent) calc(var(--fl) * 0.15),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.15)), transparent) calc(var(--fl) * 0.3),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.33)), transparent) calc(var(--fl) * 0.5),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.58)), transparent) calc(var(--fl) * 0.7),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.8)), transparent) calc(var(--fl) * 0.85),
       color-mix(in srgb, var(--v) var(--a), transparent) var(--fl),
       color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--fr)),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.86), transparent) calc(100% - var(--fr) * 0.8),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(100% - var(--fr) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.36), transparent) calc(100% - var(--fr) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.13), transparent) calc(100% - var(--fr) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.8)), transparent) calc(100% - var(--fr) * 0.85),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.58)), transparent) calc(100% - var(--fr) * 0.7),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.33)), transparent) calc(100% - var(--fr) * 0.5),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.15)), transparent) calc(100% - var(--fr) * 0.3),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.05)), transparent) calc(100% - var(--fr) * 0.15),
       color-mix(in srgb, var(--v) calc(var(--a) * var(--er, 0)), transparent));
   }
-  /* A docked sidebar or inspector already frames that side: the pane meets
-     its glass at full strength instead of leaving a thin strip of bare
-     wallpaper against the edge. */
+  /* Against a docked sidebar or inspector the fade stops at a quarter, so
+     the pane's glass never sits on a strip of bare wallpaper. */
   @media (min-width: 801px) {
-    & .chat-stage::before { --fl: max(var(--f), 10rem); --fr: max(var(--f), 10rem); }
-    &:not(.history-collapsed) .chat-stage::before { --fl: 0px; --el: 1; }
-    &[data-theme-insp="dock"][data-theme-rail-state="open"] .chat-stage::before { --fr: 0px; --er: 1; }
+    &:not(.history-collapsed) .chat-stage::before { --el: 0.25; }
+    &[data-theme-insp="dock"][data-theme-rail-state="open"] .chat-stage::before { --er: 0.25; }
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Darker toward the window edge each pane sits on. */
