@@ -13,7 +13,7 @@
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette; the canvas is its background as is. */
   --dk-canvas: var(--ink);
-  --dk-side: color-mix(in srgb, var(--ink) 96%, var(--mist));
+  --dk-side: var(--ink);
   --dk-raise: color-mix(in srgb, var(--ink) 90%, var(--mist));
   --dk-comp: color-mix(in srgb, var(--ink) 89%, var(--mist));
   --dk-comp-line: color-mix(in srgb, var(--ink) 82%, var(--mist));
@@ -942,7 +942,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
 
 /* ---- The default palette: the reference app's exact greys ---- */
 html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-view="desktop"] {
-  --dk-side: #0b0b0b;
   --dk-raise: #1a1a1a;
   --dk-comp: #1c1c1c;
   --dk-comp-line: #2e2e2e;
