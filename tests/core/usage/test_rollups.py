@@ -168,6 +168,49 @@ def _price_save_waiting():
             ("%INSERT INTO%model_prices%", "%processlist%")).fetchone()[0]
 
 
+def test_the_first_price_of_a_model_waits_for_a_usage_event_that_found_none(fresh_db):
+    admin, member, source_id, cred, key = _seed()
+    holding, release = threading.Event(), threading.Event()
+
+    def hold_key_row():
+        # Parks record_usage on its api_keys rollup, after it read "no price".
+        with db.tx() as conn:
+            conn.execute("SELECT id FROM api_keys WHERE id=? FOR UPDATE", (key,)).fetchone()
+            holding.set()
+            release.wait(10)
+
+    holder = threading.Thread(target=hold_key_row)
+    holder.start()
+    assert holding.wait(10)
+    usage = threading.Thread(target=db.record_usage, args=(member, source_id, cred, "glm-new", dict(USAGE)),
+                             kwargs={"key_id": key, "provider": "zai"})
+    save = threading.Thread(target=db.save_model_price, args=("zai", "glm-new", 1_000_000, None, 2_000_000, None))
+    try:
+        usage.start()
+        wait_until(lambda: _waiting_on("%UPDATE `api_keys`%"), message="record_usage never reached its key rollup")
+        save.start()
+        # The new row's insert waits on the gap record_usage read as empty.
+        wait_until(lambda: _price_save_waiting() or not save.is_alive(), message="the price save hung")
+        assert save.is_alive()
+    finally:
+        release.set()
+        for thread in (holder, usage, save):
+            if thread.ident is not None:
+                thread.join(10)
+
+    row = db.fetchone("SELECT estimated_cost_micros, pricing_known FROM usage_events WHERE model='glm-new'")
+    assert (int(row["estimated_cost_micros"]), int(row["pricing_known"])) == (PER_EVENT, 1)
+    assert rollup_drift() == {}
+
+
+def _waiting_on(pattern):
+    with db.tx() as conn:
+        return conn.native(
+            "SELECT COUNT(*) FROM information_schema.processlist "
+            "WHERE db=DATABASE() AND info LIKE %s AND info NOT LIKE %s",
+            (pattern, "%processlist%")).fetchone()[0]
+
+
 def test_an_absurd_token_count_never_blocks_later_usage_on_the_same_rollups(fresh_db):
     uid = user()
     source_id = source("zai")

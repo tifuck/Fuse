@@ -201,3 +201,83 @@ def test_openrouter_sync_imports_rates_reprices_and_skips_manual_rows(fresh_db, 
     assert (_price("grok", "grok-8")["origin"], _price("grok", "grok-8")["input_micros_per_million"]) == ("manual", 7_000_000)
     assert _price("grok", "grok-7") is None and _price("openrouter", "x-ai/grok-7:free") is not None
     assert _price("grok", "grok-6") is None
+
+
+def _costs(provider, model):
+    return [int(row["c"]) for row in db.fetchall(
+        "SELECT estimated_cost_micros AS c FROM usage_events WHERE source_type=? AND model=? ORDER BY id",
+        (provider, model))]
+
+
+def test_nanogpt_prices_a_paid_claude_cache_write_at_twice_input(fresh_db, no_listed_models, monkeypatch):
+    from app.sources import nanogpt
+
+    rates = {"prompt": 3, "completion": 15, "cacheReadInputPer1kTokens": 0.0003, "cacheWriteInputPer1kTokens": 0.00375}
+    catalog = {"anthropic/claude-z": {"pricing": rates}, "openai/gpt-z": {"pricing": rates}}
+    monkeypatch.setattr(nanogpt, "catalog_record", lambda model: catalog.get(nanogpt.upstream_id(model)))
+    uid = user()
+    claude, other = nanogpt.public_id("anthropic/claude-z"), nanogpt.public_id("openai/gpt-z")
+    for model in (claude, other):
+        _use(uid, "nanogpt", model, prompt_tokens=1000, cache_write_tokens=1000)
+
+    assert sorted(pricing.auto_price()) == [f"nanogpt/{claude}", f"nanogpt/{other}"]
+
+    # Fuse's one-hour cache helper: 2x input, not the catalog's 5-minute rate.
+    assert _price("nanogpt", claude)["cache_write_micros_per_million"] == 6_000_000
+    assert _cost("nanogpt", claude) == (6000, 1)
+    assert _price("nanogpt", other)["cache_write_micros_per_million"] == 3_750_000
+    assert _cost("nanogpt", other) == (3750, 1)
+
+
+def test_refuseless_long_context_starts_one_token_past_its_threshold(fresh_db, no_listed_models, monkeypatch):
+    from app.sources import refuseless
+
+    rec = {"pricing": {"input_per_m": 1, "output_per_m": 2,
+                       "long_context": {"threshold": 128_000, "input_per_m": 2, "output_per_m": 4}}}
+    monkeypatch.setattr(refuseless, "catalog_record", lambda model: rec)
+    uid = user()
+    for prompt in (128_000, 128_001):
+        _use(uid, "refuseless", "rl-model", prompt_tokens=prompt)
+
+    assert pricing.auto_price() == ["refuseless/rl-model"]
+
+    assert _costs("refuseless", "rl-model") == [128_000, 128_001 * 2]
+
+
+def test_claude_long_context_starts_over_100k_prompt_tokens(fresh_db):
+    pricing.ensure_default_prices()
+    uid = user()
+    for prompt in (100_000, 100_001):
+        _use(uid, "claude", "claude-haiku-5-5", prompt_tokens=prompt)
+
+    # $0.10/M up to 100,000 tokens, $0.50/M for the whole prompt above.
+    assert _costs("claude", "claude-haiku-5-5") == [10_000, 50_001]
+
+
+def test_openrouter_sync_keeps_a_manual_openrouter_row_and_prices_only_listed_pool_models(fresh_db, monkeypatch):
+    from app.sources import chatgpt, chatgpt_catalog
+
+    monkeypatch.setattr(chatgpt_catalog, "_models_cache", None)
+    listed = sorted(chatgpt.CHATGPT_MODELS)[0]
+    db.save_model_price("openrouter", "x-ai/grok-9", 5_000_000, None, 5_000_000, None)
+    catalogs = {
+        "x-ai": [{"id": "x-ai/grok-9", "pricing": {"prompt": "0.000002", "completion": "0.000006"}}],
+        "openai": [{"id": f"openai/{listed}", "pricing": {"prompt": "0.000001", "completion": "0.000002"}},
+                   {"id": "openai/gpt-unlisted", "pricing": {"prompt": "0.000001", "completion": "0.000002"}}],
+    }
+
+    def handler(request):
+        return httpx.Response(200, json={"data": catalogs.get(request.url.params["model_authors"], [])})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(transport=httpx.MockTransport(handler)))
+
+    result = asyncio.run(pricing.sync_openrouter_prices())
+
+    assert "x-ai/grok-9" not in result["models"]
+    kept = _price("openrouter", "x-ai/grok-9")
+    assert (kept["origin"], kept["input_micros_per_million"]) == ("manual", 5_000_000)
+    assert _price("chatgpt", listed)["origin"] == "openrouter"
+    # Off the ChatGPT pool's list: priced for OpenAI and OpenRouter only.
+    assert _price("chatgpt", "gpt-unlisted") is None
+    assert _price("openai", "gpt-unlisted") is not None and "openai/gpt-unlisted" in result["models"]
