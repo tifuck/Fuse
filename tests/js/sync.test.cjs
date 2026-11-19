@@ -35,7 +35,7 @@ Object.defineProperty(S, 'pendingTurn', {
 });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const article = (id) => ({ dataset: { messageId: id }, querySelector: () => null });
-const COLLABORATORS = ['agents', 'artifacts', 'composer', 'context', 'net', 'panels', 'perms', 'persist', 'picker', 'sidebar', 'status', 'transcript', 'turns', 'ui'];
+const COLLABORATORS = ['agents', 'artifacts', 'composer', 'context', 'net', 'notices', 'panels', 'perms', 'persist', 'picker', 'sidebar', 'status', 'transcript', 'turns', 'ui'];
 const deps = (named) => Object.assign(Object.fromEntries(COLLABORATORS.map((k) => [k, stub()])), { traces: stub({ runIsActive }) }, named);
 
 function baseState(overrides = {}) {
