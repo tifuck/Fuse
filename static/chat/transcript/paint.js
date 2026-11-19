@@ -267,8 +267,10 @@ export function createPaint(ctx) {
     const viewport = follow.captureThreadViewport();
     ui.updateAssistant(last, msg, messageRunLive(msg));
     paintRecaps(last);
-    artifacts.rememberLatestArtifact();
-    setActive(true);
+    // A streamed frame leaves the pane and the header alone unless what they
+    // show moved: a write there, even of the same text, restyles the transcript.
+    artifacts.rememberLatestArtifact(true);
+    if (S.log.hidden || !S.root.classList.contains("is-active") || S.root.classList.contains("is-composing")) setActive(true);
     composer.syncComposer();
     if (S.streaming) {
       const now = Date.now();

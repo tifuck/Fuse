@@ -64,6 +64,9 @@ export function createClocks(ctx) {
         stopLiveClock();
         return;
       }
+      // Nobody sees a hidden tab's clocks; they read timestamps, so the first
+      // tick back shows the right time.
+      if (document.hidden) return;
       if (S.streaming) {
         const msg = paint.activeAssistant();
         const article = traces.articleFor(msg);

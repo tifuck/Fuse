@@ -59,7 +59,7 @@ function syncAgo() {
     }
     els.forEach((el) => {
       const text = agoText(el.dateTime);
-      if (text && el.textContent !== text) el.textContent = text;
+      if (text) FuseChatDOM.setText(el, text);
     });
   }
 function agoHtml(msg) {
@@ -154,7 +154,7 @@ function syncConsoleClocks(root) {
       const text = kind === "work" ? deps.ccDuration(Math.max(1000, (Number(el.dataset.base) || 0) + (since ? Date.now() - since : 0)))
         : kind === "suffix" ? ccShellSuffix(since, Number(el.dataset.lines) || 0)
         : ccElapsedText(since);
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 
@@ -178,7 +178,7 @@ function syncWorkClocks() {
       const base = Number(el.dataset.base) || 0;
       const since = Number(el.dataset.since) || 0;
       const text = deps.ccDuration(Math.max(1000, base + (since ? Date.now() - since : 0)));
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 
