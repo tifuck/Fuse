@@ -4,8 +4,11 @@
 {% block head_extra %}
 {%- set chat_view = chat_view_for(request) %}
 {#- The whole module graph, fetched in parallel instead of one import level
-    per round trip. (Stylesheet @imports are inlined by the server.) #}
-{% for url in asset_preloads('chat.js') + asset_preloads('chat-backdrop.js') %}<link rel="modulepreload" href="{{ url }}">{% endfor %}
+    per round trip. (Stylesheet @imports are inlined by the server.) The page's
+    theme is import()ed by themes/registry.js, so its graph is named here; the
+    other themes and the backdrop scenes are not fetched. #}
+{%- set theme_entry = 'themes/' ~ chat_view ~ '/index.js' %}
+{% for url in (asset_preloads('chat.js') + asset_preloads('chat-backdrop.js') + [asset(theme_entry)] + asset_preloads(theme_entry)) | unique(case_sensitive=true) %}<link rel="modulepreload" href="{{ url }}">{% endfor %}
 <script src="{{ asset('chat-boot.js') }}"></script>
 <script src="{{ asset('chat-appearance.js') }}"></script>
 <script type="module" src="{{ asset('chat-backdrop.js') }}"></script>
