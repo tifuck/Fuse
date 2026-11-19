@@ -136,9 +136,9 @@ function consoleTruncationNote(trace, extra = "") {
     // "9.1k+": the total is a lower bound. Partial output knows it only when exact.
     const of = (inexact) => `${deps.ccTokens(retained)} of ${deps.ccTokens(total)}${inexact ? "+" : ""} chars`;
     let note = "";
-    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output | kept ${of(trace.output_chars_exact !== true)}`;
-    else if (trace.output_mode === "tail") note = `Output truncated | kept the last ${of(trace.output_chars_exact === false)}`;
-    else if (trace.truncated || total > retained) note = `Output truncated | kept ${of(trace.output_chars_exact === false)}`;
+    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output, kept ${of(trace.output_chars_exact !== true)}`;
+    else if (trace.output_mode === "tail") note = `Output truncated, kept the last ${of(trace.output_chars_exact === false)}`;
+    else if (trace.truncated || total > retained) note = `Output truncated, kept ${of(trace.output_chars_exact === false)}`;
     return note ? `<span class="chat-tool-truncated${extra}">${deps.escapeHtml(note)}</span>` : "";
   }
 
@@ -289,9 +289,9 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
     const noun = (n) => `${n === 1 ? "call" : "calls"}`;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
-    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : " | no calls ran"}`)
-      : interrupted ? `Interrupted | <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
-      : running ? (total ? `Running | <b>${total}</b> ${noun(total)} so far` : "Running…")
+    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : ", no calls ran"}`)
+      : interrupted ? `Interrupted, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? `<b>${total}</b> ${noun(total)}: ${what}` : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
@@ -416,7 +416,7 @@ function consoleResultLine(trace, presentation) {
       // The call returns at once; events print as their own rows. The watch's
       // deadline sits on the line under it, like every other pending call.
       const id = trace.command_id || trace.job_id || deps.executionIdentity(trace) || "";
-      return `Monitor started${id ? ` | task ${id}` : ""}`;
+      return `Monitor started${id ? `, task ${id}` : ""}`;
     }
     if ((running) && name === "read_url") return "Fetching…";
     if (running) return presentation.statusLabel === "Cancelling" ? "Cancelling…" : "Running…";
@@ -466,7 +466,7 @@ function consoleResultLine(trace, presentation) {
       const todos = deps.normalizeTodos(trace.todos);
       if (todos.length) {
         const done = todos.filter((item) => item.status === "completed").length;
-        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} | ${done}/${todos.length} done`;
+        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"}, ${done}/${todos.length} done`;
       }
       return "no todos";
     }
@@ -489,7 +489,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "kill_subagent") {
       const already = preview.match(/^already (\w+)/);
-      return already ? `Already ${already[1]} | nothing to stop` : "Subagent stopped";
+      return already ? `Already ${already[1]}, nothing to stop` : "Subagent stopped";
     }
     if (name === "scratch") {
       const read = preview.match(/^(\S+) \((\d+) chars\)$/);
@@ -500,7 +500,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
-      if (took) return `finished | ${took}`;
+      if (took) return `finished in ${took}`;
       return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : "finished";
     }
     // A loaded skill reads as what it is for: its description, else the
@@ -540,7 +540,7 @@ function consoleResultLine(trace, presentation) {
       }
       const took = consoleDurationLabel(trace);
       const verb = presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished";
-      return took ? `Agent "${subject}" ${verb} | ${took}` : `Agent "${subject}" ${verb}`;
+      return took ? `Agent "${subject}" ${verb} in ${took}` : `Agent "${subject}" ${verb}`;
     }
     if (name === "monitor") {
       const n = Number(trace.event_count);
