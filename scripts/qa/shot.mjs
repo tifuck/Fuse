@@ -294,7 +294,8 @@ const FIXES = {
       data.run = { ...(data.run || {}), id: data.run?.id || 'qa-live', status: 'running', message_id: last.id, message: last,
         created_at: iso(startedAt - 75000), updated_at: iso(startedAt), cancel_requested: false };
     }
-    if (opts.fake.has('ask')) Object.assign(data, { bypass_permissions: false, auto_permissions: false });
+    // An ask only waits inside a run, and the page reads asks only for a thread that is running.
+    if (opts.fake.has('ask')) Object.assign(data, { bypass_permissions: false, auto_permissions: false, running: true });
     if (opts.fake.has('error') && last) last.error = 'Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)';
     return data;
   },

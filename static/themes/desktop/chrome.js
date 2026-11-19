@@ -52,7 +52,7 @@ export function create(deps) {
   let chromeFrame = 0;
   let watch = null;
   const q = (sel) => deps.root.querySelector(sel);
-  const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  const setText = (el, text) => { if (el) FuseChatDOM.setText(el, text); };
   const setAttr = (el, name, value) => { if (el && el.getAttribute(name) !== value) el.setAttribute(name, value); };
   const show = (el, on) => { if (el && el.hidden === on) el.hidden = !on; };
   const esc = (value) => deps.escapeHtml(String(value ?? ""));

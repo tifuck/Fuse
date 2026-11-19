@@ -111,6 +111,7 @@ app/vault.py                     auth
 app/crypto.py                    auth
 app/web/*                        auth
 app/main.py                      auth
+app/static_assets.py             auth
 
 # schedules, memory, skills, artifacts, push, hosts
 app/schedules.py                 features

@@ -18,7 +18,7 @@ export function create(deps) {
   let chromeFrame = 0;
   let watch = null;
   const q = (sel) => deps.root.querySelector(sel);
-  const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  const setText = (el, text) => { if (el) FuseChatDOM.setText(el, text); };
   const wide = () => window.matchMedia(WIDE).matches;
   const shown = (el) => Boolean(el && el.getClientRects().length);
   const saved = () => { try { return localStorage.getItem(KEY) === "open"; } catch (_) { return false; } };

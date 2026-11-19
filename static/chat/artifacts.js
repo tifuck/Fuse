@@ -332,7 +332,7 @@ export function createArtifacts(ctx) {
   function syncArtifactUi() {
     const cur = S.currentArtifact;
     // Writes only what changed: a same-value write can still restyle the page.
-    const setText = FuseChatDOM.setText;
+    const setText = (node, text) => FuseChatDOM.setText(node, text);
     const setHidden = (node, on) => { if (node.hidden !== on) node.hidden = on; };
     if (S.currentId) openIn[S.artifactOpen ? "add" : "delete"](S.currentId);
     if (S.artifactPanel) setHidden(S.artifactPanel, !S.artifactOpen);
