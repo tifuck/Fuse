@@ -1042,9 +1042,6 @@ html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="non
     --cb-glass-mask: linear-gradient(90deg, transparent, rgb(0 0 0 / 0.16) calc(var(--f) * 0.25), rgb(0 0 0 / 0.5) calc(var(--f) * 0.5), rgb(0 0 0 / 0.84) calc(var(--f) * 0.75), #000 var(--f), #000 calc(100% - var(--f)), rgb(0 0 0 / 0.84) calc(100% - var(--f) * 0.75), rgb(0 0 0 / 0.5) calc(100% - var(--f) * 0.5), rgb(0 0 0 / 0.16) calc(100% - var(--f) * 0.25), transparent);
   }
   &[data-theme-rail-state="open"] { --cb-glass-end: var(--cb-rail-w); }
-  @media (min-width: 1200px) {
-    &:has(.chat-stage > .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) { --cb-glass-end: 16.5rem; }
-  }
   @media (max-width: 1039.98px) { &[data-theme-rail-state="open"] { --cb-glass-end: 0px; } }
   & .cb-side { background: color-mix(in srgb, var(--panel) var(--cb-chrome-a), transparent); -webkit-backdrop-filter: var(--cb-glass); backdrop-filter: var(--cb-glass); }
   & .cb-head { background: color-mix(in srgb, var(--ink) var(--cb-chrome-a), transparent); -webkit-backdrop-filter: var(--cb-glass); backdrop-filter: var(--cb-glass); }

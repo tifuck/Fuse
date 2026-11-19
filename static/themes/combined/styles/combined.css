@@ -361,48 +361,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-a
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-error-continue { min-height: 32px; }
 html[data-chat-view="combined"][data-chat-scheme="light"] body.is-chat .chat[data-view="combined"] .chat-error:not([data-tone="limit"]) { color: color-mix(in srgb, var(--fault) 85%, var(--mist)); }
 
-/* Wide screens: while an agent or background command runs, the work strip
-   leaves the transcript for a rail on the right. Idle, it stays the one-line
-   strip under the header; phones always keep the strip. */
-@media (min-width: 1200px) {
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) { padding-right: 16.5rem; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) > .chat-work {
-    position: absolute;
-    top: 2.25rem;
-    right: 0;
-    bottom: 0;
-    z-index: 5;
-    width: 16.5rem;
-    margin: 0;
-    padding: 0.35rem 0;
-    overflow-y: auto;
-    border-left: 1px solid var(--line);
-    background: var(--panel);
-    font: calc(0.8rem * var(--chat-text-scale, 1))/1.4 var(--sans);
-  }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-work-agents, .chat-work-jobs) { display: block; max-height: none; overflow: visible; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-row, .chat-jobs-row) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-rows: auto;
-    align-items: start;
-    column-gap: 0.4rem;
-    height: auto;
-    min-height: 0;
-    padding: 0.2rem 0.4rem 0.2rem 0.75rem;
-  }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-row, .chat-jobs-row) > * { grid-column: auto; grid-row: 1; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-work-agents > .chat-agents-row.is-main { height: auto; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-pick { display: flex; flex-direction: column; align-items: stretch; height: auto; min-width: 0; text-align: left; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-head { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-name { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-meta { display: block; flex: none; height: auto; line-height: 1.35; padding-left: 0.9rem; font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-agents-row:not(.is-main) .chat-agents-meta .chat-agents-state { display: none; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-tree, .chat-agents-model) { display: none; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) :is(.chat-agents-time, .chat-agents-fold) { font: 0.9em/1.4 var(--code); white-space: nowrap; }
-  html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden]) :is(.chat-agents-row.is-running, .chat-agents-row.is-working, .chat-jobs-row)) .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) { margin-top: 0.35rem; padding-top: 0.35rem; border-top: 1px solid var(--line); }
-}
-
 @media (max-width: 480px) {
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] { --cb-hit: 32px; --console-gutter: 12px; }
   html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .cb-act { width: 36px; height: 36px; }

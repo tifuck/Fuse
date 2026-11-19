@@ -95,7 +95,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-q
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-kicker::before,
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-kicker::after { content: none; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-kicker span { display: none; color: var(--brass); font-variant-numeric: tabular-nums; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue:has(.chat-queue-item:nth-child(4)) .chat-queue-kicker span { display: inline; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-queue-list {
   gap: 0;
   padding: 0;

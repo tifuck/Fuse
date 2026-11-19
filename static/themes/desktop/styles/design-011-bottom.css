@@ -112,7 +112,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-que
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::before,
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::after { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-kicker span { display: none; color: var(--brass); font-variant-numeric: tabular-nums; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:nth-child(4)) .chat-queue-kicker span { display: inline; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-list {
   gap: 0;
   padding: 0;
