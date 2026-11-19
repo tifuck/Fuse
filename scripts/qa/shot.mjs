@@ -19,8 +19,9 @@
 //   --thread TEXT       open the QA chat whose title contains TEXT (any case)
 //   --page PATH[,PATH]  open another page: /usage, /settings, /admin/users ...
 //                       Default: /chat with no chat open
-//   --view V[,V] | all  combined | console | desktop (default). Chat pages only:
-//                       every other page is drawn one way and shot once
+//   --view V[,V] | all  combined | console | desktop (default). Chat and the
+//                       settings pages; sign-in and artifact pages are drawn
+//                       one way and shot once
 //   --tree DIR[,DIR]    serve /static from this checkout: a worktree's JS and
 //                       CSS before they merge. "dev" is the dev tree itself.
 //                       Templates and Python always come from the dev instance
@@ -719,8 +720,8 @@ try {
         if (at.replace(/\/$/, '') !== new URL(opts.base + target.path).pathname.replace(/\/$/, '')) throw new Error(`${target.path} sent the browser to ${at}`);
         const status = await run(`performance.getEntriesByType('navigation')[0]?.responseStatus || 200`);
         if (status >= 400) throw new Error(`${target.path} answered ${status}`);
-        chat = await run(`Boolean(document.querySelector('[data-chat]'))`);
-        if (chat) await until(`document.querySelector('[data-chat]')?.dataset.view === ${JSON.stringify(view)}`, `the ${view} view`);
+        chat = await run(`Boolean(document.documentElement.dataset.chatView)`);
+        if (chat) await until(`(document.querySelector('[data-chat]')?.dataset.view ?? document.documentElement.dataset.chatView) === ${JSON.stringify(view)}`, `the ${view} view`);
         else if (views.length > 1 && tree === trees[0] && size === sizes[0]) console.log(`${target.path} is not drawn by a chat view: shot once`);
         if (opts.thread) await until(`Boolean(document.querySelector('[data-chat-log] .chat-turn'))`, 'the transcript', 30000);
         await run('document.fonts.ready.then(() => true)');

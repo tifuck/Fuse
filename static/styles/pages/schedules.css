@@ -170,7 +170,7 @@
    Columns keep their order (task, runs in, when, last run, next run). Last
    run reads status over time; next run reads time over the chat link. On
    phones every row is a small card with labelled fields. */
-html[data-chat-console="true"] body.is-settings .settings-shell .panel.sched-table-wrap { padding: 0; }
+html[data-chat-view] body.is-settings .settings-shell .panel.sched-table-wrap { padding: 0; }
 .sched-table { min-width: 0; font-size: 0.8rem; }
 .sched-table th { color: var(--mute); }
 .sched-table td { padding-top: 0.6rem; padding-bottom: 0.6rem; vertical-align: top; }
