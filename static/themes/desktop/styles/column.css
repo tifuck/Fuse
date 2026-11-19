@@ -274,8 +274,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 55%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 80%, var(--dk-mute, var(--mute))); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: color-mix(in srgb, var(--dk-del, var(--fault)) 80%, var(--dk-mute, var(--mute))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 72%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: color-mix(in srgb, var(--dk-del, var(--fault)) 72%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 88%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: color-mix(in srgb, var(--dk-del, var(--fault)) 88%, var(--dk-canvas, var(--ink))); }
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { width: 36px; height: 36px; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { margin-left: 0; }
