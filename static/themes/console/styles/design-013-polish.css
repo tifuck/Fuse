@@ -48,3 +48,12 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:first-child td { border-top: 0 !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }
+
+/* Over a wallpaper the transcript runs the full width, so it reads on a veil
+   of the palette's ink (84%, light 80%): the art shows as a tint, the text
+   keeps its plain-ground contrast. */
+html[data-chat-console="true"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { background: color-mix(in srgb, var(--ink) 84%, transparent); }
+html[data-chat-console="true"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { background: color-mix(in srgb, var(--ink) 80%, transparent); }
+@media (prefers-reduced-transparency: reduce) {
+  html[data-chat-console="true"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { background: var(--ink); }
+}
