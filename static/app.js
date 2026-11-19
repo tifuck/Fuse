@@ -1156,6 +1156,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
     if (changed) rehome();
   }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] });
 
+  // The bars grow after first paint (Console adds its title line), so the
+  // offset follows their size.
+  const barWatch = typeof ResizeObserver === "function" ? new ResizeObserver(() => rehome()) : null;
+
   function rehome() {
     if (!toastRoot) return;
     const host = modals.filter((d) => d.open && d.isConnected).pop() || document.body;
@@ -1163,7 +1167,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
     // The stack hangs under the page's header bar (and chat's agent strip),
     // clear of the composer.
     let top = 0;
-    document.querySelectorAll(".chat-bar, .chat-work:not([hidden])").forEach((bar) => {
+    barWatch?.disconnect();
+    document.querySelectorAll(".chat-bar, [data-chat-bar], .chat-work").forEach((bar) => {
+      barWatch?.observe(bar);
+      if (bar.hidden) return;
       const r = bar.getBoundingClientRect();
       if (r.height && r.top < 200) top = Math.max(top, r.bottom);
     });
