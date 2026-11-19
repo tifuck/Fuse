@@ -36,6 +36,18 @@ function openedMessage(msg) {
   };
 }
 
+// What a snapshot proves this thread can have. Permission asks only wait
+// inside a run. A subagent leaves a spawn trace in the transcript and a
+// command a command trace (the server deletes a child run whose trace is
+// gone, chat_children.purge_orphan_subagents); live ones also set `running`.
+// A subagent's own commands are not in this transcript: agents imply jobs.
+function snapshotWork(data) {
+  const live = data.running !== false || Boolean(data.run && ["queued", "running"].includes(data.run.status));
+  const named = (pattern) => (data.messages || []).some((msg) => (msg.tools || []).some((trace) => trace && pattern.test(trace.name || "")));
+  const agents = live || named(/subagent/);
+  return { live, agents, jobs: agents || named(/command|monitor/) };
+}
+
 export function createThreads(ctx) {
   const { agents, artifacts, chatApi, composer, context, drawer, hostStats, net, overlays, panels, perms, picker, projects, render, spinners, sync, traces, transcript, turns, undo } = ctx;
     function upsertLocal(thread) {
@@ -241,10 +253,20 @@ export function createThreads(ctx) {
     }
   }
 
+    // The snapshot download of the navigation in progress; the next one ends it.
+    let opening = null;
+
+    function abortOpen() {
+    if (opening) opening.abort();
+    opening = null;
+  }
+
     async function openThread(id, opts) {
     const gone = Boolean(opts && opts.gone);
     if (S.sending && !gone) return;
     const nav = ++S.navigation;
+    abortOpen();
+    const abort = opening = new AbortController();
     S.loading = true;
     composer.syncComposer();
     try {
@@ -259,14 +281,27 @@ export function createThreads(ctx) {
     // Long threads stream their newest messages first: paint those at once,
     // then merge the complete transcript through the snapshot reconcile path.
     let opened = false;
-    const data = await net.fetchThreadSnapshot(id, (partial) => {
-      if (opened || !current()) return;
-      opened = true;
-      showOpenedThread(partial);
-    });
+    let workLeft = false;
+    let data;
+    try {
+      data = await net.fetchThreadSnapshot(id, (partial) => {
+        if (opened || !current()) return;
+        opened = true;
+        workLeft = !snapshotWork(partial).agents;
+        showOpenedThread(partial);
+      }, abort.signal);
+    } catch (error) {
+      // A replaced navigation is not a chat that failed to open.
+      if (abort.signal.aborted) return;
+      throw error;
+    }
     if (!current()) return;
+    if (opening === abort) opening = null;
     if (!opened) showOpenedThread(data);
-    else if (S.partialTranscript) sync.acceptThread(data);
+    else {
+      if (S.partialTranscript) sync.acceptThread(data);
+      if (workLeft) loadWork(data);
+    }
     if (window.FuseComposerSpell) {
       // Learning from every earlier prompt is not needed for the first paint.
       const prompts = S.messages.filter((m) => m.role === "user" && !m.auto).map((m) => m.content);
@@ -277,8 +312,9 @@ export function createThreads(ctx) {
       });
     }
     composer.refreshProjectListing();
-    // Covers events consumed while the navigation snapshot was in flight.
-    sync.reconcileThread().catch(sync.syncFailure);
+    // Covers events consumed while the navigation snapshot was in flight:
+    // none when the snapshot is as new as everything this tab has consumed.
+    if (S.viewCursor < Math.max(S.cursor, S.replayedThrough)) sync.reconcileThread(true).catch(sync.syncFailure);
     } finally {
       if (nav === S.navigation) {
         S.loading = false;
@@ -286,6 +322,20 @@ export function createThreads(ctx) {
         if (!S.streaming) turns.drainQueue();
       }
     }
+  }
+
+    // The thread's subagents and background commands, when the snapshot does
+  // not prove it has none (refreshAgents reads the commands too).
+  function loadWork(data) {
+    const work = snapshotWork(data);
+    if (work.agents) { agents.refreshAgents(); return; }
+    // As an empty agents read would leave it: the row's spinner now follows
+    // this view, not the list's last word.
+    S.agentsLoadedFor = data.id;
+    const row = threadById(data.id);
+    if (row) row.running = spinners.currentThreadBusy();
+    render.renderHistory();
+    if (work.jobs) agents.refreshJobs();
   }
 
     function showOpenedThread(data) {
@@ -319,7 +369,7 @@ export function createThreads(ctx) {
     S.activeRun = data.run;
     // Restore any live permission asks (parent or subagent) the event stream
     // cannot replay after a reload — child asks never touch the transcript.
-    perms.seedPendingFromServer(S.currentId);
+    if (snapshotWork(data).live) perms.seedPendingFromServer(S.currentId);
     // Never carry the previous thread's meter into this one.
     S.liveMeter = null;
     S.compacting = false;
@@ -375,7 +425,10 @@ export function createThreads(ctx) {
     render.renderHistory();
     drawer.setHistoryOpen(false);
     artifacts.rememberLatestArtifact();
-    agents.resetAgents();
+    agents.resetAgents(false);
+    // The newest messages alone cannot prove a thread has none: then the
+    // complete snapshot decides (openThread).
+    if (!data.partial || snapshotWork(data).agents) loadWork(data);
     if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) S.input.focus();
     picker.defaultHint();
     sync.syncStatus();
@@ -602,6 +655,7 @@ export function createThreads(ctx) {
   }
 
   return {
+    abortOpen,
     savePinOrder,
     bindCreatePayload,
     openThread,
@@ -619,4 +673,4 @@ export function createThreads(ctx) {
   };
 }
 
-export { isUntitledThread, openedMessage };
+export { isUntitledThread, openedMessage, snapshotWork };

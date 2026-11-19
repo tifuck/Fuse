@@ -334,7 +334,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
   });
 
   const sidebar = createSidebar({
-    agents: { agentLive: (...args) => agents.agentLive(...args), resetAgents: (...args) => agents.resetAgents(...args), setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },
+    agents: { agentLive: (...args) => agents.agentLive(...args), refreshAgents: (...args) => agents.refreshAgents(...args), refreshJobs: (...args) => agents.refreshJobs(...args), resetAgents: (...args) => agents.resetAgents(...args), setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },
     artifacts,
     chatApi,
     composer: { closeSlash: (...args) => composer.closeSlash(...args), persist: (...args) => composer.persist(...args), refreshProjectListing: (...args) => composer.refreshProjectListing(...args), renderAttachList: (...args) => composer.renderAttachList(...args), resizeInput: (...args) => composer.resizeInput(...args), scheduleFitChatBar: (...args) => composer.scheduleFitChatBar(...args), syncComposer: (...args) => composer.syncComposer(...args), syncEmptyComposer: (...args) => composer.syncEmptyComposer(...args) },
@@ -1012,6 +1012,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     perms.threadPermData = null;
     perms.permsFilter = "";
     S.navigation += 1;
+    sidebar.abortOpen();
     S.loading = false;
     S.generation += 1;
     window.clearTimeout(S.saveTimer);
