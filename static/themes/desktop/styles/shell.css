@@ -969,6 +969,52 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
   --dk-del: #f85149;
 }
 
+/* ---- Popovers: liquid glass, with or without a wallpaper ----
+   Everything that floats over the window (menus, pickers, the slash and
+   context popovers, the stats card, the dictation bar, the /theme picker,
+   Jump to latest) is a tinted pane that blurs and saturates what lies under
+   it, with a hairline edge, a specular top rim and a faint sheen down from
+   it. Sheets (and the phone's Activity sheet and the sidebar's hover peek)
+   use the same glass, denser, since they hold more to read. None of these
+   sits inside another backdrop filter (that would leave the page under them
+   unblurred); the account menu over a wallpaper is the one exception (below). */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  --dk-pop-a: 64%;
+  --dk-sheet-a: 82%;
+  --dk-pop-glass: blur(28px) saturate(1.9);
+  --dk-pop-edge: color-mix(in srgb, var(--dk-text) 13%, transparent);
+  --dk-pop-rim: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 0 0 0.5px rgb(255 255 255 / 0.03);
+  --dk-pop-sheen: linear-gradient(rgb(255 255 255 / 0.045), transparent 56px);
+  & :is(.dk-menu, .user-dock-menu, .hs-pop, .chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop, .dictation, .dk-wp, .chat-latest) {
+    border-color: var(--dk-pop-edge);
+    background: var(--dk-pop-sheen), color-mix(in srgb, var(--dk-card) var(--dk-pop-a), transparent);
+    box-shadow: var(--dk-pop-rim), var(--dk-pop-shadow);
+    -webkit-backdrop-filter: var(--dk-pop-glass);
+    backdrop-filter: var(--dk-pop-glass);
+  }
+  & .chat-latest { box-shadow: var(--dk-pop-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.chat-sheet, .chat-library-sheet, :is(.chat-picker-menu, .chat-perms-menu).is-sheet),
+  &[data-theme-insp="sheet"] .dk-insp {
+    border-color: var(--dk-pop-edge);
+    background: var(--dk-pop-sheen), color-mix(in srgb, var(--dk-card) var(--dk-sheet-a), transparent);
+    -webkit-backdrop-filter: var(--dk-pop-glass);
+    backdrop-filter: var(--dk-pop-glass);
+  }
+  &.history-peek .dk-side {
+    background: color-mix(in srgb, var(--dk-side) var(--dk-sheet-a), transparent);
+    -webkit-backdrop-filter: var(--dk-pop-glass);
+    backdrop-filter: var(--dk-pop-glass);
+  }
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) { & { --dk-pop-a: 96%; --dk-sheet-a: 98%; } }
+}
+html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] {
+  --dk-pop-a: 70%;
+  --dk-sheet-a: 84%;
+  --dk-pop-edge: rgb(0 0 0 / 0.09);
+  --dk-pop-rim: inset 0 1px 0 rgb(255 255 255 / 0.75), inset 0 0 0 0.5px rgb(255 255 255 / 0.35);
+  --dk-pop-sheen: linear-gradient(rgb(255 255 255 / 0.4), transparent 56px);
+}
+
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
    The reading column is a darker pane, the palette's base colour at 64%
    (light 58%), that eases in across the whole gutter (a mask), so the
@@ -1047,16 +1093,13 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   /* The bar's glass runs on 14px past its edge and fades out there, so it
      eases into the pane instead of ending on a line. */
   & .dk-head::before { inset: 0 0 -14px; -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent); mask-image: linear-gradient(#000 calc(100% - 14px), transparent); }
-  & .chat-latest { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.dk-wp, .chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.chat-queue, .chat-perm-card) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
   & .chat-dock .dk-box { border: 0; background: none; box-shadow: none; }
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
-  & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
-  /* The bubble is the composer's glass; the window menus and the sidebar's search share the popovers'. */
+  /* The bubble is the composer's glass. */
   & :is(.chat-turn.is-user:not(.is-auto-steps, :has(> .chat-user-files)), .chat-turn.is-user:has(> .chat-user-files) > .chat-bubble) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
-  & :is(.dk-menu, .user-dock-menu, .hs-pop) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* The account menu opens inside the sidebar's glass: a second blur there
      would only blur the sidebar again. */
   & .user-dock-menu { background: var(--dk-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -1080,7 +1123,7 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
 @media (prefers-reduced-transparency: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"],
   html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
-  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; }
+  html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] { --dk-veil-a: 100%; --dk-chrome-a: 100%; --dk-card-a: 100%; --dk-pop-a: 100%; --dk-sheet-a: 100%; --dk-pop-glass: none; }
 }
 
 @keyframes dk-pulse { 50% { opacity: 0.35; } }
