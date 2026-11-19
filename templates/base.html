@@ -46,16 +46,21 @@
   <link rel="preload" href="{{ asset('fonts/' ~ font_files[font] ~ '.woff2') }}" as="font" type="font/woff2" crossorigin>
   {% endfor %}
   <link rel="stylesheet" href="{{ asset('app.css') }}">
+  {#- Every rule in it is for a page outside chat (html:not(.is-chat-root)); a chat theme carries its own copy. -#}
+  {% if not is_chat %}
   <link rel="stylesheet" href="{{ asset('projects-ui.css') }}">
+  {% endif %}
   {% if is_chat or is_settings %}
   {#- Every theme's metadata (static/themes/*/theme.json), for chat-appearance.js and registry.js. -#}
   <script type="application/json" id="fuse-chat-themes">{{ chat_themes() | tojson }}</script>
   {% endif %}
   {% if is_settings %}
   <script src="{{ asset('chat-appearance.js') }}"></script>
-  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/theme.css') }}">
+  {#- Of a theme's stylesheets only pages.css styles these pages: the rest of
+      theme.css and design.css needs html.is-chat-root or the chat's own
+      elements (.chat[data-view], the transcript, the Appearance sheet). -#}
   <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
-  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/pages.css') }}">
   {% endif %}
   {% block head_extra %}{% endblock %}
   {#- After every stylesheet: it rewrites their phone breakpoints before first paint. -#}
