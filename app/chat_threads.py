@@ -654,7 +654,10 @@ def update_thread(
             request.append(["memory_off", memory_off])
         fingerprint, previous = store.command(conn, user_id, command_id, request)
         if previous is not None:
-            return previous
+            if messages is not None:
+                return previous
+            pk = resolve_thread_pk(user_id, thread_id, conn)
+            return _saved_view(conn, user_id, pk) if pk is not None else None
         pk = resolve_thread_pk(user_id, thread_id, conn)
         if pk is None:
             return None
@@ -685,8 +688,16 @@ def update_thread(
             permissions_mod.set_auto(user_id, pk, bool(auto_permissions), conn=conn)
         doomed = store.purge_orphan_subagents(conn, user_id, pk, messages) if messages is not None else []
         store.thread_event(conn, user_id, pk)
-        result = store.thread_view(conn, user_id, pk)
-        store.remember(conn, user_id, command_id, fingerprint, result)
+        if messages is not None:
+            result = store.thread_view(conn, user_id, pk)
+            store.remember(conn, user_id, command_id, fingerprint, result)
+        else:
+            # A save that sent no transcript gets none back: the page keeps
+            # the list row and settings, and a full view is megabytes.
+            result = _saved_view(conn, user_id, pk)
+            # The receipt remember() keeps for a full view, so a retry is
+            # answered with the thread as it is now.
+            store.remember(conn, user_id, command_id, fingerprint, {chat_tx._VIEW_RECEIPT: result["id"]})
     if doomed:
         from . import chat_runs
 
@@ -704,6 +715,37 @@ def _sidebar_view(conn, user_id: int, pk: int):
         (pk, user_id),
     ).fetchone()
     return _view(row) if row else None
+def _saved_view(conn, user_id: int, pk: int):
+    """The thread without its transcript: the list row plus the settings and
+    the root run a full view carries."""
+    from . import context_compact as ctxmod
+
+    row = conn.execute(
+        f"""SELECT {_THREAD_LIST_COLS}, t.memory_off, t.context, t.tools, t.compaction
+           FROM chat_threads t
+           LEFT JOIN user_hosts h ON h.id=t.host_id
+           LEFT JOIN user_projects p ON p.id=t.project_id
+           LEFT JOIN chat_schedules s ON s.id=t.schedule_id
+           WHERE t.id=? AND t.user_id=?""",
+        (pk, user_id),
+    ).fetchone()
+    if row is None:
+        return None
+    view = _view(row)
+    view["context"] = _legacy_text(row["context"], CONTEXT_MAX)
+    view["tools"] = parse_thread_tools(row["tools"])
+    effort = ctxmod.parse_state(row["compaction"]).get("effort")
+    effort = effort if isinstance(effort, dict) else {}
+    view["reasoning_effort"] = (effort.get("value") or "") if effort.get("model") == (view["model"] or "") else ""
+    # The run's request and message are megabytes; the list needs its state.
+    run = conn.execute(
+        """SELECT id, thread_id, message_id, status, created_at, updated_at, cancel_requested, resume_count
+           FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')
+           AND parent_run_id IS NULL""",
+        (pk, user_id),
+    ).fetchone()
+    view["run"] = {**dict(run), "cancel_requested": bool(run["cancel_requested"])} if run else None
+    return view
 def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
     """Write the pinned section's order. `ids` is the full pinned list, top first."""
     from . import chat_store as store, chat_tx
