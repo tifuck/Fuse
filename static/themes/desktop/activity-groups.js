@@ -12,12 +12,9 @@ function ccTurnLineHtml(msg, latest, usage = "") {
     const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
     if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
-    if (pendingAgents) {
-      return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
-    }
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> ${took}` : `done ${took}`;
-    const still = latest ? deps.ccStillRunningText() : "";
+    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> ${took}` : `done ${took}`;
+    const still = latest && !pendingAgents ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
     return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
   }
