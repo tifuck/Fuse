@@ -731,9 +731,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-arg::before { content: "("; }
   & .chat-live-dock .dk-live-arg::after { content: ")"; }
   & .chat-live-dock .dk-live-arg > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  /* A running call alone in its block shows only in the status line: the
-     emptied block would still take a flow gap and push the line down. */
-  & .chat-activity.is-bare.is-working:has(> .chat-activity-panel > .chat-activity-panel-inner > .chat-timeline:empty) { display: none; }
+  /* A block with nothing drawn (a running call alone in it shows only in the
+     status line; subagent calls show only in the inspector) would still take
+     a flow gap and push what follows down. */
+  & .chat-activity.is-bare:has(> .chat-activity-panel > .chat-activity-panel-inner > .chat-timeline:empty) { display: none; }
   /* The live pane (live-dock.js). Opened, the status line heads what the line
      names and nothing else: the running call (its line, its newest output or
      change) or the thought being written. The line's text never moves when
@@ -774,6 +775,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-fe-out.is-tail.is-full { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px); mask-image: linear-gradient(to bottom, transparent, #000 28px); }
   & .chat-live-dock .dk-fe-lines { flex: none; }
   & .chat-live-dock .dk-fe.is-done .dk-fe-out { opacity: 0.6; }
+  /* A script's calls (live-dock.js paneScriptRows): one row each under the
+     script's line, the running ones bright, a running command's newest
+     output line under its row. */
+  & .chat-live-dock .dk-step { display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-width: 0; color: var(--dk-text); transition: color 300ms ease; }
+  & .chat-live-dock .dk-step.is-done { color: var(--dk-mute); }
+  & .chat-live-dock .dk-step-out { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--dk-dim); text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln b { color: var(--dk-text); font-weight: 400; }
   & .chat-live-dock .dk-fe-out .chat-console-lines { margin: 0; font: inherit; }
@@ -1022,7 +1029,7 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   /* The bubble is the composer's glass; the window menus and the sidebar's search share the popovers'. */
-  & .chat-turn.is-user:not(.is-auto-steps) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.chat-turn.is-user:not(.is-auto-steps, :has(> .chat-user-files)), .chat-turn.is-user:has(> .chat-user-files) > .chat-bubble) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.dk-menu, .user-dock-menu, .hs-pop) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* The account menu opens inside the sidebar's glass: a second blur there
      would only blur the sidebar again. */

@@ -114,14 +114,21 @@ const PANE_DOTS = '<span class="dk-fe-dots" aria-hidden="true"><i></i><i></i><i>
 let paneOpen = false;
 try { paneOpen = localStorage.getItem(PANE_KEY) === "1"; } catch (_) {}
 
-// The call the line names (key: its id). A run_code call shows the call its
-// code is making now, its newest, until it makes one.
+// The call the line names (key: its id). A call a run_code's code made
+// shows as part of that run_code, so the pane holds one script while its
+// calls come and go.
 function paneTrace(msg, key) {
     const traces = Array.isArray(msg?.tools) ? msg.tools : [];
     const trace = key ? traces.find((t) => String(t?.id ?? "") === key) : null;
-    if (trace?.name !== "run_code") return trace || null;
-    for (let i = traces.length - 1; i >= 0; i -= 1) if (String(traces[i]?.parent ?? "") === key) return traces[i];
-    return trace;
+    const parent = trace?.parent ? traces.find((t) => String(t?.id ?? "") === String(trace.parent)) : null;
+    return parent?.name === "run_code" ? parent : trace || null;
+  }
+
+// The calls a run_code's code has made, in the order they started.
+function paneCalls(msg, trace) {
+    if (trace?.name !== "run_code") return [];
+    const id = String(trace.id ?? "");
+    return (Array.isArray(msg?.tools) ? msg.tools : []).filter((t) => String(t?.parent ?? "") === id);
   }
 
 // The thought being written: the newest run of reasoning, as plain text.
@@ -229,21 +236,98 @@ function syncPaneThought(el, text, grow) {
     el._text = text;
   }
 
-// Brings a call's item up to date in place.
-function syncPaneCall(el, trace, grow) {
+// A call's line: what it was given, else what it is.
+function paneInputHtml(trace) {
+    const input = deps.callInput(trace);
+    return input.input ? `${input.prompt ? '<span class="dk-fe-pr">$ </span>' : ""}${deps.escapeHtml(deps.ccFlat(input.input))}` : deps.escapeHtml(deps.toolRowLabel(trace));
+  }
+
+function paneStateHtml(state) {
+    return state.html || (state.running && !state.text ? PANE_DOTS : deps.escapeHtml(state.text));
+  }
+
+// A script's calls, one row each like the call line, three or more finished
+// reads in a row folded into one as in the transcript. A running command
+// adds its newest output line under its row.
+function paneScriptRows(calls) {
+    const rows = [];
+    const read = (t) => t?.name === "read_file" && !t.image && !paneState(t).running && !paneState(t).bad;
+    for (let at = 0; at < calls.length;) {
+      let end = at;
+      while (read(calls[end])) end += 1;
+      if (end - at >= 3) {
+        const paths = calls.slice(at, end).map((t) => deps.shortToolPath(String(t.path || ""), t));
+        const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
+        const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
+        rows.push({ id: `${calls[at].id}:reads`, done: true,
+          html: `<span class="dk-fe-ico">${deps.rowIconHtml(calls[at])}</span><span class="dk-fe-in">Read ${end - at} files${where ? ` in ${deps.escapeHtml(where)}` : ""}</span><span class="dk-fe-state"></span>` });
+        at = end;
+        continue;
+      }
+      const trace = calls[at++];
+      const state = paneState(trace);
+      let html = `<span class="dk-fe-ico">${deps.rowIconHtml(trace)}</span><span class="dk-fe-in">${paneInputHtml(trace)}</span>` +
+        `<span class="dk-fe-state${state.bad ? " is-bad" : ""}">${paneStateHtml(state)}</span>`;
+      const body = state.running ? paneBody(trace) : null;
+      const last = body?.tail ? body.lines.findLast((line) => line.replace(/<[^>]*>/g, "").trim()) : "";
+      if (last) html += `<span class="dk-step-out">${last}</span>`;
+      rows.push({ id: String(trace.id ?? ""), html, done: !state.running });
+    }
+    return rows;
+  }
+
+// Brings a script's rows up to date in place: a row that changed is redrawn,
+// new rows are added at the end (the box slides up once it is full).
+function syncPaneRows(el, rows, grow) {
+    if (!el._rows) {
+      grow?.();
+      el._rows = new Map();
+      el._html = null;
+      el._lines = null;
+      el._out.replaceChildren();
+    }
+    const seen = new Set();
+    let prev = null;
+    for (const row of rows) {
+      seen.add(row.id);
+      let node = el._rows.get(row.id);
+      if (!node) {
+        grow?.();
+        node = document.createElement("div");
+        node.className = "dk-step";
+        el._rows.set(row.id, node);
+      }
+      if (node._html !== row.html) {
+        node._html = row.html;
+        node.innerHTML = row.html;
+      }
+      node.classList.toggle("is-done", row.done);
+      const at = prev ? prev.nextSibling : el._out.firstChild;
+      if (at !== node) el._out.insertBefore(node, at);
+      prev = node;
+    }
+    for (const [id, node] of el._rows) {
+      if (seen.has(id)) continue;
+      node.remove();
+      el._rows.delete(id);
+    }
+  }
+
+// Brings a call's item up to date in place. A run_code that has made calls
+// lists them under its line.
+function syncPaneCall(el, trace, grow, calls = []) {
     const ico = deps.rowIconHtml(trace);
     if (el._ico !== ico) {
       el._ico = ico;
       el._icoEl.innerHTML = ico;
     }
-    const input = deps.callInput(trace);
-    const text = input.input ? `${input.prompt ? '<span class="dk-fe-pr">$ </span>' : ""}${deps.escapeHtml(deps.ccFlat(input.input))}` : deps.escapeHtml(deps.toolRowLabel(trace));
+    const text = paneInputHtml(trace);
     if (el._text !== text) {
       el._text = text;
       el._inEl.innerHTML = text;
     }
     const state = paneState(trace);
-    const stateHtml = state.html || (state.running && !state.text ? PANE_DOTS : deps.escapeHtml(state.text));
+    const stateHtml = paneStateHtml(state);
     if (el._stateHtml !== stateHtml) {
       el._stateHtml = stateHtml;
       el._state.innerHTML = stateHtml;
@@ -252,6 +336,11 @@ function syncPaneCall(el, trace, grow) {
     }
     const empty = paneEmpty(trace);
     if (el._out.dataset.empty !== empty) el._out.dataset.empty = empty;
+    if (calls.length) {
+      el._box.classList.add("is-tail");
+      syncPaneRows(el, paneScriptRows(calls), grow);
+      return;
+    }
     const body = paneBody(trace);
     el._box.classList.toggle("is-tail", Boolean(body?.tail));
     if (body?.html) {
@@ -327,11 +416,11 @@ function syncLivePane(dock, msg, line) {
     const pane = paneParts(dock);
     const text = line.phase === "thinking" ? paneThought(msg) : "";
     const trace = text || line.phase === "thinking" ? null : paneTrace(msg, line.key);
-    const key = text ? `think:${msg.id}` : trace ? `call:${line.key}` : `idle:${line.phase}`;
+    const key = text ? `think:${msg.id}` : trace ? `call:${trace.id}` : `idle:${line.phase}`;
     const moving = paneOpen && dock.classList.contains("is-pane-open") && !deps.reduceMotion.matches;
     const fill = (grow) => {
       if (text) syncPaneThought(pane.item, text, grow);
-      else if (trace) syncPaneCall(pane.item, trace, grow);
+      else if (trace) syncPaneCall(pane.item, trace, grow, paneCalls(msg, trace));
     };
     if (pane.key !== key) {
       // Another line: its item replaces the last, the height easing between.
@@ -675,5 +764,5 @@ const CONSOLE_SPIN_STILL = "⠿";
 const UNSHOWN_SPIN = ".dk-live, .dk-tab .chat-run-spin";
 const spinMarks = new Set();
 
-  return { setLiveLabelText, setLivePhase, paneTrace, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
+  return { setLiveLabelText, setLivePhase, paneTrace, paneCalls, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }

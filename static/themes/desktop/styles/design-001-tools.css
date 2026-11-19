@@ -22,7 +22,7 @@
    prose's edge and in the line's quieter colour: its body under its heading. */
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-recap {
   display: block;
-  margin: 0.1rem 0 0.2rem;
+  margin: 0.6rem 0 0.2rem;
   color: var(--dk-mute, var(--mute));
   font: 400 calc(0.8625rem * var(--chat-text-scale, 1))/1.6 var(--sans);
 }

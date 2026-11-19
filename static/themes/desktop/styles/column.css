@@ -53,6 +53,35 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tur
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user .chat-bubble::before { content: none; }
 
+/* With attachments the turn is a stack, not a bubble: images first, in one
+   row of equal height (a lone image keeps its own shape), then file chips on
+   their own line, then the bubble with the text. Nothing behind the images. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user:not(.is-auto-steps):has(> .chat-user-files) {
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user:has(> .chat-user-files) > .chat-bubble {
+  width: auto;
+  max-width: 100%;
+  padding: 0.5rem 0.9rem;
+  border-radius: 1rem;
+  background: var(--dk-bubble, var(--raise));
+  box-shadow: var(--dk-shadow, none);
+}
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files { justify-content: flex-end; gap: 0.4rem; max-width: 100%; margin: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files > .is-image { order: 0; border: 0; border-radius: 10px; background: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files > .is-file { order: 2; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files:has(> .is-image):has(> .is-file)::before { content: ""; order: 1; flex-basis: 100%; height: 0; margin-top: -0.4rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files > .is-image img { max-width: min(18rem, 100%); max-height: 14rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files:has(> .is-image ~ .is-image) > .is-image img { width: auto; height: 7.5rem; min-width: 4.5rem; max-width: 13rem; max-height: none; object-fit: cover; }
+@media (max-width: 480px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-user > .chat-user-files:has(> .is-image ~ .is-image) > .is-image img { height: 5.5rem; min-width: 3.5rem; max-width: 9.5rem; }
+}
+
 /* Replies: plain prose, no bullet column. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md {
   display: block;
@@ -265,8 +294,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    outcome ("Interrupted", "Failed") is tinted.
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 0.15rem; font: 400 calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--code, var(--mono)); letter-spacing: 0.01em; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 80%, var(--dk-canvas, var(--ink))); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--code, var(--mono)); letter-spacing: 0.01em; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 80%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; height: 1lh; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; --dur-hover: 0s; }
 @media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
@@ -330,6 +359,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 /* Markdown details: one link style, a visible quote rule, a quiet code head. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md a.chat-md-cite { color: var(--dk-link); font: inherit; text-decoration: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md blockquote { border-left: 2px solid color-mix(in srgb, var(--dk-mute, var(--mute)) 60%, transparent); color: var(--dk-mute, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md blockquote > :last-child { margin-bottom: 0; }
+/* Cards in the flow already get its gap: a thin margin keeps them a step
+   apart without doubling it. The compaction note and its handoff read as
+   one block. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-flow > .chat-perm { margin-block: 0.25rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-compact-mark:has(+ .chat-compact-banner) { margin-bottom: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-compact-mark + .chat-compact-banner { margin-top: 0; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code-head { border-bottom: 1px solid var(--dk-card-line, var(--line)); background: transparent; color: var(--dk-mute, var(--mute)); font-size: 11.5px; letter-spacing: 0; text-transform: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code-head .chat-icon-btn { width: 28px; height: 28px; color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-error-continue { min-height: 32px; }

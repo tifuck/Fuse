@@ -55,6 +55,23 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     return { ...line, meta };
   }
 
+// What the running call is for, in its running form ("Checking every
+// connector build"): its own description, else that of the run_code whose
+// code made it. Empty when the line has its own word (queued, stopping,
+// cancelling, a thought).
+function liveDescription(msg, status) {
+    const trace = status.current;
+    if (!trace || ["queued", "stopping", "thinking"].includes(status.phase) || deps.executionState(trace) === "cancelling") return "";
+    let text = deps.ccFlat(trace.description || "");
+    let name = trace.name;
+    if (!text && trace.parent) {
+      const parent = (Array.isArray(msg?.tools) ? msg.tools : []).find((t) => String(t?.id ?? "") === String(trace.parent));
+      if (parent?.name === "run_code") [text, name] = [deps.ccFlat(parent.description || ""), parent.name];
+    }
+    if (!text) return "";
+    return deps.ccRunningForm(text) ?? (name === "monitor" ? `watching ${text}` : text);
+  }
+
 // The line also carries what it names, for the live pane (live-dock.js): the
 // call (key: its id) and the phase.
 function liveLine(msg, status) {
@@ -62,13 +79,11 @@ function liveLine(msg, status) {
     // A running command: what it is for ("Running the unit tests"), else the
     // command in parentheses ("Running command (npm test)"). The live pane
     // shows the command. It joins the summary line above once it ends.
+    const doing = liveDescription(msg, status);
+    if (doing) return { verb: `${doing.charAt(0).toUpperCase()}${doing.slice(1)}…`, arg: "", key, phase: status.phase };
     const command = status.phase !== "thinking" && status.current?.name === "run_terminal_command" && !deps.toolBackground(status.current) ? status.current : null;
     const arg = command ? deps.ccFlat(deps.displayCommand(command)) : "";
-    if (arg) {
-      const description = deps.ccFlat(command.description);
-      const doing = description ? deps.ccRunningForm(description) ?? description : "Running command";
-      return { verb: doing.charAt(0).toUpperCase() + doing.slice(1) + (description ? "…" : ""), arg: description ? "" : arg, key, phase: status.phase };
-    }
+    if (arg) return { verb: "Running command", arg, key, phase: status.phase };
     const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
     const word = state ? state.charAt(0).toUpperCase() + state.slice(1) : "Working";
     return { verb: /(…|\.\.\.)$/.test(word) ? word : `${word}…`, arg: "", key, phase: status.phase };
