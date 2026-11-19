@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app import agent_hub, agent_http, db, hosts, host_events
 from app.hosts import HostError
+from tests.core.auth._support import sign_in, web_client
 from tests.core.helpers import quick_user
 
 
@@ -85,6 +86,20 @@ def test_unused_codes_are_capped_and_another_user_cannot_cancel_them(fresh_db):
         hosts.mint_pairing(uid)
     assert hosts.cancel_pairing(other, made[0]["id"]) is False
     assert len(hosts.list_pending_pairings(uid)) == hosts.MAX_PENDING_PAIRINGS
+
+
+def test_the_connector_cap_refuses_a_pairing_without_burning_its_code(fresh_db):
+    uid = quick_user()
+    hosts.redeem_pairing(hosts.mint_pairing(uid)["code"], {"hostname": "one"})
+    pairing = hosts.mint_pairing(uid)
+    with patch.object(hosts, "MAX_AGENT_HOSTS", 1):
+        with pytest.raises(HostError) as full:
+            hosts.redeem_pairing(pairing["code"], {"hostname": "two"})
+    assert full.value.status_code == 409
+    assert db.fetchone("SELECT used_at FROM host_pairings WHERE id=?", (pairing["id"],))["used_at"] is None
+    assert len(hosts.list_bundle(uid)["hosts"]) == 1
+    view, _ = hosts.redeem_pairing(pairing["code"], {"hostname": "two"})
+    assert view["hostname"] == "two"
 
 
 def test_an_undone_pairing_reopens_the_code(fresh_db):
@@ -188,3 +203,59 @@ def test_host_events_keep_the_newest_updates_when_a_subscriber_lags():
             host_events._loop = None
 
     assert asyncio.run(body()) == [1, 2]
+
+
+# -- machine routes and the stats socket ------------------------------------------
+
+def _hello_token(ws, token):
+    ws.send_json({"v": 1, "t": "hello", "token": token, "hostname": "box", "user": "u", "ver": "1.0.0"})
+    return ws.receive_json()
+
+
+def _locked_out(client, token):
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with client.websocket_connect("/agent/v1/connect") as ws:
+            assert _hello_token(ws, token)["t"] == "hello_err"
+            ws.receive_json()
+    return closed.value.code
+
+
+@pytest.mark.parametrize("action", ["disable", "delete"])
+def test_disabling_or_deleting_a_machine_drops_its_live_connector(fresh_db, action):
+    uid = quick_user()
+    view, token = hosts.redeem_pairing(hosts.mint_pairing(uid)["code"], {"hostname": "box"})
+    hid = view["id"]
+    with web_client() as client:
+        sign_in(client, uid)
+        with client.websocket_connect("/agent/v1/connect") as ws:
+            assert _hello_token(ws, token)["t"] == "hello_ok" and agent_hub.is_online(uid, hid)
+            if action == "disable":
+                res = client.patch(f"/hosts/{hid}", json={"disabled": True})
+            else:
+                res = client.delete(f"/hosts/{hid}")
+            assert res.status_code == 200, res.text
+            assert ws.receive_json() == {"v": 1, "t": "bye", "reason": "disabled"}
+        assert not agent_hub.is_online(uid, hid)
+        assert _locked_out(client, token) == 4401
+
+
+def _stats_closed(client, host_id, origin="http://testserver"):
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with client.websocket_connect(f"/hosts/{host_id}/stats", headers={"origin": origin}) as ws:
+            ws.receive_json()
+    return closed.value.code
+
+
+def test_the_stats_socket_opens_only_for_the_users_own_enabled_connector(fresh_db):
+    uid, other = quick_user(), quick_user("other@core.test")
+    mine, _ = hosts.redeem_pairing(hosts.mint_pairing(uid)["code"], {"hostname": "mine"})
+    theirs, _ = hosts.redeem_pairing(hosts.mint_pairing(other)["code"], {"hostname": "theirs"})
+    off, _ = hosts.redeem_pairing(hosts.mint_pairing(uid)["code"], {"hostname": "off"})
+    hosts.patch_host(uid, off["id"], {"disabled": True})
+    with web_client() as client:
+        sign_in(client, uid)
+        assert _stats_closed(client, mine["id"], origin="https://evil.test") == 4403
+        assert _stats_closed(client, theirs["id"]) == 4404
+        assert _stats_closed(client, off["id"]) == 4404
+        with patch.dict(host_events._stat_sockets, {uid: host_events.MAX_CONNECTIONS_PER_USER}):
+            assert _stats_closed(client, mine["id"]) == 4429

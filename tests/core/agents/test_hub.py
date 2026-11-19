@@ -113,12 +113,44 @@ def test_a_host_disabled_after_the_token_check_is_disconnected(box):
     run_async(body())
 
 
-def test_rotating_the_token_locks_out_the_old_one(box):
+def test_rotating_the_token_locks_out_the_old_one_and_its_live_socket(box):
     uid, hid, token = box
-    fresh = hosts.rotate_agent_token(uid, hid)
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        fresh = await hosts.rotate_agent_token(uid, hid)
+        assert {"v": 1, "t": "bye", "reason": "rotated"} in ws.sent
+        assert not agent_hub.is_online(uid, hid)
+        await _hang_up(ws, task)
+        stale = ConnectorWS(_hello(token))
+        await agent_hub.handle_socket(stale, hello_timeout=1)
+        assert stale.closed == [4401]
+        return fresh
+
+    fresh = run_async(body())
     assert hosts.host_by_device_token(token) is None
     assert int(hosts.host_by_device_token(fresh)["id"]) == hid
     assert hosts.host_by_device_token(fresh.removeprefix("fa_")) is None
+
+
+class _HelloLost(ConnectorWS):
+    """The socket dies as hello_ok (the only copy of a new token) is sent."""
+
+    async def send_json(self, obj):
+        if obj.get("t") == "hello_ok":
+            raise ConnectionError("socket gone")
+        await super().send_json(obj)
+
+
+def test_a_pairing_whose_hello_ok_is_lost_is_undone_and_the_code_works_again(fresh_db):
+    uid = quick_user()
+    code = hosts.mint_pairing(uid)["code"]
+    ws = _HelloLost({"v": 1, "t": "hello", "code": code, "hostname": "box", "user": "u"})
+    with pytest.raises(ConnectionError):
+        run_async(agent_hub.handle_socket(ws))
+    assert hosts.list_bundle(uid)["hosts"] == [] and agent_hub._conns == {}
+    again, _ = hosts.redeem_pairing(code, {"hostname": "box"})
+    assert [h["id"] for h in hosts.list_bundle(uid)["hosts"]] == [again["id"]]
 
 
 # -- calls ---------------------------------------------------------------------
@@ -364,6 +396,43 @@ def test_a_result_read_on_a_replaced_socket_still_reaches_its_caller(box):
         return result
 
     assert run_async(body())["out"] == "late"
+
+
+def _chunk(job_id, data, stream="out"):
+    return json.dumps({"v": 1, "t": "chunk", "id": job_id, "stream": stream, "data": data})
+
+
+def test_output_chunks_stream_to_the_caller_across_a_drop_and_a_replaced_socket(box):
+    uid, hid, token = box
+    seen = []
+
+    async def body():
+        ws, task = await _connect(uid, hid, token, inst="proc-a")
+        caller = asyncio.create_task(agent_hub.call(uid, hid, "exec", {}, on_chunk=lambda s, d: seen.append((s, d))))
+        await wait_until_async(lambda: ws.jobs())
+        job = ws.jobs()[0]["id"]
+        ws.inbox.put_nowait(_chunk(job, "one"))
+        ws.inbox.put_nowait(_chunk("other-job", "stray"))
+        await wait_until_async(lambda: seen == [("out", "one")])
+        await _hang_up(ws, task)
+        # Held across the drop, then carried onto the session that comes back.
+        back, task = await _connect(uid, hid, token, inst="proc-a")
+        back.inbox.put_nowait(_chunk(job, "two", "err"))
+        await wait_until_async(lambda: len(seen) == 2)
+        # A socket replaced by the same process hands its callbacks over too.
+        same, task2 = await _connect(uid, hid, token, inst="proc-a")
+        same.inbox.put_nowait(_chunk(job, "three"))
+        await wait_until_async(lambda: len(seen) == 3)
+        same.reply(job, ok=True, out="done")
+        result = await asyncio.wait_for(caller, 5)
+        assert job not in agent_hub._conns[(uid, hid)].get("chunks", {})
+        await _hang_up(same, task2)
+        back.drop()
+        await asyncio.wait_for(task, 5)
+        return result
+
+    assert run_async(body())["out"] == "done"
+    assert seen == [("out", "one"), ("err", "two"), ("out", "three")]
 
 
 def test_held_jobs_fail_when_the_connector_does_not_return_in_time(box):

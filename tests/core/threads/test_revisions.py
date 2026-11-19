@@ -5,9 +5,10 @@ assertion on what is stored afterwards, not on internal calls.
 """
 import pytest
 
-from app import chat_store, chats
+from app import chat_store, chat_tx, chats
 from app.chats import ChatValidationError
 from tests.core.helpers import make_user
+from tests.core.threads.test_lock_order import _race
 
 
 def test_a_stale_revision_is_refused_and_changes_nothing(fresh_db):
@@ -19,6 +20,28 @@ def test_a_stale_revision_is_refused_and_changes_nothing(fresh_db):
     with pytest.raises(ChatValidationError) as refused:
         chats.update_thread(uid, thread["id"], title="Lost update", expected_revision=thread["revision"])
     assert refused.value.status_code == 409
+    assert chats.get_thread(uid, thread["id"])["title"] == "First"
+
+
+def test_two_saves_from_one_revision_racing_lose_exactly_one(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    outcomes = []
+
+    def save(title):
+        def go():
+            try:
+                chats.update_thread(uid, thread["id"], title=title, expected_revision=thread["revision"])
+                outcomes.append(title)
+            except ChatValidationError as exc:
+                outcomes.append(exc.status_code)
+        return go
+
+    # The first holds the thread row it locked; the second waits on it, then
+    # sees the revision the first committed.
+    _race(save("First"), (chat_tx, "lock_thread"), save("Second"), after=True)
+
+    assert sorted(outcomes, key=str) == [409, "First"]
     assert chats.get_thread(uid, thread["id"])["title"] == "First"
 
 
