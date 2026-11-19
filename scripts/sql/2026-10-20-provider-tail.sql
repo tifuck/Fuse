@@ -6,12 +6,22 @@
 -- column ADD combined with other changes, so between them the table has no
 -- provider_messages: apply while no run is saving (Fuse quiet or stopped),
 -- then restart Fuse so it detects the layout.
+-- Safe to rerun, also after a run that stopped between the two: MariaDB has
+-- no IF EXISTS for CHANGE COLUMN, so the first runs only while chat_runs has
+-- no provider_base yet.
+SET @provider_split = IF(EXISTS (SELECT 1 FROM information_schema.columns
+                                 WHERE table_schema = DATABASE() AND table_name = 'chat_runs'
+                                   AND column_name = 'provider_base'),
+  'DO 0',
+  'ALTER TABLE chat_runs
+     CHANGE COLUMN provider_messages provider_base LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin DEFAULT NULL INVISIBLE,
+     ADD COLUMN provider_tail LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin DEFAULT NULL INVISIBLE,
+     ALGORITHM=INSTANT');
+PREPARE provider_split FROM @provider_split;
+EXECUTE provider_split;
+DEALLOCATE PREPARE provider_split;
 ALTER TABLE chat_runs
-  CHANGE COLUMN provider_messages provider_base LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin DEFAULT NULL INVISIBLE,
-  ADD COLUMN provider_tail LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin DEFAULT NULL INVISIBLE,
-  ALGORITHM=INSTANT;
-ALTER TABLE chat_runs
-  ADD COLUMN provider_messages LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin GENERATED ALWAYS AS (
+  ADD COLUMN IF NOT EXISTS provider_messages LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin GENERATED ALWAYS AS (
     CASE WHEN provider_tail IS NULL THEN provider_base
          WHEN provider_base IS NULL OR provider_base = '[]' THEN provider_tail
          WHEN provider_tail = '[]' THEN provider_base

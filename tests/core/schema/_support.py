@@ -81,6 +81,18 @@ def show_create(conn, schema: str) -> dict:
     return out
 
 
+def before_provider_tail(create: str) -> str:
+    """chat_runs from schema.sql as it was before 2026-10-20-provider-tail and
+    -run-activity: one plain provider_messages where provider_base is now."""
+    lines = []
+    for line in create.splitlines():
+        name = line.strip().split(" ")[0]
+        if name in ("`provider_tail`", "`provider_messages`", "`activity`"):
+            continue
+        lines.append("  `provider_messages` longtext DEFAULT NULL," if name == "`provider_base`" else line)
+    return "\n".join(lines)
+
+
 @contextmanager
 def attached(url):
     """Point the application database at url for the block, as a boot would

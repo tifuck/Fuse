@@ -7,7 +7,7 @@ import pytest
 
 from app.config import settings
 from scripts import check_schema
-from tests.core.schema._support import admin, run, scratch_schema, show_create
+from tests.core.schema._support import admin, before_provider_tail, run, scratch_schema, show_create
 
 FULL = check_schema.expected_schema(check_schema.SCHEMA_SQL.read_text(encoding="utf-8"))
 COLUMNS = {table: list(spec["columns"]) for table, spec in FULL.items()}
@@ -90,6 +90,22 @@ def test_a_new_column_is_added_before_its_index_and_foreign_key():
     [statement] = check_schema.additions(FULL, actual, keys, fks)
     column = statement.index("ADD COLUMN `thread_id`")
     assert column < statement.index("ADD KEY `fk_chat_schedules_0`") < statement.index("ADD CONSTRAINT `fk_chat_schedules_0`")
+
+
+def test_apply_refuses_a_column_only_a_migration_may_create(tmp_path, monkeypatch, capsys):
+    # Adding provider_base/provider_tail by name next to a plain provider_messages
+    # made the code write provider_base while readers kept the stale column.
+    spec = tmp_path / "schema.sql"
+    spec.write_text(";\n".join(FULL[t]["create"] for t in ("users", "chat_runs")) + ";\n")
+    with scratch_schema(FULL["users"]["create"], before_provider_tail(FULL["chat_runs"]["create"])) as (url, _name):
+        monkeypatch.setattr(settings, "database_url", url)
+        assert check_schema.main(["--apply", str(spec)]) == 1
+        err = capsys.readouterr().err
+        for column in ("provider_base", "provider_tail", "provider_messages"):
+            assert f"chat_runs.{column}: scripts/sql/2026-10-20-provider-tail.sql" in err
+        columns = {row[0] for row in run(url, "SELECT column_name FROM information_schema.columns"
+                                              " WHERE table_schema=DATABASE() AND table_name='chat_runs'")}
+        assert "provider_tail" not in columns and "activity" not in columns
 
 
 def test_the_2026_10_15_promote_would_have_been_refused():
