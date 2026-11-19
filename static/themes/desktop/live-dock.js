@@ -238,6 +238,7 @@ function syncPaneThought(el, text, grow) {
 
 // A call's line: what it was given, else what it is.
 function paneInputHtml(trace) {
+    if (trace.name === "run_code" && trace.description) return deps.escapeHtml(trace.description);
     const input = deps.callInput(trace);
     return input.input ? `${input.prompt ? '<span class="dk-fe-pr">$ </span>' : ""}${deps.escapeHtml(deps.ccFlat(input.input))}` : deps.escapeHtml(deps.toolRowLabel(trace));
   }
@@ -316,6 +317,7 @@ function syncPaneRows(el, rows, grow) {
 // Brings a call's item up to date in place. A run_code that has made calls
 // lists them under its line.
 function syncPaneCall(el, trace, grow, calls = []) {
+    el.classList.toggle("is-script", trace.name === "run_code");
     const ico = deps.rowIconHtml(trace);
     if (el._ico !== ico) {
       el._ico = ico;
