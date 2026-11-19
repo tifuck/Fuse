@@ -46,14 +46,23 @@ class Cursor:
             yield self._rows.popleft()
 
 
+# SQLite-only syntax MariaDB would reject or read differently; app SQL uses
+# none of it, so it fails loudly here instead of passing through.
+_SQLITE_ONLY = (exp.Glob, exp.Collate, exp.Typeof)
+_SQLITE_ONLY_FUNCTIONS = frozenset(("datetime", "julianday", "unixepoch"))
+
+
 def _node(node):
+    if isinstance(node, _SQLITE_ONLY) or (
+            isinstance(node, exp.Anonymous) and node.name.lower() in _SQLITE_ONLY_FUNCTIONS):
+        raise ValueError(f"Unported SQLite syntax: {node.sql(dialect='sqlite')}")
     if isinstance(node, exp.Is) and isinstance(node.expression, exp.Placeholder):
         return exp.NullSafeEQ(this=node.this, expression=exp.Var(this="__fuse_parameter__"))
     if isinstance(node, exp.Div) and isinstance(node.this, exp.Cast):
-        # SQLite integer division truncates; sqlglot's IntDiv renders as
-        # CAST(a / b AS SIGNED), which MariaDB rounds.
+        # SQLite integer division truncates toward zero; sqlglot's IntDiv
+        # renders as CAST(a / b AS SIGNED), which MariaDB rounds.
         quotient = exp.Div(this=node.this.transform(_node), expression=node.expression.transform(_node))
-        return exp.cast(exp.Floor(this=quotient), "BIGINT")
+        return exp.cast(exp.Anonymous(this="TRUNCATE", expressions=[quotient, exp.Literal.number(0)]), "BIGINT")
     if isinstance(node, exp.Placeholder):
         return exp.Var(this="__fuse_parameter__")
     if isinstance(node, exp.Column) and node.table.lower() == "excluded":
@@ -108,15 +117,26 @@ def _rewrite(sql: str, lock_rows: bool = False) -> str:
             raise ValueError("Unported conflict action")
         # MariaDB cannot qualify the left side of assignments; nor should
         # current-row references in an upsert use SQLite's table qualification.
+        where = conflict.args.get("where")
+        predicate = where.this.copy() if where else None
+        for column in predicate.find_all(exp.Column) if predicate else ():
+            column.set("table", None)
         assignments = []
-        for assignment in conflict.expressions:
+        for n, assignment in enumerate(conflict.expressions):
             assignment = assignment.copy()
-            if conflict.args.get("where"):
-                predicate = conflict.args["where"].this.copy()
-                assignment.set("expression", exp.If(this=predicate, true=assignment.expression, false=assignment.this.copy()))
             for column in assignment.find_all(exp.Column):
                 column.set("table", None)
-            assignments.append(assignment.sql(dialect="mysql", identify=True))
+            if predicate is None:
+                assignments.append(assignment.sql(dialect="mysql", identify=True))
+                continue
+            # MariaDB applies assignments left to right, so a later column
+            # would see the earlier ones' new values: the first assignment
+            # evaluates SQLite's WHERE on the original row once and the rest
+            # reuse that result.
+            target = assignment.this.sql(dialect="mysql", identify=True)
+            value = assignment.expression.sql(dialect="mysql", identify=True)
+            test = f"(@fuse_upsert := ({predicate.sql(dialect='mysql', identify=True)}))" if n == 0 else "@fuse_upsert"
+            assignments.append(f"{target} = IF({test}, {value}, {target})")
         rendered += " ON DUPLICATE KEY UPDATE " + ", ".join(assignments)
     if isinstance(statement, exp.Insert) and statement.args.get("default"):
         rendered = rendered.replace("DEFAULT VALUES", "() VALUES ()")
