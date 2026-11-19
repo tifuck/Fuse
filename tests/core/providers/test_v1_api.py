@@ -2,6 +2,7 @@
 lists what the key's owner may use, and every completion (streamed, plain or
 failed) is recorded against the key that made it, with OpenAI-shaped errors.
 """
+import asyncio
 import hashlib
 import json
 import time
@@ -14,10 +15,12 @@ from starlette.testclient import TestClient
 
 from app import accounts, api, db
 from app.config import settings
-from app.sources import refuseless
+from app.proxy import UsageStream
+from app.sources import pool_pick, refuseless
+from app.sources.base import ChatResult
 from tests.core.helpers import quick_user
 
-from ._support import completion, delta, events, frames_of, key, route, source, sse_response
+from ._support import completion, delta, events, frames_of, key, route, source, sse, sse_response
 
 USAGE = {"prompt_tokens": 20, "completion_tokens": 4, "total_tokens": 24}
 
@@ -146,3 +149,41 @@ def test_per_user_rate_and_concurrency_limits_release_after_each_request(v1, ups
     monkeypatch.setattr(settings, "api_rate_per_minute", 4)
     statuses = [client.get("/v1/models").status_code for _ in range(2)]
     assert statuses == [200, 429] and client.get("/v1/models").json()["error"]["message"] == "Too many requests"
+
+
+def test_a_client_gone_before_the_first_byte_still_releases_its_slots_and_records_a_row(v1, monkeypatch):
+    client, uid, raw = v1
+    started = []
+
+    async def never_read():
+        started.append(True)
+        yield sse(delta("x"))
+
+    async def pooled(src, body, user_id, session_id=None, affinity_id=None):
+        pool_pick.reserve(77)
+        stream = UsageStream(never_read(), {}, on_close=lambda: pool_pick.release(77))
+        return ChatResult(status=200, stream=stream, credential_id=None)
+
+    monkeypatch.setattr(api, "_run_chat", pooled)
+    body = json.dumps({"model": "m1", "stream": True, "messages": [{"role": "user", "content": "hi"}]}).encode()
+    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"}, "http_version": "1.1", "method": "POST",
+             "scheme": "http", "path": "/v1/chat/completions", "raw_path": b"/v1/chat/completions", "query_string": b"",
+             "root_path": "", "headers": [(b"authorization", f"Bearer {raw}".encode()), (b"content-type", b"application/json")],
+             "client": ("127.0.0.1", 5000), "server": ("test", 80)}
+    messages = [{"type": "http.request", "body": body, "more_body": False}]
+
+    async def receive():
+        return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            raise OSError("client went away")
+
+    async def go():
+        with pytest.raises(Exception):
+            await client.app(scope, receive, send)
+
+    asyncio.run(go())
+    assert not started and not api._in_flight and pool_pick.in_flight(77) == 0
+    (row,) = events()
+    assert (row["request_status"], row["api_key_id"]) == ("cancelled", _key_row(uid)["id"])
