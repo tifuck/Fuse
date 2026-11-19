@@ -29,7 +29,7 @@ test('Rename from a menu that outlived a list repaint edits the row on screen', 
   global.CSS = { escape: String };
   global.document = { createElement: () => ({ setAttribute: noop, focus: noop, select: noop, addEventListener: noop }) };
   const detached = { isConnected: false, closest: () => detached };
-  const onScreen = { isConnected: true, appended: [], appendChild(el) { this.appended.push(el); } };
+  const onScreen = { isConnected: true, appended: [], getClientRects: () => [{}], appendChild(el) { this.appended.push(el); } };
   let row = onScreen;
   Object.assign(S, { threads: [{ id: 't1', title: 'Old' }], archivedThreads: [], historyQuery: '', showArchived: false, historyTab: 'chats',
     renaming: false, historyList: { querySelectorAll: () => [], querySelector: () => row } });
@@ -46,6 +46,29 @@ test('Rename from a menu that outlived a list repaint edits the row on screen', 
   assert.equal(S.renaming, false, 'with no row on screen the list is not left frozen');
   delete global.CSS;
   delete global.document;
+});
+
+test('Rename with the chat list closed opens the list first', () => {
+  global.CSS = { escape: String };
+  global.document = { createElement: () => ({ setAttribute: noop, focus: noop, select: noop, addEventListener: noop }) };
+  global.window = { requestAnimationFrame: noop };
+  const hidden = { isConnected: true, getClientRects: () => [], appendChild: noop };
+  const opened = [];
+  Object.assign(S, { threads: [{ id: 't1', title: 'Old' }], archivedThreads: [], historyQuery: '', showArchived: false, historyTab: 'chats',
+    renaming: false, historyList: { querySelectorAll: () => [], querySelector: () => hidden } });
+  let items = [];
+  const drawer = { setHistoryOpen: (open) => opened.push(['drawer', open]), setHistoryPeek: (open) => opened.push(['peek', open]) };
+  const threads = createThreads(deps({ drawer, net: stub({ requireLive: () => true }), overlays: stub({ showPop: (_anchor, list) => { items = list; } }) }));
+  for (const mobile of [true, false]) {
+    S.historyMobile = { matches: mobile };
+    S.renaming = false;
+    threads.threadMenu(hidden, 't1');
+    items.find((item) => item.label === 'Rename').run();
+  }
+  assert.deepEqual(opened, [['drawer', true], ['peek', true]]);
+  delete global.CSS;
+  delete global.document;
+  delete global.window;
 });
 
 test('a snapshot says which of a thread\'s side lists can hold anything', () => {
