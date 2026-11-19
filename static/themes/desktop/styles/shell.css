@@ -732,7 +732,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-arg > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* A running call alone in its block shows only in the status line: the
      emptied block would still take a flow gap and push the line down. */
-  & .chat-activity.is-bare.is-working:has(.chat-timeline:empty) { display: none; }
+  & .chat-activity.is-bare.is-working:has(> .chat-activity-panel > .chat-activity-panel-inner > .chat-timeline:empty) { display: none; }
   /* The live pane (live-dock.js). Opened, the status line heads a card over
      what the line names and nothing else: the running call (its line, its
      newest output or change) or the thought being written. The line's text
@@ -741,12 +741,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      scrollbar (100% is the card's width). */
   & .chat-live-dock { flex-wrap: wrap; --dk-pane-out: clamp(0px, calc((100cqw - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
-  & .chat-live-dock.is-detailable [data-dock-status]:hover :is(.dk-live-arg, .dk-live-chev) { color: var(--dk-text); }
+  & .chat-live-dock.is-detailable [data-dock-status]:hover .dk-live-arg { color: var(--dk-text); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
-  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color var(--dur-hover) ease; }
-  & .chat-live-dock .dk-live-chev svg { width: 14px; height: 14px; }
-  & .chat-live-dock.is-detailable .dk-live-chev { display: inline-flex; }
-  & .chat-live-dock.is-pane-open .dk-live-chev { transform: rotate(90deg); }
   & .chat-live-dock .dk-live-card { position: relative; flex: 1 1 100%; min-width: 0; }
   & .chat-live-dock .dk-live-card::before { content: ""; position: absolute; inset: -5px calc(-1 * var(--dk-pane-out)) 0; border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
   & .chat-live-dock.is-pane-open .dk-live-card::before { opacity: 1; }
@@ -783,7 +779,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-fe-out .chat-console-lines { margin: 0; font: inherit; }
   & .chat-live-dock .dk-think .dk-fe-out { max-height: calc(6 * 1.5em); color: var(--dk-mute); font: var(--dk-meta)/1.5 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
   @media (prefers-reduced-motion: reduce) {
-    & .chat-live-dock :is(.dk-pane, .dk-live-chev, .dk-fe-head, .dk-fe-out) { transition: none; }
+    & .chat-live-dock :is(.dk-pane, .dk-fe-head, .dk-fe-out) { transition: none; }
     & .chat-live-dock .dk-live-card::before { transition: none; }
   }
   & .dk-row-cmd { margin-bottom: 4px; color: var(--dk-text); font: 12px/1.5 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }

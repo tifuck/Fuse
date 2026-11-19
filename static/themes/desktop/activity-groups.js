@@ -1,14 +1,14 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
 // A finished reply's line: what it took, then when it ended, then its
-// actions: "Done in 3m 53s · 4m ago". usage: the stored-reply stand-in for
+// actions: "done 3m 53s 4m ago". usage: the stored-reply stand-in for
 // the work time.
 function ccTurnLineHtml(msg, latest, usage = "") {
-    // One run of text, so it reads and copies as one line: "Done in 3m 53s · 4m ago".
+    // One run of text, so it reads and copies as one line: "done 3m 53s 4m ago".
     const ago = agoHtml(msg);
-    const lead = ago ? " · " : "";
+    const lead = ago ? " " : "";
     // A stopped or failed turn never finished: its outcome leads
-    // ("Interrupted after 26s"), the one tinted word.
+    // ("interrupted 26s"), the one tinted word.
     const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
     if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
@@ -16,7 +16,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
       return `<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome === "interrupted" ? "Interrupted" : "Failed"}</em> after ${took}` : `Done in ${took}`;
+    const doing = outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> ${took}` : `done ${took}`;
     const still = latest ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
     return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
@@ -36,7 +36,7 @@ function agoText(at) {
     const when = new Date(typeof at === "number" ? at : String(at || ""));
     const s = (Date.now() - when.getTime()) / 1000;
     if (!Number.isFinite(s)) return "";
-    if (s < 90) return "Just now";
+    if (s < 90) return "just now";
     if (s < 3600) return `${Math.round(s / 60)}m ago`;
     if (s < 86400) return `${Math.round(s / 3600)}h ago`;
     return when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -48,7 +48,7 @@ function turnActionsHtml(msg, latest) {
       `<button type="button" class="dk-act-btn" data-theme-turn-act="${kind}" aria-label="${label}" title="${label}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${icon}</svg></button>`).join("");
     return `<span class="dk-acts">${buttons}</span>`;
   }
-// When the reply ended ("Just now", "5m ago"); the full time in its title.
+// When the reply ended ("just now", "5m ago"); the full time in its title.
 // A settled reply is not repainted, so its time moves on by itself.
 let agoTimer = 0;
 function syncAgo() {
