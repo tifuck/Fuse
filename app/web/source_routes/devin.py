@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import time
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -56,7 +57,7 @@ async def devin_callback(request: Request):
     code = str(request.query_params.get("code") or "").strip()
     state = str(request.query_params.get("state") or "").strip()
     # State first: a cross-site link to ?error=… must not cancel a sign-in.
-    if not pending or not state or state != str(pending.get("state") or ""):
+    if not pending or not state or not hmac.compare_digest(state.encode(), str(pending.get("state") or "").encode()):
         _pool_flash[user["id"]] = ("err", "Devin sign-in expired or did not match this session. Start again.", "devin")
         return RedirectResponse("/sources", status_code=303)
     error = str(request.query_params.get("error") or "").strip()

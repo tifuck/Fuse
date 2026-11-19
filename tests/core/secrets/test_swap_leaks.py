@@ -76,3 +76,22 @@ def test_read_url_keeps_the_stand_in(fresh_db):
     args = json.dumps({"url": f"https://api.example.com/v1/models?key={fake}"})
 
     assert swap.restore_args("read_url", args) == (args, True)
+
+
+def test_unreadable_pairs_refuse_a_manual_compact(fresh_db):
+    from tests.core.auth._support import sign_in, web_client
+
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline", tools=[])
+    pk = chats.resolve_thread_pk(uid, thread["id"])
+    db.execute("UPDATE chat_threads SET secret_swap=1 WHERE id=?", (pk,))
+    break_pairs(uid, pk)
+    provider = FakeProvider(text_frames("summary"))
+
+    with patch.object(api, "invoke_chat", new=provider), web_client() as client:
+        sign_in(client, uid)
+        res = client.post(f"/chat/threads/{thread['id']}/compact",
+                          json={"expected_revision": thread["revision"], "command_id": "c1"})
+
+    assert res.status_code == 409 and "decrypted" in res.text
+    assert provider.bodies == []

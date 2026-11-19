@@ -1020,6 +1020,13 @@ async def chat_compact(request: Request, thread_id: str):
         raise HTTPException(400, "Invalid strategy")
     pk = _chat_thread_pk(user, thread_id)
     revision = _chat_revision(raw)
+    from .. import secret_swap
+
+    try:
+        # The summarizer would read the real values: refuse as a turn does.
+        await asyncio.to_thread(secret_swap.for_thread, user["id"], pk)
+    except secret_swap.SwapUnavailable as exc:
+        raise HTTPException(409, str(exc)) from None
     try:
         prepared = chat_store.prepare_compact(
             user["id"],
