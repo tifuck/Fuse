@@ -330,6 +330,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
 /* Markdown details: one link style, a visible quote rule, a quiet code head. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md a.chat-md-cite { color: var(--dk-link); font: inherit; text-decoration: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md blockquote { border-left: 2px solid color-mix(in srgb, var(--dk-mute, var(--mute)) 60%, transparent); color: var(--dk-mute, var(--mute)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md blockquote > :last-child { margin-bottom: 0; }
+/* Cards in the flow already get its gap: a thin margin keeps them a step
+   apart without doubling it. The compaction note and its handoff read as
+   one block. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-flow > .chat-perm { margin-block: 0.25rem; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-compact-mark:has(+ .chat-compact-banner) { margin-bottom: 0; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-compact-mark + .chat-compact-banner { margin-top: 0; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code-head { border-bottom: 1px solid var(--dk-card-line, var(--line)); background: transparent; color: var(--dk-mute, var(--mute)); font-size: 11.5px; letter-spacing: 0; text-transform: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-code-head .chat-icon-btn { width: 28px; height: 28px; color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-error-continue { min-height: 32px; }
