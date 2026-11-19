@@ -121,6 +121,8 @@ export function createConsoleTheme(runtime) {
     get toolPresentation() { return runtime.toolPresentation; },
   }));
   Object.assign(theme, createLiveStatus({
+    get ccFlat() { return theme.ccFlat; },
+    get ccRunningForm() { return theme.ccRunningForm; },
     get applySpinEl() { return runtime.applySpinEl; },
     get ccDuration() { return theme.ccDuration; },
     get ccGenSpeed() { return theme.ccGenSpeed; },
