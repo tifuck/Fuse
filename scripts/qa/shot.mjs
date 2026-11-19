@@ -52,6 +52,12 @@
 //                                  = 'busy'" (or 'hot') raises the load;
 //                                  __qaStats.stop() ends the samples (the card
 //                                  goes stale 7 s later)
+//   --trace JSON        with --fake running: the reply's running calls become
+//                       these (an object, or an array of them), running unless
+//                       they say otherwise. A call with "parent": true is made
+//                       by the first one, a run_code. E.g. '{"name":"read_file",
+//                       "path":"/srv/demo/app.py"}', or '[{"name":"run_code"}]'
+//                       for a run_code before its first call
 //
 // Steps, run in the order given, once per combination, with a real mouse and keys:
 //   --find TEXT         print a selector for each visible element whose text,
@@ -110,7 +116,7 @@ const LIMIT = 12000;  // the tallest viewport a shot may grow to
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
 const FAKES = ['running', 'ask', 'asks', 'error', 'agents', 'stats'];
-const VALUES = new Set(['thread', 'page', 'view', 'tree', 'size', 'zoom', 'pad', 'fake', 'out', 'base']);
+const VALUES = new Set(['thread', 'page', 'view', 'tree', 'size', 'zoom', 'pad', 'fake', 'out', 'base', 'trace']);
 const FLAGS = new Set(['list', 'toasts', 'touch', 'live', 'motion']);
 const STEPS = new Set(['find', 'click', 'hover', 'type', 'key', 'wait', 'eval']);
 const KEYS = { Enter: [13, '\r'], Escape: [27], Tab: [9], Backspace: [8], Delete: [46], Space: [32, ' '], ArrowLeft: [37], ArrowUp: [38],
@@ -160,6 +166,10 @@ for (let i = 0; i < argv.length; i += 1) {
 opts.fake = new Set(list(opts.fake));
 opts.fake.forEach((name) => FAKES.includes(name) || bad(`--fake ${name}: use ${FAKES.join(', ')}`));
 if (opts.fake.has('asks')) opts.fake.add('ask');
+if (opts.trace !== undefined) {
+  if (!opts.fake.has('running')) bad('--trace needs --fake running');
+  try { opts.trace = [JSON.parse(opts.trace)].flat(); } catch (error) { bad(`--trace: ${error.message}`); }
+}
 const views = opts.view === 'all' ? VIEWS : list(opts.view);
 views.forEach((view) => VIEWS.includes(view) || bad(`--view ${view}: use ${VIEWS.join(', ')} or all`));
 const sizes = list(opts.size).map((text) => {
@@ -290,6 +300,18 @@ const FIXES = {
   thread(data) {
     const last = [...(data.messages || [])].reverse().find((message) => message.role === 'assistant');
     if (opts.fake.has('running') && last) {
+      if (opts.trace) {
+        const running = new Set((last.tools || []).filter((trace) => trace.status === 'running').map((trace) => trace.id));
+        last.tools = (last.tools || []).filter((trace) => !running.has(trace.id));
+        last.segments = (last.segments || []).filter((part) => !(part.type === 'tool' && running.has(part.id)));
+        const first = 'qa-trace-0';
+        opts.trace.forEach((fields, i) => {
+          const trace = { id: `qa-trace-${i}`, status: 'running', host: 'qa-box', ...fields };
+          if (fields.parent === true) trace.parent = first;
+          else last.segments.push({ type: 'tool', id: trace.id });
+          last.tools.push(trace);
+        });
+      }
       (last.tools || []).forEach((trace) => { if (trace.status === 'running') trace.started_ms = startedAt - 42000; });
       data.run = { ...(data.run || {}), id: data.run?.id || 'qa-live', status: 'running', message_id: last.id, message: last,
         created_at: iso(startedAt - 75000), updated_at: iso(startedAt), cancel_requested: false };
