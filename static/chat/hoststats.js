@@ -7,13 +7,17 @@ import { S } from './state.js';
 // No sample for this long (connector offline, sampling stopped): hide.
 const STALE_MS = 7000;
 
-// White to 50%, amber at 75%, red from 95%; mixed in oklch so the ramp
-// stays even. Below 50% the theme's own colour stands.
+// Up to 50% the theme's own colour stands. From there it brightens to
+// --hs-hi (default white) by 65%, turns amber by 80% and red at 95%; mixed
+// in oklch so the ramp stays even.
 export function loadTone(pct) {
   if (!(pct > 50)) return "";
   if (pct >= 95) return "#ff453a";
-  if (pct < 75) return `color-mix(in oklch, #f5b83d ${Math.round((pct - 50) * 4)}%, #fff)`;
-  return `color-mix(in oklch, #ff453a ${Math.round((pct - 75) * 5)}%, #f5b83d)`;
+  const mix = (to, from, start) => `color-mix(in oklch, ${to} ${Math.round(((pct - start) * 100) / 15)}%, ${from})`;
+  const hi = "var(--hs-hi, #fff)";
+  if (pct < 65) return mix(hi, "currentColor", 50);
+  if (pct < 80) return mix("#f5b83d", hi, 65);
+  return mix("#ff453a", "#f5b83d", 80);
 }
 
 // Bytes per second, short: 0B, 840B, 84K, 1.2M, 3.4G.

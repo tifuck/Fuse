@@ -216,7 +216,7 @@ function ccErrorFold(lines, tail = false) {
     const last = tail ? ccFlat((rest.findLast((line) => line.trim()) || "").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")) : "";
     const html = (rows) => `<div class="chat-console-lines is-error">${rows.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
     return {
-      status: last ? `${all[0]} | ${last}` : all[0],
+      status: last ? `${all[0]} — ${last}` : all[0],
       preview: "",
       full: rest.some((line) => line.trim()) ? html(rest) : "",
       keep: true,

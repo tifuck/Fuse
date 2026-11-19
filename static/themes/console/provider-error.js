@@ -71,7 +71,7 @@ function parseProviderError(text) {
 function providerErrorLine(text) {
     const info = parseProviderError(text);
     if (!info.provider) return String(text || "");
-    return [info.provider, info.title, info.reset].filter(Boolean).join(" | ");
+    return [info.provider, info.title, info.reset].filter(Boolean).join(", ");
   }
 
 function providerErrorHtml(text) {

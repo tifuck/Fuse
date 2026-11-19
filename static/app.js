@@ -1156,6 +1156,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
     if (changed) rehome();
   }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] });
 
+  // The bars grow after first paint (Console adds its title line), so the
+  // offset follows their size.
+  const barWatch = typeof ResizeObserver === "function" ? new ResizeObserver(() => rehome()) : null;
+
   function rehome() {
     if (!toastRoot) return;
     const host = modals.filter((d) => d.open && d.isConnected).pop() || document.body;
@@ -1163,7 +1167,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
     // The stack hangs under the page's header bar (and chat's agent strip),
     // clear of the composer.
     let top = 0;
-    document.querySelectorAll(".chat-bar, .chat-work:not([hidden])").forEach((bar) => {
+    barWatch?.disconnect();
+    document.querySelectorAll(".chat-bar, [data-chat-bar], .chat-work").forEach((bar) => {
+      barWatch?.observe(bar);
+      if (bar.hidden) return;
       const r = bar.getBoundingClientRect();
       if (r.height && r.top < 200) top = Math.max(top, r.bottom);
     });
@@ -1200,14 +1207,32 @@ document.querySelectorAll(".probe").forEach((btn) => {
     } catch (_) {}
   }
 
-  // The one notice system on every page. kind: "idle" (info), "ok", "warn"
-  // (a limit or a guardrail) or "err". A toast leaves after a reading time
+  // The one notice system on every page: toasts and notifications share one
+  // stack (top right under the header bar; across the top on a phone).
+  //
+  // A toast answers something the user just did. kind: "idle" (info), "ok",
+  // "warn" (a limit or a guardrail) or "err". It leaves after a reading time
   // set by its kind and length, unless ttl is given: ttl 0 keeps it until it
   // is closed or replaced (an action in flight, an error that still holds, an
-  // offer with no deadline), and so does an action without a ttl. Hovering or
-  // focusing one stops its clock. A toast with the same key changes in place.
+  // offer with no deadline), and so does one with actions and no ttl.
+  //
+  // A notification reports something that happened elsewhere (another chat
+  // finished, a secret was swapped). It adds "source" (the chat it is about,
+  // shown over the title) and "onOpen" (the whole card opens it), and may
+  // carry "actions" [{label, run, keep}]: each runs and closes the card
+  // unless keep is set. "onDismiss" runs when the user closes it (the X, a
+  // swipe, Escape on the card), never when code closes it.
+  //
+  // The clock only runs while the page is visible and the card is not
+  // hovered, focused or touched, so nothing leaves unseen. A toast with the
+  // same key changes in place. On a phone the stack folds to the newest card
+  // and a "N more" chip that unfolds it; a card swiped sideways is closed.
   const MAX_TOASTS = 4;
   const X_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  const narrow = window.matchMedia("(max-width: 800px)");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let stackOpen = false;
+  let moreChip = null;
 
   function readMs(kind, text) {
     const n = text.length;
@@ -1216,10 +1241,41 @@ document.querySelectorAll(".probe").forEach((btn) => {
     return Math.min(8000, Math.max(2500, 1600 + n * 45));
   }
 
+  function toasts() {
+    return toastRoot ? [...toastRoot.querySelectorAll(":scope > .fuse-toast:not(.is-leaving)")] : [];
+  }
+
+  // Phone: one card and a chip naming how many wait behind it.
+  function restack() {
+    if (!toastRoot) return;
+    const list = toasts();
+    const fold = narrow.matches && list.length > 1;
+    if (!fold) stackOpen = false;
+    toastRoot.classList.toggle("is-folded", fold && !stackOpen);
+    toastRoot.classList.toggle("is-unfolded", fold && stackOpen);
+    if (!fold) {
+      moreChip?.remove();
+      return;
+    }
+    if (!moreChip) {
+      moreChip = document.createElement("button");
+      moreChip.type = "button";
+      moreChip.className = "fuse-toasts-more";
+      moreChip.addEventListener("click", () => {
+        stackOpen = !stackOpen;
+        restack();
+      });
+    }
+    moreChip.textContent = stackOpen ? "Show less" : (list.length - 1) + " more";
+    moreChip.setAttribute("aria-expanded", String(stackOpen));
+    toastRoot.appendChild(moreChip);
+  }
+  narrow.addEventListener?.("change", restack);
+
   function toast(opts) {
     opts = typeof opts === "string" ? { msg: opts } : opts || {};
     const key = opts.key || "";
-    const existing = key && toastRoot && [...toastRoot.children].find((el) => el.dataset.toastKey === key);
+    const existing = key && toasts().find((el) => el.dataset.toastKey === key);
     if (existing) {
       existing._ctrl.update(opts);
       return existing._ctrl;
@@ -1227,75 +1283,173 @@ document.querySelectorAll(".probe").forEach((btn) => {
     const el = document.createElement("div");
     el.className = "fuse-toast is-idle";
     if (key) el.dataset.toastKey = key;
-    el.innerHTML = '<div class="fuse-toast-body"><b></b><span></span></div><span class="fuse-toast-act"></span>' +
-      `<button type="button" class="fuse-toast-x" aria-label="Dismiss">${X_ICON}</button>`;
-    const title = el.querySelector(".fuse-toast-body b");
-    const msg = el.querySelector(".fuse-toast-body span");
-    const act = el.querySelector(".fuse-toast-act");
+    el.innerHTML = '<div class="fuse-toast-body"><small></small><b></b><span></span><div class="fuse-toast-act"></div></div>' +
+      '<button type="button" class="fuse-toast-x" aria-label="Dismiss">' + X_ICON + '</button>';
+    const body = el.querySelector(".fuse-toast-body");
+    const source = body.querySelector("small");
+    const title = body.querySelector("b");
+    const msg = body.querySelector("span");
+    const act = body.querySelector(".fuse-toast-act");
     let timer = 0;
     let due = 0;
     let left = 0;
-    let hovered = false;
-    let focused = false;
+    let held = 0; // hover, focus and touch each hold the clock
     let kind = "";
+    let current = {};
+    const running = () => left > 0 && !held && !document.hidden;
     const arm = () => {
       window.clearTimeout(timer);
-      if (!left || hovered || focused) return;
+      if (!running()) return;
       due = Date.now() + left;
       timer = window.setTimeout(() => ctrl.close(), left);
     };
     const pause = () => {
-      if (!left || hovered || focused) return;
-      window.clearTimeout(timer);
-      left = Math.max(1500, due - Date.now());
+      if (left > 0 && due) {
+        window.clearTimeout(timer);
+        left = Math.max(1500, due - Date.now());
+        due = 0;
+      }
+    };
+    const hold = (on) => {
+      if (on) { pause(); held++; } else { held = Math.max(0, held - 1); arm(); }
+    };
+    const onVisibility = () => (document.hidden ? pause() : arm());
+    const dismiss = () => {
+      ctrl.close();
+      if (typeof current.onDismiss === "function") current.onDismiss();
     };
     const ctrl = {
       el,
       timed: () => left > 0,
       update(next) {
         next = next || {};
+        current = next;
         const k = next.kind || "idle";
-        if (k !== kind) {
-          if (k === "err") window.fuseSound?.play("errorSoft");
-        }
+        if (k !== kind && k === "err") window.fuseSound?.play("errorSoft");
         kind = k;
-        el.className = "fuse-toast is-" + k;
+        el.className = "fuse-toast is-" + k + (next.onOpen ? " is-link" : "") + (next.source ? " is-note" : "");
+        source.textContent = next.source || "";
         title.textContent = next.title || "";
         msg.textContent = next.msg || "";
-        act.replaceChildren();
-        if (next.actionLabel) {
+        const actions = (next.actions || []).slice();
+        if (next.actionLabel) actions.push({ label: next.actionLabel, run: next.onAction, keep: true });
+        act.replaceChildren(...actions.map((action, i) => {
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "btn sm ghost";
-          btn.textContent = next.actionLabel;
-          btn.addEventListener("click", () => {
-            if (typeof next.onAction === "function") next.onAction();
+          btn.className = "btn sm" + (i === 0 ? "" : " ghost");
+          btn.textContent = action.label;
+          btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (!action.keep) ctrl.close();
+            if (typeof action.run === "function") action.run();
           });
-          act.appendChild(btn);
+          return btn;
+        }));
+        if (next.onOpen) {
+          body.tabIndex = 0;
+          body.setAttribute("role", "button");
+          body.setAttribute("aria-label", [next.source && "Open " + next.source, next.title, next.msg].filter(Boolean).join(". "));
+        } else {
+          body.removeAttribute("tabindex");
+          body.removeAttribute("role");
+          body.removeAttribute("aria-label");
         }
-        const text = [next.title, next.msg].filter(Boolean).join(". ");
+        const text = [next.source, next.title, next.msg].filter(Boolean).join(". ");
         window.fuseAnnounce?.(text, k === "err" || k === "warn");
-        left = next.ttl != null ? Number(next.ttl) || 0 : next.actionLabel ? 0 : readMs(k, text);
+        due = 0;
+        left = next.ttl != null ? Number(next.ttl) || 0 : actions.length ? 0 : readMs(k, text);
         arm();
       },
       close() {
+        if (el.classList.contains("is-leaving")) return;
         window.clearTimeout(timer);
-        el.remove();
+        document.removeEventListener("visibilitychange", onVisibility);
+        el.classList.add("is-leaving");
+        const gone = () => {
+          el.remove();
+          restack();
+        };
+        if (reducedMotion.matches || !el.isConnected) gone();
+        else {
+          el.addEventListener("animationend", gone, { once: true });
+          window.setTimeout(gone, 400);
+        }
+        restack();
       },
     };
     el._ctrl = ctrl;
-    el.querySelector(".fuse-toast-x").addEventListener("click", () => ctrl.close());
-    el.addEventListener("pointerenter", () => { pause(); hovered = true; });
-    el.addEventListener("pointerleave", () => { hovered = false; arm(); });
-    el.addEventListener("focusin", () => { pause(); focused = true; });
-    el.addEventListener("focusout", () => { focused = false; arm(); });
+    el.querySelector(".fuse-toast-x").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      dismiss();
+    });
+    body.addEventListener("click", (ev) => {
+      if (!current.onOpen || ev.target.closest("button") || el.dataset.swiped) return;
+      ctrl.close();
+      current.onOpen();
+    });
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") {
+        ev.stopPropagation();
+        dismiss();
+      } else if ((ev.key === "Enter" || ev.key === " ") && ev.target === body && current.onOpen) {
+        ev.preventDefault();
+        body.click();
+      }
+    });
+    el.addEventListener("pointerenter", (ev) => { if (ev.pointerType === "mouse") hold(true); });
+    el.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hold(false); });
+    el.addEventListener("focusin", () => hold(true));
+    el.addEventListener("focusout", () => hold(false));
+    document.addEventListener("visibilitychange", onVisibility);
+    // Swipe sideways to close (touch and pen; a mouse has the X).
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.pointerType === "mouse" || ev.target.closest("button")) return;
+      drag = { x: ev.clientX, y: ev.clientY, t: Date.now(), dx: 0, on: false };
+      delete el.dataset.swiped;
+      hold(true);
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const dx = ev.clientX - drag.x;
+      if (!drag.on) {
+        if (Math.abs(ev.clientY - drag.y) > 10) { drag = null; hold(false); return; }
+        if (Math.abs(dx) < 8) return;
+        drag.on = true;
+        el.setPointerCapture?.(ev.pointerId);
+        el.classList.add("is-dragging");
+      }
+      drag.dx = dx;
+      el.style.setProperty("--toast-dx", dx + "px");
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      const { dx, on, t } = drag;
+      drag = null;
+      hold(false);
+      el.classList.remove("is-dragging");
+      if (!on) return;
+      el.dataset.swiped = "1";
+      window.setTimeout(() => delete el.dataset.swiped, 0);
+      const fast = Math.abs(dx) / Math.max(1, Date.now() - t) > 0.6;
+      if (Math.abs(dx) > Math.min(96, el.offsetWidth * 0.35) || (fast && Math.abs(dx) > 24)) {
+        el.style.setProperty("--toast-dx", (dx < 0 ? -1 : 1) * el.offsetWidth + "px");
+        el.classList.add("is-swiped");
+        dismiss();
+      } else {
+        el.style.removeProperty("--toast-dx");
+      }
+    };
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
     ensureRoot().prepend(el);
     ctrl.update(opts);
     // Too many at once: the oldest timed one goes first, a held one last.
-    for (let list = [...toastRoot.children]; list.length > MAX_TOASTS; list = [...toastRoot.children]) {
+    for (let list = toasts(); list.length > MAX_TOASTS; list = toasts()) {
       const oldest = list.reverse();
       (oldest.find((t) => t._ctrl.timed()) || oldest[0])._ctrl.close();
     }
+    restack();
     return ctrl;
   }
 

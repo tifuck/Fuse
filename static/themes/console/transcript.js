@@ -18,7 +18,7 @@ function artifactCards(traces) {
 
 function artifactCardHtml(card) {
     const meta = card.gone ? (card.gone === "archived" ? "Archived" : "Deleted")
-      : [card.verb, card.version != null ? `v${card.version}` : "", card.format === "markdown" ? "Markdown" : ""].filter(Boolean).join(" | ");
+      : [card.verb, card.version != null ? `v${card.version}` : "", card.format === "markdown" ? "Markdown" : ""].filter(Boolean).join(", ");
     const icon = deps.STEP_ICONS.artifact;
     if (card.gone) {
       return `<div class="chat-artifact-card is-gone">` +

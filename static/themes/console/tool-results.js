@@ -136,9 +136,9 @@ function consoleTruncationNote(trace, extra = "") {
     // "9.1k+": the total is a lower bound. Partial output knows it only when exact.
     const of = (inexact) => `${deps.ccTokens(retained)} of ${deps.ccTokens(total)}${inexact ? "+" : ""} chars`;
     let note = "";
-    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output | kept ${of(trace.output_chars_exact !== true)}`;
-    else if (trace.output_mode === "tail") note = `Output truncated | kept the last ${of(trace.output_chars_exact === false)}`;
-    else if (trace.truncated || total > retained) note = `Output truncated | kept ${of(trace.output_chars_exact === false)}`;
+    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output, kept ${of(trace.output_chars_exact !== true)}`;
+    else if (trace.output_mode === "tail") note = `Output truncated, kept the last ${of(trace.output_chars_exact === false)}`;
+    else if (trace.truncated || total > retained) note = `Output truncated, kept ${of(trace.output_chars_exact === false)}`;
     return note ? `<span class="chat-tool-truncated${extra}">${deps.escapeHtml(note)}</span>` : "";
   }
 
@@ -289,32 +289,61 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
     const noun = (n) => `${n === 1 ? "call" : "calls"}`;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
-    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : " | no calls ran"}`)
-      : interrupted ? `Interrupted | <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
-      : running ? (total ? `Running | <b>${total}</b> ${noun(total)} so far` : "Running…")
+    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : ", no calls ran"}`)
+      : interrupted ? `Interrupted, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? `<b>${total}</b> ${noun(total)}: ${what}` : "No calls";
-    const row = (rowKey, branch, head, body, state, tool) => {
+    const row = (rowKey, branch, head, body, state, tool, title = "") => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
+      const tip = title ? ` title="${deps.escapeHtml(title)}"` : "";
       return `<div class="chat-console-codecall is-${state}" data-step="${deps.escapeHtml(rowKey)}"${tool ? ` data-tool="${tool}"` : ""}><div class="chat-step-main"><div class="chat-step-head">` +
-        (body ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open}">` : `<div class="chat-step-toggle">`) +
+        (body ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open}"${tip}>` : `<div class="chat-step-toggle"${tip}>`) +
         `<span class="chat-console-branch" aria-hidden="true">${branch}</span>${head}${body ? "</button>" : "</div>"}</div>` +
         (body ? `<div class="chat-step-reveal${open ? " is-open" : ""}"><div class="chat-step-reveal-inner">${body}</div></div>` : "") + `</div></div>`;
     };
-    const rows = calls.map((c) => {
+    // One line per call: the call, then how it ended; a long command is cut
+    // on its line and wraps whole when the row opens.
+    // The last row of a level closes the branch (└); the rest continue it (├).
+    const tree = (list) => list.map((r, i) => row(r.key, i === list.length - 1 ? "└" : "├", r.head, r.body, r.state, r.tool, r.title)).join("");
+    const callRow = (c) => {
       const p = deps.toolPresentation(c.trace, live);
       const exit = deps.shellExitCode(c.trace);
       const meta = p.running ? "" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
-      const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? ` <span class="chat-console-dim">${consoleStatusHtml(meta)}</span>` : ""}`;
-      return row(c.key, "├", head, consoleDetailHtml(c.trace, p.failed, p.running), p.state, c.trace.name);
-    });
-    if (parts.code) {
-      const ret = !failed && parts.result.trim()
-        ? `<div class="chat-console-codepart"><span class="chat-console-dim">Returned</span><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
-      const n = parts.code.split("\n").length;
-      rows.push(row(`${key}:code`, "└", `<span class="chat-tool-action">Code</span> <span class="chat-console-dim">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? " and what it returned" : ""}</span>`,
-        `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`, "done"));
+      const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${consoleStatusHtml(meta)}</span>` : ""}`;
+      const command = c.trace.name === "run_terminal_command" ? deps.displayCommand(c.trace) : "";
+      const body = consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
+      return { key: c.key, head, body, state: p.state, tool: c.trace.name, title: command || c.trace.path || "" };
+    };
+    const items = [];
+    for (let at = 0; at < calls.length;) {
+      // Three or more finished reads in a row are one row; it opens to them.
+      let end = at;
+      const reading = (c) => c && c.trace.name === "read_file" && !c.trace.image && deps.toolPresentation(c.trace, live).state === "done";
+      while (reading(calls[end])) end += 1;
+      if (end - at < 3) {
+        items.push(callRow(calls[at++]));
+        continue;
+      }
+      const group = calls.slice(at, end);
+      const paths = group.map((c) => deps.shortToolPath(String(c.trace.path || ""), c.trace));
+      const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
+      const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
+      items.push({ key: `${group[0].key}:reads`, tool: "read_file", state: "done",
+        head: `<span class="chat-console-call"><span class="chat-tool-action">Read</span>(<b>${group.length}</b> files${where ? ` in ${deps.escapeHtml(where)}` : ""})</span>`,
+        body: `<div class="chat-console-codetree">${tree(group.map(callRow))}</div>` });
+      at = end;
     }
-    return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: rows.length ? `<div class="chat-console-codetree">${rows.join("")}</div>` : "" };
+    if (parts.code) {
+      // A failed run's text is its error, the calls that finished before it
+      // and its console output: shown, not dropped.
+      const out = parts.result.trim();
+      const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+      const n = parts.code.split("\n").length;
+      items.push({ key: `${key}:code`, state: "done",
+        head: `<span class="chat-tool-action">Code</span><span class="chat-console-dim chat-console-codemeta">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? failed ? " and its error" : " and what it returned" : ""}</span>`,
+        body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
+    }
+    return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: items.length ? `<div class="chat-console-codetree">${tree(items)}</div>` : "" };
   }
 
 function consoleStatusHtml(text) {
@@ -387,7 +416,7 @@ function consoleResultLine(trace, presentation) {
       // The call returns at once; events print as their own rows. The watch's
       // deadline sits on the line under it, like every other pending call.
       const id = trace.command_id || trace.job_id || deps.executionIdentity(trace) || "";
-      return `Monitor started${id ? ` | task ${id}` : ""}`;
+      return `Monitor started${id ? `, task ${id}` : ""}`;
     }
     if ((running) && name === "read_url") return "Fetching…";
     if (running) return presentation.statusLabel === "Cancelling" ? "Cancelling…" : "Running…";
@@ -437,7 +466,7 @@ function consoleResultLine(trace, presentation) {
       const todos = deps.normalizeTodos(trace.todos);
       if (todos.length) {
         const done = todos.filter((item) => item.status === "completed").length;
-        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} | ${done}/${todos.length} done`;
+        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"}, ${done}/${todos.length} done`;
       }
       return "no todos";
     }
@@ -460,7 +489,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "kill_subagent") {
       const already = preview.match(/^already (\w+)/);
-      return already ? `Already ${already[1]} | nothing to stop` : "Subagent stopped";
+      return already ? `Already ${already[1]}, nothing to stop` : "Subagent stopped";
     }
     if (name === "scratch") {
       const read = preview.match(/^(\S+) \((\d+) chars\)$/);
@@ -471,7 +500,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
-      if (took) return `finished | ${took}`;
+      if (took) return `finished in ${took}`;
       return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : "finished";
     }
     // A loaded skill reads as what it is for: its description, else the
@@ -511,7 +540,7 @@ function consoleResultLine(trace, presentation) {
       }
       const took = consoleDurationLabel(trace);
       const verb = presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished";
-      return took ? `Agent "${subject}" ${verb} | ${took}` : `Agent "${subject}" ${verb}`;
+      return took ? `Agent "${subject}" ${verb} in ${took}` : `Agent "${subject}" ${verb}`;
     }
     if (name === "monitor") {
       const n = Number(trace.event_count);

@@ -526,11 +526,12 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
 
 def _calls_line(done: list[dict], stopped: list[str]) -> str:
     counts = collections.Counter(c["name"] for c in done)
-    line = (f"[Fuse: {len(done)} calls: " + ", ".join(f"{n}×{k}" for n, k in counts.items()) + "]") if done \
+    plural = lambda n: "call" if n == 1 else "calls"  # noqa: E731
+    line = (f"[Fuse: {len(done)} {plural(len(done))}: " + ", ".join(f"{n}×{k}" for n, k in counts.items()) + "]") if done \
         else "[Fuse: 0 calls: none finished]" if stopped else "[Fuse: no tool calls]"
     if stopped:
         names = "; ".join(stopped[:5]) + ("; …" if len(stopped) > 5 else "")
-        line += (f"\n[Fuse: {len(stopped)} calls were still running when the code ended and were stopped ({names}); "
+        line += (f"\n[Fuse: {len(stopped)} {plural(len(stopped))} {'was' if len(stopped) == 1 else 'were'} still running when the code ended and {'was' if len(stopped) == 1 else 'were'} stopped ({names}); "
                  "await every call.]")
     return line
 

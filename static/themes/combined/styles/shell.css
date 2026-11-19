@@ -1012,12 +1012,12 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
 /* ---- Over a wallpaper: liquid glass, no text shadows ----
    One full-height pane behind the transcript column, the prompt library and
    the composer dock (welcome text included): a strong blur, the palette's
-   ink at 55% under the text (30% in light, mostly blur), fading out over a
+   ink at 70% under the text (50% in light, with the blur), fading out over a
    long gutter toward the sides with no edge. The header and sidebar are
    lighter glass (78%, light 62%), the rail, composer card and cards denser
    (88%, light 80%). */
 html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
-  --cb-veil-a: 55%;
+  --cb-veil-a: 70%;
   --cb-chrome-a: 78%;
   --cb-card-a: 88%;
   --cb-glass: blur(40px) saturate(1.5);
@@ -1058,7 +1058,7 @@ html[data-chat-view="combined"][data-chat-backdrop]:not([data-chat-backdrop="non
   & .chat-md :not(pre) > code { color: color-mix(in srgb, var(--steel) 55%, var(--mist)); }
 }
 html[data-chat-view="combined"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="combined"] {
-  --cb-veil-a: 30%;
+  --cb-veil-a: 50%;
   --cb-chrome-a: 62%;
   --cb-card-a: 80%;
 }

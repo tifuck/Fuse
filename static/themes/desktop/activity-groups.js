@@ -207,6 +207,7 @@ function ccGroupHtml(group, live, openMap) {
     let plus = 0;
     let minus = 0;
     let failedCalls = 0;
+    let stoppedCalls = 0;
     let stillRunning = 0;
     let stillCommands = false;
     const readPaths = new Set();
@@ -220,8 +221,21 @@ function ccGroupHtml(group, live, openMap) {
     const others = new Map();
     // The line counts calls only; thoughts sit among the rows, unnamed. A
     // script counts as the calls it made; one that made none, as a script.
+    // Reads past the server's row cap (tool_runner._CHILD_READ_ROWS) draw no
+    // row; the script's own call counts still name them.
     const counted = group.items.flatMap((item) => item.calls?.length
       ? item.calls.map((entry) => ({ type: "tool", entry, cls: deps.ccToolClass(entry.trace) })) : [item]);
+    group.items.forEach((item) => {
+      if (!item.calls?.length) return;
+      const ran = deps.codeRunParts(item.entry.trace).calls.find(([name]) => name === "read_file")?.[1] || 0;
+      readOps += Math.max(0, ran - item.calls.filter((entry) => entry.trace.name === "read_file").length);
+      // A script that failed or was cut short counts as such, unless one of
+      // its calls already says so (a stopped script stops its running call).
+      const own = deps.toolPresentation(item.entry.trace, live);
+      if (item.calls.some((entry) => { const p = deps.toolPresentation(entry.trace, live); return p.failed || p.interrupted; })) return;
+      if (own.failed) failedCalls += 1;
+      else if (own.interrupted) stoppedCalls += 1;
+    });
     counted.forEach((item) => {
       if (item.type !== "tool") return;
       const trace = item.entry.trace;
@@ -237,6 +251,7 @@ function ccGroupHtml(group, live, openMap) {
       const bad = presentation.failed || (trace.name === "run_terminal_command" && presentation.state === "warning" &&
         deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError);
       if (bad) failedCalls += 1;
+      else if (presentation.interrupted) stoppedCalls += 1;
       if (!cls) {
         const kind = deps.isSearchTool(trace.name) ? "web" : OTHER_KIND[trace.name] || "tool";
         others.set(kind, (others.get(kind) || 0) + 1);
@@ -318,10 +333,13 @@ function ccGroupHtml(group, live, openMap) {
     // The diff counts end the line even when its text is cut short.
     const diffstat = stat && parts.length ? `<span class="dk-diffstat">${stat.trim()}</span>` : "";
     // Ledger: the line truncates, its tallies stay pinned at the end.
+    // A failure or a stop is never folded away: it is tallied on the line.
     const tallies = [
       stillRunning && parts.length ? `<span class="dk-tally is-running">${stillRunning} still running</span>` : "",
+      failedCalls ? `<span class="dk-tally is-failed">${failedCalls} failed</span>` : "",
+      stoppedCalls ? `<span class="dk-tally is-stopped">${stoppedCalls} stopped</span>` : "",
     ].join("");
-    const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "")).replace(/<[^>]*>/g, "");
+    const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "") + (stoppedCalls ? ` (${stoppedCalls} stopped)` : "")).replace(/<[^>]*>/g, "");
     // One call: the line stays its opened list, header hidden, so the call
     // reads as its own row; the same element folds to the summary when a
     // second call joins.
@@ -413,15 +431,18 @@ function scriptRowHtml(item, live, openMap) {
     const open = deps.stepOpenAt(openMap, key);
     const parts = deps.codeRunParts(trace);
     const total = parts.calls.length ? parts.calls.reduce((n, [, k]) => n + k, 0) : calls.length;
+    const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
     const result = presentation.failed ? String(trace.error || "failed").split("\n")[0]
-      : presentation.interrupted ? "Interrupted" : `${total} ${total === 1 ? "call" : "calls"}`;
+      : presentation.interrupted ? `Interrupted · ${finished} of ${total} ${total === 1 ? "call" : "calls"} finished` : `${total} ${total === 1 ? "call" : "calls"}`;
+    // No description: the code's first line says what it is, as in Console.
+    const name = trace.description || parts.code.split("\n").map((l) => l.trim()).find(Boolean) || "Script";
     const rows = [];
     for (let at = 0; at < calls.length;) {
       let end = at;
       const reading = (c) => c && c.trace.name === "read_file" && deps.toolPresentation(c.trace, live).state === "done";
       while (reading(calls[end])) end += 1;
       if (end - at >= 3) {
-        rows.push(readsRowHtml(calls.slice(at, end), openMap));
+        rows.push(readsRowHtml(calls.slice(at, end), live, openMap));
         at = end;
         continue;
       }
@@ -430,7 +451,7 @@ function scriptRowHtml(item, live, openMap) {
       rows.push(deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true }));
     }
     if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`), deps.escapeHtml(result)));
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-console-val">${deps.escapeHtml(trace.description || "Script")}</span></span>` +
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-console-val">${deps.escapeHtml(name)}</span></span>` +
       `<span class="chat-console-result-text">${deps.escapeHtml(result)}</span>`;
     return (
       `<li class="chat-step is-console-call is-dk-script is-${presentation.state}${open ? " is-console-expanded" : ""}" data-tool="run_code" data-state="${presentation.state}" data-step="${deps.escapeHtml(key)}">` +
@@ -452,22 +473,29 @@ function boxRowHtml(key, line, box, open, cls = "") {
     );
   }
 
-function readsRowHtml(reads, openMap) {
+function readsRowHtml(reads, live, openMap) {
     const key = deps.toolKey(reads[0].trace, reads[0].index) + ":reads";
     const paths = reads.map((c) => deps.shortToolPath(String(c.trace.path || ""), c.trace));
     const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
     const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
     const line = `${deps.rowIconHtml(reads[0].trace)}<span class="chat-console-call"><span class="chat-tool-action">Read</span><span class="chat-console-paren">(</span>` +
       `<span class="chat-console-val"><span class="dk-base">${reads.length} files</span>${where ? ` <span class="dk-dir">in ${deps.escapeHtml(where)}</span>` : ""}</span><span class="chat-console-paren">)</span></span>`;
-    const body = `<pre class="chat-console-out is-stdout">${deps.escapeHtml(paths.join("\n"))}</pre>`;
-    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: `${reads.length} files`, host: reads[0].trace.host || "" }), deps.stepOpenAt(openMap, key));
+    // It opens to the reads themselves, each opening to what it read.
+    const rows = reads.map((c) => {
+      const k = deps.toolKey(c.trace, c.index);
+      return deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true });
+    }).join("");
+    return boxRowHtml(key, line, `<ol class="chat-timeline dk-script-calls">${rows}</ol>`, deps.stepOpenAt(openMap, key));
   }
 
 function codeRowHtml(trace, parts, key, open, meta) {
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span><span class="chat-console-val">and what it returned</span></span>`;
+    // A failed run's text is its error, the calls that finished before it and
+    // its console output: shown, not dropped.
+    const failed = deps.toolPresentation(trace, false).failed;
+    const ret = parts.result.trim()
+      ? `<div class="dk-code-part"><div class="dk-code-label">${failed ? "Error" : "Returned"}</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and what it returned"}</span>` : ""}</span>`;
     const lines = parts.code.split("\n").length;
-    const ret = !deps.toolPresentation(trace, false).failed && parts.result.trim()
-      ? `<div class="dk-code-part"><div class="dk-code-label">Returned</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
     const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
       `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
     return boxRowHtml(key, line, deps.callBoxHtml({ body, state: meta, host: trace.host || "" }), open, " is-dk-coderow");
@@ -495,7 +523,7 @@ const OTHER_KIND = {
     read_url: "fetch", monitor: "monitor", get_command_output: "wait", kill_command: "stop", load_skill: "skill",
     propose_skill: "draft", create_artifact: "artifact", update_artifact: "artifact", edit_artifact: "artifact",
     read_artifact: "artifact-read", remember: "remember", recall: "recall", forget: "forget", scratch: "scratch",
-    read_transcript: "transcript", search_models: "models", run_code: "script",
+    read_transcript: "transcript", search_models: "models", run_code: "script", read_result: "kept",
   };
 const OTHER_WORDS = {
     fetch: ["fetched", "fetching", "page", "pages"], web: ["ran", "running", "web search", "web searches"],
@@ -506,6 +534,7 @@ const OTHER_WORDS = {
     recall: ["recalled", "recalling", "memory", "memories"], forget: ["forgot", "forgetting", "memory", "memories"],
     scratch: ["used", "using", "scratch note", "scratch notes"], transcript: ["read", "reading", "transcript", "transcripts"],
     models: ["searched", "searching", "model list", "model lists"], script: ["ran", "running", "script", "scripts"],
+    kept: ["read", "reading", "kept result", "kept results"],
     tool: ["used", "using", "tool", "tools"],
   };
 

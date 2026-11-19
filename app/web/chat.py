@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
-from .. import artifacts, speech, chat_drafts, model_favorites, chat_events, chat_images, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
+from .. import artifacts, speech, chat_drafts, notices, model_favorites, chat_events, chat_images, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
 from ..config import settings
 from ..security import limiter
 from ..sources import openrouter as openrouter_mod
@@ -116,6 +116,7 @@ async def chat_sync_snapshot(request: Request):
                 "live_agents": int(live_agents),
                 "drafts": chat_drafts.list_drafts(user["id"], conn),
                 "favorites": model_favorites.from_prefs(account["pool_prefs"] if account else None),
+                "notices": notices.list_open(user["id"], conn),
             }
         data["projects"] = chats.list_sidebar_projects(user["id"])
         return data
@@ -1242,6 +1243,15 @@ async def chat_favorite_put(request: Request):
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     return JSONResponse({"models": ids})
+
+
+@router.post("/chat/notices/{notice_id}/dismiss")
+async def chat_notice_dismiss(request: Request, notice_id: int):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    await asyncio.to_thread(notices.dismiss, user["id"], notice_id)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/chat/completions")

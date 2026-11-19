@@ -48,3 +48,25 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:first-child td { border-top: 0 !important; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }
+
+/* Over a wallpaper the transcript runs the full width, so it reads on a veil
+   of the palette's ink (84%, light 80%). Text is left-aligned, so the veil
+   holds over the left half and eases off toward the right edge, down to
+   two fifths of its strength. */
+html[data-chat-console="true"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread {
+  --a: 84%;
+  --v: var(--ink);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--v) var(--a), transparent) 50%,
+    color-mix(in srgb, var(--v) calc(var(--a) * 0.92), transparent) 62%,
+    color-mix(in srgb, var(--v) calc(var(--a) * 0.74), transparent) 74%,
+    color-mix(in srgb, var(--v) calc(var(--a) * 0.54), transparent) 87%,
+    color-mix(in srgb, var(--v) calc(var(--a) * 0.4), transparent));
+}
+html[data-chat-console="true"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { --a: 80%; }
+@media (max-width: 800px) {
+  html[data-chat-console="true"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { background: color-mix(in srgb, var(--v) var(--a), transparent); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-chat-console="true"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="console"] .chat-thread { background: var(--ink); }
+}

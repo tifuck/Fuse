@@ -305,11 +305,17 @@ function consoleCallHtml(trace, presentation, full = false) {
     }
     const described = shellDescription(trace, presentation, full);
     if (described) {
-      // The description is the row's sentence, in the past tense ("Listed the
-      // test areas") however it ended; its first word is the verb, quiet like
-      // every other row's. A description that does not start with a verb keeps
+      // The description is the row's sentence: in the past tense once it
+      // finished ("Listed the test areas"), running while it runs in the
+      // background ("Starting the server"), and as written when it failed or
+      // was cut short ("Build the release · Interrupted"), so it never claims
+      // what did not happen. Its first word is the verb, quiet like every
+      // other row's. A description that does not start with a verb keeps
       // "Ran" before it.
-      const sentence = deps.ccRunningForm(described) ? deps.ccInflect(described).done : "";
+      const forms = deps.ccRunningForm(described) ? deps.ccInflect(described) : null;
+      const exitError = presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError;
+      const settled = !presentation?.running && !presentation?.failed && !presentation?.interrupted && !exitError;
+      const sentence = !forms ? "" : presentation?.running ? forms.running : settled ? forms.done : described;
       const space = sentence.indexOf(" ");
       const lead = !sentence ? verb : space === -1 ? sentence : sentence.slice(0, space);
       const rest = !sentence ? described : space === -1 ? "" : sentence.slice(space + 1);
@@ -621,7 +627,7 @@ function searchQueries(trace) {
 function codeRunParts(trace) {
     const text = String(trace?.output || "");
     const lines = text.split("\n");
-    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls: |no tool calls\])/.test(line));
+    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls?: |no tool calls\])/.test(line));
     const calls = at < 0 ? [] : [...lines[at].matchAll(/(\w+)×(\d+)/g)].map((m) => [m[1], Number(m[2])]);
     let end = at + 1;
     while (at >= 0 && end < lines.length && lines[end].startsWith("[Fuse: ")) end += 1;

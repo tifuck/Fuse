@@ -83,7 +83,7 @@ function toolSubject(trace) {
     if (["grep", "glob"].includes(name)) return [toolText(trace.pattern || trace.query || "pattern", 90), trace.path ? `in ${compactPath(trace.path, trace, 36)}` : ""].filter(Boolean).join(" ");
     if (["spawn_subagent", "get_subagent_output", "kill_subagent"].includes(name)) {
       const label = toolText(agentDescriptionFor(trace) || "subagent", 120);
-      return name === "spawn_subagent" && trace.model ? `${label} | ${toolText(trace.model, 40)}` : label;
+      return name === "spawn_subagent" && trace.model ? `${label} (${toolText(trace.model, 40)})` : label;
     }
     if (name === "read_url") { try { const u = new URL(trace.url); return u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : compactPath(u.pathname, {}, 45)); } catch { return trace.url || "page"; } }
     if (isSearchTool(name)) {
@@ -227,7 +227,7 @@ function structuredToolHtml(trace, output) {
       const rows = list.map((row) => ({
         state: row.status === "running" || row.status === "queued" ? "live" : row.status === "completed" ? "done" : row.status === "failed" ? "fail" : "idle",
         title: row.description || row.id,
-        detail: [row.status, row.model].filter(Boolean).join(" | "),
+        detail: [row.status, row.model].filter(Boolean).join(", "),
       }));
       return kvListHtml(rows) || `<p class="chat-tool-note">No subagents.</p>`;
     }
@@ -235,7 +235,7 @@ function structuredToolHtml(trace, output) {
       const data = json();
       const models = data && Array.isArray(data.models) ? data.models : objects().filter((row) => row.id);
       if (!models.length && !data) return null;
-      return kvListHtml(models.map((row) => ({ title: row.name || row.id, detail: [row.id, row.provider].filter(Boolean).join(" | ") }))) || `<p class="chat-tool-note">No matching models.</p>`;
+      return kvListHtml(models.map((row) => ({ title: row.name || row.id, detail: [row.id, row.provider].filter(Boolean).join(", ") }))) || `<p class="chat-tool-note">No matching models.</p>`;
     }
     if (name === "search_tools") {
       const data = json();
@@ -565,7 +565,7 @@ function searchQueries(trace) {
 function codeRunParts(trace) {
     const text = String(trace?.output || "");
     const lines = text.split("\n");
-    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls: |no tool calls\])/.test(line));
+    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls?: |no tool calls\])/.test(line));
     const calls = at < 0 ? [] : [...lines[at].matchAll(/(\w+)×(\d+)/g)].map((m) => [m[1], Number(m[2])]);
     let end = at + 1;
     while (at >= 0 && end < lines.length && lines[end].startsWith("[Fuse: ")) end += 1;

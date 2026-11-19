@@ -467,7 +467,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      the scrollbar. The 100% is the box's width, wherever it is used. */
   & .chat-stage { container-type: inline-size; }
   & .chat-dock { --dk-stage-w: 100cqw; --dk-card-out: clamp(0px, calc((var(--dk-stage-w) - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
-  &:not(.is-empty) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
+  &:is(.is-empty, :not(.is-empty)) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
   /* The transcript runs on behind the composer's glass, as under the model
      picker: the dock overlaps the scroller down to 12px above the card's
      bottom edge (inside its rounded corners), so text never shows behind the
@@ -983,7 +983,7 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
    (a near-base tone at 80%, light 80%) with a hairline edge and a specular
    top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 64%;
+  --dk-veil-a: 84%;
   --dk-chrome-a: 74%;
   --dk-card-a: 80%;
   --dk-glass: blur(14px) saturate(1.35);
@@ -995,42 +995,58 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.08);
   background: transparent;
   & :is(.chat-stage, .chat-thread, .dk-head, .chat-dock) { background: transparent; }
-  /* The stage's spacer: out of the flow, the reading pane under the bar,
-     at full strength from 1rem outside the column and eased (slow, then
-     quicker) across the whole gutter. */
+  /* The stage's spacer: out of the flow, the reading pane (under the bar
+     too, so the bar's glass blurs the same veiled ground and meets it with no seam).
+     Full strength over the text only: the fade starts right at the content's
+     edge (the column less the log's 12px padding) and eases out across the
+     whole gutter, quick at first, then long and faint. */
   & .chat-stage::before {
-    --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
+    --f: max(0px, calc(50% - var(--chat-col) / 2 + 12px));
+    --fl: var(--f);
+    --fr: var(--f);
     --v: var(--ink);
     position: absolute;
-    inset: var(--chat-bar-h) 0 0;
+    inset: 0;
     z-index: -1;
     flex: none;
     /* The veil's own alpha eases in: a gradient, not a mask over a flat fill,
        so the pane composites as one layer. */
     --a: var(--dk-veil-a);
     background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(var(--f) * 0.2),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(var(--f) * 0.8),
-      color-mix(in srgb, var(--v) var(--a), transparent) var(--f),
-      color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--f)),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(100% - var(--f) * 0.8),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(100% - var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(100% - var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(100% - var(--f) * 0.2),
-      transparent);
+      color-mix(in srgb, var(--v) calc(var(--a) * var(--el, 0)), transparent),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.05)), transparent) calc(var(--fl) * 0.15),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.15)), transparent) calc(var(--fl) * 0.3),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.33)), transparent) calc(var(--fl) * 0.5),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.58)), transparent) calc(var(--fl) * 0.7),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--el, 0), 0.8)), transparent) calc(var(--fl) * 0.85),
+      color-mix(in srgb, var(--v) var(--a), transparent) var(--fl),
+      color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--fr)),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.8)), transparent) calc(100% - var(--fr) * 0.85),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.58)), transparent) calc(100% - var(--fr) * 0.7),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.33)), transparent) calc(100% - var(--fr) * 0.5),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.15)), transparent) calc(100% - var(--fr) * 0.3),
+      color-mix(in srgb, var(--v) calc(var(--a) * max(var(--er, 0), 0.05)), transparent) calc(100% - var(--fr) * 0.15),
+      color-mix(in srgb, var(--v) calc(var(--a) * var(--er, 0)), transparent));
+  }
+  /* Against a docked sidebar or inspector the fade stops at a quarter, so
+     the pane's glass never sits on a strip of bare wallpaper. */
+  @media (min-width: 801px) {
+    &:not(.history-collapsed) .chat-stage::before { --el: 0.25; }
+    &[data-theme-insp="dock"][data-theme-rail-state="open"] .chat-stage::before { --er: 0.25; }
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Darker toward the window edge each pane sits on. */
   & .dk-side { background: linear-gradient(90deg, var(--dk-edge-dim), transparent 48px), var(--dk-chrome-bg); }
+  /* No hairlines over a wallpaper: the glass tones meet on their own. */
+  & :is(.dk-head, .dk-side-head) { border-bottom-color: transparent; }
   /* The bar's glass sits on a layer under it: a filter on the bar itself would
      contain the ⋯ menu's, leaving the page under the menu unblurred. */
   & .dk-head { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   & .dk-head::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(var(--dk-edge-dim), transparent), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & .dk-side-head { background: linear-gradient(var(--dk-edge-dim), transparent); margin-inline: -8px; padding-inline: 8px; }
   & .dk-head { box-shadow: none; }
+  /* The bar's glass runs on 14px past its edge and fades out there, so it
+     eases into the pane instead of ending on a line. */
+  & .dk-head::before { inset: 0 0 -14px; -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent); mask-image: linear-gradient(#000 calc(100% - 14px), transparent); }
   & .chat-latest { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.dk-wp, .chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & :is(.chat-queue, .chat-perm-card, .chat-latest) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
@@ -1053,9 +1069,9 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--dk-link) 80%, var(--dk-text)); }
 }
 html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 58%;
+  --dk-veil-a: 80%;
   --dk-sec-a: 70%;
-  --dk-chrome-a: 62%;
+  --dk-chrome-a: 72%;
   --dk-edge-dim: color-mix(in srgb, var(--dk-side) 50%, transparent);
   --dk-card-a: 80%;
   --dk-glass-tone: var(--ink);
@@ -1073,10 +1089,12 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }
 
-/* Machine stats (static/chat/hoststats.js): plain numbers, a glyph each, in
-   the top bar before its buttons. Each value has a fixed-width slot, so the
-   bar never shifts as numbers change; a narrower bar drops the network, then
-   the disk, then memory. Click or tap opens the details card, and a machine
+/* Machine stats: CPU, memory, disk and network of the session's machine, in
+   the composer's controls row between the permission mode and the model.
+   Each value has a fixed-width slot, so the row never shifts as numbers
+   change; the runtime drops the name, network and disk when the row is
+   narrow (hoststats.js fit). Values stay as dim as their icons until a load
+   passes 50% (loadTone). Click or tap opens the details card, and a machine
    that stops reporting greys out in place (data-host-stats-keep). On phones
    the runtime moves the card into the strip above the input
    ([data-host-stats-narrow]): it steps aside while the chat is read back
@@ -1088,7 +1106,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12px;
   }
   @media (max-width: 640px) { & .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } } }
-  & .chat-host-stats { position: relative; display: flex; flex: none; align-items: center; }
+  & .chat-host-stats { --hs-hi: var(--dk-text); position: relative; display: flex; flex: none; align-items: center; }
   & :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
   & .hs-toggle {
     display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
@@ -1100,19 +1118,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .hs-toggle:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .hs-slice { display: flex; align-items: center; gap: 4px; }
   & .hs-slice svg { flex: none; }
-  & .hs-slice b { display: inline-block; min-width: 3.3ch; font-weight: 500; color: var(--dk-text); }
+  & .hs-slice b { display: inline-block; min-width: 3.3ch; font-weight: 500; }
   & .hs-net { gap: 7px; }
   & .hs-net > span { display: inline-flex; align-items: center; gap: 1px; }
   & .hs-net b { min-width: 3.6ch; }
   & .chat-host-stats.is-stale .hs-slice b { color: var(--dk-mute); }
-  & .dk-head .chat-host-stats { margin-left: 8px; }
-  @container dk-head (max-width: 760px) { & .dk-head .hs-net { display: none; } }
-  @container dk-head (max-width: 640px) { & .dk-head .hs-disk { display: none; } }
-  @container dk-head (max-width: 540px) { & .dk-head .hs-ram { display: none; } }
-  @container dk-head (max-width: 440px) { & .dk-head .chat-host-stats { display: none; } }
-  /* The details card: under the bar's stats, above the phone's strip. */
+  & .dk-row2 > .chat-host-stats { position: absolute; left: 50%; translate: -50% 0; }
+  /* The details card: above the stats, in the row and in the phone's strip. */
   & .hs-pop {
-    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 20rem; padding: 12px;
+    position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; z-index: 30; width: 20rem; padding: 12px;
     border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); box-shadow: var(--dk-pop-shadow);
     color: var(--dk-text); font: 12.5px/1.4 var(--sans); font-variant-numeric: tabular-nums; cursor: default;
   }
@@ -1141,7 +1155,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-stats-strip:not(:has(> .chat-host-stats:not([hidden]))) { display: none; }
   & .dk-stats-strip .chat-host-stats { justify-content: center; height: 20px; margin: 0 0 6px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease; }
   & .dk-stats-strip .hs-toggle { gap: 14px; height: 32px; margin-block: -6px; padding: 0 10px; border-radius: 8px; }
-  & .dk-stats-strip .hs-pop { top: auto; bottom: calc(100% + 10px); left: 0; right: 0; width: auto; font-size: 14px; }
+  & .dk-stats-strip .hs-pop { left: 0; right: 0; translate: none; width: auto; font-size: 14px; }
   /* Read back, the chat would run through the strip: it steps aside. */
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
   /* Jump to latest takes its spot, unless something else sits above the strip. */

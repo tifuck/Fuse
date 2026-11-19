@@ -55,6 +55,7 @@ class Output:
         msg["status"] = "running"
         msg["stopped"] = False
         self.message = msg
+        self.error_kind = ""  # provider_errors' kind of the failure, when it has one
         self._think_inside = False
         self._think_pending = ""
         # A think tag opens a thought only before the round's first visible
@@ -568,6 +569,8 @@ class Output:
             error = obj["error"]
             text = error if isinstance(error, str) else error.get("message", "Upstream error") if isinstance(error, dict) else "Upstream error"
             msg["error"] = chats._legacy_text(text, chats.ERROR_MAX)
+            if isinstance(error, dict):
+                self.error_kind = str(error.get("fuse_kind") or "")
             if chat_runtime._provider_error_content(msg.get("content") or ""):
                 msg["content"] = ""
                 msg["segments"] = [

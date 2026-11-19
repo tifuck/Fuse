@@ -1,10 +1,12 @@
 /* desktop theme copy of static/styles/components/toasts.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
-/* —— Toasts: the one notice surface on every page (fuseUI.toast) ——
-   Under the header bar on the right (full width on a phone), clear of the
-   composer and above every panel and sheet; while a modal dialog is open the
-   stack lives inside it. Tone is the left rule and the first line: brass for
-   a limit or a guardrail, red for a fault. */
+/* —— Toasts and notifications: the one notice surface on every page (fuseUI.toast) ——
+   Under the header bar on the right (across the top on a phone), clear of
+   the composer and above every panel and sheet; while a modal dialog is open
+   the stack lives inside it. Tone is the left rule and the first line: green
+   for done, brass for a limit or a guardrail, red for a fault. A
+   notification adds a source line (the chat it is about) and opens it on a
+   click. On a phone the stack folds to its newest card and a "N more" chip. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toasts {
   position: fixed;
   top: max(var(--toast-top, 0px), env(safe-area-inset-top, 0px));
@@ -13,7 +15,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  width: min(23rem, calc(100vw - 2rem));
+  width: min(24rem, calc(100vw - 2rem));
   margin-top: 0.5rem;
   pointer-events: none;
 }
@@ -21,10 +23,11 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast {
   --toast-tone: var(--line);
   --toast-ink: var(--mist);
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.45rem 0.6rem 0.8rem;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.4rem 0.6rem 0.8rem;
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--toast-tone);
@@ -32,8 +35,14 @@
   box-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
   color: var(--mist);
   pointer-events: auto;
+  touch-action: pan-y;
+  transform: translateX(var(--toast-dx, 0px));
+  transition: transform var(--dur-2, 180ms) var(--ease-snap, ease-out), border-color var(--dur-1, 120ms) ease;
   animation: fuse-toast-in var(--dur-2, 180ms) var(--ease-snap, ease-out);
 }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-dragging { transition: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-leaving { pointer-events: none; animation: fuse-toast-out 160ms ease-in forwards; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-swiped.is-leaving { animation-name: fuse-toast-fade; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-ok { --toast-tone: var(--ok); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-warn { --toast-tone: var(--brass); --toast-ink: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-err { --toast-tone: var(--fault); --toast-ink: var(--fault); }
@@ -43,7 +52,18 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  padding: 0.1rem 0;
+  outline: none;
 }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body small {
+  overflow: hidden;
+  color: var(--mute);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body small:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body b {
   color: var(--toast-ink);
   font-size: 0.85rem;
@@ -58,9 +78,19 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body span:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body b:empty + span { color: var(--toast-ink); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-act { display: flex; flex: 0 0 auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-note .fuse-toast-body span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-act { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-act:empty { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link .fuse-toast-body { cursor: pointer; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link:hover { border-color: var(--mute); border-left-color: var(--toast-tone); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link .fuse-toast-body:focus-visible { outline: 2px solid var(--focus, var(--mist)); outline-offset: 3px; border-radius: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-x {
   flex: 0 0 auto;
   display: grid;
@@ -75,16 +105,42 @@
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-x:hover { color: var(--mist); background: var(--raise); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toasts-more {
+  align-self: center;
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  color: var(--mist);
+  font: inherit;
+  font-size: 0.78rem;
+  pointer-events: auto;
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toasts.is-folded > .fuse-toast:not(:first-child) { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toasts.is-folded > .fuse-toast:first-child {
+  box-shadow: 0 6px 0 -3px var(--panel), 0 6px 0 -2px var(--line), 0 14px 36px rgb(0 0 0 / 0.4);
+}
 @keyframes fuse-toast-in {
   from { opacity: 0; transform: translateY(-6px); }
 }
+@keyframes fuse-toast-out {
+  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+@keyframes fuse-toast-fade {
+  to { opacity: 0; }
+}
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
-  :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-x { width: 2.25rem; height: 2.25rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-x { width: 2.25rem; height: 2.25rem; margin: -0.3rem -0.1rem -0.3rem 0; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-act .btn { min-height: 2.25rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast { animation: none; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast, :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-leaving { animation: none; transition: none; }
 }
+
 /* Vault unlock prompt: a modal dialog (.modal.modal-confirm). */
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-vault-why {
   margin: 0 0 0.7rem;

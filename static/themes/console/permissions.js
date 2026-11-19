@@ -5,7 +5,7 @@ function permissionCardHtml(perm, msg) {
     if (perm.kind === "tool_permission") return "";
     const status = perm.status || "pending";
     const pending = status === "pending";
-    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" | ") || "SKILL.md";
+    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(", ") || "SKILL.md";
     const replace = perm.overwrite
       ? `<label class="chat-skill-check"><input type="checkbox" data-perm-replace><span>Replace your existing <code>${deps.escapeHtml(perm.slug || "")}</code>${perm.origin_existing ? ` (${deps.escapeHtml(perm.origin_existing)})` : ""}</span></label>`
       : "";
