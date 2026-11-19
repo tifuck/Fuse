@@ -1,14 +1,16 @@
 """Manual compaction: a checkpoint applies once, the next turn sends the
 summary plus the rows after it, edits before the boundary drop it; and the
 context meter's arithmetic."""
-from unittest.mock import patch
+import threading
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app import chat_store, chats, context_compact, context_meter
+from app import chat_checkpoint, chat_runtime, chat_store, chats, context_compact, context_meter, db
 from app.chats import ChatValidationError
 from app.config import settings
 from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames
+from tests.core.threads.test_lock_order import _race
 
 OLD = "the original long discussion about the parser rewrite"
 
@@ -69,6 +71,93 @@ def test_a_compaction_applies_once(fresh_db):
                                   expected_revision=thread["revision"])
     assert refused.value.status_code == 409
     assert len(chats.get_thread(uid, thread["id"])["compaction"]["checkpoints"]) == 1
+
+
+def test_two_compactions_racing_from_one_revision_conflict_at_the_row_lock(fresh_db):
+    uid = make_user()
+    thread = _long_chat(uid)
+    prepared = chat_store.prepare_compact(uid, thread["id"], thread["revision"], "cmp-1")
+    held = []
+    real = chat_checkpoint._hold_revision
+
+    def spy(conn, pk, user_id, row):
+        ok = real(conn, pk, user_id, row)
+        held.append((threading.current_thread().name, ok))
+        return ok
+
+    def finish(summary, command_id=None, fingerprint="x"):
+        checkpoint = context_compact.make_checkpoint(summary=summary, through_message_id=thread["messages"][5]["id"],
+                                                     strategy="summarize", trigger="manual")
+        try:
+            return chat_store.finish_compact(uid, thread["id"], checkpoint, command_id=command_id,
+                                             fingerprint=fingerprint, expected_revision=thread["revision"])
+        except ChatValidationError as exc:
+            return exc.status_code
+
+    # Both read the same revision before either wrote: only the row lock can
+    # tell them apart (check_revision passes for both).
+    with patch.object(chat_checkpoint, "_hold_revision", new=spy):
+        second = _race(lambda: finish("FIRST", "cmp-1", prepared["fingerprint"]), (chat_checkpoint, "_hold_revision"),
+                       lambda: finish("SECOND"), after=True)
+
+    assert second == 409
+    assert held[0] == ("first", True) and held[1][1] is False
+    assert [c["summary"] for c in _stored_checkpoints(uid, thread["id"])] == ["FIRST"]
+
+
+def _stored_state(uid, thread_id):
+    pk = chats.resolve_thread_pk(uid, thread_id)
+    return pk, context_compact.parse_state(db.fetchone("SELECT compaction FROM chat_threads WHERE id=?", (pk,))["compaction"])
+
+
+def _stored_checkpoints(uid, thread_id):
+    return _stored_state(uid, thread_id)[1].get("checkpoints") or []
+
+
+def _set_window(uid, thread_id, window):
+    pk, state = _stored_state(uid, thread_id)
+    db.execute("UPDATE chat_threads SET compaction=? WHERE id=?",
+               (context_compact.dump_state({**state, "window_override": window}), pk))
+
+
+def test_boot_compaction_holds_the_new_request_out_of_the_summary_and_the_next_turn_keeps_it(fresh_db, meter_settings):
+    uid = make_user()
+    thread = _long_chat(uid)
+    _set_window(uid, thread["id"], 3_000)
+    summarizer = AsyncMock(return_value="SUMMARY: boot handoff")
+
+    with patch.object(chat_runtime, "summarize_conversation", new=summarizer), \
+            fake_provider(text_frames("ok"), text_frames("again")) as provider:
+        _, run = run_async(run_turn(uid, "carry on", thread=chats.get_thread(uid, thread["id"])))
+        checkpoints = _stored_checkpoints(uid, thread["id"])
+        _set_window(uid, thread["id"], 1_000_000)
+        run_async(run_turn(uid, "and then", thread=chats.get_thread(uid, thread["id"])))
+
+    # The request being answered was re-sent verbatim, not summarized.
+    summarizer.assert_awaited_once()
+    summarized = "\n".join(str(m.get("content")) for m in summarizer.await_args.args[3])
+    assert f"{OLD} part 3" in summarized and "carry on" not in summarized
+    # A durable turn's handoff covers that turn up to its own reply row.
+    assert [(c["summary"], c["provider"], c["display_through_id"]) for c in checkpoints] == [
+        ("SUMMARY: boot handoff", True, run["message_id"])]
+    first = [(m["role"], str(m["content"])) for m in provider.bodies[0]["messages"] if m["role"] in ("user", "assistant")]
+    assert first[-1][0] == "user" and first[-1][1].startswith("carry on")
+    later = "\n".join(str(m["content"]) for m in provider.bodies[1]["messages"] if m["role"] in ("user", "assistant"))
+    assert "SUMMARY: boot handoff" in later and "carry on" in later and "and then" in later
+    assert f"{OLD} part 0" not in later
+
+
+def test_a_durable_twin_of_a_boot_checkpoint_stops_before_the_held_request():
+    rows = []
+    for n in range(4):
+        rows += [{"id": f"u{n}", "role": "user", "content": f"ask {n}"}, {"id": f"a{n}", "role": "assistant", "content": f"answer {n}"}]
+    rows.append({"id": "u4", "role": "user", "content": "carry on"})
+    live = context_compact.make_checkpoint(summary="SUMMARY", through_message_id=None, strategy="summarize",
+                                           trigger="auto", provider=True)
+
+    held = context_compact.durable_checkpoint(rows, live, held=1)
+    assert (held["through_message_id"], held["summary"], held["provider"]) == ("a3", "SUMMARY", False)
+    assert context_compact.durable_checkpoint(rows, live)["through_message_id"] == "u4"
 
 
 def test_compaction_waits_for_a_running_turn(fresh_db):

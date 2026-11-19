@@ -203,6 +203,23 @@ def test_explore_child_cannot_load_or_call_write_tools(fresh_db):
     workspace.assert_not_called()
 
 
+@pytest.mark.parametrize("kind, name", [
+    ("explore", "write_file"), ("explore", "search_replace"),
+    ("plan", "write_file"), ("plan", "search_replace"), ("plan", "run_terminal_command"), ("plan", "monitor"),
+])
+def test_a_restricted_child_is_refused_a_write_or_shell_tool_even_when_loaded(kind, name):
+    import asyncio
+
+    from app import chat_tools
+
+    with patch("app.workspace.execute", new_callable=AsyncMock) as workspace:
+        text, rec = asyncio.run(chat_tools.execute_tool(
+            name, json.dumps({"path": "/tmp/x", "content": "hi", "command": "echo hi"}), user_id=1, allowed_urls=set(),
+            coding=True, loaded=[name], session={"subagent_type": kind, "run_id": "r1"}))
+    assert (rec["status"], rec["kind"]) == ("error", "denied") and kind in text
+    workspace.assert_not_called()
+
+
 def test_spawn_tools_are_offered_to_a_child_only_when_nesting_is_on(fresh_db):
     for nested in (False, True):
         uid = coding_user(f"n{nested}@core.test", nested=nested)

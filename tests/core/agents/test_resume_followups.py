@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from app import agents, chat_store, chats
+from app import agents, chat_store, chat_tx, chats
 from app.chat_generation import inbox
 from app.chat_store import SpawnCapError
 from tests.core.agents._support import (
@@ -14,6 +14,7 @@ from tests.core.agents._support import (
     tool_result,
 )
 from tests.core.helpers import run_async, run_turn, text_frames, tool_call_frames, wait_until_async
+from tests.core.threads.test_lock_order import _race
 
 
 def _child_id(body, call_id):
@@ -328,3 +329,38 @@ def test_child_ids_resolve_from_exact_tokens_only(fresh_db):
     assert chat_store.resolve_child_run(uid, api["id"][:8], thread_id=thread["id"])["id"] == api["id"]
     assert chat_store.resolve_child_run(uid, api["id"][:3], thread_id=thread["id"]) is None
     assert chat_store.resolve_child_run(uid + 1, api["id"], thread_id=thread["id"]) is None
+
+
+def _finished_worker(uid):
+    thread, parent = parent_and_thread(uid)
+    worker = child(uid, thread, parent)
+    set_running(worker["id"])
+    chat_store.save_turn_progress(worker["id"], [{"role": "user", "content": "inspect"},
+                                                 {"role": "assistant", "content": "looked around"}])
+    chat_store.finish_run(worker["id"], {"content": "REPORT", "tools": []}, "completed")
+    return thread, parent, worker["id"]
+
+
+@pytest.mark.parametrize("first", ["follow-up", "resume"])
+def test_a_follow_up_continuation_and_a_task_id_resume_racing_continue_the_child_once(fresh_db, first):
+    uid = coding_user()
+    thread, parent, worker = _finished_worker(uid)
+
+    def follow_up():
+        return chat_store.continue_child_with_followups(worker, ["ALSO CHECK Y"], by_user=True)
+
+    def resume():
+        try:
+            return child(uid, thread, parent, resume_from_id=worker, prompt="SECOND TASK")["id"]
+        except SpawnCapError:
+            return None
+
+    # The first has re-queued the child (its row locked, uncommitted) when
+    # the second reads it.
+    one, two = (follow_up, resume) if first == "follow-up" else (resume, follow_up)
+    assert _race(one, (chat_tx, "event"), two) in (False, None)
+
+    sent = json.dumps(chat_store.get_run(uid, worker)["request"]["messages"])
+    assert chat_store.get_run(uid, worker)["status"] == "queued"
+    assert ("ALSO CHECK Y" in sent) is (first == "follow-up")
+    assert ("SECOND TASK" in sent) is (first == "resume")
