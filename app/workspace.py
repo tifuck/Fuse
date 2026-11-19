@@ -129,13 +129,20 @@ logger = logging.getLogger(__name__)
 _CMD_START = r"(?:^|[;&|(`{]\s*|\$\(\s*|\b(?:then|do|else|exec|command|builtin|xargs|env|nohup|time|nice|ionice|eval|setsid|busybox)\s+['\"]?|\b(?:(?:ba|z|k|c|da|fi|tc|a)?sh(?:\.exe)?|pwsh|powershell(?:\.exe)?)\s+-c\s+['\"]?)"
 _DENY = re.compile(
     _CMD_START
+    # /sbin/reboot, ./bin/sudo: a command named by its path is the same command
+    + r"(?:[^\s;&|()'\"`]*/)?"
     + r"(?:"
     # rm of the filesystem root itself: rm -rf /, rm -rf /*, --no-preserve-root
     # (flag tokens are whitespace-separated so the loop cannot backtrack exponentially)
     r"rm\s+(?:-[\w-]+\s+)*(?:-[\w-]+)?(?:/\*?|--no-preserve-root\b)(?=\s|$|[;&|)])"
     r"|mkfs(?:\.\w+)?\b"
     r"|(?:shutdown|reboot|poweroff|halt)\b"
-    r"|sudo\b"
+    r"|(?:sudo|doas|pkexec)\b"
+    r"|systemctl\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec|suspend|hibernate|hybrid-sleep|suspend-then-hibernate)\b"
+    r"|telinit\b"
+    r"|init\s+[06](?=\s|$|[;&|)])"
+    # pid -1 signals every process the caller may signal
+    r"|kill\b[^\n;&|]*\s-1(?=\s|$|[;&|)])"
     # recursive world-writable on the root
     r"|chmod\s+(?=(?:-\w+\s+)*-R\s)(?:-\w+\s+)*0?777\s+/(?=\s|$|[;&|)])"
     r"|chmod\s+(?:-\w+\s+)*0?777\s+(?:-\w+\s+)*-R\s+/(?=\s|$|[;&|)])"
@@ -473,6 +480,12 @@ def _confine(path: str, root: str, *, windows: bool = False) -> str:
             raise WorkspaceError("invalid path")
         if ".." in rest.split("/"):
             raise WorkspaceError("path is outside the project root")
+        # A home path is inside only a home root (or one the gate relaxed to "").
+        base = "~" + root[5:] if (root or "").startswith("$HOME") else root or ""
+        if base not in ("", "~"):
+            full, root_n = posixpath.normpath(raw), posixpath.normpath(base)
+            if root_n != "/" and (not root_n.startswith("~") or (full != root_n and not full.startswith(root_n.rstrip("/") + "/"))):
+                raise WorkspaceError(f"{full} is outside the project root {root_n}; use a path inside it")
         return raw
     base = root or ""
     if not base:
@@ -494,7 +507,7 @@ def _confine(path: str, root: str, *, windows: bool = False) -> str:
 
 
 def _confine_win(path: str, root: str) -> str:
-    from .permissions import expand_temp
+    from .permissions import expand_temp, is_temp_path
 
     raw = expand_temp(path or ".", True).replace("/", "\\")
     if raw.startswith("~"):
@@ -503,6 +516,13 @@ def _confine_win(path: str, root: str) -> str:
             raise WorkspaceError("invalid path")
         if ".." in [p for p in rest.split("\\") if p]:
             raise WorkspaceError("path is outside the project root")
+        # A home path is inside only a home root (or one the gate relaxed to
+        # ""); %TEMP% expands to a home path and is always allowed.
+        base = re.sub(r"^(?:%USERPROFILE%|\$HOME)", "~", (root or "").replace("/", "\\"), flags=re.I)
+        if base not in ("", "~") and not is_temp_path(raw, True):
+            full, root_n = ntpath.normpath(raw).lower(), ntpath.normpath(base).lower().rstrip("\\")
+            if not root_n.startswith("~") or (full != root_n and not full.startswith(root_n + "\\")):
+                raise WorkspaceError(f"{ntpath.normpath(raw)} is outside the project root {base}; use a path inside it")
         return "~" + rest
     base = (root or "").replace("/", "\\")
     if not base:
@@ -549,14 +569,22 @@ def _command_too_long(command: str) -> str:
     return ""
 
 
+def _unquoted(text: str, windows: bool) -> str:
+    """The words as the shell reads them: \\sudo, s\\udo, "sudo" and 'sudo' all
+    run sudo (PowerShell escapes with a backtick, and keeps backslashes)."""
+    text = text.replace("`", "") if windows else re.sub(r"\\(.)", r"\1", text, flags=re.S)
+    return re.sub(r"[\"']", "", text)
+
+
 def denied(command: str, *, windows: bool = False) -> str | None:
-    text = command or ""
-    if _DENY.search(text):
-        return "command blocked by denylist"
-    if _DENY_REMOTE.search(text):
-        return "command blocked by denylist (no ssh/scp/sftp hops from a host; add that machine as its own host)"
-    if windows and _DENY_WIN.search(text):
-        return "command blocked by denylist"
+    raw = command or ""
+    for text in (raw, _unquoted(raw, windows)):
+        if _DENY.search(text):
+            return "command blocked by denylist"
+        if _DENY_REMOTE.search(text):
+            return "command blocked by denylist (no ssh/scp/sftp hops from a host; add that machine as its own host)"
+        if windows and _DENY_WIN.search(text):
+            return "command blocked by denylist"
     return None
 
 
@@ -703,6 +731,9 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         promote_path = verdict.resolved if verdict.promotable else ""
     else:
         promote_path = ""
+    if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(user_id, host_id, args, root, windows):
+        detail = "project is read-only"
+        return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     try:
         if name == "run_terminal_command":
             text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started, on_output=on_output)
@@ -826,6 +857,25 @@ async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_c
             break
         offset = next_offset
     return body, rec
+
+
+def _shell_reaches_read_only(user_id, host_id, args: dict, root: str, windows: bool) -> bool:
+    """A shell command whose cwd or any named path lies in a read-only project
+    (the working root itself is checked before the gate)."""
+    from .permissions import _resolve_for_scope, extract_shell_paths
+
+    command = str(args.get("command") or "")
+    if not command.strip():
+        return False
+    try:
+        cwd = _shell_cwd(args, root, windows=windows)
+    except WorkspaceError:
+        return False  # the shell refuses the cwd itself
+    targets = [cwd] + [path for path, _ in extract_shell_paths(command, cwd, windows) or []]
+    return any(
+        hosts.effective_permission(user_id, bound_host_id=host_id, bound_cwd=_resolve_for_scope(t, cwd, windows)) == "read_only"
+        for t in targets
+    )
 
 
 def _shell_cwd(args: dict, root: str, *, windows: bool = False) -> str:

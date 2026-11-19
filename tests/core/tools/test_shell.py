@@ -97,6 +97,22 @@ def test_the_denylist_matches_catastrophic_commands():
         assert workspace.denied(command) is None, command
 
 
+# Pure strings for the matcher only: quoted or escaped words, a command named
+# by its path, power verbs, every-process signals and other privilege tools.
+DENY_BYPASSES = ("\\sudo ls", '"sudo" ls', "s\\udo ls", "'reboot'", "/sbin/reboot", "systemctl reboot",
+                 "systemctl --no-wall poweroff", "systemctl halt", "systemctl kexec", "systemctl suspend",
+                 "systemctl hibernate", "init 0", "x && init 6", "telinit 1", "kill -9 -1", "kill -s KILL -1",
+                 "doas ls", "pkexec ls")
+
+
+def test_the_denylist_sees_through_quoting_and_covers_power_and_privilege_commands():
+    for command in DENY_BYPASSES:
+        assert workspace.denied(command), command
+    for command in ("systemctl status nginx", "kill -9 1234", "echo init 0", "git commit -m 'docs: sudo usage'",
+                    "grep -r reboot docs"):
+        assert workspace.denied(command) is None, command
+
+
 def test_denylisted_commands_are_never_sent_to_a_host(ssh_host):
     for command in DESTRUCTIVE:
         text, rec = run_async(tool(ssh_host, "run_terminal_command", command=command))

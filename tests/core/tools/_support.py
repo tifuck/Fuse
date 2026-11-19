@@ -370,7 +370,7 @@ class FakeShell:
             for arg in re.findall(r"readlink -m -- (.+?) 2>/dev/null \|\|", script):
                 word = shlex.split(arg.replace("~/", "\x00/", 1).replace("~", "\x00", 1))[0].replace("\x00", self.fs.home)
                 try:
-                    out.append(self.fs.resolve(posixpath.normpath(word), missing_ok=True))
+                    out.append(self._readlink_m(word))
                 except (OSError, AssertionError):
                     out.append("")
             return Reply("\n".join(out) + "\n")
@@ -385,6 +385,18 @@ class FakeShell:
         if "kill -TERM --" in script and "/.cache/fuse/jobs/" in script:
             return Reply(code=0)  # the process group kill "reached" the group
         return None
+
+    def _readlink_m(self, path) -> str:
+        """readlink -m: each component's symlink is followed before a later
+        .. climbs out of it (link/../x is next to the link's target)."""
+        if not path.startswith("/"):
+            raise AssertionError(f"FakeShell: realpath of a relative path {path!r}")
+        current = "/"
+        for part in path.split("/"):
+            if part in ("", "."):
+                continue
+            current = posixpath.dirname(current) if part == ".." else self.fs.resolve(posixpath.join(current, part), missing_ok=True)
+        return current
 
     def ssh(self, command) -> tuple[str, Reply]:
         """What a real host would do with `bash -lc <script>`; returns (user command, reply)."""

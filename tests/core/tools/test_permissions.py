@@ -27,14 +27,14 @@ def chat(fresh_db):
 
 
 def review(chat, tool, *, answer=None, unattended=False, thread=None, host=None, realpath=None,
-           deny_reason="", cancel=None, root=ROOT, **args):
+           deny_reason="", cancel=None, root=ROOT, windows=False, **args):
     tid = chat.tid if thread is None else thread
     user = CardUser(chat.uid, tid, answer)
     gate = permissions.Gate(user_id=chat.uid, thread_id=tid, run_id="run-1", requester=None,
                             unattended=unattended, notify=user, cancel=cancel)
     verdict = asyncio.run(permissions.review(
         tool=tool, args=args, user_id=chat.uid, host_id=host or chat.host, host_alias="box", root=root,
-        windows=False, gate=gate, deny_reason=deny_reason, realpath=realpath))
+        windows=windows, gate=gate, deny_reason=deny_reason, realpath=realpath))
     return verdict, user
 
 
@@ -201,6 +201,14 @@ def test_credential_directories_ask_even_inside_the_root(chat):
     assert asks(chat, "run_terminal_command", command="grep -r key ~/.ssh", root="~")
 
 
+def test_writes_into_a_credential_directory_ask_even_inside_the_root(chat):
+    for path in (".ssh/authorized_keys", f"{ROOT}/.aws/credentials", ".config/gh/hosts.yml"):
+        assert asks(chat, "write_file", path=path, content="x"), path
+        assert asks(chat, "search_replace", path=path, old_string="a", new_string="b"), path
+    assert not asks(chat, "write_file", path=".env", content="x")  # a secret-named file in the project
+    assert not asks(chat, "write_file", path="docs/ssh/config", content="x")
+
+
 def test_a_directory_grant_never_covers_a_secret_file_in_it(chat):
     review(chat, "list_dir", path="/etc/app", answer="allow_session")
     assert not asks(chat, "read_file", path="/etc/app/settings.ini")
@@ -245,6 +253,17 @@ def test_a_command_reaching_outside_offers_a_directory_grant_that_then_covers_it
     assert (user.asks[0]["grant_kind"], user.asks[0]["grant_value"]) == ("dir", "/var/log/app")
     assert not asks(chat, "run_terminal_command", command="tail -n 50 /var/log/app/today.log")
     assert asks(chat, "run_terminal_command", command="cat /var/log/other.log")
+
+
+def test_a_cd_moves_where_later_relative_paths_point(chat):
+    assert permissions.extract_shell_paths("cd; cat .git-credentials", ROOT, False) == [("~/.git-credentials", False)]
+    assert ("~/.git-credentials", False) in permissions.extract_shell_paths("cd ~; cat .git-credentials", ROOT, False)
+    assert ("/srv/app/src/lib/a.py", False) in permissions.extract_shell_paths("cd src && cat lib/a.py", ROOT, False)
+    for command in ("cd -; cat notes.txt", "pushd; cat notes.txt", "pushd src; popd; cat notes.txt"):
+        assert permissions.extract_shell_paths(command, ROOT, False) is None, command  # unknown directory
+    assert asks(chat, "run_terminal_command", command="cd; cat docs/notes.txt")
+    assert asks(chat, "run_terminal_command", command="cd -P ~ && cat notes.txt")
+    assert not asks(chat, "run_terminal_command", command="cd src && cat a.py")
 
 
 def test_a_directory_grant_never_covers_a_compound_command(chat):
@@ -298,6 +317,40 @@ def test_an_unresolvable_root_fails_closed(chat):
 
     assert asks(chat, "read_file", path="src/main.py", realpath=root_unknown)
     assert asks(chat, "run_terminal_command", command="cat ./src/main.py", realpath=root_unknown)
+    assert asks(chat, "run_terminal_command", command="cat link", realpath=root_unknown)  # a bare word may be a symlink
+
+
+# -- Windows ---------------------------------------------------------------
+
+WIN_ROOT = "C:\\proj"
+
+
+def test_windows_commands_that_hide_their_targets_ask(chat):
+    for command in (
+        "Get-Content -Path:C:\\Windows\\win.ini",
+        'iex "Get-Content C:\\Windows\\win.ini"',
+        "Invoke-Expression 'type C:\\Windows\\win.ini'",
+        "powershell -e ZQBjAGgAbwA=",
+        "pwsh -enc ZQBjAGgAbwA=",
+        "powershell.exe /EncodedCommand ZQBjAGgAbwA=",
+        "Start-Process notepad.exe",
+        "Get-ItemProperty HKLM:\\Software\\Microsoft",
+        "Get-ChildItem HKCU:\\",
+        "Get-ChildItem Env:",
+        "Get-ChildItem Cert:\\CurrentUser\\My",
+        "ri -Recurse build",
+        "del /s /q build",
+        "rd /s build",
+    ):
+        assert asks(chat, "run_terminal_command", command=command, root=WIN_ROOT, windows=True), command
+
+
+def test_windows_paths_in_the_project_or_temp_do_not_ask(chat):
+    assert not asks(chat, "read_file", path="c:\\PROJ\\src\\a.txt", root=WIN_ROOT, windows=True)
+    assert not asks(chat, "read_file", path="%TEMP%\\fuse\\x", root=WIN_ROOT, windows=True)
+    assert not asks(chat, "run_terminal_command", command="Get-Content -Path:src\\a.txt", root=WIN_ROOT, windows=True)
+    assert not asks(chat, "run_terminal_command", command="pwsh -ExecutionPolicy Bypass -File build.ps1",
+                    root=WIN_ROOT, windows=True)
 
 
 # -- ask records -----------------------------------------------------------

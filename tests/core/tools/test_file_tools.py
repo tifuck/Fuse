@@ -326,6 +326,14 @@ def test_a_read_only_project_blocks_writes_inside_it(ssh_host):
     assert ssh_host.fs.read(path) == b"v1\n"
 
 
+def test_a_home_path_is_outside_a_project_root(ssh_host):
+    ssh_host.fs.write(f"{ssh_host.home}/notes.txt", "home words\n")
+
+    text, rec = call(ssh_host, "read_file", path="~/notes.txt")
+
+    assert rec["status"] == "error" and "outside the project root" in text and "home words" not in text
+
+
 def test_unknown_or_reserved_host_aliases_are_refused(ssh_host):
     for alias, why in (("nowhere", "unknown host alias"), ("localhost", "not allowed")):
         text, rec = call(ssh_host, "read_file", path="x", host=alias)

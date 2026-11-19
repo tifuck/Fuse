@@ -72,6 +72,13 @@ _GATED_TOOLS = _DIR_TOOLS | _FILE_TOOLS | {"run_terminal_command", "monitor", "s
 
 _OPAQUE_SHELL = re.compile(r"[$`]|\$\{")
 _WIN_DRIVE = re.compile(r"^[A-Za-z]:")
+# PowerShell provider paths (HKLM:\Software, Env:, Cert:\, Registry::HKEY_...)
+# name no file under the cwd: they are absolute, and never inside a root.
+_PS_PROVIDER = re.compile(
+    r"^(?:(?:hklm|hkcu|hkcr|hku|hkcc|env|cert|alias|function|variable|wsman):"
+    r"|(?:[\w.]+\\)*(?:registry|filesystem|certificate|environment|alias|function|variable|wsman)::)",
+    re.I,
+)
 # A command whose real targets cannot be listed: globs expand on the host, so
 # the extracted paths do not bound what it touches ("cat .*" sweeps .env).
 _GLOB_SHELL = re.compile(r"[*?\[\]]")
@@ -128,6 +135,10 @@ _EMBEDDED_PATH = re.compile(
 _INTERPRETER_SHELL = re.compile(
     r"(?is)\b(?:(?:ba|z|da|k|a|c|tc|fi)?sh|pwsh|powershell)\b[^;|&\n]*\s-{1,2}[a-z]*c(?:ommand)?\b"
     r"|\b(?:eval|sshpass|expect|busybox)\b"
+    # PowerShell's -e/-ec/-enc/-EncodedCommand (any prefix, - or /) runs base64 code;
+    # Start-Process (saps, start) launches a program with its own arguments.
+    r"|\b(?:pwsh|powershell)(?:\.exe)?\b[^;|&\n]*\s[-/](?:e|ec|en[a-z]*)(?![\w-])"
+    r"|\b(?:start-process|saps)\b|(?:^|[;&|(\n])\s*start(?=\s)"
     r"|(?-i:(?<![^\s;&|(])(?:[^\s;&|()]*[/\\])?(?:python[\d.]*|pypy[\d.]*|node|nodejs|bun|perl|ruby|php|lua(?:jit)?|Rscript)"
     r"(?:\.exe)?(?:\s+-\S*)*?\s+(?:-[A-Za-z]*[ceE]|-r|-p|--eval|--print)(?![^\s'\"=]))"
 )
@@ -172,6 +183,9 @@ _DESTRUCTIVE_SHELL = re.compile(
     r"|\bformat\s+[a-z]:"
     r"|diskpart\b"
     r"|remove-item\b[^\n]*-recurse"
+    # Remove-Item's aliases, with -Recurse or any prefix of it; cmd's del /s, rd /s.
+    r"|\b(?:remove-item|ri|rm|del|erase|rd|rmdir)\b[^\n;&|]*\s-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?\b"
+    r"|\b(?:del|erase|rd|rmdir)\b[^\n;&|]*\s/s\b"
     r"|\bfind\b[^\n]*-(?:delete|exec|execdir)\b"
     r"|\b(?:wipefs|shred|truncate)\b"
     r")"
@@ -240,8 +254,17 @@ def _path_parts(path: str) -> list[str]:
     return [_long_name(part) for part in parts]
 
 
+# Credential stores under a shared parent: ~/.config/gh/hosts.yml holds the
+# GitHub token, ~/.config/gcloud the Google Cloud ones.
+_SECRET_SUBDIRS = {(".config", "gh"), (".config", "gcloud")}
+
+
 def _secret_dir_part(part: str) -> bool:
     return part in _SECRET_DIRS or _ntfs_name(part) in _SECRET_DIRS
+
+
+def _secret_dir_at(parts: list[str], i: int) -> bool:
+    return _secret_dir_part(parts[i]) or (i > 0 and (parts[i - 1], _ntfs_name(parts[i])) in _SECRET_SUBDIRS)
 
 
 def is_secret_path(path: str) -> bool:
@@ -250,13 +273,13 @@ def is_secret_path(path: str) -> bool:
         return False
     if is_secret_name(parts[-1]):
         return True
-    return any(_secret_dir_part(part) for part in parts[:-1])
+    return any(_secret_dir_at(parts, i) for i in range(len(parts) - 1))
 
 
 def is_secret_dir(path: str) -> bool:
     """The path is a credential directory itself (`~/.ssh`, `~/.aws/`)."""
     parts = _path_parts(path)
-    return bool(parts) and _secret_dir_part(parts[-1])
+    return bool(parts) and _secret_dir_at(parts, len(parts) - 1)
 
 
 def secret_dir_in_path(path: str) -> bool:
@@ -264,7 +287,8 @@ def secret_dir_in_path(path: str) -> bool:
 
     A secret-named file inside an approved dir is an ordinary in-scope read,
     but naming `.aws/credentials` reaches a store of secrets, so it still asks."""
-    return any(_secret_dir_part(part) for part in _path_parts(path)[:-1])
+    parts = _path_parts(path)
+    return any(_secret_dir_at(parts, i) for i in range(len(parts) - 1))
 
 
 def _norm(path: str, windows: bool) -> str:
@@ -388,7 +412,7 @@ def _resolve_for_scope(target: str, base: str, windows: bool, *, normalize: bool
         base2 = base.replace("/", "\\") if base else "~"
         if _is_home_marker(base2):
             base2 = "~"
-        if raw.startswith("~") or _WIN_DRIVE.match(raw) or raw.startswith("\\\\"):
+        if raw.startswith("~") or _WIN_DRIVE.match(raw) or raw.startswith("\\\\") or _PS_PROVIDER.match(raw):
             joined = raw
         else:
             joined = ntpath.join(base2, raw)
@@ -467,7 +491,16 @@ def _token_paths(token: str, windows: bool) -> list[str]:
     program (su -c '...', awk '...', ssh host '...'), so each of its words is
     judged on its own."""
     if windows:
-        return [token] if _looks_like_path(token, True) or is_secret_path(token) or is_secret_dir(token) else []
+        param = re.match(r"^-\w+:(?!:)(.+)$", token)  # -Path:C:\x binds the value to the parameter
+        if param:
+            token = param.group(1)
+        out = [token] if (_looks_like_path(token, True) or is_secret_path(token) or is_secret_dir(token)
+                          or _PS_PROVIDER.match(token)) else []
+        if re.search(r"\s", token):
+            # A quoted script (iex "Get-Content C:\x") names its paths word by word.
+            for word in token.split():
+                out.extend(_token_paths(word.strip("'\"(){}[];,"), True))
+        return out
     if re.search(r"\s", token):
         out: list[str] = []
         for word in token.split():
@@ -593,7 +626,10 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
         tokens = _shell_tokens(text, windows)
     except ValueError:
         return None
-    out: list[tuple[str, bool]] = []
+    # (path, is_dir, the directory a relative path is resolved in): a cd moves
+    # where later relative operands point.
+    out: list[tuple[str, bool, str]] = []
+    base = cwd or "~"
     prev = ""
     expect_target = False
     for tok in tokens:
@@ -613,32 +649,40 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
                 # Inside a quoted script the rest of the script follows the
                 # operator: judge its words, not the whole piece as one name.
                 if not re.search(r"\s", stripped):
-                    out.append((stripped, False))
+                    out.append((stripped, False, base))
                     prev = ""
                     continue
             if stripped in (">", ">>", "2>", "2>>", "<", "&>", "&>>", "1>", "1>>", "0<"):
                 expect_target = True
                 continue
-            if stripped in ("cd", "pushd") or stripped.lower() in ("cd", "pushd", "set-location"):
-                prev = "cd"
+            if stripped.lower() in ("cd", "pushd", "set-location", "popd"):
+                if stripped.lower() == "popd":
+                    return None  # back to a directory this command does not name
+                prev = stripped.lower()
                 continue
-            if prev == "cd":
+            if prev in ("cd", "pushd", "set-location"):
+                if stripped == "-" or (prev == "pushd" and stripped in ("&&", ";", "||", "&", "|")):
+                    return None  # the previous directory (or the stack's next) is unknown here
+                if stripped.startswith("-") and stripped != "-":
+                    continue  # cd -P dir, cd -- dir
                 prev = ""
-                if stripped not in ("&&", ";", "||", "&") and not stripped.startswith("-"):
-                    out.append((stripped, True))
+                if stripped in ("&&", ";", "||", "&", "|"):
+                    base = "~"  # a bare cd goes home
+                    continue
+                out.append((stripped, True, base))
+                base = _resolve_for_scope(stripped, base, windows)
                 continue
             if _ASSIGNED_VALUE.match(stripped):
                 # --file=/etc/x, if=/dev/sda, awk -v f=/etc/x: the value is the
                 # target, not a cwd-relative name.
                 stripped = stripped.split("=", 1)[1]
-            out.extend((path, False) for path in _token_paths(stripped, windows))
+            out.extend((path, False, base) for path in _token_paths(stripped, windows))
     resolved: list[tuple[str, bool]] = []
     seen: list[str] = []
-    for item, is_dir in out:
+    for item, is_dir, base in out:
         cand = item
-        if not (cand.startswith(("/", "~", "./", "../")) or cand.startswith("$HOME") or cand.startswith("%")
-                or _WIN_DRIVE.match(cand) or cand.startswith("\\\\")):
-            base = cwd or "~"
+        if not (cand.startswith(("/", "~")) or cand.startswith("$HOME") or cand.startswith("%")
+                or _WIN_DRIVE.match(cand) or cand.startswith("\\\\") or (windows and _PS_PROVIDER.match(cand))):
             cand = (ntpath.join(base, cand) if windows else posixpath.join(base, cand)) if not _is_home_marker(base) else "~/{}".format(cand)
         if _harmless_device(cand, windows):
             continue
@@ -648,16 +692,24 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
     return resolved
 
 
-def _bare_shell_words(command: str) -> list[str]:
-    """Plain words extract_shell_paths does not list (`cat link`, `git status`).
-    Any of them may name a symlink in the cwd that points out of the roots, so
-    review probes where they really resolve (POSIX hosts only)."""
+def _bare_shell_words(command: str, base: str) -> list[str]:
+    """Plain words extract_shell_paths does not list (`cat link`, `git status`),
+    joined onto the directory they are read in (a cd moves it). Any of them may
+    name a symlink that points out of the roots, so review probes where they
+    really resolve (POSIX hosts only)."""
     try:
         tokens = _shell_tokens(_without_data_heredocs(str(command or "")), False)
     except ValueError:
         return []
     out: list[str] = []
+    after_cd = False
     for tok in tokens:
+        next_base = base
+        if after_cd and not (tok.startswith("-") and tok != "-"):
+            after_cd = False
+            next_base = "~" if tok in (";", "&&", "||", "&", "|") else _resolve_for_scope(tok, base, False)
+        elif tok in ("cd", "pushd"):
+            after_cd = True
         for piece in _REDIR_TOKENS.split(tok):
             piece = piece.strip("'\"")
             if _REDIR_TOKENS.fullmatch(piece):
@@ -666,9 +718,11 @@ def _bare_shell_words(command: str) -> list[str]:
                 piece = piece.split("=", 1)[1]
             for word in piece.split():
                 word = word.strip("'\"(){}[];,")
-                if (word and word[0] not in "-+&|;" and "://" not in word and word not in out
+                lexical = _resolve_for_scope(word, base, False, normalize=False)
+                if (word and word[0] not in "-+&|;" and "://" not in word and lexical not in out
                         and not _token_paths(word, False)):
-                    out.append(word)
+                    out.append(lexical)
+        base = next_base
     return out
 
 
@@ -1378,12 +1432,15 @@ async def _auto_verdict(gate: Gate, tool: str, action: dict, roots: list[str]) -
 _ARTIFACT_OK: set[tuple[int, int, str]] = set()
 
 
-async def review_artifact(gate: Gate | None, *, tool: str, identifier: str, title: str) -> ReviewResult:
-    """Ask before a model changes an artifact shared publicly."""
+async def review_artifact(gate: Gate | None, *, tool: str, identifier: str, title: str,
+                          secret_source: str = "") -> ReviewResult:
+    """Ask before a model changes an artifact shared publicly. A secret-named
+    source file (secret_source) asks every time: an earlier approval of this
+    artifact never covers publishing a secret."""
     if gate is None:
         return ReviewResult(allowed=True)
     key = (gate.user_id, gate.thread_id or 0, str(identifier))
-    if key in _ARTIFACT_OK:
+    if key in _ARTIFACT_OK and not secret_source:
         return ReviewResult(allowed=True)
     label = f"the shared artifact “{title}”"
     if gate.thread_id is None or gate.unattended:
@@ -1403,8 +1460,8 @@ async def review_artifact(gate: Gate | None, *, tool: str, identifier: str, titl
             "path": str(title)[:400],
             "cwd": "",
             "command": "",
-            "secret": False,
-            "reasons": ["shared publicly"],
+            "secret": bool(secret_source),
+            "reasons": ["shared publicly"] + ([f"published from secret-named file {secret_source[:300]}"] if secret_source else []),
             "requester": gate.requester,
             "requester_label": _requester_label(gate.requester),
             "grant_kind": "",
@@ -1544,8 +1601,7 @@ async def review(*, tool: str, args: dict, user_id: int,
         # A plain word that does not resolve (`status`) is no file: it never asks.
         named = len(probe)
         if realpath is not None and not windows and paths is not None:
-            for word in _bare_shell_words(command):
-                lexical = _resolve_for_scope(word, base, windows, normalize=False)
+            for lexical in _bare_shell_words(command, base):
                 if (lexical, False) not in probe:
                     probe.append((lexical, False))
         if realpath is not None and not windows and probe:
@@ -1556,7 +1612,7 @@ async def review(*, tool: str, args: dict, user_id: int,
             roots_ok = len(real_roots) == len(roots) and all(real_roots)
             for i, (lexical, is_dir) in enumerate(probe):
                 real = reals[i] if roots_ok and i < len(reals) else None
-                if not real and i >= named:
+                if not real and i >= named and roots_ok:
                     continue
                 if not real:
                     unresolved.append(lexical)
@@ -1589,11 +1645,13 @@ async def review(*, tool: str, args: dict, user_id: int,
         outside_work = tool != "spawn_subagent" and not under_work_root(resolved, root, windows)
         # grep prints file contents too: naming a secret file directly needs
         # the same approval as reading it (directory searches withhold
-        # secret-file matches in workspace._grep).
-        if tool in ("read_file", "grep"):
+        # secret-file matches in workspace._grep). A write into a credential
+        # directory (.ssh/authorized_keys) asks like a read of it.
+        secret_tool = tool in _FILE_TOOLS or tool == "grep"
+        if secret_tool:
             # Secret-named files inside an approved dir (working root or a
-            # grant) are ordinary in-scope reads. Only out-of-scope ones ask,
-            # and those grant the exact file, never its directory.
+            # grant) are ordinary in-scope reads and writes. Only out-of-scope
+            # ones ask, and those grant the exact file, never its directory.
             if is_secret_path(resolved) and (secret_dir_in_path(resolved) or not in_roots):
                 secret = True
                 reasons.append("secret-named file")
@@ -1619,7 +1677,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                     display = real
                     reasons.append(f"symlink target {real} is outside the allowed roots")
                     grant_kind, grant_value = "dir", _grant_dir_for(tool, real, windows)
-                if (not secret and tool in ("read_file", "grep") and is_secret_path(real)
+                if (not secret and secret_tool and is_secret_path(real)
                         and (secret_dir_in_path(real) or not in_roots)):
                     secret = True
                     reasons.append("secret-named file")
