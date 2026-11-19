@@ -39,7 +39,7 @@ def make_pool(tmp_path):
     return make
 
 
-def _send(pool, handler, payload=None):
+def _send(pool, handler, payload=None, prefer_key=None):
     seen = []
 
     def record(request):
@@ -48,7 +48,7 @@ def _send(pool, handler, payload=None):
 
     async def go():
         async with httpx.AsyncClient(transport=httpx.MockTransport(record)) as client:
-            return await pool.send_request(client, URL, payload or {"model": "m", "messages": []})
+            return await pool.send_request(client, URL, payload or {"model": "m", "messages": []}, prefer_key)
 
     response, state, retried = asyncio.run(go())
     return response, state, retried, seen
@@ -218,3 +218,47 @@ def test_a_spent_quota_comes_back_when_its_window_ends_but_an_auth_disable_does_
 
     assert (pool.states["spent"].state, pool.states["spent"].disabled_reason) == (ACTIVE, None)
     assert pool.states["revoked"].state == DISABLED
+
+
+def _unreachable(key):
+    raise httpx.ConnectError(f"cannot reach upstream for {key}")
+
+
+def test_a_connect_error_rotates_to_the_next_key(make_pool):
+    pool = make_pool("keyA", "keyB")
+
+    response, state, retried, seen = _send(pool, lambda key: _unreachable(key) if key == "keyA"
+                                           else httpx.Response(200, content=OK))
+
+    assert (response.status_code, state.key, retried, seen) == (200, "keyB", True, ["keyA", "keyB"])
+    assert pool.states["keyA"].state == COOLING
+    assert response.extensions["fuse_attempts"] == []  # nothing reached the upstream
+
+
+@pytest.mark.parametrize("max_retries", [5, 2])
+def test_a_connect_error_on_every_key_propagates(make_pool, max_retries):
+    # 5: the keys run out first; 2: the retry budget does.
+    pool = make_pool("keyA", "keyB", max_retries=max_retries)
+
+    with pytest.raises(httpx.ConnectError):
+        _send(pool, _unreachable)
+
+    assert all(state.state == COOLING for state in pool.states.values())
+
+
+def test_prefer_key_pins_the_first_attempt_and_falls_back_when_it_cannot_serve(make_pool):
+    pool = make_pool("keyA", "keyB")
+
+    _response, state, retried, seen = _send(pool, lambda key: httpx.Response(200, content=OK), prefer_key="keyB")
+    assert (state.key, retried, seen) == ("keyB", False, ["keyB"])
+
+    # Unreachable: the next attempt rotates as usual.
+    _response, state, retried, seen = _send(pool, lambda key: _unreachable(key) if key == "keyB"
+                                            else httpx.Response(200, content=OK), prefer_key="keyB")
+    assert (state.key, retried, seen) == ("keyA", True, ["keyB", "keyA"])
+
+    # Disabled: the pin is dropped before anything is sent.
+    for _ in range(3):
+        _fail(pool, "keyB", 401, '{"error":"invalid api key"}')
+    _response, state, retried, seen = _send(pool, lambda key: httpx.Response(200, content=OK), prefer_key="keyB")
+    assert (state.key, retried, seen) == ("keyA", False, ["keyA"])
