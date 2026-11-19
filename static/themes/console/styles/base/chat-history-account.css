@@ -27,9 +27,9 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
-  transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease;
+  transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.more { opacity: 1; pointer-events: auto; color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.more { opacity: 1; pointer-events: auto; color: var(--mist); --dur-hover: 0s; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.open { padding-right: 1.9rem; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item > button.more:hover { background: color-mix(in srgb, var(--mist) 10%, transparent); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item input.rename {
@@ -49,7 +49,7 @@
 /* Press feedback: every tap answers immediately. */
 :where(html.is-chat-root[data-chat-view="console"]) .chat :is(.chat-send, .chat-attach-btn, .chat-search-btn, .chat-bar-btn, .chat-history-toggle, .chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-menu-close) {
   transition-property: background-color, color, opacity, filter, scale;
-  transition-duration: var(--dur-1);
+  transition-duration: var(--dur-hover), var(--dur-hover), var(--dur-hover), var(--dur-hover), var(--dur-1);
   transition-timing-function: var(--ease-snap);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat :is(.chat-send, .chat-attach-btn, .chat-search-btn, .chat-bar-btn, .chat-history-toggle, .chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-menu-close):not(:disabled):active { scale: 0.92; transition-duration: 60ms; }
@@ -164,7 +164,7 @@
   padding: 0.3rem 0.625rem;
   border-radius: 6px;
   text-align: left;
-  transition: background-color 120ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock-btn:hover,
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock.is-open .user-dock-btn { background: color-mix(in srgb, var(--mist) 6%, transparent); }

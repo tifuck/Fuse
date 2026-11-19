@@ -32,10 +32,10 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-recap {
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-recap-copy { grid-column: 2; min-width: 0; }
 
 
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout),
-html[data-chat-font] :is(
-  .chat-console-out:not(.is-web, .is-structured), .chat-console-preview, .chat-console-lines, .chat-console-stdout) * {
+html[data-chat-font] .chat-console-out:not(.is-web, .is-structured), html[data-chat-font] .chat-console-out:not(.is-web, .is-structured) *,
+html[data-chat-font] .chat-console-preview, html[data-chat-font] .chat-console-preview *,
+html[data-chat-font] .chat-console-lines, html[data-chat-font] .chat-console-lines *,
+html[data-chat-font] .chat-console-stdout, html[data-chat-font] .chat-console-stdout * {
   font-family: var(--code, "Red Hat Mono", ui-monospace, monospace) !important;
 }
 
@@ -48,8 +48,6 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   border: 1px solid var(--glass-line, var(--line));
   border-radius: 10px;
   background: var(--glass-bg, color-mix(in srgb, var(--panel) 68%, transparent));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 122%));
-  backdrop-filter: blur(var(--glass-blur, 22px)) saturate(var(--glass-saturation, 122%));
   box-shadow:
     0 18px 48px rgb(0 0 0 / 34%),
     inset 0 1px 0 color-mix(in srgb, var(--mist) 18%, transparent),

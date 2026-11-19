@@ -13,9 +13,9 @@ function ccTurnLineHtml(msg, latest) {
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
-    return `${head}<span>${outcome ? `${outcome} · ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${speed ? ` · <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${done ? ` · done ${deps.escapeHtml(done)}` : ""}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>` +
+    return `${head}<span>${outcome ? `${outcome} | ` : ""}${deps.escapeHtml(deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
+      `${speed ? ` | <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
+      `${done ? ` | done ${deps.escapeHtml(done)}` : ""}${still ? ` | ${deps.escapeHtml(still)} still running` : ""}</span>` +
       ccPeakHtml(msg._hostPeak);
   }
 
@@ -89,14 +89,14 @@ function ccLiveText(trace, cap) {
 
 function ccElapsedText(since) {
     const ms = Date.now() - since;
-    return ms >= 2000 ? ` · ${deps.ccDuration(ms)}` : "";
+    return ms >= 2000 ? ` | ${deps.ccDuration(ms)}` : "";
   }
 
 function ccShellSuffix(since, lines) {
     const seconds = Math.floor((Date.now() - since) / 1000);
     if (seconds < 2) return "";
     const took = deps.ccDuration(seconds * 1000);
-    return lines > 0 ? ` (${took} · ${lines} ${lines === 1 ? "line" : "lines"})` : ` (${took})`;
+    return lines > 0 ? ` (${took} | ${lines} ${lines === 1 ? "line" : "lines"})` : ` (${took})`;
   }
 
 function ccThinkClock(base, since) {
@@ -111,20 +111,31 @@ function syncConsoleClocks(root) {
         : kind === "work" ? deps.ccDuration(Math.max(1000, (Number(el.dataset.base) || 0) + (since ? Date.now() - since : 0)))
         : kind === "suffix" ? ccShellSuffix(since, Number(el.dataset.lines) || 0)
         : ccElapsedText(since);
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 
+// The live clock asks workClocksLive, then syncWorkClocks, on each tick:
+// one search of the page serves both.
+let workClocks = null;
+function liveWorkClocks() {
+    if (!workClocks) {
+      workClocks = document.querySelectorAll('[data-cc-clock="work"]');
+      queueMicrotask(() => { workClocks = null; });
+    }
+    return workClocks;
+  }
+
 function workClocksLive() {
-    return Boolean(document.querySelector('[data-cc-clock="work"]'));
+    return liveWorkClocks().length > 0;
   }
 
 function syncWorkClocks() {
-    document.querySelectorAll('[data-cc-clock="work"]').forEach((el) => {
+    liveWorkClocks().forEach((el) => {
       const base = Number(el.dataset.base) || 0;
       const since = Number(el.dataset.since) || 0;
       const text = deps.ccDuration(Math.max(1000, base + (since ? Date.now() - since : 0)));
-      if (el.textContent !== text) el.textContent = text;
+      FuseChatDOM.setText(el, text);
     });
   }
 

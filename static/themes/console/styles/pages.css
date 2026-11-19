@@ -170,8 +170,11 @@ html[data-chat-console="true"] body.is-settings .settings-shell input[type="chec
 
 /* Field labels read like the chat sheets' ("SEARCH SKILLS.SH"). :not(input[…]) only
    holds the specificity of a former :not(:has(> input[type=checkbox])), which
-   ran on the parent of every first-child span on the page and dominated restyles. */
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal) :is(.hosts-field, .fp-field):not(.check):not(.hosts-check):not(input[type="checkbox"]) > span:first-child:not(:has(input)) {
+   ran on the parent of every first-child span on the page and dominated restyles.
+   The shell and the dialog are plain ancestors, not an :is() list, so the
+   ancestor filter turns away every other span before :has() runs. */
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) .settings-shell :is(.hosts-field, .fp-field):not(.check):not(.hosts-check):not(input[type="checkbox"]) > span:first-child:not(:has(input)),
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal :is(.hosts-field, .fp-field):not(.check):not(.hosts-check):not(input[type="checkbox"]) > span:first-child:not(:has(input)) {
   color: var(--mute);
   font: 0.66rem/1.4 var(--mono);
   letter-spacing: 0.06em;
@@ -228,7 +231,7 @@ html[data-chat-console="true"] body.is-settings .settings-jump a:focus-visible {
 /* —— Tables —— */
 html[data-chat-console="true"] body.is-settings .settings-shell .log { font-size: 0.8rem; }
 html[data-chat-console="true"] body.is-settings .settings-shell .log th { font: 0.62rem/1.3 var(--mono); letter-spacing: 0.08em; }
-html[data-chat-console="true"] body.is-settings .settings-shell .log tbody tr:hover td { background: color-mix(in srgb, var(--mist) 4%, transparent); }
+html[data-chat-console="true"] body.is-settings .settings-shell .log tbody tr:hover { background: color-mix(in srgb, var(--mist) 4%, transparent); }
 
 /* —— Code, notes —— */
 html[data-chat-console="true"] body.is-settings .settings-shell :is(.code-chip, .code-block, .hosts-fingerprint) { background: var(--ink); border: 1px solid var(--line); }
@@ -275,18 +278,6 @@ html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-se
 }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search { height: 1.9rem; background: var(--raise); }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-search:focus-within { border-color: var(--brass); }
-
-/* Project chooser rows: the current one carries the accent bar, and the
-   "Open" hint only shows on the row under the pointer. */
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--brass) 8%, transparent);
-  box-shadow: inset 2px 0 0 var(--brass);
-}
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row.is-current .fp-row-go { color: var(--brass); }
-@media (hover: hover) {
-  html[data-chat-console="true"] body:is(.is-settings, .is-chat) .fp-dialog .fp-row:not(.is-current, :hover, :focus-visible) .fp-row-go { visibility: hidden; }
-}
 
 /* Page-head action groups (Sources): a quiet label, then the choices. */
 html[data-chat-console="true"] body.is-settings .settings-tools .head-actions { align-items: center; gap: 0.3rem; }

@@ -110,7 +110,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-step-reveal.is-r
   animation: console-output-reveal var(--dur-1) ease-out;
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-step-chevron { transition: transform var(--dur-1) ease, color var(--dur-1) ease; }
+html[data-chat-console="true"] .chat[data-view="console"] .chat-step-chevron { transition: transform var(--dur-1) ease, color var(--dur-hover) ease; }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-box {
   display: flex;
@@ -127,7 +127,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-box {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
-  transition: box-shadow var(--dur-1) ease;
+  transition: box-shadow var(--dur-hover) ease;
 }
 
 html[data-chat-console="true"] .chat[data-view="console"] :is(.chat-box-bar, .chat-box-left, .chat-box-right) {

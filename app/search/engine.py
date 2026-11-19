@@ -119,7 +119,12 @@ _TEXT_TYPES = frozenset(
 _SNIFF_TYPES = ("", "application/octet-stream", "binary/octet-stream", "application/x-download", "application/force-download")
 
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_FILLER = re.compile(r"\b(can you|could you|please|search the web|tell me|what is|what's)\b", re.I)
+# Conversational filler only leads a request; anywhere else it is part of
+# the subject ("Please Please Me album", "Tell Me Why lyrics"). A capital
+# after the filler's first letter reads as a title, so it is kept.
+_FILLER = re.compile(
+    r"^(?:(?:[Cc](?:an|ould) you|[Pp]lease(?![\s,;:.!?]*[A-Z])|[Ss]earch the web(?: for)?|[Tt]ell me)\b[\s,;:.!?]*)+"
+)
 # Search verbs only lead a request; mid-query they are the subject
 # ("linux find command"). Capitalized Google is the company.
 _LEAD_VERB = re.compile(r"^(?:(?i:look(?:ing)? up|find(?: me)?|lookup)|google)\b\s*")
@@ -147,11 +152,13 @@ _OPERATOR = re.compile(r"(?:^|(?<=\s))(?:-(?!-)\S+|(?:site|filetype|inurl|intitl
 
 _cache = TtlLru(512)
 # Pages hold their whole extracted text (up to ~6 MB of HTML/text, more for
-# PDFs): bound the cache by size, not only by count.
+# PDFs): bound the cache by size, not only by count. A redirected URL maps
+# to its final URL's key (a str), so the page is held and counted once.
 PAGE_CACHE_BYTES = 64 * 1024 * 1024
 _page_cache = TtlLru(
     256, max_bytes=PAGE_CACHE_BYTES,
-    sizeof=lambda cached: sys.getsizeof(cached[1].full_text) + sys.getsizeof(cached[1].text),
+    sizeof=lambda cached: 0 if isinstance(cached, str)
+    else sys.getsizeof(cached[1].full_text) + sys.getsizeof(cached[1].text),
 )
 _blocked_hosts = TtlLru(512)
 _search_sem = asyncio.Semaphore(SEARCH_CONCURRENCY)
@@ -254,9 +261,17 @@ async def _pdf_worker(raw_bytes: bytes) -> str:
         await proc.wait()
 
 
+def _cached_page(clean: str):
+    cached = _page_cache.get(normalize_url(clean))
+    if isinstance(cached, str):
+        cached = _page_cache.get(cached)
+    # The final URL may itself have become a redirect since: one hop only.
+    return None if isinstance(cached, str) else cached
+
+
 def is_fetch_cached(url: str, allowed: set[str] | None = None) -> bool:
     clean = allowed_fetch_url(url)
-    return bool(clean and _page_cache.get(normalize_url(clean)) is not None)
+    return bool(clean and _cached_page(clean) is not None)
 
 
 def is_host_blocked(url: str) -> bool:
@@ -362,15 +377,23 @@ def _log(level: int, *, user_id: int, provider: str, status: int, latency_ms: in
     )
 
 
+def _strip_lead(text: str) -> str:
+    return _LEAD_VERB.sub("", _FILLER.sub("", text)).strip(" ?!.,;:")
+
+
 def sanitize_query(raw: str) -> str:
+    """The query as sent. Idempotent: the cache key is the sent query itself."""
     text = _CTRL.sub(" ", str(raw or ""))
-    text = re.sub(r"\s+", " ", text).strip()
-    stripped = _FILLER.sub(" ", text)
-    stripped = _LEAD_VERB.sub("", re.sub(r"\s+", " ", stripped).strip())
-    stripped = re.sub(r"\s+", " ", stripped).strip(" ?!.,;:")
+    text = re.sub(r"\s+", " ", text).strip()[:MAX_QUERY].strip()
+    core = text.strip(" ?!.,;:")
+    stripped = _strip_lead(core)
+    if _strip_lead(stripped) != stripped:
+        # "find google maps api": the word after the verb is the subject, and
+        # a second pass would strip it too. Keep the verb.
+        stripped = _FILLER.sub("", core).strip(" ?!.,;:")
     if len(stripped) >= 2:
         text = stripped
-    return text[:MAX_QUERY]
+    return text
 
 
 def plain_query(q: str) -> str:
@@ -378,8 +401,9 @@ def plain_query(q: str) -> str:
     return re.sub(r"\s+", " ", _OPERATOR.sub(" ", q or "").replace('"', " ")).strip()
 
 
-def normalize_query(raw: str) -> str:
-    text = sanitize_query(raw).lower().rstrip(" ?")
+def normalize_query(q: str) -> str:
+    """Cache and dedup key of an already sanitized query, exactly as it is sent."""
+    text = (q or "").lower().rstrip(" ?")
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -814,17 +838,17 @@ def _content_kind(ctype: str) -> str | None:
 def _decode(raw: bytes, ctype: str) -> str:
     match = re.search(r"charset=([^;\s]+)", ctype, re.I)
     charset = match.group(1).strip("\"'")[:40] if match else ""
-    if not charset:
-        if raw.startswith(b"\xef\xbb\xbf"):
-            charset = "utf-8-sig"
-        elif raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
-            charset = "utf-16"
-        else:
-            head = raw[:4096].decode("ascii", "ignore")
-            declared = re.search(r"""<meta[^>]+charset\s*=\s*["']?([\w-]+)""", head, re.I) or re.search(
-                r"""<\?xml[^>]+encoding\s*=\s*["']([\w-]+)""", head
-            )
-            charset = declared.group(1) if declared else "utf-8"
+    # A byte order mark wins over the header, as in browsers (WHATWG).
+    if raw.startswith(b"\xef\xbb\xbf"):
+        charset = "utf-8-sig"
+    elif raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        charset = "utf-16"
+    elif not charset:
+        head = raw[:4096].decode("ascii", "ignore")
+        declared = re.search(r"""<meta[^>]+charset\s*=\s*["']?([\w-]+)""", head, re.I) or re.search(
+            r"""<\?xml[^>]+encoding\s*=\s*["']([\w-]+)""", head
+        )
+        charset = declared.group(1) if declared else "utf-8"
     try:
         text = raw.decode(charset, errors="replace")
     except (LookupError, UnicodeError):
@@ -854,7 +878,7 @@ async def _download(
     headers = dict(API_HEADERS if api else FETCH_HEADERS)
     headers["Accept"] = accept
     current = url
-    for _ in range(FETCH_MAX_REDIRECTS):
+    for _ in range(FETCH_MAX_REDIRECTS + 1):
         if cancel and cancel.is_set():
             raise asyncio.CancelledError
         parsed = urlparse(current)
@@ -924,9 +948,19 @@ async def _fetch_document(
     """(final_url, content_type, text, download_truncated, bytes_received)."""
     plan = adapters.plan_for(clean)
     if plan is not None:
+        got_truncated = False
+        got_bytes = 0
+        got_pdf: tuple[str, bytes, bool] | None = None
 
         async def download_text(url: str, accept: str) -> tuple[str, str, str]:
-            final, ctype, raw, _ = await _download(url, cancel=cancel, accept=accept, api=True)
+            nonlocal got_truncated, got_bytes, got_pdf
+            final, ctype, raw, truncated = await _download(url, cancel=cancel, accept=accept, api=True)
+            got_bytes += len(raw)
+            if ctype.startswith("application/pdf"):
+                # Extracted below, outside the download deadline, as on the page path.
+                got_pdf = (final, raw, truncated)
+                return final, ctype, ""
+            got_truncated = got_truncated or truncated
             return final, ctype, _decode(raw, ctype)
 
         try:
@@ -937,9 +971,12 @@ async def _fetch_document(
         except Exception as exc:
             logger.info("fuse.fetch adapter=%s failed: %s", plan.kind, type(exc).__name__)
             got = None
+        if got and got_pdf and got[1].startswith("application/pdf"):
+            pdf_url, raw, truncated = got_pdf
+            return got[0], "text/plain; source=pdf", await _pdf_document(pdf_url, raw, truncated), False, len(raw)
         if got:
             final, ctype, text = got
-            return final, ctype, text, False, len(text.encode("utf-8", "replace"))
+            return final, ctype, text, got_truncated, got_bytes
     path = urlparse(clean).path.lower()
     accept = BROWSER_ACCEPT if path.endswith(_FILE_SUFFIXES) else FETCH_ACCEPT
     async with asyncio.timeout(FETCH_DEADLINE):
@@ -950,17 +987,20 @@ async def _fetch_document(
                 raise
             final, ctype, raw, truncated = await _download(clean, cancel=cancel, accept=BROWSER_ACCEPT)
     if ctype.startswith("application/pdf"):
-        if truncated:
-            raise FetchError(f"The PDF is larger than {PDF_MAX_BYTES // 1_000_000} MB and was not read.")
-        try:
-            text = await _pdf_text(raw)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.warning("fuse.fetch pdf parse failed url_host=%s", host_of(final))
-            raise FetchError("The PDF could not be extracted as text.") from None
-        return final, "text/plain; source=pdf", text, False, len(raw)
+        return final, "text/plain; source=pdf", await _pdf_document(final, raw, truncated), False, len(raw)
     return final, ctype, _decode(raw, ctype), truncated, len(raw)
+
+
+async def _pdf_document(final: str, raw: bytes, truncated: bool) -> str:
+    if truncated:
+        raise FetchError(f"The PDF is larger than {PDF_MAX_BYTES // 1_000_000} MB and was not read.")
+    try:
+        return await _pdf_text(raw)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.warning("fuse.fetch pdf parse failed url_host=%s", host_of(final))
+        raise FetchError("The PDF could not be extracted as text.") from None
 
 
 async def fetch_url(
@@ -983,7 +1023,7 @@ async def fetch_url(
         else:
             msg = "That URL is not an allowed public HTTPS address."
         return None, msg, msg
-    cached = _page_cache.get(normalize_url(clean))
+    cached = _cached_page(clean)
     if cached is not None and not allowed_fetch_url(cached[0]):
         # The redirect target fell under the domain policy since it was cached.
         cached = None
@@ -1034,9 +1074,10 @@ async def fetch_url(
         return None, msg, msg
     allowed.add(final_url)
     allowed.update(_safe_links(base_extract))
-    cached_value = (final_url, base_extract)
-    _page_cache.set(normalize_url(clean), cached_value, PAGE_CACHE_TTL)
-    _page_cache.set(normalize_url(final_url), cached_value, PAGE_CACHE_TTL)
+    final_key = normalize_url(final_url)
+    _page_cache.set(final_key, (final_url, base_extract), PAGE_CACHE_TTL)
+    if normalize_url(clean) != final_key:
+        _page_cache.set(normalize_url(clean), final_key, PAGE_CACHE_TTL)
     extract = _with_find(base_extract, find, query=query, offset=offset)
     extract.bytes_in = received
     return extract, pack_page(final_url, extract), ""

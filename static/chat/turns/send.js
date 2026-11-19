@@ -271,7 +271,7 @@ export function createSend(ctx) {
         },
       });
       const request = queued ? { id: S.currentId, body: queued } : S.pendingTurn;
-      const data = await net.api("/chat/threads/" + request.id + (queued ? "/queue" : "/turns"), { method: "POST", body: JSON.stringify(request.body) });
+      const data = await net.api("/chat/threads/" + request.id + (queued ? "/queue" : "/turns") + "?pack=1", { method: "POST", body: JSON.stringify(request.body) });
       if (queued && !data.sent) {
         // Held there (a Stop elsewhere) or another item went first.
         if (data.held) queue.holdQueued(opts.queueId);
@@ -304,7 +304,7 @@ export function createSend(ctx) {
         composer.resizeInput();
       }
       pending.remove();
-      if (data.thread) sync.acceptThread(data.thread);
+      if (data.thread) sync.acceptThread(net.unpackThread(data.thread));
       else await sync.reconcileThread().catch(() => {});
       sidebar.rememberUndo(request.undoSnap || undoSnap);
       // The acknowledgment is a consistent snapshot. If the socket already

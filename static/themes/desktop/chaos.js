@@ -5,7 +5,7 @@
 // the same sequence.
 //
 // Canvases carry data-chaos="<key>"; one animation frame loop draws every
-// connected one. A key's simulation outlives its canvas, so a sidebar repaint
+// one on screen, at most FPS times a second. A key's simulation outlives its canvas, so a sidebar repaint
 // (which rebuilds the rows) carries on mid-flow instead of starting over.
 
 // Field coords = p * S + C, with the vertical axis swapped where Z is up. K
@@ -100,21 +100,38 @@ function advance(st, now, dt) {
 
 const rgb = (css) => (css.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
 
+// Colours are read once and again only when the appearance changes.
+let inkEpoch = 0;
+let lift = null;
+const repaint = () => { inkEpoch += 1; lift = null; };
+document.addEventListener("fuse-appearance", repaint);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", repaint);
+
+// Segments are stroked in batches of one width and one shade; ALPHA_STEP
+// is how finely their opacities are told apart.
+const ALPHA_STEP = 0.04;
+
 function draw(c, st, now) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const S = Math.round(c.clientWidth * dpr);
+  const S = Math.round(c._side * dpr);
   if (!S) return;
   if (c.width !== S) { c.width = S; c.height = S; }
   const ctx = c.getContext("2d");
-  if (!c._ink || now - c._inkAt > 1) {
+  if (c._inkEpoch !== inkEpoch) {
+    lift ||= rgb(getComputedStyle(document.body).color);
     c._ink = rgb(getComputedStyle(c).color);
-    c._lift = rgb(getComputedStyle(document.body).color);
-    c._inkAt = now;
+    c._lift = lift;
+    c._inkEpoch = inkEpoch;
+    c._colours = new Map();
   }
-  const ink = c._ink, lift = c._lift;
-  const colour = (alpha, l) => {
-    const m = ink.map((v, i) => Math.round(v + ((lift[i] ?? v) - v) * l));
-    return `rgba(${m[0]},${m[1]},${m[2]},${clamp(alpha)})`;
+  const ink = c._ink, light = c._lift, colours = c._colours;
+  const colour = (key, alpha, l) => {
+    let css = colours.get(key);
+    if (!css) {
+      const m = ink.map((v, i) => Math.round(v + ((light[i] ?? v) - v) * l));
+      colours.set(key, (css = `rgba(${m[0]},${m[1]},${m[2]},${clamp(alpha)})`));
+    }
+    return css;
   };
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = "source-over";
@@ -131,33 +148,88 @@ function draw(c, st, now) {
     const k = 3.4 / (3.4 - z2);
     return [x2 * k * R, y1 * k * R, clamp((z2 + 1.1) / 2.2)];
   };
+  // A segment's width and tint follow its place along the trail (f), its
+  // opacity that and its depth: one batch per place and opacity step.
+  const batches = new Map();
   for (const pt of st.pts) {
     const H = pt.h;
     if (H.length < 2) continue;
     let a = view(H[0]);
     for (let k = 1; k < H.length; k++) {
       const b = view(H[k]), f = k / H.length;
-      ctx.strokeStyle = colour(f * f * (0.15 + 0.6 * b[2]) * (st.small ? 1.25 : 1), 0.15 + 0.4 * f);
-      ctx.lineWidth = lw * (0.4 + 0.9 * f);
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      const step = Math.round(f * f * (0.15 + 0.6 * b[2]) * (st.small ? 1.25 : 1) / ALPHA_STEP);
+      const key = (H.length * 32 + k) * 64 + step;
+      let batch = batches.get(key);
+      if (!batch) batches.set(key, (batch = { f, step, xy: [] }));
+      batch.xy.push(a[0], a[1], b[0], b[1]);
       a = b;
     }
+  }
+  batches.forEach(({ f, step, xy }, key) => {
+    if (!step) return;
+    ctx.strokeStyle = colour(key, step * ALPHA_STEP, 0.15 + 0.4 * f);
+    ctx.lineWidth = lw * (0.4 + 0.9 * f);
+    ctx.beginPath();
+    for (let i = 0; i < xy.length; i += 4) { ctx.moveTo(xy[i], xy[i + 1]); ctx.lineTo(xy[i + 2], xy[i + 3]); }
+    ctx.stroke();
+  });
+}
+
+// Mounted canvases, found once after markup asks for one (chaosHtml,
+// mountChaos), and the ones on screen, which the loop draws.
+const FPS = 20;
+const mounted = new Set();
+const onScreen = new Set();
+let scan = false;
+let last = 0;
+const sight = new IntersectionObserver((entries) => {
+  for (const { target, isIntersecting } of entries) {
+    target._side = target.clientWidth;
+    if (isIntersecting && target._side) onScreen.add(target);
+    else onScreen.delete(target);
+  }
+  wake();
+});
+
+function findCanvases() {
+  scan = false;
+  for (const c of document.querySelectorAll("canvas[data-chaos]")) {
+    if (mounted.has(c)) continue;
+    mounted.add(c);
+    sight.observe(c);
   }
 }
 
 function frame(ms) {
   raf = 0;
+  if (document.hidden) return;
+  if (scan) findCanvases();
+  for (const c of mounted) {
+    if (c.isConnected) continue;
+    mounted.delete(c);
+    onScreen.delete(c);
+    sight.unobserve(c);
+  }
   const now = ms / 1000;
-  const canvases = [...document.querySelectorAll("canvas[data-chaos]")].filter((c) => c.getClientRects().length);
   const still = reduceMotion.matches;
+  // A frame budget: draws at FPS, the swarm still moving in 60ths of a second.
+  if (!still && last && now - last < 1 / FPS - 0.004) {
+    if (onScreen.size) raf = requestAnimationFrame(frame);
+    return;
+  }
+  const dt = last ? clamp(now - last, 0, 4 / 60) : 1 / 60;
+  last = onScreen.size ? now : 0;
   const seen = new Set();
-  for (const c of canvases) {
+  for (const c of onScreen) {
     const key = c.dataset.chaos;
     let st = states.get(key);
-    if (!st) states.set(key, (st = newState(now, c.clientWidth <= 40)));
+    if (!st) states.set(key, (st = newState(now, c._side <= 40)));
     if (!seen.has(key)) {
       seen.add(key);
-      if (!still) advance(st, now, clamp(now - st.seen, 0, 1 / 20));
+      if (!still) {
+        const ticks = Math.max(1, Math.round(dt * 60));
+        for (let i = 0; i < ticks; i++) advance(st, now, dt / ticks);
+      }
       st.seen = now;
     }
     if (!still || !c.dataset.drawn) {
@@ -167,12 +239,25 @@ function frame(ms) {
     }
   }
   for (const [key, st] of states) if (now - st.seen > 30) states.delete(key);
-  if (canvases.length && !still) raf = requestAnimationFrame(frame);
+  if (onScreen.size && !still) raf = requestAnimationFrame(frame);
 }
 
-// Starts the loop; it stops by itself once no canvas is left.
+function wake() {
+  if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { wake(); return; }
+  cancelAnimationFrame(raf);
+  raf = 0;
+  last = 0;
+});
+reduceMotion.addEventListener?.("change", wake);
+
+// Starts the loop; it stops by itself once no canvas is left on screen.
 export function kickChaos() {
-  if (!raf) raf = requestAnimationFrame(frame);
+  scan = true;
+  wake();
 }
 
 // A spinner canvas for markup; color (a hex) tints it, else CSS does.

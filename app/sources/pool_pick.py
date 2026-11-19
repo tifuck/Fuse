@@ -176,8 +176,11 @@ def remember_error(cred_id: int, status: int, body, headers, info: dict | None) 
 
 
 def forget_error(cred_id: int) -> None:
+    """The account served: drop its kept error and any unconfirmed 401 strike,
+    so two transient 401s with good traffic between never disable it."""
     with _failure_lock:
         _bench_errors.pop(int(cred_id), None)
+        _auth_strikes.pop(int(cred_id), None)
 
 
 def lift_cooldown(cid: int) -> None:

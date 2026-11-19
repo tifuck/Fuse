@@ -7,7 +7,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-wp {
     border: 1px solid var(--dk-card-line);
     border-radius: 14px;
-    background: color-mix(in srgb, var(--dk-card) 96%, transparent);
+    background: var(--dk-card);
     box-shadow: var(--dk-pop-shadow);
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);

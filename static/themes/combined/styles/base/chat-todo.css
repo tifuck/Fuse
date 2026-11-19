@@ -36,10 +36,10 @@
 /* What floats above the composer stacks bottom-up and never overlaps: the
    open list of the transcript on screen (--todo-lift is its height), the
    dictation strip, the sync badge, then "Jump to latest". */
-:where(html.is-chat-root[data-chat-view="combined"]) .chat:not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) { --todo-lift: var(--todo-push, 0px); }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat.is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 3.3rem; }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat:has(.chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat:not(.is-agent-view):has(> :where(.chat-stage) > .chat-dock > .chat-live-todos.is-open:not([hidden])) { --todo-lift: var(--todo-push, 0px); }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat.is-agent-view:has(> :where(.chat-stage) > .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat:has(> :where(.chat-stage) > .chat-dock > .dictation:not([hidden])) { --dictation-lift: 3.3rem; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat:has(> :where(.chat-stage) > .chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-dock > .chat-sync { bottom: calc(100% + 0.35rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px)); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px)); }
 @media (max-width: 800px) {

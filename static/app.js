@@ -250,7 +250,8 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
 
   function tokens(n) {
     if (!n) return "—";
-    return n >= 1000000 ? `${+(n / 1048576).toFixed(1)}M` : `${Math.round(n / 1024)}K`;
+    const k = Math.round(n / 1000);
+    return k >= 1000 ? `${+(n / 1000000).toFixed(1)}M` : `${k}K`;
   }
 
   function closeDrawer(row) {

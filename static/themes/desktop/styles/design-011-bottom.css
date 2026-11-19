@@ -40,18 +40,18 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-tod
 }
 /* Open, the transcript on screen ends where the page begins: its scroll box
    shrinks, so the scrollbar ends there too, not behind the page. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) [data-chat-thread] > .chat-live-dock:not([hidden]),
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) [data-chat-thread]:not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])) > .chat-live-dock:not([hidden]),
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])):not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
   padding-bottom: 0.6rem;
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view):has(.chat-dock > .chat-live-todos.is-open:not([hidden])) [data-chat-thread] {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])) {
   margin-bottom: var(--todo-push, 0px);
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) [data-agent-view] > .chat-live-dock:not([hidden]),
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) [data-agent-view]:not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) > .chat-live-dock:not([hidden]),
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])):not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
   padding-bottom: 0.6rem;
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view:has(.chat-dock > .chat-agent-live-todos.is-open:not([hidden])) [data-agent-view] {
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) {
   margin-bottom: var(--agent-todo-push, 0px);
 }
 /* An open list over a queue: a clear rule between the two. */
@@ -112,7 +112,6 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-que
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::before,
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::after { display: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-kicker span { display: none; color: var(--brass); font-variant-numeric: tabular-nums; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue:has(.chat-queue-item:nth-child(4)) .chat-queue-kicker span { display: inline; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-list {
   gap: 0;
   padding: 0;
@@ -142,7 +141,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-que
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-text {
   font: var(--console-type)/var(--queue-row) var(--mono);
   color: color-mix(in srgb, var(--mute) 82%, var(--ink));
-  transition: color var(--dur-1, 120ms) ease;
+  transition: color var(--dur-hover) ease;
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-item:first-child .chat-queue-text { color: color-mix(in srgb, var(--mist) 74%, var(--ink)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-item:is(:hover, :focus-within) .chat-queue-text { color: var(--mist); }
@@ -164,7 +163,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-que
   color: var(--mist);
   background: color-mix(in srgb, var(--mist) 8%, transparent);
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-action[data-queue-send] { transition: color var(--dur-1, 120ms) ease, opacity var(--dur-1, 120ms) ease; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-action[data-queue-send] { transition: color var(--dur-hover) ease, opacity var(--dur-hover) ease; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-item:is(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { color: var(--brass); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-queue-action[data-queue-send]:hover {
   color: var(--brass);

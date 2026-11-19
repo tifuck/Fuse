@@ -19,8 +19,9 @@
 //   --thread TEXT       open the QA chat whose title contains TEXT (any case)
 //   --page PATH[,PATH]  open another page: /usage, /settings, /admin/users ...
 //                       Default: /chat with no chat open
-//   --view V[,V] | all  combined | console | desktop (default). Chat pages only:
-//                       every other page is drawn one way and shot once
+//   --view V[,V] | all  combined | console | desktop (default). Chat and the
+//                       settings pages; sign-in and artifact pages are drawn
+//                       one way and shot once
 //   --tree DIR[,DIR]    serve /static from this checkout: a worktree's JS and
 //                       CSS before they merge. "dev" is the dev tree itself.
 //                       Templates and Python always come from the dev instance
@@ -38,6 +39,8 @@
 //                                  --thread "live command", or "live code" for
 //                                  a run_code whose calls are still running)
 //                         ask      a pending permission prompt
+//                         asks     three at once (a command, a subagent's file write,
+//                                  a file read outside the project): the 1 of 3 card
 //                         error    the last reply failed at the provider
 //                         agents   the agents pane (Desktop inspector, Combined
 //                                  rail) lists made-up subagents: running, done,
@@ -106,7 +109,7 @@ const TALL = 2000;  // so a cell is at most this tall, which leaves room for its
 const LIMIT = 12000;  // the tallest viewport a shot may grow to
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'error', 'agents', 'stats'];
+const FAKES = ['running', 'ask', 'asks', 'error', 'agents', 'stats'];
 const VALUES = new Set(['thread', 'page', 'view', 'tree', 'size', 'zoom', 'pad', 'fake', 'out', 'base']);
 const FLAGS = new Set(['list', 'toasts', 'touch', 'live', 'motion']);
 const STEPS = new Set(['find', 'click', 'hover', 'type', 'key', 'wait', 'eval']);
@@ -156,6 +159,7 @@ for (let i = 0; i < argv.length; i += 1) {
 }
 opts.fake = new Set(list(opts.fake));
 opts.fake.forEach((name) => FAKES.includes(name) || bad(`--fake ${name}: use ${FAKES.join(', ')}`));
+if (opts.fake.has('asks')) opts.fake.add('ask');
 const views = opts.view === 'all' ? VIEWS : list(opts.view);
 views.forEach((view) => VIEWS.includes(view) || bad(`--view ${view}: use ${VIEWS.join(', ')} or all`));
 const sizes = list(opts.size).map((text) => {
@@ -255,6 +259,12 @@ const ASK = {
   cwd: '/srv/demo', command: 'rm -rf build && make release VERSION=2.4.0', secret: false, requester: 'Main agent', decision: '',
   grant_scope: '', grant_kind: '', grant_value: '', description: 'Deletes the build directory, then builds and tags the release.',
 };
+const MORE_ASKS = [
+  { ...ASK, id: 'qa-perm-2', perm_kind: 'file', tool: 'write_file', path: '/srv/demo/notes/findings.md', cwd: '', command: '', requester: 'researcher',
+    grant_kind: 'file', description: '', reasons: ['outside allowed folders'] },
+  { ...ASK, id: 'qa-perm-3', perm_kind: 'file', tool: 'read_file', path: '/etc/nginx/sites-enabled/fuse.conf', cwd: '', command: '',
+    grant_kind: 'file', description: '', reasons: ['outside allowed folders'] },
+];
 // The agents pane lists child runs; fixtures have none. These match the
 // child_ids in "QA · Subagents" and "QA · Live agents".
 const agentRow = (id, status, description, extra = {}) => ({
@@ -284,7 +294,8 @@ const FIXES = {
       data.run = { ...(data.run || {}), id: data.run?.id || 'qa-live', status: 'running', message_id: last.id, message: last,
         created_at: iso(startedAt - 75000), updated_at: iso(startedAt), cancel_requested: false };
     }
-    if (opts.fake.has('ask')) Object.assign(data, { bypass_permissions: false, auto_permissions: false });
+    // An ask only waits inside a run, and the page reads asks only for a thread that is running.
+    if (opts.fake.has('ask')) Object.assign(data, { bypass_permissions: false, auto_permissions: false, running: true });
     if (opts.fake.has('error') && last) last.error = 'Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)';
     return data;
   },
@@ -295,7 +306,9 @@ const FIXES = {
   },
   perms(data) {
     if (!opts.fake.has('ask')) return data;
-    return { ...data, bypass: false, auto: false, pending: [{ ...ASK, expires_at: iso(startedAt + 240000) }] };
+    const pending = [{ ...ASK, expires_at: iso(startedAt + 240000) }];
+    if (opts.fake.has('asks')) pending.push(...MORE_ASKS.map((ask, i) => ({ ...ask, expires_at: iso(startedAt + 180000 - i * 60000) })));
+    return { ...data, bypass: false, auto: false, pending };
   },
 };
 // --fake stats: runs in the page before its own scripts. The thread lists
@@ -708,8 +721,8 @@ try {
         if (at.replace(/\/$/, '') !== new URL(opts.base + target.path).pathname.replace(/\/$/, '')) throw new Error(`${target.path} sent the browser to ${at}`);
         const status = await run(`performance.getEntriesByType('navigation')[0]?.responseStatus || 200`);
         if (status >= 400) throw new Error(`${target.path} answered ${status}`);
-        chat = await run(`Boolean(document.querySelector('[data-chat]'))`);
-        if (chat) await until(`document.querySelector('[data-chat]')?.dataset.view === ${JSON.stringify(view)}`, `the ${view} view`);
+        chat = await run(`Boolean(document.documentElement.dataset.chatView)`);
+        if (chat) await until(`(document.querySelector('[data-chat]')?.dataset.view ?? document.documentElement.dataset.chatView) === ${JSON.stringify(view)}`, `the ${view} view`);
         else if (views.length > 1 && tree === trees[0] && size === sizes[0]) console.log(`${target.path} is not drawn by a chat view: shot once`);
         if (opts.thread) await until(`Boolean(document.querySelector('[data-chat-log] .chat-turn'))`, 'the transcript', 30000);
         await run('document.fonts.ready.then(() => true)');

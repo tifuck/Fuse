@@ -23,7 +23,7 @@
     opacity var(--dur-2) var(--ease-snap),
     translate var(--dur-2) var(--ease-snap),
     scale var(--dur-1) var(--ease-snap),
-    background-color var(--dur-1) ease,
+    background-color var(--dur-hover) ease,
     display var(--dur-2) allow-discrete;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-latest:hover { background: var(--raise); }

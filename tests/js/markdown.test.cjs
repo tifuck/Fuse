@@ -94,6 +94,37 @@ test('a stream can freeze every block before the boundary: split parses match th
   }
 });
 
+test('the boundary read from an earlier one is the boundary of the whole text', async () => {
+  const { stableBoundary } = await md();
+  const texts = [
+    [`Intro with ${T} inline.`, '1. Install:\n\n   ```bash\n   npm i\n   ```\n\n2. Run', '> [!NOTE]\n> quoted', '| a | b |\n|---|---|\n| 1 | 2 |',
+      `${T}js\nconst x = 1;\n\nconst y = 2;\n${T}`, 'Title\n---', 'Last paragraph.', 'One more.'].join('\n\n'),
+    // Fences that only count once their close arrives turn frozen paragraphs into code.
+    `${T}python title="a.py"\nimport x\n\ndef f():\n    pass\n${T}\n\nAfter the block.\n\nMore prose.`,
+    `Run this:${T}bash\nnpm i\n\nnpm test\n${T}\n\nThen done.\n\nMore.`,
+  ];
+  for (const text of texts) {
+    let from = 0;
+    for (let n = 1; n <= text.length; n += 1) {
+      const prefix = text.slice(0, n);
+      const whole = stableBoundary(prefix);
+      const next = stableBoundary(prefix, from);
+      // A line still being typed ("2" before "2." joins its list) can move the
+      // whole-text boundary back before `from`; a stream freezes nothing then.
+      if (whole >= from) assert.equal(next, whole, `prefix of ${n}: ${JSON.stringify(prefix.slice(-20))}`);
+      from = Math.max(from, next);
+    }
+  }
+});
+
+test('the stable boundary is an offset into the text as given, CRLF included', async () => {
+  const { parseBlocks, stableBoundary } = await md();
+  const text = `Intro\r\n\r\n${T}js\r\nx = 1\r\n${T}\r\n\r\nSome prose`;
+  const tail = text.slice(stableBoundary(text));
+  assert.equal(tail, 'Some prose');
+  assert.deepEqual(kinds(parseBlocks(tail)), ['paragraph'], 'prose after a fence is not drawn as code');
+});
+
 test('composer marks keep every character and style what the sent message renders', async () => {
   const { marksHtml } = await import('../../static/chat/composer/marks.js');
   const text = (html) => html.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');

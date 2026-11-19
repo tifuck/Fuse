@@ -119,6 +119,16 @@ function consoleTailHtml(lines, n = 3, toggle = true) {
     return { html: more + consoleStdoutHtml(cut), hidden, clipped };
   }
 
+// A folded command's one line: its newest non-blank output line, and how
+// many lines the open adds.
+function consoleLastLine(lines) {
+    const at = lines.findLastIndex((line) => line.trim());
+    const last = at < 0 ? "" : lines[at];
+    const more = lines.filter((line) => line.trim()).length - 1;
+    const count = more > 0 ? ` <span class="chat-console-dim">… +${more} ${more === 1 ? "line" : "lines"}</span>` : "";
+    return { text: deps.ccFlat(last.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")), html: deps.renderAnsi(last.trim()) + count, more: more > 0 || last.length > 120 };
+  }
+
 function consoleTruncationNote(trace, extra = "") {
     if (typeof trace?.output !== "string") return "";
     const retained = Array.from(trace.output).length;
@@ -126,9 +136,9 @@ function consoleTruncationNote(trace, extra = "") {
     // "9.1k+": the total is a lower bound. Partial output knows it only when exact.
     const of = (inexact) => `${deps.ccTokens(retained)} of ${deps.ccTokens(total)}${inexact ? "+" : ""} chars`;
     let note = "";
-    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output · kept ${of(trace.output_chars_exact !== true)}`;
-    else if (trace.output_mode === "tail") note = `Output truncated · kept the last ${of(trace.output_chars_exact === false)}`;
-    else if (trace.truncated || total > retained) note = `Output truncated · kept ${of(trace.output_chars_exact === false)}`;
+    if (trace.output_mode === "partial" && (trace.truncated || total > retained)) note = `Partial output | kept ${of(trace.output_chars_exact !== true)}`;
+    else if (trace.output_mode === "tail") note = `Output truncated | kept the last ${of(trace.output_chars_exact === false)}`;
+    else if (trace.truncated || total > retained) note = `Output truncated | kept ${of(trace.output_chars_exact === false)}`;
     return note ? `<span class="chat-tool-truncated${extra}">${deps.escapeHtml(note)}</span>` : "";
   }
 
@@ -152,7 +162,7 @@ function consoleFold(trace, presentation, verbose) {
       // sits under it.
       const info = deps.toolImageInfo(trace);
       return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : info || "Image preview unavailable",
-        preview: info ? deps.toolImageHtml(trace) : "", full: "" };
+        preview: "", full: info ? deps.toolImageHtml(trace) : "" };
     }
     {
       const own = deps.consoleOnlyFold(trace, presentation, verbose);
@@ -182,7 +192,7 @@ function consoleFold(trace, presentation, verbose) {
       const body = consoleFileBody(trace);
       if (!body) return { status, preview: "", full: "" };
       const note = consoleTruncationNote(trace);
-      return { status, preview: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body, 10)}</div>${note}`, full: "", keep: Boolean(note) };
+      return { status, preview: "", full: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body, 10)}</div>${note}` };
     }
     if (name === "kill_command" || name === "kill_subagent") return { status, preview: "", full: "" };
     if (name === "search_replace" || name === "write_file") {
@@ -192,17 +202,12 @@ function consoleFold(trace, presentation, verbose) {
         const added = Number(trace.added ?? trace.lines_added);
         const removed = Number(trace.removed ?? trace.lines_removed);
         const text = consoleChangeText(Number.isFinite(added) ? added : counted.added, Number.isFinite(removed) ? removed : counted.removed);
-        return { status: text || (name === "write_file" ? status : "Updated"), preview: consoleDiffHtml(diff, { numbers: name !== "search_replace" || /^@@\s+-\d+/.test(diff) }), full: "" };
+        return { status: text || (name === "write_file" ? status : "Updated"), preview: "", full: consoleDiffHtml(diff, { numbers: name !== "search_replace" || /^@@\s+-\d+/.test(diff) }) };
       }
       if (name === "search_replace") return { status, preview: "", full: "" };
       const body = typeof trace.content === "string" ? trace.content.replace(/\s+$/, "") : "";
       if (!body) return { status, preview: "", full: "" };
-      const total = body.split("\n").length;
-      return {
-        status,
-        preview: deps.fileBodyHtml(trace, body, 10),
-        full: total > 10 ? `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body)}</div>` : "",
-      };
+      return { status, preview: "", full: `<div class="chat-console-out is-file">${deps.fileBodyHtml(trace, body)}</div>` };
     }
     if (shell) {
       // A failure prints its error once (ccFailure), then any output of its own.
@@ -228,17 +233,15 @@ function consoleFold(trace, presentation, verbose) {
       const head = nonzero ? `Exit code ${exit}` : failed ? failedHead
         : wait ? (deps.executionState(trace) !== "running" ? "" : stillRunning ? "Still running" : "Returned while the command was still running")
         : deps.toolBackground(trace) ? status : "";
-      const note = typeof consoleTruncationNote === "function" ? consoleTruncationNote(trace) : "";
-      if (empty) return { status: head || (note ? "" : "(No output)"), preview: note, full: "", keep: nonzero || Boolean(note) };
-      const tail = consoleTailHtml(lines);
-      const clipped = tail.clipped;
-      const foot = nonzero || failed ? `<span class="chat-console-result-text">${consoleStatusHtml(head)}</span>` : "";
+      if (empty) return { status: head || "(No output)", preview: "", full: "", keep: nonzero };
+      // Folded, one line: how it ended, else its newest line of output.
+      const line = consoleLastLine(lines);
       return {
-        status: foot ? "" : head,
-        keep: nonzero || Boolean(note),
-        preview: tail.html + foot + note,
-        // The opened body hides the preview, so it repeats the exit and notice.
-        full: clipped ? consoleDetailHtml(trace, false, running) + foot + consoleTruncationNote(trace, " is-full-note") : "",
+        status: head || line.text,
+        statusHtml: head ? undefined : line.html,
+        keep: Boolean(head),
+        preview: "",
+        full: head || line.more ? consoleDetailHtml(trace, false, running) : "",
       };
     }
     if (name === "grep" || name === "glob" || name === "list_dir") {
@@ -286,9 +289,9 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
     const noun = (n) => `${n === 1 ? "call" : "calls"}`;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
-    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : " · no calls ran"}`)
-      : interrupted ? `Interrupted · <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
-      : running ? (total ? `Running · <b>${total}</b> ${noun(total)} so far` : "Running…")
+    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : " | no calls ran"}`)
+      : interrupted ? `Interrupted | <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      : running ? (total ? `Running | <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? `<b>${total}</b> ${noun(total)}: ${what}` : "No calls";
     const row = (rowKey, branch, head, body, state, tool) => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
@@ -384,7 +387,7 @@ function consoleResultLine(trace, presentation) {
       // The call returns at once; events print as their own rows. The watch's
       // deadline sits on the line under it, like every other pending call.
       const id = trace.command_id || trace.job_id || deps.executionIdentity(trace) || "";
-      return `Monitor started${id ? ` · task ${id}` : ""}`;
+      return `Monitor started${id ? ` | task ${id}` : ""}`;
     }
     if ((running) && name === "read_url") return "Fetching…";
     if (running) return presentation.statusLabel === "Cancelling" ? "Cancelling…" : "Running…";
@@ -434,7 +437,7 @@ function consoleResultLine(trace, presentation) {
       const todos = deps.normalizeTodos(trace.todos);
       if (todos.length) {
         const done = todos.filter((item) => item.status === "completed").length;
-        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} · ${done}/${todos.length} done`;
+        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} | ${done}/${todos.length} done`;
       }
       return "no todos";
     }
@@ -457,7 +460,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "kill_subagent") {
       const already = preview.match(/^already (\w+)/);
-      return already ? `Already ${already[1]} · nothing to stop` : "Subagent stopped";
+      return already ? `Already ${already[1]} | nothing to stop` : "Subagent stopped";
     }
     if (name === "scratch") {
       const read = preview.match(/^(\S+) \((\d+) chars\)$/);
@@ -468,7 +471,7 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
-      if (took) return `finished · ${took}`;
+      if (took) return `finished | ${took}`;
       return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : "finished";
     }
     // A loaded skill reads as what it is for: its description, else the
@@ -508,7 +511,7 @@ function consoleResultLine(trace, presentation) {
       }
       const took = consoleDurationLabel(trace);
       const verb = presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished";
-      return took ? `Agent "${subject}" ${verb} · ${took}` : `Agent "${subject}" ${verb}`;
+      return took ? `Agent "${subject}" ${verb} | ${took}` : `Agent "${subject}" ${verb}`;
     }
     if (name === "monitor") {
       const n = Number(trace.event_count);
@@ -532,5 +535,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleCodeFold, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

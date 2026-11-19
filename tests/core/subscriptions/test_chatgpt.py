@@ -185,10 +185,14 @@ def test_encrypted_reasoning_goes_only_to_its_account_and_an_undecryptable_one_i
     assert [any(i.get("type") == "reasoning" for i in json.loads(r.content)["input"]) for r in calls.requests] == [True, False]
 
 
-def test_a_rejected_parameter_is_dropped_and_the_request_retried(pool, monkeypatch):
+@pytest.mark.parametrize("detail", [
+    "Unsupported parameter: parallel_tool_calls",
+    "Error: Unsupported parameter: parallel_tool_calls",
+])
+def test_a_rejected_parameter_is_dropped_and_the_request_retried(pool, monkeypatch, detail):
     owner, _source = pool
     cred = account("chatgpt", owner, linked())
-    answers = [httpx.Response(400, json={"detail": "Unsupported parameter: parallel_tool_calls"}), ok_stream()]
+    answers = [httpx.Response(400, json={"detail": detail}), ok_stream()]
     with http(answers, monkeypatch) as calls:
         result, _frames = chat_frames(pool, {"messages": HISTORY[:2], "parallel_tool_calls": False})
     assert (result.status, result.credential_id) == (200, cred)
@@ -211,6 +215,16 @@ def test_a_spent_plan_fails_over_but_a_bad_request_never_cools_the_account(pool,
         with http(lambda request: httpx.Response(400, json={"error": {"message": "context_length_exceeded"}}), monkeypatch) as calls:
             result = chat(pool, {"messages": HISTORY[:2]})
     assert (result.status, len(calls.requests), holds) == (400, 1, [])
+
+
+def test_a_non_stream_error_event_keeps_its_top_level_code_and_message(pool, monkeypatch):
+    owner, source = pool
+    account("chatgpt", owner, linked())
+    error = {"type": "error", "code": "context_length_exceeded", "message": "Your input exceeds the context window"}
+    with http(lambda request: ok_stream(error), monkeypatch) as calls:
+        result = run(source.chat({"model": "gpt-6.1-sol", "stream": False, "messages": HISTORY[:2]}, user_id=owner))
+    assert (result.status, len(calls.requests)) == (400, 1)
+    assert result.body["error"]["message"] == "Your input exceeds the context window"
 
 
 def test_a_401_refreshes_once_and_retries_with_the_new_token(pool, monkeypatch):

@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
-from .. import artifacts, speech, chat_drafts, model_favorites, chat_events, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
+from .. import artifacts, speech, chat_drafts, model_favorites, chat_events, chat_images, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
 from ..config import settings
 from ..security import limiter
 from ..sources import openrouter as openrouter_mod
@@ -165,8 +165,15 @@ def _chat_thread_pk(user, thread_id):
     return pk
 
 
-def _chat_public_thread(thread):
-    return {**thread, "run": _chat_public_run(thread.get("run"))}
+def _chat_public_thread(thread, user=None, pack=False):
+    public = {**thread, "run": _chat_public_run(thread.get("run"))}
+    if user is not None and public.get("messages"):
+        pk = chats.resolve_thread_pk(user["id"], public["id"])
+        public["messages"] = chat_images.link_attachments(pk, public["messages"])
+    if pack:
+        public["messages"] = chats.pack_segment_text(public.get("messages"))
+        public["segments_packed"] = True
+    return public
 
 
 @router.post("/chat/threads/{thread_id}/turns")
@@ -192,6 +199,7 @@ async def chat_turn(request: Request, thread_id: str):
         raise HTTPException(422, "Unsupported turn fields")
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
     try:
+        attachments = await asyncio.to_thread(chat_images.restore_attachments, user["id"], raw.get("attachments"))
         result = await asyncio.to_thread(
             chat_store.start_turn,
             user["id"],
@@ -202,7 +210,7 @@ async def chat_turn(request: Request, thread_id: str):
             model=raw.get("model"),
             tools=raw.get("tools"),
             context=raw.get("context"),
-            attachments=raw.get("attachments"),
+            attachments=attachments,
             reasoning_effort=raw.get("reasoning_effort"),
             auto_title=True,
             invoke_skill=raw.get("invoke_skill"),
@@ -217,8 +225,11 @@ async def chat_turn(request: Request, thread_id: str):
         # Claude Code names a session from its first prompt while the turn
         # runs; the sweep skips threads that already have a title.
         chat_titles.notify(pk)
-    return JSONResponse({**result, "thread": _chat_public_thread(result["thread"]) if result["thread"] else None,
-                         "run": _chat_public_run(result["run"])}, headers={"Cache-Control": "no-store"})
+    # Like the snapshot (?pack=1): the reply is the whole transcript.
+    pack = request.query_params.get("pack") == "1"
+    thread = await asyncio.to_thread(_chat_public_thread, result["thread"], user, pack) if result["thread"] else None
+    return JSONResponse({**result, "thread": thread, "run": _chat_public_run(result["run"])},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/threads/{thread_id}/queue")
@@ -235,12 +246,16 @@ async def chat_queue_put(request: Request, thread_id: str):
         raise HTTPException(422, "Unsupported queue fields")
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
     try:
+        if "attachments" in raw:
+            raw["attachments"] = await asyncio.to_thread(chat_images.restore_attachments, user["id"], raw["attachments"])
         sent, held = await chat_runs.queue_message(user["id"], pk, raw, release=raw.get("release") is True)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     thread = await asyncio.to_thread(chats.get_thread, user["id"], pk) if sent else None
+    pack = request.query_params.get("pack") == "1"
     return JSONResponse({"ok": True, "sent": sent, "held": held,
-                         "thread": _chat_public_thread(thread) if thread else None}, headers={"Cache-Control": "no-store"})
+                         "thread": await asyncio.to_thread(_chat_public_thread, thread, user, pack) if thread else None},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.delete("/chat/threads/{thread_id}/queue/{item_id}")
@@ -264,6 +279,25 @@ async def chat_run_image(request: Request, run_id: str, event_id: str):
     mime, pixels = image
     return Response(pixels, media_type=mime, headers={
         "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    })
+
+
+@router.get("/chat/images/{sha}")
+async def chat_image(request: Request, sha: str):
+    """A user attachment image a thread view sent as this path (chat_images.link_attachments)."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    image = await asyncio.to_thread(chat_images.attachment_image, user["id"], sha)
+    if image is None:
+        raise HTTPException(404, "Image unavailable")
+    mime, pixels = image
+    # The path names the bytes (their sha256), so they never change under it.
+    return Response(pixels, media_type=mime, headers={
+        "Cache-Control": "private, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Cross-Origin-Resource-Policy": "same-origin",
@@ -442,13 +476,14 @@ async def chat_steer(request: Request, thread_id: str):
         raise HTTPException(422, "text cannot be empty")
     pk = _chat_thread_pk(user, thread_id)
     try:
-        result = chat_store.steer_turn(user["id"], pk, text, _chat_command(raw), attachments=raw.get("attachments"))
+        attachments = chat_images.restore_attachments(user["id"], raw.get("attachments"))
+        result = chat_store.steer_turn(user["id"], pk, text, _chat_command(raw), attachments=attachments)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     active = result["thread"].get("run")
     if active and active["status"] == "queued":
         await chat_runs.start(request, user, active)
-    thread = _chat_public_thread(result["thread"])
+    thread = _chat_public_thread(result["thread"], user)
     return JSONResponse(
         {
             "ok": True,
@@ -582,10 +617,7 @@ async def chat_thread_get(request: Request, thread_id: str):
     if thread.get("unread"):
         await asyncio.to_thread(chats.mark_thread_read, user["id"], thread_id)
         thread["unread"] = False
-    public = _chat_public_thread(thread)
-    if request.query_params.get("pack") == "1":
-        public["messages"] = await asyncio.to_thread(chats.pack_segment_text, public.get("messages"))
-        public["segments_packed"] = True
+    public = await asyncio.to_thread(_chat_public_thread, thread, user, request.query_params.get("pack") == "1")
     if request.query_params.get("stream") != "1":
         return JSONResponse(public, headers={"Cache-Control": "no-store"})
     return _thread_stream(public)
@@ -881,7 +913,7 @@ async def chat_thread_patch(request: Request, thread_id: str):
             "auto_permissions user=%s thread=%s wanted=%s stored=%s",
             user["id"], thread_id, kwargs["auto_permissions"], thread.get("auto_permissions"),
         )
-    return JSONResponse(_chat_public_thread(thread))
+    return JSONResponse(await asyncio.to_thread(_chat_public_thread, thread, user))
 
 
 @router.post("/chat/threads/{thread_id}/title")
@@ -1000,7 +1032,7 @@ async def chat_compact(request: Request, thread_id: str):
     if prepared.get("idempotent"):
         return JSONResponse(
             {
-                "thread": _chat_public_thread(prepared["thread"]),
+                "thread": _chat_public_thread(prepared["thread"], user),
                 "compacted": prepared.get("compacted", True),
                 "idempotent": True,
             },
@@ -1012,7 +1044,7 @@ async def chat_compact(request: Request, thread_id: str):
     if not ctxmod.compactable_transcript(messages, keep_tail=(thread.get("compaction") or {}).get("keep_tail")):
         chat_store.remember_compact(user["id"], _chat_command(raw), prepared["fingerprint"], thread, compacted=False)
         return JSONResponse(
-            {"thread": _chat_public_thread(thread), "compacted": False, "reason": "not_enough"},
+            {"thread": _chat_public_thread(thread, user), "compacted": False, "reason": "not_enough"},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -1044,7 +1076,7 @@ async def chat_compact(request: Request, thread_id: str):
     if not checkpoint:
         chat_store.remember_compact(user["id"], _chat_command(raw), prepared["fingerprint"], thread, compacted=False)
         return JSONResponse(
-            {"thread": _chat_public_thread(thread), "compacted": False, "reason": "not_enough"},
+            {"thread": _chat_public_thread(thread, user), "compacted": False, "reason": "not_enough"},
             headers={"Cache-Control": "no-store"},
         )
     try:
@@ -1061,7 +1093,7 @@ async def chat_compact(request: Request, thread_id: str):
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     return JSONResponse(
-        {"thread": _chat_public_thread(view), "compacted": True},
+        {"thread": _chat_public_thread(view, user), "compacted": True},
         headers={"Cache-Control": "no-store"},
     )
 

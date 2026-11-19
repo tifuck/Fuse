@@ -11,7 +11,7 @@ from .. import accounts, db
 from ..crypto import encrypt
 from ..proxy import openai_chat
 from .base import ChatResult
-from .pool_pick import auth_failure_confirmed
+from .pool_pick import auth_failure_confirmed, forget_error
 
 BASE_URL = "https://api.experientiallabs.ai/v1"
 CATALOG_URL = "https://api.experientiallabs.ai/api/models"
@@ -224,6 +224,7 @@ async def fetch_catalog(user_id: int | None, *, force: bool = False) -> dict:
         _catalogs[user_id] = (revision, time.monotonic(), catalog)
         _remember_windows(catalog)
         _errors.pop(user_id, None)
+        forget_error(cred["id"])
         return catalog
 
 
@@ -351,6 +352,8 @@ class ExperientialLabsSource:
                 await client.aclose()
 
             stream._on_close = close_stream
+        if status == 200:
+            forget_error(cred["id"])
         if status == 401:
             current = user_credential(user_id, self.source_id)
             if current and _revision(current) == revision and auth_failure_confirmed(cred["id"]):

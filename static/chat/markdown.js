@@ -276,23 +276,30 @@ function parseLines(lines, offsets) {
 }
 
 // Block tokens for a message; top-level tokens carry `offset`, where the
-// line they begin on starts.
+// line they begin on starts in `src` (line endings as given).
 export function parseBlocks(src) {
-  const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
-  const offsets = [];
-  let pos = 0;
-  for (const line of String(src || "").replace(/\r\n?/g, "\n").split("\n")) {
-    offsets.push(pos);
-    pos += line.length + 1;
-  }
+  const text = String(src || "");
+  const lines = text.replace(/\r\n?/g, "\n").split("\n").map(expandTabs);
+  const offsets = [0];
+  for (const m of text.matchAll(/\r\n?|\n/g)) offsets.push(m.index + m[0].length);
   return parseLines(lines, offsets);
 }
 
+// A fence that only counts once its close arrives: a title after the language
+// or an opener at the end of a line of prose (fenceStart, readParagraph). It
+// turns paragraphs already read into code, so nothing before it is final.
+const LATE_FENCE = /[^\s`~][ \t]*(?:`{3,}|~{3,})|(?:`{3,}|~{3,})[ \t]*[^\s`~]\S*[ \t]+\S/;
+
 // Where the last top-level block starts. Every block before it is final, so
 // a stream can freeze what it drew for them. 0 while there is one block.
-export function stableBoundary(src) {
-  const tokens = parseBlocks(src);
-  return tokens.length > 1 ? tokens[tokens.length - 1].offset : 0;
+// `from`: a boundary an earlier call gave for the start of this text. Blocks
+// parse the same from there, so a long message is not read again from its
+// first line on every streamed frame.
+export function stableBoundary(src, from = 0) {
+  const text = String(src || "");
+  if (from && LATE_FENCE.test(text)) from = 0;
+  const tokens = parseBlocks(from ? text.slice(from) : text);
+  return tokens.length > 1 ? from + tokens[tokens.length - 1].offset : from;
 }
 
 // ---- Inline ----

@@ -86,7 +86,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-send {
   width: var(--composer-ctl);
   height: var(--composer-ctl);
-  transition: transform 140ms ease, filter 140ms ease, background-color 140ms ease;
+  transition: transform 140ms ease, filter 140ms ease, background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-context { width: var(--composer-ctl); height: var(--composer-ctl); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-context svg { width: 1.35rem; height: 1.35rem; }
@@ -237,7 +237,7 @@
   border-radius: 7px;
   color: color-mix(in srgb, var(--mute) 55%, var(--mist));
   background: transparent;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-icon-btn:hover {
   color: var(--mist);
@@ -295,7 +295,7 @@
   color: var(--mist);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  transition: background-color 120ms ease;
+  transition: background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-source-list li:last-child .chat-source-row { border-bottom: 0; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-source-row:hover { background: var(--raise); color: var(--mist); }

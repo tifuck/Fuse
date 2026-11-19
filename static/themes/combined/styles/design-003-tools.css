@@ -110,7 +110,7 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-reveal.is
   animation: console-output-reveal var(--dur-1) ease-out;
 }
 
-html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-chevron { transition: transform var(--dur-1) ease, color var(--dur-1) ease; }
+html[data-chat-view="combined"] .chat[data-view="combined"] .chat-step-chevron { transition: transform var(--dur-1) ease, color var(--dur-hover) ease; }
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-box {
   display: flex;
@@ -127,7 +127,7 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-box {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
-  transition: box-shadow var(--dur-1) ease;
+  transition: box-shadow var(--dur-hover) ease;
 }
 
 html[data-chat-view="combined"] .chat[data-view="combined"] :is(.chat-box-bar, .chat-box-left, .chat-box-right) {

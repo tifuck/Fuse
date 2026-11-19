@@ -215,7 +215,8 @@ function build(s) {
   // Clear the pins the bus replaces and lay it down.
   for (const cells of lanes) {
     for (const [x, y] of cells) set(x, y, 1);
-    s.traces.push({ cells, bus: true });
+    // A board as small as a picker card can leave the bus no room.
+    if (cells.length > 1) s.traces.push({ cells, bus: true });
   }
   // Starts that collide with the bus are dropped later by the free check.
   // Landmarks: an electrolytic capacitor or two beside the CPU.

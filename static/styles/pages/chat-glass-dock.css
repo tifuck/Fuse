@@ -17,7 +17,7 @@
 }
 /* A running reply's status line is the transcript's last row, so it scrolls
    away with the reply; it takes over the log's clearance above the composer. */
-:where(html:not(.is-chat-root)) .chat:not(.is-empty) .chat-thread:has(> .chat-live-dock:not([hidden])) > .chat-log { padding-bottom: 0; }
+:where(html:not(.is-chat-root)) .chat:not(.is-empty) .chat-thread > .chat-log:has(~ .chat-live-dock:not([hidden])) { padding-bottom: 0; }
 :where(html:not(.is-chat-root)) .chat:not(.is-empty) .chat-live-dock {
   padding-bottom: calc(var(--dock-h, 7rem) + var(--dock-clearance));
 }

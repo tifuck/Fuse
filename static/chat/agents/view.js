@@ -327,6 +327,8 @@ export function createView(ctx) {
     if (S.agentsRequest?.tid === tid && S.agentsRequest.gen === gen) { S.agentsRefreshAgain = true; return; }
     const ticket = S.agentsRequest = { tid, gen };
     const epoch = S.agentLifecycleEpoch;
+    // Alongside the agents, not after them: neither read needs the other.
+    jobs.refreshJobs();
     try {
       const data = await net.api("/chat/threads/" + encodeURIComponent(tid) + "/agents");
       if (tid !== S.currentId || gen !== S.generation) return;
@@ -357,7 +359,6 @@ export function createView(ctx) {
         if (S.agentsRefreshAgain) { S.agentsRefreshAgain = false; refreshAgents(); }
       }
     }
-    jobs.refreshJobs();
   }
 
     // The user's message to a subagent: a live one takes it at its next step,

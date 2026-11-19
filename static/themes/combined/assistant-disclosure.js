@@ -209,7 +209,9 @@ function renderAssistant(msg, live) {
 // read stays put. Listings and file bodies keep reading from the top.
 function tailConsoleOutput(root) {
     root.querySelectorAll(':is([data-tool="run_terminal_command"], [data-tool="get_command_output"], .is-event) .chat-console-hang.is-expanded pre.chat-console-out.is-stdout').forEach((box) => {
-      if (box._tailed || !box.clientHeight) return;
+      // A folded summary line draws none of its rows: asking such a box for its
+      // height on every repaint forced a layout to learn that.
+      if (box._tailed || box.closest(".chat-step.is-console-group:not(.is-console-expanded) > .chat-step-main > .chat-console-bundle") || !box.clientHeight) return;
       box._tailed = true;
       box.scrollTop = box.scrollHeight;
     });

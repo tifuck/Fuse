@@ -1338,9 +1338,10 @@ def request_cancel_self(user_id, run_id, by_user=False):
 
 
 def _json_flag(value) -> bool:
-    """Truthiness for a json_extract column value: SQLite returns 1/0, while
-    MariaDB's JSON_VALUE returns 'true'/'false'/'null' strings (whose plain
-    bool() would be True even for 'false')."""
+    """Truthiness for a json_extract column value. Depending on the database
+    and driver it may arrive as an int (1/0) or as a string ('1'/'0',
+    'true'/'false', 'null'), and a plain bool() of any non-empty string,
+    '0' and 'false' included, would be True."""
     if isinstance(value, str):
         return value not in ("", "0", "false", "null")
     return bool(value)

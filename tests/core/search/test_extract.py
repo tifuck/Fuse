@@ -152,6 +152,13 @@ def test_find_is_literal_and_reaches_past_the_first_window():
     assert once.count("needle appears once") == 1 and once.count("# Topic") == 1
 
 
+def test_find_matches_a_phrase_wrapped_across_lines():
+    text = "# Topic\n\nThe quick brown\nfox jumps over the lazy dog.\n\n## Big  Heading\n\nbody"
+    found = find_windows(text, "quick BROWN fox")
+    assert "No literal match" not in found and "brown\nfox jumps" in found
+    assert "## Big  Heading" in find_windows(text, "big heading")
+
+
 def test_find_returns_a_phrase_cut_by_the_passage_split_whole():
     phrase = "restore the replica"
     text = "a" * (PASSAGE_CHARS - len(phrase) // 2) + phrase + " and then more words. " + "tail " * 100

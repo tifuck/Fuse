@@ -83,7 +83,7 @@ function toolSubject(trace) {
     if (["grep", "glob"].includes(name)) return [toolText(trace.pattern || trace.query || "pattern", 90), trace.path ? `in ${compactPath(trace.path, trace, 36)}` : ""].filter(Boolean).join(" ");
     if (["spawn_subagent", "get_subagent_output", "kill_subagent"].includes(name)) {
       const label = toolText(agentDescriptionFor(trace) || "subagent", 120);
-      return name === "spawn_subagent" && trace.model ? `${label} · ${toolText(trace.model, 40)}` : label;
+      return name === "spawn_subagent" && trace.model ? `${label} | ${toolText(trace.model, 40)}` : label;
     }
     if (name === "read_url") { try { const u = new URL(trace.url); return u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : compactPath(u.pathname, {}, 45)); } catch { return trace.url || "page"; } }
     if (isSearchTool(name)) {
@@ -227,7 +227,7 @@ function structuredToolHtml(trace, output) {
       const rows = list.map((row) => ({
         state: row.status === "running" || row.status === "queued" ? "live" : row.status === "completed" ? "done" : row.status === "failed" ? "fail" : "idle",
         title: row.description || row.id,
-        detail: [row.status, row.model].filter(Boolean).join(" · "),
+        detail: [row.status, row.model].filter(Boolean).join(" | "),
       }));
       return kvListHtml(rows) || `<p class="chat-tool-note">No subagents.</p>`;
     }
@@ -235,7 +235,7 @@ function structuredToolHtml(trace, output) {
       const data = json();
       const models = data && Array.isArray(data.models) ? data.models : objects().filter((row) => row.id);
       if (!models.length && !data) return null;
-      return kvListHtml(models.map((row) => ({ title: row.name || row.id, detail: [row.id, row.provider].filter(Boolean).join(" · ") }))) || `<p class="chat-tool-note">No matching models.</p>`;
+      return kvListHtml(models.map((row) => ({ title: row.name || row.id, detail: [row.id, row.provider].filter(Boolean).join(" | ") }))) || `<p class="chat-tool-note">No matching models.</p>`;
     }
     if (name === "search_tools") {
       const data = json();
@@ -290,7 +290,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     const hostHtml = host ? `<span class="chat-tool-host" title="Host ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
     const clock = (presentation) ? deps.ccCallClockHtml(trace, presentation) : "";
     // Console: a running call reads as Claude Code's live line, one row
-    // counting up ("Running npm test · 12s"); it prints as Bash(…) once done.
+    // counting up ("Running npm test | 12s"); it prints as Bash(…) once done.
     const pending = /^(queued|cancelling)$/i.test(presentation && presentation.statusLabel);
     const live = (running) && !full && !deps.toolBackground(trace) && !pending ? deps.ccLiveText(trace, 1000) : "";
     if (live) return `<span class="chat-console-call is-live">${deps.escapeHtml(live)}</span>${hostHtml}${clock}`;

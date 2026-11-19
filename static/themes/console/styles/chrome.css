@@ -89,8 +89,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-his
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(.has-snip, .is-project) > button.more { top: 0.25rem; transform: none; }
   /* ⋯ reaches into the second line's end, so the host label there steps
      aside while it shows instead of sitting under it. */
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-host-label { transition: opacity var(--dur-1) ease; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) .chat-history-host-label { opacity: 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-host-label { transition: opacity var(--dur-hover) ease; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-item:is(:hover, :focus-within, .is-menu) .chat-history-host-label { opacity: 0; --dur-hover: 0s; }
 }
 
 /* The Archived toggle turns into a way back while it is on. */
@@ -153,7 +153,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-pro
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-todo-badge { top: calc(50% - 0.7rem); }
 
 /* —— Transcript edges —— */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { padding-top: 0.75rem; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-stage > .chat-work:not([hidden]) ~ .chat-thread { padding-top: 0.75rem; }
 
 
 /* —— Sheets —— */

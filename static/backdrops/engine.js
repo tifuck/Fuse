@@ -3,19 +3,37 @@
 
 import { html, reduce } from "./env.js";
 import { palette } from "./color.js";
-import { SCENES } from "./scenes.js";
+import { SCENES, hasScene, isWallpaper, loadScene } from "./scenes.js";
 
 function makeState(ctx, k) {
   return { ctx, pal: palette(), dpr: 0, w: 0, h: 0, k };
 }
 
 // —— Runner ——
-const run = { kind: "", canvas: null, ctx: null, raf: 0, last: 0, acc: 0, t: 0, state: null, listening: false };
+const run = { kind: "", canvas: null, ctx: null, raf: 0, timer: 0, last: 0, acc: 0, t: 0, state: null, listening: false, shown: true };
+// The timer wakes this much before a scene frame is due, so the display
+// frame that follows it is the one that draws.
+const EARLY = 0.004;
 
 function stop() {
   if (run.raf) cancelAnimationFrame(run.raf);
+  clearTimeout(run.timer);
   run.raf = 0;
+  run.timer = 0;
   run.last = 0;
+}
+
+// One display frame per scene frame: a 12 fps scene sleeps through the rest.
+// Nothing is scheduled while the tab or the canvas is out of sight.
+function next() {
+  if (run.raf || run.timer || document.hidden || !run.shown) return;
+  const wake = () => {
+    run.timer = 0;
+    run.raf = requestAnimationFrame(frame);
+  };
+  const wait = run.last ? (1 / SCENES[run.kind].fps - run.acc - EARLY) * 1000 : 0;
+  if (wait > 0) run.timer = setTimeout(wake, wait);
+  else wake();
 }
 
 function measure() {
@@ -46,13 +64,13 @@ function frame(now) {
   run.last = sec;
   run.acc += dt;
   const budget = 1 / engine.fps;
-  if (run.acc >= budget || !run.t) {
+  if (run.acc >= budget - EARLY || !run.t) {
     const step = Math.max(run.acc, budget);
     run.acc = 0;
     run.t += step;
     if (measure()) engine.draw(run.state, run.t, step);
   }
-  if (!document.hidden) run.raf = requestAnimationFrame(frame);
+  next();
 }
 
 function start() {
@@ -68,16 +86,44 @@ function start() {
   engine.warm?.(run.state, run.t, reduce.matches);
   engine.draw(run.state, run.t, 1 / engine.fps);
   if (reduce.matches) return;
-  if (!document.hidden) run.raf = requestAnimationFrame(frame);
+  next();
 }
+
+// A scene's setup, warm-up and first frame take up to a second, so they wait
+// for the page: its load, the transcript of the chat it is opening (an idle
+// moment comes sooner, while that is still on the wire), then an idle moment.
+const settled = new Promise((resolve) => {
+  if (document.readyState === "complete") resolve();
+  else window.addEventListener("load", resolve, { once: true });
+}).then(() => new Promise((resolve) => {
+  const log = new URLSearchParams(location.search).get("t") && document.querySelector("[data-chat-log]");
+  if (!log || log.childElementCount) return resolve();
+  const done = () => {
+    filled.disconnect();
+    clearTimeout(timer);
+    resolve();
+  };
+  const filled = new MutationObserver(done);
+  const timer = setTimeout(done, 4000);
+  filled.observe(log, { childList: true });
+}));
+const whenIdle = (fn) => settled.then(() => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 200)));
 
 function listen() {
   if (run.listening) return;
   run.listening = true;
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) stop();
-    else if (SCENES[run.kind] && run.state && !reduce.matches && !run.raf) run.raf = requestAnimationFrame(frame);
+    else if (SCENES[run.kind] && run.state && !reduce.matches) next();
   });
+  // A canvas that is not rendered (a hidden ancestor, no size) stops the loop too.
+  if (typeof IntersectionObserver === "function") {
+    run.watch = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.target === run.canvas) run.shown = entry.isIntersecting;
+      if (!run.shown) stop();
+      else if (SCENES[run.kind] && run.state && !reduce.matches) next();
+    });
+  }
   let resizeFrame = 0;
   window.addEventListener("resize", () => {
     if (resizeFrame || !run.state) return;
@@ -93,6 +139,7 @@ function listen() {
 // Each card shows a real, settled frame of its scene; the hovered card runs.
 const previews = new Map();
 let observer = null;
+let seen = null;
 const hover = { el: null, raf: 0, last: 0, acc: 0 };
 
 function paintPreview(el) {
@@ -152,7 +199,16 @@ function hoverPreview(el) {
 
 export function scanPreviews(root = document) {
   const els = root.querySelectorAll?.(".chat-backdrop-preview[data-kind]") || [];
-  if (!observer && typeof ResizeObserver === "function") {
+  if (!observer && typeof ResizeObserver === "function" && typeof IntersectionObserver === "function") {
+    // A card's scene loads when the card first comes into view; from then on
+    // the card is sized, painted and repainted by the resize observer.
+    seen = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        seen.unobserve(entry.target);
+        loadScene(entry.target.dataset.kind).then(() => observer.observe(entry.target), () => {});
+      }
+    });
     observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const el = entry.target;
@@ -167,10 +223,10 @@ export function scanPreviews(root = document) {
     });
   }
   for (const el of els) {
-    if (!SCENES[el.dataset.kind] || el.dataset.fxObserved) continue;
+    if (!hasScene(el.dataset.kind) || el.dataset.fxObserved) continue;
     el.dataset.fxObserved = "1";
-    if (observer) observer.observe(el);
-    else paintPreview(el);
+    if (observer) seen.observe(el);
+    else loadScene(el.dataset.kind).then(() => paintPreview(el), () => {});
   }
 }
 
@@ -206,14 +262,15 @@ export function sync(scene, kind) {
     }, SETTLE_MS);
   }
   ink = next;
+  const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
+  const animated = Boolean(canvas && !scene.hidden && hasScene(kind));
+  const same = animated && run.state && run.kind === kind && run.canvas === canvas;
   // Wallpapers (data-only specs and the landscape scenes) paint their own
   // opaque ground: the CSS shows them at full strength, without the centre
   // mask and the veil.
-  scene?.toggleAttribute("data-wallpaper", Boolean(SCENES[kind]?.spec || SCENES[kind]?.wallpaper));
-  const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
-  const animated = Boolean(canvas && !scene.hidden && SCENES[kind]);
-  const same = animated && run.state && run.kind === kind && run.canvas === canvas;
+  const dress = () => scene?.toggleAttribute("data-wallpaper", isWallpaper(kind));
   if (!animated) {
+    dress();
     stop();
     run.kind = kind || "";
     run.state = null;
@@ -221,9 +278,24 @@ export function sync(scene, kind) {
     return;
   }
   listen();
-  canvas.hidden = false;
+  if (same) return;
+  stop();
+  run.state = null;
+  if (run.canvas !== canvas) {
+    if (run.canvas) run.watch?.unobserve(run.canvas);
+    run.watch?.observe(canvas);
+    run.shown = true;
+  }
   run.canvas = canvas;
   run.ctx = canvas.getContext("2d");
   run.kind = kind;
-  if (!same) start();
+  // The scene's module loads on first use and its first frame is drawn once
+  // the page is idle. Until then the layers stay as they were (the CSS wash
+  // and veil, or the previous scene's last frame), so nothing flashes.
+  loadScene(kind).then(() => whenIdle(() => {
+    if (run.kind !== kind || run.canvas !== canvas || run.state || scene.hidden) return;
+    dress();
+    canvas.hidden = false;
+    start();
+  }), () => {});
 }

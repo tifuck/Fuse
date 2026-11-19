@@ -149,6 +149,24 @@ def test_day_buckets_and_labels_follow_the_viewers_time_zone(fresh_db):
     assert stats.format_when("2026-11-11T03:00:00Z") == "11 Nov 2026 03:00 UTC"
 
 
+def test_day_buckets_start_at_a_half_hour_offset_midnight(fresh_db):
+    uid = user()
+    # 23:45 on the 10th and 00:15 on the 11th in India (IST, UTC+5:30): one UTC hour.
+    _event(uid, "2026-11-10T18:15:00Z")
+    _event(uid, "2026-11-10T18:45:00Z")
+
+    token = stats.display_zone.set(ZoneInfo("Asia/Kolkata"))
+    try:
+        data = stats.usage_analytics(uid, range_id="30d")
+    finally:
+        stats.display_zone.reset(token)
+
+    assert {p["at"]: p["requests"] for p in data["series"] if p["requests"]} == {
+        "2026-11-09T18:30:00Z": 1, "2026-11-10T18:30:00Z": 1}
+    assert [row[0] for row in data["activity"] if row[2]] == [
+        int(datetime(2026, 11, 10, 18, tzinfo=timezone.utc).timestamp())]
+
+
 def test_all_users_split_accounts_by_provider_and_keep_rows_of_deleted_users(fresh_db):
     admin = user("admin@core.test", admin=True)
     other = user("other@core.test")
@@ -265,3 +283,15 @@ def test_a_source_card_shows_api_equivalent_cost_only_when_it_is_known(fresh_db)
     db.delete_model_price("grok", "grok-4.5")
     view = stats.fuse_view(db.fetchone("SELECT * FROM credentials WHERE id=?", (cred,)))
     assert (view["cost_label"], view["cost_unavailable"]) == ("", True)
+
+
+def test_a_source_card_counts_cache_writes_apart_from_uncached_input(fresh_db):
+    uid = user()
+    sid = source("grok")
+    cred = accounts.add_credential(sid, "pool", "secret", donated_by=uid)
+    db.record_usage(uid, sid, cred, "grok-4.5", {"prompt_tokens": 1000, "cached_tokens": 600,
+                                                  "cache_write_tokens": 300, "usage_status": "complete"},
+                    provider="grok")
+
+    view = stats.fuse_view(db.fetchone("SELECT * FROM credentials WHERE id=?", (cred,)))
+    assert (view["uncached_tokens"], view["cached_tokens"]) == (100, 600)

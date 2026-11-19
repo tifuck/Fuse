@@ -18,7 +18,7 @@ function artifactCards(traces) {
 
 function artifactCardHtml(card) {
     const meta = card.gone ? (card.gone === "archived" ? "Archived" : "Deleted")
-      : [card.verb, card.version != null ? `v${card.version}` : "", card.format === "markdown" ? "Markdown" : ""].filter(Boolean).join(" · ");
+      : [card.verb, card.version != null ? `v${card.version}` : "", card.format === "markdown" ? "Markdown" : ""].filter(Boolean).join(" | ");
     const icon = deps.STEP_ICONS.artifact;
     if (card.gone) {
       return `<div class="chat-artifact-card is-gone">` +
@@ -169,7 +169,10 @@ function updateAssistant(article, msg, live) {
     const sources = [...sourceMap.values()].map((row) => ({ ...row, cited: content.includes(row.url) }));
     const citations = article.querySelector("[data-citations]");
     const inActivity = Boolean(traces.length);
-    citations.hidden = inActivity || !sources.length || !msg.content;
+    // Hidden states are compared before they are written: a streamed frame
+    // repeats them all, and a repeated write is still a DOM mutation.
+    const noCitations = inActivity || !sources.length || !msg.content;
+    if (citations.hidden !== noCitations) citations.hidden = noCitations;
     const sourceGrid = article.querySelector("[data-source-grid]");
     const sourceSignature = JSON.stringify(sources);
     if (sourceGrid._src !== sourceSignature) {
@@ -187,7 +190,7 @@ function updateAssistant(article, msg, live) {
         cardsEl._sig = cardSig;
         cardsEl.innerHTML = cards.map(artifactCardHtml).join("");
       }
-      cardsEl.hidden = !cards.length;
+      if (cardsEl.hidden !== !cards.length) cardsEl.hidden = !cards.length;
     }
     const toolById = new Map(traces.map((trace, index) => [trace.id, { trace, index }]));
     const permById = new Map((msg.permissions || []).map((perm) => [perm.id, perm]));
@@ -404,7 +407,8 @@ function updateAssistant(article, msg, live) {
       const writing = live && blockIndex === blocks.length - 1;
       const srcKey = text + "\0" + catalog.join("\n");
       md.classList.toggle("is-writing", writing);
-      if (md._src === srcKey) return;
+      // A fence the reply left open was streamed plain: the settled draw highlights it.
+      if (md._src === srcKey && (writing || !md.querySelector("[data-code-open]"))) return;
       const positions = [...md.querySelectorAll("pre")].map((el) => [el.scrollLeft, el.scrollTop]);
       deps.paintContentBlock(md, text, writing, catalog, srcKey);
       md.querySelectorAll("pre").forEach((el, i) => {
@@ -419,13 +423,13 @@ function updateAssistant(article, msg, live) {
       .map((t) => deps.normErr(t.error || "failed"));
     const errDup = Boolean(errText && toolFailKeys.includes(deps.normErr(errText)));
     if (errText && !errDup) {
-      err.hidden = false;
+      if (err.hidden) err.hidden = false;
       if (err._text !== errText) {
         err._text = errText;
         err.dataset.tone = deps.parseProviderError(errText).tone;
         err.innerHTML = deps.providerErrorHtml(errText);
       }
-    } else {
+    } else if (!err.hidden || err._text) {
       err.hidden = true;
       err._text = "";
       err.textContent = "";
@@ -437,7 +441,8 @@ function updateAssistant(article, msg, live) {
     const errActions = article.querySelector("[data-err-actions]");
     if (errActions) {
       const last = deps.messages[deps.messages.length - 1] === msg || (msg.id && deps.messages.at(-1)?.id === msg.id);
-      errActions.hidden = !(errText && !live && last);
+      const noActions = !(errText && !live && last);
+      if (errActions.hidden !== noActions) errActions.hidden = noActions;
       const button = errActions.querySelector("[data-continue]");
       if (button && !button._bound) {
         button._bound = true;
@@ -456,8 +461,8 @@ function updateAssistant(article, msg, live) {
       foot.hidden = false;
       meta.innerHTML = usageBits
         .map((bit) => `<span title="${deps.escapeHtml(bit.title)}">${deps.escapeHtml(bit.text)}</span>`)
-        .join('<span class="chat-foot-dot" aria-hidden="true">·</span>');
-    } else {
+        .join('<span class="chat-foot-dot" aria-hidden="true">|</span>');
+    } else if (!foot.hidden) {
       foot.hidden = true;
     }
   }

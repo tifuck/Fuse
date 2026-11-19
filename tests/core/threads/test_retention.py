@@ -4,7 +4,8 @@ the sweep's explicit ``now``; thread ages are set as stored timestamps."""
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from app import chat_store, chats, db, retention
+from app import chat_store, chats, db, hosts, retention
+from tests.core.features._support import make_host, make_project
 from tests.core.helpers import make_user
 
 from ._support import events, pk
@@ -94,6 +95,22 @@ def test_a_chat_used_after_the_sweep_read_it_stays_open(fresh_db):
 
     assert stats["archived_chats"] == 0
     assert _state(uid) == {"in use": "open"}
+
+
+def test_sessions_of_a_project_that_did_not_archive_still_archive_as_chats(fresh_db):
+    uid = make_user()
+    host = make_host(uid)
+    project = make_project(uid, host)
+    db.execute("UPDATE user_projects SET created_at=?, updated_at=? WHERE id=?", (_iso(5), _iso(5), project))
+    session = chats.create_thread(uid, model="offline", title="session", kind="project", host_id=host, project_id=project)
+    db.execute("UPDATE chat_threads SET created_at=?, updated_at=?, active_at=? WHERE id=?",
+               (_iso(5), _iso(5), _iso(5), pk(uid, session["id"])))
+
+    with patch.object(hosts, "set_project_archived", return_value=None):
+        stats = retention.sweep_user(uid, PREFS, now=NOW)
+
+    assert (stats["archived_projects"], stats["archived_chats"]) == (0, 1)
+    assert _state(uid) == {"session": "archived"}
 
 
 def test_chats_idle_past_the_mandatory_limit_delete_whatever_the_user_chose(fresh_db):

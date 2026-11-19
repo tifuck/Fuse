@@ -132,6 +132,29 @@ test('a Wait is an invocation: done once returned, never spinning for its child'
   }
 });
 
+// Calls are changed in place as events arrive, so a kept signature may never be trusted by identity.
+test('a call signature follows changes made in place and ignores a settled clock', () => {
+  reset();
+  const { tracesSig } = merge();
+  const trace = { id: 't1', name: 'grep', status: 'done', output: 'a', results: [], elapsed_ms: 5 };
+  const first = tracesSig([trace]);
+  assert.equal(tracesSig([trace]), first);
+  trace.elapsed_ms = 9;
+  assert.equal(tracesSig([trace]), first, 'a finished call\'s clock repaints nothing');
+  trace.output += 'b';
+  const grown = tracesSig([trace]);
+  assert.notEqual(grown, first, 'output written onto the same object');
+  trace.results.push({ url: 'https://x.io' });
+  const listed = tracesSig([trace]);
+  assert.notEqual(listed, grown, 'a nested list changed in place');
+  assert.equal(tracesSig([{ ...trace, results: [{ url: 'https://x.io' }] }]), listed, 'an equal copy reads the same');
+  trace.status = 'running';
+  const running = tracesSig([trace]);
+  trace.elapsed_ms = 10;
+  assert.notEqual(tracesSig([trace]), running, 'a running call\'s clock is part of it');
+  assert.equal(tracesSig([trace, null]), JSON.stringify([trace, null]));
+});
+
 test('summary counts name each state and never drop a category', () => {
   reset();
   const m = merge();
@@ -183,6 +206,11 @@ test('command envelopes parse monitors and signals and keep output off the metad
   assert.equal(done.command, 'log watch', 'a source: line is the monitor target');
   assert.equal(done.duration_ms, null, 'non-numeric duration is absent, not NaN');
   assert.equal(done.exit_code, null);
+  const [bare] = sem.parseCommandResults('<monitor_event id="mon-2" count="5">\nurl: wss://h/ws\n\nline\n</monitor_event>');
+  assert.deepEqual([bare.duration_ms, bare.timeout_ms, bare.event_count], [null, null, 5], 'missing lines are absent, not 0');
+  const trace = { name: 'monitor', child_id: 'mon-2', latency_ms: 4200 };
+  sem.applyCommandResult(trace, bare);
+  assert.equal(trace.latency_ms, 4200, 'an event without a duration keeps the real latency');
   assert.equal(sem.parseCommandResults('no envelopes here').length, 0);
   assert.equal(sem.parseCommandResults('<command_result id="x">no close').length, 0);
 });

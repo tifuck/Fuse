@@ -129,7 +129,7 @@
   line-height: var(--row);
   text-align: left;
 }
-:where(html.is-chat-root[data-chat-view="combined"]) .chat-step-toggle { cursor: pointer; transition: color 140ms ease; }
+:where(html.is-chat-root[data-chat-view="combined"]) .chat-step-toggle { cursor: pointer; transition: color var(--dur-hover) ease; }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-step-toggle:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-step-copy {
   display: flex;
@@ -249,7 +249,7 @@
   line-height: 1;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+  transition: color var(--dur-hover) ease, border-color var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-step-open:hover {
   color: var(--mist);
@@ -411,7 +411,7 @@
   min-height: 1.4rem; padding: 0.05rem 0;
   color: var(--mute); font-size: 0.72rem; line-height: 1.35;
   text-align: left; cursor: pointer;
-  transition: color 140ms ease;
+  transition: color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-prev-toggle:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-prev-toggle .chat-step-chevron { opacity: 0.7; }
@@ -493,7 +493,7 @@
   overflow: hidden;
   border-radius: 0; color: var(--chat-tool);
   font-size: 0.8rem; line-height: 1.4; text-align: left; cursor: pointer;
-  transition: color 140ms ease;
+  transition: color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-substep-toggle:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="combined"]) .chat-substep-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

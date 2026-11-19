@@ -1,0 +1,50 @@
+/* Console polish over the working area (loaded last): even sizes on tool rows, cards that stand out, prettier tables. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: calc(0.78rem * var(--chat-text-scale, 1)); }
+
+/* Tool rows and prompts: one size, so host tags, timings and notes stop shrinking. Replies keep their markdown scale. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-step, .chat-turn.is-user, .chat-notice-line) :not(svg, svg *, img, .chat-md, .chat-md *) { font-size: var(--tty) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-compact-mark, .chat-compact-banner) :is(strong, summary, summary *) { text-transform: none !important; letter-spacing: 0 !important; font-size: var(--tty) !important; }
+
+/* A folded call prints one line under it: long lines end in an ellipsis and
+   the body waits for the open, which turns the row into a grey panel. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body { min-width: 0; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body > :is(.chat-console-result-text, .chat-console-preview, .chat-console-progress, .chat-console-progress > *) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) > .chat-console-hang-body > .chat-console-full { display: none; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call:has(> .chat-step-main > .chat-step-head [data-step-toggle]) .chat-console-hang:not(.is-expanded) { cursor: pointer; }
+
+/* Rendered lists in tool output had their markers clipped ("ı." for "1."). */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] .chat-step ol { list-style-position: inside; padding-left: 0; }
+
+/* Permission card: unmistakable against the black transcript. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card {
+  background: color-mix(in srgb, var(--perm-color, var(--brass)) 7%, var(--panel)) !important;
+  border-color: color-mix(in srgb, var(--perm-color, var(--brass)) 80%, var(--line)) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--perm-color, var(--brass)) 30%, transparent), 0 0 24px color-mix(in srgb, var(--perm-color, var(--brass)) 12%, transparent) !important;
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card-meta { color: var(--mist) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-perm-card-cmd::before { content: "$ "; color: var(--mute); }
+
+/* Composer: same icons; the model reads as a setting, set apart from the toggles. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-btn { color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-btn:hover { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-picker-btn small { font-size: inherit !important; opacity: 0.7; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-box] .chat-model { padding-right: 0.55rem; margin-right: 0.15rem; border-right: 1px solid var(--line); }
+
+/* Attachments: same chips, readable type badge. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-file-ext { font-size: 0.68rem !important; }
+
+/* Artifact card: same card, readable meta line. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-artifact-card-meta, .chat-artifact-card-open) { font-size: 0.72rem !important; }
+
+/* Markdown tables: a filled header strip over a panel, row rules only, in the palette's own greys. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md table { border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); background: var(--panel); font-size: var(--tty); font-variant-numeric: tabular-nums; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(th, td) { padding: 0.5rem 1rem !important; font-size: var(--tty) !important; text-align: left; border: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md th { background: var(--raise) !important; color: var(--mist) !important; font-weight: 600; border-bottom: 1px solid color-mix(in srgb, var(--mist) 20%, var(--line)) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td { color: color-mix(in srgb, var(--mist) 80%, var(--ink)); border-top: 1px solid var(--line) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:first-child td { border-top: 0 !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md td:first-child { color: var(--mist); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md tbody tr:hover { background: color-mix(in srgb, var(--mist) 5%, transparent); }

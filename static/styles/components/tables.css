@@ -32,7 +32,7 @@
   overflow-wrap: normal;
   padding-left: 1.1rem;
 }
-.log tbody tr:hover td {
+.log tbody tr:hover {
   background: color-mix(in srgb, var(--mist) 3%, transparent);
 }
 .log td[data-label="Actions"] {

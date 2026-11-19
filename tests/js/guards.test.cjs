@@ -4,7 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { S } = require('../../static/chat/state.js');
-const { createThreads, openedMessage } = require('../../static/chat/sidebar/threads.js');
+const { createThreads, openedMessage, snapshotWork } = require('../../static/chat/sidebar/threads.js');
 const { createMerge } = require('../../static/chat/traces/merge.js');
 const { createArtifacts } = require('../../static/chat/artifacts.js');
 const { createContext } = require('../../static/chat/context.js');
@@ -46,6 +46,21 @@ test('Rename from a menu that outlived a list repaint edits the row on screen', 
   assert.equal(S.renaming, false, 'with no row on screen the list is not left frozen');
   delete global.CSS;
   delete global.document;
+});
+
+test('a snapshot says which of a thread\'s side lists can hold anything', () => {
+  const tool = (name) => ({ id: 'm', role: 'assistant', tools: [{ name }] });
+  const idle = (messages) => ({ running: false, run: null, messages });
+  assert.deepEqual(snapshotWork(idle([{ id: 'u', role: 'user' }, tool('read_file')])), { live: false, agents: false, jobs: false });
+  assert.deepEqual(snapshotWork(idle([tool('run_terminal_command')])), { live: false, agents: false, jobs: true });
+  assert.equal(snapshotWork(idle([tool('monitor')])).jobs, true);
+  assert.equal(snapshotWork(idle([tool('get_command_output')])).jobs, true);
+  assert.deepEqual(snapshotWork(idle([tool('spawn_subagent')])), { live: false, agents: true, jobs: true }, 'a subagent\'s commands are not in this transcript');
+  assert.equal(snapshotWork(idle([tool('get_subagent_output')])).agents, true);
+  // A subagent or background command that outlived its turn.
+  assert.deepEqual(snapshotWork({ running: true, run: null, messages: [] }), { live: true, agents: true, jobs: true });
+  assert.equal(snapshotWork({ running: false, run: { status: 'queued' }, messages: [] }).live, true);
+  assert.equal(snapshotWork({ run: null, messages: [] }).live, true, 'a snapshot that does not say is not proof');
 });
 
 test('an opened thread keeps the permissions its proposal cards render from', () => {

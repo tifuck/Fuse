@@ -1101,9 +1101,11 @@ def select_passages(text: str, *, query: str | None = None, find: str | None = N
     if literal and len(literal) >= 2:
         chunks = _passage_chunks(text)
         selected: list[_Passage] = []
+        # Any whitespace run matches a space: a phrase may wrap across lines.
+        pattern = re.compile(r"\s+".join(map(re.escape, literal.split(" "))), re.I)
         # Match on the original text: lower() can lengthen it ("İ"), which
         # shifts every later offset off the chunk intervals.
-        for hit in itertools.islice(re.finditer(re.escape(literal), text, re.I), FIND_MAX_MATCHES):
+        for hit in itertools.islice(pattern.finditer(text), FIND_MAX_MATCHES):
             index, end = hit.span()
             # A hit can start in one chunk and end in the next: the 1200-char
             # paragraph cut does not know where the phrase is.
@@ -1112,7 +1114,7 @@ def select_passages(text: str, *, query: str | None = None, find: str | None = N
                 # Headings sit outside chunk intervals: use the section chunk
                 # that carries this heading, else the heading line itself.
                 found = next(([chunk] for chunk in chunks if chunk.start >= index
-                              and re.search(re.escape(literal), chunk.heading, re.I)), [])
+                              and pattern.search(chunk.heading)), [])
                 if not found:
                     line_end = text.find("\n", end)
                     line_end = len(text) if line_end < 0 else line_end

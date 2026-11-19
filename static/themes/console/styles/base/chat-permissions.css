@@ -332,7 +332,7 @@
   color: var(--brass);
   font: inherit;
   cursor: pointer;
-  transition: color 140ms ease, opacity 140ms ease, filter 140ms ease;
+  transition: color var(--dur-hover) ease, opacity 140ms ease, filter 140ms ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perm-btn svg { display: block; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perm-btn:hover { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--brass) 55%, transparent)); }
@@ -448,7 +448,7 @@
   background: transparent;
   color: var(--mute);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
+  transition: color var(--dur-hover) ease, background var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x svg { display: block; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x:hover { color: var(--fault); background: color-mix(in srgb, var(--fault) 12%, transparent); }
@@ -498,7 +498,7 @@
   font: 550 0.74rem/1 var(--sans);
   letter-spacing: -0.01em;
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
+  transition: color var(--dur-hover) ease, background var(--dur-hover) ease;
 }
 @media (hover: hover) {
   :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button:hover:not(:disabled, .is-on) {

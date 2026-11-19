@@ -126,6 +126,11 @@ def test_meter_thresholds(meter_settings):
 def test_token_estimates(meter_settings):
     assert context_meter.estimate_text("abcd" * 25) == 25
     assert context_meter.estimate_text("你好世界") == 4
+    # Non-Latin scripts are not counted at Latin's 4 chars per token.
+    assert context_meter.estimate_text("สวัสดี") == 6
+    assert context_meter.estimate_text("नमस्ते") == 6
+    assert context_meter.estimate_text("Привет") == 3
+    assert context_meter.estimate_text("שלום") == 2
     image = [{"type": "text", "text": "abcd"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}]
     assert context_meter.estimate_content(image) == 1 + context_meter.IMAGE_TOKENS
     rows = [{"role": "user", "content": "abcd" * 10},

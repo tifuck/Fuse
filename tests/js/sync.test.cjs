@@ -10,7 +10,7 @@ const { createPersist } = require('../../static/chat/sync/persist.js');
 const { createPaint } = require('../../static/chat/transcript/paint.js');
 const { createQueue } = require('../../static/chat/turns/queue.js');
 const { createSend } = require('../../static/chat/turns/send.js');
-const { createRender } = require('../../static/chat/sidebar/render.js');
+const { createRender, longestRun } = require('../../static/chat/sidebar/render.js');
 const { runIsActive } = require('../../static/chat/traces/semantics.js');
 const { readQueue } = require('../../static/chat/turns/queue-store.js');
 
@@ -255,6 +255,61 @@ test('a resync that replays from a live run\'s cursor does not refire handled ev
   assert.equal(calls.notify, 1, 'one missed while disconnected still does');
 });
 
+test('a reconcile that only confirms the view joins the identical read in flight', async () => {
+  baseState({ viewCursor: 7, threadWatermark: 7, loadEpoch: 0 });
+  const replies = [];
+  const apply = createApply(deps({
+    net: stub({ api: () => new Promise((resolve) => replies.push(resolve)), unpackThread: (data) => data, queuedParam: () => '' }),
+  }));
+  const first = apply.reconcileThread(true);
+  assert.equal(apply.reconcileThread(true), first, 'same thread, cursors and epoch: one request');
+  assert.notEqual(apply.reconcileThread(), first, 'a caller acting on an event reads again');
+  assert.equal(replies.length, 2);
+  S.viewCursor = 8;
+  apply.reconcileThread(true);
+  assert.equal(replies.length, 3, 'a view that moved is not the same read');
+  replies.forEach((reply) => reply({ unchanged: true }));
+  await tick();
+  apply.reconcileThread(true);
+  assert.equal(replies.length, 4, 'a finished read is not reused');
+});
+
+test('the first sync opens the linked thread from the history and does not refire what the history holds', async () => {
+  global.WebSocket = class { constructor(url) { this.url = String(url); } close() {} send() {} };
+  baseState({ currentId: '', cursor: 0, viewCursor: 0, socket: null, HEARTBEAT_MS: 35000, reconnectAttempt: 0, syncEpoch: 0, syncInitialized: false });
+  const calls = {};
+  let archive;
+  const routes = { '/chat/sync': async () => ({ cursor: 100, threads: [], projects: [] }),
+    '/chat/threads?archived=1': () => new Promise((resolve) => { archive = resolve; }) };
+  const stream = makeStream(calls, {}, { net: stub({ api: (path) => routes[path](), isLive: () => true }) });
+  let opened = 0;
+  const syncing = stream.connectSync(true, false, () => { opened += 1; });
+  await tick();
+  assert.equal(opened, 1, 'the history is in: the thread opens while the archive loads');
+  assert.equal(S.socket, null, 'the socket still waits for the archive');
+  // The thread's snapshot was taken before the sync answered.
+  Object.assign(S, { currentId: 't', viewCursor: 90 });
+  archive({ archived: [] });
+  await syncing;
+  assert.equal(new URL(S.socket.url).searchParams.get('cursor'), '90', 'the socket replays from the snapshot cursor');
+  await stream.receiveEvent({ id: 95, type: 'run.completed', thread_id: 'other', payload: { run_id: 'x' } });
+  assert.equal(calls.notify, undefined, 'the history already showed that run as finished');
+  await stream.receiveEvent({ id: 101, type: 'run.completed', thread_id: 'other', payload: { run_id: 'y' } });
+  assert.equal(calls.notify, 1);
+});
+
+test('a thread event that cannot change a hit row leaves the search to its slow refresh', async () => {
+  baseState({ historyQuery: 'needle', cursor: 5 });
+  const later = [];
+  const row = { id: 'other', title: 'Old', revision: 1, running: false, unread: false, pinned: false, archived: false };
+  const stream = makeStream({}, {}, { sidebar: stub({ queueSearch: (slow) => later.push(Boolean(slow)), threadById: () => row }) });
+  await stream.receiveEvent({ id: 6, type: 'thread.updated', thread_id: 'other', payload: { id: 'other', revision: 2, title: 'Old', running: false } });
+  await stream.receiveEvent({ id: 7, type: 'thread.updated', thread_id: 'other', payload: { id: 'other', revision: 3, title: 'New' } });
+  await stream.receiveEvent({ id: 8, type: 'thread.updated', thread_id: 'other', payload: { id: 'other', revision: 4, title: 'Old', running: true } });
+  await stream.receiveEvent({ id: 9, type: 'thread.deleted', thread_id: 'other', payload: { id: 'other' } });
+  assert.deepEqual(later, [true, false, false, false]);
+});
+
 function makeQueue(completeTurn) {
   return createQueue(deps({ net: stub({ api: async () => ({}) }), sync: stub(), send: stub({ completeTurn }) }));
 }
@@ -321,4 +376,16 @@ test('a failed retry puts its text and files back in the empty composer', async 
   assert.equal(await send.completeTurn('old', files.slice(), { undoSnap: [], truncatedTo: 0 }), false);
   assert.equal(S.input.value, 'old');
   assert.deepEqual(S.pendingAttachments, files);
+});
+
+test('a history repaint keeps the longest run of rows already in order and moves only the rest', () => {
+  const kept = (seq) => [...longestRun(seq)].sort((a, b) => a - b);
+  assert.deepEqual(kept([0, 1, 2, 3]), [0, 1, 2, 3]);
+  // One row climbs to the top: only it moves.
+  assert.deepEqual(kept([2, 0, 1, 3]), [1, 2, 3]);
+  // One row sinks: the rows it passed stay put.
+  assert.deepEqual(kept([1, 2, 3, 0]), [0, 1, 2]);
+  // New rows (-1) are always inserted.
+  assert.deepEqual(kept([-1, 0, -1, 1]), [1, 3]);
+  assert.deepEqual(kept([]), []);
 });

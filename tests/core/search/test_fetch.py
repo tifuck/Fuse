@@ -6,6 +6,7 @@ scripted transport (``web``), behind the real CappedTransport.
 """
 import asyncio
 import gzip
+import sys
 import tracemalloc
 
 import httpx
@@ -101,6 +102,13 @@ def test_a_read_is_pinned_to_the_vetted_ip_with_host_and_sni_kept(web, dns):
     "https://[fe80::1]/",
     "https://[::ffff:127.0.0.1]/",
     "https://[::ffff:100.64.0.1]/",
+    "https://[::7f00:1]/",
+    "https://[fec0::1]/",
+    "https://[64:ff9b::7f00:1]/",
+    "https://[64:ff9b:1::5db8:d822]/",
+    "https://[2002:7f00:1::]/",
+    "https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/",
+    "https://ｌｏｃａｌｈｏｓｔ/",
     "https://user:secret@example.com/",
     "https://example.com:8443/",
 ])
@@ -112,7 +120,7 @@ def test_unsafe_urls_are_refused_before_any_lookup_or_request(web, dns, url):
 
 
 @pytest.mark.parametrize("ips", [
-    ["127.0.0.1"], ["10.1.2.3"], ["169.254.169.254"], ["::1"], ["::ffff:10.0.0.1"], ["fc00::5"],
+    ["127.0.0.1"], ["10.1.2.3"], ["169.254.169.254"], ["::1"], ["::ffff:10.0.0.1"], ["fc00::5"], ["64:ff9b::a00:1"],
     ["93.184.216.34", "10.0.0.1"],  # one private answer taints the name
 ])
 def test_names_resolving_to_non_public_addresses_are_refused(web, dns, ips):
@@ -120,6 +128,18 @@ def test_names_resolving_to_non_public_addresses_are_refused(web, dns, ips):
     extract, _, err = read("https://rebind.example/")
     assert extract is None and err == "Refused to fetch a non-public address."
     assert web.requests == []
+
+
+def test_an_international_name_is_read_and_checked_in_its_ascii_form(web, dns):
+    dns.add("xn--bcher-kva.example", "93.184.216.34")
+    web.page("https://xn--bcher-kva.example/doc", page())
+    extract, wrapped, err = read("https://bücher.example/doc")
+    assert not err and TEXT in extract.text
+    assert wrapped.startswith("UNTRUSTED PAGE EXTRACT from https://xn--bcher-kva.example/doc")
+    [req] = web.requests
+    assert req.headers["host"] == req.extensions["sni_hostname"] == "xn--bcher-kva.example"
+    assert dns.lookups == ["xn--bcher-kva.example"]
+    assert read("https://" + "é" * 70 + ".example/")[2] == "That URL is not an allowed public HTTPS address."
 
 
 def test_an_unresolvable_name_is_refused_without_a_request(web):
@@ -168,7 +188,16 @@ def test_a_redirect_loop_ends(web, dns):
     web.on("https://example.com/b", lambda _r: httpx.Response(302, headers={"location": "/a"}))
     extract, _, err = read("https://example.com/a")
     assert extract is None and err == "Too many redirects."
-    assert len(web.requests) == engine.FETCH_MAX_REDIRECTS
+    assert len(web.requests) == engine.FETCH_MAX_REDIRECTS + 1
+
+
+def test_up_to_the_redirect_limit_is_followed(web, dns):
+    public(dns, "example.com")
+    for hop in range(engine.FETCH_MAX_REDIRECTS):
+        web.on(f"https://example.com/r{hop}", lambda _r, nxt=hop + 1: httpx.Response(302, headers={"location": f"/r{nxt}"}))
+    web.page(f"https://example.com/r{engine.FETCH_MAX_REDIRECTS}", page())
+    extract, _, err = read("https://example.com/r0")
+    assert not err and TEXT in extract.text
 
 
 def test_domain_blacklist_and_whitelist_apply_to_urls_redirects_and_cached_pages(fresh_db, web, dns):
@@ -209,6 +238,15 @@ def test_a_page_over_the_size_cap_is_cut_and_said_to_be_cut(web, dns, monkeypatc
     assert "the download stopped at the size cap" in wrapped
     assert extract.total_chars <= 100_000
     assert len(consumed) < 50, "the rest of the body is not downloaded"
+
+
+def test_a_byte_order_mark_wins_over_the_header_charset(web, dns):
+    public(dns, "bom.example")
+    body = page("Le café ouvre à huit heures, avec assez de mots pour être lu en entier.")
+    web.page("https://bom.example/utf8", b"\xef\xbb\xbf" + body.encode(), ctype="text/html; charset=iso-8859-1")
+    web.page("https://bom.example/utf16", "\ufeffcafé crème au lait".encode("utf-16-be"), ctype="text/plain; charset=utf-8")
+    assert "Le café ouvre à huit heures" in read("https://bom.example/utf8")[0].text
+    assert "café crème au lait" in read("https://bom.example/utf16")[0].text
 
 
 def test_compressed_pages_are_inflated_within_a_cap_and_unknown_encodings_refused(web, dns):
@@ -406,6 +444,22 @@ def test_cached_pages_serve_find_query_and_offset_reads_without_the_network(web,
     assert len(web.requests) == 1, "every later read came from the page cache, and spent no read budget"
 
 
+def test_a_redirected_page_is_cached_under_both_urls_but_counted_once(web, dns, monkeypatch):
+    public(dns, "docs.example")
+    web.on("https://docs.example/old", lambda _r: httpx.Response(301, headers={"location": "/new"}))
+    web.page("https://docs.example/new", page("words " * 2_000))
+    first, _, _ = read("https://docs.example/old")
+    size = sys.getsizeof(first.full_text) + sys.getsizeof(first.text)
+    engine._page_cache.clear()
+
+    monkeypatch.setattr(engine._page_cache, "max_bytes", size + size // 2)
+    extract, _, err = read("https://docs.example/old")
+    assert not err and is_fetch_cached("https://docs.example/old") and is_fetch_cached("https://docs.example/new")
+    requests = len(web.requests)
+    assert not read("https://docs.example/old")[2] and not read("https://docs.example/new")[2]
+    assert len(web.requests) == requests, "both URLs are served from the one cached copy"
+
+
 def test_page_reads_are_rate_limited_per_user_with_a_separate_prefetch_budget(web, dns, monkeypatch):
     monkeypatch.setattr(engine, "FETCH_PER_MIN", 1)
     monkeypatch.setattr(engine, "PREFETCH_PER_MIN", 1)
@@ -450,6 +504,23 @@ def test_stackexchange_questions_are_read_through_the_api(web, dns):
     assert "client.timeout(Duration::from_secs(5))" in wrapped
     assert wrapped.index("Accepted answer (score 5)") < wrapped.index("Answer (score 7)")
     assert not any(r.headers["host"] == "stackoverflow.com" for r in web.requests)
+
+
+def test_github_files_read_through_raw_extract_pdfs_and_report_truncation(web, dns, monkeypatch):
+    async def worker(raw):
+        return "Datasheet text for the 811LM remote."
+
+    monkeypatch.setattr(engine, "_pdf_worker", worker)
+    monkeypatch.setattr(engine, "FETCH_MAX_BYTES", 100_000)
+    public(dns, "github.com", "raw.githubusercontent.com")
+    web.page("https://raw.githubusercontent.com/o/r/main/sheet.pdf", b"%PDF-1.7 tiny", ctype="application/octet-stream")
+    web.page("https://raw.githubusercontent.com/o/r/main/big.txt", "word " * 30_000, ctype="text/plain")
+
+    extract, wrapped, err = read("https://github.com/o/r/blob/main/sheet.pdf")
+    assert not err and "811LM remote" in wrapped and "%PDF" not in wrapped
+    extract, wrapped, err = read("https://github.com/o/r/blob/main/big.txt")
+    assert not err and extract.download_truncated and "the download stopped at the size cap" in wrapped
+    assert not any(r.headers["host"] == "github.com" for r in web.requests)
 
 
 def test_a_failed_adapter_falls_back_to_the_page_itself(web, dns):

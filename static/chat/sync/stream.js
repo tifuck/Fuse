@@ -48,11 +48,8 @@ export function createStream(ctx) {
       }
     } else if (event.type.startsWith("thread.")) {
       if (S.renameSaving) await S.renameSaving.catch(() => {});
-      // Refresh the search, but keep its current hits on screen until the new
-      // ones land: clearing them first flipped content matches to the local
-      // title filter on every thread event.
-      if (S.historyQuery) sidebar.queueSearch();
       if (event.type === "thread.deleted") {
+        if (S.historyQuery) sidebar.queueSearch();
         sidebar.threadGone(payload.id || event.thread_id);
         globalThis.fusePush?.clear(event.thread_id);
       } else {
@@ -62,6 +59,14 @@ export function createStream(ctx) {
           globalThis.fusePush.clear(event.thread_id);
         }
         const prior = sidebar.threadById(payload.id);
+        // Refresh the search, but keep its current hits on screen until the new
+        // ones land: clearing them first flipped content matches to the local
+        // title filter on every thread event. Only what a hit row shows asks
+        // again at once; a run writing messages moves content matches and
+        // ages, and those wait for the slow refresh.
+        if (S.historyQuery) {
+          sidebar.queueSearch(Boolean(prior) && ["title", "archived", "pinned", "unread", "running"].every((key) => (payload[key] ?? prior[key]) === prior[key]));
+        }
         if (prior && payload.title && payload.title !== prior.title) picker.releaseHint("title:" + payload.id);
         if (!prior || payload.revision >= prior.revision) sidebar.upsertLocal(payload);
         if (event.thread_id === S.currentId && event.id > S.viewCursor) {
@@ -197,9 +202,10 @@ export function createStream(ctx) {
           // Updates only exist once a steer split the reply (display_parts);
           // they resize frozen-prefix articles above the reading position, so
           // hold the viewport across the synchronous repaint.
-          const updateViewport = transcript.captureThreadViewport();
+          const updates = payload.updates || [];
+          const updateViewport = updates.length ? transcript.captureThreadViewport() : null;
           let reconciled = false;
-          for (const update of payload.updates || []) {
+          for (const update of updates) {
             const index = S.messages.findIndex((item) => item.id === update.id);
             if (index < 0) { await apply.reconcileThread(); reconciled = true; break; }
             Object.assign(S.messages[index], update);
@@ -209,7 +215,7 @@ export function createStream(ctx) {
           // A snapshot just applied set the cursors (newer than this event)
           // and restored its own viewport.
           if (!reconciled) {
-            transcript.restoreThreadViewport(updateViewport);
+            if (updateViewport) transcript.restoreThreadViewport(updateViewport);
             S.viewCursor = event.id;
             S.threadWatermark = event.id;
           }
@@ -276,7 +282,9 @@ export function createStream(ctx) {
     return true;
   }
 
-    async function connectSync(resync = !S.syncInitialized, reopen = false) {
+    // onHistory runs once the thread list of a resync is in, before the
+    // archive and the socket: the page's linked thread opens from there.
+    async function connectSync(resync = !S.syncInitialized, reopen = false, onHistory = null) {
     if (!resync && !reopen && net.isLive()) return;
     const epoch = ++S.syncEpoch;
     window.clearTimeout(S.reconnectTimer);
@@ -309,6 +317,7 @@ export function createStream(ctx) {
         sidebar.resetSearchLists();
         if (S.historyQuery) sidebar.queueSearch();
         sidebar.renderHistory();
+        if (onHistory) onHistory();
         // The archive is fetched after the sync answered, so it is never older
         // than data.cursor, and lands before the socket replays from there.
         const archive = net.api("/chat/threads?archived=1");
@@ -322,9 +331,10 @@ export function createStream(ctx) {
         // The socket must not start ahead of the thread snapshot's durable
         // cursor, or patches between the two would never be replayed.
         // Events this tab handled before the drop must not fire their side
-        // effects again (see replayGap).
+        // effects again (see replayGap). Nor, on the first sync, those the
+        // history just loaded already reflects.
         if (Number.isSafeInteger(S.viewCursor) && S.viewCursor > 0 && S.viewCursor < S.cursor) {
-          S.replayedThrough = Math.max(S.replayedThrough, Math.min(handled, S.cursor));
+          S.replayedThrough = Math.max(S.replayedThrough, handled ? Math.min(handled, S.cursor) : S.cursor);
           S.cursor = S.viewCursor;
         }
       }
@@ -374,7 +384,7 @@ export function createStream(ctx) {
           if (data.type === "ready") {
             window.fuseBuild?.(data.build);
             S.cursor = Math.max(S.cursor, data.cursor);
-            await apply.reconcileThread();
+            await apply.reconcileThread(true);
             if (epoch !== S.syncEpoch) return;
             S.reconnectAttempt = 0;
             S.syncState = "live";

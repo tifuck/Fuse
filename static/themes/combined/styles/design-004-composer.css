@@ -52,7 +52,7 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .chat-send {
   border-radius: 0;
   background: none;
   color: var(--brass);
-  transition: color var(--dur-1) ease;
+  transition: color var(--dur-hover) ease;
 }
 
 html[data-chat-view="combined"] .chat[data-view="combined"] .chat-send:disabled {

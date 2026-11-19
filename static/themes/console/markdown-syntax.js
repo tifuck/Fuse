@@ -145,9 +145,14 @@ function highlightCode(lang, code) {
     return html;
   }
 
-function renderFence(lang, code) {
+// open: a fence still being streamed. It is drawn as plain text, so each
+// frame only appends to its text node instead of highlighting and diffing
+// the whole block again; it is highlighted once, when it closes or the reply
+// ends (data-code-open tells transcript.js that one is still plain).
+function renderFence(lang, code, open) {
     const label = deps.escapeHtml((lang || "code").split(/\s+/)[0] || "code");
-    return `<div class="chat-code"><div class="chat-code-head"><span>${label}</span><button type="button" class="chat-icon-btn" data-copy-code title="Copy" aria-label="Copy">${ACTION_ICONS.copy}</button></div><pre><code>${highlightCode(lang, trimFence(code))}</code></pre></div>`;
+    const body = open ? deps.escapeHtml(trimFence(code)) : highlightCode(lang, trimFence(code));
+    return `<div class="chat-code"${open ? " data-code-open" : ""}><div class="chat-code-head"><span>${label}</span><button type="button" class="chat-icon-btn" data-copy-code title="Copy" aria-label="Copy">${ACTION_ICONS.copy}</button></div><pre><code>${body}</code></pre></div>`;
   }
 
 function renderHeading(token, ctx) {
@@ -194,7 +199,7 @@ function renderTokens(tokens, ctx) {
         case "paragraph": return `<p>${renderInline(token.text, ctx)}</p>`;
         case "heading": return renderHeading(token, ctx);
         case "hr": return "<hr>";
-        case "code": return renderFence(token.lang, token.text);
+        case "code": return renderFence(token.lang, token.text, Boolean(ctx.streaming) && !token.closed);
         case "quote": return renderQuote(token, ctx);
         case "list": return renderList(token, ctx);
         case "table": return renderTable(token, ctx);

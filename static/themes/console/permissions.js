@@ -5,7 +5,7 @@ function permissionCardHtml(perm, msg) {
     if (perm.kind === "tool_permission") return "";
     const status = perm.status || "pending";
     const pending = status === "pending";
-    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" · ") || "SKILL.md";
+    const files = (perm.files || []).map((name) => deps.escapeHtml(name)).join(" | ") || "SKILL.md";
     const replace = perm.overwrite
       ? `<label class="chat-skill-check"><input type="checkbox" data-perm-replace><span>Replace your existing <code>${deps.escapeHtml(perm.slug || "")}</code>${perm.origin_existing ? ` (${deps.escapeHtml(perm.origin_existing)})` : ""}</span></label>`
       : "";
@@ -30,49 +30,50 @@ function permissionCardHtml(perm, msg) {
 
 function permQueueCardHtml(rec) {
     if (rec.status !== "pending") return "";
+    const esc = deps.escapeHtml;
     const copy = deps.permCardCopy(rec);
-    const who = rec.requester && rec.requester !== "Main agent"
-      ? `<span class="chat-perm-card-agent is-sub">Subagent</span><span class="chat-perm-card-who">${deps.escapeHtml(rec.requester)}</span>`
-      : `<span class="chat-perm-card-agent">Main</span>`;
-    const bits = [copy.action, copy.host, copy.why].filter(Boolean);
-    const meta = bits.length ? `<span class="chat-perm-card-meta">${deps.escapeHtml(bits.join(" · "))}</span>` : "";
-    const grant = copy.path
-      ? `<p class="chat-perm-card-grant"><span class="chat-perm-card-kind">${deps.escapeHtml(copy.noun)}</span><span class="mono chat-perm-card-path" title="${deps.escapeHtml(copy.path)}">${deps.escapeHtml(copy.path)}</span></p>`
-      : "";
-    const desc = copy.description ? `<p class="chat-perm-card-desc">${deps.escapeHtml(copy.description)}</p>` : "";
-    const body = copy.command
-      ? `${grant}${desc}<pre class="chat-perm-card-cmd mono">${deps.escapeHtml(copy.command)}</pre>`
-      : `${desc}${grant || `<p class="chat-perm-card-detail mono">${deps.escapeHtml(copy.path || "this location")}</p>`}`;
+    // Every ask has the same three rows: what and where, the payload, why.
+    const sub = rec.requester && rec.requester !== "Main agent" ? rec.requester : "";
+    const who = sub ? `<span class="chat-ask-who">${esc(sub)}</span>` : "";
+    const title = `${who}<b>${esc(copy.action)}</b>${copy.host ? ` on ${esc(copy.host)}` : ""}`;
+    const shell = Boolean(copy.command);
+    const outside = copy.why === "Outside allowed folders";
+    const value = shell ? copy.command : (copy.path || "this location");
+    const note = shell ? (copy.path ? `in ${copy.path}` : "") : copy.why;
+    const why = [copy.description, shell && outside ? "Outside allowed folders." : ""].filter(Boolean).join(" ");
+    const glyph = shell ? "$" : '<svg viewBox="0 0 10 12" width="10" height="12"><path d="M1 1h5l3 3v7H1z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
     const expires = rec.expires_at || rec.expiresAt || "";
     const left = deps.permLeftS(expires);
     const frac = left == null ? 1 : Math.max(0, Math.min(1, left / deps.PERM_TOTAL_S));
-    // The server clears grant_kind on shell asks no grant could ever cover.
-    const shell = rec.tool === "run_terminal_command" || rec.tool === "monitor";
-    // Artifact asks are answered once per chat; there is nothing to grant.
+    // The server clears grant_kind on shell asks no grant could ever cover;
+    // artifact asks are answered once per chat. Their caret stays, disabled,
+    // so Allow keeps its width from one ask to the next.
     const ungrantable = (shell && !rec.grant_kind) || copy.noun === "artifact";
-    const always = ungrantable ? "" : `
-            <button type="button" class="chat-perm-act is-split" data-perm-always aria-expanded="false" aria-label="Allow always options">
-              <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M3.2 10.2 8 5.4l4.8 4.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
+    const menu = ungrantable ? "" : `
             <div class="chat-pop chat-perm-always-menu" data-perm-always-menu hidden>
-              <button type="button" data-perm-decide="allow_session">Allow this ${deps.escapeHtml(copy.noun)} in this chat</button>
-              <button type="button" data-perm-decide="allow_host">Always allow this ${deps.escapeHtml(copy.noun)}</button>
+              <button type="button" data-perm-decide="allow_session">Allow this ${esc(copy.noun)} in this chat</button>
+              <button type="button" data-perm-decide="allow_host">Always allow this ${esc(copy.noun)}</button>
             </div>`;
-    return `<li class="chat-perm-card is-pending${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${deps.escapeHtml(rec.id)}" data-perm-sig="${deps.escapeHtml(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
-      <div class="chat-perm-card-row">
-        <span class="chat-perm-card-dot" aria-hidden="true"></span>
-        ${who}${meta}
-        <span class="chat-perm-card-count mono" data-perm-count aria-hidden="true">${deps.escapeHtml(deps.fmtPermCountdown(expires))}</span>
-        <div class="chat-perm-card-actions">
-          <button type="button" class="chat-perm-act is-more" data-perm-extend title="Restart the countdown">More time</button>
-          <button type="button" class="chat-perm-act" data-perm-decide="deny">Deny</button>
-          <span class="chat-perm-always">
-            <button type="button" class="chat-perm-act is-allow" data-perm-decide="allow">Allow</button>${always}
+    return `<li class="chat-ask${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${esc(rec.id)}" data-perm-sig="${esc(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
+      <span class="chat-ask-track" aria-hidden="true"><span class="chat-ask-bar" data-perm-bar></span></span>
+      <div class="chat-ask-head">
+        <span class="chat-ask-dot" aria-hidden="true"></span>
+        <span class="chat-ask-title" title="${esc([sub, copy.action, copy.host].filter(Boolean).join(" "))}">${title}</span>
+        <span class="chat-ask-step" data-perm-step hidden>
+          <button type="button" data-perm-step-btn="-1" aria-label="Previous request">‹</button><span class="mono" data-perm-step-text></span><button type="button" data-perm-step-btn="1" aria-label="Next request">›</button>
+        </span>
+        <div class="chat-ask-actions">
+          <button type="button" class="chat-ask-clock mono" data-perm-extend title="More time: restart the countdown" aria-label="More time"><span data-perm-count>${esc(deps.fmtPermCountdown(expires))}</span><span class="chat-ask-plus" aria-hidden="true">+</span></button>
+          <button type="button" class="chat-ask-btn" data-perm-decide="deny">Deny</button>
+          <span class="chat-perm-always chat-ask-allow">
+            <button type="button" class="chat-ask-btn is-allow" data-perm-decide="allow">Allow</button><button type="button" class="chat-ask-btn is-caret" data-perm-always aria-expanded="false" aria-label="Allow always options"${ungrantable ? ' disabled title="This can only be allowed once"' : ""}>
+              <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>${menu}
           </span>
         </div>
       </div>
-      ${body}
-      <span class="chat-perm-card-bar" data-perm-bar aria-hidden="true"></span>
+      <p class="chat-ask-pay"><span class="chat-ask-glyph" aria-hidden="true">${glyph}</span><span class="chat-ask-value mono">${esc(value)}</span>${note ? `<span class="chat-ask-note mono">${esc(note)}</span>` : ""}</p>
+      ${why ? `<p class="chat-ask-why">${esc(why)}</p>` : ""}
     </li>`;
   }
 

@@ -82,13 +82,12 @@ def drop_tool_xml(text: str, start: int = 0) -> tuple[str, str]:
         if not quoted(block.start()):
             parts.append(text[pos:block.start()])
             pos = block.end()
-    last = None
-    for match in _TOOL_XML_OPEN.finditer(text, pos):
-        if not quoted(match.start()):
-            last = match
-    if last:
-        parts.append(text[pos:last.start()])
-        return "".join(parts), text[last.start():]
+    # Held from the first unclosed opener: extract_text_tool_calls parses from
+    # there, so text after it is part of that call.
+    first = next((match for match in _TOOL_XML_OPEN.finditer(text, pos) if not quoted(match.start())), None)
+    if first:
+        parts.append(text[pos:first.start()])
+        return "".join(parts), text[first.start():]
     parts.append(text[pos:])
     return "".join(parts), ""
 
@@ -235,6 +234,19 @@ _MD_CODE = re.compile(
     r"|(?<!`)(`+)(?!`)[^\n]+?(?<!`)\3(?!`)",
     re.M,
 )
+
+
+def in_md_code(text: str, at: int) -> bool | None:
+    """Whether text[at] sits in markdown code, as _MD_CODE reads it. None
+    while text is still streaming and cannot tell yet: an inline span opened
+    before it on its line may close later on that line."""
+    spans = [match.span() for match in _MD_CODE.finditer(text)]
+    if any(lo <= at < hi for lo, hi in spans):
+        return True
+    if "\n" in text[at:]:
+        return False
+    line = max([text.rfind("\n", 0, at) + 1] + [hi for _, hi in spans if hi <= at])
+    return None if "`" in text[line:at] else False
 
 
 def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str, list[dict]]:
@@ -389,7 +401,10 @@ def _take_calls(bucket: dict, raw) -> None:
         if isinstance(args, dict):
             rec["function"]["arguments"] = _bounded_arguments(json.dumps(args, ensure_ascii=False))
         elif isinstance(args, str) and args:
-            if fn.get("name"):
+            held_args = rec["function"]["arguments"]
+            # A named delta may resend the whole arguments so far; one that only
+            # carries the next fragment ('{}' after '{"a": ') still appends.
+            if fn.get("name") and (not held_args or args.startswith(held_args)):
                 parsed = _complete_json_object(args)
                 if parsed is not None:
                     rec["function"]["arguments"] = _bounded_arguments(args)

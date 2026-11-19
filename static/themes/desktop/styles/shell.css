@@ -8,6 +8,8 @@
    selector's own). */
 /* The stage's width as a length, worked out on the composer's dock. */
 @property --dk-stage-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* Follows --dock-h, so like it (tokens/root.css) it is not inherited. */
+@property --dk-under { syntax: "*"; inherits: false; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette. */
   --dk-canvas: color-mix(in srgb, var(--ink) 93%, var(--mist));
@@ -28,7 +30,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --dk-add: #56d364;
   --dk-del: var(--fault);
   --dk-warn: #e3b341;
-  --dk-glass: blur(24px) saturate(1.1);
+  /* No wallpaper: the surfaces are solid and nothing is blurred; a wallpaper
+     turns the glass on below. */
+  --dk-glass: none;
   --dk-shadow: none;
   --dk-pop-shadow: 0 14px 36px rgb(0 0 0 / 0.4);
   --chat-bar-h: 36px;
@@ -82,8 +86,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & :is(.dk-ib, .dk-tb, .dk-act, .dk-code, .dk-open, .dk-more, .dk-tab, .dk-send, .dk-mi, .dk-card-x, .dk-act-btn, .dk-title-btn, .dk-seg button):focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
 
   /* ---- Window layout: sidebar | stage | artifact | Activity ----
-     The sidebar is a column at every width above a phone: opening it (a
-     click, or the hover peek) widens its column and the chat slides over.
+     The sidebar is a column at every width above a phone. Opening it
+     switches the columns at once (animating them would lay the whole
+     window out every frame) and the list slides into its column; the
+     hover peek leaves the columns alone and slides the list over the chat
+     (base/chat-history.css).
      Activity is a column only when docked (activity.css says when); the
      artifact's column is activity.css's too. */
   @media (min-width: 801px) {
@@ -93,21 +100,19 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
       grid-template-rows: minmax(0, 1fr);
       overflow: clip;
     }
-    /* chrome.js adds dk-slide once the page has settled: loading never slides. */
-    &.dk-slide { transition: grid-template-columns var(--dk-slide) var(--ease-glide); }
-    &.is-artifact-resizing { transition: none; }
-    &.history-collapsed:not(.history-peek) { --dk-side-w: 0px; }
+    &.history-collapsed { --dk-side-w: 0px; }
     &[data-theme-insp="dock"][data-theme-rail-state="open"] { --dk-insp-w: var(--dk-insp-open); }
     & .chat-history { grid-row: 1; justify-self: end; width: clamp(12.5rem, var(--chat-history), 100vw - 24rem); }
     & > .chat-stage { grid-column: 2; grid-row: 1; }
-    /* Collapsed, the list waits off the left edge; the peek is a pinned
-       sidebar until the pointer leaves, and its own toggle pins it. */
-    &.history-collapsed .chat-history { position: relative; inset: auto; z-index: auto; display: flex; box-shadow: none; transform: none; transition: none; }
-    &.history-collapsed:not(.history-peek) .chat-history { visibility: hidden; }
-    &.dk-slide.history-collapsed:not(.history-peek) .chat-history { transition: visibility 0s linear var(--dk-slide); }
+    /* chrome.js adds dk-slide once the page has settled: loading never slides. */
+    &.dk-slide:not(.history-collapsed) .chat-history {
+      transition: transform var(--dk-slide) var(--ease-glide);
+      @starting-style { transform: translateX(-100%); }
+    }
     &.history-peek .chat-history-edge { display: none; }
+    &.history-peek .chat-history { box-shadow: 8px 0 28px rgb(0 0 0 / 0.24); }
   }
-  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide { transition: none; } }
+  @media (min-width: 801px) and (prefers-reduced-motion: reduce) { &.dk-slide:not(.history-collapsed) .chat-history { transition: none; } }
 
   /* ---- Sidebar ---- */
   /* No rule against the stage: its tint is the edge, and the top bar and
@@ -158,7 +163,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     padding: 0;
     border-radius: 6px;
     color: var(--dk-mute);
-    transition: background-color var(--dur-1) ease, color var(--dur-1) ease;
+    transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
   & .dk-tab:hover { color: var(--dk-text); }
   & .dk-tab:not([aria-selected="true"]):hover { background: var(--dk-hover); }
@@ -241,7 +246,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     height: 28px;
     border-radius: 7px;
     color: color-mix(in srgb, var(--dk-text) 82%, var(--dk-mute));
-    transition: background-color var(--dur-1) ease, color var(--dur-1) ease, scale var(--dur-1) var(--ease-snap);
+    transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
   }
   & .dk-row:hover { background: var(--dk-hover); }
   & .dk-row:is(.is-on, .is-menu) { background: var(--dk-sel); color: var(--dk-text); }
@@ -281,11 +286,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-mute);
     font-size: 13px;
     opacity: 0;
-    transition: opacity var(--dur-1) ease, background-color var(--dur-1) ease, color var(--dur-1) ease;
+    transition: opacity var(--dur-hover) ease, background-color var(--dur-hover) ease, color var(--dur-hover) ease;
   }
   /* Hover or focus: ⋯ gets its own slot at the row's end, so it never covers
      the title or the project name. */
-  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; }
+  & .dk-row:is(:hover, :focus-within, .is-menu) .dk-more { opacity: 1; --dur-hover: 0s; }
   & .dk-row:is(:hover, :focus-within, .is-menu) .dk-open { padding-right: 30px; }
   & .dk-more:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .dk-row .rename { width: 100%; height: 26px; padding: 0 7px; border: 1px solid var(--dk-link); border-radius: 7px; background: var(--dk-side); color: var(--dk-text); font: 13.5px var(--sans); }
@@ -356,7 +361,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-head::after { content: none; }
   & .dk-head .chat-history-toggle { width: 28px; height: 28px; }
   /* Collapsed, the toggle clears the 12px edge that peeks the sidebar. */
-  &.history-collapsed:not(.history-peek) .dk-head { padding-left: 12px; }
+  &.history-collapsed .dk-head { padding-left: 12px; }
   /* The sidebar owns its toggle while it is open. */
   @media (min-width: 801px) {
     &:is(:not(.history-collapsed), .history-peek) .dk-head .chat-history-toggle { display: none; }
@@ -461,6 +466,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      bottom edge (inside its rounded corners), so text never shows behind the
      controls row, and a spacer at the scroller's end clears the card. */
   & { --dk-card-a: 78%; --dk-under: max(0px, calc(var(--dock-h, 0px) - var(--dk-band-h) - var(--dk-band-gap) - 12px - var(--safe-bottom, 0px))); }
+  & > .chat-stage, & .chat-stage > :is(.chat-thread, .chat-dock), & .chat-thread::after { --dk-under: inherit; }
   &:not(.is-empty) .chat-dock { margin-top: calc(-1 * var(--dk-under)); }
   &:not(.is-empty) .chat-thread::after { content: ""; flex: none; height: var(--dk-under); }
   & .chat-dock .dk-box {
@@ -494,7 +500,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     pointer-events: none;
     border: 1px solid var(--dk-comp-line);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), transparent);
+    background: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), var(--dk-canvas));
     box-shadow: var(--dk-shadow);
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);
@@ -669,11 +675,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      the turn (they are the retry), but they already show in the transcript:
      the composer looks emptied at once, so it shrinks with the send instead
      of a beat later. A failed send removes the placeholder and they return. */
-  &:has(.chat-pending-send) .dk-box .chat-attach-list { display: none; }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-box .chat-attach-list { display: none; }
   /* Fork sits only under the latest reply; it leaves the old one with the send. */
-  &:has(.chat-pending-send) [data-theme-turn-act="fork"] { display: none; }
-  &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 36px; overflow: hidden; color: transparent; caret-color: transparent; }
-  @media (max-width: 800px), (pointer: coarse) { &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 44px; } }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) [data-theme-turn-act="fork"] { display: none; }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 36px; overflow: hidden; color: transparent; caret-color: transparent; }
+  @media (max-width: 800px), (pointer: coarse) { &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 44px; } }
   & .chat-thread > .chat-pending-send { margin-top: 0.45rem; padding-top: 0; padding-bottom: 0; }
   & .chat-pending-send .dk-pending-status {
     display: flex;
@@ -703,6 +709,14 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .chat-live-dock .chat-status-meta { margin-left: auto; padding-left: 16px; color: var(--dk-mute); font: var(--dk-meta)/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .chat-live-dock .chat-status-meta[hidden] { display: none; }
+  /* The whole line shimmers: the command and the clocks with the status. */
+  & .chat-live-dock :is(.dk-live-arg, .chat-status-meta) {
+    background: linear-gradient(100deg, var(--dk-mute) 40%, var(--dk-text) 50%, var(--dk-mute) 60%) 0 0 / 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: dk-shimmer 2.4s linear infinite;
+  }
   & .chat-live-dock .chat-dock-dots { display: none; }
   /* "Running the unit tests (npm test)": one line at every width. The
      command gives way first, then the description; the parentheses stay. */
@@ -729,7 +743,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock.is-detailable [data-dock-status] { cursor: pointer; }
   & .chat-live-dock.is-detailable [data-dock-status]:hover :is(.dk-live-arg, .dk-live-chev) { color: var(--dk-text); }
   & .chat-live-dock [data-dock-status]:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 4px; }
-  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color 150ms ease; }
+  & .chat-live-dock .dk-live-chev { display: none; flex: none; width: 14px; height: 14px; margin-left: 6px; color: var(--dk-dim); transition: transform 240ms cubic-bezier(0.2, 0, 0, 1), color var(--dur-hover) ease; }
   & .chat-live-dock .dk-live-chev svg { width: 14px; height: 14px; }
   & .chat-live-dock.is-detailable .dk-live-chev { display: inline-flex; }
   & .chat-live-dock.is-pane-open .dk-live-chev { transform: rotate(90deg); }
@@ -737,7 +751,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-live-card::before { content: ""; position: absolute; inset: -5px calc(-1 * var(--dk-pane-out)) 0; border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
   & .chat-live-dock.is-pane-open .dk-live-card::before { opacity: 1; }
   & .chat-live-dock .dk-live-card > * { position: relative; }
-  & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease; }
+  & .chat-live-dock .dk-pane { display: grid; grid-template-rows: 0fr; opacity: 0; transition: opacity 180ms ease; }
   & .chat-live-dock.is-pane-open .dk-pane { grid-template-rows: 1fr; opacity: 1; }
   & .chat-live-dock .dk-pane-in { min-height: 0; overflow: hidden; }
   & .chat-live-dock .dk-now { padding: 2px 0 10px; }
@@ -775,7 +789,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-row-cmd { margin-bottom: 4px; color: var(--dk-text); font: 12px/1.5 var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
   & .chat-latest { min-height: 32px; border: 1px solid var(--dk-comp-line); border-radius: 14px; background: var(--dk-comp); color: var(--dk-text); font-size: 12.5px; }
   @media (max-width: 480px) { & .chat-latest { min-height: 36px; } }
-  @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .dk-pending-status .chat-status-verb) { animation: none; background-position: 50% 0; } }
+  @media (prefers-reduced-motion: reduce) { & :is(.chat-live-dock .chat-status-verb, .chat-live-dock .dk-verb-ghost > span, .chat-live-dock .dk-live-arg, .chat-live-dock .chat-status-meta, .dk-pending-status .chat-status-verb) { animation: none; background-position: 50% 0; } }
 
   /* ---- Prompt library: a short list ---- */
   & .chat-library-tiles { display: flex; flex-direction: column; gap: 1px; width: min(100%, 28rem); margin: 0 auto; }
@@ -791,7 +805,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) {
     border: 1px solid var(--dk-card-line);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--dk-card) 96%, transparent);
+    background: var(--dk-card);
     -webkit-backdrop-filter: var(--dk-glass);
     backdrop-filter: var(--dk-glass);
     box-shadow: var(--dk-pop-shadow);
@@ -977,21 +991,21 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
     inset: var(--chat-bar-h) 0 0;
     z-index: -1;
     flex: none;
-    background: color-mix(in srgb, var(--v) var(--dk-veil-a), transparent);
-    -webkit-mask-image: var(--dk-pane-mask);
-    mask-image: var(--dk-pane-mask);
-    --dk-pane-mask: linear-gradient(90deg,
+    /* The veil's own alpha eases in: a gradient, not a mask over a flat fill,
+       so the pane composites as one layer. */
+    --a: var(--dk-veil-a);
+    background: linear-gradient(90deg,
       transparent,
-      rgb(0 0 0 / 0.04) calc(var(--f) * 0.2),
-      rgb(0 0 0 / 0.14) calc(var(--f) * 0.4),
-      rgb(0 0 0 / 0.33) calc(var(--f) * 0.6),
-      rgb(0 0 0 / 0.62) calc(var(--f) * 0.8),
-      #000 var(--f),
-      #000 calc(100% - var(--f)),
-      rgb(0 0 0 / 0.62) calc(100% - var(--f) * 0.8),
-      rgb(0 0 0 / 0.33) calc(100% - var(--f) * 0.6),
-      rgb(0 0 0 / 0.14) calc(100% - var(--f) * 0.4),
-      rgb(0 0 0 / 0.04) calc(100% - var(--f) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(var(--f) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(var(--f) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(var(--f) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(var(--f) * 0.8),
+      color-mix(in srgb, var(--v) var(--a), transparent) var(--f),
+      color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--f)),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(100% - var(--f) * 0.8),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(100% - var(--f) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(100% - var(--f) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(100% - var(--f) * 0.2),
       transparent);
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
@@ -1011,10 +1025,13 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-slash, .chat-rewind, .chat-pop) { background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); }
   /* The bubble is the composer's glass; the window menus and the sidebar's search share the popovers'. */
-  & .chat-turn.is-user:not(.is-auto-steps) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .chat-turn.is-user:not(.is-auto-steps) { background: var(--dk-glass-bg); box-shadow: var(--dk-rim), inset 0 0 0 1px var(--dk-glass-edge), 0 8px 24px rgb(0 0 0 / 0.16); }
   & :is(.dk-menu, .user-dock-menu, .hs-pop) { border-color: var(--dk-glass-edge); background: color-mix(in srgb, var(--dk-card) var(--dk-card-a), transparent); box-shadow: var(--dk-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  /* The account menu opens inside the sidebar's glass: a second blur there
+     would only blur the sidebar again. */
+  & .user-dock-menu { background: var(--dk-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
   & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
-  & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); }
   & .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Secondary text leans a fifth (light: three tenths) toward the body
      colour so it holds AA on the pane, and still reads as secondary. */
@@ -1030,8 +1047,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
   --dk-glass-tone: var(--ink);
   --dk-rim: inset 0 1px 0 rgb(255 255 255 / 0.5);
 }
-/* Dragging the sidebar edge resizes its column live, without the slide. */
-html[data-chat-view="desktop"] body.is-chat.is-resizing-history .chat[data-view="desktop"] { transition: none; }
 @media (prefers-reduced-transparency: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"],
   html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"],
@@ -1116,7 +1131,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Read back, the chat would run through the strip: it steps aside. */
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
   /* Jump to latest takes its spot, unless something else sits above the strip. */
-  &:has(.dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(.chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open):not([hidden]))) .chat-latest {
+  & .chat-latest:has(~ :where(.chat-dock) > .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(~ .chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open):not([hidden]))) {
     bottom: calc(var(--dock-h, 6rem) - 20px + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px));
   }
   @media (prefers-reduced-motion: reduce) { & .dk-stats-strip .chat-host-stats { transition: none; } }

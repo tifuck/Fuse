@@ -62,7 +62,7 @@
   height: 1.1rem;
   border: 1px solid var(--line);
   background: var(--ink);
-  transition: background-color var(--dur-1) var(--ease-snap), border-color var(--dur-1) var(--ease-snap);
+  transition: background-color var(--dur-hover) var(--ease-snap), border-color var(--dur-hover) var(--ease-snap);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-switch::after {
   content: "";
@@ -73,7 +73,7 @@
   height: 0.62rem;
   background: var(--mute);
   transform: translateY(-50%);
-  transition: transform var(--dur-1) var(--ease-snap), background-color var(--dur-1) var(--ease-snap);
+  transition: transform var(--dur-1) var(--ease-snap), background-color var(--dur-hover) var(--ease-snap);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:checked + .skills-switch { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:checked + .skills-switch::after { background: var(--brass); transform: translate(0.88rem, -50%); }
