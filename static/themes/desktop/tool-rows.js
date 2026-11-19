@@ -182,6 +182,13 @@ function rowIconHtml(trace) {
 const ROW_CHEV = '<span class="dk-row-chev" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 const ROW_CHEV_EMPTY = '<span class="dk-row-chev is-empty" aria-hidden="true"></span>';
 
+// A failure's first line; one ending in a colon ("regex parse error:") takes
+// the next line with it.
+function errorLine(text) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines[0]?.endsWith(":") && lines[1] ? `${lines[0]} ${lines[1]}` : lines[0] || "";
+}
+
 // A cut-short call's row says it in one word; its box says why.
 // "Interrupted · stopped; the process may still be running" ->
 // "Stopped before it finished. The process may still be running."
@@ -279,7 +286,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
         ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Cancelling" ? "Cancelling…" : "")
         : stopText ? stopWord(stopText)
         : fold.status || (opts.oneLine && (failed || dotState === "error")
-          ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : String(trace.error || trace.summary || "failed").split("\n").find((line) => line.trim()) || "failed")
+          ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : errorLine(trace.error || trace.summary) || "failed")
           : "");
       // A pending call names its deadline at the end of the line under it
       // ("Waiting for output… (timeout: 2m)"), and that line exists even when

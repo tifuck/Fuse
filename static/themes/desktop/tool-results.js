@@ -451,7 +451,7 @@ function consoleResultLine(trace, presentation) {
     if (name === "todo_write") {
       const todos = deps.normalizeTodos(trace.todos);
       if (todos.length) {
-        const done = todos.filter((item) => item.status === "completed").length;
+        const done = todos.filter(deps.todoClosed).length;
         return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} · ${done}/${todos.length} done`;
       }
       return "no todos";
