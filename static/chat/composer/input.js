@@ -249,7 +249,11 @@ export function createInput(ctx) {
     if (!stop) S.sendBtn.classList.remove("is-armed");
     if (S.stashBtn) {
       const label = hasText ? "Stash prompt" : "Stashed prompts";
-      S.stashBtn.hidden = !hasText && !S.stash.size;
+      const hidden = !hasText && !S.stash.size;
+      // The button sets the box's min-height (Desktop), so its height is measured again.
+      const flipped = S.stashBtn.hidden !== hidden;
+      S.stashBtn.hidden = hidden;
+      if (flipped) resizeInput();
       S.stashBtn.setAttribute("aria-label", label);
       S.stashBtn.title = label + " (Ctrl+S)";
     }

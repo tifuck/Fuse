@@ -219,6 +219,7 @@ export function createDesktopTheme(runtime) {
     get isSearchTool() { return theme.isSearchTool; },
     get looksLikeDiff() { return theme.looksLikeDiff; },
     get normalizeTodos() { return runtime.normalizeTodos; },
+    get todoClosed() { return runtime.todoClosed; },
     get pageHost() { return theme.pageHost; },
     get renderAnsi() { return theme.renderAnsi; },
     get searchCountFor() { return theme.searchCountFor; },

@@ -420,6 +420,8 @@ export function createThreads(ctx) {
     const openedEmpty = S.root.classList.contains("is-empty");
     // Before the paint, which is laid out beside the pane.
     if (switched) artifacts.followThread();
+    // The old thread's agents would draw into this one's last reply line.
+    S.agentsRows = [];
     transcript.paint();
     if (!openedEmpty && S.messages.length > 0) transcript.playTranscriptFx();
     render.renderHistory();
@@ -438,6 +440,11 @@ export function createThreads(ctx) {
     // A detached row never takes focus, so finish() would never run and
     // S.renaming would freeze the list.
     if (!row?.isConnected) return;
+    // Started from the header with the list closed (Desktop's title menu, a
+    // phone): the list opens, and its row takes focus once it is drawn.
+    const opening = !row.getClientRects().length;
+    if (opening && S.historyMobile.matches) drawer.setHistoryOpen(true);
+    else if (opening) drawer.setHistoryPeek(true);
     S.renaming = true;
     render.forgetRow(row);
     const inputEl = document.createElement("input");
@@ -447,8 +454,9 @@ export function createThreads(ctx) {
     inputEl.maxLength = 80;
     row.innerHTML = "";
     row.appendChild(inputEl);
-    inputEl.focus();
-    inputEl.select();
+    const take = () => { inputEl.focus(); inputEl.select(); };
+    take();
+    if (opening) window.requestAnimationFrame(() => window.requestAnimationFrame(take));
     let finishing = false;
     const finish = async (save) => {
       if (finishing) return;
