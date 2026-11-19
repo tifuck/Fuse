@@ -249,8 +249,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step-label > .dk-row-ico { display: inline-flex; flex: none; align-self: center; width: 15px; height: 15px; margin-right: 10px; color: var(--dk-call-quiet); }
   & .chat-console-bundle .chat-step-label > .dk-row-ico svg { width: 15px; height: 15px; }
   & .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label > .dk-row-ico { color: var(--call-fail); }
-  & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .dk-row-ico { color: var(--dk-warn); }
-  & .chat-console-bundle .chat-step.is-console-call.is-interrupted .chat-step-label > .chat-console-result-text { color: var(--dk-warn); }
+  & .chat-console-bundle .chat-step.is-console-call.is-interrupted > .chat-step-main > .chat-step-head .chat-step-label > .dk-row-ico { color: var(--dk-warn); }
+  & .chat-console-bundle .chat-step.is-console-call.is-interrupted > .chat-step-main > .chat-step-head .chat-step-label > .chat-console-result-text { color: var(--dk-warn); }
   /* The sentence takes the free space, so the result and chevron keep the
      right edge whatever is hidden (a phone hides most results). */
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-call { margin-right: auto; }

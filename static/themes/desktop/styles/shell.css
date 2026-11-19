@@ -467,7 +467,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      the scrollbar. The 100% is the box's width, wherever it is used. */
   & .chat-stage { container-type: inline-size; }
   & .chat-dock { --dk-stage-w: 100cqw; --dk-card-out: clamp(0px, calc((var(--dk-stage-w) - var(--chat-scroll-gutter, 0px) - 100%) / 2 - 4px), 20px); }
-  &:not(.is-empty) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
+  &:is(.is-empty, :not(.is-empty)) .chat-dock { left: calc(var(--chat-scroll-gutter, 0px) / -2); }
   /* The transcript runs on behind the composer's glass, as under the model
      picker: the dock overlaps the scroller down to 12px above the card's
      bottom edge (inside its rounded corners), so text never shows behind the
