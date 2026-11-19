@@ -407,7 +407,8 @@ function updateAssistant(article, msg, live) {
       const writing = live && blockIndex === blocks.length - 1;
       const srcKey = text + "\0" + catalog.join("\n");
       md.classList.toggle("is-writing", writing);
-      if (md._src === srcKey) return;
+      // A fence the reply left open was streamed plain: the settled draw highlights it.
+      if (md._src === srcKey && (writing || !md.querySelector("[data-code-open]"))) return;
       const positions = [...md.querySelectorAll("pre")].map((el) => [el.scrollLeft, el.scrollTop]);
       deps.paintContentBlock(md, text, writing, catalog, srcKey);
       md.querySelectorAll("pre").forEach((el, i) => {
