@@ -199,3 +199,39 @@ def test_search_snippet_keeps_leading_context_without_a_space(fresh_db):
 
     assert [t["title"] for t in hits] == ["Long word"]
     assert hits[0]["snippet"] == "…" + text[-48:]
+
+
+def _spawned_tree(uid):
+    """A finished turn whose reply spawned a child that spawned a grandchild."""
+    thread = chats.create_thread(uid, model="offline")
+    root = chat_store.start_turn(uid, thread["id"], "go", thread["revision"], None)["run"]
+    spawn = dict(user_id=uid, thread_id=thread["id"], description="helper", allow_nested_spawn=True)
+    kid = chat_store.start_child_run(parent_run_id=root["id"], prompt="look", **spawn)["id"]
+    grandkid = chat_store.start_child_run(parent_run_id=kid, prompt="deeper", **spawn)["id"]
+    for run_id in (grandkid, kid):
+        chat_store.finish_run(run_id, {"content": "found"}, "completed")
+    trace = {"id": "call-1", "name": "spawn_subagent", "status": "done", "child_id": kid, "description": "helper"}
+    chat_store.finish_run(root["id"], {"content": "done", "tools": [trace]}, "completed")
+    return chats.get_thread(uid, thread["id"]), {kid, grandkid}
+
+
+def _save_reply_tools(uid, view, tools):
+    messages = [dict(m) for m in view["messages"]]
+    messages[-1] = {**messages[-1], "tools": tools}
+    chats.update_thread(uid, view["id"], messages=messages)
+    return {r["id"] for r in runs_of(uid, view["id"]) if r["parent_run_id"]}
+
+
+def test_removing_a_spawn_trace_deletes_its_finished_child_and_grandchild(fresh_db):
+    uid = quick_user()
+    view, tree = _spawned_tree(uid)
+    assert _save_reply_tools(uid, view, view["messages"][-1]["tools"]) == tree
+    assert _save_reply_tools(uid, view, []) == set()
+
+
+def test_a_saved_trace_without_its_child_id_keeps_the_child(fresh_db):
+    uid = quick_user()
+    view, tree = _spawned_tree(uid)
+    # The page sends its settled view of the trace; the server's copy has the child.
+    clipped = [{k: v for k, v in t.items() if k != "child_id"} for t in view["messages"][-1]["tools"]]
+    assert _save_reply_tools(uid, view, clipped) == tree
