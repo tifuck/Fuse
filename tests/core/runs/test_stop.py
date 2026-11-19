@@ -183,6 +183,55 @@ def test_force_stop_then_continue_survives_the_wedged_old_worker(fresh_db):
     assert _reply(uid, thread["id"])["content"] == "RESUMED ANSWER"
 
 
+def test_continue_after_force_stop_starts_a_new_leg_while_the_old_worker_is_still_stuck(fresh_db):
+    """The old worker is still wedged (here in its first save, which ignores
+    cancellation) when Continue lands: the resume gets its own worker, and
+    the reaper does not take the queued row for a stalled one."""
+    import threading
+
+    from app import chat_checkpoint, chat_recovery
+
+    uid = quick_user()
+    real_checkpoint = chat_store.checkpoint
+    entered, gate = threading.Event(), threading.Event()
+
+    def first_save_hangs(*args, **kwargs):
+        if not entered.is_set():
+            entered.set()
+            gate.wait(10)
+        return real_checkpoint(*args, **kwargs)
+
+    thread = chats.create_thread(uid, model="offline", tools=[])
+    run = chat_store.start_turn(uid, thread["id"], "go", thread["revision"], None)["run"]
+    # A saved transcript, so the stopped run can be continued.
+    chat_checkpoint.save_turn_progress(run["id"], [*run["request"]["messages"], {"role": "assistant", "content": "working"}])
+
+    async def body():
+        old = await chat_runs.start(chat_runs.internal_request(uid), {"id": uid}, run)
+        await asyncio.to_thread(entered.wait, 5)
+        await chat_runs.cancel_wait(uid, run["id"], force=True)
+        await asyncio.to_thread(chat_recovery.resume_run, uid, run["id"])
+        with patch.object(chat_runs, "STALL_IDLE_SECONDS", 0):
+            await asyncio.to_thread(chat_runs.reap_orphans)
+        reaped = await asyncio.to_thread(run_row, run["id"])
+        new = await chat_runs.start(chat_runs.internal_request(uid), {"id": uid}, chat_store.get_run(uid, run["id"]))
+        if new is not None and new is not old:
+            await asyncio.wait_for(asyncio.wait({new}), 5)
+        gate.set()
+        await asyncio.wait_for(asyncio.wait({old}), 5)
+        await settle()
+        return old, new, reaped
+
+    with patch.object(chat_store, "checkpoint", side_effect=first_save_hangs), \
+            fake_provider(text_frames("RESUMED ANSWER")) as provider:
+        old, new, reaped = run_async(body())
+
+    assert reaped["status"] == "queued", "the stuck old worker is not the queued run's worker"
+    assert new is not None and new is not old
+    assert len(provider.bodies) == 1
+    assert dict(run_row(run["id"])) == {"status": "completed", "cancel_requested": 0, "resume_count": 1}
+    assert _reply(uid, thread["id"])["content"] == "RESUMED ANSWER"
+
 def test_reaper_finishes_a_stop_no_worker_owns(fresh_db):
     uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
