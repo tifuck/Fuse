@@ -52,6 +52,11 @@
 //                                  = 'busy'" (or 'hot') raises the load;
 //                                  __qaStats.stop() ends the samples (the card
 //                                  goes stale 7 s later)
+//                         dictation  the composer has a mic (dev has no speech
+//                                  server, so its pages have none) that hears a
+//                                  steady made-up voice: --click '[data-chat-mic]'
+//                                  opens the live overlay and words land in the
+//                                  box. The mic's markup is --tree's template
 //   --trace JSON        with --fake running: the reply's running calls become
 //                       these (an object, or an array of them), running unless
 //                       they say otherwise. A call with "parent": true is made
@@ -115,7 +120,7 @@ const TALL = 2000;  // so a cell is at most this tall, which leaves room for its
 const LIMIT = 12000;  // the tallest viewport a shot may grow to
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'error', 'agents', 'stats'];
+const FAKES = ['running', 'ask', 'asks', 'error', 'agents', 'stats', 'dictation'];
 const VALUES = new Set(['thread', 'page', 'view', 'tree', 'size', 'zoom', 'pad', 'fake', 'out', 'base', 'trace']);
 const FLAGS = new Set(['list', 'toasts', 'touch', 'live', 'motion']);
 const STEPS = new Set(['find', 'click', 'hover', 'type', 'key', 'wait', 'eval']);
@@ -368,6 +373,47 @@ const STATS_FAKE = `(() => {
     return new Response(JSON.stringify(data), { status: res.status, headers: { 'Content-Type': 'application/json' } });
   };
 })();`;
+// --fake dictation: runs in the page before its own scripts. Dev has no speech
+// server, so its pages have no mic: the composer gets the one its view's
+// template draws when there is one. The microphone is four steady tones in
+// the voice band, and the speech server a stub that answers with more words
+// the longer the audio is.
+const dictationFake = (root, view) => {
+  let mic = '';
+  try { mic = /{% if chat_config\.speech %}([\s\S]*?){% endif %}/.exec(readFileSync(join(root, 'templates', 'themes', view, '_composer.html'), 'utf8'))?.[1] || ''; } catch { /* no such view */ }
+  return `(() => {
+  const WORDS = 'Check why the nightly backup on the demo box takes forty minutes now and tell me what changed since last week before you fix anything'.split(' ');
+  // Parsed, and no module has run yet.
+  document.addEventListener('readystatechange', () => {
+    const send = document.querySelector('[data-chat-send]');
+    const config = document.getElementById('chat-config');
+    if (!send || !config || document.querySelector('[data-chat-mic]')) return;
+    send.insertAdjacentHTML('beforebegin', ${JSON.stringify(mic)});
+    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), speech: true });
+  }, { once: true });
+  if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => {
+    const ctx = new AudioContext();
+    const out = ctx.createMediaStreamDestination();
+    [180, 420, 950, 2100].forEach((hz, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = hz;
+      gain.gain.value = 0.12 / (i + 1);
+      osc.connect(gain).connect(out);
+      osc.start();
+    });
+    return out.stream;
+  };
+  const realFetch = window.fetch;
+  window.fetch = function (input, init) {
+    const path = new URL(typeof input === 'string' ? input : input.url, location.href).pathname;
+    if (path !== '/speech/transcribe') return realFetch.call(this, input, init);
+    const seconds = (init?.body?.byteLength || 0) / 32000;
+    return Promise.resolve(new Response(JSON.stringify({ text: WORDS.slice(0, Math.ceil(seconds * 2.5)).join(' ') }), { headers: { 'Content-Type': 'application/json' } }));
+  };
+})();`;
+};
+let micScript = '';
 const fakeKind = (request) => {
   const path = new URL(request.url).pathname.replace(/\/$/, '');
   if (!opts.fake.size || request.method !== 'GET') return '';
@@ -736,6 +782,11 @@ try {
         const label = () => [targets.length > 1 && target.name, views.length > 1 && chat && view, trees.length > 1 && tree.name, sizes.length > 1 && size.text].filter(Boolean).join(' · ');
         cell = label();
         staticRoot = tree.root;
+        if (opts.fake.has('dictation')) {
+          if (micScript) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: micScript });
+          faked.push('the mic and its speech server');
+          micScript = (await send('Page.addScriptToEvaluateOnNewDocument', { source: dictationFake(tree.root ? dirname(tree.root) : ROOT, view) })).identifier;
+        }
         await send('Network.setCookie', { name: 'fuse_chat_view', value: view, url: opts.base });
         await metrics(size.width, size.height);
         await go(opts.base + target.path);
