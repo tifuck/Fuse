@@ -607,7 +607,7 @@ def _relax_paths(args: dict, base: str, windows: bool, name: str = "") -> None:
             args[key] = posixpath.normpath(posixpath.join(b, raw))
 
 
-async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None, bound_cwd="", run_id: str = "", thread_id: int | None = None, on_started=None, gate=None, raw: bool = False) -> tuple[str, dict]:
+async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None, bound_cwd="", run_id: str = "", thread_id: int | None = None, on_started=None, on_output=None, gate=None, raw: bool = False) -> tuple[str, dict]:
     try:
         args = _args(arguments)
     except WorkspaceError as exc:
@@ -704,7 +704,7 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         promote_path = ""
     try:
         if name == "run_terminal_command":
-            text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started)
+            text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started, on_output=on_output)
         elif name == "monitor":
             text, rec = await _monitor(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started)
         elif name == "read_file" and raw:
@@ -1053,6 +1053,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
         payload = {"cwd": _agent_cwd(cwd), "cmd": command, "timeout_ms": kill_ms}
         err_parts: list[str] = []
         streamed = {"out": False, "nl": True, "err_len": 0}
+        err_live = getattr(sink, "err_live", None)
 
         def on_chunk(stream: str, data: str) -> None:
             # exec_stream: stdout is sunk live so a running job can be peeked
@@ -1068,6 +1069,8 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
                     if len(data) > room:
                         err_parts.append("\n[stderr truncated]\n")
                 streamed["err_len"] += len(data)
+                if err_live is not None:
+                    err_live(data)
             else:
                 streamed["out"] = True
                 streamed["nl"] = data.endswith("\n")
@@ -1219,7 +1222,28 @@ async def _ensure_fuse_temp(user_id, host_id, cwd: str, *, windows: bool) -> Non
         logger.debug("could not create temp cwd %s on host %s", cwd, host_id, exc_info=True)
 
 
-async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None):
+_LIVE_OUTPUT_S = 0.5
+_LIVE_OUTPUT_CHARS = 16_000
+
+
+async def _stream_output(rec: dict, on_output) -> None:
+    """Hands a foreground command's newest output to the chat while it runs,
+    stdout then the connector's held-back stderr; the result replaces it."""
+    seen = None
+    while True:
+        await asyncio.sleep(_LIVE_OUTPUT_S)
+        out = str(rec.get("out") or "")
+        err = str(rec.get("err_live") or "")
+        state = (rec.get("out_chars"), rec.get("err_live_chars"))
+        if state == seen or not (out or err):
+            continue
+        seen = state
+        if err:
+            out += ("" if not out or out.endswith("\n") else "\n") + "[stderr]\n" + err
+        on_output({"output": out[-_LIVE_OUTPUT_CHARS:]})
+
+
+async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None, on_output=None):
     from . import command_jobs
 
     command = str(args.get("command") or "")
@@ -1259,11 +1283,15 @@ async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, 
     if background:
         await asyncio.to_thread(command_jobs.mark_notified, rec)
         return command_jobs.render(rec)
+    live = asyncio.create_task(_stream_output(rec, on_output)) if on_output else None
     try:
         text, trace = await command_jobs.join(rec["id"], user_id, wait_ms / 1000, run_id=run_id or None)
     except asyncio.CancelledError:
         command_jobs.kill(rec["id"], user_id)
         raise
+    finally:
+        if live:
+            live.cancel()
     if trace.get("status") == "running":
         early = bool(trace.get("early_return"))
         # Moved, not killed: the background limit is 30 minutes from now, and

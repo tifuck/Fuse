@@ -345,6 +345,9 @@ async def run_tools(
                 job.trace = {**job.trace, **trace, "id": job.event_id}
                 emit({"event": "tool", "id": job.event_id, **trace})
 
+            def on_output(fields):
+                emit({"event": "tool", "id": job.event_id, "status": "progress", **fields})
+
             run_coding = bool(session.get("coding")) if session else coding
             if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
                 text, trace = await code_mode.run(
@@ -371,6 +374,7 @@ async def run_tools(
                     session=session,
                     enabled=session.get("enabled_tools") if session else None,
                     on_started=on_started,
+                    on_output=on_output,
                     gate=perm_gate,
                     # run_code's reads hand the code raw text, not numbered lines.
                     **({"raw": True} if job.parent and job.name == "read_file" else {}),

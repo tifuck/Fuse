@@ -955,6 +955,7 @@ async def execute_tool(
     session: dict | None = None,
     enabled: list[str] | None = None,
     on_started: Callable[[dict], None] | None = None,
+    on_output: Callable[[dict], None] | None = None,
     gate=None,
     raw: bool = False,
 ) -> tuple[str, dict]:
@@ -1320,6 +1321,7 @@ async def execute_tool(
             run_id=str((session or {}).get("run_id") or ""),
             thread_id=thread_id,
             on_started=on_started,
+            on_output=on_output,
             gate=gate,
             raw=raw,
         )
