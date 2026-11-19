@@ -142,6 +142,23 @@ function ccSpinnerState(status) {
     return state;
   }
 
+// What the running call is for, in its running form ("Checking every
+// connector build"): its own description, else that of the run_code whose
+// code made it. Empty when the line has its own word (queued, stopping,
+// cancelling, a thought).
+function liveDescription(msg, status) {
+    const trace = status.current;
+    if (!trace || ["queued", "stopping", "thinking"].includes(status.phase) || deps.executionState(trace) === "cancelling") return "";
+    let text = deps.ccFlat(trace.description || "");
+    let name = trace.name;
+    if (!text && trace.parent) {
+      const parent = (Array.isArray(msg?.tools) ? msg.tools : []).find((t) => String(t?.id ?? "") === String(trace.parent));
+      if (parent?.name === "run_code") [text, name] = [deps.ccFlat(parent.description || ""), parent.name];
+    }
+    if (!text) return "";
+    return deps.ccRunningForm(text) ?? (name === "monitor" ? `watching ${text}` : text);
+  }
+
 function formatConsoleLiveStatus(msg, groups, opts) {
     const status = deps.currentActivity(msg, groups, true);
     const meter = opts ? opts.meter : deps.liveMeter;
@@ -166,7 +183,7 @@ function formatConsoleLiveStatus(msg, groups, opts) {
     const speed = deps.ccGenSpeed((Number(usage.gen_out) || 0) + live, (Number(usage.gen_ms) || 0) + liveMs,
       usage.gen_est > 0 || (liveMs > 0 && !(Number(usage.gen_chars) > 0)));
     // "thought for Ns" shows only as the answer starts (ccThinkingState).
-    const state = ccThinkingState(msg, status.phase) || ccSpinnerState(status);
+    const state = ccThinkingState(msg, status.phase) || liveDescription(msg, status) || ccSpinnerState(status);
     // Claude Code shows the clock once there is something else to show, or
     // after 16s.
     const clock = tokenText || speed || seconds > 16 ? deps.ccDuration(seconds * 1000) : "";
