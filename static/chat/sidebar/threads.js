@@ -148,8 +148,12 @@ export function createThreads(ctx) {
     const bound = sessionProject();
     const untitled = isUntitledThread(current);
     const name = untitled ? "" : current.title;
+    // Called on every streamed frame: a write, even of the same text, makes
+    // the page's :has() rules restyle the whole transcript.
+    const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+    const setAttr = (el, key, value) => { if (el.getAttribute(key) !== value) el.setAttribute(key, value); };
     if (S.titleEl) {
-      S.titleEl.textContent = name;
+      setText(S.titleEl, name);
       S.titleEl.classList.toggle("is-untitled", untitled);
       // An untitled chat still has a heading for screen readers.
       S.titleEl.nextElementSibling?.toggleAttribute("hidden", Boolean(name));
@@ -158,14 +162,18 @@ export function createThreads(ctx) {
     if (S.projectChip) {
       const project = bound && bound.project_name;
       if (bound && project) {
-        S.projectChip.hidden = false;
-        if (S.projectName) S.projectName.textContent = project;
-        if (S.projectIconEl) S.projectIconEl.innerHTML = projects.projectIcon(bound, 14);
-        S.projectChip.title = [project, ...projects.projectWorkspaceDetails(bound)].join(" | ");
-        S.projectChip.setAttribute("aria-label", S.projectChip.title);
+        if (S.projectChip.hidden) S.projectChip.hidden = false;
+        if (S.projectName) setText(S.projectName, project);
+        if (S.projectIconEl) {
+          const icon = projects.projectIcon(bound, 14);
+          if (S.projectIconEl._icon !== icon) S.projectIconEl.innerHTML = S.projectIconEl._icon = icon;
+        }
+        const title = [project, ...projects.projectWorkspaceDetails(bound)].join(" | ");
+        setAttr(S.projectChip, "title", title);
+        setAttr(S.projectChip, "aria-label", title);
       } else {
-        S.projectChip.hidden = true;
-        if (S.projectName) S.projectName.textContent = "";
+        if (!S.projectChip.hidden) S.projectChip.hidden = true;
+        if (S.projectName) setText(S.projectName, "");
         S.projectChip.removeAttribute("title");
         S.projectChip.removeAttribute("aria-label");
       }
@@ -176,12 +184,13 @@ export function createThreads(ctx) {
       if (bound && (bound.project_name || bound.host_alias)) {
         const project = bound.project_name || "project";
         const alias = bound.host_alias || "host";
-        S.welcomeEl.textContent = `Work on ${project} on ${alias}.`;
+        setText(S.welcomeEl, `Work on ${project} on ${alias}.`);
       } else {
-        S.welcomeEl.textContent = "What are we building?";
+        setText(S.welcomeEl, "What are we building?");
       }
     }
-    document.title = S.currentId && name && name !== "New chat" ? name + " · Fuse" : "Chat · Fuse";
+    const pageTitle = S.currentId && name && name !== "New chat" ? name + " · Fuse" : "Chat · Fuse";
+    if (document.title !== pageTitle) document.title = pageTitle;
     composer.scheduleFitChatBar();
   }
 
