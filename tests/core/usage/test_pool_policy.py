@@ -186,6 +186,43 @@ def test_zai_cross_unlock_needs_a_shared_live_xai_account_and_shared_routing(peo
     assert grok.user_has_grok(bob) and not zai.user_has_zai(bob)
 
 
+def test_a_donor_new_since_the_share_cache_filled_gets_the_pools_default(people):
+    _donor, alice, bob = people
+    pool_policy.set_user_pref(bob, "refuseless", share="everyone")  # Bob borrows from the pool
+    pool_account("refuseless", alice, {"api_key": "rk"})
+    pool_account("grok", alice, grok_extra(10))
+    assert _visible(bob, "refuseless") == set() and _visible(bob) != set()  # fills both caches
+    carol = user("carol@core.test")
+
+    late = pool_account("refuseless", carol, {"api_key": "rk2"})
+    shared = pool_account("grok", carol, grok_extra(10))
+
+    assert late not in _visible(bob, "refuseless") and late not in _visible(None, "refuseless")
+    assert pool_policy.share_level("refuseless", carol) == "private"
+    assert shared in _visible(bob) and pool_policy.share_level("grok", carol) == "everyone"
+    # Sharing a pay-as-you-go key on purpose still reaches others.
+    pool_policy.set_user_pref(carol, "refuseless", share="everyone")
+    assert late in _visible(bob, "refuseless")
+    assert pool_policy.share_level("refuseless", carol) == "everyone"
+
+
+def test_a_share_read_that_raced_a_pref_write_is_not_cached(people, monkeypatch):
+    donor, _alice, _bob = people
+    real = pool_policy.db.fetchall
+    raced = []
+
+    def stale_then_write(sql, params=()):
+        rows = real(sql, params)
+        if "pool_prefs FROM users" in sql and not raced:
+            raced.append(True)
+            pool_policy.set_user_pref(donor, "grok", share="private")
+        return rows
+
+    monkeypatch.setattr(pool_policy.db, "fetchall", stale_then_write)
+    assert pool_policy.share_level("grok", donor) == "everyone"  # read before the write
+    assert pool_policy.share_level("grok", donor) == "private"
+
+
 def test_turning_a_usage_guard_off_releases_every_held_account(people):
     donor, _alice, _bob = people
     held = pool_account("grok", donor, grok_extra(10))

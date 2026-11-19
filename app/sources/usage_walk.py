@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 WALK_PAUSE = 20.0
 WALK_KINDS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "cursor", "openrouter", "nanogpt", "refuseless")
+# Credential id -> when its last refresh raised. A failing refresher never
+# stamps checked_at, so without this the walk would retry that one forever.
+_failed_at: dict[int, datetime] = {}
 
 
 def _parse_ts(ts: str) -> datetime | None:
@@ -104,6 +107,7 @@ def usage_targets() -> list[tuple[str, object]]:
         if not _is_paid(kind, extra):
             continue
         when = _parse_ts(_checked_at(extra)) or datetime.min.replace(tzinfo=timezone.utc)
+        when = max(when, _failed_at.get(int(row["id"]), when))
         targets.append((kind, row, when))
     targets.sort(key=lambda item: (item[2], int(item[1]["id"])))
     return [(kind, row) for kind, row, _ in targets]
@@ -142,5 +146,7 @@ async def walk_next() -> str | None:
         await refresh_one_usage(kind, cred)
     except Exception:
         logger.warning("Usage walk failed for %s credential %s", kind, cred["id"], exc_info=True)
+        _failed_at[int(cred["id"])] = datetime.now(timezone.utc)
         return f"{kind}:{cred['id']}"
+    _failed_at.pop(int(cred["id"]), None)
     return f"{kind}:{cred['id']}"

@@ -44,16 +44,18 @@ def test_only_live_paid_accounts_are_walked_stalest_first(owner):
 
 def test_one_hop_refreshes_only_the_stalest_account_and_survives_its_failure(owner):
     stale = pool_account("grok", owner, _grok("2026-01-01T00:00:00Z"))
-    pool_account("zai", owner, _zai("2026-02-01T00:00:00Z"))
+    fresher = pool_account("zai", owner, _zai("2026-02-01T00:00:00Z"))
 
     with patch.object(usage_walk.grok_mod, "refresh_billing", new=AsyncMock()) as grok, \
             patch.object(usage_walk.zai_mod, "refresh_quota", new=AsyncMock()) as zai:
         assert asyncio.run(usage_walk.walk_next()) == f"grok:{stale}"
         grok.side_effect = RuntimeError("upstream down")
         assert asyncio.run(usage_walk.walk_next()) == f"grok:{stale}"
+        # The failure never stamped checked_at; the walk moves on all the same.
+        assert asyncio.run(usage_walk.walk_next()) == f"zai:{fresher}"
 
     assert grok.await_count == 2 and grok.await_args.kwargs == {"force": True}
-    zai.assert_not_awaited()
+    zai.assert_awaited_once()
 
 
 def test_a_walk_without_accounts_does_nothing(fresh_db):

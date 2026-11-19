@@ -162,7 +162,7 @@ class OpenAICompatSource:
                 if not (status == 400 and cache_key and "prompt_cache_key" in str(obj)):
                     break
                 # A strict server rejects the unknown field: retry once without it.
-                attempts.append({"credential_id": cred["id"], "status": status, "usage": {}})
+                # Nothing ran upstream, so the rejection is not a failed attempt.
                 cache_key = False
                 body = {k: v for k, v in body.items() if k != "prompt_cache_key"}
             if stream is not None:

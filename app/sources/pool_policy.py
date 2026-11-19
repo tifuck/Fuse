@@ -294,7 +294,7 @@ def set_user_pref(user_id: int, kind: str, *, share: str | None = None, use: str
         item["own_only"] = pref["share"] != "everyone" or pref["use"] == "mine"
         prefs[kind] = item
         conn.execute("UPDATE users SET pool_prefs=? WHERE id=?", (json.dumps(prefs), uid))
-    _share_cache.pop(kind, None)
+    _invalidate_shares(kind)
     return pref
 
 
@@ -498,13 +498,26 @@ def lent_payload(payload: dict, row, user_id: int | None) -> dict:
 
 _SHARE_TTL = 30.0
 _share_cache: dict[str, tuple[float, dict[int, str]]] = {}
+# Bumped by every invalidation, so a read that raced a write is not cached.
+_share_gen: dict[str, int] = {}
+
+
+def _invalidate_shares(kind: str) -> None:
+    _share_gen[kind] = _share_gen.get(kind, 0) + 1
+    _share_cache.pop(kind, None)
+
+
+def _default_share(kind: str) -> str:
+    return DEFAULT_SHARE.get(kind, DEFAULT_PREF["share"])
 
 
 def _share_levels(kind: str) -> dict[int, str]:
-    """Donors whose accounts are not shared with everyone, by level.
+    """Donors whose share level is not the pool's default, by level.
 
     Cached briefly: this would otherwise parse every users.pool_prefs row on
     every pooled request. Writes through set_user_pref invalidate the entry.
+    A user missing from the map (one created since the fill included) has
+    the pool's default.
     """
     if kind not in POOL_KIND_SET:
         return {}
@@ -512,6 +525,8 @@ def _share_levels(kind: str) -> dict[int, str]:
     now = time.time()
     if hit and now - hit[0] < _SHARE_TTL:
         return dict(hit[1])
+    gen = _share_gen.get(kind, 0)
+    default = _default_share(kind)
     out: dict[int, str] = {}
     for row in db.fetchall("SELECT id, pool_prefs FROM users"):
         try:
@@ -520,9 +535,10 @@ def _share_levels(kind: str) -> dict[int, str]:
         except (KeyError, IndexError, TypeError, ValueError):
             continue
         share = _normalize(data.get(kind), kind)["share"]
-        if share != "everyone":
+        if share != default:
             out[uid] = share
-    _share_cache[kind] = (now, out)
+    if _share_gen.get(kind, 0) == gen:
+        _share_cache[kind] = (now, out)
     return dict(out)
 
 
@@ -532,7 +548,7 @@ def share_level(kind: str, donor_id: int | None) -> str:
         return "everyone"
     if not admin_policy(kind)["pool_shared"]:
         return "private"
-    return _share_levels(kind).get(int(donor_id), "everyone")
+    return _share_levels(kind).get(int(donor_id), _default_share(kind))
 
 
 def filter_credentials(rows, kind: str, user_id: int | None, *, chosen: bool = True):
@@ -574,7 +590,7 @@ def _reachable(rows, kind: str, user_id: int | None):
             continue
         if lendable is not None and not lendable(row):
             continue
-        level = levels.get(donor, "everyone") if donor is not None else "everyone"
+        level = levels.get(donor, _default_share(kind)) if donor is not None else "everyone"
         if level == "private":
             continue
         if level == "contributors":

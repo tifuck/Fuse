@@ -99,3 +99,17 @@ def test_a_strict_server_that_rejects_the_cache_key_is_retried_once_without_it(k
     sent = [call.args[3] for call in upstream.await_args_list]
     assert result.status == 200 and "prompt_cache_key" in sent[0] and "prompt_cache_key" not in sent[1]
     assert {call.args[2]["Authorization"] for call in upstream.await_args_list} == {"Bearer sk-0"}
+    assert result.attempts == []  # the rejected field is not a failed request on the key that served
+
+
+def test_a_failure_after_the_request_was_sent_is_never_rotated(keys):
+    sid, creds, upstream = keys
+    a, _b, _c = _ids(creds)
+    for phase in ("request_sent", "response_received"):
+        upstream.reset_mock()
+        upstream.return_value = (502, {"error": "gone"}, None, {"failure_phase": phase}, {})
+
+        result = _chat(sid, creds, "none")
+
+        # The upstream may already be generating: replaying it could bill twice.
+        assert (result.status, result.credential_id, result.attempts, upstream.await_count) == (502, a, [], 1)
