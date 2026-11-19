@@ -213,6 +213,19 @@ def test_continue_resumes_a_stopped_turn_without_claiming_a_restart(fresh_db):
     assert run_row(run["id"])["cancel_requested"] == 0
 
 
+def test_continue_after_stop_tells_the_model_the_user_stopped_its_unanswered_spawn(fresh_db):
+    uid = quick_user()
+    call = {"id": "s1", "type": "function", "function": {"name": "spawn_subagent", "arguments": "{}"}}
+    _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "", "tool_calls": [call]}))
+    chat_store.abort_active(run["id"], "cancelled")
+
+    chat_recovery.resume_run(uid, run["id"])
+
+    (sealed,) = [m for m in provider_messages(run["id"]) if m.get("role") == "tool"]
+    assert sealed["content"].startswith(chat_recovery.USER_STOP_TOOL_NOTICE)
+    assert "server restart" not in sealed["content"] and "list_subagents" in sealed["content"]
+
+
 @pytest.mark.parametrize("case", ["completed", "no_transcript", "not_latest", "budget_spent"])
 def test_continue_is_refused_when_it_cannot_resume_safely(fresh_db, case):
     uid = quick_user()

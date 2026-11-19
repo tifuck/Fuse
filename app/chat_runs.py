@@ -1060,6 +1060,12 @@ async def _run(request, user, run):
             raise asyncio.CancelledError
         if await persist_checkpoint(output.stored(), []):
             raise asyncio.CancelledError
+        # A Stop between start()'s read and this task's registration finished
+        # the row with no worker to wake: never call the model for it.
+        row = await asyncio.to_thread(db.fetchone, "SELECT status,cancel_requested FROM chat_runs WHERE id=?", (ident,))
+        if row is None or row["cancel_requested"] or row["status"] not in chat_store.ACTIVE:
+            _cancelled.add(ident)
+            raise asyncio.CancelledError
         worker = asyncio.create_task(periodic())
         try:
             configured = agent.get("remaining_seconds")
