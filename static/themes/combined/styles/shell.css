@@ -720,7 +720,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] {
   & .cb-tb[data-tool-search][aria-pressed="false"] span { text-decoration: line-through; }
   & .cb-tb[data-perm-chip].is-on { color: var(--cb-accent-text); }
   & .cb-tb[data-perm-chip].is-bypass { color: color-mix(in srgb, var(--fault) 70%, var(--mist)); }
-  & .cb-tb[data-chat-mic]:is(.is-live, [aria-pressed="true"]) { background: color-mix(in srgb, var(--fault) 14%, transparent); color: var(--fault); }
+  & .cb-tb[data-chat-mic]:is(.is-live, [aria-pressed="true"]) { background: color-mix(in srgb, var(--brass) 14%, transparent); color: var(--cb-accent-text); }
   & .cb-perm { position: relative; display: flex; }
   /* The chip sits on the left, so its popover opens from the chip's left edge. */
   & .cb-perm > .chat-perms-menu:not(.is-sheet) { left: 0 !important; right: auto !important; }

@@ -1,7 +1,7 @@
 /* Dictation: the live pill above the composer. Rounded like the composer
-   card: a soft recording dot, the voice meter, the clock, then a ghost
-   cancel and a filled done. The mic itself is a .cb-tb (shell.css tints it
-   while live). */
+   card: a soft recording dot and what it is doing, the voice meter, the
+   clock, then a quiet cancel and a filled done. The mic itself is a .cb-tb (shell.css tints it
+   while live). Everything live is the theme's accent. */
 html[data-chat-view="combined"] .chat[data-view="combined"] [data-chat-mic] { touch-action: none; }
 
 /* Hangs above the composer and its open todo list (chat-todo.css stacks the
@@ -15,8 +15,8 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .dictation {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  height: 2.5rem;
-  padding: 0 0.3rem 0 1rem;
+  height: 2.75rem;
+  padding: 0 0.375rem 0 1rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel) 92%, transparent);
@@ -32,13 +32,20 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .dictation {
 }
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation[hidden] { display: none; }
 
+/* What it is doing, after the dot. As wide as its longest word, so the pill
+   keeps its width from one state to the next. */
+html[data-chat-view="combined"] .chat[data-view="combined"] .dictation::before { content: "Listening"; min-width: 4.7em; }
+html[data-chat-view="combined"] .chat[data-view="combined"] .dictation.is-starting::before { content: "Starting"; color: var(--mute); }
+html[data-chat-view="combined"] .chat[data-view="combined"] .dictation.is-finishing::before { content: "Finishing"; color: var(--mute); }
+
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-dot {
+  order: -1;
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--fault);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--fault) 45%, transparent);
+  background: var(--brass);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brass) 45%, transparent);
   animation: dictation-pulse-combined 1.6s ease-out infinite;
 }
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation:is(.is-starting, .is-finishing) .dictation-dot { background: var(--mute); animation: none; }
@@ -77,18 +84,18 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-time {
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn {
   display: grid;
   place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: none;
-  color: var(--mute);
+  background: var(--cb-hover);
+  color: var(--mist);
   line-height: 0;
   cursor: pointer;
   transition: color var(--dur-hover) ease, background-color var(--dur-hover) ease, scale var(--dur-1) var(--ease-snap);
 }
-html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn:hover { color: var(--mist); background: var(--cb-hover); }
+html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn:hover { background: color-mix(in srgb, var(--mist) 13%, transparent); }
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn:active { scale: 0.92; }
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn.is-done { background: var(--brass); color: var(--on-brass, var(--ink)); }
 html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn.is-done:hover { background: color-mix(in srgb, var(--brass) 86%, var(--mist)); color: var(--on-brass, var(--ink)); }
@@ -99,17 +106,48 @@ html[data-chat-view="combined"] .chat[data-view="combined"] .dictation.is-finish
   from { opacity: 0; transform: translate(-50%, 6px) scale(0.97); }
 }
 @keyframes dictation-pulse-combined {
-  70% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--fault) 0%, transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fault) 0%, transparent); }
+  70% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--brass) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brass) 0%, transparent); }
 }
 @keyframes dictation-wait-combined {
   0%, 100% { transform: scaleY(0.12); }
   50% { transform: scaleY(0.38); }
 }
 
+/* A phone: a bar as wide as the composer, made for thumbs. Cancel sits at
+   its left edge and Done at its right, 44px each; between them what it is
+   doing, the clock, and a meter as wide as the room that is left. */
 @media (max-width: 800px) {
-  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation { gap: 0.5rem; padding-left: 0.85rem; }
-  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-bars { gap: 1px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"]:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 5.1rem; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation {
+    right: 8px;
+    bottom: calc(100% + 4px + var(--todo-lift, 0px));
+    left: 8px;
+    display: grid;
+    grid-template: "cancel dot label time done" auto "cancel bars bars bars done" auto / 44px auto 1fr auto 44px;
+    gap: 7px 10px;
+    max-width: 26rem;
+    height: auto;
+    margin-inline: auto;
+    padding: 10px;
+    border-radius: 22px;
+    font-size: 0.9rem;
+    transform: none;
+    animation-name: dictation-up-combined;
+  }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation::before { grid-area: label; overflow: hidden; min-width: 0; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-dot { grid-area: dot; margin-left: 4px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-time { grid-area: time; margin-right: 4px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; height: 1.6rem; margin-inline: 4px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-bars i { flex: none; width: 4px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn { width: 44px; height: 44px; touch-action: manipulation; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn.is-done { background: var(--brass); color: var(--on-brass, var(--ink)); }
+  html[data-chat-view="combined"] .chat[data-view="combined"] .dictation-btn svg { width: 18px; height: 18px; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] [data-dictation-cancel] { grid-area: cancel; }
+  html[data-chat-view="combined"] .chat[data-view="combined"] [data-dictation-done] { grid-area: done; }
+}
+@keyframes dictation-up-combined {
+  from { opacity: 0; transform: translateY(8px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

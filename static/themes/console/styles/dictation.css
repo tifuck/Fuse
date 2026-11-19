@@ -1,6 +1,6 @@
 /* Dictation: the composer mic and the live strip above the composer. A
    terminal status line: a square rec mark, block meters, the clock and the
-   keys that end it. */
+   keys that end it. Everything live is the theme's accent. */
 html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn {
   position: relative;
   display: grid;
@@ -27,7 +27,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live:
   right: 0.25rem;
   width: 4px;
   height: 4px;
-  background: var(--fault);
+  background: var(--brass);
   animation: dictation-blink-console 1s steps(1) infinite;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box.is-dictating::before { color: var(--brass); }
@@ -46,7 +46,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation {
   height: 2rem;
   padding: 0 0.25rem 0 0.7rem;
   border: 1px solid var(--line);
-  border-left: 2px solid var(--fault);
+  border-left: 2px solid var(--brass);
   background: var(--ink);
   color: var(--mist);
   font: 500 0.72rem/1 var(--mono);
@@ -54,11 +54,16 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation {
 }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation[hidden] { display: none; }
 
+/* The mark and its word: rec while it listens, wait while the microphone
+   starts and while the last words are written. */
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec {
-  color: var(--fault);
+  min-width: 7ch;
+  color: var(--brass);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec::after { content: "rec"; }
+html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-starting, .is-finishing) .dictation-rec::after { content: "wait"; }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec::before { content: "\25A0\00a0"; animation: dictation-blink-console 1s steps(1) infinite; }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-voiced .dictation-rec::before { animation: none; }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-starting, .is-finishing) .dictation-rec { color: var(--mute); }
@@ -86,8 +91,14 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation:is(.is-star
   animation-delay: calc(var(--i) * -40ms);
 }
 
+/* A rule after the clock parts what it reports from the keys that end it. */
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-time {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
   min-width: 2.2rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--line);
   color: var(--mute);
   font-variant-numeric: tabular-nums;
 }
@@ -125,10 +136,34 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
   50% { transform: scaleY(0.4); }
 }
 
+/* A phone: the strip spans the screen and sits on the composer, made for
+   thumbs. Cancel at its left edge and done at its right are 44px keys with
+   their words (a phone has no esc); between them the mark, the clock, and
+   meters as wide as the room that is left. */
 @media (max-width: 800px) {
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation { gap: 0.5rem; padding-left: 0.55rem; }
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars { gap: 0; }
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars i { width: 2px; margin-right: 1px; }
+  html[data-chat-console="true"] .chat[data-view="console"]:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 4.2rem; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation {
+    right: 0;
+    bottom: calc(100% + var(--todo-lift, 0px));
+    left: 0;
+    display: grid;
+    grid-template: "cancel rec time done" auto "cancel bars bars done" auto / auto 1fr auto auto;
+    gap: 6px 12px;
+    height: auto;
+    padding: 8px 8px 8px 6px;
+    border-width: 1px 0 0 2px;
+    font-size: 0.8rem;
+    transform: none;
+  }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec { grid-area: rec; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; max-width: 16rem; height: 1.25rem; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars i { width: 4px; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn { justify-content: center; min-width: 4.5rem; height: 44px; padding: 0 0.9rem; border: 1px solid var(--line); color: var(--mist); touch-action: manipulation; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn kbd { display: none; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn.is-done { border-color: var(--brass); background: var(--brass); color: var(--on-brass, var(--ink)); }
+  html[data-chat-console="true"] .chat[data-view="console"] [data-dictation-cancel] { grid-area: cancel; }
+  html[data-chat-console="true"] .chat[data-view="console"] [data-dictation-done] { grid-area: done; }
 }
 
 @media (prefers-reduced-motion: reduce) {
