@@ -5,8 +5,8 @@
 {% set is_preview = path.startswith('/preview') %}
 {% set is_settings = user and not is_chat and not is_artifact and not is_preview %}
 {% set is_desktop_app = 'FuseDesktop/' in request.headers.get('user-agent', '') %}
-{#- Chat draws with the theme the fuse_chat_view cookie picks; settings pages stay console. -#}
-{% set chat_view = chat_view_for(request) if is_chat else chat_themes()[0].id %}
+{#- Chat and the settings pages draw with the theme the fuse_chat_view cookie picks. -#}
+{% set chat_view = chat_view_for(request) if is_chat or is_settings else chat_themes()[0].id %}
 <html lang="en"{% if is_chat %} class="is-chat-root"{% elif is_settings %} class="is-settings-root"{% endif %}{% if is_chat or is_settings %}{% if chat_view == 'console' %} data-chat-console="true"{% endif %} data-chat-view="{{ chat_view }}"{% endif %}{% if is_desktop_app %} data-desktop-app="true"{% endif %}>
 <head>
   <meta charset="utf-8">
@@ -43,9 +43,9 @@
   {% endif %}
   {% if is_settings %}
   <script src="{{ asset('chat-appearance.js') }}"></script>
-  <link rel="stylesheet" href="{{ asset('themes/console/theme.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/theme.css') }}">
   <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
-  <link rel="stylesheet" href="{{ asset('themes/console/styles/design.css') }}">
+  <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
   {% endif %}
   {% block head_extra %}{% endblock %}
   {#- After every stylesheet: it rewrites their phone breakpoints before first paint. -#}
