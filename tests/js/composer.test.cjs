@@ -208,8 +208,9 @@ test('machine stats: load stays white to 50%, turns amber, red from 95%; rates r
   const { loadTone, shortRate } = await import('../../static/chat/hoststats.js');
   assert.equal(loadTone(0), '');
   assert.equal(loadTone(50), '');
-  assert.equal(loadTone(75), 'color-mix(in oklch, #ff453a 0%, #f5b83d)');
-  assert.match(loadTone(60), /#f5b83d 40%, #fff/);
+  assert.match(loadTone(56), /var\(--hs-hi, #fff\) 40%, currentColor/);
+  assert.equal(loadTone(80), 'color-mix(in oklch, #ff453a 0%, #f5b83d)');
+  assert.match(loadTone(71), /#f5b83d 40%, var\(--hs-hi, #fff\)/);
   assert.equal(loadTone(95), '#ff453a');
   assert.equal(loadTone(100), '#ff453a');
   assert.equal(loadTone(NaN), '');

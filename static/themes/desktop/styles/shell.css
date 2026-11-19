@@ -1073,10 +1073,12 @@ html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.dk-agents .is-running .chat-agents-dot, .dk-jobs .is-running .chat-agents-dot) { animation: none; }
 }
 
-/* Machine stats (static/chat/hoststats.js): plain numbers, a glyph each, in
-   the top bar before its buttons. Each value has a fixed-width slot, so the
-   bar never shifts as numbers change; a narrower bar drops the network, then
-   the disk, then memory. Click or tap opens the details card, and a machine
+/* Machine stats: CPU, memory, disk and network of the session's machine, in
+   the composer's controls row between the permission mode and the model.
+   Each value has a fixed-width slot, so the row never shifts as numbers
+   change; the runtime drops the name, network and disk when the row is
+   narrow (hoststats.js fit). Values stay as dim as their icons until a load
+   passes 50% (loadTone). Click or tap opens the details card, and a machine
    that stops reporting greys out in place (data-host-stats-keep). On phones
    the runtime moves the card into the strip above the input
    ([data-host-stats-narrow]): it steps aside while the chat is read back
@@ -1088,7 +1090,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     display: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font-size: 12px;
   }
   @media (max-width: 640px) { & .dk-model .chat-picker-btn > span[data-short] { max-width: 10rem; font-size: 0; &::before { display: inline-block; } } }
-  & .chat-host-stats { position: relative; display: flex; flex: none; align-items: center; }
+  & .chat-host-stats { --hs-hi: var(--dk-text); position: relative; display: flex; flex: none; align-items: center; }
   & :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
   & .hs-toggle {
     display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none;
@@ -1100,19 +1102,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .hs-toggle:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .hs-slice { display: flex; align-items: center; gap: 4px; }
   & .hs-slice svg { flex: none; }
-  & .hs-slice b { display: inline-block; min-width: 3.3ch; font-weight: 500; color: var(--dk-text); }
+  & .hs-slice b { display: inline-block; min-width: 3.3ch; font-weight: 500; }
   & .hs-net { gap: 7px; }
   & .hs-net > span { display: inline-flex; align-items: center; gap: 1px; }
   & .hs-net b { min-width: 3.6ch; }
   & .chat-host-stats.is-stale .hs-slice b { color: var(--dk-mute); }
-  & .dk-head .chat-host-stats { margin-left: 8px; }
-  @container dk-head (max-width: 760px) { & .dk-head .hs-net { display: none; } }
-  @container dk-head (max-width: 640px) { & .dk-head .hs-disk { display: none; } }
-  @container dk-head (max-width: 540px) { & .dk-head .hs-ram { display: none; } }
-  @container dk-head (max-width: 440px) { & .dk-head .chat-host-stats { display: none; } }
-  /* The details card: under the bar's stats, above the phone's strip. */
+  & .dk-row2 > .chat-host-stats { position: absolute; left: 50%; translate: -50% 0; }
+  /* The details card: above the stats, in the row and in the phone's strip. */
   & .hs-pop {
-    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 20rem; padding: 12px;
+    position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; z-index: 30; width: 20rem; padding: 12px;
     border: 1px solid var(--dk-card-line); border-radius: 12px; background: var(--dk-card); box-shadow: var(--dk-pop-shadow);
     color: var(--dk-text); font: 12.5px/1.4 var(--sans); font-variant-numeric: tabular-nums; cursor: default;
   }
@@ -1141,7 +1139,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-stats-strip:not(:has(> .chat-host-stats:not([hidden]))) { display: none; }
   & .dk-stats-strip .chat-host-stats { justify-content: center; height: 20px; margin: 0 0 6px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease; }
   & .dk-stats-strip .hs-toggle { gap: 14px; height: 32px; margin-block: -6px; padding: 0 10px; border-radius: 8px; }
-  & .dk-stats-strip .hs-pop { top: auto; bottom: calc(100% + 10px); left: 0; right: 0; width: auto; font-size: 14px; }
+  & .dk-stats-strip .hs-pop { left: 0; right: 0; translate: none; width: auto; font-size: 14px; }
   /* Read back, the chat would run through the strip: it steps aside. */
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
   /* Jump to latest takes its spot, unless something else sits above the strip. */
