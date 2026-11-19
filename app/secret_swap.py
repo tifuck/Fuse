@@ -764,6 +764,15 @@ class Swap:
             out = "".join(pieces)
         return self._exact(out, sent) if again else out
 
+    def tokenize_value(self, value):
+        if isinstance(value, str):
+            return self.tokenize(value)
+        if isinstance(value, list):
+            return [self.tokenize_value(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self.tokenize_value(v) for k, v in value.items()}
+        return value
+
     def to_model(self, text):
         """Model-written text shown to the user, back to what the model wrote:
         the inverse of restore for the bound transcript's values, no detection."""
