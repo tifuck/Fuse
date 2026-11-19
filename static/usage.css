@@ -127,9 +127,13 @@ html[data-chat-theme="ivory"] .uz {
   padding: 0.35rem 0 0.6rem;
   background: var(--ink);
 }
-.uz-caption { color: var(--uz-sub); font-size: 0.84rem; min-width: 0; }
+/* The caption's box never depends on its text (it arrives with the data):
+   the bar wraps by this basis, and a line that does not fit is cut. */
+.uz-caption { flex: 1 1 34rem; color: var(--uz-sub); font-size: 0.84rem; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .uz-caption b { color: var(--mist); font-weight: 600; }
 .uz-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+/* A fixed width: a select sized by its longest option grows when the options arrive. */
+.uz-controls .uz-select select { width: 11rem; text-overflow: ellipsis; }
 
 /* —— Summary: four numbers in one strip —— */
 .uz-stats {
@@ -203,7 +207,7 @@ html[data-chat-theme="ivory"] .uz {
 .uz-tip .line { display: grid; grid-template-columns: 0.6rem minmax(0, 1fr) auto; gap: 0.45rem; align-items: center; }
 .uz-tip .line span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uz-tip .line b { font-weight: 500; font-size: 0.72rem; }
-.uz-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin-top: 0.75rem; color: var(--uz-sub); font-size: 0.78rem; }
+.uz-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; min-height: 1lh; margin-top: 0.75rem; color: var(--uz-sub); font-size: 0.78rem; }
 .uz-legend[hidden] { display: none; }
 .uz-legend > span { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; max-width: 100%; }
 .uz-legend .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -478,6 +482,7 @@ html[data-chat-theme="ivory"] .uz {
 @container page (max-width: 46rem) {
   .uz-dash { --uz-pad: 0.95rem; --uz-gap: 0.7rem; }
   .uz-bar { flex-direction: column; align-items: stretch; }
+  .uz-caption { flex: none; }
   .uz-controls { display: grid; grid-template-columns: minmax(0, 1fr); }
   .uz-controls:has([data-usage-user]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .uz-controls .uz-range { grid-column: 1 / -1; grid-row: 1; }
@@ -530,6 +535,9 @@ html[data-chat-theme="ivory"] .uz {
   .uz-recent td.uz-cell-when, .uz-recent td.uz-cell-src, .uz-recent td.uz-cell-in, .uz-recent td.uz-cell-out, .uz-recent td.uz-cell-cost { display: none; }
   .uz-heat-grid { grid-template-columns: 1.6rem repeat(24, minmax(0, 1fr)); gap: 2px; }
   .uz-heat-grid .c { min-height: 0; }
+}
+@container page (max-width: 34rem) {
+  .uz-caption { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; height: 2lh; white-space: normal; }
 }
 
 /* —— Keys and pricing, by viewport —— */
