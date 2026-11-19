@@ -339,8 +339,15 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
     }
     // A silent call (search_tools) stays hidden unless it was cut short: an
     // interrupted one prints on its own row, saying what the run was doing.
-    const holds = (entry, at, cls) => cls.kind === "silent" ? deps.toolPresentation(entry.trace, live).interrupted
-      : at === newest || deps.toolPresentation(entry.trace, live).running;
+    // A call that failed or was cut short prints on its own row too: "ran 3
+    // shell commands" must not hide that one of them did not finish.
+    const holds = (entry, at, cls) => {
+      const p = deps.toolPresentation(entry.trace, live);
+      if (cls.kind === "silent") return p.interrupted;
+      const bad = p.failed || p.interrupted || (entry.trace.name === "run_terminal_command" && p.state === "warning" &&
+        deps.ccExitMeaning(deps.displayCommand(entry.trace), deps.shellExitCode(entry.trace)).isError);
+      return at === newest || p.running || bad;
+    };
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];

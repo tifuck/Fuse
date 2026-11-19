@@ -302,7 +302,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
         (body ? `<div class="chat-step-reveal${open ? " is-open" : ""}"><div class="chat-step-reveal-inner">${body}</div></div>` : "") + `</div></div>`;
     };
     // One line per call: the call, then how it ended; a long command is cut
-    // on its line and shows whole when the row opens.
+    // on its line and wraps whole when the row opens.
     // The last row of a level closes the branch (└); the rest continue it (├).
     const tree = (list) => list.map((r, i) => row(r.key, i === list.length - 1 ? "└" : "├", r.head, r.body, r.state, r.tool, r.title)).join("");
     const callRow = (c) => {
@@ -311,7 +311,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const meta = p.running ? "" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
       const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${consoleStatusHtml(meta)}</span>` : ""}`;
       const command = c.trace.name === "run_terminal_command" ? deps.displayCommand(c.trace) : "";
-      const body = (command ? `<pre class="chat-console-out is-stdout is-code chat-console-codecmd">${deps.escapeHtml("$ " + command)}</pre>` : "") + consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
+      const body = consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
       return { key: c.key, head, body, state: p.state, tool: c.trace.name, title: command || c.trace.path || "" };
     };
     const items = [];
@@ -340,7 +340,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre></div>` : "";
       const n = parts.code.split("\n").length;
       items.push({ key: `${key}:code`, state: "done",
-        head: `<span class="chat-tool-action">Code</span> <span class="chat-console-dim">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? failed ? " and its error" : " and what it returned" : ""}</span>`,
+        head: `<span class="chat-tool-action">Code</span><span class="chat-console-dim chat-console-codemeta">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? failed ? " and its error" : " and what it returned" : ""}</span>`,
         body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
     }
     return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: items.length ? `<div class="chat-console-codetree">${tree(items)}</div>` : "" };

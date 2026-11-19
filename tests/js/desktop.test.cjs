@@ -168,6 +168,8 @@ test('a script row splits what the model got from its source and counts its call
     const { codeRunParts } = (await import(`../../static/themes/${view}/tool-formatting.js`)).create({});
     const now = codeRunParts({ output: '17\n[Fuse: 41 calls: glob×1, read_file×40]', code: 'return 17;' });
     assert.deepEqual(now, { result: '17', code: 'return 17;', calls: [['glob', 1], ['read_file', 40]] }, view);
+    const one = codeRunParts({ output: 'M a\n[Fuse: 1 call: run_terminal_command×1]', code: 'return 1;' });
+    assert.deepEqual(one.calls, [['run_terminal_command', 1]], `${view}: one call reads "1 call"`);
     const before = codeRunParts({ output: 'ok\n[Fuse: 1 calls: grep×1]\n[Fuse: 1 calls were still running when the code ended and were stopped; await every call.]\n\nawait grep("x");\n\nreturn "ok";' });
     assert.deepEqual(before, { result: 'ok', code: 'await grep("x");\n\nreturn "ok";', calls: [['grep', 1]] }, `${view}: a row saved with its source in the output`);
     const failed = codeRunParts({ status: 'error', output: 'Error: line 1: SyntaxError\nNo tool calls finished before the error.\n\nreturn (;' });

@@ -565,7 +565,7 @@ function searchQueries(trace) {
 function codeRunParts(trace) {
     const text = String(trace?.output || "");
     const lines = text.split("\n");
-    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls: |no tool calls\])/.test(line));
+    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls?: |no tool calls\])/.test(line));
     const calls = at < 0 ? [] : [...lines[at].matchAll(/(\w+)×(\d+)/g)].map((m) => [m[1], Number(m[2])]);
     let end = at + 1;
     while (at >= 0 && end < lines.length && lines[end].startsWith("[Fuse: ")) end += 1;

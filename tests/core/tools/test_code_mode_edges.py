@@ -77,9 +77,9 @@ def test_every_size_around_the_cut_fits_and_keeps_the_closing_calls_lines():
     stopped, _ = run_code("write_file('a.txt', 'x');\nawait read_file('b');\nreturn 'v';", Blocking(blocked={"a.txt"}))
     tails = [plain.removeprefix("v"), stopped.removeprefix("v"),
              # A returned read_result page ends with the earlier run's calls line.
-             "\n[Fuse: 1 calls: read_file×1]\n[Fuse: 1 calls: read_result×1]"]
+             "\n[Fuse: 1 call: read_file×1]\n[Fuse: 1 call: read_result×1]"]
     assert tails[0] == "\n[Fuse: 3 calls: read_file×2, grep×1]"
-    assert tails[1].startswith("\n[Fuse: 1 calls: read_file×1]\n[Fuse: 1 calls were still running")
+    assert tails[1].startswith("\n[Fuse: 1 call: read_file×1]\n[Fuse: 1 call was still running")
 
     for tail in tails:
         last = tail.rsplit("\n", 1)[1]
@@ -119,7 +119,7 @@ const a = await read_file("a.txt");
 console.log("logged " + a.trim());
 return Array.from({length: 4000}, (_, i) => `row ${i} ${a.trim()}`).join("\\n");""")
     head = jobs[0]
-    assert len(text) <= TOOL_RESULT_CHARS and text.endswith("\n[Fuse: 1 calls: read_file×1]")
+    assert len(text) <= TOOL_RESULT_CHARS and text.endswith("\n[Fuse: 1 call: read_file×1]")
     offset = int(re.search(rf'read_result\("{head.result_id}", \{{offset: (\d+)\}}\)', text).group(1))
     assert text[:offset] == head.text[:offset]
 
@@ -137,7 +137,7 @@ for (let i = 0; i < rest.length; i++) h = (h * 31 + rest.charCodeAt(i)) >>> 0;
 return JSON.stringify({{n: rest.length, h}});""", Runner(), owner=kept[head.result_id][1])
     got = json.loads(out.split("\n[Fuse:")[0])
     assert got == {"n": len(head.text) - offset, "h": digest(head.text[offset:])}
-    assert "logged alpha" in head.text and head.text.endswith("[Fuse: 1 calls: read_file×1]")
+    assert "logged alpha" in head.text and head.text.endswith("[Fuse: 1 call: read_file×1]")
 
 
 def test_paging_by_page_length_reads_back_text_with_emoji_whole(kept):
@@ -167,8 +167,8 @@ return rest;""", Runner(), owner=owner)
 
 
 def test_outcomes_without_a_value_still_close_with_the_calls_line():
-    for code, want in (("await read_file('a');\nconsole.log('a', {b: 1});\nreturn;", "[console]\na {\"b\":1}\n[Fuse: 1 calls: read_file×1]"),
-                       ("await read_file('a');", "(no return value: end the code with `return …`)\n[Fuse: 1 calls: read_file×1]"),
+    for code, want in (("await read_file('a');\nconsole.log('a', {b: 1});\nreturn;", "[console]\na {\"b\":1}\n[Fuse: 1 call: read_file×1]"),
+                       ("await read_file('a');", "(no return value: end the code with `return …`)\n[Fuse: 1 call: read_file×1]"),
                        ("return '';", "\n[Fuse: no tool calls]")):
         text, trace = run_code(code, Runner())
         assert (text, trace["status"]) == (want, "done")

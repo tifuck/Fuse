@@ -494,7 +494,7 @@ def test_a_run_that_only_reads_a_kept_result_counts_that_read(monkeypatch):
 
     text, _ = run_code(f'return await read_result("{ident}", {{offset: 2, limit: 2}});', Runner(), owner=(1, 1))
 
-    assert text == "cd\n[Fuse: 1 calls: read_result×1]"
+    assert text == "cd\n[Fuse: 1 call: read_result×1]"
 
 
 

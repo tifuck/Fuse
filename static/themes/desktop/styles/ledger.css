@@ -54,6 +54,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group b.dk-roll::before { content: none; }
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-tally.is-running { color: var(--call-live, var(--dk-link)); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-tally.is-failed { color: var(--fault); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-group .dk-tally.is-stopped { color: var(--dk-warn); }
 
 /* An opened summary: its rows start on the prose edge, each a short sentence
    ("Read config.py in app  84 lines"). No verb column, no indent; the result

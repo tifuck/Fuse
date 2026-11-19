@@ -324,7 +324,7 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
         last["content"] = f"{last['content']}\n\n{tip}"
 
 
-_CALLS_TAIL = re.compile(r"\n\[Fuse: (?:\d+ calls|no tool calls)[^\n]*\](?:\n\[Fuse: [^\n]*\])?$")
+_CALLS_TAIL = re.compile(r"\n\[Fuse: (?:\d+ calls?|no tool calls)[^\n]*\](?:\n\[Fuse: [^\n]*\])?$")
 
 
 def _code_clip(text: str, result_id: str = "") -> str:
