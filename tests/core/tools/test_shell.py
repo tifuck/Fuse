@@ -307,6 +307,23 @@ def test_a_running_connector_command_shows_its_output_before_it_exits(agent_host
     assert rec["output"] == "collected 3 items\n3 passed\n[stderr]\nwarning: slow\n"
 
 
+def test_a_connector_command_defaults_python_to_unbuffered_output(agent_host):
+    agent_host.shell.on("pytest", out="ok\n")
+
+    run_async(tool(agent_host, "run_terminal_command", command="pytest"))
+
+    sent = [args["cmd"] for op, args in agent_host.connector.calls if op == "exec_stream"][-1]
+    assert sent == 'export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"; pytest'
+
+
+def test_an_ssh_command_defaults_python_to_unbuffered_output(ssh_host):
+    ssh_host.shell.on("pytest", out="ok\n")
+
+    run_async(tool(ssh_host, "run_terminal_command", command="pytest"))
+
+    assert 'export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"' in ssh_host.shell.raw[-1]
+
+
 def test_a_connector_deadline_kill_is_a_timeout_not_an_exit(agent_host):
     agent_host.connector.overrides["exec_stream"] = {
         "ok": False, "exit": 137, "out": "partial\n", "err": "", "error": "timed out", "timeout": True,

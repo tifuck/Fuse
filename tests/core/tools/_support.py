@@ -29,6 +29,7 @@ import stat
 from types import SimpleNamespace
 
 from app import db
+from app.workspace_ops import transport
 
 
 def make_host(uid, alias="box", *, default_cwd="", auth_type="password", agent_os="", agent_version="") -> int:
@@ -418,6 +419,7 @@ class FakeShell:
         return posixpath.normpath(target) if target else self.fs.home
 
     def connector(self, cmd, cwd) -> tuple[str, Reply]:
+        cmd = cmd.removeprefix(transport._UNBUFFERED_SH).removeprefix(transport._UNBUFFERED_PS)  # Fuse's env line
         helper = self._helper(cmd)
         if helper is not None:
             return cmd, helper

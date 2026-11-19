@@ -116,6 +116,7 @@ from .workspace_ops.transport import (
     _ssh_kill_script,
     _ssh_tool_script,
     _strip_begin,
+    _unbuffered,
 )
 
 logger = logging.getLogger(__name__)
@@ -1256,7 +1257,7 @@ async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, 
     background = _as_bool(args.get("background"))
     timeout_ms, wait_ms = _command_timeouts(args, background)
     if _is_agent(user_id, host_id):
-        runner = _make_agent_runner(user_id, host_id, command, cwd, timeout_ms)
+        runner = _make_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms)
     else:
         runner = _make_ssh_runner(user_id, host_id, command, cwd, timeout_ms)
     try:
@@ -1553,7 +1554,7 @@ async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False
     if url:
         runner = _make_ws_runner(url, timeout_ms)
     elif _is_agent(user_id, host_id):
-        runner = _make_monitor_agent_runner(user_id, host_id, command, cwd, timeout_ms)
+        runner = _make_monitor_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms)
     else:
         runner = _make_monitor_ssh_runner(user_id, host_id, command, cwd, timeout_ms)
     try:
