@@ -166,3 +166,35 @@ def test_steer_acceptance_signals_the_live_run(fresh_db):
             return await asyncio.wait_for(arrival, 5)
 
     assert run_async(body()) == "steer:steer-sig"
+
+
+def test_a_steer_requeued_over_an_unanswered_tool_call_continues_cleanly(fresh_db):
+    """The continuation seals the dangling call with one result, delivers the
+    steer once, and completes."""
+    from app import chat_checkpoint, chat_runs
+
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline", tools=[])
+    run = chat_store.start_turn(uid, thread["id"], "work", thread["revision"], None)["run"]
+    call = {"id": "c1", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}
+    chat_checkpoint.save_turn_progress(run["id"], [*run["request"]["messages"],
+                                                   {"role": "assistant", "content": "", "tool_calls": [call]}])
+    db.execute("UPDATE chat_runs SET status='running' WHERE id=?", (run["id"],))
+    chat_store.steer_turn(uid, thread["id"], "wait, also this", "steer-seal")
+    chat_store.finish_run(run["id"], {"content": "", "error": "upstream error"}, "failed")
+    assert run_row(run["id"])["status"] == "queued"
+
+    async def body():
+        await chat_runs.resume_queued(uid)
+        await settle()
+
+    with fake_provider(text_frames("covered both")) as provider:
+        run_async(body())
+
+    assert len(provider.bodies) == 1
+    sent = provider.bodies[0]
+    tool_rows = [m for m in sent["messages"] if m.get("role") == "tool"]
+    assert [m["tool_call_id"] for m in tool_rows] == ["c1"]
+    assert _count(sent, "wait, also this") == 1
+    assert run_row(run["id"])["status"] == "completed"
+    assert chats.get_thread(uid, thread["id"])["messages"][-1]["content"] == "covered both"
