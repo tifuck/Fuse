@@ -11,8 +11,8 @@
 /* Follows --dock-h, so like it (tokens/root.css) it is not inherited. */
 @property --dk-under { syntax: "*"; inherits: false; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
-  /* Surfaces, derived from the palette. */
-  --dk-canvas: color-mix(in srgb, var(--ink) 93%, var(--mist));
+  /* Surfaces, derived from the palette; the canvas is its background as is. */
+  --dk-canvas: var(--ink);
   --dk-side: color-mix(in srgb, var(--ink) 96%, var(--mist));
   --dk-raise: color-mix(in srgb, var(--ink) 90%, var(--mist));
   --dk-comp: color-mix(in srgb, var(--ink) 89%, var(--mist));
@@ -942,7 +942,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
 
 /* ---- The default palette: the reference app's exact greys ---- */
 html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-view="desktop"] {
-  --dk-canvas: #111111;
   --dk-side: #0b0b0b;
   --dk-raise: #1a1a1a;
   --dk-comp: #1c1c1c;
