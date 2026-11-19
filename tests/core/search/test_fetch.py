@@ -12,7 +12,8 @@ import tracemalloc
 import httpx
 import pytest
 
-from app.search import engine
+from app import skill_install
+from app.search import client, engine, ssrf
 from app.search.client import CappedTransport
 from app.search.engine import fetch_url, is_fetch_cached, is_host_blocked
 from app.search.extract import FETCH_CHARS
@@ -89,6 +90,9 @@ def test_a_read_is_pinned_to_the_vetted_ip_with_host_and_sni_kept(web, dns):
     "https://LOCALHOST./admin",
     "https://app.localhost/",
     "https://127.0.0.1/",
+    "https://127.1/",
+    "https://2130706433/",
+    "https://0x7f.1/",
     "https://10.0.0.5/",
     "https://192.168.1.1/",
     "https://100.64.0.1/",
@@ -140,6 +144,24 @@ def test_an_international_name_is_read_and_checked_in_its_ascii_form(web, dns):
     assert req.headers["host"] == req.extensions["sni_hostname"] == "xn--bcher-kva.example"
     assert dns.lookups == ["xn--bcher-kva.example"]
     assert read("https://" + "é" * 70 + ".example/")[2] == "That URL is not an allowed public HTTPS address."
+
+
+def test_numeric_hosts_resolve_to_the_address_they_spell(dns):
+    assert ssrf.public_ips("127.1") == ssrf.public_ips("2130706433") == []
+    assert ssrf.public_ips("1572395042") == ["93.184.216.34"]
+
+
+def test_skill_downloads_connect_to_the_vetted_ip(web, dns, monkeypatch):
+    capped = client.CappedTransport
+    monkeypatch.setattr(client, "CappedTransport", lambda cap: capped(cap, inner=httpx.MockTransport(web.handler)))
+    dns.add("api.github.com", "140.82.112.6")
+    web.on("https://api.github.com/repos/x", httpx.Response(200, content=b"{}"))
+    resp = run(skill_install._http_get("https://api.github.com/repos/x", hosts={"api.github.com"}))
+    assert resp.status_code == 200
+    [req] = web.requests
+    assert req.url.host == "140.82.112.6" and req.headers["host"] == "api.github.com"
+    assert req.extensions["sni_hostname"] == "api.github.com"
+    assert dns.lookups == ["api.github.com"], "resolved once"
 
 
 def test_an_unresolvable_name_is_refused_without_a_request(web):
