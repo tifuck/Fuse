@@ -154,6 +154,19 @@ def test_a_chat_stream_that_never_runs_dry_still_hits_the_cap_and_the_session_ch
     assert closed.value.code == code
 
 
+def test_health_shows_failure_detail_only_to_a_live_session(web, monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main.app.state, "refresh_errors", ["RuntimeError in refresh"], raising=False)
+    uid = quick_user("ada@core.test")
+    session = sign_in(web, uid)
+    assert web.get("/v1/health").json()["background"]["errors"] == ["RuntimeError in refresh"]
+    accounts.revoke_session(session)
+    set_session(web, session)
+    background = web.get("/v1/health").json()["background"]
+    assert "errors" not in background and background["error_count"] == 1
+
+
 def test_a_password_change_logs_out_every_other_session_but_not_the_changer(web):
     uid = make_user("ada@core.test")
     bystander = sign_in(web, uid)
