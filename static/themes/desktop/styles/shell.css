@@ -775,6 +775,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-live-dock .dk-fe-out.is-tail.is-full { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px); mask-image: linear-gradient(to bottom, transparent, #000 28px); }
   & .chat-live-dock .dk-fe-lines { flex: none; }
   & .chat-live-dock .dk-fe.is-done .dk-fe-out { opacity: 0.6; }
+  /* A script's calls (live-dock.js paneScriptRows): one row each under the
+     script's line, the running ones bright, a running command's newest
+     output line under its row. */
+  & .chat-live-dock .dk-step { display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-width: 0; color: var(--dk-text); transition: color 300ms ease; }
+  & .chat-live-dock .dk-step.is-done { color: var(--dk-mute); }
+  & .chat-live-dock .dk-step-out { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--dk-dim); text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln b { color: var(--dk-text); font-weight: 400; }
   & .chat-live-dock .dk-fe-out .chat-console-lines { margin: 0; font: inherit; }

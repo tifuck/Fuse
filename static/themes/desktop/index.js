@@ -129,6 +129,7 @@ export function createDesktopTheme(runtime) {
     get root() { return runtime.root; },
     get rowIconHtml() { return theme.rowIconHtml; },
     get codeRunParts() { return theme.codeRunParts; },
+    get shortToolPath() { return theme.shortToolPath; },
     get toolImageInfo() { return theme.toolImageInfo; },
     get toolImageHtml() { return theme.toolImageHtml; },
     get runIsActive() { return runtime.runIsActive; },
