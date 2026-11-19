@@ -373,7 +373,9 @@ async def _generate(job_id: int):
         if job is None:
             return
         from . import chat_runtime, chat_runs
-        text = await chat_runtime.generate_recap(chat_runs.internal_request(job["user_id"]), job["owner"], job["model"], job["source"])
+        request = chat_runs.internal_request(job["user_id"])
+        request.scope["fuse_swap_thread"] = job["thread_id"]
+        text = await chat_runtime.generate_recap(request, job["owner"], job["model"], job["source"])
         await asyncio.to_thread(finish, job, text)
     except asyncio.CancelledError:
         raise  # Lease expiration handles restart; disabled jobs cannot publish.
