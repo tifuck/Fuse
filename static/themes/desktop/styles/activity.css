@@ -83,6 +83,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     color: var(--dk-text);
     font: 13px/1.45 var(--sans);
   }
+  /* Until chrome.js says how it sits, it would take room in the page's flow. */
+  &:not([data-theme-insp]) .dk-insp { display: none; }
   /* Docked: a grid column that widens (shell.css), the panel riding in on its edge. */
   &[data-theme-insp="dock"] .dk-insp {
     grid-column: 4;
