@@ -14,8 +14,8 @@
 
 html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
   /* The chat's surfaces (shell.css), derived from the palette the same way. */
-  --dk-canvas: var(--ink);
-  --dk-side: var(--ink);
+  --dk-canvas: color-mix(in srgb, var(--ink) 96.5%, var(--mist));
+  --dk-side: color-mix(in srgb, var(--ink) 98%, var(--mist));
   --dk-raise: color-mix(in srgb, var(--ink) 90%, var(--mist));
   --dk-card: color-mix(in srgb, var(--ink) 91%, var(--mist));
   --dk-card-line: color-mix(in srgb, var(--ink) 85%, var(--mist));
