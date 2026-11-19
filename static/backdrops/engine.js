@@ -89,9 +89,25 @@ function start() {
   next();
 }
 
-// A scene's setup, warm-up and first frame take up to a second: they wait for
-// the page to paint and settle.
-const whenIdle = window.requestIdleCallback ? (fn) => requestIdleCallback(fn, { timeout: 1500 }) : (fn) => setTimeout(fn, 200);
+// A scene's setup, warm-up and first frame take up to a second, so they wait
+// for the page: its load, the transcript of the chat it is opening (an idle
+// moment comes sooner, while that is still on the wire), then an idle moment.
+const settled = new Promise((resolve) => {
+  if (document.readyState === "complete") resolve();
+  else window.addEventListener("load", resolve, { once: true });
+}).then(() => new Promise((resolve) => {
+  const log = new URLSearchParams(location.search).get("t") && document.querySelector("[data-chat-log]");
+  if (!log || log.childElementCount) return resolve();
+  const done = () => {
+    filled.disconnect();
+    clearTimeout(timer);
+    resolve();
+  };
+  const filled = new MutationObserver(done);
+  const timer = setTimeout(done, 4000);
+  filled.observe(log, { childList: true });
+}));
+const whenIdle = (fn) => settled.then(() => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 200)));
 
 function listen() {
   if (run.listening) return;
