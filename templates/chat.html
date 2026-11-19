@@ -9,6 +9,8 @@
     other themes and the backdrop scenes are not fetched. #}
 {%- set theme_entry = 'themes/' ~ chat_view ~ '/index.js' %}
 {% for url in (asset_preloads('chat.js') + asset_preloads('chat-backdrop.js') + [asset(theme_entry)] + asset_preloads(theme_entry)) | unique(case_sensitive=true) %}<link rel="modulepreload" href="{{ url }}">{% endfor %}
+{#- An empty chat opens on the prompt library's tiles (composer/library.js). #}
+{% if not request.query_params.get('t') %}<link rel="modulepreload" href="{{ asset('chat/composer/prompt-catalog.js') }}">{% endif %}
 <script src="{{ asset('chat-boot.js') }}"></script>
 <script src="{{ asset('chat-appearance.js') }}"></script>
 <script type="module" src="{{ asset('chat-backdrop.js') }}"></script>
