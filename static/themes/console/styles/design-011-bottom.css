@@ -246,4 +246,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats .hs-slice { display: inline-flex; align-items: center; gap: 1ch; height: var(--console-row); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-host-stats .hs-slice b { min-width: 4ch; font-weight: 400; text-align: right; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn:has(> .chat-console-turn-peak) { grid-template-columns: var(--console-col) minmax(0, 1fr) auto; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn-peak { padding-left: 1ch; color: var(--mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn-peak { padding-left: 4ch; color: var(--mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A phone has no room beside the line: the peak takes its own row under it,
+   lined up with the text. */
+@media (max-width: 600px) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn-peak { grid-column: 2; padding-left: 0; }
+}
