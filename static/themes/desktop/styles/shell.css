@@ -8,6 +8,8 @@
    selector's own). */
 /* The stage's width as a length, worked out on the composer's dock. */
 @property --dk-stage-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* Follows --dock-h, so like it (tokens/root.css) it is not inherited. */
+@property --dk-under { syntax: "*"; inherits: false; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette. */
   --dk-canvas: color-mix(in srgb, var(--ink) 93%, var(--mist));
@@ -464,6 +466,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      bottom edge (inside its rounded corners), so text never shows behind the
      controls row, and a spacer at the scroller's end clears the card. */
   & { --dk-card-a: 78%; --dk-under: max(0px, calc(var(--dock-h, 0px) - var(--dk-band-h) - var(--dk-band-gap) - 12px - var(--safe-bottom, 0px))); }
+  & > .chat-stage, & .chat-stage > :is(.chat-thread, .chat-dock), & .chat-thread::after { --dk-under: inherit; }
   &:not(.is-empty) .chat-dock { margin-top: calc(-1 * var(--dk-under)); }
   &:not(.is-empty) .chat-thread::after { content: ""; flex: none; height: var(--dk-under); }
   & .chat-dock .dk-box {
