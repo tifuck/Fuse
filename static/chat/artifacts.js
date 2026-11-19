@@ -79,6 +79,8 @@ export function createArtifacts(ctx) {
   const openIn = new Set();
   // A chat was just opened and the pane is to show its latest artifact.
   let follow = false;
+  // What rememberLatestArtifact last read from the chat's artifact calls.
+  let streamedSig = "";
 
   function showFailure(title, error) {
     if (ctx.sync && ctx.sync.showFailure) ctx.sync.showFailure(title, error);
@@ -88,16 +90,18 @@ export function createArtifacts(ctx) {
     if (picker && picker.setHint) picker.setHint(text);
   }
 
-  function artifactsInThread() {
+  function artifactCalls() {
     const out = [];
     (S.messages || []).forEach((msg) => {
-      (msg.tools || []).forEach((trace) => {
-        // A deleted or archived artifact is a record in the transcript, not
-        // one the pane can show, count or restore.
-        if (NAMES.has(trace.name) && normalizeId(trace.identifier) && trace.status !== "error" && !trace.artifact_gone) out.push(trace);
-      });
+      (msg.tools || []).forEach((trace) => { if (NAMES.has(trace.name)) out.push(trace); });
     });
     return out;
+  }
+
+  function artifactsInThread() {
+    // A deleted or archived artifact is a record in the transcript, not
+    // one the pane can show, count or restore.
+    return artifactCalls().filter((trace) => normalizeId(trace.identifier) && trace.status !== "error" && !trace.artifact_gone);
   }
 
   function latestArtifact() {
@@ -180,7 +184,16 @@ export function createArtifacts(ctx) {
     rememberLatestArtifact();
   }
 
-  function rememberLatestArtifact() {
+  // streamed: asked on every frame of a streaming reply. The pane is read
+  // again only when something this reads changed: the run, the pane's state
+  // or one of the chat's artifact calls.
+  function rememberLatestArtifact(streamed = false) {
+    const shown = S.currentArtifact;
+    const sig = [S.currentId, S.streaming, S.partialTranscript, follow, activity && activity.id, S.artifactOpen, S.artifactMode,
+      shown && [shown.identifier, shown.building, shown.explicit, shown.current, shown.version].join()].join(":") + ":" + artifactCalls().map((trace) =>
+      `${trace.id}:${trace.status}:${trace.identifier || ""}:${trace.version ?? ""}:${trace.title || ""}:${trace.icon || ""}:${trace.visibility || ""}:${trace.artifact_gone || ""}`).join("|");
+    if (streamed && sig === streamedSig) return;
+    streamedSig = sig;
     settleActivity();
     const all = artifactsInThread();
     const last = all.length ? all[all.length - 1] : null;
