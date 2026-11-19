@@ -48,11 +48,8 @@ export function createStream(ctx) {
       }
     } else if (event.type.startsWith("thread.")) {
       if (S.renameSaving) await S.renameSaving.catch(() => {});
-      // Refresh the search, but keep its current hits on screen until the new
-      // ones land: clearing them first flipped content matches to the local
-      // title filter on every thread event.
-      if (S.historyQuery) sidebar.queueSearch();
       if (event.type === "thread.deleted") {
+        if (S.historyQuery) sidebar.queueSearch();
         sidebar.threadGone(payload.id || event.thread_id);
         globalThis.fusePush?.clear(event.thread_id);
       } else {
@@ -62,6 +59,14 @@ export function createStream(ctx) {
           globalThis.fusePush.clear(event.thread_id);
         }
         const prior = sidebar.threadById(payload.id);
+        // Refresh the search, but keep its current hits on screen until the new
+        // ones land: clearing them first flipped content matches to the local
+        // title filter on every thread event. Only what a hit row shows asks
+        // again at once; a run writing messages moves content matches and
+        // ages, and those wait for the slow refresh.
+        if (S.historyQuery) {
+          sidebar.queueSearch(Boolean(prior) && ["title", "archived", "pinned", "unread", "running"].every((key) => (payload[key] ?? prior[key]) === prior[key]));
+        }
         if (prior && payload.title && payload.title !== prior.title) picker.releaseHint("title:" + payload.id);
         if (!prior || payload.revision >= prior.revision) sidebar.upsertLocal(payload);
         if (event.thread_id === S.currentId && event.id > S.viewCursor) {
