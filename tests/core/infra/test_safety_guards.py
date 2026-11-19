@@ -152,6 +152,47 @@ def test_tests_may_not_start_processes(start):
         start()
 
 
+def _libc():
+    import ctypes
+
+    return ctypes.CDLL(None)
+
+
+def _prototype(name):
+    import ctypes
+
+    return ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_char_p)((name, _libc()))
+
+
+@pytest.mark.parametrize("start", [
+    lambda: _libc().system(b"true"),
+    # Looked up, never called: a lookup that got through would not run them.
+    lambda: _libc()["execve"],
+    lambda: _libc().fork,
+    lambda: _libc().posix_spawnp,
+    lambda: _libc().__libc_system(b"true"),
+    lambda: _libc()._FuncPtr(("system", _libc()))(b"true"),
+    lambda: _prototype("system")(b"true"),
+    lambda: __import__("ctypes").pythonapi.system(b"true"),
+    lambda: __import__("ctypes").pythonapi._FuncPtr(("system", __import__("ctypes").pythonapi))(b"true"),
+    lambda: __import__("_ctypes").dlsym(_libc()._handle, "system"),
+    lambda: _libc().kill(1, 0),
+], ids=["system", "execve", "fork", "posix_spawnp", "libc_alias", "funcptr", "prototype", "pythonapi",
+        "pythonapi_funcptr", "dlsym", "kill"])
+def test_libc_process_entry_points_are_refused_through_ctypes(start):
+    with pytest.raises(PermissionError, match="tests may not start processes"):
+        start()
+
+
+def test_ctypes_still_loads_every_other_symbol():
+    import ctypes
+
+    libc = _libc()
+    assert libc.getpid() == os.getpid()
+    assert libc.prctl and _prototype("strlen")(b"true") == 4
+    assert ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int)(lambda x: x + 1)(1) == 2
+
+
 def test_a_reference_taken_before_the_guard_is_refused_too():
     import _posixsubprocess
 

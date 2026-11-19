@@ -299,6 +299,20 @@ test('a redo started before switching chats does not rewrite the chat opened mea
   assert.equal(S.sending, false);
 });
 
+test('a redo with no chat switch rewrites its own chat', async () => {
+  let patched = 0;
+  Object.assign(S, { currentId: 'a', generation: 1, sending: false, loading: false, partialTranscript: false, activeRun: null,
+    redoStack: [[{ id: 'u', role: 'user', content: 'a redo' }]], undoStack: [] });
+  const undo = createUndo(deps({
+    net: stub({ requireLive: () => true, api: async () => { patched += 1; return {}; } }),
+    sync: stub({ flushPending: async () => {} }),
+    traces: stub({ runIsActive: () => false, serialMessages: () => [] }),
+  }));
+  await undo.redoConversation();
+  assert.equal(patched, 1);
+  assert.equal(S.sending, false);
+});
+
 test('a file read while the first send creates the chat stays with the chat it was dropped in', async () => {
   Object.assign(S, { config: {}, ATTACH_MAX: 4, attachList: null, currentId: null, pendingProject: null, generation: 1,
     createdFrom: null, pendingAttachments: [], draftFiles: new Map() });

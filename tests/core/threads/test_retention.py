@@ -113,6 +113,79 @@ def test_sessions_of_a_project_that_did_not_archive_still_archive_as_chats(fresh
     assert _state(uid) == {"session": "archived"}
 
 
+def _project(uid, alias, *, idle_days, archived_days=None):
+    """A project with one session, both last used idle_days ago (and both
+    archived archived_days ago, as a project archive leaves them)."""
+    host = make_host(uid, alias)
+    project = make_project(uid, host, name=alias)
+    sets = {"created_at": _iso(idle_days), "updated_at": _iso(idle_days)}
+    if archived_days is not None:
+        sets.update(archived=1, archived_at=_iso(archived_days))
+    db.execute("UPDATE user_projects SET " + ",".join(f"{k}=?" for k in sets) + " WHERE id=?", (*sets.values(), project))
+    columns = {"archived_by_project": 1} if archived_days is not None else {}
+    session = _chat(uid, f"{alias} session", idle_days=idle_days, archived_days=archived_days, **columns)
+    db.execute("UPDATE chat_threads SET kind='project', host_id=?, project_id=? WHERE id=?",
+               (host, project, pk(uid, session["id"])))
+    return project
+
+
+def _project_state(uid):
+    return {r["name"]: ("archived" if r["archived"] else "open")
+            for r in db.fetchall("SELECT name, archived FROM user_projects WHERE user_id=?", (uid,))}
+
+
+def test_an_idle_project_archives_with_its_sessions_and_one_used_at_the_cutoff_stays(fresh_db):
+    uid = make_user()
+    _project(uid, "idle", idle_days=5)
+    _project(uid, "edge", idle_days=1)  # last use == the cutoff: not before it
+
+    stats = retention.sweep_user(uid, PREFS, now=NOW)
+
+    assert (stats["archived_projects"], stats["archived_chats"]) == (1, 0)
+    assert _project_state(uid) == {"idle": "archived", "edge": "open"}
+    assert _state(uid) == {"idle session": "archived", "edge session": "open"}
+    assert db.fetchone("SELECT archived_by_project FROM chat_threads WHERE title='idle session'")["archived_by_project"] == 1
+
+
+def test_an_old_archived_project_deletes_with_its_sessions_and_one_at_the_cutoff_stays(fresh_db):
+    uid = make_user()
+    _project(uid, "old", idle_days=90, archived_days=31)
+    _project(uid, "edge", idle_days=90, archived_days=30)  # archived == the cutoff: not before it
+
+    stats = retention.sweep_user(uid, PREFS, now=NOW)
+
+    assert (stats["deleted_projects"], stats["deleted_chats"]) == (1, 0)
+    assert _project_state(uid) == {"edge": "archived"}
+    assert _state(uid) == {"edge session": "archived"}
+
+
+def test_a_chat_with_a_live_background_command_is_never_touched(fresh_db):
+    uid = make_user()
+    thread = _chat(uid, "watching", idle_days=60, archived_days=60)
+    db.execute(
+        "INSERT INTO command_jobs (id, user_id, host_id, thread_id, command, timeout_ms, status, background, created_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        ("job-1", uid, 1, pk(uid, thread["id"]), "true", 1000, "running", 1, _iso(60)),
+    )
+
+    stats = retention.sweep_user(uid, PREFS, now=NOW)
+
+    assert not any(stats.values())
+    assert _state(uid) == {"watching": "archived"}
+    assert db.fetchone("SELECT status FROM command_jobs WHERE id='job-1'")["status"] == "running"
+
+
+def test_a_recent_run_keeps_an_otherwise_idle_chat_open(fresh_db):
+    uid = make_user()
+    thread = _chat(uid, "ran today", idle_days=5)
+    chat_store.start_turn(uid, thread["id"], "hello", chats.get_thread(uid, thread["id"])["revision"], None)
+    db.execute("UPDATE chat_threads SET active_at=?, updated_at=? WHERE id=?", (_iso(5), _iso(5), pk(uid, thread["id"])))
+    db.execute("UPDATE chat_runs SET status='completed', updated_at=? WHERE thread_id=?", (_iso(0.5), pk(uid, thread["id"])))
+
+    assert not any(retention.sweep_user(uid, PREFS, now=NOW).values())
+    assert _state(uid) == {"ran today": "open"}
+
+
 def test_chats_idle_past_the_mandatory_limit_delete_whatever_the_user_chose(fresh_db):
     uid = make_user()
     off = {**PREFS, "archive_hours": 0, "delete_days": 0, "limits": {"archive_days": 0, "delete_days": 0, "idle_days": 30}}

@@ -199,6 +199,16 @@ async def events(ws: WebSocket):
             if not await asyncio.to_thread(replay_valid, uid, cursor):
                 await send({"type": "resync_required"})
                 return
+            # Before the batch: a stream that never runs dry still re-checks
+            # the session and hits the 30-minute cap.
+            now = time.monotonic()
+            if now - last_ping >= 15:
+                owner = await asyncio.to_thread(accounts.session_user, ws.session)
+                if now - started > 1800 or now - last_pong > 60 or not owner:
+                    await ws.close(code=4401 if not owner else 1012)
+                    return
+                await send({"type": "ping"})
+                last_ping = now
             if rows:
                 viewed = view["run_id"]
                 rows = [_downgrade_progress(row, viewed) for row in rows]
@@ -210,14 +220,6 @@ async def events(ws: WebSocket):
                 # on the reconnect's ready tells an open page it is stale.
                 await send({"type": "ready", "cursor": cursor, "build": static_assets.build_id()})
                 ready = True
-            now = time.monotonic()
-            if now - last_ping >= 15:
-                owner = await asyncio.to_thread(accounts.session_user, ws.session)
-                if now - started > 1800 or now - last_pong > 60 or not owner:
-                    await ws.close(code=4401 if not owner else 1012)
-                    return
-                await send({"type": "ping"})
-                last_ping = now
             # Local commits wake immediately. Timeout also checks disconnects/auth.
             try:
                 await asyncio.wait_for(signal.wait(), timeout=15)

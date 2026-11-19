@@ -496,7 +496,7 @@ async def health(request: Request):
     }
     # Failure detail (exception types, job names) is for signed-in operators;
     # anonymous callers get a count so the health contract stays stable.
-    if request.session.get("uid"):
+    if await asyncio.to_thread(accounts.session_user, request.session):
         background["errors"] = errors
     else:
         background["error_count"] = len(errors)

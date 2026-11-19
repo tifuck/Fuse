@@ -11,7 +11,8 @@ was wiped. Independent layers keep that from happening again:
   tests/core/__init__.py, tests/legacy/__init__.py, the browser fixture)
   ends the process before app code is imported unless it runs in that unit.
 - install_process_guard(): no test may start a process or signal one it
-  did not start. Every way Python starts one raises, except the exact
+  did not start. Every way Python starts one raises (libc's own entry
+  points through ctypes included), except the exact
   app workers in ALLOWED (and, in the xdist controller only, the exact
   execnet worker bootstrap).
 
@@ -276,4 +277,68 @@ def install_process_guard() -> None:
         module.killpg = killpg
     if hasattr(signal, "pidfd_send_signal"):
         signal.pidfd_send_signal = _refuse("signal.pidfd_send_signal")
+    _guard_ctypes()
     _installed = True
+
+
+# libc's own process and signal entry points, reached by name through ctypes
+# (CDLL(None).system, a prototype bound to ("execve", lib), _ctypes.dlsym).
+_LIBC_REFUSED = frozenset((
+    "system", "popen", "fork", "vfork", "clone", "clone3", "forkpty", "daemon", "syscall",
+    "execv", "execve", "execvp", "execvpe", "execl", "execle", "execlp", "fexecve", "execveat",
+    "posix_spawn", "posix_spawnp", "kill", "killpg", "tgkill", "tkill", "sigqueue", "pidfd_send_signal",
+))
+
+
+def _libc_refused(name) -> bool:
+    if not isinstance(name, (str, bytes)):
+        return False  # an ordinal
+    base = os.fsdecode(name).lstrip("_")  # __libc_system, __execve, _Fork
+    if base.startswith("libc_"):
+        base = base[len("libc_"):].lstrip("_")
+    return base.lower() in _LIBC_REFUSED
+
+
+def _check_symbol(name) -> None:
+    if _libc_refused(name):
+        raise PermissionError(f"{REFUSAL} (ctypes {os.fsdecode(name)!r})")
+
+
+def _guard_ctypes() -> None:
+    """Refuse the names in _LIBC_REFUSED wherever ctypes resolves a symbol;
+    every other symbol (prctl, a library's own API, callbacks) still loads."""
+    import _ctypes
+    import ctypes
+
+    class GuardedFuncPtr(ctypes._CFuncPtr):
+        _flags_ = ctypes._FUNCFLAG_CDECL
+
+        def __new__(cls, *args, **kwargs):
+            if args and isinstance(args[0], tuple) and args[0]:
+                _check_symbol(args[0][0])
+            return super().__new__(cls, *args, **kwargs)
+
+    # CDLL() and CFUNCTYPE() look the base up when called: libraries and
+    # prototypes made from now on derive from the guarded one. Prototypes
+    # cached before this ran are dropped so they are rebuilt on it.
+    ctypes._CFuncPtr = GuardedFuncPtr
+    ctypes._c_functype_cache.clear()
+    old = ctypes.pythonapi._FuncPtr
+    ctypes.pythonapi._FuncPtr = type("_FuncPtr", (GuardedFuncPtr,), {"_flags_": old._flags_, "_restype_": old._restype_})
+
+    real_getitem = ctypes.CDLL.__getitem__
+
+    def getitem(self, name_or_ordinal):
+        _check_symbol(name_or_ordinal)
+        return real_getitem(self, name_or_ordinal)
+
+    ctypes.CDLL.__getitem__ = getitem  # attribute access goes through it too
+
+    if hasattr(_ctypes, "dlsym"):
+        real_dlsym = _ctypes.dlsym
+
+        def dlsym(handle, name):
+            _check_symbol(name)
+            return real_dlsym(handle, name)
+
+        _ctypes.dlsym = dlsym

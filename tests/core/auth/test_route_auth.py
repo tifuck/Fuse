@@ -78,6 +78,33 @@ def test_a_write_without_the_session_csrf_token_is_refused(web):
     assert db.fetchone("SELECT COUNT(*) AS n FROM chat_threads WHERE user_id=?", (uid,))["n"] == 1
 
 
+# Writes authenticated by something a browser does not send on its own (an
+# API key), not by the session cookie.
+CSRF_EXEMPT = {("POST", "/v1/chat/completions")}
+
+
+def test_every_write_refuses_a_signed_in_caller_without_the_csrf_token(web):
+    routes, _mounts, _sockets = http_routes()
+    writes = [(method, path) for method, path in routes if method not in ("GET", "HEAD", "OPTIONS")]
+    assert CSRF_EXEMPT <= set(writes), sorted(CSRF_EXEMPT - set(writes))
+    admin = quick_user("root@core.test", admin=True)
+    unguarded = []
+    for method, path in writes:
+        if (method, path) in CSRF_EXEMPT:
+            continue
+        sign_in(web, admin)
+        web.headers.pop("x-csrf-token")
+        res = call_route(web, method, path)
+        if path in ("/login", "/register"):
+            # A signed-in repeat submit goes to the app; nothing is processed.
+            ok = res.status_code == 303 and res.headers["location"] == "/chat"
+        else:
+            ok = res.status_code == 403 and "CSRF" in res.text
+        if not ok:
+            unguarded.append((method, path, res.status_code, res.text[:120]))
+    assert not unguarded, unguarded
+
+
 def test_every_websocket_refuses_an_anonymous_caller(web):
     _routes, _mounts, sockets = http_routes()
     assert AGENT_SOCKET in sockets

@@ -362,8 +362,14 @@ function makeSend(api) {
 
 test('an accepted send is no longer unconfirmed when the chat changed mid-request', async () => {
   baseState({ currentId: 't1', input: { value: '' }, pendingAttachments: [], drafts: new Map(), draftFiles: new Map(), threadContext: '' });
-  const send = makeSend(async () => { S.generation += 1; S.currentId = null; return { thread: { id: 't1' } }; });
+  let inFlight;
+  const send = makeSend(async () => {
+    inFlight = S.pendingTurns.has('t1');
+    S.generation += 1; S.currentId = null;
+    return { thread: { id: 't1' } };
+  });
   await send.completeTurn('hello', []);
+  assert.equal(inFlight, true, 'unconfirmed while the request is in flight');
   assert.equal(S.pendingTurns.has('t1'), false);
   assert.equal(sessionStorage.getItem(S.STORE_PENDING_TURN || 'fuse.chat.pendingTurn'), null);
 });
