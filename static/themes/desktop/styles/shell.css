@@ -983,7 +983,7 @@ html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat .chat[data-v
    (a near-base tone at 80%, light 80%) with a hairline edge and a specular
    top rim. */
 html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 64%;
+  --dk-veil-a: 84%;
   --dk-chrome-a: 74%;
   --dk-card-a: 80%;
   --dk-glass: blur(14px) saturate(1.35);
@@ -1000,6 +1000,8 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
      quicker) across the whole gutter. */
   & .chat-stage::before {
     --f: max(0px, calc(50% - var(--chat-col) / 2 - 1rem));
+    --fl: var(--f);
+    --fr: var(--f);
     --v: var(--ink);
     position: absolute;
     inset: var(--chat-bar-h) 0 0;
@@ -1009,22 +1011,29 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
        so the pane composites as one layer. */
     --a: var(--dk-veil-a);
     background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(var(--f) * 0.2),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(var(--f) * 0.8),
-      color-mix(in srgb, var(--v) var(--a), transparent) var(--f),
-      color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--f)),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(100% - var(--f) * 0.8),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(100% - var(--f) * 0.6),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(100% - var(--f) * 0.4),
-      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(100% - var(--f) * 0.2),
-      transparent);
+      color-mix(in srgb, var(--v) calc(var(--a) * var(--el, 0)), transparent),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(var(--fl) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(var(--fl) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(var(--fl) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(var(--fl) * 0.8),
+      color-mix(in srgb, var(--v) var(--a), transparent) var(--fl),
+      color-mix(in srgb, var(--v) var(--a), transparent) calc(100% - var(--fr)),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.62), transparent) calc(100% - var(--fr) * 0.8),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.33), transparent) calc(100% - var(--fr) * 0.6),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.14), transparent) calc(100% - var(--fr) * 0.4),
+      color-mix(in srgb, var(--v) calc(var(--a) * 0.04), transparent) calc(100% - var(--fr) * 0.2),
+      color-mix(in srgb, var(--v) calc(var(--a) * var(--er, 0)), transparent));
+  }
+  /* A docked sidebar or inspector already frames that side: the pane meets
+     its glass at full strength instead of leaving a thin strip of bare
+     wallpaper against the edge. */
+  @media (min-width: 801px) {
+    &:not(.history-collapsed) .chat-stage::before { --fl: 0px; --el: 1; }
+    &[data-theme-insp="dock"][data-theme-rail-state="open"] .chat-stage::before { --fr: 0px; --er: 1; }
   }
   & :is(.dk-side, .dk-head) { background: var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Darker toward the window edge each pane sits on. */
-  & .dk-side { background: linear-gradient(90deg, var(--dk-edge-dim), transparent 48px), var(--dk-chrome-bg); }
+  & .dk-side { background: linear-gradient(90deg, var(--dk-edge-dim), transparent 48px), linear-gradient(270deg, var(--dk-edge-dim), transparent 16px), var(--dk-chrome-bg); box-shadow: inset -1px 0 0 var(--dk-glass-edge); }
   /* The bar's glass sits on a layer under it: a filter on the bar itself would
      contain the ⋯ menu's, leaving the page under the menu unblurred. */
   & .dk-head { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -1046,16 +1055,16 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   & .user-dock-menu { background: var(--dk-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
   & .dk-search { background: color-mix(in srgb, var(--dk-text) 8%, transparent); }
   & .chat-library-tiles { padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--dk-canvas) var(--dk-card-a), transparent); }
-  & .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & .dk-insp { background: linear-gradient(270deg, var(--dk-edge-dim), transparent 48px), linear-gradient(90deg, var(--dk-edge-dim), transparent 16px), linear-gradient(var(--dk-edge-dim), transparent var(--chat-bar-h)), var(--dk-chrome-bg); box-shadow: inset 1px 0 0 var(--dk-glass-edge); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   /* Secondary text leans a fifth (light: three tenths) toward the body
      colour so it holds AA on the pane, and still reads as secondary. */
   & :is(.chat-md th, .chat-md blockquote, .chat-foot-meta, .chat-foot-meta *) { color: color-mix(in srgb, var(--dk-mute) var(--dk-sec-a, 80%), var(--dk-text)); }
   & .chat-md a:not(:hover) { color: color-mix(in srgb, var(--dk-link) 80%, var(--dk-text)); }
 }
 html[data-chat-view="desktop"][data-chat-scheme="light"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
-  --dk-veil-a: 58%;
+  --dk-veil-a: 80%;
   --dk-sec-a: 70%;
-  --dk-chrome-a: 62%;
+  --dk-chrome-a: 72%;
   --dk-edge-dim: color-mix(in srgb, var(--dk-side) 50%, transparent);
   --dk-card-a: 80%;
   --dk-glass-tone: var(--ink);
