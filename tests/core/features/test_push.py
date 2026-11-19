@@ -42,6 +42,30 @@ def test_only_browser_push_services_are_accepted():
     assert not any(push.valid_endpoint(e) for e in bad)
 
 
+# requests sends 'https://10.0.0.206:11435\\@fcm.googleapis.com/x' to
+# 10.0.0.206 though urlsplit names fcm.googleapis.com as its host.
+SMUGGLED = ("https://10.0.0.206:11435\\@fcm.googleapis.com/x", "https://evil.test\\@fcm.googleapis.com/",
+            "https://u@fcm.googleapis.com/x", "https://fcm.googleapis.com/x y", "https://fcm.googleapis.com/x\ty",
+            "https://fcm.googleapis.com /x", "https://\tfcm.googleapis.com/x", "https://fcm.googleapis.com/x\n")
+
+
+def test_endpoints_parsers_could_read_differently_are_refused(fresh_db):
+    uid = quick_user()
+    for endpoint in SMUGGLED:
+        assert not push.valid_endpoint(endpoint), endpoint
+        with pytest.raises(ValueError):
+            push.save_subscription(uid, endpoint, "k", "a")
+    assert push.count_for(uid) == 0
+    assert push.valid_endpoint(FCM + "abc:APA91b-x_y")
+    assert push.valid_endpoint("https://updates.push.services.mozilla.com/wpush/v2/gAAAAAB")
+
+
+def test_a_stored_smuggled_endpoint_is_never_posted_to():
+    with patch.object(push, "webpush") as send:
+        assert push._send_one({"id": 1, "endpoint": SMUGGLED[0], "p256dh": "k", "auth": "a"}, "{}") is False
+    send.assert_not_called()
+
+
 def test_a_subscription_stays_with_its_account(fresh_db):
     owner, other = quick_user(), quick_user("other@core.test")
     with pytest.raises(ValueError):
