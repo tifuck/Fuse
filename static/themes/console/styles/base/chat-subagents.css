@@ -20,7 +20,7 @@
   background: var(--ink);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-stage > .chat-work { margin-top: var(--chat-bar-h); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { margin-top: 0; padding-top: 0.35rem; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-stage > .chat-work:not([hidden]) ~ .chat-thread { margin-top: 0; padding-top: 0.35rem; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-work-agents,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-work-jobs {
   overflow-y: auto;

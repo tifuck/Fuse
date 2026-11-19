@@ -1,5 +1,5 @@
 /* —— API reference —— */
-.stage-inner:has(.api-docs) { max-width: 92rem; }
+.stage-inner:has(> :where(main) > .api-docs, > :where(.settings-shell) > :where(.settings-stage) > :where(.settings-scroll) > :where(main) > .api-docs) { max-width: 92rem; }
 .api-docs {
   display: grid;
   grid-template-columns: 12.5rem minmax(0, 1fr);

@@ -1,7 +1,5 @@
 /* —— Usage —— */
-.stage-inner:has(.usage-dashboard),
-.stage-inner:has(.catalog-page),
-.stage-inner:has(.sources-page) { max-width: 92rem; }
+.stage-inner:has(> :where(main) > :is(.usage-dashboard, .catalog-page, .sources-page), > :where(.settings-shell) > :where(.settings-stage) > :where(.settings-scroll) > :where(main) > :is(.usage-dashboard, .catalog-page, .sources-page)) { max-width: 92rem; }
 body.is-settings .stack-y { gap: 0.75rem; }
 body.is-settings .panel { padding: 0.9rem 1rem 1rem; }
 body.is-settings .section-heading { margin-bottom: 0.55rem; }

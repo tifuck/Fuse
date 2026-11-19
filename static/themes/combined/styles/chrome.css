@@ -49,7 +49,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-b
 /* The header lives in styles/shell.css. */
 
 /* —— Transcript edges —— */
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage:has(> .chat-work:not([hidden])) > .chat-thread { padding-top: 0.75rem; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-stage > .chat-work:not([hidden]) ~ .chat-thread { padding-top: 0.75rem; }
 
 
 /* —— Sheets —— */

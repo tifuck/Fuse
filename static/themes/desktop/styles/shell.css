@@ -675,11 +675,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      the turn (they are the retry), but they already show in the transcript:
      the composer looks emptied at once, so it shrinks with the send instead
      of a beat later. A failed send removes the placeholder and they return. */
-  &:has(.chat-pending-send) .dk-box .chat-attach-list { display: none; }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-box .chat-attach-list { display: none; }
   /* Fork sits only under the latest reply; it leaves the old one with the send. */
-  &:has(.chat-pending-send) [data-theme-turn-act="fork"] { display: none; }
-  &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 36px; overflow: hidden; color: transparent; caret-color: transparent; }
-  @media (max-width: 800px), (pointer: coarse) { &:has(.chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 44px; } }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) [data-theme-turn-act="fork"] { display: none; }
+  &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 36px; overflow: hidden; color: transparent; caret-color: transparent; }
+  @media (max-width: 800px), (pointer: coarse) { &:has(> :where(.chat-stage) > :where(.chat-thread) > .chat-pending-send) .dk-compose :is(textarea, .chat-compose-mirror) { max-height: 44px; } }
   & .chat-thread > .chat-pending-send { margin-top: 0.45rem; padding-top: 0; padding-bottom: 0; }
   & .chat-pending-send .dk-pending-status {
     display: flex;
@@ -1131,7 +1131,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Read back, the chat would run through the strip: it steps aside. */
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
   /* Jump to latest takes its spot, unless something else sits above the strip. */
-  &:has(.dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(.chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open):not([hidden]))) .chat-latest {
+  & .chat-latest:has(~ :where(.chat-dock) > .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(~ .chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open):not([hidden]))) {
     bottom: calc(var(--dock-h, 6rem) - 20px + var(--todo-lift, 0px) + var(--dictation-lift, 0px) + var(--sync-lift, 0px));
   }
   @media (prefers-reduced-motion: reduce) { & .dk-stats-strip .chat-host-stats { transition: none; } }
