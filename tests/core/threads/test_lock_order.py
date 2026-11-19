@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from app import chat_history, chat_store, chat_tx, chats, db, retention
+from tests.core.features._support import make_host, make_project
 from tests.core.helpers import make_user, wait_until
 
 def _may_wait(info: str) -> bool:
@@ -177,6 +178,40 @@ def test_retention_archive_does_not_deadlock_with_a_finishing_subagent(fresh_db)
     assert stats["archived_chats"] == 1
     assert chat_store.get_run(uid, run_id)["status"] == "completed"
     assert chats.get_thread(uid, thread["id"])["archived"] is True
+
+
+@pytest.mark.parametrize("paused", ["sweep", "finish"])
+def test_retention_project_archive_does_not_deadlock_with_a_finishing_session(fresh_db, paused):
+    """A project sweep locks the project and its session rows
+    (_project_unchanged) and then archives them, while the session's run
+    finishes: paused either holding the sweep's locks or the run row. As
+    above, the busy check is bypassed to pin the lock order itself."""
+    uid = make_user()
+    host = make_host(uid)
+    project = make_project(uid, host)
+    thread = chats.create_thread(uid, model="offline", kind="project", host_id=host, project_id=project)
+    root = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], None)["run"]
+    old = "2020-01-01T00:00:00Z"
+    db.execute("UPDATE chat_threads SET active_at=?, updated_at=?, created_at=? WHERE public_id=?",
+               (old, old, old, thread["id"]))
+    db.execute("UPDATE chat_runs SET updated_at=?", (old,))
+    db.execute("UPDATE user_projects SET updated_at=?, created_at=? WHERE id=?", (old, old, project))
+    real = retention._thread_activity
+    prefs = {"archive_hours": 24, "archive_chats": False, "archive_projects": True, "delete_days": 0,
+             "limits": {"archive_days": 0, "delete_days": 0}}
+    now = datetime.now(timezone.utc) + timedelta(days=1)
+
+    def sweep():
+        return retention.sweep_user(uid, prefs, now=now)
+
+    with patch.object(retention, "_thread_activity", new=lambda conn, user_id: (real(conn, user_id)[0], set())):
+        if paused == "sweep":
+            _race(sweep, (retention, "_project_unchanged"), _finish(root["id"]), after=True)
+        else:
+            _race(_finish(root["id"]), (chat_tx, "lock_thread"), sweep)
+
+    assert chat_store.get_run(uid, root["id"])["status"] == "completed"
+    assert db.fetchone("SELECT archived FROM user_projects WHERE id=?", (project,))["archived"] == 1
 
 
 def test_root_and_subagent_finishing_together_both_commit(fresh_db):
