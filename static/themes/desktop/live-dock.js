@@ -764,5 +764,5 @@ const CONSOLE_SPIN_STILL = "⠿";
 const UNSHOWN_SPIN = ".dk-live, .dk-tab .chat-run-spin";
 const spinMarks = new Set();
 
-  return { setLiveLabelText, setLivePhase, paneTrace, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
+  return { setLiveLabelText, setLivePhase, paneTrace, paneCalls, paneThought, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
 }

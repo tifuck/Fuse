@@ -139,14 +139,16 @@ test('desktop status line: one word between calls, each line held long enough to
   assert.equal(line().verb, 'Stopping…', 'a stop shows at once');
 });
 
-test('desktop live pane: only what the line names, never a log of calls', async () => {
+test('desktop live pane: what the line names, a run_code with the calls its code makes', async () => {
   const dock = (await import('../../static/themes/desktop/live-dock.js')).create({});
   const msg = { tools: [{ id: 'a', name: 'read_file' }, { id: 'b', name: 'run_terminal_command' }, { id: 'c', name: 'run_code' },
     { id: 'c1', name: 'grep', parent: 'c' }, { id: 'c2', name: 'read_file', parent: 'c' }] };
   assert.equal(dock.paneTrace(msg, 'b').id, 'b', 'the call the line names, not the newest');
   assert.equal(dock.paneTrace(msg, ''), null, 'a line that names no call shows none');
-  assert.equal(dock.paneTrace(msg, 'c').id, 'c2', 'code shows the call it is making now');
-  assert.equal(dock.paneTrace({ tools: [{ id: 'c', name: 'run_code' }] }, 'c').id, 'c', 'until it makes one');
+  assert.equal(dock.paneTrace(msg, 'c').id, 'c', 'code shows as itself');
+  assert.equal(dock.paneTrace(msg, 'c2').id, 'c', 'a call its code made shows as part of the code');
+  assert.deepEqual(dock.paneCalls(msg, msg.tools[2]).map((t) => t.id), ['c1', 'c2'], 'its calls, in the order they started');
+  assert.deepEqual(dock.paneCalls(msg, msg.tools[1]), [], 'any other call has none');
   const thought = { segments: [{ type: 'reasoning', text: 'old' }, { type: 'tool', id: 'a' },
     { type: 'reasoning', text: '**Checking the loop**\nIt exits' }, { type: 'reasoning', text: 'then more' }] };
   assert.equal(dock.paneThought(thought), 'Checking the loop\nIt exits\n\nthen more', 'the newest thought only, without its markdown marks');
