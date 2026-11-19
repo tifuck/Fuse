@@ -35,6 +35,9 @@
       // Islands own listeners, markdown, scroll controllers and animation
       // state. Their dedicated updater runs after structural reconciliation.
       if (options.island?.(target, source)) return;
+      // A row that already reads as the incoming one has nothing to patch:
+      // one native compare, instead of walking every node of it here.
+      if (target.hasAttribute("data-step") && target.isEqualNode(source)) return;
       attributes(target, source);
     }
     children(target, source, options);
