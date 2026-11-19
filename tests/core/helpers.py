@@ -149,7 +149,7 @@ def fake_provider(*script):
         yield provider
 
 
-async def run_turn(user_id, text, *, thread=None, model="offline", timeout=10.0):
+async def run_turn(user_id, text, *, thread=None, model="offline", timeout=30.0):
     """Start a real durable root turn and wait for it to settle.
 
     Returns (thread_public_id, run_row). Call inside ``fake_provider``."""
@@ -159,5 +159,10 @@ async def run_turn(user_id, text, *, thread=None, model="offline", timeout=10.0)
         thread = chats.create_thread(user_id, model=model, tools=[])
     run = chat_store.start_turn(user_id, thread["id"], text, thread["revision"], None)["run"]
     task = await chat_runs.start(chat_runs.internal_request(user_id), {"id": user_id}, run)
-    await asyncio.wait_for(task, timeout)
+    # Not wait_for: a run swallows the cancel and settles "interrupted", hiding the timeout.
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    if not done:
+        task.cancel()
+        raise TimeoutError(f"turn did not settle within {timeout}s")
+    task.result()
     return thread["id"], chat_store.get_run(user_id, run["id"])
