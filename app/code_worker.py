@@ -17,6 +17,7 @@ import asyncio
 import ctypes
 import json
 import os
+import re
 import resource
 import sys
 
@@ -27,6 +28,7 @@ _STRING_ARG = {"read_file": "path", "list_dir": "path", "grep": "pattern", "glob
 # One call's arguments, as for a direct call (chat_generation.parsing._ARG_LIMIT_FILE).
 ARG_CHARS = 400_000
 # A line the worker sends: a call's arguments (JSON-escaped) or the outcome.
+# Sent as UTF-8, so ARG_CHARS characters take at most 4 bytes each.
 MESSAGE_LIMIT = 4 * 1024 * 1024
 # A line the parent sends: a helper's result (read_file returns up to 2 MB).
 REPLY_LIMIT = 64 * 1024 * 1024
@@ -74,16 +76,18 @@ const read_result = (id, opts) => __tool("read_result", "")({...(opts || {}), id
 HEAD = "(async () => {\n"
 TAIL = """
 })().then(
-  (v) => { try { return JSON.stringify({ok: true, undef: v === undefined,
-             value: typeof v === "string" ? v : JSON.stringify(v, null, 2), logs: __logs}); }
+  (v) => { try { const value = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+             if (value === undefined && v !== undefined) throw new TypeError("a " + typeof v + " has no JSON form; return a string, number, array or object");
+             return JSON.stringify({ok: true, undef: v === undefined, value, logs: __logs}); }
            catch (e) { return JSON.stringify({ok: false, error: "the return value is not JSON-serializable: " + e, logs: __logs}); } },
-  (e) => JSON.stringify({ok: false, error: String((e && e.stack) || e), logs: __logs}))
+  (e) => JSON.stringify({ok: false, error: String((e && e.stack) || e) ||
+    "the code threw " + JSON.stringify(e) + ", which has no message; throw an Error with one", logs: __logs}))
 """
 OFFSET = (PRELUDE + HEAD).count("\n")
 
 
 def _write(obj) -> None:
-    sys.stdout.buffer.write(json.dumps(obj).encode() + b"\n")
+    sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=False).encode() + b"\n")
     sys.stdout.buffer.flush()
 
 
@@ -159,10 +163,25 @@ async def _main() -> None:
             resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
             async with ctx.wrap_py_function(bridge) as js_bridge:
                 ctx.eval("this")["__fuse_call"] = js_bridge
-                outcome = json.loads(await ctx.eval(PRELUDE + HEAD + code + TAIL))
+                settled = asyncio.ensure_future(ctx.eval(PRELUDE + HEAD + code + TAIL))
+                # Memory exhausted after an await leaves the promise unsettled.
+                while not settled.done() and not ctx.was_hard_memory_limit_reached():
+                    await asyncio.wait({settled}, timeout=0.1)
+                if settled.done():
+                    outcome = json.loads(settled.result())
+                else:
+                    settled.cancel()
+                    outcome = {"ok": False, "error": "JavaScript memory limit reached"}
     except JSEvalException as exc:
         # Also raised while closing an isolate that hit its memory limit.
-        outcome = outcome or {"ok": False, "error": str(exc)}
+        error = str(exc)
+        # A parse error past the code's last line is in the wrapper: the
+        # code left a bracket open or closed one it never opened.
+        at = re.match(r"<anonymous>:(\d+): SyntaxError", error)
+        if at and int(at.group(1)) > OFFSET + code.count("\n") + 1:
+            error = ("SyntaxError: the code's brackets do not balance: a {, ( or [ (or a string) is never closed, or "
+                     f"a }}, ) or ] closes one that was never opened. {_FIX}")
+        outcome = outcome or {"ok": False, "error": error}
     finally:
         pump.cancel()
     _write({"done": _clip(outcome)})

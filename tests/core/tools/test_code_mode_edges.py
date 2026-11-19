@@ -95,7 +95,6 @@ def test_every_size_around_the_cut_fits_and_keeps_the_closing_calls_lines():
                     assert shown == body + tail
 
 
-@pytest.mark.xfail(strict=True, reason="bug: an error result over the limit is cut from the end, so its list of finished calls is lost")
 def test_an_error_result_over_the_limit_still_says_which_calls_ran():
     def answer(name, args):
         return "From host box:\nnot found", {"name": name, "status": "error", "host": "box"}
@@ -141,7 +140,6 @@ return JSON.stringify({{n: rest.length, h}});""", Runner(), owner=kept[head.resu
     assert "logged alpha" in head.text and head.text.endswith("[Fuse: 1 calls: read_file×1]")
 
 
-@pytest.mark.xfail(strict=True, reason="bug: read_result offsets count code points, JS .length counts UTF-16 units, so paging by page.length skips text after emoji")
 def test_paging_by_page_length_reads_back_text_with_emoji_whole(kept):
     owner = (1, 1)
     ident = code_mode.keep(owner, "".join(f"\U0001F600 row {i}\n" for i in range(3000)))
@@ -162,13 +160,11 @@ def test_outcomes_without_a_value_still_close_with_the_calls_line():
         assert (text, trace["status"]) == (want, "done")
 
 
-@pytest.mark.xfail(strict=True, reason="bug: a return value JSON cannot encode (a function, a Symbol) reaches the model as Python's 'None'")
 def test_a_value_json_cannot_encode_is_explained_not_shown_as_python_none():
     text, _ = run_code("return () => 1;", Runner())
     assert not text.startswith("None") and "return" in text.split("\n[Fuse:")[0]
 
 
-@pytest.mark.xfail(strict=True, reason="bug: code that throws an empty string gets the generic 'run_code failed.'")
 def test_code_that_throws_an_empty_value_is_told_what_it_threw():
     text, _ = run_code("throw '';", Runner())
     assert "run_code failed." not in text
@@ -187,7 +183,6 @@ def test_memory_exhaustion_says_memory_not_timeout():
     assert trace["kind"] == "memory" and "64 MB of memory" in text and "No tool calls finished" in text
 
 
-@pytest.mark.xfail(strict=True, reason="bug: memory exhausted after any awaited helper call hangs the worker until the run's timeout")
 def test_memory_exhaustion_after_a_call_still_says_memory():
     # The 1 s minimum timeout bounds the hang this bug causes.
     text, trace = run_code("await read_file('a');\nconst a = [];\nwhile (true) a.push(new Array(1e6).fill(1.5));",
@@ -195,7 +190,6 @@ def test_memory_exhaustion_after_a_call_still_says_memory():
     assert trace["kind"] == "memory" and "- read_file a: done" in text
 
 
-@pytest.mark.xfail(strict=True, reason="bug: a call still running at exit is counted, not named, under '[Fuse: no tool calls]'")
 def test_a_call_left_running_at_exit_is_named_and_never_reads_as_no_calls():
     runner = Blocking(blocked={"a.txt"})
     text, _ = run_code("write_file('a.txt', 'x');\nreturn 'ok';", runner)
@@ -337,13 +331,11 @@ return out;""", runner)
     assert json.loads(text.split("\n[Fuse:")[0]) == [False] * 6 and runner.calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="bug: read_result with an offset or limit of 1e999 raises OverflowError out of run_code ('Tool failed.')")
 def test_read_result_with_an_infinite_offset_is_refused_by_name():
     text, _ = run_code('return await __call("read_result", \'{"id": "r_x", "offset": 1e999}\');', Runner())
     assert "read_result" in text
 
 
-@pytest.mark.xfail(strict=True, reason="bug: call args over the 4 MB pipe line (e.g. emoji content) make the parent kill the worker and report the CPU limit")
 def test_a_call_too_big_for_the_pipe_is_refused_by_name_not_blamed_on_cpu():
     runner = Runner()
     text, trace = run_code('await write_file({path: "e.txt", content: "\\u{1F600}".repeat(360000)});\nreturn "ok";', runner)
@@ -351,7 +343,6 @@ def test_a_call_too_big_for_the_pipe_is_refused_by_name_not_blamed_on_cpu():
     assert runner.calls or "write_file" in text
 
 
-@pytest.mark.xfail(strict=True, reason="bug: an unclosed block is reported at a line past the code's end, quoting Fuse's wrapper")
 def test_a_syntax_error_at_the_end_of_the_code_points_inside_the_code():
     text, _ = run_code("if (true) {\nreturn 1;", Runner())
     assert "SyntaxError" in text and "})().then(" not in text and "line 3" not in text
