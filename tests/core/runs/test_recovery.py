@@ -10,7 +10,7 @@ import pytest
 from app import chat_checkpoint, chat_recovery, chat_runs, chat_store, chats, db
 from app.chat_run_state import INTERRUPT_NOTICE, MAX_RESUME_ATTEMPTS
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, quick_user, run_async, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, provider_messages, run_row, settle, start_run, tool_thread
 
@@ -179,6 +179,24 @@ def test_stale_recovery_never_overwrites_a_newer_write(fresh_db):
     assert row["status"] == "running" and row["resume_count"] == 0 and row["cancel_requested"] == 1
 
 
+
+def test_stale_recovery_never_overwrites_a_steer_or_checkpoint_landing_after_its_read(fresh_db):
+    uid = quick_user()
+    for landing in ("steer", "checkpoint"):
+        thread, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "p"}))
+        stale = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run["id"],))
+        if landing == "steer":
+            chat_store.steer_turn(uid, thread["id"], "also this", "steer-late")
+        else:
+            chat_checkpoint.checkpoint(run["id"], {"content": "newer progress"}, [])
+        newer = dict(run_row(run["id"], "status,request,message,provider_messages,resume_count"))
+
+        chat_recovery.recover_one(stale)
+
+        assert dict(run_row(run["id"], "status,request,message,provider_messages,resume_count")) == newer, landing
+        assert newer["status"] == "running" and newer["resume_count"] == 0, landing
+
+
 # -- user Continue -------------------------------------------------------
 
 def test_continue_resumes_a_stopped_turn_without_claiming_a_restart(fresh_db):
@@ -239,3 +257,42 @@ def test_boot_examines_every_page_and_resumes_the_oldest_batch_overall():
 
     assert len(recovered) == total
     assert sorted(ident for ident, resume in recovered.items() if resume) == sorted(rows)[-batch:]
+
+
+# -- parked final writes -------------------------------------------------
+
+def _finish_fails():
+    return patch.object(chat_store, "finish_run", side_effect=OSError("database went away"))
+
+
+def test_a_final_write_that_fails_is_parked_and_the_reaper_commits_it(fresh_db):
+    uid = quick_user()
+    with fake_provider(text_frames("Done")) as provider, \
+            patch.object(chat_runs, "_FINISH_BACKOFF", (0.0, 0.0, 0.0)), _finish_fails() as finish:
+        thread_id, run = run_async(run_turn(uid, "go"))
+
+    assert finish.call_count == 3
+    assert run["status"] in chat_store.ACTIVE, "never resumed as if it had crashed"
+    assert run["id"] in chat_runs._unsettled
+
+    run_async(asyncio.to_thread(chat_runs.reap_orphans))
+
+    assert dict(run_row(run["id"])) == {"status": "completed", "cancel_requested": 0, "resume_count": 0}
+    assert run["id"] not in chat_runs._unsettled
+    assert len(provider.bodies) == 1
+    reply = chats.get_thread(uid, thread_id)["messages"][-1]
+    assert reply["content"] == "Done" and not reply.get("stopped")
+
+
+def test_a_parked_final_write_that_keeps_failing_settles_with_its_status(fresh_db):
+    uid = quick_user()
+    with fake_provider(text_frames("Done")), patch.object(chat_runs, "_FINISH_BACKOFF", (0.0, 0.0, 0.0)), _finish_fails():
+        thread_id, run = run_async(run_turn(uid, "go"))
+        for _ in range(chat_runs.UNSETTLED_REAP_ATTEMPTS - 1):
+            chat_runs.reap_orphans()
+            assert run_row(run["id"])["status"] in chat_store.ACTIVE
+        chat_runs.reap_orphans()
+
+    assert run_row(run["id"])["status"] == "completed"
+    assert run_row(run["id"])["resume_count"] == 0
+    assert run["id"] not in chat_runs._unsettled
