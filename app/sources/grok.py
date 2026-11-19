@@ -850,7 +850,7 @@ async def _refresh_one_unlocked(cred) -> bool:
     if not isinstance(data, dict):
         note_failure(row["id"], cooldown_seconds=30)
         return False
-    if "access_token" not in data:
+    if r.status_code != 200 or "access_token" not in data:
         if _oauth_revoked(r.status_code, data):
             revoked_grant(row, extra, "grok", disable_credential, oauth_reason(r.status_code, data))
         else:
