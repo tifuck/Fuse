@@ -535,8 +535,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     tick: sidebar.currentRunSpin,
   };
 
-    composer.refreshSkills();
-
+    // chat-config already inlines the list this page loaded with.
     window.addEventListener("focus", composer.refreshSkills);
 
     document.addEventListener("visibilitychange", () => {
@@ -649,7 +648,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
           };
           await net.api("/skills/proposals/" + encodeURIComponent(id) + "/confirm", { method: "POST", body: JSON.stringify(body) });
         }
-        await composer.refreshSkills();
+        await composer.refreshSkills(true);
         await sync.reconcileThread();
       } catch (error) {
         sync.showFailure("Skill was not saved", error);
