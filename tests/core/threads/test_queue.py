@@ -95,7 +95,11 @@ def test_the_queue_is_bounded_and_per_account(fresh_db):
     with pytest.raises(ChatValidationError) as full:
         chat_queue.put(uid, numeric, {"id": "one-more", "text": "x", "created": 999})
     assert full.value.status_code == 413
-    # Another account names this thread's id: it reads and deletes nothing.
+    # Another account names this thread's id: it reads, writes and deletes nothing.
     assert chat_queue.next_item(other, numeric) is None
     chat_queue.delete(other, numeric, "i0")
-    assert chat_queue.next_item(uid, numeric)["id"] == "i0"
+    with pytest.raises(ChatValidationError) as foreign:
+        chat_queue.put(other, numeric, {"id": "i0", "text": "hijacked", "created": 0, "priority": 9})
+    assert foreign.value.status_code == 404
+    item = chat_queue.next_item(uid, numeric)
+    assert (item["id"], item["text"]) == ("i0", "x")
