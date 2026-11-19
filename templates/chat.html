@@ -18,7 +18,9 @@
 {% endblock %}
 {% block body %}
 {%- set chat_view = chat_view_for(request) %}
-<div class="chat is-empty" data-chat data-view="{{ chat_view }}">
+<div class="chat is-empty history-collapsed" data-chat data-view="{{ chat_view }}">
+{#- First, and not deferred: the saved sidebar state lands before first paint. #}
+<script src="{{ asset('chat-history-boot.js') }}"></script>
 {% include "themes/" ~ chat_view ~ "/_chat.html" %}
 </div>
 {% include "themes/" ~ chat_view ~ "/_dial.html" %}
