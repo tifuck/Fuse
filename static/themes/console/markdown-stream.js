@@ -67,9 +67,8 @@ function mdStableBoundary(text, from = 0) {
     // on the full renderer until the parser exposes stable block identities.
     if (/<\/?details\b/i.test(text)) return 0;
     // Blocks before the last one are final (static/chat/markdown.js). `from`
-    // is where one of them starts, so the blocks parse the same from there
-    // and the frozen text before it is not read again.
-    return from + deps.stableBoundary(text.slice(from));
+    // is the boundary already frozen at: the text before it is not read again.
+    return deps.stableBoundary(text, from);
   }
 
 function _mdNodeKey(node) {

@@ -86,18 +86,34 @@ test('a stream can freeze every block before the boundary: split parses match th
   const strip = (tokens) => JSON.stringify(tokens, (key, value) => (key === 'offset' ? undefined : value));
   const text = [`Intro with ${T} inline.`, '1. Install:\n\n   ```bash\n   npm i\n   ```\n\n2. Run', '> [!NOTE]\n> quoted `code`',
     '| a | b |\n|---|---|\n| 1 | 2 |', `${T}js\nconst x = 1;\n\nconst y = 2;\n${T}`, 'Title\n---', '- [x] done\n- [ ] open', 'Last paragraph.'].join('\n\n');
-  let anchor = 0;
   for (let n = 1; n <= text.length; n += 1) {
     const prefix = text.slice(0, n);
     const at = stableBoundary(prefix);
-    // The streamer parses from the boundary it last froze at, not from the start
-    // (themes' markdown-stream.js). A list item still being typed ("2") moves the
-    // boundary back before that one; nothing new freezes then.
-    const from = anchor + stableBoundary(prefix.slice(anchor));
-    if (at >= anchor) assert.equal(from, at, `from the last boundary, prefix of ${n}`);
-    anchor = from;
     if (!at) continue;
     assert.equal(strip([...parseBlocks(prefix.slice(0, at)), ...parseBlocks(prefix.slice(at))]), strip(parseBlocks(prefix)), `prefix of ${n}`);
+  }
+});
+
+test('the boundary read from an earlier one is the boundary of the whole text', async () => {
+  const { stableBoundary } = await md();
+  const texts = [
+    [`Intro with ${T} inline.`, '1. Install:\n\n   ```bash\n   npm i\n   ```\n\n2. Run', '> [!NOTE]\n> quoted', '| a | b |\n|---|---|\n| 1 | 2 |',
+      `${T}js\nconst x = 1;\n\nconst y = 2;\n${T}`, 'Title\n---', 'Last paragraph.', 'One more.'].join('\n\n'),
+    // Fences that only count once their close arrives turn frozen paragraphs into code.
+    `${T}python title="a.py"\nimport x\n\ndef f():\n    pass\n${T}\n\nAfter the block.\n\nMore prose.`,
+    `Run this:${T}bash\nnpm i\n\nnpm test\n${T}\n\nThen done.\n\nMore.`,
+  ];
+  for (const text of texts) {
+    let from = 0;
+    for (let n = 1; n <= text.length; n += 1) {
+      const prefix = text.slice(0, n);
+      const whole = stableBoundary(prefix);
+      const next = stableBoundary(prefix, from);
+      // A line still being typed ("2" before "2." joins its list) can move the
+      // whole-text boundary back before `from`; a stream freezes nothing then.
+      if (whole >= from) assert.equal(next, whole, `prefix of ${n}: ${JSON.stringify(prefix.slice(-20))}`);
+      from = Math.max(from, next);
+    }
   }
 });
 
