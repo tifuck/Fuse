@@ -16,7 +16,7 @@ function cue(name) {
 }
 
 export function createStream(ctx) {
-  const { agents, apply, composer, context, net, perms, persist, picker, sidebar, status, traces, transcript, turns, ui } = ctx;
+  const { agents, apply, composer, context, net, notices, perms, persist, picker, sidebar, status, traces, transcript, turns, ui } = ctx;
     async function receiveEvent(event) {
     if (event.id <= S.cursor) return;
     // A gap replay (replayGap) resends events this view already handled. Only
@@ -35,6 +35,8 @@ export function createStream(ctx) {
         S.projects = payload.projects;
         sidebar.renderHistory();
       }
+    } else if (event.type === "notice.updated" || event.type === "notice.dismissed") {
+      notices.receive(event.type, payload, event.thread_id);
     } else if (event.type === "favorites.updated") {
       picker.acceptFavorites(payload.models);
     } else if (event.type === "draft.updated") {
@@ -314,6 +316,7 @@ export function createStream(ctx) {
         apply.acceptContext(data.context);
         composer.acceptDrafts(data.drafts);
         picker.acceptFavorites(data.favorites);
+        notices.accept(data.notices);
         sidebar.resetSearchLists();
         if (S.historyQuery) sidebar.queueSearch();
         sidebar.renderHistory();

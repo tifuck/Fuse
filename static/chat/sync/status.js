@@ -5,7 +5,7 @@ import { runIsStopping } from '../core.js';
 let renderedRunState = "";
 
 export function createStatus(ctx) {
-  const { agents, apply, composer, net, picker, sidebar, traces, transcript, turns, ui } = ctx;
+  const { agents, apply, composer, net, notices, picker, sidebar, traces, transcript, turns, ui } = ctx;
     // What failed is the title, why is the message. A provider limit reads as
   // a warning, as it does in the transcript. With `key` the error stays
   // until the action that failed clears it by succeeding (or it is closed).
@@ -46,6 +46,7 @@ export function createStatus(ctx) {
     const discard = S.root.querySelector('[data-pending-discard]');
     if (discard) discard.hidden = !S.pendingTurns.size;
     composer.syncComposer();
+    notices.render();
   }
 
     function syncFailure(error) {
@@ -88,6 +89,7 @@ export function createStatus(ctx) {
   }
 
     function notifyTurnDone(threadId, payload, type) {
+    notices.turnDone(threadId, payload, type);
     try {
       if (type !== "run.completed" && type !== "run.failed") return;
       if (!window.fusePush || !window.fusePush.local) return;

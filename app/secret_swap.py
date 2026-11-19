@@ -618,6 +618,7 @@ class Swap:
         self.thread_id = thread_id
         self.states: dict[int, bool] = {}  # pair id -> clear, for the bound transcript
         self._rows = None
+        self._noticed: set[int] = set()
 
     def bind(self, rows_fn) -> None:
         """The transcript this swap decides for: the rows its model has read."""
@@ -627,6 +628,13 @@ class Swap:
     # decisions
 
     def _use(self, pair: Pair, sent, detected: bool = True) -> bool:
+        swap = self._decide(pair, sent, detected)
+        if swap and self.thread_id is not None and pair.id not in self._noticed:
+            self._noticed.add(pair.id)
+            _notice(self.vault.user_id, self.thread_id, pair.id)
+        return swap
+
+    def _decide(self, pair: Pair, sent, detected: bool) -> bool:
         """Swap this value here? `detected`: found by detection right now, not
         only as a known value (weak values need that or their stand-in in view)."""
         with self.vault.lock:
@@ -910,6 +918,21 @@ class Restorer:
         out = self.swap.vault.restore_table().sub(emit, head=self.prev)
         self.prev = (self.prev + emit)[-2:]
         return out
+
+
+def _notice(user_id: int, thread_id: int, pair_id: int) -> None:
+    """Tell the user, on every device, that this chat swapped a secret: once
+    per secret, so a dismissed notice comes back only for a new one."""
+    from . import notices
+
+    def body(n):
+        if n == 1:
+            return ("Fuse swapped a secret in this chat for a stand-in before the model saw it. "
+                    "You and your machines still see the real value.")
+        return (f"Fuse swapped {n} secrets in this chat for stand-ins before the model saw them. "
+                "You and your machines still see the real values.")
+    notices.post_later(user_id, f"secret-swap:{thread_id}", title="Secret swapped", body=body, kind="ok",
+                       thread_id=thread_id, item=pair_id)
 
 
 # -- entry points ------------------------------------------------------------

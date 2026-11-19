@@ -235,11 +235,10 @@
 }
 :where(html:not(.is-chat-root)) .chat-sync[data-sync-state="disconnected"],
 :where(html:not(.is-chat-root)) .chat-sync[data-sync-state="disconnected"] [data-sync-label] {
-  color: color-mix(in srgb, var(--steel) 70%, var(--ink));
+  color: var(--brass);
 }
 :where(html:not(.is-chat-root)) .chat-sync[data-sync-state="disconnected"] [data-sync-label]::before {
-  background: var(--mute);
-  opacity: 0.55;
+  background: currentColor;
   animation: none;
 }
 :where(html:not(.is-chat-root)) .chat-sync button {

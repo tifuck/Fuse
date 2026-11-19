@@ -848,6 +848,26 @@ async def queue_message(user_id: int, thread_id, raw: dict, *, release: bool = F
         return await start_queued(user_id, thread_id) == raw["id"], False
 
 
+_LIMIT_TITLES = {"usage_exhausted": "Usage limit reached", "insufficient_balance": "Out of credits"}
+
+
+def _limit_notice(user_id, thread_id, run_id, status, output) -> None:
+    """A turn stopped by a provider's usage limit leaves a notice on every
+    device, until it is dismissed or a later turn in the chat succeeds."""
+    from . import notices
+
+    key = f"usage-limit:{thread_id}"
+    title = _LIMIT_TITLES.get(output.error_kind) if status == "failed" else None
+    if title:
+        notices.try_post(user_id, key, title=title, body=output.message.get("error") or "", kind="warn",
+                         thread_id=thread_id, item=run_id)
+    elif status == "completed":
+        try:
+            notices.dismiss_key(user_id, key)
+        except Exception:
+            logger.exception("Notice %s for user %s was not cleared", key, user_id)
+
+
 async def _run(request, user, run):
     task = asyncio.current_task()
     task._fuse_started = True
@@ -1393,6 +1413,8 @@ async def _run(request, user, run):
                             )
                     except Exception:
                         logger.exception("Chat push failed to schedule for %s", ident)
+                if status in ("completed", "failed") and parent and run.get("thread_id") and not _stopping:
+                    await asyncio.to_thread(_limit_notice, user["id"], run["thread_id"], ident, status, output)
                 if current and current.get("parent_run_id"):
                     # A cancelled/interrupted background child still owes the
                     # parent a report; so does one that finished with queued

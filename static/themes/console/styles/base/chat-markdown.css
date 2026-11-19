@@ -237,11 +237,10 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sync[data-sync-state="disconnected"],
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sync[data-sync-state="disconnected"] [data-sync-label] {
-  color: color-mix(in srgb, var(--steel) 70%, var(--ink));
+  color: var(--brass);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sync[data-sync-state="disconnected"] [data-sync-label]::before {
-  background: var(--mute);
-  opacity: 0.55;
+  background: currentColor;
   animation: none;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sync button {

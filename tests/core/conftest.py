@@ -45,8 +45,9 @@ def _core_schema():
 @pytest.fixture
 def fresh_db(_core_schema):
     """The attached core schema, empty, with process caches tied to it cleared."""
-    from app import chat_runs, chat_store, chat_titles
+    from app import chat_runs, chat_store, chat_titles, notices
 
+    notices.flush()  # a notice queued by the last test must not land in this one
     reset_tables()
     chat_store.invalidate_committed_cursors()
     chat_titles._due.clear()
