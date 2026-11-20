@@ -208,3 +208,25 @@ def test_a_failed_over_key_is_a_failed_uncounted_row_beside_the_serving_one(v1, 
     assert {cid: (r["request_status"], r["count_request"]) for cid, r in rows.items()} == {
         first: ("failed", 0), second: ("success", 1)}
     assert {r["api_key_id"] for r in rows.values()} == {_key_row(uid)["id"]}
+
+def test_the_key_lookup_runs_off_the_event_loop_and_still_rejects_bad_keys(v1, monkeypatch):
+    client, _uid, _raw = v1
+    anon = TestClient(client.app)
+    on_loop = []
+    real = accounts.user_by_api_key
+
+    def lookup(token):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(token)
+
+    monkeypatch.setattr(accounts, "user_by_api_key", lookup)
+    assert anon.get("/v1/models").json()["error"]["message"] == "Missing API key"
+    bad = {"Authorization": "Bearer sk-not-a-key"}
+    assert anon.get("/v1/models", headers=bad).json()["error"]["message"] == "Invalid API key"
+    assert anon.post("/v1/chat/completions", headers=bad, json={"model": "m1"}).status_code == 401
+    assert client.get("/v1/models").status_code == 200
+    assert on_loop == [False, False, False]
