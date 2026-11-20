@@ -208,22 +208,24 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-codemeta { flex: 0 1 auto; min-width: 5ch; overflow: hidden; text-overflow: ellipsis; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call,
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call * { white-space: normal; overflow-wrap: anywhere; }
-/* The tree is drawn, not typed: the branch glyph keeps its width and the row
-   draws ├ (or └ on its level's last row) with a rail that runs past its own
-   opened body down to the next row, so a wrapped or opened row never breaks it. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall { position: relative; --tree-mid: calc(var(--console-row, 1.25rem) / 2); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head .chat-console-branch { color: transparent; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall::before,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall::after {
-  content: "";
+/* The tree is typed, like every other branch: ├ on a row, └ on its level's
+   last, in the branch's grey. A row that is not the last continues the
+   tree with │ down the lines it wraps or opens to, so the next ├ always
+   meets it. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall { position: relative; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall:not(:last-child)::before {
+  content: "│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│";
   position: absolute;
-  left: 0.5ch;
-  border-color: color-mix(in srgb, var(--mist) 35%, var(--ink));
+  top: var(--console-row, 1.25rem);
+  bottom: 0;
+  left: 0;
+  width: 1ch;
+  overflow: hidden;
+  white-space: pre;
+  line-height: var(--console-row, 1.25rem);
+  color: color-mix(in srgb, var(--mist) 34%, var(--ink));
   pointer-events: none;
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall::before { top: 0; bottom: 0; border-left: 1px solid; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall:last-child::before { bottom: auto; height: var(--tree-mid); }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall::after { top: var(--tree-mid); width: 0.9ch; border-top: 1px solid; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner:has(> .chat-console-codetree) { border-left: 0; padding-left: 0; margin-left: 1.4ch; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall .chat-console-branch { flex: 0 0 auto; margin: 0 0.4ch 0 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall .chat-console-dim { color: var(--mute); }
