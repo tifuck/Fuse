@@ -217,7 +217,7 @@
     {% if cleanup.limits.archive_days %}items inactive for {{ cleanup.limits.archive_days }} days are archived{% endif %}{% if cleanup.limits.archive_days and cleanup.limits.delete_days %}, and {% endif %}{% if cleanup.limits.delete_days %}archived items are deleted after {{ cleanup.limits.delete_days }} days{% endif %}. Shorter settings above still apply.</p>
   {% endif %}
   {% if cleanup.limits.idle_days or cleanup.limits.media_days %}
-  <p class="set-note">For everyone on this server, pinned chats included:
+  <p class="set-row set-note">For everyone on this server, pinned chats included:
     {% if cleanup.limits.media_days %}images and attached files are deleted from chats inactive for {{ cleanup.limits.media_days }} day{{ "s" if cleanup.limits.media_days != 1 }}{% endif %}{% if cleanup.limits.idle_days and cleanup.limits.media_days %}, and {% endif %}{% if cleanup.limits.idle_days %}chats inactive for {{ cleanup.limits.idle_days }} days are deleted{% endif %}.</p>
   {% endif %}
   <div class="set-foot">
