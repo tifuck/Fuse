@@ -888,26 +888,39 @@ async def refresh_pool_quota(*, force: bool = False) -> None:
     log_refresh_failures("Kimi quota refresh", rows, results)
 
 
-async def refresh_due() -> None:
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='kimi' AND c.disabled=0"
-    )
-    soon = datetime.now(timezone.utc) + timedelta(minutes=5)
-    due = []
+def _due_accounts(rows) -> tuple[list, list[float]]:
+    """The accounts whose token is due, and when each one comes due."""
+    window = timedelta(minutes=5)
+    soon = datetime.now(timezone.utc) + window
+    due, due_at = [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         if not extra.get("refresh_token"):
             continue
         exp = extra.get("expires_at")
-        if not exp:
-            due.append(cred)
-            continue
-        when = _parse_ts(str(exp))
+        when = _parse_ts(str(exp)) if exp else None
         if not when or when <= soon:
             due.append(cred)
+        due_at.append((when - window).timestamp() if when else 0.0)
+    return due, due_at
+
+
+async def refresh_due(rows=None) -> bool:
+    """Refresh every due token; True when one was due. rows: a request's pool,
+    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
+    if rows is not None and not pool_refresh.scan_due("kimi", rows):
+        return False
+    if rows is None:
+        rows = await asyncio.to_thread(
+            db.fetchall,
+            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='kimi' AND c.disabled=0",
+        )
+    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    pool_refresh.scanned("kimi", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
         log_refresh_failures("Kimi OAuth refresh", due, results)
+    return bool(due)
 
 
 def _remember_catalog(rows: list[dict]) -> list[str]:
@@ -987,16 +1000,9 @@ class KimiSource:
         return list(KIMI_MODELS)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_due()
+        rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("kimi", refresh_pool_quota)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall(
-                "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
-                (self.source_id,),
-            ),
-            "kimi",
-            user_id,
-        )
+        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "kimi", user_id)
         tried: set[int] = set()
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Kimi accounts in the pool"})

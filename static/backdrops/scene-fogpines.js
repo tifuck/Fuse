@@ -7,28 +7,82 @@
 
 import { noise, seeded, newSeed } from "./noise.js";
 import { tiles, tile, put, layer, dotGrid, mixc, shade } from "./tiles.js";
-import { pineCells, mountains } from "./tile-land.js";
+import { pineCells } from "./tile-land.js";
 
 const TAU = Math.PI * 2;
-const HAZE = "#9fb0aa";
+const HAZE = "#8a9e9a";
+// The cold dusk light behind the far range: rim light on every crown edge
+// that faces it.
+const GLOW = "#c3d3d2";
 // Painted ridges, far to near: crest (fraction of height), V depth, hills, colour.
+// Far ridges sit pale in the haze, near ones go dark: atmospheric depth.
 const RIDGES = [
-  { b: 0.46, a: 0.16, hn: 0.07, col: "#62756f" },
-  { b: 0.54, a: 0.17, hn: 0.08, col: "#4c6359" },
-  { b: 0.63, a: 0.17, hn: 0.09, col: "#344d40" },
-  { b: 0.74, a: 0.15, hn: 0.08, col: "#22392c" },
-  { b: 0.88, a: 0.12, hn: 0.07, col: "#14261b" },
+  { b: 0.46, a: 0.16, hn: 0.07, col: "#5a6d6a" },
+  { b: 0.54, a: 0.17, hn: 0.08, col: "#43574f" },
+  { b: 0.63, a: 0.17, hn: 0.09, col: "#2c4038" },
+  { b: 0.74, a: 0.15, hn: 0.08, col: "#1a2b23" },
+  { b: 0.88, a: 0.12, hn: 0.07, col: "#0d1913" },
 ];
-// Tile pines per ridge: height in tiles, spacing in tiles, tile colours.
+// Tile pines per ridge: height in tiles, spacing in tiles, tile colours,
+// how far the haze swallows them, how much rim light they catch.
 const STANDS = [
   null,
-  { ridge: 1, h: [3, 4], gap: [3, 7], fill: "#5b7465", ink: "#8aa092", dim: 0.75 },
-  { ridge: 2, h: [4, 6], gap: [4, 8], fill: "#3f5e4a", ink: "#7c9d86", dim: 0.45 },
-  { ridge: 3, h: [6, 9], gap: [4, 7], fill: "#2a4a35", ink: "#6f9a7b", dim: 0.18, sides: 0.6 },
-  { ridge: 4, h: [11, 17], gap: [6, 10], fill: "#1c3826", ink: "#5f8f6c", dim: 0, sides: 1 },
+  { ridge: 1, h: [3, 4], gap: [3, 7], fill: "#50665d", ink: "#6d8479", dim: 0.7, rim: 0.12 },
+  { ridge: 2, h: [4, 6], gap: [4, 8], fill: "#344c41", ink: "#587365", dim: 0.42, rim: 0.2 },
+  { ridge: 3, h: [6, 9], gap: [5, 8], fill: "#1f3529", ink: "#45634f", dim: 0.16, rim: 0.3, sides: 0.6 },
+  { ridge: 4, h: [11, 17], gap: [7, 11], fill: "#10211a", ink: "#3a5a45", dim: 0, rim: 0.36, sides: 1 },
 ];
+// Crown texture: most needles are bare tiles; a few quiet marks only.
+const NEEDLE = [" ", " ", " ", "'", " ", " ", ",", " "];
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+// The far range in tiles: clean / and \ ridgelines with ^ summits, faces
+// as bare tiles with a sparse dot of snow, sinking into the haze toward
+// `foot`. (tile-land's mountains() inks a mark on every tile, which reads
+// as noise at this distance.)
+function range(g, s, R, foot, massifs) {
+  const { w, h, cell } = s;
+  const cols = Math.ceil(w / cell) + 1;
+  const fr = Math.round(foot / cell);
+  for (const M of massifs) {
+    const off = R() * 100;
+    const np = 4 + Math.floor(R() * 3);
+    const peaks = Array.from({ length: np }, (_, i) => ({
+      c: ((M.x + (i / (np - 1) - 0.5) * M.wd * 1.3 + (R() - 0.5) * 0.05) * w) / cell,
+      top: (h * (M.top + R.range(0, 0.12) + Math.abs(i / (np - 1) - 0.5) * 0.14)) / cell,
+      fall: R.range(0.75, 1.3),
+    }));
+    const ridge = (c) => {
+      let best = Infinity;
+      for (const pk of peaks) best = Math.min(best, pk.top + Math.abs(c - pk.c) * pk.fall);
+      return best < fr - 0.5 ? best + (noise(c * 0.5 + off, 4) - 0.5) * 0.6 : Infinity;
+    };
+    const top0 = (h * M.top) / cell;
+    for (let c = 1; c < cols - 1; c += 1) {
+      const rc = ridge(c);
+      if (!Number.isFinite(rc)) continue;
+      const rl = ridge(c - 1);
+      const rr = ridge(c + 1);
+      const top = Math.round(rc);
+      const slope = (Number.isFinite(rr) ? rr : fr) - (Number.isFinite(rl) ? rl : fr);
+      const lit = slope > 0;
+      const snowAt = top0 + (fr - top0) * (0.28 + 0.14 * noise(c * 0.35 + off, 9));
+      for (let r = top; r < fr; r += 1) {
+        const snow = r < snowAt - (lit ? 0 : 0.6);
+        const down = (r - top) / Math.max(1, fr - top);
+        let fill = snow ? (lit ? mixc("#c4cecb", GLOW, 0.25) : "#7f908d") : shade(M.rock, lit ? 1.12 : 0.8);
+        fill = mixc(fill, HAZE, 0.24 + 0.6 * down);
+        let glyph = " ";
+        if (r === top) glyph = rc <= rl && rc <= rr ? "^" : slope > 0 ? "\\" : "/";
+        else if (snow && (c * 5 + r * 3) % 7 === 0) glyph = ".";
+        const ink = r === top ? mixc(fill, "#e4ece8", 0.45) : mixc(fill, "#e4ece8", 0.18);
+        put(g, s, tile(s, glyph, fill, ink), c * cell, r * cell, 1 - 0.55 * down * down);
+      }
+    }
+  }
+  g.globalAlpha = 1;
+}
 
 function build(s) {
   const R = seeded(s.seed);
@@ -38,22 +92,28 @@ function build(s) {
   // Sky and painted ridges, all one still image.
   const [back, g] = layer(s);
   const lin = g.createLinearGradient(0, 0, 0, h * 0.75);
-  lin.addColorStop(0, "#1a2427");
-  lin.addColorStop(0.45, "#33413f");
-  lin.addColorStop(1, "#6d7c76");
+  lin.addColorStop(0, "#0d1517");
+  lin.addColorStop(0.4, "#25332f");
+  lin.addColorStop(0.75, "#566661");
+  lin.addColorStop(1, "#77837a");
   g.fillStyle = lin;
   g.fillRect(0, 0, w, h);
-  const glow = g.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.5);
-  glow.addColorStop(0, "rgba(200,212,204,0.3)");
-  glow.addColorStop(1, "rgba(200,212,204,0)");
+  // Dusk light low behind the range, cold and wide, off to one side so the
+  // middle of the screen stays quiet.
+  const gx = w * R.range(0.62, 0.74);
+  const glow = g.createRadialGradient(gx, h * 0.4, 0, gx, h * 0.4, Math.max(w, h) * 0.55);
+  glow.addColorStop(0, "rgba(196,214,212,0.42)");
+  glow.addColorStop(0.4, "rgba(150,174,172,0.12)");
+  glow.addColorStop(1, "rgba(150,174,172,0)");
   g.fillStyle = glow;
   g.fillRect(0, 0, w, h);
-  dotGrid(g, s, "#b5c4be", 0.2);
+  s.glowX = gx;
+  dotGrid(g, s, "#b5c4be", 0.14);
   // Mountains far beyond the valley, their tops in cloud.
-  mountains(g, s, R, { foot: h * 0.5, haze: HAZE, massifs: [{ x: 0.22, top: 0.2, wd: 0.36, rock: "#687a75" }, { x: 0.79, top: 0.15, wd: 0.42, rock: "#62746f" }], snow: ["#c9d4d0", "#9eacaa"], snowInk: "#7e8f8b" });
+  range(g, s, R, h * 0.5, [{ x: 0.22, top: 0.2, wd: 0.36, rock: "#5f716d" }, { x: 0.79, top: 0.15, wd: 0.42, rock: "#5a6c68" }]);
   g.save();
   g.filter = `blur(${Math.max(2, 22 * k)}px)`;
-  g.fillStyle = "rgba(150,164,158,0.55)";
+  g.fillStyle = "rgba(140,156,150,0.5)";
   for (let i = 0; i < 9; i += 1) {
     g.beginPath();
     g.ellipse(R() * w, h * R.range(0.14, 0.3), R.range(140, 320) * k, R.range(18, 40) * k, 0, 0, TAU);
@@ -79,6 +139,19 @@ function build(s) {
     fill.addColorStop(1, mixc(L.col, HAZE, 0.42 - li * 0.06));
     g.fillStyle = fill;
     g.fill(p);
+    // A thin rim of dusk light along the crest, brightest toward the glow.
+    g.save();
+    g.clip(p);
+    const rim = g.createLinearGradient(0, 0, w, 0);
+    const lx = clamp01(gx / w);
+    rim.addColorStop(0, "rgba(195,211,210,0)");
+    rim.addColorStop(lx, `rgba(195,211,210,${0.34 - li * 0.05})`);
+    rim.addColorStop(1, "rgba(195,211,210,0.04)");
+    g.strokeStyle = rim;
+    g.lineWidth = Math.max(1, 3 * k);
+    g.filter = `blur(${Math.max(0.5, 1.5 * k)}px)`;
+    g.stroke(p);
+    g.restore();
     return { at, li };
   });
   s.back = back;
@@ -95,7 +168,7 @@ function build(s) {
     const fg = c.getContext("2d");
     fg.scale(s.dpr, s.dpr);
     fg.filter = `blur(${blur}px)`;
-    fg.fillStyle = `rgba(196,210,204,${R.range(0.22, 0.4)})`;
+    fg.fillStyle = `rgba(184,198,192,${R.range(0.18, 0.34)})`;
     for (let j = 0; j < 5; j += 1) {
       fg.beginPath();
       fg.ellipse(pad + fw * (0.3 + 0.4 * R()), pad + fh * 0.5 + (R() - 0.5) * fh * 0.3, fw * R.range(0.14, 0.28), fh * R.range(0.22, 0.42), 0, 0, TAU);
@@ -124,10 +197,17 @@ function build(s) {
         const fill = shade(S.fill, tone);
         const ink = shade(S.ink, tone);
         const fog = (r) => S.dim * clamp01(1 - r / shape.rows + 0.3);
+        // The side facing the dusk light catches a rim; the far side stays dark.
+        const toGlow = x < s.glowX ? 1 : -1;
+        const rimK = S.rim * (1 - 0.6 * clamp01(Math.abs(x - s.glowX) / w));
         for (const cl of shape.cells) {
-          const f0 = cl.part === "trunk" ? mixc(fill, "#4a3a2c", 0.6) : cl.part === "lit" ? shade(fill, 1.1) : shade(fill, 0.92);
+          if (cl.part !== "tip" && cl.part !== "trunk" && cl.g !== "/" && cl.g !== "\\") cl.g = NEEDLE[Math.floor(R() * NEEDLE.length)];
+          const facing = cl.dc * toGlow > 0;
+          const edge = cl.g === "/" || cl.g === "\\" || cl.part === "tip";
+          const f0 = cl.part === "trunk" ? mixc(fill, "#3a2e24", 0.6) : facing ? mixc(fill, GLOW, rimK * (edge ? 0.55 : 0.22)) : shade(fill, 0.86);
           const f = mixc(f0, HAZE, fog(cl.r) * 0.5);
-          cl.id = tile(s, cl.g, f, cl.part === "trunk" ? shade(f, 0.6) : mixc(ink, HAZE, fog(cl.r) * 0.4));
+          const i0 = edge ? (facing ? mixc(ink, GLOW, rimK * 1.4) : ink) : mixc(f, ink, 0.45);
+          cl.id = tile(s, cl.g, f, cl.part === "trunk" ? shade(f, 0.6) : mixc(i0, HAZE, fog(cl.r) * 0.4));
         }
         trees.push({ x, top: (foot - shape.rows) * cell, cells: shape.cells, sway: R.range(0.7, 1.3) });
       }
@@ -136,12 +216,12 @@ function build(s) {
     return { S, si, trees };
   });
   // Glyph fog: rows of bare tildes drifting in front of the near ridges.
-  const fogInk = ["#c9d6d0", "#b4c3bd", "#dbe4e0"];
+  const fogInk = ["#aebdb8", "#9cada7", "#c2cec9"];
   s.streakTiles = ["~", "-", "~", "~", ".", "~"].map((gl, i) => tile(s, gl, null, fogInk[i % 3]));
-  s.streaks = Array.from({ length: 9 }, () => ({ ri: 2 + Math.floor(R() * 3), len: Math.round(R.range(6, 16)), x: R() * w, dy: R.range(-1.5, 2.5), v: R.range(4, 10) * k * (R() < 0.5 ? -1 : 1), seed: Math.floor(R() * 100) }));
+  s.streaks = Array.from({ length: 6 }, () => ({ ri: 2 + Math.floor(R() * 3), len: Math.round(R.range(6, 16)), x: R() * w, dy: R.range(-1.5, 2.5), v: R.range(4, 10) * k * (R() < 0.5 ? -1 : 1), seed: Math.floor(R() * 100) }));
   s.bird = [tile(s, "v", null, "#121a18"), tile(s, "-", null, "#121a18")];
   // Undergrowth in the near corners: ferns and grass in bare glyphs.
-  const greens = ["#6f9a72", "#5d8a62", "#83ad7f", "#4f7a55"];
+  const greens = ["#4f7356", "#43664b", "#5f8462", "#3a5a42"];
   const TUFTS = [["\\|/", " \\|/ ", "  |  "], ["v v", " \\|/", "  |"], ["'  '", "\\ /", " ||"], ["\\|//", " \\|/", "  |"]];
   s.tufts = [];
   const cols = Math.ceil(w / cell);
@@ -206,7 +286,7 @@ export const fogpines = {
         const x0 = ((((sk.x + sk.v * t) % span) + span) % span) - sk.len * cell;
         const y = s.ridges[Math.min(4, si)].at(x0 + (sk.len * cell) / 2) + sk.dy * cell;
         for (let i = 0; i < sk.len; i += 1) {
-          const a = Math.sin((Math.PI * (i + 0.5)) / sk.len) * (0.35 + 0.25 * Math.sin(t * 0.7 + i + sk.seed));
+          const a = Math.sin((Math.PI * (i + 0.5)) / sk.len) * (0.22 + 0.16 * Math.sin(t * 0.7 + i + sk.seed));
           put(ctx, s, s.streakTiles[(i + sk.seed) % s.streakTiles.length], x0 + i * cell, y, a);
         }
       }

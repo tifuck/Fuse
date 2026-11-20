@@ -15,10 +15,10 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // Rows of roofs, far to near: tile size, front-edge height (fraction of h),
 // rise range, width in cells, haze, share of pitched roofs.
 const ROWS = [
-  { cell: 7, base: 0.5, rise: 1, wc: [6, 12], haze: 0.64, pitch: 0.55, band: 2, things: 0.3 },
-  { cell: 10, base: 0.56, rise: 1, wc: [6, 12], haze: 0.46, pitch: 0.5, band: 3, things: 0.5 },
-  { cell: 14, base: 0.66, rise: 1, wc: [7, 12], haze: 0.26, pitch: 0.45, band: 4, things: 0.8 },
-  { cell: 20, base: 0.85, rise: 1, wc: [8, 14], haze: 0.06, pitch: 0.4, band: 6, things: 1, near: true },
+  { cell: 7, base: 0.5, rise: 1, wc: [6, 12], haze: 0.82, dusk: 0.95, pitch: 0.55, band: 2, things: 0.3 },
+  { cell: 10, base: 0.56, rise: 1, wc: [6, 12], haze: 0.6, dusk: 0.82, pitch: 0.5, band: 3, things: 0.5 },
+  { cell: 14, base: 0.66, rise: 1, wc: [7, 12], haze: 0.28, dusk: 0.66, pitch: 0.45, band: 4, things: 0.8 },
+  { cell: 20, base: 0.85, rise: 1, wc: [8, 14], haze: 0.08, dusk: 0.5, pitch: 0.4, band: 6, things: 1, near: true },
 ];
 const STUCCO = ["#c98a72", "#b8706a", "#d49a7a", "#a86a6e", "#c47e66", "#b98a80", "#9a6070"];
 const SHUTTER = ["#4f7a6a", "#5a6f94", "#8a5a4a", "#6a8a7a", "#7a5a7a"];
@@ -51,7 +51,7 @@ function tk(K, glyph, fill, ink) {
     K.g.fillStyle = fill;
     K.g.fillRect(x + K.gap / 2, y + K.gap / 2, P - K.gap, P - K.gap);
   }
-  if (glyph && glyph !== " " && ink) {
+  if (glyph && glyph !== " " && ink && !(K.quiet && fill)) {
     K.g.fillStyle = ink;
     K.g.fillText(glyph, x + P / 2, y + P * 0.54);
   }
@@ -154,17 +154,17 @@ function build(s) {
   // —— Sky: dusk gradient, the low sun, still cloud banks ——
   const [sky, g] = layer(s);
   const lin = g.createLinearGradient(0, 0, 0, hz + h * 0.05);
-  lin.addColorStop(0, "#3a2c50");
-  lin.addColorStop(0.32, "#7a4470");
-  lin.addColorStop(0.62, "#d06a74");
-  lin.addColorStop(0.85, "#f6a078");
-  lin.addColorStop(1, "#ffd49a");
+  lin.addColorStop(0, "#1e1834");
+  lin.addColorStop(0.35, "#4a2e58");
+  lin.addColorStop(0.66, "#9a5070");
+  lin.addColorStop(0.88, "#e08672");
+  lin.addColorStop(1, "#f8bc88");
   g.fillStyle = lin;
   g.fillRect(0, 0, w, h);
   const sg = g.createRadialGradient(sunX, sunY, 0, sunX, sunY, Math.max(w, h) * 0.55);
-  sg.addColorStop(0, "rgba(255,226,160,0.75)");
-  sg.addColorStop(0.15, "rgba(255,190,130,0.35)");
-  sg.addColorStop(0.5, "rgba(255,140,120,0.1)");
+  sg.addColorStop(0, "rgba(255,226,160,0.6)");
+  sg.addColorStop(0.15, "rgba(255,180,130,0.26)");
+  sg.addColorStop(0.5, "rgba(240,120,120,0.07)");
   sg.addColorStop(1, "rgba(255,140,120,0)");
   g.fillStyle = sg;
   g.fillRect(0, 0, w, h);
@@ -174,28 +174,25 @@ function build(s) {
     g.fillRect(w * R.range(0.45, 1), Math.pow(R(), 2) * hz * 0.35, r, r);
   }
   dotGrid(g, s, "#ffd2c0", 0.14);
-  // The sun: a tile disc, white-gold at the core, half behind the roofs.
-  const SK = K(13);
-  const sc = SK.cell;
-  const sr = Math.max(2, Math.round(sunR / sc));
-  for (let r = -sr; r <= sr; r += 1) {
-    for (let c = -sr; c <= sr; c += 1) {
-      const d = Math.hypot(c, r) / (sr + 0.4);
-      if (d > 1) continue;
-      const fill = mixc("#fff4d6", "#ffb878", Math.pow(d, 1.6));
-      pk(g, SK, tk(SK, d > 0.82 ? ":" : r % 2 ? "-" : "=", fill, shade(fill, 0.9)), Math.round(sunX + c * sc - sc / 2), Math.round(sunY + r * sc - sc / 2));
-    }
-  }
+  // The sun: a painted disc, white-gold at the core, half behind the roofs.
+  const disc = g.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
+  disc.addColorStop(0, "#fff6dc");
+  disc.addColorStop(0.75, "#ffd9a0");
+  disc.addColorStop(1, "#ffb880");
+  g.fillStyle = disc;
+  g.beginPath();
+  g.arc(sunX, sunY, sunR, 0, TAU);
+  g.fill();
   g.globalAlpha = 1;
   // Rays fanning up from the sun, and thin cloud bars drawn across it.
   g.save();
   g.globalCompositeOperation = "lighter";
-  for (let i = 0; i < 7; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     const a = -Math.PI / 2 + R.range(-1.1, 1.1);
     const spread = R.range(0.025, 0.06);
     const L = Math.max(w, h) * R.range(0.5, 0.9);
     const rg = g.createRadialGradient(sunX, sunY, sunR, sunX, sunY, L);
-    rg.addColorStop(0, `rgba(255,214,160,${R.range(0.035, 0.07)})`);
+    rg.addColorStop(0, `rgba(255,214,160,${R.range(0.025, 0.05)})`);
     rg.addColorStop(1, "rgba(255,214,160,0)");
     g.fillStyle = rg;
     g.beginPath();
@@ -230,7 +227,7 @@ function build(s) {
     cg.scale(s.dpr, s.dpr);
     cg.filter = `blur(${blur}px)`;
     const y = R.range(0.08, 0.36);
-    cg.fillStyle = y > 0.25 ? `rgba(255,190,150,${R.range(0.35, 0.6)})` : `rgba(230,140,160,${R.range(0.3, 0.5)})`;
+    cg.fillStyle = y > 0.25 ? `rgba(255,180,150,${R.range(0.22, 0.4)})` : `rgba(200,120,160,${R.range(0.16, 0.3)})`;
     for (let j = 0; j < 4; j += 1) {
       cg.beginPath();
       cg.ellipse(pad + cw * R.range(0.2, 0.8), pad + ch / 2, cw * R.range(0.18, 0.35), ch * R.range(0.3, 0.5), 0, 0, TAU);
@@ -250,6 +247,8 @@ function build(s) {
   const shadowC = "rgba(70,24,60,";
   ROWS.forEach((row, ri) => {
     const RK = K(row.cell);
+    // The farthest roofs are too small for legible glyphs: bare tiles read calmer.
+    if (ri === 0) RK.quiet = true;
     const c = RK.cell;
     const base = Math.round((h * row.base) / c) * c;
     let x = -Math.floor(R() * 4) * c;
@@ -259,7 +258,7 @@ function build(s) {
       const wc = Math.round(R.range(row.wc[0], row.wc[1] + 0.99));
       const top = base - Math.floor(R() * (row.rise + 1)) * c; // front edge of the roof
       const bw = wc * c;
-      const wall = mixc(shade(R.pick(STUCCO), R.range(0.85, 1.08)), HAZE, row.haze);
+      const wall = mixc(shade(R.pick(STUCCO), R.range(0.9, 1.04) * row.dusk), HAZE, row.haze);
       const sunHere = ri >= 2 && !s.towerAt && wc >= 8 && sunX > x + 3 * c && sunX < x + bw - 3 * c;
       const towerI = sunHere ? Math.max(1, Math.min(wc - 8, Math.round((sunX - x) / c) - 3)) : -1;
       const pitched = !sunHere && R() < row.pitch;
@@ -276,7 +275,7 @@ function build(s) {
       cg.fillStyle = dk;
       cg.fillRect(x, top, bw, h - top);
       // Windows with shutters; they light up one by one later.
-      const shutter = mixc(R.pick(SHUTTER), HAZE, row.haze);
+      const shutter = mixc(shade(R.pick(SHUTTER), row.dusk), HAZE, row.haze);
       const wstep = R() < 0.5 ? 3 : 4;
       const fstep = ri < 2 ? 2 : 3;
       for (let fr = 1; top + fr * c < h; fr += fstep) {
@@ -285,12 +284,12 @@ function build(s) {
           const wy = top + fr * c + (pitched ? 0 : c);
           if (wy > h) continue;
           const shut = R() < 0.3;
-          const glass = tk(RK, shut ? "=" : ":", shut ? shutter : mixc("#3a2a3a", HAZE, row.haze * 0.6), shut ? shade(shutter, 1.4) : mixc("#6a5060", HAZE, row.haze * 0.5));
+          const glass = tk(RK, shut ? "=" : " ", shut ? shutter : mixc("#2a1e2e", HAZE, row.haze * 0.6), shut ? shade(shutter, 1.25) : null);
           pk(cg, RK, glass, wx, wy);
           if (wstep === 4 && wi + 1 < wc - 1) pk(cg, RK, tk(RK, "|", shutter, shade(shutter, 1.4)), wx + c, wy);
           if (!shut) {
             const lc = R.pick(["#ffd27a", "#ffc068", "#ffe0a0"]);
-            s.wins.push({ ri, K: RK, x: wx, y: wy, id: tk(RK, "#", mixc(lc, HAZE, row.haze * 0.35), mixc(shade(lc, 0.55), HAZE, row.haze * 0.3)), p: R.range(70, 160), ph: R(), duty: R.range(0.45, 0.8), g: row.haze });
+            s.wins.push({ ri, K: RK, x: wx, y: wy, id: tk(RK, ":", mixc(lc, HAZE, row.haze * 0.35), mixc(shade(lc, 0.6), HAZE, row.haze * 0.3)), p: R.range(70, 160), ph: R(), duty: R.range(0.45, 0.8), g: row.haze });
           }
         }
       }
@@ -299,7 +298,7 @@ function build(s) {
       if (pitched) {
         const rows = Math.max(2, Math.min(Math.floor(wc * 0.7), row.band + 1 + Math.floor(R() * 2)));
         covers.push({ ri, x0: x, x1: x + bw, y0: top - rows * c });
-        const clay = mixc(R.pick(["#c0603e", "#b05a46", "#c87050", "#a0524a"]), HAZE, row.haze);
+        const clay = mixc(shade(R.pick(["#c0603e", "#b05a46", "#c87050", "#a0524a"]), row.dusk), HAZE, row.haze);
         for (let r = 0; r < rows; r += 1) {
           const y = top - (r + 1) * c;
           const i0 = Math.max(0, r - (rows - 3));
@@ -307,7 +306,7 @@ function build(s) {
           for (let i = i0; i <= i1; i += 1) {
             const lit = sun * (1.15 - 0.3 * ((i - i0) / Math.max(1, i1 - i0)));
             const f = shade(clay, lit * (r % 2 ? 0.94 : 1.04));
-            const gl = i === i0 ? "/" : i === i1 ? "\\" : r === 0 ? "_" : r === rows - 1 ? "=" : (i + r) % 2 ? "~" : "^";
+            const gl = i === i0 ? "/" : i === i1 ? "\\" : r === 0 ? "_" : r === rows - 1 ? "=" : (i + 2 * r) % 4 ? " " : "^";
             pk(cg, RK, tk(RK, gl, f, shade(f, i === i0 ? 1.45 : 0.68)), x + i * c, y);
           }
         }
@@ -331,7 +330,7 @@ function build(s) {
         const band = Math.max(1, Math.round(row.band * R.range(0.8, 1.3)));
         const bt = top - band * c;
         covers.push({ ri, x0: x, x1: x + bw, y0: bt - c });
-        const tar = mixc(R.pick(["#8a6070", "#9a6a6a", "#7a5a6a"]), HAZE, row.haze * 0.8);
+        const tar = mixc(shade(R.pick(["#8a6070", "#9a6a6a", "#7a5a6a"]), row.dusk), HAZE, row.haze * 0.8);
         const rg = cg.createLinearGradient(x, 0, x + bw, 0);
         rg.addColorStop(0, shade(tar, 1.2 * sun));
         rg.addColorStop(1, shade(tar, 0.9 * sun));
@@ -339,8 +338,8 @@ function build(s) {
         cg.fillRect(x, bt, bw, band * c);
         for (let i = 0; i < wc; i += 1) {
           const f = mixc(shade(wall, i === 0 ? 1.35 : 1.15 - 0.2 * (i / wc)), HAZE, row.haze * 0.3);
-          pk(cg, RK, tk(RK, "=", f, shade(f, 0.7)), x + i * c, top - c);
-          pk(cg, RK, tk(RK, "=", f, shade(f, 1.3)), x + i * c, bt - c);
+          pk(cg, RK, tk(RK, i % 2 ? " " : "=", f, shade(f, 0.78)), x + i * c, top - c);
+          pk(cg, RK, tk(RK, i === 0 ? "=" : " ", f, shade(f, 1.3)), x + i * c, bt - c);
         }
         // Furniture on the roof, each with a long shadow to the right.
         const spots = [];
@@ -407,7 +406,7 @@ function build(s) {
             const kind = R.pick(["shirt", "towel", "sock", "pants", "shirt"]);
             const cw = kind === "sock" ? 1 : kind === "towel" ? 2 : kind === "pants" ? 2 : 3;
             if (ix + cw * c > lx1 - c * 0.4) break;
-            const col = R.pick(CLOTH);
+            const col = shade(R.pick(CLOTH), 0.72);
             const rows2 = kind === "shirt" ? ["/#\\", " # ", " # "] : kind === "towel" ? ["##", "##", "##", "::"] : kind === "pants" ? ["##", "||", "||"] : ["#", "#", "'"];
             const cells = [];
             rows2.forEach((ln, r) => Array.from(ln).forEach((ch, j) => {
@@ -428,7 +427,7 @@ function build(s) {
     // Haze between rows, thickest far off.
     const hg = cg.createLinearGradient(0, base - h * 0.12, 0, base + h * 0.06);
     hg.addColorStop(0, "rgba(255,190,150,0)");
-    hg.addColorStop(1, `rgba(255,190,150,${0.18 * (1 - ri / 3)})`);
+    hg.addColorStop(1, `rgba(240,160,140,${0.24 * (1 - ri / 3)})`);
     cg.globalAlpha = 1;
     cg.fillStyle = hg;
     cg.fillRect(0, base - h * 0.12, w, h * 0.18);
@@ -509,11 +508,11 @@ function build(s) {
   s.lines = s.lines.filter((ln) => ln.x0 > tx0 + 10 * tc);
   for (let x = 0, i = 0; x < w; x += fc, i += 1) {
     const sun = 1.15 - 0.35 * (x / w);
-    const top = mixc("#d89078", "#ffc8a0", 0.3 * clamp01(1 - x / w));
-    pk(fg, FK, tk(FK, "=", shade(top, sun), shade(top, sun * 0.72)), x, fy);
-    const brick = shade("#8a4a48", sun * (i % 3 === 0 ? 0.92 : 1));
-    pk(fg, FK, tk(FK, i % 2 ? "#" : "=", brick, shade(brick, 0.7)), x, fy + fc);
-    pk(fg, FK, tk(FK, "#", shade(brick, 0.8), shade(brick, 0.6)), x, fy + fc * 2);
+    const top = mixc("#8a5458", "#e0987a", 0.35 * clamp01(1 - x / w));
+    pk(fg, FK, tk(FK, i % 2 ? " " : "=", shade(top, sun), shade(top, sun * 0.76)), x, fy);
+    const brick = shade("#4a2a36", sun * (i % 3 === 0 ? 0.92 : 1));
+    pk(fg, FK, tk(FK, i % 3 ? " " : "=", brick, shade(brick, 0.78)), x, fy + fc);
+    pk(fg, FK, tk(FK, " ", shade(brick, 0.8), null), x, fy + fc * 2);
   }
   fg.globalAlpha = 1;
   s.fore = fore;
@@ -538,14 +537,14 @@ function build(s) {
       const pcell = PK.cell;
       const px = pc * fc;
       const potW = 3;
-      const pot = Array.from({ length: potW }, (_, j) => tk(PK, j === 0 ? "[" : j === potW - 1 ? "]" : "=", shade("#c06a44", j === 0 ? 1.15 : 0.95), "#6a3020"));
+      const pot = Array.from({ length: potW }, (_, j) => tk(PK, j === 0 ? "[" : j === potW - 1 ? "]" : "=", shade("#9a5440", j === 0 ? 1.15 : 0.95), "#5a2a1c"));
       const leaves = [];
       pl.g.forEach((ln, r) => Array.from(ln).forEach((ch, j) => {
         const tt = pl.t[r][j];
         if (ch === " " && tt === " ") return;
         const lit = 1.12 - 0.08 * j - 0.04 * r;
         const edge = j === 0 || j === ln.length - 1 || pl.t[r][j - 1] === " " || pl.t[r][j + 1] === " ";
-        const f = tt === "f" ? shade(pl.fl, lit) : tt === "l" && !edge ? shade(["#5a9a50", "#4a8a48", "#6aa85a"][(j + r) % 3], lit) : null;
+        const f = tt === "f" ? shade(pl.fl, lit * 0.8) : tt === "l" && !edge ? shade(["#4a7a48", "#3e6e42", "#568a50"][(j + r) % 3], lit) : null;
         leaves.push({ j: j - 1, r, lift: 1 - r / pl.g.length, id: tk(PK, ch === " " ? "." : ch, f, f ? shade(f, tt === "f" ? 0.55 : 0.62) : "#4a8a48") });
       }));
       s.pots.push({ x: px, y: fy - pcell, K: PK, pot, leaves, rows: pl.g.length, ph: R() * TAU });
@@ -554,8 +553,8 @@ function build(s) {
   }
   // The cat: a sitting silhouette in tile pixels, facing the sun.
   const CK = (s.catK = K(narrow ? 9 : 11));
-  const fur = "#3a2636";
-  const rim = "#d08068";
+  const fur = "#1e1420";
+  const rim = "#f09878";
   const CAT = [
     ".^..^...",
     ".####...",
@@ -674,7 +673,7 @@ function smoke(ctx, s, t) {
     const K = s.smokeK;
     for (let i = 0; i < 3; i += 1) {
       const life = (t / 4 + i / 3 + sm.ph) % 1;
-      pk(ctx, K, s.smokeIds[(i + Math.floor(life * 4)) % s.smokeIds.length], sm.x + life * sm.c * 4 - K.cell / 2, sm.y - life * sm.c * 3.5 - K.cell, 0.55 * Math.sin(Math.PI * life) * (1 - sm.haze));
+      pk(ctx, K, s.smokeIds[(i + Math.floor(life * 4)) % s.smokeIds.length], sm.x + life * sm.c * 4 - K.cell / 2, sm.y - life * sm.c * 3.5 - K.cell, 0.3 * Math.sin(Math.PI * life) * (1 - sm.haze));
     }
   }
   ctx.globalAlpha = 1;

@@ -122,9 +122,9 @@ function build(s) {
     for (let c = 0; c < vabW; c += 1) {
       const door = c >= 2 && c <= vabW - 3 && r > 1;
       const lit = c === 0 ? 1.12 : c === vabW - 1 ? 0.9 : 1;
-      const f = shade(mixc("#6a4a70", "#c07a88", 0.22 + 0.25 * (r / vabH)), lit);
-      const win = !door && r > 0 && R() < 0.07;
-      far(vabC + c, lr - vabH + r, door ? (c % 2 ? "|" : ":") : r === 0 ? "=" : win ? "#" : ".", f, door ? shade(f, 1.18) : win ? "#f0b888" : shade(f, 1.1));
+      const f = shade(mixc("#5e4468", "#b07084", 0.2 + 0.3 * (r / vabH)), lit);
+      const win = !door && r > 0 && R() < 0.05;
+      far(vabC + c, lr - vabH + r, door ? (c % 2 ? "|" : " ") : r === 0 ? "=" : win ? ":" : " ", f, door ? shade(f, 1.12) : win ? "#e8a888" : shade(f, 1.1));
     }
   }
   const wt = vabC + vabW + (portrait ? 2 : 4);
@@ -142,16 +142,26 @@ function build(s) {
   // A thin old moon, low in the east of the night side.
   const mc = Math.round((w * (portrait ? 0.8 : 0.07)) / cell);
   const mrw = Math.round((h * 0.12) / cell);
-  const ms = 1;
-  for (let r = -3; r <= 3; r += 1) {
-    for (let c = -3; c <= 3; c += 1) {
-      const d = Math.hypot(c, r) / (3.4 * ms);
-      const d2 = Math.hypot(c + 1.3 * ms, r + 1.2 * ms) / (3.1 * ms);
-      if (d > 1 || d2 < 1) continue;
-      const f = d2 < 1.25 ? "#d8c4bc" : "#f0e2d4";
-      put(g, s, tile(s, d > 0.8 ? "." : ":", f, shade(f, 0.78)), (mc + c) * cell, (mrw + r) * cell, 0.9);
-    }
-  }
+  // Painted on its own canvas so the shadowed part cuts only the moon.
+  const mR = cell * 2.6;
+  const mcv = document.createElement("canvas");
+  mcv.width = mcv.height = Math.ceil(mR * 2.4 * s.dpr);
+  const mg = mcv.getContext("2d");
+  mg.scale(s.dpr, s.dpr);
+  const mo = mR * 1.2;
+  const lit = mg.createLinearGradient(mo + mR, mo - mR, mo - mR, mo + mR);
+  lit.addColorStop(0, "#fbefe2");
+  lit.addColorStop(1, "#d8c0bc");
+  mg.fillStyle = lit;
+  mg.beginPath();
+  mg.arc(mo, mo, mR, 0, TAU);
+  mg.fill();
+  mg.globalCompositeOperation = "destination-out";
+  mg.beginPath();
+  mg.arc(mo - mR * 0.42, mo - mR * 0.36, mR * 0.92, 0, TAU);
+  mg.fill();
+  g.globalAlpha = 0.92;
+  g.drawImage(mcv, (mc + 0.5) * cell - mo, (mrw + 0.5) * cell - mo, mo * 2, mo * 2);
   const moon = g.createRadialGradient((mc + 0.5) * cell, (mrw + 0.5) * cell, 0, (mc + 0.5) * cell, (mrw + 0.5) * cell, cell * 9);
   moon.addColorStop(0, "rgba(240,220,230,0.14)");
   moon.addColorStop(1, "rgba(240,220,230,0)");

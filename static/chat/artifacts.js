@@ -759,10 +759,36 @@ export function createArtifacts(ctx) {
     } else if (data.type === "compose" && clicked) {
       compose(String(data.text || "").slice(0, 20000));
       hint("Added from the artifact to your message.");
+    } else if (data.type === "backdrop" && clicked) {
+      saveBackdrop(data);
     } else if (data.type === "scroll" && key) {
       scrolls.set(key, Math.max(0, Number(data.y) || 0));
     } else if (data.type === "ready" && key && scrolls.get(key)) {
       S.artifactFrame.contentWindow.postMessage({ fuseArtifact: 1, type: "scroll", y: scrolls.get(key) }, "*");
+    }
+  }
+
+  // window.fuse.setBackdrop in the page: store it as one of the user's
+  // backdrops (POST /api/backdrops) and draw it behind this theme at once.
+  async function saveBackdrop(data) {
+    const name = String(data.name || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) || "Custom backdrop";
+    const scheme = data.scheme === "light" ? "light" : "dark";
+    const html = typeof data.html === "string" ? data.html : "";
+    if (!html) return;
+    if (new TextEncoder().encode(html).length > 131072) {
+      showFailure("Could not save the backdrop", new Error("The backdrop is larger than 128 KB."));
+      return;
+    }
+    if (!(await window.fuseConfirm(`Use "${name}" as your backdrop?`, { confirmLabel: "Use backdrop" }))) return;
+    try {
+      const saved = (await net.api("/api/backdrops", { method: "POST", body: JSON.stringify({ name, scheme, html }) })).backdrop;
+      const appearance = window.FuseChatAppearance;
+      const key = appearance?.addCustomBackdrop?.(saved);
+      if (!key) throw new Error("The server sent no backdrop.");
+      appearance.setBackdrop(key);
+      hint(`“${saved.name}” is now your backdrop.`);
+    } catch (error) {
+      showFailure("Could not save the backdrop", error);
     }
   }
 

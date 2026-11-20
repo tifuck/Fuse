@@ -883,7 +883,8 @@ class NanoGPTSource:
         rec = catalog["by_id"].get(upstream)
         if rec is None:
             return ChatResult(status=404, body={"error": {"message": "That model is not in NanoGPT's catalog."}}, model=upstream)
-        refresh = pool_refresh.start("nanogpt", refresh_pool_usage)
+        # Not throttled: a lent key waits on this refresh for a recent reading.
+        refresh = pool_refresh.start("nanogpt", refresh_pool_usage, min_interval=0)
         uid = int(user_id) if user_id is not None else None
 
         def candidates():

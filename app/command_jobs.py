@@ -1289,15 +1289,33 @@ def kill(job_id: str, user_id: int, *, thread_id=None) -> tuple[str, dict]:
     return render(rec, tool="kill_command")
 
 
+# command_jobs without out: list_thread_jobs polls every few seconds and
+# reads a job's retained output only when this process does not hold it live.
+_JOB_META_COLUMNS = (
+    "id,user_id,host_id,host,thread_id,run_id,command,cwd,background,timeout_ms,status,exit_code,error,"
+    "out_bytes,duration_ms,notify,delivered,created_at,started_at,finished_at,out_chars,output_incomplete,"
+    "termination_confirmed,kind,source,url,pattern,event_count,max_events,delivered_event_seq,description"
+)
+
+
 def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
     """Running background jobs for a thread (dashboard job list)."""
     ensure_schema()
-    rows = db.fetchall(
-        "SELECT * FROM command_jobs"
+    rows = [dict(row) for row in db.fetchall(
+        f"SELECT {_JOB_META_COLUMNS} FROM command_jobs"
         " WHERE user_id=? AND thread_id=? AND background=1 AND status IN ('running','cancelling')"
         " ORDER BY created_at",
         (int(user_id), int(thread_id)),
-    )
+    )]
+    live = {row["id"]: _live.get(row["id"]) for row in rows}
+    cold = [ident for ident, rec in live.items() if rec is None]
+    if cold:
+        outs = {item["id"]: item["out"] for item in db.fetchall(
+            f"SELECT id,`out` FROM command_jobs WHERE id IN ({','.join('?' for _ in cold)})", tuple(cold),
+        )}
+        for row in rows:
+            if row["id"] in outs:
+                row["out"] = outs[row["id"]]
     from datetime import datetime, timezone
 
     # Jobs started by a subagent belong in that subagent's view, not the root's.
@@ -1314,7 +1332,7 @@ def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
 
     out: list[dict] = []
     for row in rows:
-        rec = _live.get(row["id"])
+        rec = live[row["id"]]
         elapsed = None
         if rec is not None and rec.get("started"):
             elapsed = int((time.monotonic() - float(rec["started"])) * 1000)

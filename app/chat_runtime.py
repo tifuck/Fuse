@@ -545,12 +545,16 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     is_child = bool(agent.get("parent_run_id") or depth)
     # Children are bounded tasks: scope the machine catalog to their bound host and
     # skip the skills index (a parent that wants a skill used says so in the prompt).
+    # One host bundle per turn start, off the event loop: the catalog, the
+    # bound label and the SSH check below all read it.
+    host_bundle = await asyncio.to_thread(hosts_mod.list_bundle, user["id"]) if coding else None
     host_catalog = (
         hosts_mod.catalog_for_prompt(
             user["id"],
             bound_host_id=bound_host_id or None,
             bound_cwd=bound_cwd or "",
             only_bound=is_child,
+            bundle=host_bundle,
         )
         if coding
         else ""
@@ -558,7 +562,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     skills_index = skills_mod.catalog_for_prompt(user["id"]) if coding and not is_child else ""
     bound_label = ""
     if coding and bound_host_id:
-        bound_row = hosts_mod.get_host(user["id"], bound_host_id)
+        bound_row = next((h for h in host_bundle["hosts"] if str(h["id"]) == str(bound_host_id)), None)
         if bound_row:
             alias = bound_row.get("alias") or ""
             cwd = bound_cwd or bound_row.get("default_cwd") or ""
@@ -661,7 +665,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     if coding:
         ssh_any = any(
             (h.get("auth_type") or "") != "agent" and not h.get("disabled")
-            for h in hosts_mod.list_bundle(user["id"])["hosts"]
+            for h in host_bundle["hosts"]
         )
     temp_dir = chat_temp_dir(
         thread_id if thread else None,

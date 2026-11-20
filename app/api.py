@@ -611,56 +611,59 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
             body[field] = max(1, int(number))
         except (TypeError, ValueError, OverflowError):
             raise HTTPException(400, f"Invalid {field}")
-    access = Access(user["id"])
-    if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
-        raise HTTPException(403, "Connect an Experiential Labs API key to use its models")
-    try:
-        picked = await pick(model, user_id=user["id"], access=access)
-    except explabs_mod.CatalogError:
-        raise HTTPException(503, "Experiential Labs model catalog is temporarily unavailable") from None
-    if not picked:
+    # Routing and access re-read the same pool switches, prefs and source rows
+    # many times; reuse them for this phase only (never across the upstream call).
+    with db.read_memo():
+        access = Access(user["id"])
         if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
-            raise HTTPException(403, "Reconnect your Experiential Labs API key to use its models")
-        denied = nanogpt_mod.denied_reason(model, user["id"]) or openrouter_mod.denied_reason(model, user["id"])
-        if denied:
-            raise HTTPException(403, denied)
-        # Turned off on Sources: say so, not "Unknown model".
-        off = await pick(model, user_id=user["id"], access=access, ignore_prefs=True)
-        if off:
-            raise HTTPException(403, f"{provider_errors.label(off[0].type_id)}: {model} is turned off for your account. "
-                                     "Turn it on in Sources.")
-        if catalog_unavailable_for(model):
-            raise HTTPException(503, "Model catalog is temporarily unavailable")
-        # A model of a pool the user lost their account for (e.g. an OAuth
-        # grant revoked upstream) says what to reconnect, not "Unknown model".
-        denial = pool_denial(model, user["id"], access)
-        if denial:
-            raise HTTPException(403, denial)
-        raise HTTPException(404, "Unknown model")
-    src, upstream = picked
-    if not access.allows(src.type_id):
-        raise HTTPException(403, pool_denial_message(src.type_id, user["id"]))
-    await asyncio.to_thread(_ensure_encodable, body)
-    requested = model
-    if cheap_reasoning:
-        _set_cheap_reasoning(body, src.type_id, model, user["id"])
-    body["model"] = upstream
-    original = body["messages"]
-    images = image_snapshot if image_snapshot is not None else {}
-    body["messages"], omitted, shed_total = await asyncio.to_thread(
-        _prepare_images, original, src.type_id, upstream, user["id"], images)
-    if prepared is not None:
-        await prepared()
-    affinity_id = None
-    # ChatGPT Fast is a service tier on the same model: toggling it keeps the
-    # conversation's cache key and account pin.
-    scope_model = chatgpt_base_slug(upstream) if src.type_id == "chatgpt" else upstream
-    session_id = session_id_from(request.headers, body, user_id=user["id"], model=scope_model)
-    if src.type_id in POOL_TYPES:
-        # A subagent's run sets its parent's cache key (server-side scope,
-        # never client input) so its first request can start where the parent
-        # already cached the shared tools and system prompt.
-        affinity_id = related_session_id(request.scope.get("fuse_cache_parent"), user_id=user["id"], model=scope_model)
+            raise HTTPException(403, "Connect an Experiential Labs API key to use its models")
+        try:
+            picked = await pick(model, user_id=user["id"], access=access)
+        except explabs_mod.CatalogError:
+            raise HTTPException(503, "Experiential Labs model catalog is temporarily unavailable") from None
+        if not picked:
+            if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
+                raise HTTPException(403, "Reconnect your Experiential Labs API key to use its models")
+            denied = nanogpt_mod.denied_reason(model, user["id"]) or openrouter_mod.denied_reason(model, user["id"])
+            if denied:
+                raise HTTPException(403, denied)
+            # Turned off on Sources: say so, not "Unknown model".
+            off = await pick(model, user_id=user["id"], access=access, ignore_prefs=True)
+            if off:
+                raise HTTPException(403, f"{provider_errors.label(off[0].type_id)}: {model} is turned off for your account. "
+                                         "Turn it on in Sources.")
+            if catalog_unavailable_for(model):
+                raise HTTPException(503, "Model catalog is temporarily unavailable")
+            # A model of a pool the user lost their account for (e.g. an OAuth
+            # grant revoked upstream) says what to reconnect, not "Unknown model".
+            denial = pool_denial(model, user["id"], access)
+            if denial:
+                raise HTTPException(403, denial)
+            raise HTTPException(404, "Unknown model")
+        src, upstream = picked
+        if not access.allows(src.type_id):
+            raise HTTPException(403, pool_denial_message(src.type_id, user["id"]))
+        await asyncio.to_thread(_ensure_encodable, body)
+        requested = model
+        if cheap_reasoning:
+            _set_cheap_reasoning(body, src.type_id, model, user["id"])
+        body["model"] = upstream
+        original = body["messages"]
+        images = image_snapshot if image_snapshot is not None else {}
+        body["messages"], omitted, shed_total = await asyncio.to_thread(
+            _prepare_images, original, src.type_id, upstream, user["id"], images)
+        if prepared is not None:
+            await prepared()
+        affinity_id = None
+        # ChatGPT Fast is a service tier on the same model: toggling it keeps the
+        # conversation's cache key and account pin.
+        scope_model = chatgpt_base_slug(upstream) if src.type_id == "chatgpt" else upstream
+        session_id = session_id_from(request.headers, body, user_id=user["id"], model=scope_model)
+        if src.type_id in POOL_TYPES:
+            # A subagent's run sets its parent's cache key (server-side scope,
+            # never client input) so its first request can start where the parent
+            # already cached the shared tools and system prompt.
+            affinity_id = related_session_id(request.scope.get("fuse_cache_parent"), user_id=user["id"], model=scope_model)
     while True:
         try:
             result = await _run_chat(src, body, user["id"], session_id=session_id, affinity_id=affinity_id)

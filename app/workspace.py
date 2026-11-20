@@ -17,6 +17,7 @@ import stat
 import time
 import traceback
 import weakref
+from contextvars import ContextVar
 from uuid import uuid4
 
 from . import hosts
@@ -399,7 +400,7 @@ def resolve_host_row(user_id: int, alias: str | None, bound_host_id: int | None)
             raise WorkspaceError("unknown host alias")
         return row
     if bound_host_id:
-        row = hosts.get_host(user_id, bound_host_id)
+        row = hosts.host_row(user_id, bound_host_id)
         if not row:
             raise WorkspaceError("bound host missing")
         if row.get("disabled"):
@@ -636,15 +637,31 @@ def _relax_paths(args: dict, base: str, windows: bool, name: str = "") -> None:
             args[key] = posixpath.normpath(posixpath.join(b, raw))
 
 
+# The host row this tool call resolved: _is_agent/_agent_version read it
+# instead of re-reading user_hosts (on the event loop) once per helper.
+_call_host: ContextVar[dict | None] = ContextVar("fuse_workspace_call_host", default=None)
+
+
 async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None, bound_cwd="", run_id: str = "", thread_id: int | None = None, on_started=None, on_output=None, gate=None, raw: bool = False) -> tuple[str, dict]:
+    token = _call_host.set(None)
+    try:
+        return await _execute(name, arguments, user_id=user_id, bound_host_id=bound_host_id, bound_cwd=bound_cwd,
+                              run_id=run_id, thread_id=thread_id, on_started=on_started, on_output=on_output,
+                              gate=gate, raw=raw)
+    finally:
+        _call_host.reset(token)
+
+
+async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bound_cwd, run_id: str, thread_id: int | None, on_started, on_output, gate, raw: bool) -> tuple[str, dict]:
     try:
         args = _args(arguments)
     except WorkspaceError as exc:
         return exc.detail, _error_rec(name, exc.detail, kind="invalid_arguments")
     if name == "get_command_output":
         return await _job_output(user_id, args, thread_id=thread_id, run_id=run_id)
-    mode = hosts.settings_for(user_id).get("permission_mode") or "project"
-    if mode == "read_only" and name in ("write_file", "search_replace", "run_terminal_command", "monitor", "kill_command"):
+    mode = (await asyncio.to_thread(hosts.settings_for, user_id)).get("permission_mode") or "project"
+    writes = name in ("write_file", "search_replace", "run_terminal_command", "monitor", "kill_command")
+    if mode == "read_only" and writes:
         msg = "permission mode is read_only"
         return msg, _error_rec(name, msg, kind="not_allowed")
     if name == "kill_command":
@@ -656,12 +673,14 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         detail = "host must be one host alias"
         if name == "run_terminal_command":
             try:
-                host_list(user_id, args.get("host"))
+                await asyncio.to_thread(host_list, user_id, args.get("host"))
             except WorkspaceError as exc:
                 detail = exc.detail
         return detail, _error_rec(name, detail, kind="invalid_arguments")
     try:
-        row = resolve_host_row(user_id, args.get("host") if isinstance(args.get("host"), str) else None, bound_host_id)
+        row = await asyncio.to_thread(
+            resolve_host_row, user_id, args.get("host") if isinstance(args.get("host"), str) else None, bound_host_id
+        )
     except WorkspaceError as exc:
         host = args.get("host") if isinstance(args.get("host"), str) else ""
         from . import monitor as monitor_mod
@@ -690,6 +709,7 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         rec.setdefault("host", "")
         rec.setdefault("cwd", "")
         return text, rec
+    _call_host.set(row)
     alias = _row_alias(row)
     host_id = _row_id(row)
     root = host_root(row, bound_host_id, bound_cwd)
@@ -697,8 +717,10 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
     context = {"host": alias, "cwd": root, "project_root": root, "platform": "windows" if windows else "posix"}
     if on_started:
         on_started({"name": name, "status": "running", **context})
-    mode = hosts.effective_permission(user_id, bound_host_id=host_id, bound_cwd=root)
-    if mode == "read_only" and name in ("write_file", "search_replace", "run_terminal_command", "monitor", "kill_command"):
+    # Read-only projects only gate tools that change something. One read of
+    # the modes decides the root and every path a command names, in memory.
+    scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id, mode=mode) if writes else None
+    if writes and hosts.permission_in(scope, root) == "read_only":
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     deny_reason = ""
@@ -720,8 +742,12 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         )
         if not verdict.allowed:
             return verdict.detail, _error_rec(name, verdict.detail, host=alias, kind="permission_denied")
-        if name in ("write_file", "search_replace") and verdict.resolved and hosts.effective_permission(
-            user_id, bound_host_id=host_id, bound_cwd=verdict.resolved
+        if writes:
+            # The review may have waited on the user: re-read the modes, which
+            # can have changed meanwhile.
+            scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id)
+        if name in ("write_file", "search_replace") and verdict.resolved and hosts.permission_in(
+            scope, verdict.resolved
         ) == "read_only":
             detail = "project is read-only"
             return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
@@ -731,7 +757,7 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         promote_path = verdict.resolved if verdict.promotable else ""
     else:
         promote_path = ""
-    if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(user_id, host_id, args, root, windows):
+    if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(scope, args, root, windows):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     try:
@@ -801,7 +827,7 @@ async def read_text_file(path: str, *, host: str | None, user_id: int, bound_hos
     permission review as read_file, then raw pages to the end. Returns
     (text, "alias:path"); errors are WorkspaceError."""
     try:
-        row = resolve_host_row(user_id, host, bound_host_id)
+        row = await asyncio.to_thread(resolve_host_row, user_id, host, bound_host_id)
     except VaultLocked:
         raise WorkspaceError("vault locked") from None
     alias, host_id = _row_alias(row), _row_id(row)
@@ -859,9 +885,10 @@ async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_c
     return body, rec
 
 
-def _shell_reaches_read_only(user_id, host_id, args: dict, root: str, windows: bool) -> bool:
+def _shell_reaches_read_only(scope, args: dict, root: str, windows: bool) -> bool:
     """A shell command whose cwd or any named path lies in a read-only project
-    (the working root itself is checked before the gate)."""
+    (the working root itself is checked before the gate). scope is
+    hosts.permission_scope() for the call's host."""
     from .permissions import _resolve_for_scope, extract_shell_paths
 
     command = str(args.get("command") or "")
@@ -872,10 +899,7 @@ def _shell_reaches_read_only(user_id, host_id, args: dict, root: str, windows: b
     except WorkspaceError:
         return False  # the shell refuses the cwd itself
     targets = [cwd] + [path for path, _ in extract_shell_paths(command, cwd, windows) or []]
-    return any(
-        hosts.effective_permission(user_id, bound_host_id=host_id, bound_cwd=_resolve_for_scope(t, cwd, windows)) == "read_only"
-        for t in targets
-    )
+    return any(hosts.permission_in(scope, _resolve_for_scope(t, cwd, windows)) == "read_only" for t in targets)
 
 
 def _shell_cwd(args: dict, root: str, *, windows: bool = False) -> str:
@@ -936,10 +960,19 @@ async def _remote_group_kill(user_id, host_id, token: str) -> bool:
     return result.exit_status == 0
 
 
-def _is_agent(user_id, host_id) -> bool:
+def _host_fields(user_id, host_id):
+    """auth_type and agent_version of a host: the call's own row when it is
+    that host, else one read."""
+    row = _call_host.get()
+    if row is not None and int(row["id"]) == int(host_id) and int(_row_get(row, "user_id", 0)) == int(user_id):
+        return row
     from . import db
 
-    row = db.fetchone("SELECT auth_type FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+    return db.fetchone("SELECT auth_type, agent_version FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+
+
+def _is_agent(user_id, host_id) -> bool:
+    row = _host_fields(user_id, host_id)
     return bool(row) and row["auth_type"] == "agent"
 
 
@@ -955,9 +988,7 @@ def _parse_version(text: str) -> tuple[int, ...]:
 
 
 def _agent_version(user_id, host_id) -> tuple[int, ...]:
-    from . import db
-
-    row = db.fetchone("SELECT agent_version FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+    row = _host_fields(user_id, host_id)
     return _parse_version(row["agent_version"] if row else "")
 
 
@@ -3146,7 +3177,7 @@ async def load_project_agents(user_id, bound_host_id, bound_cwd: str = "", repor
             report["reason"] = hit[3]
         return str(hit[1] or ""), str(hit[2] or "")
     try:
-        row = resolve_host_row(user_id, None, bound_host_id)
+        row = await asyncio.to_thread(resolve_host_row, user_id, None, bound_host_id)
     except (WorkspaceError, VaultLocked) as exc:
         reason = "locked" if isinstance(exc, VaultLocked) or "vault" in str(exc).lower() else "host"
         if report is not None:

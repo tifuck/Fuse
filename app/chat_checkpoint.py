@@ -325,18 +325,24 @@ def flush_pending_state(run_id, message, future=None):
 # cost, so the row read carries only the request digest; the parsed request is
 # cached per run and re-read only when another writer changed it.
 _request_cache: dict[str, tuple[str, dict]] = {}
-_digest_column: tuple[object, bool] | None = None
+_digest_column: tuple[object, frozenset] | None = None
+
+
+def _run_columns() -> frozenset:
+    """chat_runs column names, looked up once per pool. Not inside a
+    transaction the first time: the lookup takes a second connection."""
+    global _digest_column
+    conn = db.connect()
+    if _digest_column is None or _digest_column[0] is not conn:
+        present = frozenset(column[1] for column in db.fetchall("PRAGMA table_info(chat_runs)"))
+        _request_cache.clear()
+        _digest_column = (conn, present)
+    return _digest_column[1]
 
 
 def _has_request_digest() -> bool:
     """Whether chat_runs.request_digest exists (scripts/sql/2026-09-25-*)."""
-    global _digest_column
-    conn = db.connect()
-    if _digest_column is None or _digest_column[0] is not conn:
-        present = any(column[1] == "request_digest" for column in db.fetchall("PRAGMA table_info(chat_runs)"))
-        _request_cache.clear()
-        _digest_column = (conn, present)
-    return _digest_column[1]
+    return "request_digest" in _run_columns()
 
 
 _request_texts: dict[str, tuple[str, str]] = {}
@@ -389,9 +395,12 @@ def _checkpoint_row(run_id):
             "SELECT id,status,message_id,user_id,thread_id,parent_run_id,root_run_id,request,message,activity,updated_at FROM chat_runs WHERE id=?",
             (run_id,),
         )
+    # The stored message_digest column (scripts/sql/2026-11-20-run-sweeps.sql)
+    # saves hashing the message on every read.
+    message_digest = "message_digest" if "message_digest" in _run_columns() else "MD5(message) AS message_digest"
     row = db.fetchone(
         "SELECT id,status,message_id,user_id,thread_id,parent_run_id,root_run_id,request_digest,activity,"
-        "MD5(message) AS message_digest,updated_at FROM chat_runs WHERE id=?",
+        f"{message_digest},updated_at FROM chat_runs WHERE id=?",
         (run_id,),
     )
     if row is None or row["status"] not in chat_tx.ACTIVE:
@@ -702,8 +711,7 @@ def finish_compact(user_id, thread_id, checkpoint, *, command_id, fingerprint, e
             "UPDATE chat_threads SET compaction=?, revision=revision+1, updated_at=? WHERE id=? AND user_id=?",
             (ctxmod.dump_state(state), ts, pk, user_id),
         )
-        chat_tx.thread_event(conn, user_id, pk)
-        view = chat_views.thread_view(conn, user_id, pk)
+        view = chat_views.publish_thread_view(conn, user_id, pk)
         chat_tx.event(conn, user_id, "compaction.done", pk, (view or {}).get("compaction") or {})
         chat_tx.remember(
             conn,
@@ -754,8 +762,7 @@ def apply_compaction_checkpoint(user_id, thread_id, checkpoint, *, meter=None, r
                 "UPDATE chat_threads SET compaction=?, revision=revision+1, updated_at=? WHERE id=? AND user_id=?",
                 (ctxmod.dump_state(state), ts, pk, user_id),
             )
-            chat_tx.thread_event(conn, user_id, pk)
-            view = chat_views.thread_view(conn, user_id, pk)
+            view = chat_views.publish_thread_view(conn, user_id, pk)
             chat_tx.event(conn, user_id, "compaction.done", pk, (view or {}).get("compaction") or {})
             return view
 
@@ -821,11 +828,36 @@ def read_file_image(user_id, run_id: str, event_id: str):
 TAIL_MIN_CHARS = 64 * 1024
 
 
+_EMPTY_DIGEST = hashlib.md5(b"[]").hexdigest()
+
+
 def _provider_state_columns(conn) -> str:
+    if db.provider_split(conn) and "provider_tail_digest" in _run_columns():
+        # Stored digests (scripts/sql/2026-11-20-run-sweeps.sql): no hashing
+        # of the multi-MB virtual provider_messages inside the write lock.
+        return ",provider_base_chars AS base_len,provider_base_digest AS base_digest,provider_tail_digest AS tail_digest"
     columns = f",{db.md5_of(conn, 'provider_messages')} AS provider_digest"
     if db.provider_split(conn):
         columns += ",CHAR_LENGTH(provider_base) AS base_len,MD5(provider_base) AS base_digest"
     return columns
+
+
+def _provider_stored(row, payload, digest) -> bool:
+    """Whether payload is the stored provider_messages, told from the base and
+    tail digests along the virtual column's CASE."""
+    if "tail_digest" not in row.keys():
+        return row["provider_digest"] == digest
+    base, tail = row["base_digest"], row["tail_digest"]
+    if tail is None:
+        return base == digest
+    if base is None or base == _EMPTY_DIGEST:
+        return tail == digest
+    if tail == _EMPTY_DIGEST:
+        return base == digest
+    base_len = row["base_len"] or 0
+    return (base_len > 2 and len(payload) > base_len and payload[base_len - 1] == ","
+            and hashlib.md5(("[" + payload[base_len:]).encode("ascii")).hexdigest() == tail
+            and hashlib.md5((payload[:base_len - 1] + "]").encode("ascii")).hexdigest() == base)
 
 
 def _provider_changes(conn, row, payload, digest) -> dict:
@@ -834,7 +866,7 @@ def _provider_changes(conn, row, payload, digest) -> dict:
     transcript extends it. MariaDB rewrites a changed LONGTEXT whole, so
     rewriting a megabyte transcript to append one tool result cost a megabyte
     of redo and page writes, twice a tool round."""
-    if row["provider_digest"] == digest:
+    if _provider_stored(row, payload, digest):
         return {}
     if not db.provider_split(conn):
         return {"provider_messages": payload}

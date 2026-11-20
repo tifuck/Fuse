@@ -185,6 +185,7 @@ def _hex_args(sql, args):
     return args if size > _HEX_STATEMENT_MAX else out
 
 
+_HAS_COMMAND_JOBS: set = set()
 _CONTROL_STATEMENT_RE = re.compile(r"(?:BEGIN|COMMIT|ROLLBACK|PRAGMA|CREATE)\b", re.I)
 _READ_STATEMENT_RE = re.compile(r"\s*(?:SELECT|SHOW)\b", re.I)
 
@@ -281,7 +282,14 @@ class Conn:
             return Cursor()
         if "sqlite_master" in text:
             if text == "SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'":
-                return self.native("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='command_jobs'")
+                # Asked on hot paths; a table once present is never dropped, so remember it per schema.
+                if self._raw.db in _HAS_COMMAND_JOBS:
+                    return Cursor([(1,)])
+                cursor = self.native("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='command_jobs'")
+                if cursor.fetchone():
+                    _HAS_COMMAND_JOBS.add(self._raw.db)
+                    return Cursor([(1,)])
+                return Cursor()
             raise ValueError("Unported sqlite_master query")
         return self.native(_rewrite(text, self._write_transaction), args)
 

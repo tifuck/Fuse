@@ -65,7 +65,9 @@ CONTENT_CSP = (
 # Injected at the top of every page. It reports errors and blocked loads to
 # the viewer, opens links in a new tab through the viewer, swaps the storage
 # an opaque origin cannot have for an in-memory one, and offers
-# fuse.copy(text) / fuse.sendToChat(text).
+# fuse.copy(text) / fuse.sendToChat(text) / fuse.setBackdrop({name, scheme,
+# html}). setBackdrop passes one character over the 128 KB limit so the
+# server refuses an oversized page instead of saving a truncated one.
 _BRIDGE = """<script>(function(){
 var P=window.parent!==window?window.parent:null,seen={},n=0;
 function send(t,d){if(!P)return;d=d||{};d.fuseArtifact=1;d.type=t;try{P.postMessage(d,"*")}catch(e){}}
@@ -77,7 +79,8 @@ window.addEventListener("unhandledrejection",function(e){var r=e.reason;report("
 document.addEventListener("securitypolicyviolation",function(e){report("Blocked by the artifact sandbox: "+(e.blockedURI||"inline")+" ("+e.effectiveDirective+")","")});
 document.addEventListener("click",function(e){if(e.defaultPrevented)return;var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;var h=a.getAttribute("href")||"";if(!h||h.charAt(0)==="#")return;var u;try{u=new URL(h,document.baseURI)}catch(_){return}if(u.protocol!=="http:"&&u.protocol!=="https:")return;e.preventDefault();send("open",{url:u.href})});
 window.open=function(h){var u;try{u=new URL(String(h),document.baseURI)}catch(_){return null}if(u.protocol==="http:"||u.protocol==="https:")send("open",{url:u.href});return null};
-window.fuse={copy:function(t){send("copy",{text:String(t).slice(0,200000)})},sendToChat:function(t){send("compose",{text:String(t).slice(0,20000)})}};
+window.fuse={copy:function(t){send("copy",{text:String(t).slice(0,200000)})},sendToChat:function(t){send("compose",{text:String(t).slice(0,20000)})},
+setBackdrop:function(o){o=o||{};var s=o.scheme==null||o.scheme===""?"dark":o.scheme;if(typeof o.name!=="string"||typeof o.html!=="string"||(s!=="dark"&&s!=="light")){console.warn("fuse.setBackdrop({name, scheme, html}): name and html must be strings, scheme 'dark' or 'light'");return}if(!P){console.info("fuse.setBackdrop works inside Fuse chat: open this artifact from a chat to use it as your backdrop.");return}send("backdrop",{name:o.name.slice(0,40),scheme:s,html:o.html.slice(0,131073)})}};
 try{var c=navigator.clipboard;if(c&&c.writeText){var w=c.writeText.bind(c);c.writeText=function(t){return w(t).catch(function(){window.fuse.copy(t)})}}}catch(_){}
 var st=0;window.addEventListener("scroll",function(){if(st)return;st=setTimeout(function(){st=0;send("scroll",{y:Math.round(window.scrollY)})},250)},{passive:true});
 window.addEventListener("message",function(e){var d=e.data;if(e.source!==P||!d||d.fuseArtifact!==1)return;if(d.type==="scroll")window.scrollTo(0,+d.y||0)});
@@ -270,7 +273,8 @@ def _row_view(row, *, versions: list[int] | None = None) -> dict:
         "identifier": row["public_id"],
         "public_id": row["public_id"],
         "user_id": int(row["user_id"]),
-        "thread_id": _thread_public(row["thread_id"]),
+        "thread_id": (str(row["thread_public_id"]) if row["thread_public_id"] else None)
+        if "thread_public_id" in row.keys() else _thread_public(row["thread_id"]),
         "title": row["title"],
         "icon": row["icon"] or "",
         "visibility": row["visibility"],
@@ -389,8 +393,10 @@ def client_payload(row, *, owner: bool, include_html: bool = False, version: int
 
 def list_for_user(user_id: int) -> list[dict]:
     rows = db.fetchall(
-        "SELECT a.*, t.title AS thread_title FROM artifacts a "
+        "SELECT a.*, t.title AS thread_title, pt.public_id AS thread_public_id FROM artifacts a "
         "LEFT JOIN chat_threads t ON t.id = a.thread_id AND t.user_id = a.user_id "
+        # public_id_for's lookup (by id alone), joined instead of one query per row.
+        "LEFT JOIN chat_threads pt ON pt.id = a.thread_id "
         "WHERE a.user_id=? AND a.expired_at='' ORDER BY a.updated_at DESC",
         (user_id,),
     )
@@ -406,7 +412,8 @@ def list_in_scope(user_id: int, thread_id=None) -> list[dict]:
     if pk is None:
         return []
     rows = db.fetchall(
-        "SELECT a.* FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
+        "SELECT a.*, pt.public_id AS thread_public_id FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
+        "LEFT JOIN chat_threads pt ON pt.id = a.thread_id "
         "WHERE x.thread_id=? AND a.user_id=? AND a.archived=0 AND a.expired_at='' ORDER BY a.id",
         (pk, user_id),
     )

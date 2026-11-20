@@ -184,26 +184,33 @@ def _automated_user(row):
     return str(content or "").startswith(("[Fuse]", "[Fuse session context"))
 
 
-def _legacy_turn(run, user_message, assistant):
-    from . import chats, chat_store
+def _legacy_candidate(run, user_message, assistant) -> bool:
+    """The checks a legacy turn must pass before its transcript is read."""
+    from . import chats
 
     if not run or not user_message:
-        return None
+        return False
     saved = _load(run["message"], {})
     request = _load(run["request"], {})
     # Split steer displays cannot be inferred from an aggregate legacy run.
     if (request.get("agent") or {}).get("display_parts"):
-        return None
+        return False
     if (saved.get("content", "") != assistant.get("content", "")
             or saved.get("reasoning", "") != assistant.get("reasoning", "")):
-        return None  # edited assistant: never resurrect its original text
+        return False  # edited assistant: never resurrect its original text
     def trace_identity(traces):
         fields = ("id", "name", "command", "path", "cwd", "host", "pattern", "query", "url", "preview", "output", "summary", "results")
         return [{key: trace.get(key) or ([] if key == "results" else "") for key in fields}
                 for trace in chats._parse_tool_traces(traces)]
-    if trace_identity(saved.get("tools")) != trace_identity(assistant.get("tools")):
-        return None  # explicit trace deletion/redaction must remain effective
-    source = _clean(_load(run["provider_messages"], []))
+    # explicit trace deletion/redaction must remain effective
+    return trace_identity(saved.get("tools")) == trace_identity(assistant.get("tools"))
+
+
+def _legacy_turn(provider_messages, user_message, assistant):
+    """A _legacy_candidate turn rebuilt from its run's stored transcript."""
+    from . import chats, chat_store
+
+    source = _clean(_load(provider_messages, []))
     expected = chats.request_message(user_message)["content"]
     starts = [i for i, row in enumerate(source) if row.get("role") == "user" and _matches_user(row.get("content"), expected)]
     if not starts:
@@ -307,10 +314,27 @@ def build(conn, user_id, thread_id, messages, state, *, retained=None, model="",
     # recover their source history even before they have runs of their own.
     for start in range(0, len(ids), 400):
         batch = ids[start:start + 400]
-        for run in conn.execute("SELECT message_id,message,request,provider_messages FROM chat_runs "
+        for run in conn.execute("SELECT id,message_id,message,request FROM chat_runs "
                 "WHERE user_id=? AND parent_run_id IS NULL AND status NOT IN ('queued','running') "
                 "AND message_id IN (" + ",".join("?" for _ in batch) + ") ORDER BY created_at", (user_id, *batch)):
             runs[run["message_id"]] = run
+    # The transcripts (megabytes each) only of the turns that can use them.
+    candidates = {}
+    previous_user = None
+    for index, row in enumerate(rows):
+        if row.get("role") == "user":
+            previous_user = row
+        elif row.get("role") == "assistant":
+            run = runs.get(row.get("id"))
+            if _legacy_candidate(run, previous_user, row):
+                candidates[index] = run["id"]
+    transcripts = {}
+    wanted = list(set(candidates.values()))
+    for start in range(0, len(wanted), 400):
+        batch = wanted[start:start + 400]
+        for run in conn.execute("SELECT id,provider_messages FROM chat_runs WHERE user_id=? AND id IN ("
+                                + ",".join("?" for _ in batch) + ")", (user_id, *batch)):
+            transcripts[run["id"]] = run["provider_messages"]
     previous_user = None
     appended = []
     for index, row in enumerate(rows):
@@ -322,7 +346,8 @@ def build(conn, user_id, thread_id, messages, state, *, retained=None, model="",
             continue
         if row.get("role") != "assistant":
             continue
-        recovered = _legacy_turn(runs.get(row.get("id")), previous_user, row)
+        recovered = (_legacy_turn(transcripts.get(candidates[index]), previous_user, row)
+                     if index in candidates else None)
         if recovered is not None:
             prefix.extend(recovered)
             info["recovered_turns"] += 1

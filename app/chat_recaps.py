@@ -138,9 +138,9 @@ def _settled_now(conn, user_id: int, thread_id: int) -> bool:
     root = conn.execute("SELECT status FROM chat_runs WHERE thread_id=? AND parent_run_id IS NULL ORDER BY created_at DESC,updated_at DESC LIMIT 1",
                         (thread_id,)).fetchone()
     stopped = root and root["status"] == "cancelled"
-    if not stopped and conn.execute("""SELECT 1 FROM chat_runs WHERE user_id=? AND thread_id=? AND parent_run_id IS NOT NULL
-                       AND COALESCE(json_extract(request,'$.agent.background'),0)=1
-                       AND COALESCE(json_extract(request,'$.agent.wake_sent'),0)=0
+    # wake_pending > 0 (generated, indexed): a finished background child whose
+    # report is undelivered. No run is live here, so every child is finished.
+    if not stopped and conn.execute("""SELECT 1 FROM chat_runs WHERE wake_pending > 0 AND user_id=? AND thread_id=?
                        AND COALESCE(json_extract(request,'$.agent.wake_attempts'),0)<2 LIMIT 1""",
                     (user_id, thread_id)).fetchone():
         return False

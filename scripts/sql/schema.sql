@@ -27,6 +27,7 @@ CREATE TABLE `api_keys` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_api_keys_1` (`key_hash`) USING HASH,
   KEY `fk_api_keys_0` (`user_id`),
+  KEY `api_keys_key_hash` (`key_hash`(64)),
   CONSTRAINT `fk_api_keys_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -263,6 +264,11 @@ CREATE TABLE `chat_runs` (
   `provider_tail` longtext INVISIBLE DEFAULT NULL,
   `provider_messages` longtext GENERATED ALWAYS AS (case when `provider_tail` is null then `provider_base` when `provider_base` is null or `provider_base` = '[]' then `provider_tail` when `provider_tail` = '[]' then `provider_base` else concat(left(`provider_base`,char_length(`provider_base`) - 1),',',substr(`provider_tail`,2)) end) VIRTUAL,
   `activity` text DEFAULT NULL,
+  `message_digest` char(32) CHARACTER SET ascii COLLATE ascii_bin GENERATED ALWAYS AS (md5(`message`)) STORED INVISIBLE,
+  `provider_base_digest` char(32) CHARACTER SET ascii COLLATE ascii_bin GENERATED ALWAYS AS (md5(`provider_base`)) STORED INVISIBLE,
+  `provider_base_chars` bigint(20) GENERATED ALWAYS AS (char_length(`provider_base`)) STORED INVISIBLE,
+  `provider_tail_digest` char(32) CHARACTER SET ascii COLLATE ascii_bin GENERATED ALWAYS AS (md5(`provider_tail`)) STORED INVISIBLE,
+  `wake_pending` tinyint(4) GENERATED ALWAYS AS (case when `parent_run_id` is null or `status` not in ('completed','failed','cancelled','interrupted') or !coalesce(json_extract(`request`,'$.agent.background') = 1,0) or coalesce(json_extract(`request`,'$.agent.wake_sent') = 1,0) then 0 when coalesce(json_extract(`request`,'$.agent.wake_attempts'),0) < 2 and (`status` <> 'cancelled' or `cancel_requested` <> 2) then 1 else 2 end) STORED INVISIBLE,
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_runs_active_parent` (`active_parent_thread`),
   KEY `chat_runs_user_message` (`user_id`,`message_id`(191)),
@@ -270,6 +276,8 @@ CREATE TABLE `chat_runs` (
   KEY `chat_runs_parent` (`parent_run_id`(191)),
   KEY `chat_runs_root` (`root_run_id`(191)),
   KEY `chat_runs_user_status` (`user_id`,`status`(191)),
+  KEY `chat_runs_wake` (`wake_pending`,`user_id`,`thread_id`),
+  KEY `chat_runs_status_created` (`status`(16),`created_at`(20)),
   CONSTRAINT `fk_chat_runs_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -370,6 +378,8 @@ CREATE TABLE `chat_threads` (
   KEY `chat_threads_user_archived_at` (`user_id`,`archived`,`archived_at`),
   KEY `fk_chat_threads_project` (`project_id`),
   KEY `fk_chat_threads_host` (`host_id`),
+  KEY `chat_threads_public_id_lookup` (`public_id`(32)),
+  KEY `chat_threads_title_sweep` (`title_state`(8),`title_attempted_at`(20)),
   CONSTRAINT `fk_chat_threads_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT `fk_chat_threads_host` FOREIGN KEY (`host_id`) REFERENCES `user_hosts` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_chat_threads_project` FOREIGN KEY (`project_id`) REFERENCES `user_projects` (`id`) ON DELETE SET NULL
@@ -411,7 +421,10 @@ CREATE TABLE `command_jobs` (
   `delivered_event_seq` bigint(20) NOT NULL DEFAULT 0,
   `description` text NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
-  KEY `command_jobs_thread` (`thread_id`)
+  KEY `command_jobs_thread` (`thread_id`),
+  KEY `command_jobs_undelivered` (`notify`,`delivered`,`thread_id`),
+  KEY `command_jobs_user_thread` (`user_id`,`thread_id`),
+  KEY `command_jobs_finished` (`finished_at`(20))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -464,6 +477,7 @@ CREATE TABLE `host_pairings` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_host_pairings_1` (`code_hash`) USING HASH,
   KEY `host_pairings_user` (`user_id`,`expires_at`(191)),
+  KEY `host_pairings_code_hash` (`code_hash`(64)),
   CONSTRAINT `fk_host_pairings_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -623,6 +637,7 @@ CREATE TABLE `push_subscriptions` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_push_subscriptions_1` (`endpoint`) USING HASH,
   KEY `push_subscriptions_user` (`user_id`),
+  KEY `push_subscriptions_endpoint` (`endpoint`(191)),
   CONSTRAINT `fk_push_subscriptions_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -634,7 +649,8 @@ CREATE TABLE `registration_whitelist` (
   `created_at` longtext NOT NULL,
   `token_hash` varchar(64) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `sqlite_autoindex_registration_whitelist_1` (`email`) USING HASH
+  UNIQUE KEY `sqlite_autoindex_registration_whitelist_1` (`email`) USING HASH,
+  KEY `registration_whitelist_email` (`email`(191))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -657,6 +673,8 @@ CREATE TABLE `schedule_fires` (
   KEY `schedule_fires_run` (`run_id`(191)),
   KEY `schedule_fires_sched` (`schedule_id`,`id`),
   KEY `fk_schedule_fires_0` (`user_id`),
+  KEY `schedule_fires_status` (`status`(16)),
+  KEY `schedule_fires_finished` (`finished_at`(20)),
   CONSTRAINT `fk_schedule_fires_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT `fk_schedule_fires_1` FOREIGN KEY (`schedule_id`) REFERENCES `chat_schedules` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
@@ -814,24 +832,33 @@ CREATE TABLE `usage_events` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
-CREATE TABLE `usage_hourly` (
+CREATE TABLE `usage_rollup_hourly` (
   `user_id` bigint(20) NOT NULL,
-  `hour` varchar(32) NOT NULL,
-  `source_id` bigint(20) NOT NULL DEFAULT 0,
-  `model` varchar(512) NOT NULL DEFAULT '',
-  `prompt_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `completion_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `reasoning_tokens` bigint(20) NOT NULL DEFAULT 0,
+  `hour` char(20) NOT NULL,
+  `api_key_id` bigint(20) NOT NULL DEFAULT 0,
+  `source_type` varchar(64) NOT NULL,
+  `model` varchar(512) NOT NULL,
+  `tokens` bigint(20) NOT NULL DEFAULT 0,
   `requests` bigint(20) NOT NULL DEFAULT 0,
-  `output_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `visible_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `cached_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `cache_write_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `total_tokens` bigint(20) NOT NULL DEFAULT 0,
-  `cost_micros` bigint(20) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`user_id`,`hour`,`source_id`,`model`),
-  KEY `usage_hourly_user_hour` (`user_id`,`hour`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
+  `prompt` bigint(20) NOT NULL DEFAULT 0,
+  `completion` bigint(20) NOT NULL DEFAULT 0,
+  `output` bigint(20) NOT NULL DEFAULT 0,
+  `reasoning` bigint(20) NOT NULL DEFAULT 0,
+  `cached` bigint(20) NOT NULL DEFAULT 0,
+  `cache_write` bigint(20) NOT NULL DEFAULT 0,
+  `ok_requests` bigint(20) NOT NULL DEFAULT 0,
+  `failed` bigint(20) NOT NULL DEFAULT 0,
+  `cancelled` bigint(20) NOT NULL DEFAULT 0,
+  `cost` bigint(20) NOT NULL DEFAULT 0,
+  `estimated_cost` bigint(20) NOT NULL DEFAULT 0,
+  `priced` bigint(20) NOT NULL DEFAULT 0,
+  `priced_tokens` bigint(20) NOT NULL DEFAULT 0,
+  `unpriced_events` bigint(20) NOT NULL DEFAULT 0,
+  `first_at` varchar(32) NOT NULL,
+  `last_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`user_id`,`hour`,`api_key_id`,`source_type`,`model`),
+  KEY `usage_rollup_hourly_hour` (`hour`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
@@ -846,6 +873,22 @@ CREATE TABLE `user_agent_settings` (
   PRIMARY KEY (`user_id`),
   CONSTRAINT `fk_user_agent_settings_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_backdrops` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `public_id` char(12) NOT NULL,
+  `user_id` bigint(20) NOT NULL,
+  `name` varchar(40) NOT NULL,
+  `scheme` varchar(8) NOT NULL DEFAULT 'dark',
+  `html` mediumtext NOT NULL,
+  `created_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_backdrops_public_id` (`public_id`),
+  KEY `user_backdrops_user` (`user_id`),
+  CONSTRAINT `user_backdrops_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
@@ -986,7 +1029,8 @@ CREATE TABLE `users` (
   `chat_memory` bigint(20) NOT NULL DEFAULT 0,
   `chat_secret_swap` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `sqlite_autoindex_users_1` (`email`) USING HASH
+  UNIQUE KEY `sqlite_autoindex_users_1` (`email`) USING HASH,
+  KEY `users_email` (`email`(191))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 SET FOREIGN_KEY_CHECKS=1;

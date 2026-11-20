@@ -41,6 +41,7 @@ const FLOWERS = {
   },
 };
 const KINDS = ["poppy", "daisy", "lupine", "corn", "poppy", "daisy"];
+const GOLDEN = "#e6c49a";
 
 function flowerCells(A, name) {
   const F = FLOWERS[name];
@@ -49,7 +50,8 @@ function flowerCells(A, name) {
     if (ch === " " || !F.key[ch]) return;
     const [gl0, fill, ink] = F.key[ch];
     const gl = F.flip && F.flip[ch] && i > line.length / 2 ? F.flip[ch] : gl0;
-    cells.push({ dr: r - F.art.length, dc: i - Math.floor(line.length / 2), id: tile(A, gl, fill, ink) });
+    // Petals take a little of the evening light, so they sit in the scene.
+    cells.push({ dr: r - F.art.length, dc: i - Math.floor(line.length / 2), id: tile(A, gl, fill && mixc(fill, GOLDEN, 0.2), mixc(ink, GOLDEN, 0.15)) });
   }));
   return cells;
 }
@@ -120,8 +122,10 @@ function build(s) {
       const rim = d < mc * 1.5;
       let fill = rim ? (lit ? "#ffd0b8" : "#d8a0b8") : snow ? (lit ? "#f0c0cc" : "#8a7cb8") : lit ? "#8a6290" : "#4a3c6c";
       fill = mixc(fill, "#f6c4aa", quant(Math.min(0.8, 0.1 + 0.45 * (1 - fade) + 0.35 * glowAt(x)), 8));
-      const gl = d < mc ? (peak ? "^" : slope > 0 ? "/" : "\\") : snow ? (lit ? "/" : ":") : ["%", ";", "#", ":"][Math.floor(hash(c, y, 3) * 4)];
-      put(g, mt, tile(mt, gl, fill, shade(fill, snow && lit ? 0.82 : 1.3)), c * mc, y, 0.35 + 0.65 * fade);
+      // Ridgelines carry the glyphs; faces stay bare but for a rare mark.
+      const hs = hash(c, y, 3);
+      const gl = d < mc ? (peak ? "^" : slope > 0 ? "/" : "\\") : hs < 0.1 ? (snow ? "." : ":") : " ";
+      put(g, mt, tile(mt, gl, fill, shade(fill, snow && lit ? 0.86 : 1.2)), c * mc, y, 0.35 + 0.65 * fade);
     }
   }
   g.globalAlpha = 1;
@@ -142,7 +146,7 @@ function build(s) {
     g.fill();
   };
   ridge(hz - h * 0.005, h * 0.04, 240 * k, "#a690b8", R() * 50);
-  ridge(hz + h * 0.012, h * 0.03, 180 * k, "#a8927a", R() * 50);
+  ridge(hz + h * 0.012, h * 0.03, 180 * k, "#d6b48e", R() * 50);
   const mead = g.createLinearGradient(0, hz, 0, h);
   mead.addColorStop(0, "#e0c47a");
   mead.addColorStop(0.2, "#b8b456");
@@ -196,8 +200,10 @@ function build(s) {
         const e = Math.abs(ci - mid) / hw + 0.25 * (hash(ci, r, i) - 0.5);
         if (e > 1) continue;
         const fill = shade(base, quant(0.94 + 0.08 * (hash(ci, r, 7) - 0.5), 8));
-        if (e > 0.42 || under < 0.5) put(cg, s, tile(s, ["-", "~", "=", "~"][Math.floor(hash(ci, r, 2) * 4)], null, shade(base, under < 0.5 ? 0.92 : 1.04)), ci * cc, r * cc, 0.95 - 0.4 * clamp01(e - 0.5));
-        else put(cg, s, tile(s, ["~", "=", "~", ":", "-"][Math.floor(hash(ci, r, 4) * 5)], fill, shade(fill, under > 0.5 ? 0.86 : 1.08)), ci * cc, r * cc, 0.92);
+        // Wisps at the edges, a soft lit underside of bare tiles in the core.
+        if (e > 0.42 || under < 0.5) {
+          if (hash(ci, r, 5) < 0.55) put(cg, s, tile(s, hash(ci, r, 2) < 0.6 ? "~" : "-", null, shade(base, under < 0.5 ? 0.94 : 1.04)), ci * cc, r * cc, 0.6 - 0.35 * clamp01(e - 0.5));
+        } else put(cg, s, tile(s, hash(ci, r, 4) < 0.15 ? "~" : " ", fill, shade(fill, under > 0.5 ? 0.9 : 1.06)), ci * cc, r * cc, 0.62);
       }
     }
     cg.globalAlpha = 1;
@@ -205,8 +211,8 @@ function build(s) {
   });
   // Middle meadow: two bands of glyph grass in sheared segments.
   const BANDS = [
-    { cell: 8, at: 0.16, len: [2, 4], haze: 0.35 },
-    { cell: 12, at: 0.42, len: [3, 6], haze: 0.12 },
+    { cell: 8, at: 0.16, len: [2, 4], haze: 0.58 },
+    { cell: 12, at: 0.42, len: [3, 6], haze: 0.24 },
   ];
   s.bands = BANDS.map((B) => {
     const A = atlas(s, Math.max(3, B.cell * k));

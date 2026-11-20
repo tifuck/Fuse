@@ -149,10 +149,12 @@ def take_child_results(parent_run_id: str) -> list[str]:
     ids = [str(item.get("id") or "") for item in pending if isinstance(item, dict) and item.get("id")]
     generations = {}
     if ids:
-        for child in db.fetchall(f"SELECT id,request FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)})", ids):
-            child_req = _stored_request(child["request"]) or {}
-            child_agent = child_req.get("agent") if isinstance(child_req.get("agent"), dict) else {}
-            generations[child["id"]] = str(child_agent.get("delivery_generation") or "")
+        # json_extract reads as JSON_VALUE (mysql_compat): the scalar, not each child's whole request.
+        for child in db.fetchall(
+            f"SELECT id,json_extract(request, '$.agent.delivery_generation') AS generation FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)})",
+            ids,
+        ):
+            generations[child["id"]] = str(child["generation"] or "")
     out = []
     for item in pending:
         if isinstance(item, dict):
@@ -722,7 +724,11 @@ def followup_display_deliveries(run_id: str) -> list[str]:
         return []
     # Checked every round of every subagent: read the transcript only when it
     # holds a follow-up envelope at all.
-    row = db.fetchone(f"SELECT {chat_checkpoint.request_column()},INSTR(provider_messages,'(followup:') AS envelopes FROM chat_runs WHERE id=?", (run_id,))
+    # Base and tail apart, not their virtual concat: the split falls between
+    # JSON rows, so a marker never straddles it.
+    envelopes = ("(INSTR(provider_base,'(followup:') OR INSTR(provider_tail,'(followup:'))" if db.provider_split()
+                 else "INSTR(provider_messages,'(followup:')")
+    row = db.fetchone(f"SELECT {chat_checkpoint.request_column()},{envelopes} AS envelopes FROM chat_runs WHERE id=?", (run_id,))
     if row is None or not row["envelopes"]:
         return []
     try:
@@ -1079,7 +1085,7 @@ def _start_child_run(
             raise SpawnCapError("chat not found")
         thread_id = pk
         parent = conn.execute(
-            "SELECT * FROM chat_runs WHERE id=? AND user_id=?",
+            "SELECT id,status,thread_id,cancel_requested,root_run_id,agent_depth,request FROM chat_runs WHERE id=? AND user_id=?",
             (parent_run_id, user_id),
         ).fetchone()
         if parent is None or parent["status"] not in chat_tx.ACTIVE:
@@ -1134,7 +1140,8 @@ def _start_child_run(
         retype = False
         if resume_from_id:
             source = conn.execute(
-                "SELECT * FROM chat_runs WHERE id=? AND user_id=?",
+                """SELECT id,status,thread_id,parent_run_id,root_run_id,agent_depth,request,provider_messages,loaded_tools
+                   FROM chat_runs WHERE id=? AND user_id=?""",
                 (resume_from_id, user_id),
             ).fetchone()
             if source is None or source["status"] not in chat_tx.TERMINAL:
@@ -1250,7 +1257,7 @@ def _start_child_run(
         if resume_from_id and resume_messages:
             # Same session id (OpenCode). Do not mint a new descendant row.
             child_id = str(resume_from_id)
-            source_row = conn.execute("SELECT * FROM chat_runs WHERE id=?", (child_id,)).fetchone()
+            source_row = conn.execute("SELECT id,message_id,request,message FROM chat_runs WHERE id=?", (child_id,)).fetchone()
             message_id = source_row["message_id"] if source_row else str(uuid4())
             assistant = chats.parse_messages(
                 [{"id": message_id, "role": "assistant", "content": "", "tools": [], "segments": [], "model": child_model}],

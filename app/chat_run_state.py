@@ -140,8 +140,7 @@ def steer_turn(user_id, thread_id, text, command_id, attachments=None):
         )
         chats.unarchive_on_activity(conn, row, db.now())
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"thread_id": pk, "message_id": user_message.get("id")})
-        chat_tx.thread_event(conn, user_id, pk, transcript_changed=True)
-        result = {"idempotent": False, "thread": chat_views.thread_view(conn, user_id, pk)}
+        result = {"idempotent": False, "thread": chat_views.publish_thread_view(conn, user_id, pk, transcript_changed=True)}
     # Committed: a wait the run is blocked in returns so the steer lands now.
     run_inbox.arrived(run["id"], f"steer:{command_id}")
     return result
@@ -250,13 +249,13 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         ).fetchone():
             raise chats.ChatValidationError("chat already has an active run", 409)
         if conn.execute(
-            """SELECT COUNT(*) FROM chat_runs WHERE user_id=? AND status IN ('queued','running')
-               AND parent_run_id IS NULL""",
+            "SELECT COUNT(*) FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL",
             (user_id,),
         ).fetchone()[0] >= 20:
             raise chats.ChatValidationError("maximum of 20 active runs reached", 409)
+        # active_parent_thread (generated) is set exactly on live root runs.
         if conn.execute(
-            """SELECT COUNT(*) FROM chat_runs WHERE status IN ('queued','running') AND parent_run_id IS NULL"""
+            "SELECT COUNT(*) FROM chat_runs WHERE active_parent_thread IS NOT NULL"
         ).fetchone()[0] >= 32:
             raise chats.ChatValidationError("chat generation capacity reached; try again shortly", 429)
         # The read above may predate a run that finalized while this waited
@@ -516,7 +515,8 @@ def wake_candidates(user_id, thread_id):
                   COALESCE(json_extract(child.request, '$.agent.background'), 0) AS background,
                   COALESCE(json_extract(child.request, '$.agent.wake_sent'), 0) AS wake_sent
            FROM chat_runs child
-           WHERE child.user_id=? AND child.thread_id=? AND child.parent_run_id IS NOT NULL
+           WHERE child.wake_pending > 0 AND child.user_id=? AND child.thread_id=?
+              AND child.parent_run_id IS NOT NULL
               AND child.status IN ('completed','failed','cancelled','interrupted')
               AND NOT EXISTS (
                   SELECT 1 FROM chat_runs parent WHERE parent.id=child.parent_run_id
@@ -597,6 +597,23 @@ def queue_stranded_reports(user_id, thread_id, run_id: str, messages=None, limit
     return out
 
 
+def _rows_by_id(conn, columns, ids):
+    """chat_runs rows by id in one read (locked inside a write transaction).
+    Take each with _take_row: a repeated id reads its row again, as written."""
+    if not ids:
+        return {}
+    return {row["id"]: row for row in conn.execute(
+        f"SELECT id,{columns} FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)})", list(ids),
+    ).fetchall()}
+
+
+def _take_row(conn, rows, columns, ident):
+    row = rows.pop(ident, None)
+    if row is None:
+        row = conn.execute(f"SELECT id,{columns} FROM chat_runs WHERE id=?", (ident,)).fetchone()
+    return row
+
+
 def mark_wake_sent(run_ids, pending_guard_run: str | None = None):
     """Acknowledge wake delivery for finished children.
 
@@ -629,10 +646,11 @@ def mark_wake_sent(run_ids, pending_guard_run: str | None = None):
                     for item in (gagent.get("pending_child_results") or [])
                     if isinstance(item, dict)
                 }
+        rows = _rows_by_id(conn, "user_id,thread_id,status,request", [run_id for run_id in ids if run_id not in guarded])
         for run_id in ids:
             if run_id in guarded:
                 continue
-            row = conn.execute("SELECT user_id,thread_id,status,request FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+            row = _take_row(conn, rows, "user_id,thread_id,status,request", run_id)
             if row is None or row["status"] not in chat_tx.TERMINAL:
                 continue
             try:
@@ -668,8 +686,9 @@ def bump_wake_attempts(run_ids):
     if not ids:
         return
     with chat_tx.transaction() as conn:
+        rows = _rows_by_id(conn, "status,request", ids)
         for run_id in ids:
-            row = conn.execute("SELECT status,request FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+            row = _take_row(conn, rows, "status,request", run_id)
             if row is None or row["status"] not in chat_tx.TERMINAL:
                 continue
             try:
@@ -707,8 +726,9 @@ def settle_wake_children(run_id, child_ids):
         # Pending queues and unrelated historical thread bubbles are not proof
         # that this wake delivered a report.
         sources = [chat_tx.dumps(request.get("messages") or []), str(row["provider_messages"] or ""), chat_tx.dumps((request.get("agent") or {}).get("wake_seed_receipts") or {})]
+        crows = _rows_by_id(conn, "status,request", ids)
         for cid in ids:
-            crow = conn.execute("SELECT status,request FROM chat_runs WHERE id=?", (cid,)).fetchone()
+            crow = _take_row(conn, crows, "status,request", cid)
             if crow is None or crow["status"] not in chat_tx.TERMINAL:
                 continue
             try:
@@ -941,7 +961,7 @@ def list_thread_agents(user_id, thread_id, limit=100):
     # JSON_VALUE, which returns NULL for them), so it goes out natively.
     sql = """SELECT id, status, {agent} AS agent_json, {model} AS model_json,
                   message, activity, created_at, updated_at, cancel_requested, cancel_requested_at,
-                  resume_count, (provider_messages IS NOT NULL) AS has_transcript, parent_run_id, root_run_id, agent_depth
+                  resume_count, ({has}) AS has_transcript, parent_run_id, root_run_id, agent_depth
            FROM chat_runs
            WHERE user_id={p} AND thread_id={p} AND parent_run_id IS NOT NULL
              AND (status IN ('queued','running') OR id IN (
@@ -952,13 +972,15 @@ def list_thread_agents(user_id, thread_id, limit=100):
              ))
            ORDER BY created_at DESC, id DESC"""
     args = (user_id, thread_id, user_id, thread_id, max(1, min(int(limit), 200)))
+    # Not the virtual provider_messages: testing it builds each transcript.
+    has = "provider_base IS NOT NULL OR provider_tail IS NOT NULL" if db.provider_split() else "provider_messages IS NOT NULL"
     with db.tx() as conn:
         native = getattr(conn, "native", None)
         if native is not None:
-            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", p="%s"),
+            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", has=has, p="%s"),
                           args).fetchall()
         else:
-            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", p="?"),
+            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", has=has, p="?"),
                                 args).fetchall()
     counts: dict[str, int] = {}
     root = thread_root_run(user_id, thread_id) if rows else None
@@ -1068,7 +1090,13 @@ def finish_run(run_id, message, status):
     if status not in chat_tx.TERMINAL:
         raise chats.ChatValidationError("invalid terminal run status")
     with chat_tx.transaction() as conn:
-        row = conn.execute("SELECT * FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+        # provider_messages (the virtual concat of a possibly multi-MB
+        # transcript) is read below only by the branches that use it.
+        row = conn.execute(
+            """SELECT id,user_id,thread_id,status,request,message_id,cancel_requested,parent_run_id,root_run_id,loaded_tools
+               FROM chat_runs WHERE id=?""",
+            (run_id,),
+        ).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return
         message = chat_views._message(message, row["message_id"])
@@ -1085,7 +1113,7 @@ def finish_run(run_id, message, status):
             # owns a continuation; never strand it on a terminal run.
             # followup_continuation freezes the sealed transcript: no session
             # tail re-injection onto its last, already-sent user row.
-            source = json.loads(row["provider_messages"] or "null") or request.get("messages") or []
+            source = json.loads(_provider_messages(conn, run_id) or "null") or request.get("messages") or []
             request["messages"] = seal_provider_messages(source)
             agent.update(skip_sanitize=True, steer_closed=False, followup_continuation=True,
                          steer_continuations=int(agent.get("steer_continuations") or 0) + 1,
@@ -1152,7 +1180,7 @@ def finish_run(run_id, message, status):
             # writer lock them: thread_event's read locks the thread row, and
             # taking it after the event's cursor upsert deadlocks (1213) with
             # a writer holding the thread and waiting for the cursor.
-            chat_tx.lock_thread(conn, row["thread_id"], row["user_id"])
+            chat_tx.lock_thread_id(conn, row["thread_id"], row["user_id"])
             chat_tx.event(conn, row["user_id"], "agent." + status, row["thread_id"], payload)
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
             return
@@ -1175,7 +1203,10 @@ def finish_run(run_id, message, status):
                 (chat_tx.dumps(messages), chat_tx.dumps(merged_tools), db.now(), row["thread_id"]),
             )
             from . import chat_history
-            chat_history.finalize(conn, row, request, messages, aggregate_message)
+            run = row
+            if request.get("history_replay"):
+                run = {**dict(row), "provider_messages": _provider_messages(conn, run_id)}
+            chat_history.finalize(conn, run, request, messages, aggregate_message)
         payload = {"run_id": run_id, "message_id": row["message_id"], "message": message, "status": status, "revision": revision}
         if status == "completed":
             # A turn that leaves subagents or background commands working, or
@@ -1188,9 +1219,18 @@ def finish_run(run_id, message, status):
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
 
 
+def _provider_messages(conn, run_id):
+    row = conn.execute("SELECT provider_messages FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+    return row["provider_messages"] if row else None
+
+
+# What request_cancel / request_interrupt and _cancel_event_payload read.
+_CANCEL_COLUMNS = "id,thread_id,status,message_id,parent_run_id,root_run_id,cancel_requested"
+
+
 def request_cancel(user_id, run_id):
     with chat_tx.transaction() as conn:
-        row = conn.execute("SELECT * FROM chat_runs WHERE id=? AND user_id=?", (run_id, user_id)).fetchone()
+        row = conn.execute(f"SELECT {_CANCEL_COLUMNS} FROM chat_runs WHERE id=? AND user_id=?", (run_id, user_id)).fetchone()
         if row is None:
             return False
         if row["parent_run_id"] and row["status"] not in chat_tx.ACTIVE:
@@ -1219,7 +1259,7 @@ def request_cancel(user_id, run_id):
             # subagents it waits on, and background subagents keep running.
             return True
         targets = conn.execute(
-            "SELECT * FROM chat_runs WHERE user_id=? AND status IN ('queued','running') AND (id=? OR root_run_id=?)",
+            f"SELECT {_CANCEL_COLUMNS} FROM chat_runs WHERE user_id=? AND status IN ('queued','running') AND (id=? OR root_run_id=?)",
             (user_id, run_id, root),
         ).fetchall()
         for item in targets:
@@ -1240,7 +1280,7 @@ def request_interrupt(user_id, run_id):
     active root. The root row is locked until commit and a stopping parent
     admits no new child, so the list is complete."""
     with chat_tx.transaction() as conn:
-        row = conn.execute("SELECT * FROM chat_runs WHERE id=? AND user_id=?", (run_id, user_id)).fetchone()
+        row = conn.execute(f"SELECT {_CANCEL_COLUMNS} FROM chat_runs WHERE id=? AND user_id=?", (run_id, user_id)).fetchone()
         if row is None or row["parent_run_id"] or row["status"] not in chat_tx.ACTIVE:
             return None
         ts = db.now()
@@ -1272,14 +1312,31 @@ def request_cancel_thread_agents(user_id, run_id):
         return []
     ts = db.now()
     with chat_tx.transaction() as conn:
-        for item in live:
-            cur = conn.execute(
-                "UPDATE chat_runs SET cancel_requested=?,cancel_requested_at=?,updated_at=? WHERE id=? AND status IN ('queued','running') AND cancel_requested=0",
-                (USER_STOPPED, ts, ts, item["id"]),
-            )
-            if getattr(cur, "rowcount", 1):
-                chat_tx.event(conn, user_id, "agent.cancel_requested", item["thread_id"], _cancel_event_payload(item))
+        _flag_cancel(conn, user_id, live, USER_STOPPED, ts)
     return [item["id"] for item in live]
+
+
+def _flag_cancel(conn, user_id, items, flag, ts):
+    """Flag the runs among items that are live and not stopping yet, and
+    publish their cancel events. The read locks those rows (FOR UPDATE inside
+    a transaction), so one UPDATE flags exactly the runs a guarded UPDATE per
+    run would have."""
+    ids = [item["id"] for item in items]
+    hit = {row["id"] for row in conn.execute(
+        f"SELECT id FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)}) AND status IN ('queued','running') AND cancel_requested=0",
+        ids,
+    ).fetchall()}
+    if not hit:
+        return
+    conn.execute(
+        f"UPDATE chat_runs SET cancel_requested=?,cancel_requested_at=?,updated_at=? WHERE id IN ({','.join('?' for _ in hit)})"
+        " AND status IN ('queued','running') AND cancel_requested=0",
+        (flag, ts, ts, *hit),
+    )
+    for item in items:
+        if item["id"] in hit:
+            kind = "agent.cancel_requested" if item["parent_run_id"] else "run.cancel_requested"
+            chat_tx.event(conn, user_id, kind, item["thread_id"], _cancel_event_payload(item))
 
 
 def request_cancel_self(user_id, run_id, by_user=False):
@@ -1321,16 +1378,8 @@ def request_cancel_self(user_id, run_id, by_user=False):
         frontier.extend(child["id"] for child in by_parent.get(current, []))
     if doomed:
         ts = db.now()
-        flag = USER_STOPPED if by_user else 1
         with chat_tx.transaction() as conn:
-            for item in doomed:
-                cur = conn.execute(
-                    "UPDATE chat_runs SET cancel_requested=?,cancel_requested_at=?,updated_at=? WHERE id=? AND status IN ('queued','running') AND cancel_requested=0",
-                    (flag, ts, ts, item["id"]),
-                )
-                if getattr(cur, "rowcount", 1):
-                    kind = "agent.cancel_requested" if item["parent_run_id"] else "run.cancel_requested"
-                    chat_tx.event(conn, user_id, kind, item["thread_id"], _cancel_event_payload(item))
+            _flag_cancel(conn, user_id, doomed, USER_STOPPED if by_user else 1, ts)
     return ids
 
 
@@ -1417,14 +1466,7 @@ def request_cancel_descendants(user_id, run_id, skip_background=False):
     if doomed:
         ts = db.now()
         with chat_tx.transaction() as conn:
-            for item in doomed:
-                cur = conn.execute(
-                    "UPDATE chat_runs SET cancel_requested=1,cancel_requested_at=?,updated_at=? WHERE id=? AND status IN ('queued','running') AND cancel_requested=0",
-                    (ts, ts, item["id"]),
-                )
-                if getattr(cur, "rowcount", 1):
-                    kind = "agent.cancel_requested" if item["parent_run_id"] else "run.cancel_requested"
-                    chat_tx.event(conn, user_id, kind, item["thread_id"], _cancel_event_payload(item))
+            _flag_cancel(conn, user_id, doomed, 1, ts)
     return ids
 
 

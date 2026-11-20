@@ -50,14 +50,23 @@ _THREAD_RUNNING_SQL = (
     "OR EXISTS (SELECT 1 FROM command_jobs j "
     "WHERE j.thread_id=t.id AND j.background=1 AND j.status IN ('running','cancelling')))"
 )
-_THREAD_LIST_COLS = (
+# Without "running": list_threads fills it from _THREAD_RUNNING_IDS_SQL, one
+# query per list instead of two dependent subqueries per row.
+_THREAD_LIST_BASE_COLS = (
     "t.id, t.public_id, t.title, t.model, t.archived, t.created_at, t.updated_at, t.revision, "
     "t.kind, t.host_id, t.project_id, t.schedule_id, t.bypass_permissions, t.auto_permissions, "
     "t.pinned, t.pin_order, t.unread, "
     "h.alias AS host_alias, p.name AS project_name, "
     "p.color AS project_color, p.logo_rev AS project_logo_rev, p.archived AS project_archived, t.archived_at, "
-    "s.name AS schedule_name, "
-    f"{_THREAD_RUNNING_SQL} AS running"
+    "s.name AS schedule_name"
+)
+_THREAD_LIST_COLS = f"{_THREAD_LIST_BASE_COLS}, {_THREAD_RUNNING_SQL} AS running"
+# A run or job belongs to its thread's owner, so the user's active rows are
+# exactly the ones the per-row EXISTS checks would find.
+_THREAD_RUNNING_IDS_SQL = (
+    "SELECT DISTINCT thread_id FROM chat_runs WHERE user_id=? AND status IN ('queued','running') "
+    "UNION SELECT DISTINCT thread_id FROM command_jobs "
+    "WHERE user_id=? AND background=1 AND status IN ('running','cancelling')"
 )
 def _alloc_public_id(conn) -> str:
     for _ in range(12):
@@ -387,7 +396,7 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
 def list_threads(user_id: int, *, archived: bool | None = False) -> list[dict]:
     if archived is None:
         rows = db.fetchall(
-            f"""SELECT {_THREAD_LIST_COLS}
+            f"""SELECT {_THREAD_LIST_BASE_COLS}
                FROM chat_threads t
                LEFT JOIN user_hosts h ON h.id=t.host_id
                LEFT JOIN user_projects p ON p.id=t.project_id
@@ -397,7 +406,7 @@ def list_threads(user_id: int, *, archived: bool | None = False) -> list[dict]:
         )
     else:
         rows = db.fetchall(
-            f"""SELECT {_THREAD_LIST_COLS}
+            f"""SELECT {_THREAD_LIST_BASE_COLS}
                FROM chat_threads t
                LEFT JOIN user_hosts h ON h.id=t.host_id
                LEFT JOIN user_projects p ON p.id=t.project_id
@@ -405,7 +414,14 @@ def list_threads(user_id: int, *, archived: bool | None = False) -> list[dict]:
                WHERE t.user_id=? AND t.archived=? ORDER BY t.updated_at DESC, t.id DESC""",
             (user_id, 1 if archived else 0),
         )
-    return [_view(r) for r in rows]
+    running = {int(r["thread_id"]) for r in db.fetchall(_THREAD_RUNNING_IDS_SQL, (user_id, user_id))
+               if r["thread_id"] is not None} if rows else set()
+    views = []
+    for r in rows:
+        view = _view(r)
+        view["running"] = int(r["id"]) in running
+        views.append(view)
+    return views
 # A search preview reads as prose: markdown syntax, table pipes, tags and ids
 # would otherwise fill the few characters a sidebar row shows.
 _SNIPPET_DROP = (
@@ -418,32 +434,62 @@ _SNIPPET_DROP = (
     (re.compile(r"\|"), " "),
     (re.compile(r"[`*]+"), ""),
 )
+def _message_snippet(msg, needle: str) -> str | None:
+    # Automated turns (background results handed back) are internal markup, not a preview.
+    if not isinstance(msg, dict) or msg.get("auto"):
+        return None
+    text = msg.get("content") or ""
+    for pattern, repl in _SNIPPET_DROP:
+        text = pattern.sub(repl, text)
+    text = " ".join(text.split())
+    idx = text.lower().find(needle)
+    if idx < 0:
+        return None
+    # Cut at spaces so neither edge shows half a word.
+    start = max(0, idx - 42)
+    if start:
+        start = text.find(" ", start, idx) + 1 or start
+    end = idx + len(needle) + 64
+    cut = text.rfind(" ", idx + len(needle), end + 1) if end < len(text) else -1
+    if cut > 0:
+        end = cut
+    return ("…" if start else "") + text[start:end]
 def _snippet(raw: str, needle: str) -> str:
     try:
         msgs = json.loads(raw or "[]")
     except Exception:
         return ""
     for msg in msgs:
-        # Automated turns (background results handed back) are internal markup, not a preview.
-        if not isinstance(msg, dict) or msg.get("auto"):
-            continue
-        text = msg.get("content") or ""
-        for pattern, repl in _SNIPPET_DROP:
-            text = pattern.sub(repl, text)
-        text = " ".join(text.split())
-        idx = text.lower().find(needle)
-        if idx < 0:
-            continue
-        # Cut at spaces so neither edge shows half a word.
-        start = max(0, idx - 42)
-        if start:
-            start = text.find(" ", start, idx) + 1 or start
-        end = idx + len(needle) + 64
-        cut = text.rfind(" ", idx + len(needle), end + 1) if end < len(text) else -1
-        if cut > 0:
-            end = cut
-        return ("…" if start else "") + text[start:end]
+        found = _message_snippet(msg, needle)
+        if found is not None:
+            return found
     return ""
+# Search reads this many characters of each hit's transcript; the snippet
+# almost always comes from an early message, so the multi-MB rest is fetched
+# only for the hits whose head does not settle it.
+_SNIPPET_HEAD = 65536
+def _head_snippet(head: str, needle: str) -> str | None:
+    """_snippet from a transcript's first _SNIPPET_HEAD characters: the
+    snippet of the first complete message in it that has one, else None
+    (the head decides nothing; read the whole transcript)."""
+    decoder = json.JSONDecoder()
+    skip = json.decoder.WHITESPACE.match
+    pos = skip(head, 0).end()
+    if not head.startswith("[", pos):
+        return None
+    pos = skip(head, pos + 1).end()
+    while True:
+        try:
+            msg, pos = decoder.raw_decode(head, pos)
+        except ValueError:
+            return None
+        found = _message_snippet(msg, needle)
+        if found is not None:
+            return found
+        pos = skip(head, pos).end()
+        if not head.startswith(",", pos):
+            return None
+        pos = skip(head, pos + 1).end()
 # Transcript search is a leading-wildcard LIKE over multi-MB blobs: it cannot
 # use an index, so it only scans the newest window of threads. Title, project
 # and host matches stay unbounded (small columns).
@@ -456,7 +502,7 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
         return []
     like = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
     rows = db.fetchall(
-        f"""SELECT {_THREAD_LIST_COLS}, t.messages
+        f"""SELECT {_THREAD_LIST_COLS}, SUBSTRING(t.messages, 1, {_SNIPPET_HEAD + 1}) AS messages_head
            FROM chat_threads t
            LEFT JOIN user_hosts h ON h.id=t.host_id
            LEFT JOIN user_projects p ON p.id=t.project_id
@@ -473,10 +519,20 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
          user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, like),
     )
     lower = needle.lower()
+    snippets = {}
+    for row in rows:
+        head = row["messages_head"] or ""
+        # A head no longer than _SNIPPET_HEAD is the whole transcript.
+        snippets[row["id"]] = _snippet(head, lower) if len(head) <= _SNIPPET_HEAD else _head_snippet(head, lower)
+    rest = [pk for pk, snippet in snippets.items() if snippet is None]
+    if rest:
+        for row in db.fetchall(f"SELECT id, messages FROM chat_threads WHERE user_id=? AND id IN ({','.join('?' for _ in rest)})",
+                               (user_id, *rest)):
+            snippets[row["id"]] = _snippet(row["messages"], lower)
     out = []
     for row in rows:
         view = _view(row)
-        view["snippet"] = _snippet(row["messages"], lower)
+        view["snippet"] = snippets.get(row["id"]) or ""
         out.append(view)
     return out
 def get_thread(user_id: int, thread_id, *, observed_cursor: int | None = None, observed_thread_cursor: int | None = None,
@@ -605,8 +661,7 @@ def create_thread(
             conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
         if proj is not None and int(proj["archived"] or 0):
             hosts.projects_changed(conn, user_id)
-        store.thread_event(conn, user_id, tid)
-        result = store.thread_view(conn, user_id, tid)
+        result = store.publish_thread_view(conn, user_id, tid)
         store.remember(conn, user_id, command_id, fingerprint, result)
         return result
 def update_thread(
@@ -679,14 +734,14 @@ def update_thread(
             permissions_mod.set_auto(user_id, pk, bool(auto_permissions), conn=conn)
         # The rows as stored: a trace the page sent clipped keeps the server's child_id.
         doomed = store.purge_orphan_subagents(conn, user_id, pk, saved) if messages is not None else []
-        store.thread_event(conn, user_id, pk)
         if messages is not None:
-            result = store.thread_view(conn, user_id, pk)
+            result = store.publish_thread_view(conn, user_id, pk)
             store.remember(conn, user_id, command_id, fingerprint, result)
         else:
             # A save that sent no transcript gets none back: the page keeps
             # the list row and settings, and a full view is megabytes.
             result = _saved_view(conn, user_id, pk)
+            store.thread_event(conn, user_id, pk)
             # The receipt remember() keeps for a full view, so a retry is
             # answered with the thread as it is now.
             store.remember(conn, user_id, command_id, fingerprint, {chat_tx._VIEW_RECEIPT: result["id"]})
@@ -757,7 +812,7 @@ def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
         # cursor (finalizers hold their thread row and wait for the cursor).
         # Ascending ids so two reorders lock the rows in one order.
         for pk, index in sorted((pk, index) for index, pk in enumerate(pks)):
-            chat_tx.lock_thread(conn, pk, user_id)
+            chat_tx.lock_thread_id(conn, pk, user_id)
             conn.execute(
                 "UPDATE chat_threads SET pin_order=? WHERE id=? AND user_id=? AND pinned=1",
                 (index, pk, user_id),
@@ -1021,7 +1076,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
             if expected_revision != int(row["revision"]):
                 return False
         public = str(row["public_id"]) if "public_id" in row.keys() and row["public_id"] else public_id_for(pk, conn)
-        active = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')", (pk, user_id)).fetchall()
+        active = conn.execute("SELECT id, message_id, status, parent_run_id FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')", (pk, user_id)).fetchall()
         # After the chat_runs read and before the cancel events: run, thread,
         # then the event cursor, the order finalizers and thread writers use.
         # Deleting the row after publishing took the thread after the cursor.
@@ -1030,7 +1085,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
                 _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
             except ChatValidationError:
                 return False
-        elif chat_tx.lock_thread(conn, pk, user_id) is None:
+        elif chat_tx.lock_thread_id(conn, pk, user_id) is None:
             return False
         if active and not cancel_active:
             return False
@@ -1290,8 +1345,7 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
             )
         for link in conn.execute("SELECT artifact_id FROM artifact_threads WHERE thread_id=?", (pk,)).fetchall():
             conn.execute("INSERT OR IGNORE INTO artifact_threads(artifact_id, thread_id) VALUES (?,?)", (link["artifact_id"], tid))
-        store.thread_event(conn, user_id, tid)
-        result = store.thread_view(conn, user_id, tid)
+        result = store.publish_thread_view(conn, user_id, tid)
         store.remember(conn, user_id, command_id, fingerprint, result)
         return result
 # The old name; the dashboard menu now says Fork.
@@ -1478,8 +1532,7 @@ def promote_working_session(user_id: int, thread_id, *, host_id=None, cwd: str =
             agent["bound_cwd"] = proj["remote_path"]
             req["agent"] = agent
             conn.execute("UPDATE chat_runs SET request=? WHERE id=?", (store.dumps(req), run["id"]))
-        store.thread_event(conn, user_id, pk)
-        return store.thread_view(conn, user_id, pk)
+        return store.publish_thread_view(conn, user_id, pk)
 def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expected_revision=None, command_id=None) -> dict | None:
     """Make a chat (or another project's session) a session of this project.
     Messages and notes stay; the next turn runs in the project's folder.
@@ -1526,7 +1579,6 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
             hosts.set_project_archived(conn, user_id, pid, False)
         # Both projects' session counts changed.
         hosts.projects_changed(conn, user_id)
-        store.thread_event(conn, user_id, pk)
-        result = store.thread_view(conn, user_id, pk)
+        result = store.publish_thread_view(conn, user_id, pk)
         store.remember(conn, user_id, command_id, fingerprint, result)
     return result

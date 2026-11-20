@@ -446,7 +446,7 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
         conn.execute("DELETE FROM api_keys WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM provider_usage WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM usage_events WHERE user_id=?", (user_id,))
-        conn.execute("DELETE FROM usage_hourly WHERE user_id=?", (user_id,))
+        conn.execute("DELETE FROM usage_rollup_hourly WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     try:
         from . import vault
