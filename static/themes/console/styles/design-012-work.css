@@ -185,6 +185,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_code"]:is(.is-done, .is-warning) > .chat-step-main .chat-console-hang:not(.is-error) > .chat-console-hang-body > .chat-console-result-text {
   color: color-mix(in srgb, var(--mist) 58%, var(--ink));
 }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecount { color: var(--mist); }
 /* An opened call in the tree is not the row opening its own body: the └ line stays. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-expanded:has(> .chat-console-hang-body > .chat-console-full > .chat-console-codetree) > .chat-console-hang-body > .chat-console-result-text { display: block; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main { display: block; min-width: 0; }

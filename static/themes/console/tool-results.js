@@ -292,7 +292,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : ", no calls ran"}`)
       : interrupted ? `Interrupted, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
-      : total ? `<b>${total}</b> ${noun(total)}: ${what}` : "No calls";
+      : total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
       const tip = title ? ` title="${deps.escapeHtml(title)}"` : "";
