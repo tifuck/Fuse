@@ -1,5 +1,5 @@
 """Rollup invariant: every rollup (credentials, api_keys, provider_usage,
-usage_hourly) equals the sum of its usage_events, whatever happens to prices
+usage_rollup_hourly) equals the sum of its usage_events, whatever happens to prices
 and accounts afterwards, including writes that race each other.
 """
 import threading
@@ -37,8 +37,8 @@ def test_reprice_up_down_and_price_delete_move_every_rollup_with_its_events(fres
     # Only the member's two events went through the API key.
     assert cost_sums() == {"events": 3 * PER_EVENT, "hourly": 3 * PER_EVENT, "credentials": 3 * PER_EVENT,
                            "api_keys": 2 * PER_EVENT, "providers": 3 * PER_EVENT}
-    hourly = db.fetchall("SELECT hour, cost_micros FROM usage_hourly WHERE model='glm-x' ORDER BY hour, user_id")
-    assert [(row["hour"], row["cost_micros"]) for row in hourly] == [
+    hourly = db.fetchall("SELECT hour, cost FROM usage_rollup_hourly WHERE model='glm-x' ORDER BY hour, user_id")
+    assert [(row["hour"], row["cost"]) for row in hourly] == [
         ("2026-11-10T09:00:00Z", PER_EVENT), ("2026-11-10T09:00:00Z", PER_EVENT), ("2026-11-10T10:00:00Z", PER_EVENT)]
 
     db.save_model_price("zai", "glm-x", 3_000_000, None, 6_000_000, None)
@@ -75,8 +75,8 @@ def test_reprice_pages_history_by_id_window(fresh_db, monkeypatch):
     db.save_model_price("zai", "glm-x", 1_000_000, None, 2_000_000, None)
 
     assert rollup_drift() == {}
-    assert db.fetchone("SELECT SUM(cost_micros) AS c FROM usage_hourly WHERE model='glm-x'")["c"] == 4 * PER_EVENT
-    assert db.fetchone("SELECT SUM(cost_micros) AS c FROM usage_hourly WHERE model='glm-y'")["c"] == 0
+    assert db.fetchone("SELECT SUM(cost) AS c FROM usage_rollup_hourly WHERE model='glm-x'")["c"] == 4 * PER_EVENT
+    assert db.fetchone("SELECT SUM(cost) AS c FROM usage_rollup_hourly WHERE model='glm-y'")["c"] == 0
     db.delete_model_price("zai", "glm-x")
     assert rollup_drift() == {} and set(cost_sums().values()) == {0}
 
@@ -103,7 +103,7 @@ def test_deleting_a_user_takes_their_events_out_of_shared_credential_rollups(fre
     row = db.fetchone("SELECT requests, total_tokens, cost_micros FROM credentials WHERE id=?", (cred,))
     assert (row["requests"], row["total_tokens"], row["cost_micros"]) == (1, 1400, PER_EVENT)
     assert db.fetchone("SELECT COUNT(*) AS n FROM api_keys WHERE id=?", (key,))["n"] == 0
-    assert db.fetchone("SELECT COUNT(*) AS n FROM usage_hourly WHERE user_id=?", (member,))["n"] == 0
+    assert db.fetchone("SELECT COUNT(*) AS n FROM usage_rollup_hourly WHERE user_id=?", (member,))["n"] == 0
 
 
 def test_deleting_a_user_counts_an_event_recorded_after_its_snapshot(fresh_db, monkeypatch):

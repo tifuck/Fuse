@@ -1,5 +1,5 @@
--- Hourly usage rollup for /usage.json, and the redundant usage_hourly index.
--- Additive except the last statement (DROP INDEX).
+-- Hourly usage rollup for /usage.json; retires usage_hourly.
+-- Additive except the last statement (DROP TABLE usage_hourly).
 --
 -- usage_rollup_hourly: per UTC hour, user, API key (0: Fuse itself), provider
 -- and model ('' is stored as 'Unknown'), every sum the usage page shows
@@ -20,12 +20,19 @@
 -- apply it again right after that restart. scripts/rebuild_usage_rollups.py
 -- reports (and with --apply rebuilds) any drift later.
 --
--- usage_hourly_user_hour is a prefix of usage_hourly's primary key.
+-- usage_hourly: the old hourly rollup (per source, no API key, provider,
+-- status or pricing counts). Nothing reads it and record_usage no longer
+-- writes it; usage_rollup_hourly replaces it. Code before this migration
+-- still writes it, so drop it only once the new code runs.
 --
--- Apply as root, fuse_dev first, then fuse_live as its own reviewed step
--- (before promoting the code that reads it, and once more after the restart):
---   mysql fuse_dev  < scripts/sql/2026-11-20-usage-rollups.sql
+-- Apply as root, fuse_dev first, then fuse_live as its own reviewed step, in
+-- two runs: the new code writes usage_rollup_hourly (it must exist before the
+-- restart) and the old code writes usage_hourly (it must exist until then).
+-- Before restarting on the new code, everything but the DROP:
+--   grep -v '^DROP TABLE' scripts/sql/2026-11-20-usage-rollups.sql | mysql fuse_live
+-- Right after the restart, the whole file (refills the rollup, then drops):
 --   mysql fuse_live < scripts/sql/2026-11-20-usage-rollups.sql
+-- (fuse_dev the same way, with fuse_dev in place of fuse_live.)
 CREATE TABLE IF NOT EXISTS usage_rollup_hourly (
   user_id BIGINT(20) NOT NULL,
   hour CHAR(20) NOT NULL,
@@ -99,4 +106,4 @@ ON DUPLICATE KEY UPDATE
   estimated_cost = VALUES(estimated_cost), priced = VALUES(priced), priced_tokens = VALUES(priced_tokens),
   unpriced_events = VALUES(unpriced_events), first_at = VALUES(first_at), last_at = VALUES(last_at);
 
-ALTER TABLE usage_hourly DROP INDEX IF EXISTS usage_hourly_user_hour;
+DROP TABLE IF EXISTS usage_hourly;

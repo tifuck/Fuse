@@ -5,7 +5,7 @@ Usage: python -m scripts.rebuild_usage_rollups [--apply]
 Run from the tree whose schema you mean (/root/fuse is fuse_live, /root/fuse-dev
 is fuse_dev). Without --apply it only reports how many rollup rows disagree
 with their events. --apply rewrites credentials, api_keys, provider_usage and
-usage_hourly and usage_rollup_hourly in one transaction; stop the service first, since every request
+usage_rollup_hourly in one transaction; stop the service first, since every request
 writes the same rows (--apply refuses while another connection uses the
 schema: rows a live request writes during the rebuild would be lost).
 Credential week counters (week_tokens/week_requests) are left alone: they restart each ISO week. Uses one connection, not a pool.
@@ -43,8 +43,6 @@ KEY_AGG = f"SELECT e.api_key_id AS id, {_sums(KEY_COLS)} FROM usage_events e WHE
 PROVIDER_AGG = (f"SELECT e.user_id, {PROVIDER} AS provider, {_sums(KEY_COLS)} "
                 f"FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id GROUP BY e.user_id, {PROVIDER}")
 HOUR = "CONCAT(LEFT(e.created_at, 13), ':00:00Z')"
-HOURLY_AGG = (f"SELECT e.user_id, {HOUR} AS hour, COALESCE(e.source_id, 0) AS source_id, COALESCE(e.model, '') AS model, "
-              f"{_sums(CRED_COLS)} FROM usage_events e GROUP BY 1, 2, 3, 4")
 TOKENS = "CASE WHEN e.total_tokens > 0 THEN e.total_tokens ELSE e.prompt_tokens + e.output_tokens END"
 PRICED = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known = 1)"
 # usage_rollup_hourly columns as sums over their events (stats._EVENT_SUMS).
@@ -82,11 +80,6 @@ REPORT = {
                        f"ON a.user_id=p.user_id AND a.provider=p.provider WHERE {_differs(KEY_COLS, 'p', 'a')}"),
     "provider_usage missing": (f"SELECT COUNT(*) FROM ({PROVIDER_AGG}) a WHERE NOT EXISTS "
                                "(SELECT 1 FROM provider_usage p WHERE p.user_id=a.user_id AND p.provider=a.provider)"),
-    "usage_hourly": (f"SELECT COUNT(*) FROM usage_hourly h LEFT JOIN ({HOURLY_AGG}) a ON a.user_id=h.user_id AND a.hour=h.hour "
-                     f"AND a.source_id=h.source_id AND a.model=h.model WHERE {_differs(CRED_COLS, 'h', 'a')}"),
-    "usage_hourly missing": (f"SELECT COUNT(*) FROM ({HOURLY_AGG}) a WHERE NOT EXISTS "
-                             "(SELECT 1 FROM usage_hourly h WHERE h.user_id=a.user_id AND h.hour=a.hour "
-                             "AND h.source_id=a.source_id AND h.model=a.model)"),
     "usage_rollup_hourly": (f"SELECT COUNT(*) FROM usage_rollup_hourly r LEFT JOIN ({ROLLUP_AGG}) a ON {ROLLUP_ON} "
                             "WHERE a.user_id IS NULL OR " + " OR ".join(f"r.{col} <> a.{col}" for col in ROLLUP_COLS)),
     "usage_rollup_hourly missing": (f"SELECT COUNT(*) FROM ({ROLLUP_AGG}) a WHERE NOT EXISTS "
@@ -110,11 +103,6 @@ def apply(conn):
         "WHERE NOT EXISTS (SELECT 1 FROM provider_usage p WHERE p.user_id=a.user_id AND p.provider=a.provider)",
         (db.now(),),
     )
-    cols = ", ".join(_all(CRED_COLS))
-    conn.native("DELETE FROM usage_hourly")
-    conn.native(f"INSERT INTO usage_hourly (user_id, hour, source_id, model, {cols}) "
-                f"SELECT a.user_id, a.hour, a.source_id, a.model, {', '.join('a.' + col for col in _all(CRED_COLS))} "
-                f"FROM ({HOURLY_AGG}) a")
     conn.native("DELETE FROM usage_rollup_hourly")
     conn.native(f"INSERT INTO usage_rollup_hourly ({', '.join(ROLLUP_KEY + ROLLUP_COLS)}) "
                 f"SELECT {', '.join(ROLLUP_KEY + ROLLUP_COLS)} FROM ({ROLLUP_AGG}) a")

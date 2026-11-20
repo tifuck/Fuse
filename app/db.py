@@ -418,26 +418,6 @@ def record_usage(
             ),
         )
         hour = ts[:13] + ":00:00Z"
-        conn.execute(
-            """INSERT INTO usage_hourly
-               (user_id, hour, source_id, model, prompt_tokens, completion_tokens, output_tokens,
-                visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
-                cost_micros, requests)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(user_id, hour, source_id, model) DO UPDATE SET
-                  prompt_tokens=prompt_tokens + MIN(excluded.prompt_tokens, 9223372036854775807 - MAX(prompt_tokens, 0)),
-                   completion_tokens=completion_tokens + MIN(excluded.completion_tokens, 9223372036854775807 - MAX(completion_tokens, 0)),
-                   output_tokens=output_tokens + MIN(excluded.output_tokens, 9223372036854775807 - MAX(output_tokens, 0)),
-                   visible_tokens=visible_tokens + MIN(excluded.visible_tokens, 9223372036854775807 - MAX(visible_tokens, 0)),
-                   reasoning_tokens=reasoning_tokens + MIN(excluded.reasoning_tokens, 9223372036854775807 - MAX(reasoning_tokens, 0)),
-                   cached_tokens=cached_tokens + MIN(excluded.cached_tokens, 9223372036854775807 - MAX(cached_tokens, 0)),
-                   cache_write_tokens=cache_write_tokens + MIN(excluded.cache_write_tokens, 9223372036854775807 - MAX(cache_write_tokens, 0)),
-                   total_tokens=total_tokens + MIN(excluded.total_tokens, 9223372036854775807 - MAX(total_tokens, 0)),
-                   cost_micros=cost_micros + MIN(excluded.cost_micros, 9223372036854775807 - MAX(cost_micros, 0)),
-                   requests=requests + MIN(excluded.requests, 9223372036854775807 - MAX(requests, 0))""",
-            (user_id, hour, source_id or 0, model, pt, ct, output, visible, rt, cached,
-             cache_write, total, effective_cost, request_inc),
-        )
         event = {"total_tokens": total, "prompt_tokens": pt, "output_tokens": output,
                  "reported_cost_micros": reported_cost, "count_request": request_inc}
         ok = request_inc and request_status == "success"
@@ -714,7 +694,7 @@ REPRICE_CHUNK = 250
 _REPRICE_COLUMNS = """id, user_id, api_key_id, credential_id, reported_cost_micros, estimated_cost_micros,
                       pricing_known, count_request, prompt_tokens, completion_tokens, output_tokens,
                       visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
-                      source_id, created_at"""
+                      created_at"""
 
 
 def _priced_events(conn, provider: str, model: str):
@@ -757,7 +737,6 @@ def _reprice_batch(conn, provider, model, rows, price) -> None:
     key_deltas: dict[int, int] = {}
     user_deltas: dict[int, int] = {}
     cred_deltas: dict[int, int] = {}
-    hour_deltas: dict[tuple, int] = {}
     rollup_deltas: dict[tuple, list] = {}
     for row in rows:
         estimate = 0
@@ -784,8 +763,6 @@ def _reprice_batch(conn, provider, model, rows, price) -> None:
             key_deltas[row["api_key_id"]] = key_deltas.get(row["api_key_id"], 0) + delta
         if row["credential_id"]:
             cred_deltas[row["credential_id"]] = cred_deltas.get(row["credential_id"], 0) + delta
-        hour = _hour_key(row)
-        hour_deltas[hour] = hour_deltas.get(hour, 0) + delta
         moved = rollup_deltas.setdefault(_rollup_key(row, provider, model), [0] * len(new) + [row["created_at"]])
         for n, (after, before) in enumerate(zip(new, old)):
             moved[n] += after - before
@@ -798,11 +775,7 @@ def _reprice_batch(conn, provider, model, rows, price) -> None:
             (*(value for estimate, event_id in chunk for value in (event_id, estimate)),
              *(event_id for _, event_id in chunk)),
         )
-    _apply_cost_deltas(conn, provider, model, key_deltas, user_deltas, cred_deltas, hour_deltas, rollup_deltas)
-
-
-def _hour_key(row) -> tuple:
-    return (row["user_id"], str(row["created_at"])[:13] + ":00:00Z", int(row["source_id"] or 0))
+    _apply_cost_deltas(conn, provider, key_deltas, user_deltas, cred_deltas, rollup_deltas)
 
 
 def _rollup_key(row, provider: str, model: str) -> tuple:
@@ -810,10 +783,10 @@ def _rollup_key(row, provider: str, model: str) -> tuple:
             model or "Unknown")
 
 
-def _apply_cost_deltas(conn, provider, model, key_deltas, user_deltas, cred_deltas, hour_deltas, rollup_deltas) -> None:
+def _apply_cost_deltas(conn, provider, key_deltas, user_deltas, cred_deltas, rollup_deltas) -> None:
     """Move every cost rollup by exactly what its events moved. No floor at
     zero: a clamp would silently break rollup == SUM(events) for good.
-    The hourly rollups are upserts so a batch is one multi-row statement; their
+    The hourly rollup is an upsert so a batch is one multi-row statement; its
     rows exist already (record_usage writes them with the event)."""
     conn.executemany(
         "UPDATE api_keys SET cost_micros=cost_micros+? WHERE id=?",
@@ -826,11 +799,6 @@ def _apply_cost_deltas(conn, provider, model, key_deltas, user_deltas, cred_delt
     conn.executemany(
         "UPDATE credentials SET cost_micros=cost_micros+? WHERE id=?",
         [(delta, cred_id) for cred_id, delta in cred_deltas.items() if delta],
-    )
-    conn.executemany(
-        """INSERT INTO usage_hourly (user_id, hour, source_id, model, cost_micros) VALUES (?,?,?,?,?)
-           ON CONFLICT(user_id, hour, source_id, model) DO UPDATE SET cost_micros=cost_micros+excluded.cost_micros""",
-        [(user_id, hour, source_id, model, delta) for (user_id, hour, source_id), delta in hour_deltas.items() if delta],
     )
     conn.executemany(
         f"""INSERT INTO usage_rollup_hourly ({", ".join(_ROLLUP_KEY + _ROLLUP_PRICE)}, first_at, last_at)
