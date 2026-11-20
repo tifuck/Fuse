@@ -41,6 +41,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   line-height: 1.7;
   overflow-wrap: break-word;
   & p { margin: 0 0 0.9em; }
+  /* A line that introduces a list stays close to it. */
+  & p:has(+ :is(ul, ol)) { margin-bottom: 0.5em; }
   & strong { color: var(--dk-text); font-weight: 600; }
 
   /* Headings: clear steps, more space above a section than below. */
@@ -61,7 +63,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   & a.chat-md-artifact::before { content: ""; flex: none; width: 0.95em; height: 0.95em; background: currentColor; -webkit-mask: var(--md-i-doc) center / contain no-repeat; mask: var(--md-i-doc) center / contain no-repeat; }
 
   /* Lists: one marker shape at every depth, dimmed. */
-  & :is(ul, ol) { padding-left: 1.4em; }
+  & :is(ul, ol) { margin: 0 0 0.9em; padding-left: 1.4em; }
+  & li :is(ul, ol) { margin: 0.3em 0 0; }
   & li { margin: 0.3em 0; padding-left: 0.15em; }
   & ul { list-style: disc; }
   & li::marker { color: color-mix(in srgb, var(--dk-mute) 75%, transparent); }
@@ -83,7 +86,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   & .chat-md-table tbody tr:hover td { background: color-mix(in srgb, var(--dk-text) 3%, transparent); }
 
   /* Block quotes: a thicker soft bar, brighter text. */
-  & blockquote:not(.chat-md-alert) { padding: 0.1em 0 0.1em 1em; border-left: 3px solid color-mix(in srgb, var(--dk-text) 20%, transparent); color: color-mix(in srgb, var(--dk-text) 80%, transparent); }
+  & blockquote:not(.chat-md-alert) { margin: 0 0 0.9em; padding: 0.1em 0 0.1em 1em; border-left: 3px solid color-mix(in srgb, var(--dk-text) 20%, transparent); color: color-mix(in srgb, var(--dk-text) 80%, transparent); }
 
   /* Alerts: a tinted block, icon and label on the first line of text. */
   & .chat-md-alert { --ac: var(--md-note); --ai: var(--md-i-note); margin: 0.6em 0; padding: 0.6em 0.9em; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--ac) 10%, transparent); color: var(--dk-text); }

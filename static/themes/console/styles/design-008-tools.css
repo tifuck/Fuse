@@ -123,7 +123,27 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(p, ul, ol) {
-  margin: 0.28em 0;
+  margin: 0 0 0.55em;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md p:has(+ :is(ul, ol)) {
+  margin-bottom: 0.3em;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md li :is(ul, ol) {
+  margin: 0.1em 0 0;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md :is(h1, h2, h3, h4) {
+  margin-bottom: 0.35em;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md blockquote {
+  margin: 0 0 0.55em;
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md > :last-child {
