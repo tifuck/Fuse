@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import time
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import cursor as cursor_mod
-from ..deps import _cursor_pending, _pool_flash, logger, require_user
-from .context import _cursor_pending_for
+from ...providers import logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
 
 router = APIRouter()
 
@@ -26,7 +27,7 @@ async def cursor_start(request: Request):
         return RedirectResponse("/sources#pool-cursor", status_code=303)
     data = cursor_mod.start_login()
     data["_started"] = time.time()
-    _cursor_pending[user["id"]] = data
+    logins.put(user["id"], "cursor", data)
     return RedirectResponse("/sources#pool-cursor", status_code=303)
 
 
@@ -36,7 +37,7 @@ async def cursor_poll(request: Request):
     user, redir = require_user(request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
-    pending = _cursor_pending_for(user["id"])
+    pending = logins.get(user["id"], "cursor", clamp=True)
     if not pending:
         return JSONResponse({"error": "No Cursor sign-in in progress."}, status_code=400)
     interval = pending.get("interval", 3)
@@ -46,14 +47,13 @@ async def cursor_poll(request: Request):
         logger.warning("Cursor sign-in poll failed transiently", exc_info=True)
         return JSONResponse({"pending": True, "error": "Cursor could not be reached; retrying.", "retry_after": interval}, status_code=502)
     if data.get("error"):
-        _cursor_pending.pop(user["id"], None)
+        logins.drop(user["id"], "cursor")
         return JSONResponse({"error": "Cursor sign-in was denied or expired. Start again."}, status_code=400)
     if data.get("pending"):
         return JSONResponse({"pending": True, "retry_after": interval})
     # Cancelled or restarted while Cursor answered: do not donate it.
-    if _cursor_pending.get(user["id"]) is not pending:
+    if not logins.claim(user["id"], "cursor", pending):
         return JSONResponse({"error": "That Cursor sign-in was cancelled or replaced."}, status_code=409)
-    _cursor_pending.pop(user["id"], None)
     sid = cursor_mod.ensure_cursor_source()
     try:
         cred_id = cursor_mod.store_tokens(sid, data["access_token"], data["refresh_token"], user["id"])
@@ -76,7 +76,7 @@ async def cursor_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _cursor_pending.pop(user["id"], None)
+    logins.drop(user["id"], "cursor")
     return RedirectResponse("/sources#pool-cursor", status_code=303)
 
 
@@ -94,7 +94,7 @@ async def cursor_add(request: Request, api_key: str = Form(""), label: str = For
     if err or not cred_id:
         _pool_flash[user["id"]] = ("err", err or "Could not add that key.", "cursor")
         return RedirectResponse("/sources#pool-cursor", status_code=303)
-    _cursor_pending.pop(user["id"], None)
+    logins.drop(user["id"], "cursor")
     invalidate_model_cache("cursor")
     _pool_flash[user["id"]] = ("ok", "Cursor account added to the pool.", "cursor")
     return RedirectResponse("/sources#pool-cursor", status_code=303)
@@ -103,16 +103,4 @@ async def cursor_add(request: Request, api_key: str = Form(""), label: str = For
 @router.post("/sources/cursor/{cred_id}/revoke")
 @router.post("/pool/cursor/{cred_id}/revoke")
 async def cursor_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = cursor_mod.ensure_cursor_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    cursor_mod.disable_credential(cred_id)
-    invalidate_model_cache("cursor")
-    _pool_flash[user["id"]] = ("ok", "Cursor account removed.", "cursor")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "cursor", cred_id, auth=require_user)

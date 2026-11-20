@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _cursor_pending_for, _nanogpt_pending_for, _pool_card
+from .context import _nanogpt_pending_for, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -394,7 +394,7 @@ def user_sources(request: Request):
     _sort_mine_first(cursor_visible)
     cursor_pool = stats.cursor_pool_meter(cursor_routable, owner_id=user["id"])
     _fuse_fill(cursor_visible)
-    cursor_pending = _cursor_pending_for(user["id"])
+    cursor_pending = logins.get(user["id"], "cursor", clamp=True)
 
     nanogpt_sid = nanogpt_mod.ensure_nanogpt_source()
     nanogpt_rows = db.fetchall(

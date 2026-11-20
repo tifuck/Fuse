@@ -13,7 +13,7 @@ from ...sources import kimi as kimi_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
 from ...providers.auth_flows import oauth_tokens as _oauth_tokens, terminal_error as _terminal_oauth_error  # noqa: F401
-from ..deps import _cursor_pending, _nanogpt_pending, _PENDING_TTL
+from ..deps import _nanogpt_pending, _PENDING_TTL
 
 def _source_cfg(row) -> dict:
     try:
@@ -21,17 +21,6 @@ def _source_cfg(row) -> dict:
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
-
-
-def _cursor_pending_for(uid: int):
-    data = _cursor_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _cursor_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
 
 
 def _nanogpt_pending_for(uid: int):
