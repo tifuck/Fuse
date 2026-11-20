@@ -53,9 +53,20 @@ class ChatResult:
 
 
 class Source(Protocol):
+    """What app.sources builds from a sources row: Class(row, cfg, creds).
+
+    chat() takes the keyword arguments of its spec's call_style
+    (app/providers/spec.py), which api._run_chat passes:
+      plain:   chat(body)
+      session: chat(body, session_id=)
+      pool:    chat(body, session_id=, user_id=[, affinity_id=])
+      user:    chat(body, user_id=, session_id=)
+    models() takes user_id= for "user" sources (per-account catalogs) and
+    nothing otherwise."""
+
     type_id: str
     source_id: int
     name: str
 
-    async def models(self) -> list[str]: ...
-    async def chat(self, body: dict) -> ChatResult: ...
+    async def models(self, **kwargs) -> list[str]: ...
+    async def chat(self, body: dict, **kwargs) -> ChatResult: ...

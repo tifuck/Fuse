@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import accounts, db, speech
 from ...crypto import encrypt
+from ...providers import registry
 from ...security import allowed_base_url, limiter
 from ...sources import TYPES, invalidate_model_cache
 from ...sources import openrouter as openrouter_mod
@@ -20,7 +21,7 @@ from .context import _source_cfg
 
 router = APIRouter()
 
-_BUILTINS = {"grok", "llama", "ollama", "zai", "chatgpt", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless", "openrouter", "explabs"}
+_BUILTINS = {spec.id for spec in registry.specs() if spec.builtin}
 
 
 def _add_key_lines(conn, source_id: int, text: str) -> int:

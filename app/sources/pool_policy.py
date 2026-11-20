@@ -43,28 +43,18 @@ import time
 
 from .. import accounts, db
 from ..crypto import DecryptionError
+from ..providers import registry
 
-POOL_KINDS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless")
+POOL_KINDS = registry.pool_kinds()
 POOL_KIND_SET = frozenset(POOL_KINDS)
-POOL_LABELS = {
-    "grok": "x.ai",
-    "chatgpt": "OpenAI",
-    "zai": "Z.AI",
-    "devin": "Devin",
-    "kimi": "Kimi",
-    "mimo": "Xiaomi",
-    "claude": "Claude",
-    "cursor": "Cursor",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-}
+POOL_LABELS = {spec.id: spec.pool_label or spec.label for spec in registry.pools()}
 
 SHARE_LEVELS = ("everyone", "contributors", "private")
 USE_MODES = ("pool", "mine")
 DEFAULT_PREF = {"share": "everyone", "use": "pool"}
 # Pools whose keys bill their owner per token start private: nobody else is
 # routed onto them until the owner turns Sharing on.
-DEFAULT_SHARE = {"refuseless": "private"}
+DEFAULT_SHARE = {spec.id: spec.default_share for spec in registry.pools() if spec.default_share != "everyone"}
 
 
 def _source_cfg(kind: str) -> dict:
@@ -78,92 +68,16 @@ def _source_cfg(kind: str) -> dict:
 
 
 def source_id(kind: str) -> int:
-    if kind == "grok":
-        from .grok import ensure_grok_source
-
-        return ensure_grok_source()
-    if kind == "chatgpt":
-        from .chatgpt import ensure_chatgpt_source
-
-        return ensure_chatgpt_source()
-    if kind == "zai":
-        from .zai import ensure_zai_source
-
-        return ensure_zai_source()
-    if kind == "devin":
-        from .devin import ensure_devin_source
-
-        return ensure_devin_source()
-    if kind == "kimi":
-        from .kimi import ensure_kimi_source
-
-        return ensure_kimi_source()
-    if kind == "mimo":
-        from .mimo import ensure_mimo_source
-
-        return ensure_mimo_source()
-    if kind == "claude":
-        from .claude import ensure_claude_source
-
-        return ensure_claude_source()
-    if kind == "cursor":
-        from .cursor import ensure_cursor_source
-
-        return ensure_cursor_source()
-    if kind == "nanogpt":
-        from .nanogpt import ensure_nanogpt_source
-
-        return ensure_nanogpt_source()
-    if kind == "refuseless":
-        from .refuseless import ensure_refuseless_source
-
-        return ensure_refuseless_source()
-    raise ValueError(f"unknown pool kind {kind!r}")
+    if kind not in POOL_KIND_SET:
+        raise ValueError(f"unknown pool kind {kind!r}")
+    return registry.get(kind).ensure()
 
 
 def own_access(kind: str, user_id: int) -> dict:
     """The provider's verdict on this user's own linked accounts alone."""
-    if kind == "grok":
-        from .grok import grok_own_access
-
-        return grok_own_access(user_id)
-    if kind == "chatgpt":
-        from .chatgpt import chatgpt_own_access
-
-        return chatgpt_own_access(user_id)
-    if kind == "zai":
-        from .zai import zai_own_access
-
-        return zai_own_access(user_id)
-    if kind == "devin":
-        from .devin import devin_own_access
-
-        return devin_own_access(user_id)
-    if kind == "kimi":
-        from .kimi import kimi_own_access
-
-        return kimi_own_access(user_id)
-    if kind == "mimo":
-        from .mimo import mimo_own_access
-
-        return mimo_own_access(user_id)
-    if kind == "claude":
-        from .claude import claude_own_access
-
-        return claude_own_access(user_id)
-    if kind == "cursor":
-        from .cursor import cursor_own_access
-
-        return cursor_own_access(user_id)
-    if kind == "nanogpt":
-        from .nanogpt import nanogpt_own_access
-
-        return nanogpt_own_access(user_id)
-    if kind == "refuseless":
-        from .refuseless import refuseless_own_access
-
-        return refuseless_own_access(user_id)
-    raise ValueError(f"unknown pool kind {kind!r}")
+    if kind not in POOL_KIND_SET:
+        raise ValueError(f"unknown pool kind {kind!r}")
+    return registry.get(kind).own_access(user_id)
 
 
 def admin_policy(kind: str) -> dict:
@@ -198,7 +112,7 @@ def set_admin_policy(kind: str, *, pool_shared: bool, open_access: bool) -> None
 # Pools that hold an account out for HOLD_HOURS when its plan usage rises with
 # no Fuse traffic (its owner is using it elsewhere). The hold withholds the
 # account from other users only; pool_pick never applies it to the owner.
-GUARD_KINDS = ("grok", "zai", "kimi", "mimo", "claude", "cursor", "nanogpt")
+GUARD_KINDS = tuple(spec.id for spec in registry.pools() if spec.guard)
 
 
 def guard_enabled(kind: str) -> bool:

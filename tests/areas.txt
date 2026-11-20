@@ -102,6 +102,7 @@ app/provider_errors.py           providers
 app/model_caps.py                providers
 app/model_favorites.py           providers
 app/opencode.py                  providers
+app/providers/*                  providers
 app/sources/*                    providers
 
 # auth, security, accounts

@@ -1,0 +1,148 @@
+"""Specs of the providers built into Fuse, in display order.
+
+Adding a provider: write its Source class in app/sources/, add its spec here,
+and run tests/core/providers/test_registry.py. Hard claims are tried in this
+order, then soft claims in this order (see sources.pick).
+"""
+from __future__ import annotations
+
+import importlib
+
+from .spec import ProviderSpec
+
+
+def _m(name: str):
+    return importlib.import_module(f"app.sources.{name}")
+
+
+def _fn(mod: str, attr: str):
+    """Late-bound app.sources.<mod>.<attr>, so the registry imports nothing
+    and a patched function is the one called."""
+    return lambda *args: getattr(_m(mod), attr)(*args)
+
+
+def _model_efforts(mod: str, attr: str = "efforts_for"):
+    return lambda model, user_id: getattr(_m(mod), attr)(model)
+
+
+def _devin_efforts(model, user_id):
+    devin = _m("devin")
+    return devin.efforts_for(model) if model else devin.SEEDED_EFFORTS
+
+
+def _explabs_efforts(model, user_id):
+    explabs = _m("explabs")
+    catalog = explabs.cached_catalog(user_id) or {}
+    record = catalog.get("by_id", {}).get(explabs.upstream_id(model or "")) or {}
+    return tuple(record.get("reasoning_efforts") or [])
+
+
+def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderSpec:
+    return ProviderSpec(
+        id=id, label=label, type_label=type_label, builder=builder, pool=True,
+        ensure=_fn(id, f"ensure_{id}_source"), access=_fn(id, f"{id}_access_state"),
+        own_access=_fn(id, f"{id}_own_access"), call_style="pool", **kw,
+    )
+
+
+BUILTIN: tuple[ProviderSpec, ...] = (
+    _pool(
+        "grok", "x.ai", "Grok pool", "grok:GrokSource", pool_label="x.ai", error_label="Grok",
+        seeds=lambda: _m("grok").GROK_MODELS,
+        # Grok Build documents no reasoning_effort.
+        efforts=lambda model, user_id: () if model == "grok-build-0.1" else ("low", "medium", "high", "xhigh"),
+        claim="soft", claims=lambda model: model.startswith("grok"),
+        connect_copy="Connect a Grok account with an active subscription to use Grok models",
+        guard=True, usage_walk=True,
+    ),
+    ProviderSpec(
+        id="llama", label="llama.cpp", type_label="Local llama.cpp", builder="llama:LlamaSource",
+        error_label="llama.cpp",
+    ),
+    ProviderSpec(
+        id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
+        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session",
+    ),
+    ProviderSpec(
+        id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
+        error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="session",
+    ),
+    _pool(
+        "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",
+        seeds=lambda: _m("chatgpt").CHATGPT_MODELS, efforts=_model_efforts("chatgpt_catalog"),
+        listable=_fn("chatgpt", "listable_models"),
+        # Live-listed slugs count too: a new Codex model (gpt-6.1-sol) must
+        # stay on the pool, not fall through to the user's OpenRouter key.
+        claim="soft", claims=_fn("chatgpt", "is_chatgpt_model"),
+        connect_copy="Connect a ChatGPT account to use ChatGPT models", usage_walk=True,
+    ),
+    _pool(
+        "zai", "Z.AI", "Z.AI pool", "zai:ZaiSource", error_label="Z.AI",
+        seeds=lambda: _m("zai").ZAI_MODELS, efforts=_model_efforts("zai"),
+        claim="soft", claims=lambda model: model in _m("zai").ZAI_MODELS or model.startswith("glm-"),
+        connect_copy="Connect a Z.AI key to use GLM models", guard=True, usage_walk=True,
+    ),
+    _pool(
+        "devin", "Devin", "Devin pool", "devin:DevinSource", error_label="Devin",
+        seeds=lambda: _m("devin").DEVIN_MODELS, efforts=_devin_efforts,
+        # Devin-prefixed ids never leave this pool, including GPT/Astra/Claude
+        # slugs that would otherwise match ChatGPT or look like OpenRouter.
+        claim="hard", claims=_fn("devin", "is_devin_model"), upstream=_fn("devin", "listed_upstream"),
+        connect_copy="Connect a Devin account to use Devin models", usage_walk=True,
+    ),
+    _pool(
+        "kimi", "Kimi", "Kimi pool", "kimi:KimiSource", error_label="Kimi",
+        seeds=lambda: _m("kimi").KIMI_MODELS, efforts=_model_efforts("kimi"),
+        claim="hard", claims=_fn("kimi", "is_kimi_model"),
+        connect_copy="Connect a Kimi membership to use Kimi models", guard=True, usage_walk=True,
+    ),
+    _pool(
+        "mimo", "Xiaomi", "Xiaomi pool", "mimo:MimoSource", error_label="MiMo",
+        seeds=lambda: _m("mimo").MIMO_MODELS, efforts=lambda model, user_id: ("none", "high"),
+        claim="hard", claims=_fn("mimo", "is_mimo_model"),
+        connect_copy="Connect a Xiaomi Token Plan to use MiMo models", guard=True, usage_walk=True,
+    ),
+    _pool(
+        "claude", "Anthropic", "Claude pool", "claude:ClaudeSource", pool_label="Claude", error_label="Claude",
+        seeds=lambda: _m("claude").CLAUDE_MODELS, efforts=_model_efforts("claude"),
+        claim="hard", claims=_fn("claude", "is_claude_model"), upstream=_fn("claude", "upstream_id"),
+        connect_copy="Connect a Claude account to use Claude models", guard=True,
+    ),
+    _pool(
+        "cursor", "Cursor", "Cursor pool", "cursor:CursorSource", error_label="Cursor",
+        seeds=lambda: _m("cursor").CURSOR_MODELS, efforts=_model_efforts("cursor"),
+        listable=_fn("cursor", "listable_models"),
+        claim="hard", claims=_fn("cursor", "is_cursor_model"), upstream=_fn("cursor", "upstream_id"),
+        connect_copy="Connect a Cursor account to use Cursor models", guard=True, usage_walk=True,
+    ),
+    _pool(
+        "nanogpt", "NanoGPT", "NanoGPT pool", "nanogpt:NanoGPTSource", error_label="NanoGPT",
+        efforts=_model_efforts("nanogpt"), listable=_fn("nanogpt", "listable_models"),
+        # Its catalog lists every id; resolve() applies the user's own list.
+        claim="hard", claims=_fn("nanogpt", "is_nanogpt_model"), resolve=_fn("nanogpt", "resolve"), scan=False,
+        connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True,
+    ),
+    _pool(
+        "refuseless", "Refuseless", "Refuseless pool", "refuseless:RefuselessSource", error_label="Refuseless",
+        efforts=_model_efforts("refuseless"),
+        claim="hard", claims=_fn("refuseless", "is_refuseless_model"), resolve=_fn("refuseless", "resolve"),
+        scan=False, connect_copy="Link a Refuseless API key to use Refuseless models",
+        # Its keys bill their owner per token, so a new donor starts private.
+        default_share="private", usage_walk=True,
+    ),
+    # Experiential Labs before OpenRouter: bootstrap creates their rows in this order.
+    ProviderSpec(
+        id="explabs", label="Experiential Labs", type_label="Experiential Labs",
+        builder="explabs:ExperientialLabsSource", error_label="Experiential Labs",
+        ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts,
+        # Private catalogs: nothing shared to warm or scan.
+        warm=False, scan=False, call_style="user",
+    ),
+    ProviderSpec(
+        id="openrouter", label="OpenRouter", type_label="OpenRouter", builder="openrouter:OpenRouterSource",
+        error_label="OpenRouter", ensure=_fn("openrouter", "ensure_openrouter_source"),
+        efforts=_model_efforts("openrouter"),
+        # Lists per account; only its per-account resolve() admits a model.
+        warm=False, scan=False, call_style="user", usage_walk=True,
+    ),
+)
