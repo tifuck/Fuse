@@ -372,6 +372,7 @@ function consoleAutoStepsHtml(msg) {
     const out = [];
     for (let i = 0; i < traces.length; i += 1) {
       const trace = traces[i];
+      if (trace.repeat) continue;
       if (trace.agentReport) {
         out.push(consoleAgentNoticeHtml(trace, "wake-" + (msg.id || "") + "-" + i));
         continue;

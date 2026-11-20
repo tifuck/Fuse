@@ -128,11 +128,15 @@ window.fuseAnnounce = function fuseAnnounce(text, assertive) {
   window.setTimeout(() => { el.textContent = text || ""; }, 50);
 };
 
-// Per-account model list and provider pins: OpenRouter, and NanoGPT through
-// the same JSON contract under its own data-endpoint.
+// Model lists on Sources, one per provider: each row turns one model on or
+// off for this user, a group switch or All on/off sets every model of the
+// group (rows stay editable after), all through data-prefs
+// (/sources/models/<provider>). OpenRouter and NanoGPT add provider pins and
+// privacy switches under their own data-endpoint.
 document.querySelectorAll("[data-or-models]").forEach(function modelListSettings(root) {
-  const scope = root.closest("[data-or-scope]") || document;
+  const scope = root.closest("[data-or-scope]") || root;
   const base = root.dataset.endpoint || "/sources/openrouter";
+  const prefs = root.dataset.prefs;
   const label = root.dataset.label || "OpenRouter";
   const settings = scope.querySelector("[data-or-settings]");
   const tpl = scope.querySelector("[data-or-drawer-tpl]");
@@ -140,7 +144,7 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
   const filter = root.querySelector("[data-or-filter]");
   const count = root.querySelector("[data-or-count]");
   const empty = root.querySelector("[data-or-empty]");
-  const paidNote = root.querySelector("[data-or-paid-note]");
+  const summary = scope.querySelector("[data-ml-summary]");
   const rows = Array.from(list.querySelectorAll("[data-or-row]"));
   let view = "all";
 
@@ -174,29 +178,23 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
         (!needle || text.toLowerCase().includes(needle)) &&
         (view === "all" ||
           (view === "on" && isOn(row)) ||
+          (view === "off" && !isOn(row)) ||
           (view === "pinned" && Number(row.dataset.pinned) > 0) ||
           (view === "free" && row.dataset.free === "1"));
       row.hidden = !match;
       if (match) shown += 1;
     });
     count.textContent = `${on} enabled · ${shown} shown`;
+    if (summary) summary.textContent = `${on} of ${rows.length} on`;
     empty.hidden = shown > 0;
   }
 
-  // clearPaid: "Every paid model" was just switched off, which empties the list.
-  function applyAccount(state, clearPaid) {
-    paidNote.hidden = !state.paid_all;
-    rows.forEach((row) => {
-      const box = row.querySelector("[data-or-model]");
-      const free = row.dataset.free === "1";
-      const on = free ? state.free_models : state.paid_all || (!clearPaid && box.checked);
-      box.disabled = free || state.paid_all;
-      box.checked = on;
-      row.classList.toggle("is-on", on);
-    });
-    refresh();
+  function setRow(row, on) {
+    row.querySelector("[data-or-model]").checked = on;
+    row.classList.toggle("is-on", on);
   }
 
+  // Privacy switches (OpenRouter): account settings, not model choices.
   if (settings) {
     settings.addEventListener("change", async (event) => {
       const box = event.target.closest("[data-or-setting]");
@@ -206,11 +204,8 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
       box.disabled = true;
       try {
         const state = await send("POST", base + "/settings", { [key]: want });
-        settings.querySelectorAll("[data-or-setting]").forEach((el) => {
-          if (el.dataset.orSetting in state) el.checked = Boolean(state[el.dataset.orSetting]);
-        });
-        applyAccount(state, key === "paid_all" && !want);
-        say(key === "paid_all" && !want ? "Paid models are off. Turn on the ones you want." : "Saved");
+        if (key in state) box.checked = Boolean(state[key]);
+        say("Saved");
       } catch (err) {
         box.checked = !want;
         say(err.message, true);
@@ -220,6 +215,44 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
     });
   }
 
+  // A group switch: every model of the group follows it.
+  scope.querySelectorAll("[data-ml-group]").forEach((box) => {
+    box.addEventListener("change", async () => {
+      const group = box.dataset.mlGroup;
+      const want = box.checked;
+      box.disabled = true;
+      try {
+        await send("POST", prefs, { group, on: want });
+        rows.forEach((row) => { if (row.dataset.group === group) setRow(row, want); });
+        say(want ? "Every model in the group is on" : "Every model in the group is off");
+      } catch (err) {
+        box.checked = !want;
+        say(err.message, true);
+      } finally {
+        box.disabled = false;
+        refresh();
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-ml-all]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const want = btn.dataset.mlAll === "1";
+      btn.disabled = true;
+      try {
+        await send("POST", prefs, { all: want });
+        rows.forEach((row) => setRow(row, want));
+        scope.querySelectorAll("[data-ml-group]").forEach((box) => { box.checked = want; });
+        say(want ? "Every model is on" : "Every model is off");
+      } catch (err) {
+        say(err.message, true);
+      } finally {
+        btn.disabled = false;
+        refresh();
+      }
+    });
+  });
+
   list.addEventListener("change", async (event) => {
     const box = event.target.closest("[data-or-model]");
     if (!box) return;
@@ -228,13 +261,11 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
     row.classList.toggle("is-on", want);
     refresh();
     try {
-      const data = await send("POST", base + "/model", { model: row.dataset.id, enabled: want });
-      box.checked = data.enabled;
-      row.classList.toggle("is-on", data.enabled);
-      say(data.enabled ? "Added to your model picker" : "Removed from your model picker");
+      const data = await send("POST", prefs, { model: row.dataset.model || row.dataset.id, on: want });
+      setRow(row, data.on);
+      say(data.on ? "Added to your model picker" : "Removed from your model picker");
     } catch (err) {
-      box.checked = !want;
-      row.classList.toggle("is-on", !want);
+      setRow(row, !want);
       say(err.message, true);
     }
     refresh();
@@ -253,6 +284,7 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
   }
 
   function closeDrawer(row) {
+    if (!row.querySelector("[data-or-providers]")) return;
     const drawer = row.querySelector("[data-or-drawer]");
     if (drawer) drawer.remove();
     row.classList.remove("is-open");
@@ -763,8 +795,9 @@ document.querySelectorAll(".sources-dir").forEach((dir) => {
   });
 });
 
-// Add source: every provider A to Z, narrowed as you type to the names that
-// start with what you typed; arrows and Enter pick without the mouse. Picking
+// Add source: every provider by group, A to Z, narrowed as you type to the
+// names that start with what you typed (a pane can answer to several: x.ai
+// and xAI API); arrows and Enter pick without the mouse. Picking
 // opens that provider's pane through its (possibly hidden) rail link.
 document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
   const find = dialog.querySelector("[data-source-find]");
@@ -782,7 +815,10 @@ document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
   }
   function filter() {
     const q = find.value.trim().toLowerCase();
-    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.startsWith(q); });
+    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.split("|").some((name) => name.startsWith(q)); });
+    dialog.querySelectorAll("[data-source-group]").forEach((group) => {
+      group.hidden = !group.querySelector("li:not([hidden]) > [data-source-pick]");
+    });
     none.hidden = shown().length > 0;
     mark(0);
   }

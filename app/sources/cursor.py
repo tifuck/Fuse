@@ -20,7 +20,6 @@ import base64
 import hashlib
 import json
 import logging
-import math
 import re
 import secrets
 import time
@@ -31,6 +30,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db, file_images, provider_errors
 from ..async_work import durable_call
 from ..config import settings
@@ -68,27 +68,14 @@ _version_check = 0.0
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _refresh_locks[cred_id] = lock
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
 def ensure_cursor_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='cursor'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("cursor", "Cursor", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("cursor", "Cursor")
 
 
 def is_cursor_model(model: str) -> bool:
@@ -181,36 +168,13 @@ def _headers(token: str) -> dict:
     }
 
 
-def _row_get(row, key, default=None):
-    try:
-        if isinstance(row, dict):
-            return row.get(key, default)
-        if key in row.keys():
-            val = row[key]
-            return default if val is None else val
-    except Exception:
-        return default
-    return default
+_row_get = creds.row_get
 
 
-def _as_float(v) -> float | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        value = float(v)
-        return value if math.isfinite(value) else None
-    except (TypeError, ValueError, OverflowError):
-        return None
+_as_float = creds.as_float
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    raw = str(ts or "").replace("Z", "")
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(raw.split("+")[0], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+_parse_ts = creds.parse_ts
 
 
 def _iso(when: datetime) -> str:
@@ -268,21 +232,11 @@ def credential_is_authed(cred, extra: dict | None = None) -> bool:
 
 
 def cursor_own_access(user_id: int) -> dict:
-    sid = ensure_cursor_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0",
-        (sid, user_id),
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    for row in rows:
-        if credential_is_authed(row, accounts.cred_extra(row)):
-            return {"ok": True, "reason": "ok"}
-    return {"ok": False, "reason": "unauthed"}
+    return creds.own_access(ensure_cursor_source(), user_id, credential_is_authed)
 
 
 def _cursor_live(row) -> bool:
-    return not is_held(row) and credential_is_authed(row, accounts.cred_extra(row))
+    return creds.live_row(row, credential_is_authed)
 
 
 def cursor_access_state(user_id: int) -> dict:
@@ -301,8 +255,7 @@ def account_email(extra: dict | None) -> str:
     return ""
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
 # --- Sign-in --------------------------------------------------------------------
@@ -475,7 +428,10 @@ async def _refresh_one_unlocked(cred) -> bool:
         if r.status_code != 200 or not _valid_token(data.get("access_token")):
             note_failure(row["id"], cooldown_seconds=60 if r.status_code == 429 else 30)
             return False
-        access, refresh = data["access_token"], extra["refresh_token"]
+        # Cursor keeps the refresh token today; one it does rotate replaces ours.
+        rotated_refresh = data.get("refresh_token")
+        fresh = isinstance(rotated_refresh, str) and 0 < len(rotated_refresh) <= 16_384 and rotated_refresh.isprintable()
+        access, refresh = data["access_token"], rotated_refresh if fresh else extra["refresh_token"]
     rotated = {"access_token": access, "refresh_token": refresh, "expires_at": _expiry(access)}
     extra.update(rotated)
     return await durable_call(
@@ -563,8 +519,7 @@ async def fetch_usage(token: str) -> tuple[dict | None, str, str]:
 
 
 def _usage_fresh(billing: dict) -> bool:
-    when = _parse_ts(str(billing.get("checked_at") or billing.get("fetched_at") or ""))
-    return bool(when) and datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL)
+    return creds.usage_fresh(billing, USAGE_TTL)
 
 
 def _store_billing(cred_id: int, parsed: dict, *, error: str = "", email: str = "") -> dict:
@@ -1055,7 +1010,7 @@ class CursorSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         if picked:
             _cred, extra = picked

@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import time
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import grok as grok_mod
-from ...sources.grok import disable_credential, ensure_grok_source, refresh_billing
-from ..deps import _pending, _pool_flash, logger, require_user
-from .context import _oauth_tokens, _pending_for, _terminal_oauth_error
+from ...sources.grok import ensure_grok_source, refresh_billing
+from ...providers import auth_flows, logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
+from .context import _oauth_tokens
 
 router = APIRouter()
 
@@ -40,7 +42,7 @@ async def grok_start(request: Request):
         _pool_flash[user["id"]] = ("err", "x.ai returned an invalid sign-in response. Try again shortly.", "grok")
         return RedirectResponse("/sources", status_code=303)
     data["_started"] = time.time()
-    _pending[user["id"]] = data
+    logins.put(user["id"], "grok", data)
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -50,7 +52,7 @@ async def grok_poll(request: Request):
     user, redir = require_user(request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
-    pending = _pending_for(user["id"])
+    pending = logins.get(user["id"], "grok", clamp=True)
     if not pending:
         return JSONResponse({"error": "No Grok sign-in in progress."}, status_code=400)
     try:
@@ -78,9 +80,8 @@ async def grok_poll(request: Request):
         profile = await grok_mod.fetch_userinfo(tokens["access_token"])
         # Cancelled or restarted while x.ai answered: this flow no longer
         # stands for the user's intent, so it must not donate an account.
-        if _pending.get(user["id"]) is not pending:
+        if not logins.claim(user["id"], "grok", pending):
             return JSONResponse({"error": "That x.ai sign-in was cancelled or replaced."}, status_code=409)
-        _pending.pop(user["id"], None)
         cred_id = grok_mod.store_tokens(
             sid, tokens, donated_by=user["id"], label=profile.get("email") or "Grok account", profile=profile
         )
@@ -92,24 +93,8 @@ async def grok_poll(request: Request):
                 logger.warning("Grok billing refresh failed after OAuth", exc_info=True)
         invalidate_model_cache("grok")
         return JSONResponse({"ok": True})
-    err = data.get("error")
-    if err == "slow_down":
-        try:
-            current_interval = int(pending.get("interval") or 5)
-        except (TypeError, ValueError):
-            current_interval = 5
-        pending["interval"] = min(30, max(3, current_interval) + 5)
-        return JSONResponse({"pending": True, "error": "x.ai asked Fuse to poll more slowly.", "retry_after": pending["interval"]})
-    if err == "authorization_pending":
-        return JSONResponse({"pending": True, "retry_after": pending.get("interval", 5)})
-    error_text = str(err or data.get("error_description") or "")
-    if _terminal_oauth_error(error_text):
-        _pending.pop(user["id"], None)
-        return JSONResponse({"error": "x.ai sign-in was denied or expired. Start again."}, status_code=400)
-    return JSONResponse(
-        {"pending": True, "error": "x.ai returned an unexpected response; retrying.", "retry_after": pending.get("interval", 5)},
-        status_code=502,
-    )
+    status, body = auth_flows.device_step(user["id"], "grok", "x.ai", pending, data)
+    return JSONResponse(body, status_code=status)
 
 
 @router.post("/sources/grok/cancel")
@@ -118,22 +103,11 @@ async def grok_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _pending.pop(user["id"], None)
+    logins.drop(user["id"], "grok")
     return RedirectResponse("/sources", status_code=303)
 
 
 @router.post("/sources/grok/{cred_id}/revoke")
 @router.post("/pool/grok/{cred_id}/revoke")
 async def grok_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = ensure_grok_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    disable_credential(cred_id)
-    invalidate_model_cache("grok")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "grok", cred_id, auth=require_user)

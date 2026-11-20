@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
-from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import zai as zai_mod
 from ..deps import _pool_flash, require_user
+from .sign_in import revoke
 
 router = APIRouter()
 
@@ -34,15 +34,4 @@ async def zai_add(request: Request, api_key: str = Form(""), label: str = Form("
 @router.post("/sources/zai/{cred_id}/revoke")
 @router.post("/pool/zai/{cred_id}/revoke")
 async def zai_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = zai_mod.ensure_zai_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    zai_mod.disable_credential(cred_id)
-    invalidate_model_cache("zai")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "zai", cred_id, auth=require_user)

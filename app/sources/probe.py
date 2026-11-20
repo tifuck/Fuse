@@ -6,6 +6,7 @@ import time
 import httpx
 
 from .. import accounts, db
+from ..providers import registry
 from . import _BUILDERS, _row_source
 from .chatgpt import credential_is_authed as chatgpt_credential_is_authed
 from .grok import (
@@ -141,35 +142,16 @@ async def probe_source(source_id: int) -> dict:
     src = load(source_id)
     if src is None:
         return {"ok": False, "error": "Unknown source", "checks": [], "ms": 0}
-    if src.type_id == "grok":
-        checks = await _probe_grok(src)
-    elif src.type_id == "chatgpt":
-        checks = await _probe_chatgpt(src)
-    elif src.type_id == "zai":
-        checks = await _probe_zai(src)
-    elif src.type_id == "kimi":
-        checks = await _probe_kimi(src)
-    elif src.type_id == "mimo":
-        checks = await _probe_mimo(src)
-    elif src.type_id == "claude":
-        checks = await _probe_claude(src)
-    elif src.type_id == "cursor":
-        checks = await _probe_cursor(src)
-    elif src.type_id == "devin":
-        checks = await _probe_devin(src)
-    elif src.type_id == "nanogpt":
-        checks = await _probe_nanogpt(src)
-    elif src.type_id == "refuseless":
-        checks = await _probe_refuseless(src)
-    elif src.type_id == "explabs":
-        checks = [_check("Personal keys", True, "Validated when each user connects a key; no shared-key or completion probe.", skip=True)]
-    elif src.type_id == "openrouter":
-        checks = await _probe_openrouter(src)
-    else:
-        checks = await _probe_chat_source(src)
+    spec = registry.get(src.type_id)
+    check = globals()[spec.probe] if spec and spec.probe else _probe_chat_source
+    checks = await check(src)
     ms = int((time.perf_counter() - started) * 1000)
     ok = all(c["ok"] for c in checks if not c.get("skip"))
     return {"ok": ok, "checks": checks, "ms": ms}
+
+
+async def _probe_explabs(src) -> list[dict]:
+    return [_check("Personal keys", True, "Validated when each user connects a key; no shared-key or completion probe.", skip=True)]
 
 
 async def _probe_chatgpt(src) -> list[dict]:

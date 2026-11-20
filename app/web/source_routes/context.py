@@ -1,10 +1,9 @@
-"""Shared helpers for the /sources route modules: config parsing,
-pending sign-in lookups, OAuth token validation and the pool account card."""
+"""Shared helpers for the /sources route modules: config parsing, OAuth
+token validation (from app/providers/auth_flows.py) and the pool account card."""
 
 from __future__ import annotations
 
 import json
-import time
 from ... import accounts, stats
 from ...sources import grok as grok_mod
 from ...sources import chatgpt as chatgpt_mod
@@ -12,7 +11,7 @@ from ...sources import devin as devin_mod
 from ...sources import kimi as kimi_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
-from ..deps import _chatgpt_pending, _devin_pending, _kimi_pending, _mimo_pending, _claude_pending, _cursor_pending, _nanogpt_pending, _pending, _PENDING_TTL
+from ...providers.auth_flows import oauth_tokens as _oauth_tokens, terminal_error as _terminal_oauth_error  # noqa: F401
 
 def _source_cfg(row) -> dict:
     try:
@@ -20,154 +19,6 @@ def _source_cfg(row) -> dict:
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
-
-
-def _pending_for(uid: int):
-    data = _pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _chatgpt_pending_for(uid: int):
-    data = _chatgpt_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _chatgpt_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _devin_pending_for(uid: int):
-    data = _devin_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _devin_pending.pop(uid, None)
-        return None
-    return data
-
-
-def _kimi_pending_for(uid: int):
-    data = _kimi_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _kimi_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _claude_pending_for(uid: int):
-    data = _claude_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _claude_pending.pop(uid, None)
-        return None
-    return data
-
-
-def _cursor_pending_for(uid: int):
-    data = _cursor_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _cursor_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _mimo_pending_for(uid: int):
-    data = _mimo_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _mimo_pending.pop(uid, None)
-        return None
-    return data
-
-
-def _nanogpt_pending_for(uid: int):
-    data = _nanogpt_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _nanogpt_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _clamp_interval(data: dict) -> None:
-    """The auth server controls `interval`; keep poll backoffs inside 3-30s
-    before the value reaches a client `retry_after` or the poll page."""
-    try:
-        data["interval"] = max(3, min(int(data.get("interval") or 5), 30))
-    except (TypeError, ValueError, OverflowError):
-        data["interval"] = 5
-
-
-def _oauth_tokens(raw) -> dict:
-    if not isinstance(raw, dict):
-        raise ValueError("Token response was not an object.")
-    access = raw.get("access_token")
-    refresh = raw.get("refresh_token", "")
-    expires = raw.get("expires_in")
-    if (
-        not isinstance(access, str)
-        or not access
-        or len(access) > 16_384
-        or any(ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in access)
-    ):
-        raise ValueError("Token response did not contain a valid access token.")
-    if not isinstance(refresh, str) or len(refresh) > 16_384 or any(
-        ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in refresh
-    ):
-        raise ValueError("Token response contained an invalid refresh token.")
-    if expires in (None, ""):
-        # Optional in OAuth (RFC 6749 5.1): the issued tokens are already
-        # spent from the device code, so keep them; expires_at() applies the
-        # provider default.
-        return {**raw, "access_token": access, "refresh_token": refresh, "expires_in": None}
-    if isinstance(expires, bool):
-        raise ValueError("Token response contained an invalid expiry.")
-    try:
-        expires = int(expires)
-    except (TypeError, ValueError):
-        raise ValueError("Token response contained an invalid expiry.") from None
-    if expires <= 0 or expires > 31_536_000:
-        raise ValueError("Token response contained an invalid expiry.")
-    return {**raw, "access_token": access, "refresh_token": refresh, "expires_in": expires}
-
-
-# Terminal device-flow error codes, matched exactly: a transient message
-# merely containing "expired" or "denied" must keep polling, not kill the
-# pending sign-in.
-_TERMINAL_OAUTH_ERRORS = frozenset(
-    {
-        "access_denied",
-        "authorization_declined",
-        "cancelled",
-        "expired_token",
-        "invalid_grant",
-        "invalid_request",
-        "unauthorized_client",
-        "unsupported_grant_type",
-    }
-)
-
-
-def _terminal_oauth_error(error: str) -> bool:
-    return (error or "").strip().lower() in _TERMINAL_OAUTH_ERRORS
 
 
 def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -> dict:

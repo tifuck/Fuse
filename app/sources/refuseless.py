@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import time
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db
 from ..crypto import DecryptionError, encrypt
 from ..proxy import UsageStream, openai_chat
@@ -47,19 +47,10 @@ def _headers(key: str) -> dict:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "application/json"}
 
 
-def _as_float(v) -> float | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        value = float(v)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return value if math.isfinite(value) else None
+_as_float = creds.as_float
 
 
-def _as_int(v) -> int | None:
-    value = _as_float(v)
-    return int(value) if value is not None and value > 0 else None
+_as_int = creds.positive_int
 
 
 def ensure_refuseless_source() -> int:
@@ -204,6 +195,7 @@ async def fetch_catalog(*, force: bool = False) -> dict:
             _catalog = (time.time(), catalog)
             _catalog_ok = True
             _remember_windows(catalog)
+            _persist(catalog, _catalog[0])
             return catalog
         _catalog_ok = False
         if _catalog:
@@ -214,6 +206,27 @@ async def fetch_catalog(*, force: bool = False) -> dict:
 
 def cached_catalog() -> dict:
     return _catalog[1] if _catalog else _FALLBACK
+
+
+def _persist(catalog: dict, at: float) -> None:
+    from ..providers import catalogs
+
+    try:
+        catalogs.save_detail(ensure_refuseless_source(), "refuseless", catalog, at)
+    except Exception:
+        pass  # the in-memory catalog serves; the next fetch stores it
+
+
+def load_saved() -> None:
+    """At boot: the stored lineup, so the first pages need no fetch."""
+    global _catalog, _catalog_ok
+    from ..providers import catalogs
+
+    if _catalog is None:
+        stored = catalogs.load_detail(ensure_refuseless_source())
+        if stored and isinstance(stored[1].get("by_id"), dict):
+            _catalog, _catalog_ok = stored, True
+            _remember_windows(stored[1])
 
 
 def catalog_available() -> bool:
@@ -266,19 +279,7 @@ def out_of_credits(extra: dict | None) -> bool:
 
 
 def refuseless_own_access(user_id: int) -> dict:
-    sid = ensure_refuseless_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0", (sid, user_id)
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    for row in rows:
-        try:
-            if credential_is_authed(row):
-                return {"ok": True, "reason": "ok"}
-        except (DecryptionError, accounts.CredentialDataError):
-            continue
-    return {"ok": False, "reason": "unauthed"}
+    return creds.own_access(ensure_refuseless_source(), user_id, credential_is_authed, skip_unreadable=True)
 
 
 def lends_any(user_id: int) -> bool:
@@ -298,22 +299,17 @@ def lends_any(user_id: int) -> bool:
 
 
 def refuseless_access_state(user_id: int) -> dict:
-    own = refuseless_own_access(user_id)
-    if own["ok"]:
-        return own
-    return pool_policy.with_open_access(user_id, "refuseless", own, credential_is_authed)
+    return pool_policy.with_open_access(user_id, "refuseless", refuseless_own_access(user_id), credential_is_authed)
 
 
 def user_has_refuseless(user_id: int) -> bool:
     return refuseless_access_state(user_id)["ok"]
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
 async def resolve(model: str, user_id: int | None) -> str | None:
@@ -333,14 +329,7 @@ def key_shape(raw: str) -> str:
     return ""
 
 
-def _find_key(source_id: int, key: str):
-    for row in db.fetchall("SELECT * FROM credentials WHERE source_id=?", (source_id,)):
-        try:
-            if accounts.cred_secret(row) == key:
-                return row
-        except Exception:
-            continue
-    return None
+_find_key = creds.find_key
 
 
 def save_key(source_id: int, key: str, donated_by: int, *, label: str = "") -> int:
@@ -424,10 +413,7 @@ def _fresh(billing: dict) -> bool:
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        lock = _refresh_locks[cred_id] = asyncio.Lock()
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
 async def refresh_usage(cred, *, force: bool = False) -> dict | None:
@@ -545,7 +531,7 @@ class RefuselessSource:
         self.cfg = cfg
         self.creds = list(creds)
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         catalog = await fetch_catalog()
         if not catalog_available() and not catalog["by_id"] and _live_rows():
             raise RuntimeError("Refuseless catalog unavailable")

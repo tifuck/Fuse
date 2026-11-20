@@ -1,0 +1,22 @@
+      {% call pool_head(chatgpt_ui, 'OpenAI', 'chatgpt', pool_state(chatgpt_ok, chatgpt_reason, chatgpt_ui, 'needs a ChatGPT sign-in'), [('Paid plans', chatgpt_paid_pool), ('Free / Go plans', chatgpt_free_pool)]) %}{{ add_button('openai-connect-dialog', 'Add account', chatgpt_pending) }}{% endcall %}
+      {% if chatgpt_own_failed %}
+      <p class="callout fault">{% if chatgpt_own_failed == 1 %}A ChatGPT account you linked is no longer signed in.{% else %}{{ chatgpt_own_failed }} ChatGPT accounts you linked are no longer signed in.{% endif %} They stay out of the pool until you remove them and add them again.</p>
+      {% endif %}
+      {% set own = chatgpt_accounts|selectattr('mine')|list %}
+      {% set paid = chatgpt_paid_accounts|rejectattr('mine')|list %}
+      {% set free = chatgpt_free_accounts|rejectattr('mine')|list %}
+      {% if own %}
+      <h3 class="pool-sub">Your accounts <span>{{ own|length }}</span></h3>
+      {{ source_table(own, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
+      {% endif %}
+      {% if paid %}
+      <h3 class="pool-sub">Other people's paid plans <span>{{ paid|length }}</span></h3>
+      {{ source_table(paid, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
+      {% endif %}
+      {% if free %}
+      <h3 class="pool-sub">Other people's Free / Go plans <span>{{ free|length }}</span></h3>
+      {{ source_table(free, 'OpenAI', '/sources/chatgpt', 'Remove this ChatGPT account from the shared pool?', '', chatgpt_ui) }}
+      {% endif %}
+      {% if not chatgpt_accounts %}
+      <section class="panel"><p class="empty">{% if chatgpt_ok and chatgpt_reason == 'open' %}Optional — OpenAI is already unlocked. Add a ChatGPT account if you want to donate one.{% elif chatgpt_ui.uses_shared %}Add a ChatGPT account (Plus or Pro unlocks every model) to join the shared pool.{% else %}Add a ChatGPT account. This pool is limited to accounts you link.{% endif %}</p></section>
+      {% endif %}

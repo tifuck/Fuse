@@ -8,6 +8,7 @@ import httpx
 import json
 
 from . import db
+from .providers import registry
 
 logger = logging.getLogger(__name__)
 
@@ -396,10 +397,8 @@ async def sync_openrouter_prices() -> dict:
 
 AUTO_ORIGIN = "auto"
 AUTO_PRICE_INTERVAL = 1800.0
-_AUTO_PROVIDERS = (
-    CHATGPT_PROVIDER, GROK_PROVIDER, ZAI_PROVIDER, DEVIN_PROVIDER,
-    KIMI_PROVIDER, MIMO_PROVIDER, CLAUDE_PROVIDER, CURSOR_PROVIDER, NANOGPT_PROVIDER, REFUSELESS_PROVIDER,
-)
+# Every pool prices its listed models automatically.
+_AUTO_PROVIDERS = registry.pool_kinds()
 # Effort, speed and region tails appended to one priced model id. They are a
 # service tier on ChatGPT/Devin/Cursor ids only (gpt-5.6-sol-fast, gpt-5-6-sol-low,
 # claude-opus-5-thinking-high);

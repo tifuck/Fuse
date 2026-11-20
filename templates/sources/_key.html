@@ -1,0 +1,16 @@
+    <article class="panel">
+      <div class="section-heading">
+        <h2><img class="provider-logo" src="{{ provider_logo_url(p.id) }}" alt="" aria-hidden="true">{{ p.label }}{% if p.group == 'subscription' %} <span class="badge">Subscription</span>{% endif %}{% if p.site %} <span class="badge on" title="An admin opened a site key to you">Site key</span>{% endif %}</h2>
+        <button type="button" class="btn sm{% if p['keys'] %} ghost{% endif %}" data-dialog-open="key-{{ p.id }}-dialog" aria-haspopup="dialog">{% if p['keys'] %}Replace key{% else %}Add key{% endif %}</button>
+      </div>
+      {% for k in p['keys'] %}
+      <div class="section-heading">
+        <p>{{ k.label }} <span class="badge">Yours only</span>{% if k.method %} <span class="badge">{{ k.method }}</span>{% endif %}{% if k.region %} <span class="badge">{{ k.region }}</span>{% endif %}</p>
+        <form method="post" action="/sources/keys/{{ p.id }}/{{ k.id }}/revoke" data-confirm="Remove your {{ p.label }} key? Other users are not affected.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn danger sm">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+      <p class="usage-sub">{% if p.prefix %}<code>{{ p.prefix }}…</code> models{% else %}Same model names as the shared list{% endif %}{% if p.key_url %} · <a href="{{ p.key_url }}" target="_blank" rel="noopener noreferrer">Get a key</a>{% endif %}</p>
+    </article>

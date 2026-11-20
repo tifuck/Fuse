@@ -78,7 +78,7 @@ html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-m
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :first-child { margin-top: 0; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md > :last-child { margin-bottom: 0; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md p { margin: 0 0 0.6em; }
-html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md p:has(+ :is(ul, ol)) { margin-bottom: 0.35em; }
+html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md p:has(+ :is(ul, ol)) { margin-bottom: 0.15em; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md :is(ul, ol) { margin: 0 0 0.6em; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md li :is(ul, ol) { margin: 0.1em 0 0; }
 html[data-chat-view="combined"] body.is-chat .chat[data-view="combined"] .chat-md :is(h1, h2, h3, h4) { margin: 1.2em 0 0.4em; color: var(--mist); font-weight: 600; letter-spacing: 0; line-height: 1.3; }

@@ -22,6 +22,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db
 from ..config import settings
 from ..crypto import encrypt
@@ -215,31 +216,13 @@ async def fetch_catalog(token: str) -> list[str]:
 
 
 def ensure_devin_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='devin'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("devin", "Devin", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("devin", "Devin")
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
-def _row_get(row, key, default=None):
-    try:
-        if isinstance(row, dict):
-            return row.get(key, default)
-        if key in row.keys():
-            val = row[key]
-            return default if val is None else val
-    except Exception:
-        return default
-    return default
+_row_get = creds.row_get
 
 
 def is_held(cred, now: datetime | None = None) -> bool:
@@ -323,18 +306,10 @@ def devin_access_state(user_id: int) -> dict:
     )
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
-def _find_key(source_id: int, key: str):
-    for row in db.fetchall("SELECT * FROM credentials WHERE source_id=?", (source_id,)):
-        try:
-            if accounts.cred_secret(row) == key:
-                return row
-        except Exception:
-            continue
-    return None
+_find_key = creds.find_key
 
 
 def _find_account(source_id: int, donated_by: int, email: str):
@@ -584,7 +559,7 @@ class DevinSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         token = ""
         if picked:

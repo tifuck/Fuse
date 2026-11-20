@@ -1,0 +1,10 @@
+      {% call pool_head(zai_ui, 'Z.AI', 'zai', pool_state(zai_ok, zai_reason, zai_ui, 'needs a Coding Plan key or a shared x.ai / OpenAI account', 'No GLM Coding Plan'), [('Pool usage', zai_pool)]) %}{{ add_button('zai-add-dialog', 'Add key', False) }}{% endcall %}
+      {% if zai_reason == 'no_sub' %}
+      <p class="callout fault">A Z.AI key is linked, but it is not showing a live GLM Coding Plan. GLM models stay locked unless you also share a live x.ai or OpenAI account.</p>
+      {% elif zai_reason == 'unauthed' %}
+      <p class="callout fault">The linked Z.AI key is no longer valid. Remove it and add a new key, or share a live x.ai or OpenAI account.</p>
+      {% endif %}
+      {% if zai_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ zai_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(zai_accounts, 'Z.AI', '/sources/zai', 'Remove this Z.AI key from the shared pool?', 'Optional — GLM is already unlocked. Add a Coding Plan key if you want to donate one to the pool.' if zai_ok else ('Add a GLM Coding Plan API key, or share a live x.ai or OpenAI account.' if zai_ui.uses_shared else 'Add a GLM Coding Plan API key. This pool is limited to keys you link.'), zai_ui) }}

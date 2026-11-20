@@ -554,6 +554,40 @@ CREATE TABLE `project_logos` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `provider_catalogs` (
+  `source_id` bigint(20) NOT NULL,
+  `provider` varchar(64) NOT NULL,
+  `models` longtext NOT NULL,
+  `detail` longtext DEFAULT NULL,
+  `etag` varchar(512) DEFAULT NULL,
+  `last_modified` varchar(128) DEFAULT NULL,
+  `fetched_at` double NOT NULL DEFAULT 0,
+  `next_due` double NOT NULL DEFAULT 0,
+  `failures` int(11) NOT NULL DEFAULT 0,
+  `error` varchar(300) NOT NULL DEFAULT '',
+  PRIMARY KEY (`source_id`),
+  KEY `provider_catalogs_due` (`next_due`),
+  CONSTRAINT `provider_catalogs_source` FOREIGN KEY (`source_id`) REFERENCES `sources` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `provider_logins` (
+  `user_id` bigint(20) NOT NULL,
+  `provider` varchar(64) NOT NULL,
+  `token` char(32) NOT NULL,
+  `state_hash` char(64) DEFAULT NULL,
+  `data` longtext NOT NULL,
+  `created_at` double NOT NULL,
+  `expires_at` double NOT NULL,
+  PRIMARY KEY (`user_id`,`provider`),
+  KEY `provider_logins_state` (`state_hash`),
+  KEY `provider_logins_expiry` (`expires_at`),
+  CONSTRAINT `provider_logins_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `provider_usage` (
   `user_id` bigint(20) NOT NULL,
   `provider` varchar(64) NOT NULL,
@@ -845,6 +879,17 @@ CREATE TABLE `user_hosts` (
   KEY `user_hosts_device_token` (`device_token_hash`(64)),
   CONSTRAINT `fk_user_hosts_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_model_prefs` (
+  `user_id` bigint(20) NOT NULL,
+  `provider` varchar(64) NOT NULL,
+  `prefs` longtext NOT NULL,
+  `updated_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`user_id`,`provider`),
+  CONSTRAINT `user_model_prefs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;

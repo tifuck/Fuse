@@ -266,36 +266,46 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-aut
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-auto-steps.is-delivery .chat-timeline { padding: 0; }
 
-/* Finished background work: a summary line counted like the activity groups,
-   opening into a table drawn like the Activity pane's agent rows. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-ledger {
+/* Finished background work. Subagent reports: one card of rows, drawn like
+   the Activity pane's agents. A finished command or monitor: one line,
+   quiet like the activity summaries, that opens its output. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step:is(.is-dk-reports, .is-dk-finish) {
   & { display: block; width: 100%; }
-  & > .chat-step-main, & > .chat-step-main > .chat-step-head { display: block; }
-  & > .chat-step-main > .chat-step-head > .chat-step-toggle { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 12px; text-align: left; }
-  & .chat-step-label { display: block; min-width: 0; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); font-size: 14px; }
-  & .chat-step-label b { color: var(--dk-mute, var(--mute)); font-weight: 400; }
-  & > .chat-step-main > .chat-step-head > .chat-step-toggle:is(:hover, :focus-visible) .chat-step-label { color: var(--dk-mute, var(--mute)); }
-  & > .chat-step-main > .chat-step-head > .chat-step-toggle:is(:hover, :focus-visible) .chat-step-label b { color: var(--dk-text, var(--mist)); }
-  & .dk-tallies { display: inline-flex; gap: 10px; flex: none; font-size: 14px; }
-  & .dk-tally.is-failed { color: var(--fault); }
-  & .dk-tally.is-stopped { color: var(--dk-warn); }
-  & .dk-ledger-table { list-style: none; margin: 6px 0 4px; padding: 0; border: 1px solid var(--dk-card-line); border-radius: 8px; overflow: hidden; }
-  & .dk-ledger-row { display: grid; grid-template-columns: 7px minmax(0, 1fr); column-gap: 10px; padding: 8px 12px; border-top: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent); }
-  & .dk-ledger-row:first-child { border-top: 0; }
+  & > .chat-step-main, & > .chat-step-main > .chat-step-head { display: block; min-width: 0; }
+}
+
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-reports {
+  & .dk-reports { list-style: none; margin: 4px 0 6px; padding: 0; border: 1px solid var(--dk-card-line); border-radius: 8px; overflow: hidden; }
+  & .dk-report { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; column-gap: 10px; padding: 9px 12px; border-top: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent); }
+  & .dk-report:first-child { border-top: 0; }
   & .dk-ledger-dot { width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--ok); }
-  & .dk-ledger-row.is-failed .dk-ledger-dot { background: var(--fault); }
-  & .dk-ledger-row.is-stopped .dk-ledger-dot { background: var(--dk-warn); }
-  & .dk-ledger-row > .chat-step-main { min-width: 0; }
-  & .dk-ledger-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 0; }
-  & .dk-ledger-text { display: grid; min-width: 0; }
-  & .dk-ledger-name { color: var(--dk-text, var(--mist)); font-size: 14px; font-weight: 500; line-height: 21px; overflow-wrap: anywhere; }
-  & .dk-ledger-sub { color: var(--dk-mute, var(--mute)); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-  & .dk-ledger-sub.is-mono { font-family: var(--code, "Red Hat Mono", ui-monospace, monospace); font-size: 12.5px; -webkit-line-clamp: 1; white-space: pre; text-overflow: ellipsis; display: block; }
-  & .dk-ledger-side { display: grid; justify-items: end; flex: none; font-size: 12.5px; line-height: 21px; color: var(--dk-mute, var(--mute)); white-space: nowrap; }
-  & .dk-ledger-row.is-failed .dk-ledger-state { color: var(--fault); }
-  & .dk-ledger-row.is-stopped .dk-ledger-state { color: var(--dk-warn); }
-  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act) { all: unset; cursor: pointer; color: var(--dk-link); font-size: 12.5px; line-height: 19px; }
-  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act):is(:hover, :focus-visible) { color: var(--dk-text, var(--mist)); text-decoration: underline; }
-  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act):focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 3px; }
-  & .dk-ledger-row .chat-step-reveal .chat-console-out { margin: 6px 0 0; }
+  & .dk-report.is-failed .dk-ledger-dot { background: var(--fault); }
+  & .dk-report.is-stopped .dk-ledger-dot { background: var(--dk-warn); }
+  & .dk-report-text { display: grid; gap: 2px; min-width: 0; }
+  & .dk-report-name { color: var(--dk-text, var(--mist)); font-size: 14px; font-weight: 500; line-height: 21px; overflow-wrap: anywhere; }
+  & .dk-report-sub { color: var(--dk-mute, var(--mute)); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+  & .dk-report-sub b { color: color-mix(in srgb, var(--dk-text, var(--mist)) 82%, transparent); font-weight: 500; }
+  & .dk-report-sub code { font-family: var(--code, "Red Hat Mono", ui-monospace, monospace); font-size: 0.92em; padding: 0 3px; border-radius: 3px; background: color-mix(in srgb, var(--mist) 7%, transparent); }
+  & .dk-report-side { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; line-height: 21px; white-space: nowrap; }
+  & .dk-report.is-failed .dk-ledger-state { color: var(--fault); }
+  & .dk-report.is-stopped .dk-ledger-state { color: var(--dk-warn); }
+  & .dk-report-side > .chat-step-open { all: unset; cursor: pointer; color: var(--dk-link); font-size: 12.5px; }
+  & .dk-report-side > .chat-step-open:is(:hover, :focus-visible) { color: var(--dk-text, var(--mist)); text-decoration: underline; }
+  & .dk-report-side > .chat-step-open:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 3px; }
+}
+
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-finish {
+  & .dk-finish-line { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; margin: 2px 0; font-size: 14px; line-height: 22px; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); text-align: left; }
+  & button.dk-finish-line { cursor: pointer; }
+  & .dk-finish-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  &.is-failed .dk-finish-dot { background: var(--fault); }
+  &.is-stopped .dk-finish-dot { background: var(--dk-warn); }
+  & .dk-finish-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dk-mute, var(--mute)); }
+  & .dk-finish-verb { flex: none; }
+  &.is-failed .dk-finish-verb { color: var(--fault); }
+  &.is-stopped .dk-finish-verb { color: var(--dk-warn); }
+  & .dk-finish-side { flex: none; margin-left: auto; font-size: 13px; }
+  &.is-failed .dk-finish-side { color: var(--fault); }
+  & button.dk-finish-line:is(:hover, :focus-visible) .dk-finish-name { color: var(--dk-text, var(--mist)); }
+  & .chat-step-reveal .chat-console-out { margin: 4px 0 6px; }
 }

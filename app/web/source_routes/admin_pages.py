@@ -12,6 +12,8 @@ from ...sources import chatgpt as chatgpt_mod
 from ...sources import devin as devin_mod
 from ...sources import openrouter as openrouter_mod
 from ...sources import explabs as explabs_mod
+from ...sources import keyed as keyed_mod
+from ...providers import directory
 from ...sources import kimi as kimi_mod
 from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
@@ -35,7 +37,8 @@ def _ollama_key_views(source_id: int) -> list[dict]:
     row = db.fetchone("SELECT * FROM sources WHERE id=?", (source_id,))
     if not row:
         return []
-    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? ORDER BY id", (source_id,))
+    # Site keys only: a user's personal key is theirs, not the admin's.
+    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND donated_by IS NULL ORDER BY id", (source_id,))
     live = [c for c in creds if not c["disabled"]]
     src = OllamaSource(row, _source_cfg(row), live)
     views = []
@@ -175,6 +178,8 @@ def _admin_sources_ctx(error: str | None = None, notice: str | None = None, olla
         "error": error,
         "notice": notice,
         "types": TYPES,
+        "keyed_admin": keyed_mod.admin_rows(),
+        "providers_overview": directory.admin_overview(),
     }
 
 

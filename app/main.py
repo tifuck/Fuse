@@ -22,7 +22,7 @@ from . import accounts, db, chat_store, chat_runs, chat_events, chat_recaps, cha
 from .api import http_errors, router as api_router
 from .web import router as web_router
 from .agent_http import router as agent_http_router
-from .sources import bootstrap, refresh_stale_catalogs, start_pools, warm_catalogs
+from .sources import bootstrap, refresh_due_catalogs, start_pools, warm_catalogs
 from .sources.chatgpt import refresh_due as chatgpt_refresh_due
 from .sources.grok import refresh_due
 from .sources.grok_version import refresh_due as grok_version_refresh_due
@@ -33,6 +33,7 @@ from .sources.nanogpt import refresh_due as nanogpt_refresh_due
 from .sources.refuseless import refresh_due as refuseless_refresh_due
 from .sources.openrouter import refresh_due as openrouter_refresh_due
 from .pricing import auto_price_due
+from .providers import logins
 from .sources.usage_walk import WALK_PAUSE, walk_next
 from .security import AccessLogRedactor, MaxBodyMiddleware, SecurityHeadersMiddleware
 
@@ -120,10 +121,11 @@ async def _refresh_loop(app: FastAPI):
         ("openrouter catalog", openrouter_refresh_due),
         ("nanogpt catalog", nanogpt_refresh_due),
         ("refuseless catalog", refuseless_refresh_due),
-        ("pool catalogs", refresh_stale_catalogs),
+        ("provider catalogs", refresh_due_catalogs),
     )
     local_jobs = (
         ("model pricing", auto_price_due),
+        ("sign-in sweep", logins.sweep),
     )
     # Each job backs off on its own: one failing catalog job used to
     # double the shared delay and hold OAuth refresh back for up to 5 minutes.

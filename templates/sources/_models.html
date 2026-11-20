@@ -1,0 +1,47 @@
+    <details class="panel provider-models" data-or-scope>
+      <summary><b>{{ ml.label }} models</b> <span class="usage-sub" data-ml-summary>{{ ml.on }} of {{ ml.rows|length }} on</span></summary>
+      <section class="or-models" data-or-models data-prefs="/sources/models/{{ ml.provider }}" data-label="{{ ml.label }}">
+        {% if ml.groups|length > 1 %}
+        <div class="or-settings">
+          <fieldset class="or-group">
+            <legend>Groups</legend>
+            {% for g in ml.groups %}
+            <label class="or-switch">
+              <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
+              <span><b>{{ g.label }}</b><small>Turns every model in the group on or off. Single models stay editable.</small></span>
+            </label>
+            {% endfor %}
+          </fieldset>
+        </div>
+        {% endif %}
+        <div class="or-toolbar">
+          <input type="search" data-or-filter placeholder="Search models" aria-label="Search {{ ml.label }} models">
+          <div class="or-seg" role="group" aria-label="Show">
+            <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
+            <button type="button" data-or-view="on" aria-pressed="false">On</button>
+            <button type="button" data-or-view="off" aria-pressed="false">Off</button>
+          </div>
+          <div class="or-bulk" role="group" aria-label="Every {{ ml.label }} model">
+            <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
+            <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
+          </div>
+          <span class="or-count" data-or-count aria-live="polite"></span>
+        </div>
+        <ul class="or-list" data-or-list>
+          {% for r in ml.rows %}
+          <li class="or-row{% if r.on %} is-on{% endif %}" data-or-row data-id="{{ r.id }}" data-group="{{ r.group }}">
+            <div class="or-row-main">
+              <label class="or-toggle" title="Show in my model picker">
+                <input type="checkbox" role="switch" data-or-model{% if r.on %} checked{% endif %} aria-label="Enable {{ r.id }}">
+              </label>
+              <div class="or-row-title">
+                <span class="or-row-name">{{ r.id }}</span>
+                {% if ml.groups|length > 1 %}<code class="or-row-id">{{ (ml.groups|selectattr('id', 'equalto', r.group)|first).label }}</code>{% endif %}
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="or-empty" data-or-empty hidden>No models match.</p>
+      </section>
+    </details>

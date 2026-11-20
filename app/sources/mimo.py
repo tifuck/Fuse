@@ -14,16 +14,16 @@ import asyncio
 import base64
 import hashlib
 import json
-import math
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from ..providers import creds
 from .. import accounts, db
 from ..config import settings
 from ..crypto import encrypt
@@ -63,62 +63,23 @@ _SPKI_PREFIX = bytes.fromhex("302a300506032b656e032100")
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        # Never evicted: an unlocked lock may still have a waiter about to
-        # acquire it, and a second lock would let two refreshes spend the
-        # same rotating refresh token. One per credential is small.
-        lock = asyncio.Lock()
-        _refresh_locks[cred_id] = lock
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
 def ensure_mimo_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='mimo'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("mimo", "Xiaomi", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("mimo", "Xiaomi")
 
 
-def _row_get(row, key, default=None):
-    try:
-        if isinstance(row, dict):
-            return row.get(key, default)
-        keys = row.keys()
-        if key in keys:
-            val = row[key]
-            return default if val is None else val
-    except Exception:
-        return default
-    return default
+_row_get = creds.row_get
 
 
-def _as_float(v) -> float | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        value = float(v)
-        return value if math.isfinite(value) else None
-    except (TypeError, ValueError, OverflowError):
-        return None
+_as_float = creds.as_float
 
 
-def _as_int(v) -> int | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError, OverflowError):
-        return None
+_as_int = creds.as_int
 
 
 def is_mimo_model(model: str) -> bool:
@@ -161,24 +122,11 @@ def _chat_headers(key: str) -> dict:
     }
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    if not ts:
-        return None
-    raw = str(ts).replace("Z", "")
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(raw.split("+")[0], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+_parse_ts = creds.parse_ts
 
 
 def _usage_fresh(billing: dict) -> bool:
-    checked = billing.get("checked_at") or billing.get("fetched_at")
-    when = _parse_ts(str(checked or ""))
-    if not when:
-        return False
-    return datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL)
+    return creds.usage_fresh(billing, USAGE_TTL)
 
 
 def billing_has_subscription(billing: dict | None) -> bool:
@@ -208,48 +156,23 @@ def credential_is_authed(cred, extra: dict | None = None) -> bool:
 
 
 def mimo_own_access(user_id: int) -> dict:
-    sid = ensure_mimo_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0",
-        (sid, user_id),
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    saw_authed = False
-    for row in rows:
-        extra = accounts.cred_extra(row)
-        if not credential_is_authed(row, extra):
-            continue
-        saw_authed = True
-        billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-        if billing_has_subscription(billing):
-            return {"ok": True, "reason": "ok"}
-    return {"ok": False, "reason": "no_sub" if saw_authed else "unauthed"}
+    return creds.own_access(ensure_mimo_source(), user_id, credential_is_authed,
+                            lambda row, extra: billing_has_subscription(creds.billing(extra)))
 
 
 def _mimo_live(row) -> bool:
-    if is_held(row):
-        return False
-    extra = accounts.cred_extra(row)
-    if not credential_is_authed(row, extra):
-        return False
-    billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-    return billing_has_subscription(billing)
+    return creds.live_row(row, credential_is_authed, lambda row, extra: billing_has_subscription(creds.billing(extra)))
 
 
 def mimo_access_state(user_id: int) -> dict:
-    own = mimo_own_access(user_id)
-    if own["ok"]:
-        return own
-    return pool_policy.with_open_access(user_id, "mimo", own, _mimo_live)
+    return pool_policy.with_open_access(user_id, "mimo", mimo_own_access(user_id), _mimo_live)
 
 
 def user_has_mimo(user_id: int) -> bool:
     return mimo_access_state(user_id)["ok"]
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
 def start_login() -> dict:
@@ -331,14 +254,7 @@ def _normalize_login(data: dict) -> tuple[str, str, str]:
     return key, region, uid
 
 
-def _find_key(source_id: int, key: str):
-    for row in db.fetchall("SELECT * FROM credentials WHERE source_id=?", (source_id,)):
-        try:
-            if accounts.cred_secret(row) == key:
-                return row
-        except Exception:
-            continue
-    return None
+_find_key = creds.find_key
 
 
 def _save_key(
@@ -631,7 +547,7 @@ class MimoSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         if picked:
             cred, extra = picked

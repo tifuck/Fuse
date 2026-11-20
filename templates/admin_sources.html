@@ -7,13 +7,44 @@
 {% if notice %}<p class="callout ok">{{ notice }}</p>{% endif %}
 <div class="stack-y">
 <nav class="settings-jump" aria-label="On this page">
+  <a href="#providers">All providers</a>
   <a href="#llama">Local llama</a>
   <a href="#ollama">Ollama Cloud</a>
   <a href="#openrouter">OpenRouter</a>
   <a href="#explabs">Experiential Labs</a>
+  <a href="#keyed">API-key providers</a>
   <a href="#compat">OpenAI-compatible</a>
   {% if speech %}<a href="#speech">Speech to text</a>{% endif %}
 </nav>
+
+<section class="panel" id="providers">
+  <h2>All providers</h2>
+  <div class="table-wrap">
+    <table class="log">
+      <thead><tr><th>Provider</th><th>Takes</th><th class="tight">On</th><th class="tight"></th></tr></thead>
+      <tbody>
+      {% for p in providers_overview %}
+      <tr>
+        <td data-label="Provider"><img class="provider-logo" src="{{ provider_logo_url(p.id) }}" alt="" aria-hidden="true"> {{ p.label }}{% if p.count > 1 %} <span class="dim">×{{ p.count }}</span>{% endif %} <span class="usage-sub">{{ p.group }}</span></td>
+        <td data-label="Takes">{% for k in p.kinds %}<span class="badge">{{ k }}</span> {% endfor %}</td>
+        <td data-label="On" class="tight">{% if p.enabled %}<span class="badge on">On</span>{% else %}<span class="badge off">Off</span>{% endif %}</td>
+        <td data-label="Actions" class="tight">
+          <div class="row-actions">
+            {% if p.source_id %}
+            <form method="post" action="/admin/sources/{{ p.source_id }}/toggle">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn ghost sm" type="submit">{% if p.enabled %}Disable{% else %}Enable{% endif %}</button>
+            </form>
+            {% endif %}
+            <a class="btn ghost sm" href="{{ p.href }}">Settings</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 
 <section class="panel" id="llama">
   <div class="account-head">
@@ -160,9 +191,17 @@
     <label>Add keys (one per line)
       <textarea name="keys" rows="3" placeholder="Paste new keys. Existing keys are kept."></textarea>
     </label>
+    {% set ollama_site = ollama_cfg.get('site_access', 'everyone') %}
+    <label>These keys serve
+      <select name="site_access">
+        <option value="everyone"{% if ollama_site == 'everyone' %} selected{% endif %}>Everyone</option>
+        <option value="admins"{% if ollama_site == 'admins' %} selected{% endif %}>Admins</option>
+        <option value="none"{% if ollama_site == 'none' %} selected{% endif %}>Nobody (personal keys only)</option>
+      </select>
+    </label>
     <label class="check">
       <input type="checkbox" name="enabled" value="1"{% if ollama and ollama['enabled'] %} checked{% endif %}>
-      Enabled — list and route Ollama Cloud models for every user
+      Enabled — list and route Ollama Cloud models; users may add their own key on Sources
     </label>
     <button type="submit" class="btn">Save Ollama</button>
   </form>
@@ -204,6 +243,64 @@
     <label class="check"><input type="checkbox" name="enabled" value="1"{% if explabs and explabs['enabled'] %} checked{% endif %}> Enabled — route personal Experiential Labs keys</label>
     <button type="submit" class="btn">Save Experiential Labs</button>
   </form>
+</section>
+
+<section class="panel" id="keyed">
+  <div class="account-head">
+    <div><p class="eyebrow">API-key providers</p><h2>Personal keys, optional site keys</h2></div>
+  </div>
+  <p class="aside">Users add their own keys on <a href="/sources">Sources</a>; each serves only its owner. A site key serves nobody until you choose who may use it.</p>
+  <div class="table-wrap">
+    <table class="log keyed-admin">
+      <thead><tr><th>Provider</th><th class="num tight">Personal</th><th class="num tight">Site keys</th><th class="tight">Site keys serve</th><th class="tight">On</th><th class="tight"></th></tr></thead>
+      <tbody>
+      {% for p in keyed_admin %}
+      <tr id="keyed-{{ p.id }}">
+        <td data-label="Provider">{{ p.label }}</td>
+        <td data-label="Personal" class="mono num tight">{{ p.personal }}</td>
+        <td data-label="Site keys" class="mono num tight">{{ p.site|length }}</td>
+        <td data-label="Site keys serve" class="tight">
+          <select name="site_access" form="keyed-form-{{ p.id }}" aria-label="Who {{ p.label }} site keys serve">
+            <option value="none"{% if p.site_access == 'none' %} selected{% endif %}>Nobody</option>
+            <option value="admins"{% if p.site_access == 'admins' %} selected{% endif %}>Admins</option>
+            <option value="everyone"{% if p.site_access == 'everyone' %} selected{% endif %}>Everyone</option>
+          </select>
+        </td>
+        <td data-label="On" class="tight"><input type="checkbox" name="enabled" value="1" form="keyed-form-{{ p.id }}" aria-label="{{ p.label }} enabled"{% if p.enabled %} checked{% endif %}></td>
+        <td data-label="Actions" class="tight">
+          <form method="post" action="/admin/providers/{{ p.id }}" id="keyed-form-{{ p.id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn ghost sm">Save</button>
+          </form>
+        </td>
+      </tr>
+      <tr class="keyed-admin-keys">
+        <td colspan="6">
+          <details>
+            <summary>{% if p.site %}{{ p.site|length }} site key{{ 's' if p.site|length != 1 else '' }}{% else %}Add a site key{% endif %}</summary>
+            {% for k in p.site %}
+            <form method="post" action="/admin/providers/{{ p.id }}/keys/{{ k.id }}/delete" class="row-actions" data-confirm="Remove this {{ p.label }} site key?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <span>{{ k.label }}{% if k.region %} <span class="badge">{{ k.region }}</span>{% endif %}</span>
+              <button type="submit" class="btn danger sm">Remove</button>
+            </form>
+            {% endfor %}
+            <form method="post" action="/admin/providers/{{ p.id }}/keys" class="stack">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              {% if p.regions|length > 1 %}
+              <label>Region <select name="region">{% for r in p.regions %}<option value="{{ r.id }}">{{ r.label }}</option>{% endfor %}</select></label>
+              {% endif %}
+              <label>API key <input name="api_key" type="password" autocomplete="off" required maxlength="4096"></label>
+              <label>Label (optional) <input name="label" maxlength="80" placeholder="{{ p.label }} site key"></label>
+              <button type="submit" class="btn sm">Save site key</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 
 {% if extras %}

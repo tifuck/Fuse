@@ -4,15 +4,16 @@ add and revoke."""
 from __future__ import annotations
 
 import time
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from ... import db
 from ...security import limiter
 from ...config import settings
 from ...sources import invalidate_model_cache
 from ...sources import mimo as mimo_mod
-from ..deps import _mimo_pending, _pool_flash, logger, require_user
-from .context import _mimo_pending_for
+from ...providers import logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def mimo_start(request: Request):
     data["auto_url"] = mimo_mod.authorize_url(data["public_key"], redirect_uri=redirect)
     data["_started"] = time.time()
     data["user_id"] = user["id"]
-    _mimo_pending[user["id"]] = data
+    logins.put(user["id"], "mimo", data)
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -75,7 +76,7 @@ async def mimo_callback(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    pending = _mimo_pending_for(user["id"])
+    pending = logins.get(user["id"], "mimo")
     state = str(request.query_params.get("state") or "").strip()
     blob = str(request.query_params.get("u") or "").strip()
     if not pending or (state and state != str(pending.get("state") or "")):
@@ -90,7 +91,7 @@ async def mimo_callback(request: Request):
         # must not cancel it; the user can still paste the real code.
         _pool_flash[user["id"]] = ("err", err or "Could not link this Xiaomi account.", "mimo")
         return RedirectResponse("/sources", status_code=303)
-    _mimo_pending.pop(user["id"], None)
+    logins.drop(user["id"], "mimo")
     _pool_flash[user["id"]] = ("ok", "Xiaomi Token Plan added to the pool.", "mimo")
     return RedirectResponse("/sources", status_code=303)
 
@@ -101,7 +102,7 @@ async def mimo_complete(request: Request, code: str = Form("")):
     user, redir = require_user(request)
     if redir:
         return redir
-    pending = _mimo_pending_for(user["id"])
+    pending = logins.get(user["id"], "mimo")
     if not pending:
         _pool_flash[user["id"]] = ("err", "Xiaomi sign-in expired. Start again.", "mimo")
         return RedirectResponse("/sources", status_code=303)
@@ -112,7 +113,7 @@ async def mimo_complete(request: Request, code: str = Form("")):
     if err or not cred_id:
         _pool_flash[user["id"]] = ("err", err or "Could not link this Xiaomi account.", "mimo")
         return RedirectResponse("/sources", status_code=303)
-    _mimo_pending.pop(user["id"], None)
+    logins.drop(user["id"], "mimo")
     _pool_flash[user["id"]] = ("ok", "Xiaomi Token Plan added to the pool.", "mimo")
     return RedirectResponse("/sources", status_code=303)
 
@@ -123,7 +124,7 @@ async def mimo_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _mimo_pending.pop(user["id"], None)
+    logins.drop(user["id"], "mimo")
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -150,16 +151,4 @@ async def mimo_add(request: Request, api_key: str = Form(""), label: str = Form(
 @router.post("/sources/mimo/{cred_id}/revoke")
 @router.post("/pool/mimo/{cred_id}/revoke")
 async def mimo_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = mimo_mod.ensure_mimo_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    mimo_mod.disable_credential(cred_id)
-    invalidate_model_cache("mimo")
-    _pool_flash[user["id"]] = ("ok", "Xiaomi account removed.", "mimo")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "mimo", cred_id, auth=require_user)

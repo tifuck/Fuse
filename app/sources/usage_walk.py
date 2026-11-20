@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timezone
 
 from .. import accounts, db
+from ..providers import registry
 from . import chatgpt as chatgpt_mod
 from . import cursor as cursor_mod
 from . import devin as devin_mod
@@ -24,7 +25,7 @@ from .pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type
 logger = logging.getLogger(__name__)
 
 WALK_PAUSE = 20.0
-WALK_KINDS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "cursor", "openrouter", "nanogpt", "refuseless")
+WALK_KINDS = tuple(spec.id for spec in registry.specs() if spec.usage_walk)
 # Credential id -> when its last refresh raised. A failing refresher never
 # stamps checked_at, so without this the walk would retry that one forever.
 _failed_at: dict[int, datetime] = {}

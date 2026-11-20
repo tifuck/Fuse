@@ -12,6 +12,8 @@ from ...sources import chatgpt as chatgpt_mod
 from ...sources import devin as devin_mod
 from ...sources import openrouter as openrouter_mod
 from ...sources import explabs as explabs_mod
+from ...sources import keyed as keyed_mod
+from ...providers import directory
 from ...sources import kimi as kimi_mod
 from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
@@ -22,8 +24,9 @@ from ...sources import zai as zai_mod
 from ...sources.grok import ensure_grok_source, grok_access_state, is_held
 from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_usage_percent, grok_usage_percent
 from ...sources import pool_policy
+from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _chatgpt_pending_for, _claude_pending_for, _cursor_pending_for, _devin_pending_for, _kimi_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pending_for, _pool_card
+from .context import _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -128,7 +131,7 @@ def user_sources(request: Request):
     _sort_mine_first(visible)
     grok_pool = stats.grok_pool_meter(grok_routable, owner_id=user["id"])
     _fuse_fill(visible)
-    pending = _pending_for(user["id"])
+    pending = logins.get(user["id"], "grok", clamp=True)
     interval = 5
     verify = ""
     user_code = ""
@@ -174,7 +177,7 @@ def user_sources(request: Request):
         chatgpt_routable
     )
     _fuse_fill(chatgpt_visible)
-    chatgpt_pending = _chatgpt_pending_for(user["id"])
+    chatgpt_pending = logins.get(user["id"], "chatgpt", clamp=True)
     chatgpt_interval = 5
     chatgpt_code = ""
     if chatgpt_pending:
@@ -280,7 +283,7 @@ def user_sources(request: Request):
     _sort_mine_first(kimi_visible)
     kimi_pool = stats.kimi_pool_meter(kimi_routable, owner_id=user["id"])
     _fuse_fill(kimi_visible)
-    kimi_pending = _kimi_pending_for(user["id"])
+    kimi_pending = logins.get(user["id"], "kimi", clamp=True)
     kimi_interval = 5
     kimi_verify = ""
     kimi_code = ""
@@ -325,7 +328,7 @@ def user_sources(request: Request):
     _sort_mine_first(mimo_visible)
     mimo_pool = stats.mimo_pool_meter(mimo_routable, owner_id=user["id"])
     _fuse_fill(mimo_visible)
-    mimo_pending = _mimo_pending_for(user["id"])
+    mimo_pending = logins.get(user["id"], "mimo")
 
     claude_sid = claude_mod.ensure_claude_source()
     claude_rows = db.fetchall(
@@ -359,7 +362,7 @@ def user_sources(request: Request):
     _sort_mine_first(claude_visible)
     claude_pool = stats.claude_pool_meter(claude_routable, owner_id=user["id"])
     _fuse_fill(claude_visible)
-    claude_pending = _claude_pending_for(user["id"])
+    claude_pending = logins.get(user["id"], "claude")
 
     cursor_sid = cursor_mod.ensure_cursor_source()
     cursor_rows = db.fetchall(
@@ -391,7 +394,7 @@ def user_sources(request: Request):
     _sort_mine_first(cursor_visible)
     cursor_pool = stats.cursor_pool_meter(cursor_routable, owner_id=user["id"])
     _fuse_fill(cursor_visible)
-    cursor_pending = _cursor_pending_for(user["id"])
+    cursor_pending = logins.get(user["id"], "cursor", clamp=True)
 
     nanogpt_sid = nanogpt_mod.ensure_nanogpt_source()
     nanogpt_rows = db.fetchall(
@@ -426,7 +429,7 @@ def user_sources(request: Request):
     _sort_mine_first(nanogpt_visible)
     nanogpt_pool = stats.nanogpt_pool_meter(nanogpt_routable, owner_id=user["id"])
     _fuse_fill(nanogpt_visible)
-    nanogpt_pending = _nanogpt_pending_for(user["id"])
+    nanogpt_pending = logins.get(user["id"], "nanogpt", clamp=True)
     nanogpt_owner = nanogpt_mod.nanogpt_own_access(user["id"])["ok"]
 
     refuseless_sid = refuseless_mod.ensure_refuseless_source()
@@ -510,9 +513,14 @@ def user_sources(request: Request):
             "id": explabs_owned["id"],
             "label": explabs_owned["label"] or "Experiential Labs key",
         }
+    keyed = keyed_mod.directory(user["id"])
+    panes = directory.panes(keyed)
+    pane_of = {entry["id"]: pane["id"] for pane in panes for entry in pane["keys"]}
+    model_lists = directory.model_lists(user["id"], panes)
     flash = _pool_flash.pop(user["id"], None)
     if flash and len(flash) < 3:
         flash = (flash[0], flash[1], "zai")
+    key_flash = flash if flash and flash[2] in pane_of else None
     return render(
         request,
         "sources.html",
@@ -603,7 +611,10 @@ def user_sources(request: Request):
         # session never sees NanoGPT's redirect back: offer the device code there.
         nanogpt_oauth=bool(_nanogpt_redirect_uri(request)) and "FuseDesktop/" not in request.headers.get("user-agent", ""),
         nanogpt_owner=nanogpt_owner,
-        nanogpt_models=_nanogpt_model_rows(user["id"]) if nanogpt_owner else [],
+        nanogpt_models=_nanogpt_model_rows(user["id"]) if nanogpt_owner or nanogpt_access["ok"] else [],
+        nanogpt_groups=directory.group_switches("nanogpt", user["id"]),
+        openrouter_groups=directory.group_switches("openrouter", user["id"]),
+        model_lists=model_lists,
         nanogpt_prefs=nanogpt_mod.model_prefs(user["id"]),
         nanogpt_flash_kind=flash[0] if flash and flash[2] == "nanogpt" else "",
         nanogpt_flash_msg=flash[1] if flash and flash[2] == "nanogpt" else "",
@@ -622,8 +633,8 @@ def user_sources(request: Request):
         zai_flash_msg=flash[1] if flash and flash[2] == "zai" else "",
         devin_flash_kind=flash[0] if flash and flash[2] == "devin" else "",
         devin_flash_msg=flash[1] if flash and flash[2] == "devin" else "",
-        devin_pending=_devin_pending_for(user["id"]),
-        devin_auth_url=safe_verify_url((_devin_pending_for(user["id"]) or {}).get("auth_url") or ""),
+        devin_pending=logins.get(user["id"], "devin"),
+        devin_auth_url=safe_verify_url((logins.get(user["id"], "devin") or {}).get("auth_url") or ""),
         explabs_access=explabs_access,
         explabs_account=explabs_card,
         explabs_flash_kind=flash[0] if flash and flash[2] == "explabs" else "",
@@ -636,7 +647,14 @@ def user_sources(request: Request):
         openrouter_account=or_card,
         openrouter_flash_kind=flash[0] if flash and flash[2] == "openrouter" else "",
         openrouter_flash_msg=flash[1] if flash and flash[2] == "openrouter" else "",
-        flash_pane=flash[2] if flash and flash[2] != "pool" else "",
+        keyed=keyed,
+        panes=panes,
+        groups=directory.GROUPS,
+        keys_flash_kind=key_flash[0] if key_flash else "",
+        keys_flash_msg=key_flash[1] if key_flash else "",
+        keys_flash_provider=key_flash[2] if key_flash else "",
+        keys_flash_pane=pane_of[key_flash[2]] if key_flash else "",
+        flash_pane=pane_of.get(flash[2], flash[2]) if flash and flash[2] != "pool" else "",
     )
 
 

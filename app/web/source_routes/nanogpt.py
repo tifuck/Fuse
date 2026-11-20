@@ -7,7 +7,7 @@ from __future__ import annotations
 import secrets
 import time
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from ... import db
@@ -15,8 +15,9 @@ from ...config import settings
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import nanogpt as nanogpt_mod
-from ..deps import _nanogpt_pending, _pool_flash, logger, require_user
-from .context import _nanogpt_pending_for
+from ...providers import logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
 
 router = APIRouter()
 _BACK = "/sources#pool-nanogpt"
@@ -80,7 +81,7 @@ async def nanogpt_start(request: Request):
         return _back(user, "err", "This Fuse address cannot receive NanoGPT's sign-in redirect (it needs HTTPS). Use device sign-in instead.")
     data = nanogpt_mod.start_login(uri)
     data["_started"] = time.time()
-    _nanogpt_pending[user["id"]] = data
+    logins.put(user["id"], "nanogpt", data)
     return RedirectResponse(data["auth_url"], status_code=303)
 
 
@@ -89,12 +90,12 @@ async def nanogpt_callback(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    pending = _nanogpt_pending_for(user["id"])
+    pending = logins.get(user["id"], "nanogpt", clamp=True)
     state = str(request.query_params.get("state") or "")
     if not pending or pending.get("kind") != "oauth" or not secrets.compare_digest(state, str(pending.get("state") or "")):
         # Keep a pending sign-in on a mismatch: a forged callback must not cancel it.
         return _back(user, "err", "NanoGPT sign-in expired or did not match this session. Start again.")
-    _nanogpt_pending.pop(user["id"], None)
+    logins.drop(user["id"], "nanogpt")
     if request.query_params.get("error"):
         return _back(user, "err", "NanoGPT sign-in was cancelled.")
     code = str(request.query_params.get("code") or "").strip()
@@ -123,7 +124,7 @@ async def nanogpt_device_start(request: Request):
         logger.warning("Could not start NanoGPT device login", exc_info=True)
         return _back(user, "err", "Could not start NanoGPT sign-in. Try again shortly.")
     data["_started"] = time.time()
-    _nanogpt_pending[user["id"]] = data
+    logins.put(user["id"], "nanogpt", data)
     return RedirectResponse(_BACK, status_code=303)
 
 
@@ -132,7 +133,7 @@ async def nanogpt_poll(request: Request):
     user, redir = require_user(request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
-    pending = _nanogpt_pending_for(user["id"])
+    pending = logins.get(user["id"], "nanogpt", clamp=True)
     if not pending or pending.get("kind") != "device":
         return JSONResponse({"error": "No NanoGPT sign-in in progress."}, status_code=400)
     interval = pending.get("interval", 5)
@@ -144,12 +145,11 @@ async def nanogpt_poll(request: Request):
     if data.get("pending"):
         return JSONResponse({"pending": True, "retry_after": interval})
     if data.get("error") or not data.get("key"):
-        _nanogpt_pending.pop(user["id"], None)
+        logins.drop(user["id"], "nanogpt")
         return JSONResponse({"error": "NanoGPT sign-in expired or was already used. Start again."}, status_code=400)
     # Cancelled or restarted while NanoGPT answered: do not link it.
-    if _nanogpt_pending.get(user["id"]) is not pending:
+    if not logins.claim(user["id"], "nanogpt", pending):
         return JSONResponse({"error": "That NanoGPT sign-in was cancelled or replaced."}, status_code=409)
-    _nanogpt_pending.pop(user["id"], None)
     cred_id, err = await _link(user, data["key"], auth_kind="device")
     if err or not cred_id:
         return JSONResponse({"error": err or "Could not link this NanoGPT account."}, status_code=400)
@@ -162,7 +162,7 @@ async def nanogpt_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _nanogpt_pending.pop(user["id"], None)
+    logins.drop(user["id"], "nanogpt")
     return RedirectResponse(_BACK, status_code=303)
 
 
@@ -176,28 +176,14 @@ async def nanogpt_add(request: Request, api_key: str = Form(""), label: str = Fo
     cred_id, err = await nanogpt_mod.add_key(nanogpt_mod.ensure_nanogpt_source(), api_key, user["id"], label=label)
     if err or not cred_id:
         return _back(user, "err", err or "Could not add that key.")
-    _nanogpt_pending.pop(user["id"], None)
+    logins.drop(user["id"], "nanogpt")
     invalidate_model_cache("nanogpt")
     return _back(user, "ok", _linked_message(cred_id))
 
 
 @router.post("/sources/nanogpt/{cred_id}/revoke")
 async def nanogpt_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != nanogpt_mod.ensure_nanogpt_source():
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    nanogpt_mod.disable_credential(cred_id)
-    invalidate_model_cache("nanogpt")
-    return _back(
-        user,
-        "ok",
-        "NanoGPT account removed from Fuse. NanoGPT has no revoke API: delete the \"OAuth: Fuse\" key on nano-gpt.com/api to end its access.",
-    )
+    return await revoke(request, "nanogpt", cred_id, back=_BACK, auth=require_user)
 
 
 # --- The owner's model list (same JSON contract as OpenRouter's) -------------
@@ -240,23 +226,6 @@ async def nanogpt_settings(request: Request):
     return JSONResponse({"free_models": prefs["subscription"], "paid_all": prefs["paid_all"]})
 
 
-@router.post("/sources/nanogpt/model")
-async def nanogpt_model_toggle(request: Request):
-    user, body, err = await _owner_json(request)
-    if err:
-        return err
-    model = str(body.get("model") or "").strip()
-    rec = _by_id().get(model)
-    if not rec or rec["subscription"]:
-        return JSONResponse({"error": "Unknown paid model."}, status_code=400)
-    if nanogpt_mod.model_prefs(user["id"])["paid_all"]:
-        return JSONResponse({"error": "Every paid model is already on."}, status_code=409)
-    if not nanogpt_mod.set_paid_model(user["id"], model, bool(body.get("enabled"))):
-        return JSONResponse({"error": f"You can enable up to {nanogpt_mod.MAX_PAID_MODELS} paid models."}, status_code=400)
-    invalidate_model_cache("nanogpt")
-    return JSONResponse({"enabled": model in nanogpt_mod.model_prefs(user["id"])["paid"]})
-
-
 @router.get("/sources/nanogpt/providers")
 async def nanogpt_model_providers(request: Request, model: str = ""):
     user, _body, err = await _owner_json(request)
@@ -294,18 +263,25 @@ def model_rows(user_id: int) -> list[dict]:
     """Every catalog model with this account's switch state, list price and
     pinned-provider count, shaped like OpenRouter's rows for the shared list UI
     (`free` marks a subscription model)."""
+    from ...providers import model_prefs
+
     prefs = nanogpt_mod.model_prefs(user_id)
-    paid = set(prefs["paid"])
+    choices = model_prefs.load(user_id, "nanogpt")
+    own = nanogpt_mod.nanogpt_own_access(user_id)["ok"]
     rows = []
     for mid, rec in _by_id().items():
         pricing = rec.get("pricing") or {}
         sub = bool(rec["subscription"])
+        if not (sub or own):
+            continue  # paid models run only on the user's own key
         rows.append(
             {
                 "id": mid,
                 "name": rec.get("name") or mid,
                 "free": sub,
-                "enabled": prefs["subscription"] if sub else (prefs["paid_all"] or mid in paid),
+                "model": nanogpt_mod.public_id(mid),
+                "group": "subscription" if sub else "paid",
+                "enabled": model_prefs.state("nanogpt", nanogpt_mod.public_id(mid), choices),
                 "input": nanogpt_mod._as_float(pricing.get("prompt")),
                 "output": nanogpt_mod._as_float(pricing.get("completion")),
                 "context": rec.get("context_length"),

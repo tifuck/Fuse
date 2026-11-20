@@ -42,7 +42,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   overflow-wrap: break-word;
   & p { margin: 0 0 0.9em; }
   /* A line that introduces a list stays close to it. */
-  & p:has(+ :is(ul, ol)) { margin-bottom: 0.5em; }
+  & p:has(+ :is(ul, ol)) { margin-bottom: 0; }
   & strong { color: var(--dk-text); font-weight: 600; }
 
   /* Headings: clear steps, more space above a section than below. */

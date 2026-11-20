@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import time
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import chatgpt as chatgpt_mod
-from ..deps import _chatgpt_pending, _pool_flash, logger, require_user
-from .context import _chatgpt_pending_for, _oauth_tokens, _terminal_oauth_error
+from ...providers import logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
+from .context import _oauth_tokens, _terminal_oauth_error
 
 router = APIRouter()
 
@@ -39,7 +41,7 @@ async def chatgpt_start(request: Request):
         _pool_flash[user["id"]] = ("err", "OpenAI returned an invalid sign-in response. Try again shortly.", "chatgpt")
         return RedirectResponse("/sources", status_code=303)
     data["_started"] = time.time()
-    _chatgpt_pending[user["id"]] = data
+    logins.put(user["id"], "chatgpt", data)
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -49,7 +51,7 @@ async def chatgpt_poll(request: Request):
     user, redir = require_user(request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
-    pending = _chatgpt_pending_for(user["id"])
+    pending = logins.get(user["id"], "chatgpt", clamp=True)
     if not pending:
         return JSONResponse({"error": "No ChatGPT sign-in in progress."}, status_code=400)
     try:
@@ -74,9 +76,8 @@ async def chatgpt_poll(request: Request):
                 status_code=502,
             )
         # Cancelled or restarted while OpenAI answered: do not donate it.
-        if _chatgpt_pending.get(user["id"]) is not pending:
+        if not logins.claim(user["id"], "chatgpt", pending):
             return JSONResponse({"error": "That ChatGPT sign-in was cancelled or replaced."}, status_code=409)
-        _chatgpt_pending.pop(user["id"], None)
         sid = chatgpt_mod.ensure_chatgpt_source()
         cred_id = chatgpt_mod.store_tokens(sid, tokens, donated_by=user["id"], label="ChatGPT account")
         row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred_id,))
@@ -91,7 +92,7 @@ async def chatgpt_poll(request: Request):
         return JSONResponse({"pending": True})
     error_text = str(result.get("error") or "")
     if _terminal_oauth_error(error_text):
-        _chatgpt_pending.pop(user["id"], None)
+        logins.drop(user["id"], "chatgpt")
         return JSONResponse({"error": "OpenAI sign-in was denied or expired. Start again."}, status_code=400)
     return JSONResponse(
         {"pending": True, "error": error_text or "OpenAI returned an unexpected response; retrying.", "retry_after": pending.get("interval", 5)},
@@ -105,22 +106,11 @@ async def chatgpt_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _chatgpt_pending.pop(user["id"], None)
+    logins.drop(user["id"], "chatgpt")
     return RedirectResponse("/sources", status_code=303)
 
 
 @router.post("/sources/chatgpt/{cred_id}/revoke")
 @router.post("/pool/chatgpt/{cred_id}/revoke")
 async def chatgpt_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = chatgpt_mod.ensure_chatgpt_source()
-    row = db.fetchone("SELECT id, donated_by, source_id, extra FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    chatgpt_mod.disable_credential(cred_id)
-    invalidate_model_cache("chatgpt")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "chatgpt", cred_id, auth=require_user)

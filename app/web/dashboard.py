@@ -11,16 +11,6 @@ from .. import accounts, db, pricing as pricing_mod, stats, tool_failures
 from .. import opencode as opencode_mod
 from ..config import settings
 from ..sources import TYPES, models_by_source
-from ..sources import chatgpt as chatgpt_mod
-from ..sources import devin as devin_mod
-from ..sources import kimi as kimi_mod
-from ..sources import mimo as mimo_mod
-from ..sources import claude as claude_mod
-from ..sources import cursor as cursor_mod
-from ..sources import nanogpt as nanogpt_mod
-from ..sources import refuseless as refuseless_mod
-from ..sources import zai as zai_mod
-from ..sources.grok import grok_access_state
 from .deps import (
     _chat_auth,
     _clear_vault_cookie,
@@ -294,29 +284,7 @@ async def api_docs(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    access = grok_access_state(user["id"])
-    chatgpt_access = chatgpt_mod.chatgpt_access_state(user["id"])
-    zai_access = zai_mod.zai_access_state(user["id"])
-    devin_access = devin_mod.devin_access_state(user["id"])
-    kimi_access = kimi_mod.kimi_access_state(user["id"])
-    mimo_access = mimo_mod.mimo_access_state(user["id"])
-    claude_access = claude_mod.claude_access_state(user["id"])
-    cursor_access = cursor_mod.cursor_access_state(user["id"])
-    nanogpt_access = nanogpt_mod.nanogpt_access_state(user["id"])
-    refuseless_access = refuseless_mod.refuseless_access_state(user["id"])
-    groups = await models_by_source(
-        allow_grok=access["ok"],
-        allow_chatgpt=chatgpt_access["ok"],
-        allow_zai=zai_access["ok"],
-        allow_devin=devin_access["ok"],
-        allow_kimi=kimi_access["ok"],
-        allow_mimo=mimo_access["ok"],
-        allow_claude=claude_access["ok"],
-        allow_cursor=cursor_access["ok"],
-        allow_nanogpt=nanogpt_access["ok"],
-        allow_refuseless=refuseless_access["ok"],
-        user_id=user["id"],
-    )
+    groups = await models_by_source(user_id=user["id"])
     groups = [group for group in groups if group.get("models")]
     model_options = await opencode_mod.model_options(user["id"], groups)
     models = [item["id"] for item in model_options]

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db, provider_errors
 from ..async_work import durable_call
 from ..config import settings
@@ -180,19 +181,10 @@ def _chat_headers(token: str, account_id: str | None, session_id: str | None = N
 
 
 def ensure_chatgpt_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='chatgpt'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("chatgpt", "ChatGPT", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("chatgpt", "ChatGPT")
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
 def _oauth_revoked(status: int, data) -> bool:
@@ -206,11 +198,7 @@ def _oauth_revoked(status: int, data) -> bool:
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        lock = asyncio.Lock()
-        _refresh_locks[cred_id] = lock
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
 def _jwt_claims(token: str) -> dict | None:
@@ -311,17 +299,7 @@ def credential_is_authed(cred, extra: dict | None = None) -> bool:
 
 def chatgpt_own_access(user_id: int) -> dict:
     """Access from this user's own donated ChatGPT accounts only."""
-    sid = ensure_chatgpt_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0",
-        (sid, user_id),
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    for row in rows:
-        if credential_is_authed(row):
-            return {"ok": True, "reason": "ok"}
-    return {"ok": False, "reason": "unauthed"}
+    return creds.own_access(ensure_chatgpt_source(), user_id, credential_is_authed)
 
 
 def listable_models(names: list[str], user_id: int | None) -> list[str]:
@@ -637,24 +615,11 @@ def _unix_iso(value) -> str:
         return ""
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    if not ts:
-        return None
-    raw = str(ts).replace("Z", "")
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(raw.split("+")[0], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+_parse_ts = creds.parse_ts
 
 
 def _usage_fresh(billing: dict) -> bool:
-    checked = billing.get("checked_at") or billing.get("fetched_at")
-    when = _parse_ts(str(checked or ""))
-    if not when:
-        return False
-    return datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL)
+    return creds.usage_fresh(billing, USAGE_TTL)
 
 
 def _rate_windows(rate: dict) -> list[dict]:
@@ -819,7 +784,7 @@ class ChatGPTSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         if not self.creds:
             return []
         cached = cached_models(300.0)

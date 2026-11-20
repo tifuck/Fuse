@@ -6,7 +6,7 @@ import time
 import uuid
 import httpx
 
-from .. import accounts, context_meter, model_caps
+from .. import accounts, context_meter, db, model_caps
 from ..config import ROOT
 from ..proxy import UsageStream, usage_from_obj
 from .base import ChatResult
@@ -30,6 +30,8 @@ def _plain_keys(source_id: int, creds: list) -> list[str]:
     _plain[source_id] = fresh
     return [fresh[c["secret"]] for c in creds]
 _tags_cache: dict[int, tuple[float, list[str]]] = {}
+# (source id, credential id) -> (fetched at, names) for personal keys.
+_own_tags: dict[tuple[int, int], tuple[float, list[str]]] = {}
 _access_tasks: dict[int, asyncio.Task] = {}
 # Model -> the `think` values /api/show advertises ([] when it cannot think).
 # Absent: unknown, so every level is offered.
@@ -223,6 +225,64 @@ def _no_key_result(pool, model: str) -> ChatResult:
         "message": message, field: value, "resets_at": int(soonest.available_at)}})
 
 
+def _site_allowed(cfg: dict, user_id: int | None) -> bool:
+    """Who the admin's keys serve: sources.config.site_access, "everyone" by
+    default (every user could use them before personal keys existed). No
+    user (an admin probe) always may."""
+    from . import keyed
+
+    return user_id is None or keyed.site_allowed(cfg, user_id, default="everyone")
+
+
+def user_catalog(user_id: int | None) -> bool:
+    """True when this user's Ollama list is not the shared one: they have a
+    key of their own, or the admin's keys do not serve them."""
+    if not user_id:
+        return False
+    if db.fetchone_memo(
+        "SELECT c.id FROM credentials c JOIN sources s ON s.id=c.source_id"
+        " WHERE s.type='ollama' AND c.donated_by=? AND c.disabled=0 LIMIT 1",
+        (user_id,),
+    ):
+        return True
+    row = db.fetchone_memo("SELECT config FROM sources WHERE type='ollama' ORDER BY id LIMIT 1")
+    try:
+        cfg = json.loads((row["config"] if row else None) or "{}")
+    except (json.JSONDecodeError, TypeError):
+        cfg = {}
+    return not _site_allowed(cfg if isinstance(cfg, dict) else {}, user_id)
+
+
+async def validate_key(key: str) -> str:
+    """"" when Ollama accepts the key. Ollama documents no whoami call and
+    /api/tags answers without a key, so this sends a one-token chat to a
+    listed model; a plan refusal still proves the key. Never repeats the key
+    or Ollama's response text."""
+    headers = {"Authorization": f"Bearer {key}"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(DEFAULT_BASE + "/tags", headers=headers)
+            names = [m.get("name") for m in (r.json().get("models") or []) if isinstance(m, dict)] if r.status_code == 200 else []
+            names = [n for n in names if isinstance(n, str) and n]
+            site = db.fetchone("SELECT id FROM sources WHERE type='ollama' ORDER BY id LIMIT 1")
+            free = ollama_access.filter_free(site["id"], names) if site else []
+            model = (free or names or [""])[0]
+            if not model:
+                return "Could not check the key: Ollama listed no models. Try again shortly."
+            r = await client.post(DEFAULT_BASE + "/chat", headers=headers, json={
+                "model": model, "messages": [{"role": "user", "content": "ping"}], "stream": False,
+                "options": {"num_predict": 1}})
+    except (httpx.HTTPError, ValueError):
+        return "Could not reach Ollama to check the key. Try again shortly."
+    if r.status_code == 200 or ollama_access.is_gated_error(r.status_code, r.text[:300]):
+        return ""
+    if r.status_code in (401, 403):
+        return "Ollama rejected this key."
+    if r.status_code == 429:
+        return "Ollama rate limited the key check. Try again in a minute."
+    return f"Ollama could not check the key (HTTP {r.status_code})."
+
+
 class OllamaSource:
     type_id = "ollama"
 
@@ -233,7 +293,11 @@ class OllamaSource:
         # session id must not share a pin and swap each other's sticky key.
         self.pin_kind = f"ollama:{self.source_id}"
         self.cfg = cfg
-        self.creds = list(creds)
+        creds = list(creds)
+        # Personal keys serve only their owner: they never join the shared
+        # KeyPool, its state file, the plain-key cache or the access map.
+        self.personal = [c for c in creds if c["donated_by"] is not None]
+        self.creds = [c for c in creds if c["donated_by"] is None]
         self.base = (cfg.get("base_url") or DEFAULT_BASE).rstrip("/")
         keys = _plain_keys(self.source_id, self.creds)
         if self.source_id not in _pools:
@@ -300,14 +364,21 @@ class OllamaSource:
             )
         return out
 
-    async def _tags(self) -> list[str]:
-        if not self.creds:
+    def _own(self, user_id: int | None) -> list:
+        return [c for c in self.personal if user_id and int(c["donated_by"]) == int(user_id)]
+
+    async def _tags(self, cred=None) -> list[str]:
+        cred = cred or (self.creds[0] if self.creds else None)
+        if cred is None:
             return []
-        hit = _tags_cache.get(self.source_id)
+        cache, cache_key = (
+            (_own_tags, (self.source_id, cred["id"])) if cred["donated_by"] is not None else (_tags_cache, self.source_id)
+        )
+        hit = cache.get(cache_key)
         if hit and time.time() - hit[0] < _TAGS_TTL:
             return list(hit[1])
         async with httpx.AsyncClient(timeout=20) as client:
-            key = accounts.cred_secret(self.creds[0])
+            key = accounts.cred_secret(cred)
             r = await client.get(self.base + "/tags", headers={"Authorization": f"Bearer {key}"})
             if r.status_code != 200:
                 raise ValueError(f"ollama tags http {r.status_code}")
@@ -349,7 +420,7 @@ class OllamaSource:
                     pass
 
             await asyncio.gather(*(capability(name) for name in names))
-        _tags_cache[self.source_id] = (time.time(), names)
+        cache[cache_key] = (time.time(), names)
         return names
 
     def _schedule_access_refresh(self, names: list[str]) -> None:
@@ -426,7 +497,16 @@ class OllamaSource:
                         self.source_id, name, ollama_access.UNKNOWN, status=0, error=type(e).__name__
                     )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
+        own = self._own(user_id)
+        if own:
+            # The owner's key decides what it may call: no shared verdicts.
+            try:
+                return await self._tags(own[0])
+            except Exception:
+                return []
+        if not _site_allowed(self.cfg, user_id):
+            return []
         try:
             names = await self._tags()
         except Exception:
@@ -486,8 +566,27 @@ class OllamaSource:
             payload["think"] = True
         return payload
 
-    async def chat(self, body: dict, *, session_id: str | None = None) -> ChatResult:
-        if not self.creds:
+    async def _send_own(self, client, payload: dict, own: list, attempts: list, *, last: bool):
+        """Try the caller's own keys in order; a rejected key yields to the next.
+        Returns (response, credential), or (None, None) when every key was
+        rejected and the site keys come next (last=False)."""
+        for i, cred in enumerate(own):
+            req = client.build_request("POST", self.base + "/chat", json=payload,
+                                       headers={"Authorization": f"Bearer {accounts.cred_secret(cred)}"})
+            response = await client.send(req, stream=True)
+            if response.status_code == 401 and (i + 1 < len(own) or not last):
+                await response.aclose()
+                attempts.append({"credential_id": cred["id"], "status": 401, "usage": {}})
+                continue
+            return response, cred
+        return None, None
+
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
+        own = self._own(user_id)
+        site = _site_allowed(self.cfg, user_id)
+        if not own and not site:
+            return ChatResult(status=403, body={"error": {"message": "Add your Ollama Cloud API key on Sources to use its models."}})
+        if not own and not self.creds:
             return ChatResult(status=503, body={"error": "No Ollama keys configured"})
         stream = bool(body.get("stream", False))
         try:
@@ -505,10 +604,13 @@ class OllamaSource:
                     if c["id"] == pinned_cid:
                         prefer_key = accounts.cred_secret(c)
                         break
+        own_attempts: list[dict] = []
         try:
-            response, key_state, _ = await self.pool.send_request(
-                client, endpoint=self.base + "/chat", payload=payload, prefer_key=prefer_key
-            )
+            response, own_cred = await self._send_own(client, payload, own, own_attempts, last=not (site and self.creds))
+            if response is None:
+                response, key_state, _ = await self.pool.send_request(
+                    client, endpoint=self.base + "/chat", payload=payload, prefer_key=prefer_key
+                )
         except httpx.TimeoutException as exc:
             await client.aclose()
             return ChatResult(
@@ -528,8 +630,10 @@ class OllamaSource:
             )
         stream_returned = False
         try:
-            cred = self._cred_by_key.get(key_state.key)
+            cred = own_cred or self._cred_by_key.get(key_state.key)
             cid = cred["id"] if cred else None
+            # Verdicts from one user's own key say nothing about the site keys.
+            shared = own_cred is None
             model = payload["model"]
             if response.status_code != 200:
                 safe_headers = {}
@@ -542,12 +646,13 @@ class OllamaSource:
                 if not isinstance(err, dict):
                     err = {"error": {"message": "upstream returned an invalid error schema"}}
                 text = response.text if hasattr(response, "text") else json.dumps(err)
-                retry_attempts = response.extensions.get("fuse_attempts") or []
+                retry_attempts = own_attempts + (response.extensions.get("fuse_attempts") or [])
                 await response.aclose()
                 if ollama_access.is_gated_error(response.status_code, text if isinstance(text, str) else str(err)):
-                    ollama_access.note(
-                        self.source_id, model, ollama_access.GATED, status=response.status_code, error=str(err)[:200]
-                    )
+                    if shared:
+                        ollama_access.note(
+                            self.source_id, model, ollama_access.GATED, status=response.status_code, error=str(err)[:200]
+                        )
                     result = ChatResult(
                         status=403,
                         body={"error": "This model requires a paid Ollama Cloud plan"},
@@ -569,7 +674,8 @@ class OllamaSource:
                 )
                 result.attempts = retry_attempts
                 return result
-            ollama_access.note(self.source_id, model, ollama_access.FREE, status=200)
+            if shared:
+                ollama_access.note(self.source_id, model, ollama_access.FREE, status=200)
             sticky = bool(self.cfg.get("sticky_sessions", True) and session_id)
             if stream:
                 stream_returned = True
@@ -593,6 +699,7 @@ class OllamaSource:
                     stream=gen,
                     credential_id=cid,
                     model=model,
+                    attempts=own_attempts,
                 )
             try:
                 await response.aread()
@@ -641,7 +748,7 @@ class OllamaSource:
             usage = usage_from_obj(obj)
             if sticky:
                 bind(self.pin_kind, session_id, cid)
-            return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model)
+            return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model, attempts=own_attempts)
         finally:
             if not stream_returned:
                 await client.aclose()

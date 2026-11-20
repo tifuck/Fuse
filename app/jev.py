@@ -31,7 +31,6 @@ def _gate() -> asyncio.Semaphore:
 DANGEROUS_CEILING = 0.40
 USER_CLIP = 2_000
 RECENT_TEXT = 400
-RECENT_PREVIEW = 200
 RECENT_MAX = 12
 COMMAND_CLIP = 800
 
@@ -106,7 +105,12 @@ def should_allow(answers: dict) -> bool | None:
 
 
 def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list[str] | None = None) -> dict:
-    """Small structured state. Full transcripts rot Jev 1.13 accuracy."""
+    """Small structured state. Full transcripts rot Jev 1.13 accuracy.
+
+    Reasoning-blind: only the user's words and the agent's calls (tool, path,
+    command) go in, never the agent's prose or tool output. A prompt injection
+    in fetched or read content cannot argue its own case to the gate.
+    """
     row = db.fetchone(
         "SELECT messages FROM chat_threads WHERE id=? AND user_id=?",
         (int(thread_id), int(user_id)),
@@ -132,9 +136,6 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
             if text:
                 recent.append({"role": "user", "text": text[:RECENT_TEXT]})
         elif role == "assistant":
-            text = seen(str(msg.get("content") or "")).strip()
-            if text:
-                recent.append({"role": "assistant", "text": text[:RECENT_TEXT]})
             for tool in msg.get("tools") or []:
                 if not isinstance(tool, dict):
                     continue
@@ -146,9 +147,6 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
                 path = seen(str(tool.get("path") or "")).strip()
                 if path:
                     rec["path"] = path[:400]
-                preview = seen(str(tool.get("preview") or tool.get("summary") or "")).strip()
-                if preview:
-                    rec["preview"] = preview[:RECENT_PREVIEW]
                 command = seen(str(tool.get("command") or "")).strip()
                 if command:
                     rec["command"] = command[:COMMAND_CLIP]

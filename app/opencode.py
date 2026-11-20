@@ -5,30 +5,19 @@ import json
 import re
 
 from . import context_meter as ctxmod, model_caps
-from .sources import chatgpt as chatgpt_mod
 from .sources import devin as devin_mod
+from .providers import registry
 from .sources import models_by_source
 from .sources import openrouter as openrouter_mod
 from .sources import explabs as explabs_mod
-from .sources import kimi as kimi_mod
-from .sources import mimo as mimo_mod
-from .sources import claude as claude_mod
-from .sources import cursor as cursor_mod
 from .sources import nanogpt as nanogpt_mod
 from .sources import refuseless as refuseless_mod
-from .sources import zai as zai_mod
-from .sources.grok import grok_access_state
 from .web.models import _model_display_name, _opencode_model_config
 
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 FUSE_NPM = "@ai-sdk/openai-compatible"
-_OPENCODE_NAME_PREFIX = {
-    "devin": "Devin",
-    "cursor": "Cursor",
-    "explabs": "Experiential Labs",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-}
+# Resellers' models get their label as prefix (spec.reseller).
+_OPENCODE_NAME_PREFIX = {s.id: s.label for s in registry.specs() if s.reseller}
 
 
 def opencode_display_name(type_id: str, name: str) -> str:
@@ -44,29 +33,7 @@ def opencode_display_name(type_id: str, name: str) -> str:
 
 async def model_options(user_id: int, groups: list[dict] | None = None) -> list[dict]:
     if groups is None:
-        grok = grok_access_state(user_id)
-        chatgpt = chatgpt_mod.chatgpt_access_state(user_id)
-        zai = zai_mod.zai_access_state(user_id)
-        devin = devin_mod.devin_access_state(user_id)
-        kimi = kimi_mod.kimi_access_state(user_id)
-        mimo = mimo_mod.mimo_access_state(user_id)
-        claude = claude_mod.claude_access_state(user_id)
-        cursor = cursor_mod.cursor_access_state(user_id)
-        nanogpt = nanogpt_mod.nanogpt_access_state(user_id)
-        refuseless = refuseless_mod.refuseless_access_state(user_id)
-        groups = await models_by_source(
-            allow_grok=grok["ok"],
-            allow_chatgpt=chatgpt["ok"],
-            allow_zai=zai["ok"],
-            allow_devin=devin["ok"],
-            allow_kimi=kimi["ok"],
-            allow_mimo=mimo["ok"],
-            allow_claude=claude["ok"],
-            allow_cursor=cursor["ok"],
-            allow_nanogpt=nanogpt["ok"],
-            allow_refuseless=refuseless["ok"],
-            user_id=user_id,
-        )
+        groups = await models_by_source(user_id=user_id)
     entries: list[dict] = []
     seen: set[str] = set()
     openrouter_catalog = None

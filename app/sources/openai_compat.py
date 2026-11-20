@@ -41,6 +41,7 @@ def _v1(url: str) -> str:
 
 class OpenAICompatSource:
     type_id = "openai"
+    send_cache_key = True  # session-scoped prompt_cache_key on every request
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]
@@ -87,7 +88,7 @@ class OpenAICompatSource:
             return rotating[start:] + rotating[:start] + (cooling if ready else [])
         return pool
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         if not self.creds:
             return []
         hit = _models_cache.get(self.source_id)
@@ -132,7 +133,7 @@ class OpenAICompatSource:
         result.attempts = attempts
         return result
 
-    async def chat(self, body: dict, *, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         if not self.creds:
             return ChatResult(status=503, body={"error": "No keys configured for this source"})
         tried: set[int] = set()
@@ -141,7 +142,7 @@ class OpenAICompatSource:
         prefer_id = lookup(self.pin_kind, session_id) if session_id else None
         model = body.get("model", "")
         failover = Failover()
-        cache_key = bool(session_id)
+        cache_key = bool(session_id) and self.send_cache_key
         for cred in self._next_creds(tried, prefer_id=prefer_id):
             tried.add(cred["id"])
             key = accounts.cred_secret(cred)

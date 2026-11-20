@@ -294,7 +294,7 @@ class ExperientialLabsSource:
         catalog = await fetch_catalog(user_id)
         return [public_id(mid) for mid in catalog["by_id"]]
 
-    async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         cred = user_credential(user_id, self.source_id)
         model = upstream_id(str(body.get("model") or ""))
         if not cred:

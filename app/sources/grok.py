@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db, file_images, provider_errors
 from ..async_work import durable_call
 from ..config import settings
@@ -86,18 +87,10 @@ async def jpeg_png_images(messages):
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        # Never evicted: an unlocked lock may still have a waiter about to
-        # acquire it, and a second lock would let two refreshes spend the
-        # same rotating refresh token. One per credential is small.
-        lock = asyncio.Lock()
-        _refresh_locks[cred_id] = lock
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
 def _oauth_revoked(status: int, data) -> bool:
@@ -181,28 +174,10 @@ async def fetch_userinfo(token: str) -> dict:
 
 
 def ensure_grok_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='grok'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("grok", "Grok", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("grok", "Grok")
 
 
-def _row_get(row, key, default=None):
-    try:
-        if isinstance(row, dict):
-            return row.get(key, default)
-        keys = row.keys()
-        if key in keys:
-            val = row[key]
-            return default if val is None else val
-    except Exception:
-        return default
-    return default
+_row_get = creds.row_get
 
 
 def is_held(cred, now: datetime | None = None) -> bool:
@@ -259,36 +234,13 @@ def credential_is_authed(cred, extra: dict | None = None) -> bool:
 
 def grok_own_access(user_id: int) -> dict:
     """Access from this user's own donated Grok accounts only."""
-    sid = ensure_grok_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0",
-        (sid, user_id),
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    saw_authed = False
-    for row in rows:
-        extra = accounts.cred_extra(row)
-        if not credential_is_authed(row, extra):
-            continue
-        saw_authed = True
-        billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-        if billing_has_subscription(billing):
-            return {"ok": True, "reason": "ok"}
-    if saw_authed:
-        return {"ok": False, "reason": "no_sub"}
-    return {"ok": False, "reason": "unauthed"}
+    return creds.own_access(ensure_grok_source(), user_id, credential_is_authed,
+                            lambda row, extra: billing_has_subscription(creds.billing(extra)))
 
 
 def _grok_live(row) -> bool:
     """One account another user could be served by right now."""
-    if is_held(row):
-        return False
-    extra = accounts.cred_extra(row)
-    if not credential_is_authed(row, extra):
-        return False
-    billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-    return billing_has_subscription(billing)
+    return creds.live_row(row, credential_is_authed, lambda row, extra: billing_has_subscription(creds.billing(extra)))
 
 
 def grok_access_state(user_id: int) -> dict:
@@ -308,8 +260,7 @@ def user_has_grok(user_id: int) -> bool:
     return grok_access_state(user_id)["ok"]
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
 def _auth_headers(token: str, model: str = "grok-4.6", conv_id: str | None = None) -> dict:
@@ -414,16 +365,7 @@ def parse_billing_payload(data: dict) -> dict:
     }
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    if not ts:
-        return None
-    raw = ts.replace("Z", "")
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(raw.split("+")[0], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+_parse_ts = creds.parse_ts
 
 
 def _billing_fresh(billing: dict) -> bool:
@@ -434,14 +376,7 @@ def _billing_fresh(billing: dict) -> bool:
     return datetime.now(timezone.utc) - when < timedelta(seconds=BILLING_TTL)
 
 
-def _as_float(v) -> float | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        value = float(v)
-        return value if math.isfinite(value) else None
-    except (TypeError, ValueError, OverflowError):
-        return None
+_as_float = creds.as_float
 
 
 def apply_usage_guard(
@@ -568,7 +503,7 @@ class GrokSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         if picked:
             cred, extra = picked

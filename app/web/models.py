@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 
 from .. import context_meter as ctxmod, db
 from ..sources import TYPES, grok as grok_mod, models_by_source, reasoning_efforts
-from ..sources import chatgpt as chatgpt_mod
 from ..sources import chatgpt_catalog as chatgpt_catalog_mod
 from ..sources import devin as devin_mod
 from ..sources import devin_catalog as devin_catalog_mod
@@ -21,8 +20,9 @@ from ..sources import cursor as cursor_mod
 from ..sources import nanogpt as nanogpt_mod
 from ..sources import refuseless as refuseless_mod
 from ..sources import zai as zai_mod
-from ..sources.grok import grok_access_state
 from ..sources import pool_policy
+from ..providers import registry
+from ..providers.access import Access
 from .deps import render, require_user
 
 router = APIRouter()
@@ -65,85 +65,9 @@ def _opencode_model_config(name: str, type_id: str, model: str | None = None, us
     }
 
 
-_FAMILY_TITLES = {
-    "grok": "Grok",
-    "chatgpt": "ChatGPT",
-    "zai": "Z.AI",
-    "devin": "Devin",
-    "kimi": "Kimi",
-    "mimo": "Xiaomi",
-    "claude": "Claude",
-    "cursor": "Cursor",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-    "llama": "Local inference",
-    "ollama": "Ollama Cloud",
-    "openrouter": "OpenRouter",
-    "explabs": "Experiential Labs",
-}
-
-_LOCK_COPY = {
-    "grok": {
-        "none": "You need to link a Grok account.",
-        "no_sub": "The linked Grok account needs an active SuperGrok subscription.",
-        "unauthed": "The linked Grok sign-in is no longer valid.",
-    },
-    "chatgpt": {
-        "none": "You need to link a ChatGPT account.",
-        "unauthed": "The linked ChatGPT sign-in is no longer valid.",
-    },
-    "zai": {
-        "none": "You need to link a Z.AI key, or share a live x.ai or OpenAI account.",
-        "no_sub": "The linked Z.AI key needs an active GLM Coding Plan.",
-        "unauthed": "The linked Z.AI key is no longer valid.",
-    },
-    "openrouter": {
-        "none": "Add your OpenRouter API key to use free OpenRouter models.",
-    },
-    "devin": {
-        "none": "You need to link a Devin account.",
-        "no_sub": "The linked Devin account needs an active Pro plan.",
-        "unauthed": "The linked Devin sign-in is no longer valid.",
-    },
-    "kimi": {
-        "none": "You need to link a Kimi membership.",
-        "no_sub": "The linked Kimi account needs an active membership.",
-        "unauthed": "The linked Kimi sign-in is no longer valid.",
-    },
-    "mimo": {
-        "none": "You need to link a Xiaomi Token Plan.",
-        "no_sub": "The linked Xiaomi key is not showing a Token Plan.",
-        "unauthed": "The linked Xiaomi key is no longer valid.",
-    },
-    "claude": {
-        "none": "You need to link a Claude account.",
-        "no_sub": "The linked Claude account needs an active subscription.",
-        "unauthed": "The linked Claude sign-in is no longer valid.",
-    },
-    "cursor": {
-        "none": "You need to link a Cursor account.",
-        "unauthed": "The linked Cursor sign-in is no longer valid.",
-    },
-    "nanogpt": {
-        "none": "Sign in with NanoGPT to use its models.",
-        "unauthed": "The linked NanoGPT key is no longer valid. Sign in with NanoGPT again.",
-    },
-    "refuseless": {
-        "none": "Link your Refuseless API key to use its models.",
-        "unauthed": "The linked Refuseless key is no longer valid. Link a new key.",
-    },
-}
-
-_POOL_FALLBACKS = {
-    "grok": grok_mod.GROK_MODELS,
-    "chatgpt": chatgpt_mod.CHATGPT_MODELS,
-    "zai": zai_mod.ZAI_MODELS,
-    "devin": devin_mod.DEVIN_MODELS,
-    "kimi": kimi_mod.KIMI_MODELS,
-    "mimo": mimo_mod.MIMO_MODELS,
-    "claude": claude_mod.CLAUDE_MODELS,
-    "cursor": cursor_mod.CURSOR_MODELS,
-}
+_FAMILY_TITLES = {s.id: s.title for s in registry.specs() if s.title}
+_LOCK_COPY = {s.id: s.lock_copy for s in registry.specs() if s.lock_copy}
+_POOL_FALLBACKS = {s.id: s.seeds() for s in registry.specs() if s.seeds}
 
 _MODEL_NAMES = {
     "grok-4.7": "Grok 4.7",
@@ -353,6 +277,12 @@ def _model_display_name(model: str, type_id: str, openrouter_catalog: dict | Non
         named = _named_model(model) or claude_mod.model_label(model)
         if named:
             return _standardize_display_name(named)
+    spec = registry.get(type_id)
+    if spec and spec.keyed:
+        # The group header names the provider: humanize the upstream id
+        # without its "deepseek/" prefix (or an "org/" path), not twice.
+        upstream = spec.keyed.upstream(model).split("/")[-1]
+        return _named_model(upstream) or _humanize_model_id(upstream)
     if type_id == "cursor":
         upstream = cursor_mod.upstream_id(model)
         label = cursor_mod.model_label(model) or ("Auto" if upstream == "auto" else "")
@@ -429,31 +359,10 @@ def _openrouter_locked_models(catalog: dict) -> list[str]:
 
 
 async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
-    grok = grok_access_state(user["id"])
-    chatgpt = chatgpt_mod.chatgpt_access_state(user["id"])
-    zai = zai_mod.zai_access_state(user["id"])
-    devin = devin_mod.devin_access_state(user["id"])
-    kimi = kimi_mod.kimi_access_state(user["id"])
-    mimo = mimo_mod.mimo_access_state(user["id"])
-    claude = claude_mod.claude_access_state(user["id"])
-    cursor = cursor_mod.cursor_access_state(user["id"])
-    nanogpt = nanogpt_mod.nanogpt_access_state(user["id"])
-    refuseless = refuseless_mod.refuseless_access_state(user["id"])
+    gates = Access(user["id"])
     or_state = openrouter_mod.openrouter_access_state(user["id"])
-    access = {"grok": grok, "chatgpt": chatgpt, "zai": zai, "devin": devin, "kimi": kimi, "mimo": mimo, "claude": claude, "cursor": cursor, "nanogpt": nanogpt, "refuseless": refuseless}
-    groups = await models_by_source(
-        allow_grok=grok["ok"],
-        allow_chatgpt=chatgpt["ok"],
-        allow_zai=zai["ok"],
-        allow_devin=devin["ok"],
-        allow_kimi=kimi["ok"],
-        allow_mimo=mimo["ok"],
-        allow_claude=claude["ok"],
-        allow_cursor=cursor["ok"],
-        allow_nanogpt=nanogpt["ok"],
-        allow_refuseless=refuseless["ok"],
-        user_id=user["id"],
-    )
+    access = {kind: gates.state(kind) for kind in pool_policy.POOL_KINDS}
+    groups = await models_by_source(user_id=user["id"], access=gates)
     catalog = openrouter_mod.cached_catalog()
     if catalog is None and or_state["ok"]:
         catalog = await openrouter_mod.fetch_catalog()

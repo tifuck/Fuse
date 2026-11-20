@@ -28,6 +28,9 @@ from .source_routes import (
     openrouter,
     admin_pages,
     admin_actions,
+    keys,
+    model_choices,
+    sign_in,
 )
 from .source_routes.admin_pages import _ollama_key_views
 from .source_routes.context import _pool_card  # public: app.web re-exports _pool_card from here
@@ -98,3 +101,8 @@ router.include_router(refuseless.router)
 router.include_router(openrouter.router)
 router.include_router(admin_pages.router)
 router.include_router(admin_actions.router)
+router.include_router(keys.router)
+router.include_router(model_choices.router)
+sign_in.mount({"grok": grok, "chatgpt": chatgpt, "zai": zai, "devin": devin, "kimi": kimi, "mimo": mimo,
+               "claude": claude, "cursor": cursor, "nanogpt": nanogpt, "refuseless": refuseless})
+router.include_router(sign_in.router)

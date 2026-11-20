@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import platform
 import socket
 import time
@@ -11,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from ..providers import creds
 from .. import accounts, db, provider_errors
 from ..async_work import durable_call
 from ..config import settings
@@ -66,30 +66,14 @@ _EFFORT_MAP = {
 
 
 def _refresh_lock(cred_id: int) -> asyncio.Lock:
-    lock = _refresh_locks.get(cred_id)
-    if lock is None:
-        # Never evicted: an unlocked lock may still have a waiter about to
-        # acquire it, and a second lock would let two refreshes spend the
-        # same rotating refresh token. One per credential is small.
-        lock = asyncio.Lock()
-        _refresh_locks[cred_id] = lock
-    return lock
+    return creds.refresh_lock(_refresh_locks, cred_id)
 
 
-def disable_credential(cred_id: int, *, extra: str | None = None) -> None:
-    accounts.disable_credential(cred_id, extra=extra)
+disable_credential = creds.disable_credential
 
 
 def ensure_kimi_source() -> int:
-    row = db.fetchone_memo("SELECT id FROM sources WHERE type='kimi'")
-    if row:
-        return row["id"]
-    with db.tx() as conn:
-        conn.execute(
-            "INSERT INTO sources (type, name, enabled, config, created_at) VALUES (?,?,?,?,?)",
-            ("kimi", "Kimi", 1, "{}", db.now()),
-        )
-        return db.last_id(conn)
+    return creds.ensure_source("kimi", "Kimi")
 
 
 def is_kimi_model(model: str) -> bool:
@@ -182,27 +166,10 @@ def parse_catalog_payload(data: dict) -> list[dict]:
     return out
 
 
-def _row_get(row, key, default=None):
-    try:
-        if isinstance(row, dict):
-            return row.get(key, default)
-        keys = row.keys()
-        if key in keys:
-            val = row[key]
-            return default if val is None else val
-    except Exception:
-        return default
-    return default
+_row_get = creds.row_get
 
 
-def _as_float(v) -> float | None:
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        value = float(v)
-        return value if math.isfinite(value) else None
-    except (TypeError, ValueError, OverflowError):
-        return None
+_as_float = creds.as_float
 
 
 def _endpoints(region: str) -> tuple[str, str]:
@@ -284,24 +251,11 @@ def _usage_headers(token: str, extra: dict | None = None) -> dict:
     return headers
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    if not ts:
-        return None
-    raw = str(ts).replace("Z", "")
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(raw.split("+")[0], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+_parse_ts = creds.parse_ts
 
 
 def _usage_fresh(billing: dict) -> bool:
-    checked = billing.get("checked_at") or billing.get("fetched_at")
-    when = _parse_ts(str(checked or ""))
-    if not when:
-        return False
-    return datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL)
+    return creds.usage_fresh(billing, USAGE_TTL)
 
 
 def _ratio_percent(raw) -> float | None:
@@ -422,29 +376,13 @@ def credential_is_authed(cred, extra: dict | None = None) -> bool:
 
 
 def kimi_own_access(user_id: int) -> dict:
-    sid = ensure_kimi_source()
-    rows = db.fetchall_memo(
-        "SELECT * FROM credentials WHERE source_id=? AND donated_by=? AND disabled=0",
-        (sid, user_id),
-    )
-    if not rows:
-        return {"ok": False, "reason": "none"}
-    saw_authed = False
-    for row in rows:
-        extra = accounts.cred_extra(row)
-        if not credential_is_authed(row, extra):
-            continue
-        saw_authed = True
-        billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-        if billing_has_subscription(billing):
-            return {"ok": True, "reason": "ok"}
-        if extra.get("access_token") or extra.get("api_key"):
-            return {"ok": True, "reason": "ok"}
-    return {"ok": False, "reason": "unauthed" if not saw_authed else "no_sub"}
+    return creds.own_access(ensure_kimi_source(), user_id, credential_is_authed,
+                            lambda row, extra: billing_has_subscription(creds.billing(extra))
+                            or bool(extra.get("access_token") or extra.get("api_key")))
 
 
 def _kimi_live(row) -> bool:
-    return not is_held(row) and credential_is_authed(row, accounts.cred_extra(row))
+    return creds.live_row(row, credential_is_authed)
 
 
 def kimi_access_state(user_id: int) -> dict:
@@ -457,8 +395,7 @@ def user_has_kimi(user_id: int) -> bool:
     return kimi_access_state(user_id)["ok"]
 
 
-def note_pool_invoke(cred_id: int) -> None:
-    db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
+note_pool_invoke = creds.note_pool_invoke
 
 
 def account_email(extra: dict | None) -> str:
@@ -675,14 +612,7 @@ def store_key(source_id: int, key: str, donated_by: int | None, *, label: str = 
 
 
 def _find_key(source_id: int, key: str):
-    for row in db.fetchall("SELECT * FROM credentials WHERE source_id=?", (source_id,)):
-        try:
-            extra = accounts.cred_extra(row)
-            if extra.get("api_key") == key or accounts.cred_secret(row) == key:
-                return row
-        except Exception:
-            continue
-    return None
+    return creds.find_key(source_id, key, extra_field="api_key")
 
 
 def _bearer(cred, extra: dict) -> str:
@@ -1043,7 +973,7 @@ class KimiSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         if picked:
             cred, extra = picked

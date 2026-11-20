@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import accounts, db, speech
 from ...crypto import encrypt
+from ...providers import registry
 from ...security import allowed_base_url, limiter
 from ...sources import TYPES, invalidate_model_cache
 from ...sources import openrouter as openrouter_mod
@@ -20,7 +21,7 @@ from .context import _source_cfg
 
 router = APIRouter()
 
-_BUILTINS = {"grok", "llama", "ollama", "zai", "chatgpt", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless", "openrouter", "explabs"}
+_BUILTINS = {spec.id for spec in registry.specs() if spec.builtin}
 
 
 def _add_key_lines(conn, source_id: int, text: str) -> int:
@@ -75,7 +76,7 @@ async def admin_sources_create(
     if type != "openai":
         return RedirectResponse("/admin/sources", status_code=303)
     url = (base_url.strip() or "http://127.0.0.1:8080/v1")
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
@@ -122,7 +123,7 @@ async def admin_llama_save(
 
     sid = ensure_llama_source()
     url = base_url.strip() or "http://127.0.0.1:8080/v1"
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
@@ -198,15 +199,17 @@ async def admin_ollama_save(
     keys: str = Form(""),
     model: str = Form(""),
     enabled: str = Form("0"),
+    site_access: str = Form(""),
 ):
     user, redir = require_admin(request)
     if redir:
         return redir
     from ...sources import ensure_ollama_source
+    from ...sources.keyed import SITE_ACCESS
 
     sid = ensure_ollama_source()
     url = base_url.strip() or OLLAMA_BASE
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
@@ -220,6 +223,8 @@ async def admin_ollama_save(
         cfg["model"] = model.strip()[:120]
     else:
         cfg.pop("model", None)
+    if site_access in SITE_ACCESS:
+        cfg["site_access"] = site_access
     on = 1 if enabled in ("1", "on", "true") else 0
     try:
         with db.tx() as conn:
@@ -348,11 +353,11 @@ async def admin_ollama_key_delete(request: Request, cred_id: int):
     from ...sources import ensure_ollama_source
 
     sid = ensure_ollama_source()
-    row = db.fetchone("SELECT id, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
+    row = db.fetchone("SELECT id, source_id, donated_by FROM credentials WHERE id=?", (cred_id,))
+    if not row or row["source_id"] != sid or row["donated_by"] is not None:
         raise HTTPException(404, "Not found")
     with db.tx() as conn:
-        conn.execute("DELETE FROM credentials WHERE id=? AND source_id=?", (cred_id, sid))
+        conn.execute("DELETE FROM credentials WHERE id=? AND source_id=? AND donated_by IS NULL", (cred_id, sid))
     _notices[user["id"]] = "Ollama key removed."
     return RedirectResponse("/admin/sources", status_code=303)
 

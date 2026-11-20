@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from .providers import registry
 from dataclasses import dataclass
 
 from .config import settings
@@ -60,23 +61,7 @@ KNOWN_WINDOWS = {
     "claude/claude-haiku-4-5-20251001": 200_000,
 }
 
-TYPE_WINDOWS = {
-    "grok": 500_000,
-    "chatgpt": 1_050_000,
-    "zai": 1_000_000,
-    "devin": 200_000,
-    "kimi": 262_144,
-    "mimo": 1_048_576,
-    "claude": 1_000_000,
-    "cursor": 200_000,
-    "nanogpt": 128_000,
-    "refuseless": 128_000,
-    "openrouter": 128_000,
-    "explabs": 128_000,
-    "openai": 128_000,
-    "ollama": 128_000,
-    "llama": 8_192,
-}
+TYPE_WINDOWS = {s.id: s.context_window for s in registry.specs() if s.context_window}
 
 PREFIX_WINDOWS = (
     ("grok-", 500_000),
@@ -212,32 +197,10 @@ def learned_window(model: str) -> int | None:
     return best[1] if best else None
 
 def type_id_for_model(model: str) -> str | None:
+    """The provider a model id looks like by name alone (spec.guess; the
+    guesses are disjoint prefixes, so their order does not matter)."""
     mid = (model or "").strip()
-    if mid.startswith("explabs/"):
-        return "explabs"
-    if mid.startswith("nanogpt/"):
-        return "nanogpt"
-    if mid.startswith("refuseless/"):
-        return "refuseless"
-    if mid.startswith("openrouter/"):
-        return "openrouter"
-    if mid.startswith("devin/"):
-        return "devin"
-    if mid.startswith("grok"):
-        return "grok"
-    if mid.startswith("gpt-"):
-        return "chatgpt"
-    if mid.startswith("glm-"):
-        return "zai"
-    if mid.startswith("kimi-") or mid == "k3" or mid.startswith(("k3-", "k3.")):
-        return "kimi"
-    if mid.startswith("mimo-"):
-        return "mimo"
-    if mid.startswith("claude/"):
-        return "claude"
-    if mid.startswith("cursor/"):
-        return "cursor"
-    return None
+    return next((s.id for s in registry.specs() if s.guess and s.guess(mid)), None)
 
 
 def source_type_for_model(model: str, prior: dict | None = None) -> str | None:

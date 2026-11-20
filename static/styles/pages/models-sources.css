@@ -433,7 +433,17 @@ dialog.source-picker { margin-top: min(12vh, 6rem); }
   list-style: none;
   border-top: 1px solid var(--line);
 }
-.source-picker-list li[hidden] { display: none; }
+.source-picker-list li[hidden],
+.source-picker-list ul[hidden] { display: none; }
+.source-picker-list ul { margin: 0; padding: 0; list-style: none; }
+.source-picker-group {
+  padding: 0.85rem 0.6rem 0.3rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--mute);
+  font: 500 0.62rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .source-picker-list a {
   display: grid;
   grid-template-columns: 1.25rem minmax(0, 1fr) auto;

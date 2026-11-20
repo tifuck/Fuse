@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
+from .providers import registry
 from .proxy import scrub_secrets
 
 # A retry with the same context and account fails the same way.
@@ -40,12 +41,7 @@ KINDS = TERMINAL | TRANSIENT
 # describe another user's account.
 HEADER_PREFIXES = ("retry-after", "x-ratelimit-", "anthropic-ratelimit-", "x-codex-")
 
-_LABELS = {
-    "claude": "Claude", "chatgpt": "ChatGPT", "grok": "Grok", "zai": "Z.AI", "devin": "Devin",
-    "kimi": "Kimi", "cursor": "Cursor", "ollama": "Ollama Cloud", "openrouter": "OpenRouter",
-    "nanogpt": "NanoGPT", "mimo": "MiMo", "llama": "llama.cpp", "explabs": "Experiential Labs",
-    "refuseless": "Refuseless",
-}
+_LABELS = {spec.id: spec.error_label for spec in registry.specs() if spec.error_label}
 
 # Message headlines. The chat UI keys its card off these exact phrases
 # (static/themes/console/provider-error.js SUMMARIES): change both together.

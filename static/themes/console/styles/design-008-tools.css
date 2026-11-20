@@ -127,7 +127,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md 
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md p:has(+ :is(ul, ol)) {
-  margin-bottom: 0.3em;
+  margin-bottom: 0.1em;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md li :is(ul, ol) {
