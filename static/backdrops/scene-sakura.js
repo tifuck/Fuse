@@ -22,7 +22,7 @@ const PINK = ["#e8789e", "#f096b4", "#d8668c", "#f4a8c0", "#e4869f"];
 const RAMP = ["#b86e8e", "#d488a6", "#e8a0ba", "#f4bccd", "#fad4e0", "#fde8ef", "#fff8fa"];
 const AZALEA = ["#8a3a6a", "#a84a80", "#c86098", "#de7cb0", "#ec9cc4", "#f6bcd8", "#fcdcec"];
 const GREEN = ["#4f705e", "#5f826c", "#729680", "#88aa92", "#a2c0a8", "#bed4c0", "#d8e8d6"];
-const BARK = ["#3a262c", "#543a40", "#74545a", "#9a786e", "#c4a090"];
+const BARK = ["#4a3238", "#5e454a", "#7a5c60", "#9c7c72", "#c4a090"];
 const STONE = ["#7c7c8e", "#9898a8", "#b6b6c4", "#d4d4dc"];
 const VERM = ["#b04a40", "#d4604e", "#ec8068"];
 
@@ -349,7 +349,11 @@ function build(s) {
 function blossom(s, R, blobs, o) {
   const { cell } = s;
   const ramp = o.ramp || RAMP;
-  const hz = (c) => (o.haze ? mixc(c, HAZE, o.haze) : c);
+  // Haze with distance, and toward the middle of the screen, where the
+  // transcript sits, so the blossom there stays soft.
+  const mid = (dc, dr) => 0.4 * Math.exp(-((((dc + 0.5) * cell - s.w / 2) / (0.26 * s.w)) ** 2) - ((((dr + 0.5) * cell - s.h * 0.45) / (0.34 * s.h)) ** 2));
+  let at0 = 0;
+  const hz = (c) => (o.haze || at0 ? mixc(c, HAZE, Math.round(Math.min(0.7, (o.haze || 0) + at0) * 10) / 10) : c);
   let c0 = Infinity;
   let c1 = -Infinity;
   let r0 = Infinity;
@@ -396,17 +400,21 @@ function blossom(s, R, blobs, o) {
         if (j < 0) edge = edge || dc === 0 || dr === 0;
         else if (j !== i && blobs[j].z > b.z) occ = true;
       }
-      const v = 0.26 + 0.78 * lam - (occ ? 0.24 : 0) + (hash(c0 + c, r0 + r, 5) - 0.5) * 0.08 + (b.tone || 0);
+      const v = 0.26 + 0.78 * lam - (occ ? 0.24 : 0) + (hash(c0 + c, r0 + r, 5) - 0.5) * 0.05 + (b.tone || 0);
       const dc = c0 + c;
       const dr = r0 + r;
+      at0 = o.calm ? mid(dc, dr) : 0;
       if (edge && R() < o.lace) {
-        out.push({ dc, dr, id: tile(s, R.pick(["*", "'", "o", ".", "*"]), null, hz(pick(ramp, 0.25 + v * 0.35))) });
+        out.push({ dc, dr, id: tile(s, R.pick(["*", "'", ".", "*"]), null, hz(pick(ramp, 0.3 + v * 0.35))) });
         continue;
       }
       if (!edge && v < 0.3 && R() < 0.1) continue;
       const f = hz(pick(ramp, v));
-      const gl = v > 0.72 ? R.pick(["*", "*", "@", "o"]) : v > 0.42 ? R.pick(["*", "o", "*", "%", "+"]) : R.pick(["%", "*", "o", "%"]);
-      const ink = v > 0.5 ? hz(pick(ramp, v - 0.45)) : hz(shade(f, 1.25));
+      // Mostly bare petals of colour: a flower mark on the lit tops, a
+      // quiet tick in the shade, nothing in between.
+      const tx = R();
+      const gl = v > 0.7 ? (tx < 0.4 ? "*" : " ") : v < 0.4 ? (tx < 0.2 ? "'" : " ") : tx < 0.1 ? "*" : " ";
+      const ink = v > 0.5 ? hz(pick(ramp, v - 0.3)) : hz(shade(f, 1.15));
       out.push({ dc, dr, id: tile(s, gl, f, ink) });
     }
   }
@@ -489,8 +497,8 @@ function barkCells(s, map, lx, mossy) {
     const tex = hash(b.c, b.r, 7);
     let gl;
     if (b.edge) gl = along === "|" ? (b.dx < 0 ? "(" : ")") : along === "-" ? (b.q * b.ny < 0 ? "_" : "-") : along;
-    else gl = tex < 0.3 ? across : tex < 0.38 ? ":" : tex < 0.4 ? "o" : " ";
-    let ink = v > 0.55 ? shade(f, 0.62) : shade(f, 1.55);
+    else gl = tex < 0.12 ? across : tex < 0.16 ? ":" : " ";
+    let ink = v > 0.55 ? shade(f, 0.76) : shade(f, 1.35);
     if (mossy(b.r * s.cell) && hash(b.c, b.r, 9) < 0.08 + 0.25 * v) {
       f = mixc(pick(GREEN, 0.3 + v * 0.5), f, 0.25);
       gl = hash(b.c, b.r, 4) < 0.5 ? '"' : ",";
@@ -541,7 +549,7 @@ function crown(s, R, B, Rc, L3, lx) {
   }
   const tip = S[S.length - 1];
   add(tip.x, tip.y, Rc * 1.2, 8);
-  const flowers = blossom(s, R, blobs, { L: L3, lace: 0.35 });
+  const flowers = blossom(s, R, blobs, { L: L3, lace: 0.3, calm: true });
   const lace = flowers.filter(() => R() < 0.05).map((c) => ({ x: c.dc * cell, y: c.dr * cell, id: R.pick(s.flutterIds), ph: R() * TAU }));
   return { sp: bake(s, [...barkCells(s, map, lx, () => false), ...flowers]), clusters, lace };
 }
