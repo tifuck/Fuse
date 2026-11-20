@@ -113,4 +113,4 @@ async def chatgpt_cancel(request: Request):
 @router.post("/sources/chatgpt/{cred_id}/revoke")
 @router.post("/pool/chatgpt/{cred_id}/revoke")
 async def chatgpt_revoke(request: Request, cred_id: int):
-    return await revoke(request, "chatgpt", cred_id)
+    return await revoke(request, "chatgpt", cred_id, auth=require_user)

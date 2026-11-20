@@ -140,4 +140,4 @@ async def kimi_add(request: Request, api_key: str = Form(""), label: str = Form(
 @router.post("/sources/kimi/{cred_id}/revoke")
 @router.post("/pool/kimi/{cred_id}/revoke")
 async def kimi_revoke(request: Request, cred_id: int):
-    return await revoke(request, "kimi", cred_id)
+    return await revoke(request, "kimi", cred_id, auth=require_user)

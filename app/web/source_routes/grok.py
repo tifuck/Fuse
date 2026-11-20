@@ -110,4 +110,4 @@ async def grok_cancel(request: Request):
 @router.post("/sources/grok/{cred_id}/revoke")
 @router.post("/pool/grok/{cred_id}/revoke")
 async def grok_revoke(request: Request, cred_id: int):
-    return await revoke(request, "grok", cred_id)
+    return await revoke(request, "grok", cred_id, auth=require_user)

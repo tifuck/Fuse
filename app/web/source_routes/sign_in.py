@@ -24,11 +24,12 @@ _ACTIONS = {"connect": "start", "poll": "poll", "finish": "complete", "callback"
             "add": "add", "device": "device_start"}
 
 
-async def revoke(request: Request, pid: str, cred_id: int, *, back: str = "/sources"):
+async def revoke(request: Request, pid: str, cred_id: int, *, back: str = "/sources", auth=None):
     """Remove one account from a provider: its donor (or an admin) only. Ends
     the grant upstream where the provider has a revoke call, then disables
-    the row so it is never routed again."""
-    user, redir = require_user(request)
+    the row so it is never routed again. auth: the caller module's
+    require_user (provider route modules pass their own)."""
+    user, redir = (auth or require_user)(request)
     if redir:
         return redir
     spec = registry.get(pid)

@@ -17,11 +17,11 @@ from tests.core.subscriptions._support import account, row, user
 
 def test_a_pending_sign_in_survives_a_restart_and_expires(fresh_db):
     uid = user()
-    stored = logins.put(uid, "kimi", {"device_code": "dc", "user_code": "UC", "interval": 99})
+    stored = logins.put(uid, "kimi", {"device_code": "plain-device-code", "user_code": "UC", "interval": 99})
     # Nothing in process memory: a fresh read (as after a restart) finds it, encrypted at rest.
-    assert "dc" not in db.fetchone("SELECT data FROM provider_logins WHERE user_id=?", (uid,))["data"]
+    assert "plain-device-code" not in db.fetchone("SELECT data FROM provider_logins WHERE user_id=?", (uid,))["data"]
     again = logins.get(uid, "kimi", clamp=True)
-    assert again["device_code"] == "dc" and again["_login"] == stored["_login"] and again["interval"] == 30
+    assert again["device_code"] == "plain-device-code" and again["_login"] == stored["_login"] and again["interval"] == 30
     assert logins.get(uid, "grok") is None  # one row per provider
     db.execute("UPDATE provider_logins SET expires_at=? WHERE user_id=?", (time.time() - 1, uid))
     assert logins.get(uid, "kimi") is None and db.fetchone("SELECT 1 FROM provider_logins") is None

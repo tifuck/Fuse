@@ -151,4 +151,4 @@ async def mimo_add(request: Request, api_key: str = Form(""), label: str = Form(
 @router.post("/sources/mimo/{cred_id}/revoke")
 @router.post("/pool/mimo/{cred_id}/revoke")
 async def mimo_revoke(request: Request, cred_id: int):
-    return await revoke(request, "mimo", cred_id)
+    return await revoke(request, "mimo", cred_id, auth=require_user)

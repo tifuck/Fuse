@@ -142,4 +142,4 @@ async def devin_add(request: Request, api_key: str = Form(""), label: str = Form
 @router.post("/sources/devin/{cred_id}/revoke")
 @router.post("/pool/devin/{cred_id}/revoke")
 async def devin_revoke(request: Request, cred_id: int):
-    return await revoke(request, "devin", cred_id)
+    return await revoke(request, "devin", cred_id, auth=require_user)
