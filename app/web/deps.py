@@ -51,10 +51,8 @@ templates.env.globals["chat_view_for"] = chat_themes.chat_view
 # A stored UTC timestamp in the viewer's time zone (stats.display_zone).
 templates.env.filters["when"] = stats.format_when
 logger = logging.getLogger("app.web")
-_nanogpt_pending: dict[int, dict] = {}
 _notices: dict[int, str] = {}
 _pool_flash: dict[int, tuple[str, str, str]] = {}
-_PENDING_TTL = 900
 _KEY_REVEAL_TTL = 300
 # Starlette re-signs the session cookie only when the session changes, so its
 # max_age ran from sign-in and logged active users out after a week. Touching

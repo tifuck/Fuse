@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _nanogpt_pending_for, _pool_card
+from .context import _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -429,7 +429,7 @@ def user_sources(request: Request):
     _sort_mine_first(nanogpt_visible)
     nanogpt_pool = stats.nanogpt_pool_meter(nanogpt_routable, owner_id=user["id"])
     _fuse_fill(nanogpt_visible)
-    nanogpt_pending = _nanogpt_pending_for(user["id"])
+    nanogpt_pending = logins.get(user["id"], "nanogpt", clamp=True)
     nanogpt_owner = nanogpt_mod.nanogpt_own_access(user["id"])["ok"]
 
     refuseless_sid = refuseless_mod.ensure_refuseless_source()

@@ -1,10 +1,9 @@
-"""Shared helpers for the /sources route modules: config parsing,
-pending sign-in lookups, OAuth token validation and the pool account card."""
+"""Shared helpers for the /sources route modules: config parsing, OAuth
+token validation (from app/providers/auth_flows.py) and the pool account card."""
 
 from __future__ import annotations
 
 import json
-import time
 from ... import accounts, stats
 from ...sources import grok as grok_mod
 from ...sources import chatgpt as chatgpt_mod
@@ -13,7 +12,6 @@ from ...sources import kimi as kimi_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
 from ...providers.auth_flows import oauth_tokens as _oauth_tokens, terminal_error as _terminal_oauth_error  # noqa: F401
-from ..deps import _nanogpt_pending, _PENDING_TTL
 
 def _source_cfg(row) -> dict:
     try:
@@ -21,26 +19,6 @@ def _source_cfg(row) -> dict:
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
-
-
-def _nanogpt_pending_for(uid: int):
-    data = _nanogpt_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _nanogpt_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
-
-
-def _clamp_interval(data: dict) -> None:
-    """The auth server controls `interval`; keep poll backoffs inside 3-30s
-    before the value reaches a client `retry_after` or the poll page."""
-    try:
-        data["interval"] = max(3, min(int(data.get("interval") or 5), 30))
-    except (TypeError, ValueError, OverflowError):
-        data["interval"] = 5
 
 
 def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -> dict:
