@@ -1,5 +1,6 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call .chat-step-reveal.is-open ~ *,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:has(.chat-step-reveal.is-open) .chat-console-result-text {
+/* A row opened inside a script's tree is not the script opening: its └ line stays. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:has(.chat-step-reveal.is-open:not(.chat-console-codetree .chat-step-reveal)) .chat-console-result-text {
   display: none;
 }
 

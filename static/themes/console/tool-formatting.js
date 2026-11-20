@@ -292,7 +292,9 @@ function consoleCallHtml(trace, presentation, full = false) {
     // Console: a running call reads as Claude Code's live line, one row
     // counting up ("Running npm test | 12s"); it prints as Bash(…) once done.
     const pending = /^(queued|cancelling)$/i.test(presentation && presentation.statusLabel);
-    const live = (running) && !full && !deps.toolBackground(trace) && !pending ? deps.ccLiveText(trace, 1000) : "";
+    // A running command reads like a finished one (Bash(description), its
+    // clock ticking); the other calls keep their live form ("Reading x").
+    const live = (running) && !full && !deps.toolBackground(trace) && !pending && name !== "run_terminal_command" ? deps.ccLiveText(trace, 1000) : "";
     if (live) return `<span class="chat-console-call is-live">${deps.escapeHtml(live)}</span>${hostHtml}${clock}`;
     if ((running) && name === "run_terminal_command" && pending) {
       return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;
@@ -304,6 +306,9 @@ function consoleCallHtml(trace, presentation, full = false) {
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
     }
     let inner = "";
+    // A described command reads as what it does; the command itself shows
+    // when the row opens (consoleCommandHtml).
+    let described = "";
     // A wrapped path or command breaks after a slash, never inside a name.
     const path = ["read_file", "write_file", "search_replace", "list_dir", "run_terminal_command", "get_command_output"].includes(name);
     if (["read_file", "write_file", "search_replace", "list_dir"].includes(name)) {
@@ -311,7 +316,8 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else if ((name === "run_terminal_command") && deps.ccSedEdit(displayCommand(trace))) {
       inner = consoleArgText(compactPath(deps.ccSedEdit(displayCommand(trace)).file, trace, 88), 88);
     } else if (name === "run_terminal_command") {
-      inner = full ? displayCommand(trace) || "command" : consoleArgText(displayCommand(trace) || "command", 140);
+      described = full ? "" : deps.ccFlat(trace.description);
+      inner = described ? consoleArgText(described, 140) : full ? displayCommand(trace) || "command" : consoleArgText(displayCommand(trace) || "command", 140);
     } else if (name === "get_command_output" || name === "kill_command") {
       // Wait and Stop Task name their target: the command's description, else
       // the command itself (an interrupted call carries only the job id).
@@ -354,7 +360,7 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(toolSubject(trace), 90);
     }
     const call = inner
-      ? `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${path ? deps.escapeHtml(inner).replace(/\//g, "/<wbr>") : deps.escapeHtml(inner)}</span><span class="chat-console-paren">)</span></span>`
+      ? `<span class="chat-console-call${described ? " is-described" : ""}"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span><span class="chat-console-paren">(</span><span class="chat-console-val">${path && !described ? deps.escapeHtml(inner).replace(/\//g, "/<wbr>") : deps.escapeHtml(inner)}</span><span class="chat-console-paren">)</span></span>`
       : `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>`;
     return call + hostHtml + clock;
   }

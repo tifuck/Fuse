@@ -233,6 +233,7 @@ export function createConsoleTheme(runtime) {
     get consoleCodeFold() { return theme.consoleCodeFold; },
     get consoleDetailHtml() { return theme.consoleDetailHtml; },
     get consoleDiffHtml() { return theme.consoleDiffHtml; },
+    get consoleCommandHtml() { return theme.consoleCommandHtml; },
     get consoleFold() { return theme.consoleFold; },
     get consoleStatusHtml() { return theme.consoleStatusHtml; },
     get consoleTruncationNote() { return theme.consoleTruncationNote; },

@@ -186,6 +186,29 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
   color: color-mix(in srgb, var(--mist) 58%, var(--ink));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecount { color: var(--mist); }
+/* A failed script reads like a finished one: its grey count line, then the
+   error on one line of its own (cut short; the Source row holds all of it).
+   Its calls keep their own colours. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_code"] .chat-console-hang.is-error > .chat-console-hang-body > .chat-console-result-text {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codeerr { display: block; overflow: hidden; color: var(--fault); text-overflow: ellipsis; white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-error .chat-console-codetree :is(.chat-console-out:not(.is-error), .chat-console-nbody) { color: var(--mist); }
+/* A shell row is one line: its description, or its command cut short; the
+   whole command opens under it. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle { min-width: 0; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label { display: flex !important; flex: 0 1 auto; column-gap: 1ch; min-width: 0; padding-left: 0; text-indent: 0; white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > * { flex: 0 0 auto; margin-left: 0; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-took { white-space: nowrap; }
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { white-space: nowrap; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call wbr { display: none; }
+/* An opened shell row: the command over its output, "$ " before its first
+   line and every wrapped or later line under the command's text. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-cmd { color: var(--mute); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-cmdline { padding-left: 2ch; text-indent: -2ch; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--console-row, 1.25rem); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-cmdpr { display: inline-block; width: 2ch; text-indent: 0; }
 /* An opened call in the tree is not the row opening its own body: the └ line stays. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang.is-expanded:has(> .chat-console-hang-body > .chat-console-full > .chat-console-codetree) > .chat-console-hang-body > .chat-console-result-text { display: block; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main { display: block; min-width: 0; }
@@ -212,8 +235,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-call * { white-space: nowrap; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle:not([aria-expanded="true"]) > .chat-console-call wbr { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-codemeta { flex: 0 1 auto; min-width: 5ch; overflow: hidden; text-overflow: ellipsis; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call,
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call * { white-space: normal; overflow-wrap: anywhere; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall:not([data-tool="run_terminal_command"]) > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call,
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall:not([data-tool="run_terminal_command"]) > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call * { white-space: normal; overflow-wrap: anywhere; }
 /* The tree is typed, like every other branch: ├ on a row, └ on its level's
    last, in the branch's grey. A row that is not the last continues the
    tree with │ down the lines it wraps or opens to, so the next ├ always

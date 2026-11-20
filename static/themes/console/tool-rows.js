@@ -175,7 +175,12 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // An opened summary line prints a call the way an expanded row reads.
       const preview = verbose ? "" : noNote(fold.preview);
       inner = noNote(verbose ? fold.full || fold.preview : fold.full);
-      const expandable = !verbose && Boolean(fold.full);
+      // A shell row's line says what the command is for; the command itself
+      // opens above its output.
+      const command = trace.name === "run_terminal_command" && !verbose ? deps.consoleCommandHtml(trace) : "";
+      // A running command's output so far is its preview; opened, it follows the command.
+      if (command) inner = command + (inner || (running ? preview : ""));
+      const expandable = !verbose && Boolean(fold.full || command);
       const head = deps.toolHeadHtml({
         ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + (ownNote ? `<span class="chat-console-dim chat-console-trunc"> (${ownNote})</span>` : ""), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
