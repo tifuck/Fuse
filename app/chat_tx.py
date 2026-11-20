@@ -23,6 +23,12 @@ _writes = threading.local()
 _committed_cursors: dict[int, int] = {}
 _committed_threads: dict[tuple[int, int], int] = {}
 _committed_lock = threading.Lock()
+# Replay floors as last read from chat_event_cursors. Only prune_events moves
+# a floor: it empties this cache before it starts and again once it commits,
+# and _prune_epoch (odd while a prune runs) keeps a read that overlapped a
+# prune from being cached.
+_committed_floors: dict[int, int] = {}
+_prune_epoch = 0
 
 
 def committed_cursor(user_id) -> int | None:
@@ -30,10 +36,35 @@ def committed_cursor(user_id) -> int | None:
         return _committed_cursors.get(int(user_id))
 
 
+def committed_floor(user_id) -> int | None:
+    with _committed_lock:
+        return _committed_floors.get(int(user_id))
+
+
+def prune_epoch() -> int:
+    with _committed_lock:
+        return _prune_epoch
+
+
+def remember_floor(user_id, floor, epoch) -> None:
+    """Cache a floor read that began at prune_epoch() == epoch."""
+    with _committed_lock:
+        if epoch == _prune_epoch and not epoch % 2:
+            _committed_floors[int(user_id)] = int(floor)
+
+
 def invalidate_committed_cursors():
     with _committed_lock:
         _committed_cursors.clear()
         _committed_threads.clear()
+        _committed_floors.clear()
+
+
+def _bump_prune_epoch():
+    global _prune_epoch
+    with _committed_lock:
+        _prune_epoch += 1
+        _committed_floors.clear()
 
 
 def thread_event_watermark(user_id, thread_id) -> int | None:
@@ -197,6 +228,13 @@ def lock_thread(conn, thread_id, user_id):
                         (thread_id, user_id)).fetchone()
 
 
+def lock_thread_id(conn, thread_id, user_id):
+    """lock_thread for callers that need only the lock: the same row lock
+    without reading the transcript columns. The id row, or None."""
+    return conn.execute("SELECT id FROM chat_threads WHERE id=? AND user_id=?" + db.for_update(conn),
+                        (thread_id, user_id)).fetchone()
+
+
 def check_revision(actual, expected):
     from .chats import ChatValidationError
 
@@ -344,15 +382,35 @@ def events_after(user_id, cursor, limit=256):
     return out
 
 
+PRUNE_CHUNK = 5000
+
+
 def prune_events():
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with transaction() as conn:
-        conn.execute("""UPDATE chat_event_cursors SET floor=MAX(floor,COALESCE(
-            (SELECT MAX(id) FROM chat_events WHERE user_id=chat_event_cursors.user_id AND created_at<?),0))""", (cutoff,))
-        conn.execute("DELETE FROM chat_events WHERE created_at<?", (cutoff,))
-    # Floors moved: the cached committed cursors can no longer validate a
-    # replay cursor without a fresh read.
-    invalidate_committed_cursors()
+    _bump_prune_epoch()
+    try:
+        # Floors first, in one short transaction: every event the chunks below
+        # delete is then at or under its user's floor, so a replay can never
+        # read across a gap. Nothing new qualifies (created_at is "now").
+        with transaction() as conn:
+            highs = conn.execute("SELECT user_id, MAX(id) AS hi FROM chat_events WHERE created_at<? GROUP BY user_id",
+                                 (cutoff,)).fetchall()
+            for row in highs:
+                conn.execute("UPDATE chat_event_cursors SET floor=MAX(floor,?) WHERE user_id=?", (int(row["hi"]), row["user_id"]))
+        top = max((int(row["hi"]) for row in highs), default=0)
+        # Chunks with their own commits keep each delete's locks short; the
+        # id bound lets them walk the primary key.
+        while top:
+            with transaction() as conn:
+                deleted = conn.execute("DELETE FROM chat_events WHERE id<=? AND created_at<? LIMIT ?",
+                                       (top, cutoff, PRUNE_CHUNK)).rowcount
+            if deleted < PRUNE_CHUNK:
+                break
+    finally:
+        # Floors moved: the cached committed cursors can no longer validate a
+        # replay cursor without a fresh read.
+        invalidate_committed_cursors()
+        _bump_prune_epoch()
     prune_command_receipts()
 
 
@@ -400,4 +458,5 @@ def thread_event(conn, user_id, thread_id, transcript_changed=False):
         payload = chats._view(row)
         if transcript_changed:
             payload["transcript_changed"] = True
-        event(conn, user_id, "thread.updated", thread_id, payload)
+        return event(conn, user_id, "thread.updated", thread_id, payload)
+    return None

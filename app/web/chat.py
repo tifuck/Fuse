@@ -318,7 +318,7 @@ async def chat_run_get(request: Request, run_id: str):
     agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
     parent_description = ""
     if run.get("parent_run_id"):
-        parent = chat_store.get_run(user["id"], run["parent_run_id"])
+        parent = await asyncio.to_thread(chat_store.get_run, user["id"], run["parent_run_id"], transcript=False)
         preq = (parent or {}).get("request") if isinstance((parent or {}).get("request"), dict) else {}
         pagent = preq.get("agent") if isinstance(preq.get("agent"), dict) else {}
         parent_description = str(pagent.get("description") or "")[:200]
@@ -379,7 +379,7 @@ async def chat_cancel(request: Request, run_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
-    run = chat_store.get_run(user["id"], run_id)
+    run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False)
     if not run:
         raise HTTPException(404, "Run not found")
     scope = (request.query_params.get("scope") or "").strip().lower()
@@ -405,7 +405,7 @@ async def chat_cancel(request: Request, run_id: str):
             # parent turn and its siblings. Root runs keep the tree default.
             tree = scope == "tree" if run.get("parent_run_id") else scope != "self"
             await chat_runs.cancel_wait(user["id"], run_id, tree=tree, force=force, by_user=True, agents=stop_all)
-        run = chat_store.get_run(user["id"], run_id) or run
+        run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
     return JSONResponse({"ok": True, "run": _chat_public_run(run)}, headers={"Cache-Control": "no-store"})
 
 
@@ -426,7 +426,7 @@ async def chat_run_resume(request: Request, run_id: str):
             await chat_runs.start(chat_runs.internal_request(user["id"]), dict(user), run)
         except Exception:
             logger.exception("Resume start failed for %s", run_id)
-        run = chat_store.get_run(user["id"], run_id) or run
+        run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
     return JSONResponse({"ok": True, "run": _chat_public_run(run)}, headers={"Cache-Control": "no-store"})
 
 
@@ -447,13 +447,13 @@ async def chat_run_message(request: Request, run_id: str):
         delivery = await asyncio.to_thread(chat_store.message_child, user["id"], run_id, raw["text"])
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
-    run = chat_store.get_run(user["id"], run_id)
+    run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False)
     if delivery == "continued" and run and run["status"] == "queued":
         try:
             await chat_runs.start(request, user, run)
         except Exception:
             logger.exception("Subagent continuation start failed for %s", run_id)
-        run = chat_store.get_run(user["id"], run_id) or run
+        run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
     return JSONResponse({"ok": True, "delivery": delivery, "run": _chat_public_run(run)},
                         headers={"Cache-Control": "no-store"})
 

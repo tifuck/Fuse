@@ -273,7 +273,8 @@ def _row_view(row, *, versions: list[int] | None = None) -> dict:
         "identifier": row["public_id"],
         "public_id": row["public_id"],
         "user_id": int(row["user_id"]),
-        "thread_id": _thread_public(row["thread_id"]),
+        "thread_id": (str(row["thread_public_id"]) if row["thread_public_id"] else None)
+        if "thread_public_id" in row.keys() else _thread_public(row["thread_id"]),
         "title": row["title"],
         "icon": row["icon"] or "",
         "visibility": row["visibility"],
@@ -392,8 +393,10 @@ def client_payload(row, *, owner: bool, include_html: bool = False, version: int
 
 def list_for_user(user_id: int) -> list[dict]:
     rows = db.fetchall(
-        "SELECT a.*, t.title AS thread_title FROM artifacts a "
+        "SELECT a.*, t.title AS thread_title, pt.public_id AS thread_public_id FROM artifacts a "
         "LEFT JOIN chat_threads t ON t.id = a.thread_id AND t.user_id = a.user_id "
+        # public_id_for's lookup (by id alone), joined instead of one query per row.
+        "LEFT JOIN chat_threads pt ON pt.id = a.thread_id "
         "WHERE a.user_id=? AND a.expired_at='' ORDER BY a.updated_at DESC",
         (user_id,),
     )
@@ -409,7 +412,8 @@ def list_in_scope(user_id: int, thread_id=None) -> list[dict]:
     if pk is None:
         return []
     rows = db.fetchall(
-        "SELECT a.* FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
+        "SELECT a.*, pt.public_id AS thread_public_id FROM artifacts a JOIN artifact_threads x ON x.artifact_id = a.id "
+        "LEFT JOIN chat_threads pt ON pt.id = a.thread_id "
         "WHERE x.thread_id=? AND a.user_id=? AND a.archived=0 AND a.expired_at='' ORDER BY a.id",
         (pk, user_id),
     )
