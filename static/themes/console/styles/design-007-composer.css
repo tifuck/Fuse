@@ -34,7 +34,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box,
 html[data-chat-backdrop]:not([data-chat-backdrop="none"])[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
-  background: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  background: var(--ink);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
