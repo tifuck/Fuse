@@ -292,7 +292,9 @@ function consoleCallHtml(trace, presentation, full = false) {
     // Console: a running call reads as Claude Code's live line, one row
     // counting up ("Running npm test | 12s"); it prints as Bash(…) once done.
     const pending = /^(queued|cancelling)$/i.test(presentation && presentation.statusLabel);
-    const live = (running) && !full && !deps.toolBackground(trace) && !pending ? deps.ccLiveText(trace, 1000) : "";
+    // A running command reads like a finished one (Bash(description), its
+    // clock ticking); the other calls keep their live form ("Reading x").
+    const live = (running) && !full && !deps.toolBackground(trace) && !pending && name !== "run_terminal_command" ? deps.ccLiveText(trace, 1000) : "";
     if (live) return `<span class="chat-console-call is-live">${deps.escapeHtml(live)}</span>${hostHtml}${clock}`;
     if ((running) && name === "run_terminal_command" && pending) {
       return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;

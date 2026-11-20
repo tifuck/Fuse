@@ -321,7 +321,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const callRow = (c) => {
       const p = deps.toolPresentation(c.trace, live);
       const exit = deps.shellExitCode(c.trace);
-      const meta = p.running ? "" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
+      const meta = p.running ? "running…" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
       const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${consoleStatusHtml(meta)}</span>` : ""}`;
       const command = c.trace.name === "run_terminal_command" ? deps.displayCommand(c.trace) : "";
       const body = (command ? consoleCommandHtml(c.trace) : "") + consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
