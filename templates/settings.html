@@ -183,7 +183,7 @@
 <form class="panel set" id="cleanup" aria-labelledby="set-cleanup-title" data-cleanup-form>
   <header class="set-head">
     <h2 id="set-cleanup-title">Cleanup</h2>
-    <p>Keep the sidebar short. Running work and pinned chats are never touched.</p>
+    <p>Keep the sidebar short. Running work and pinned chats are never archived.</p>
   </header>
   {% set hours = cleanup.archive_hours %}
   {% set in_days = hours and hours % 24 == 0 %}
@@ -215,6 +215,10 @@
   {% if cleanup.limits.archive_days or cleanup.limits.delete_days %}
   <p class="set-note">This server also applies its own limit{% if cleanup.limits.archive_days and cleanup.limits.delete_days %}s{% endif %}:
     {% if cleanup.limits.archive_days %}items inactive for {{ cleanup.limits.archive_days }} days are archived{% endif %}{% if cleanup.limits.archive_days and cleanup.limits.delete_days %}, and {% endif %}{% if cleanup.limits.delete_days %}archived items are deleted after {{ cleanup.limits.delete_days }} days{% endif %}. Shorter settings above still apply.</p>
+  {% endif %}
+  {% if cleanup.limits.idle_days or cleanup.limits.media_days %}
+  <p class="set-row set-note">For everyone on this server, pinned chats included:
+    {% if cleanup.limits.media_days %}images and attached files are deleted from chats inactive for {{ cleanup.limits.media_days }} day{{ "s" if cleanup.limits.media_days != 1 }}{% endif %}{% if cleanup.limits.idle_days and cleanup.limits.media_days %}, and {% endif %}{% if cleanup.limits.idle_days %}chats inactive for {{ cleanup.limits.idle_days }} days are deleted{% endif %}.</p>
   {% endif %}
   <div class="set-foot">
     <button type="submit" class="btn sm">Save cleanup</button>

@@ -368,3 +368,62 @@ def attachment_image(user_id, sha):
         return mime, base64.b64decode(url.partition(",")[2])
     except ValueError:
         return None
+
+
+# What a stored message keeps of an image or file once its chat's media
+# retention ran out (retention.purge_idle_media).
+FILE_MISSING = "[File unavailable: Fuse no longer stores it.]"
+ATTACHMENT_REMOVED = "[Attachment removed: Fuse deletes images and files from chats left idle.]"
+_MEDIA_KINDS = ("image", "file")
+
+
+def _media_note(part):
+    if _url(part) is not None:
+        return MISSING
+    if isinstance(part, dict) and part.get("type") in ("file", "input_file"):
+        return FILE_MISSING
+    return None
+
+
+def _removed(att):
+    kept = {key: att[key] for key in ("id", "name") if isinstance(att.get(key), str)}
+    return {**kept, "kind": "text", "mime": "text/plain", "data": ATTACHMENT_REMOVED}
+
+
+def strip_media(messages):
+    """Messages with every image and file as a short note.
+
+    Provider parts become text parts; a user row's image and file attachments
+    become text attachments, so every parser still accepts the row and the
+    model is told what was there. Rows without media are shared, and the
+    input itself comes back when nothing changed."""
+    if not isinstance(messages, list):
+        return messages
+    out = None
+    for index, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        new = msg
+        content = msg.get("content")
+        if isinstance(content, list) and any(_media_note(part) for part in content):
+            new = {**new, "content": [{"type": "text", "text": note} if (note := _media_note(part)) else part
+                                      for part in content]}
+        attachments = msg.get("attachments")
+        if isinstance(attachments, list) and any(isinstance(att, dict) and att.get("kind") in _MEDIA_KINDS
+                                                 for att in attachments):
+            new = {**new, "attachments": [_removed(att) if isinstance(att, dict) and att.get("kind") in _MEDIA_KINDS
+                                          else att for att in attachments]}
+        if new is not msg:
+            out = out or list(messages)
+            out[index] = new
+    return messages if out is None else out
+
+
+def forget(user_id, shas) -> None:
+    """Drop cached copies of images whose rows were deleted."""
+    global _cache_bytes
+    with _cache_lock:
+        for sha in shas:
+            url = _cache.pop((user_id, sha), None)
+            if url is not None:
+                _cache_bytes -= len(url)
