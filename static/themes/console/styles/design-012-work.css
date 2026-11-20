@@ -178,7 +178,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-job
 /* run_code: its calls hang under the └ line as a tree, folded with the row;
    each opens its own output under it. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-hang:not(.is-expanded) .chat-console-codetree { display: none; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codetree { margin: 0.1rem 0 0 2ch; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codetree { margin: 0.1rem 0 0 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codetree .chat-console-codetree { margin: 0; }
 /* A finished script's count line reads like a folded work line: grey words,
    bold counts. A failed, stopped or running one keeps its own colour. */
@@ -232,7 +232,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
   color: color-mix(in srgb, var(--mist) 34%, var(--ink));
   pointer-events: none;
 }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner:has(> .chat-console-codetree) { border-left: 0; padding-left: 0; margin-left: 1.4ch; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner:has(> .chat-console-codetree) { border-left: 0; padding-left: 0; margin-left: 2.06ch; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall .chat-console-branch { flex: 0 0 auto; margin: 0 0.4ch 0 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall .chat-console-dim { color: var(--mute); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal { display: block; padding: 0; margin: 0; }
