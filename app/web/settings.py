@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .. import chats, hosts, memory, retention
-from ..config import settings
 from .deps import _chat_auth, _json_object, render, require_user
 
 router = APIRouter()
@@ -27,7 +26,6 @@ async def settings_page(request: Request):
         cleanup=retention.get_settings(user["id"]),
         memories=memory.list_all(user["id"]),
         memory_types=memory.TYPES,
-        secret_swap_available=settings.secret_swap_enabled,
     )
 
 

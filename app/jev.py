@@ -116,23 +116,16 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
         (int(thread_id), int(user_id)),
     )
     messages = chats.parse_messages(row["messages"]) if row else []
-    # Jev is a model too: a swapping chat sends it stand-ins, swapped before
-    # anything is clipped. A one-off view: it decides nothing for the chat.
-    # Unreadable pairs raise: no verdict, and the user is asked.
-    from . import secret_swap
-
-    swap = secret_swap.for_thread(user_id, thread_id)
-    seen = swap.tokenize if swap is not None else str
     user_request = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
-            user_request = seen(str(msg.get("content") or "")).strip()[:USER_CLIP]
+            user_request = str(msg.get("content") or "").strip()[:USER_CLIP]
             break
     recent: list[dict] = []
     for msg in messages[-8:]:
         role = msg.get("role")
         if role == "user":
-            text = seen(str(msg.get("content") or "")).strip()
+            text = str(msg.get("content") or "").strip()
             if text:
                 recent.append({"role": "user", "text": text[:RECENT_TEXT]})
         elif role == "assistant":
@@ -144,17 +137,14 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
                     "name": str(tool.get("name") or "")[:40],
                     "ok": tool.get("status") not in ("error", "interrupted"),
                 }
-                path = seen(str(tool.get("path") or "")).strip()
+                path = str(tool.get("path") or "").strip()
                 if path:
                     rec["path"] = path[:400]
-                command = seen(str(tool.get("command") or "")).strip()
+                command = str(tool.get("command") or "").strip()
                 if command:
                     rec["command"] = command[:COMMAND_CLIP]
                 recent.append(rec)
     act = dict(action or {})
-    for key in ("command", "path", "cwd"):
-        if isinstance(act.get(key), str):
-            act[key] = seen(act[key])
     command = str(act.get("command") or "")
     if command:
         act["command"] = command[:ACTION_CLIP]

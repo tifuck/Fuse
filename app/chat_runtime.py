@@ -259,7 +259,6 @@ async def _run_tools(
     session: dict | None = None,
     persist=None,
     diag: dict | None = None,
-    swap=None,
 ):
     """Tool-round entry kept on this module.
 
@@ -285,7 +284,6 @@ async def _run_tools(
             persist=persist,
             diag=diag,
             execute_tool=execute_tool,
-            swap=swap,
         )
     ) as stream:
         async for item in stream:
@@ -670,12 +668,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         str((thread or {}).get("created_at") or ""),
         str(agent.get("run_id") or "") if is_child else "",
     ) if coding else ""
-    from . import secret_swap
-
-    try:
-        swap = await asyncio.to_thread(secret_swap.for_thread, user["id"], thread_id) if thread_id else None
-    except secret_swap.SwapUnavailable as exc:
-        raise HTTPException(409, str(exc)) from None
     candidate_system = build_system_prompt(
         instructions=prefs["instructions"],
         profile=prefs["profile"],
@@ -697,7 +689,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_index=memory_index,
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
-        secrets_swapped=swap is not None,
         code_mode=CODE_MODE,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
@@ -711,9 +702,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             _artifact_lines(artifacts.list_for_prompt(user["id"], thread_id) if artifacts_on else []),
             vault_locked=bool(coding and ssh_any and not vault_ok),
         )
-        if swap is not None:
-            # Joins a user row that was already swapped and marked.
-            tail_block = await asyncio.to_thread(swap.tokenize, tail_block)
         work = _inject_session_tail(work, tail_block)
     payload = {"model": model.strip(), "messages": work, "stream": True}
     if "prompt_cache_key" not in payload:
@@ -784,9 +772,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         prompt_snapshot.update(system=system, tools=copy.deepcopy(schemas), context=prompt_context)
     if "system" not in prompt_snapshot:
         prompt_snapshot = {"system": system, "tools": copy.deepcopy(schemas), "context": prompt_context}
-    if swap is not None and isinstance(snapshot, dict) and work[0]["content"] == snapshot.get("system"):
-        # The frozen prompt was swapped when it was first sent; never again.
-        work[0][secret_swap.MARK] = 1
     if schemas:
         payload["tools"] = schemas
         payload["tool_choice"] = "auto"
@@ -879,18 +864,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         # wholesale by an explicit compaction checkpoint.
         transcript = current_messages
 
-        async def swap_prepare():
-            # Every row reaches a model through here first (app/secret_swap.py).
-            if swap is None:
-                return
-            for rows in {id(r): r for r in (current_messages, transcript)}.values():
-                await asyncio.to_thread(swap.prepare, rows)
-            if current_messages and current_messages[0].get("role") == "system":
-                prompt_snapshot["system"] = current_messages[0]["content"]
-
-        if swap is not None:
-            swap.bind(lambda: current_messages)
-
         invoke = agent.get("invoke_skill") if isinstance(agent.get("invoke_skill"), dict) else None
         if coding and invoke:
             transcript, preload_event = apply_skill_preload(
@@ -902,7 +875,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             if preload_event:
                 await persist_jobs()
                 yield _sse(preload_event)
-        await swap_prepare()
 
         src_type_guess = _model_type_guess(model)
         last_round_usage: dict = {}
@@ -1177,7 +1149,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             retried_parallel = False
             retried_none = False
             result = None
-            await swap_prepare()
             # Steers, background results and newly loaded tool schemas can
             # grow context after the preceding tool-boundary check.
             preflight = _live_meter()
@@ -1212,7 +1183,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     transcript.append({"role": "user", "content": _NUDGE})
                     current_messages = transcript
                     await persist_jobs()
-                await swap_prepare()
                 send = dict(current)
                 send["messages"] = current_messages
                 send["model"] = model.strip()
@@ -1250,7 +1220,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     # shadow the request payload gen() was built from.
                     async with contextlib.aclosing(_with_beats(api.invoke_chat(
                         request, user, send, image_snapshot=prompt_snapshot.setdefault("images", {}),
-                        prepared=persist_jobs, secret_swap=swap,
+                        prepared=persist_jobs,
                     ))) as invocation:
                         async for kind, invoked in invocation:
                             if kind == "beat":
@@ -1787,7 +1757,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 session=session,
                 persist=persist_jobs,
                 diag=diag,
-                swap=swap,
             )) as tool_stream:
                 async for item in tool_stream:
                     if isinstance(item, list):

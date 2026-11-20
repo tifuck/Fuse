@@ -22,7 +22,6 @@ from fastapi import Request
 
 from .. import chats, code_mode, injection_probe
 from ..chat_tools import ARTIFACT_TOOL_IDS
-from ..secret_swap import REFUSED
 
 from .parsing import _ARG_LIMIT_FILE, _ARG_OVERFLOW
 from .stream import _SENTINEL, HEARTBEAT_S
@@ -137,7 +136,7 @@ async def _record_failure(
 ) -> None:
     """Log one failed tool call. Best effort; must never break the stream."""
     try:
-        from .. import secret_swap, tool_failures
+        from .. import tool_failures
 
         trace = trace or {}
         if job is not None:
@@ -154,12 +153,6 @@ async def _record_failure(
             "reasoning": str(diag.get("reasoning") or ""),
             "user_text": str(diag.get("user_text") or ""),
         }
-        # Every admin reads this log: a swapping chat's values go in as their
-        # stand-ins (the trace holds the real command and output). Unreadable
-        # pairs raise, and nothing is logged.
-        swap = await asyncio.to_thread(secret_swap.for_thread, user_id, thread_id)
-        if swap is not None:
-            logged = await asyncio.to_thread(swap.tokenize_value, logged)
         await asyncio.to_thread(
             tool_failures.record,
             tool_name=name or "unknown",
@@ -204,7 +197,6 @@ async def run_tools(
     persist=None,
     diag: dict | None = None,
     execute_tool,
-    swap=None,
 ):
     session = session or {
         "coding": coding,
@@ -330,17 +322,6 @@ async def run_tools(
                 emit({"event": "tool", **job.trace})
                 return
         arguments = job.arguments
-        if swap is not None:
-            # The model wrote stand-ins; the tool gets the real values.
-            arguments, runnable = swap.restore_args(job.name, job.arguments)
-            if not runnable:
-                job.text = REFUSED
-                job.trace = {"name": job.name, "status": "error", "kind": "invalid_arguments",
-                             "error": job.text, "id": job.event_id}
-                job.done = True
-                await persist_now()
-                emit({"event": "tool", **job.trace})
-                return
         try:
 
             def on_progress(qr):
@@ -453,12 +434,6 @@ async def run_tools(
                 text = f"{text or ''}\n[duration {latency_ms}ms]" if (text or "").strip() else (text or "")
             if not job.parent:
                 text = injection_probe.annotate(text or "")
-            if swap is not None:
-                # Learn values from the fullest copy first, so a result the
-                # tool clipped through a secret still swaps its visible end.
-                if len(output) > len(text or ""):
-                    await asyncio.to_thread(swap.tokenize, output)
-                text = await asyncio.to_thread(swap.tokenize, text or "")
             job.text, job.trace = text, {**job.trace, **trace, "id": job.event_id,
                                       "duration_ms": trace.get("duration_ms", latency_ms), "call_duration_ms": latency_ms}
             if job.name == "run_code" and not job.parent and len(text or "") > TOOL_RESULT_CHARS:

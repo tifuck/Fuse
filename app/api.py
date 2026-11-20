@@ -520,7 +520,7 @@ async def opencode_provider(request: Request):
 
 
 async def invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bool = False,
-                      image_snapshot: dict | None = None, prepared=None, secret_swap=None):
+                      image_snapshot: dict | None = None, prepared=None):
     """Pick a source and run one completion.
 
     Returns (user, src, upstream, requested_model, result). Failed pool
@@ -529,13 +529,11 @@ async def invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bo
     resolved provider accepts (title/recap calls).
     image_snapshot/prepared are server-only replay state and its durable
     checkpoint hook, run after admission and before dispatch.
-    secret_swap: the transcript's swap; a request still holding one of its
-    swapped values is logged (a path skipped it), never refused.
     """
     try:
         user = dict(user)
         return await _invoke_chat(request, user, body, cheap_reasoning=cheap_reasoning,
-                                  image_snapshot=image_snapshot, prepared=prepared, secret_swap=secret_swap)
+                                  image_snapshot=image_snapshot, prepared=prepared)
     except HTTPException as exc:
         model = body.get("model") if isinstance(body, dict) else ""
         messages = body.get("messages") if isinstance(body, dict) else None
@@ -575,7 +573,7 @@ def _prepare_images(original, type_id: str, upstream: str, user_id: int, images:
 
 
 async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bool = False,
-                       image_snapshot: dict | None = None, prepared=None, secret_swap=None):
+                       image_snapshot: dict | None = None, prepared=None):
     user = dict(user)
     if not isinstance(body, dict):
         raise HTTPException(400, "Invalid JSON")
@@ -590,13 +588,6 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     # work below, so one large transcript does not stall every other stream.
     await asyncio.to_thread(_validate_messages, body.get("messages"),
                             retained=bool(request.scope.get("fuse_retained_history")))
-    if secret_swap is not None:
-        leaked = await asyncio.to_thread(secret_swap.leaks, body.get("messages"))
-        if leaked:
-            # Rows reach here only through prepare, so this is a bug to find,
-            # not a reason to stop the chat (the history already holds them).
-            logger.error("Secret swap: a request still holds %s value(s) for user %s",
-                         ",".join(sorted(set(leaked))), user.get("id"))
     body = dict(body)
     body.pop("prompt_snapshot", None)
     body.pop("image_snapshot", None)

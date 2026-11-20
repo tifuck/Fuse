@@ -11,25 +11,17 @@ recording fake runner.
 import asyncio
 import collections
 import json
-import re
 
 import pytest
 
 from app import agent_catalog, chat_history, chat_output, chat_prompts, chat_tools, chats, code_mode, hosts, workspace
 from app.chat_generation import tool_jobs, tool_runner
-from app.config import settings
 from app.chat_generation.tool_jobs import ToolJob
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames, tool_call_frames
 from tests.core.tools._support import make_project, new_thread
 
-OPENAI = "sk-proj-" + "Q7v2Lp9X" * 6
-GITHUB = "ghp_" + "R4m8Tz2Kc9" * 3 + "W1x5Yb"
-
-
-def project_thread(h, *, swap=False):
+def project_thread(h):
     hosts.set_settings(h.uid, agent_coding=True)
-    if swap:
-        chats.set_user_context(h.uid, secret_swap=True)
     project = make_project(h.uid, h.host_id, h.root)
     return chats.create_thread(h.uid, model="offline", tools=[], kind="project", host_id=h.host_id, project_id=project)
 
@@ -80,31 +72,6 @@ return {slow, exit: t.exit_code, out: t.output.trim()};"""
     assert (head["name"], head["status"]) == ("run_code", "done")
     assert sorted(t["name"] for t in calls) == ["read_file"] * 3 + ["run_terminal_command"] + ["search_replace"] * 2
     assert {t.get("parent") for t in calls} == {head["id"]}
-
-
-def test_code_only_ever_holds_stand_ins_while_the_machine_gets_real_values(ssh_host, monkeypatch):
-    monkeypatch.setattr(settings, "secret_swap_enabled", True)
-    command = f"./deploy.sh --key {OPENAI}"
-    ssh_host.shell.on(command, out=f"deployed; ci token {GITHUB}\n")
-    seen = {}
-
-    def first(body):
-        seen["key"] = re.search(r"sk-proj-[A-Za-z0-9_-]{48}", json.dumps(body["messages"])).group(0)
-        return code_call(f'return (await run_terminal_command({{command: "./deploy.sh --key {seen["key"]}"}})).output;')
-
-    async def body():
-        with fake_provider(first, text_frames("deployed")) as provider:
-            _, run = await run_turn(ssh_host.uid, f"deploy with OPENAI_API_KEY={OPENAI}", thread=project_thread(ssh_host, swap=True))
-        return run, provider.bodies
-
-    run, bodies = run_async(body())
-
-    assert run["status"] == "completed" and seen["key"] != OPENAI
-    assert ssh_host.shell.reached == [command]
-    for request in bodies:
-        assert OPENAI not in json.dumps(request["messages"]) and GITHUB not in json.dumps(request["messages"])
-    [result] = tool_results(bodies[1])
-    assert "deployed; ci token ghp_" in result["content"]
 
 
 def test_failed_calls_the_code_catches_do_not_count_toward_the_stall_stop(ssh_host):

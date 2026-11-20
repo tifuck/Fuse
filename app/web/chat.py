@@ -1022,13 +1022,6 @@ async def chat_compact(request: Request, thread_id: str):
         raise HTTPException(400, "Invalid strategy")
     pk = _chat_thread_pk(user, thread_id)
     revision = _chat_revision(raw)
-    from .. import secret_swap
-
-    try:
-        # The summarizer would read the real values: refuse as a turn does.
-        await asyncio.to_thread(secret_swap.for_thread, user["id"], pk)
-    except secret_swap.SwapUnavailable as exc:
-        raise HTTPException(409, str(exc)) from None
     try:
         prepared = chat_store.prepare_compact(
             user["id"],
@@ -1180,7 +1173,7 @@ async def chat_context_put(request: Request):
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "secret_swap", "expected_revision", "command_id"}:
+    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "expected_revision", "command_id"}:
         raise HTTPException(422, "Unsupported context fields")
     kwargs = {"expected_revision": _chat_revision(raw), "command_id": raw.get("command_id")}
     if "instructions" in raw:
@@ -1203,12 +1196,6 @@ async def chat_context_put(request: Request):
         if not isinstance(raw["memory"], bool):
             raise HTTPException(400, "Invalid memory")
         kwargs["memory"] = raw["memory"]
-    if "secret_swap" in raw:
-        if not isinstance(raw["secret_swap"], bool):
-            raise HTTPException(400, "Invalid secret_swap")
-        if raw["secret_swap"] and not settings.secret_swap_enabled:
-            raise HTTPException(400, "Secret swap is off on this server")
-        kwargs["secret_swap"] = raw["secret_swap"]
     try:
         data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
     except chats.ChatValidationError as exc:

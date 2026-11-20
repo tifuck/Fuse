@@ -4,8 +4,8 @@ Contract checked here: the text a run_code call hands the model always fits
 TOOL_RESULT_CHARS, says how many calls ran and which, never claims "no tool
 calls" when calls ran, and never loses the error. Plus the helpers' argument
 checks against the tools' real schemas, ordering and concurrency of the
-calls, hostile messages from the code, read_result paging and scoping, the
-round's child jobs, and secret swap in every outcome.
+calls, hostile messages from the code, read_result paging and scoping, and
+the round's child jobs.
 
 Known bugs are kept as strict xfails (reason starts with "bug:").
 Unit cases drive code_mode.run with a recording fake runner (the real V8
@@ -24,9 +24,7 @@ from app import agent_catalog, code_mode
 from app.chat_generation import tool_jobs
 from app.chat_generation.tool_jobs import TOOL_RESULT_CHARS, ToolJob
 from app.code_worker import HELPERS
-from app.config import settings
-from tests.core.helpers import fake_provider, run_async, run_turn, text_frames
-from tests.core.tools.test_code_mode import OPENAI, Runner, code_call, one_round, project_thread, run_code, tool_results
+from tests.core.tools.test_code_mode import Runner, one_round, run_code
 
 OK = ("From host box:\nok", {"status": "done", "host": "box"})
 
@@ -483,35 +481,3 @@ def test_a_large_write_from_code_leaves_no_copy_of_its_content_in_the_round(ssh_
     [write] = jobs[1:]
     assert write.text == "" and len(write.arguments) < 200
     assert len(json.dumps(write.trace)) < 20_000
-
-
-# -- secret swap ---------------------------------------------------------------------
-
-def test_no_outcome_hands_the_model_or_the_code_a_real_secret(ssh_host, kept, monkeypatch):
-    monkeypatch.setattr(settings, "secret_swap_enabled", True)
-    ssh_host.fs.write(f"{ssh_host.root}/conf.env", f"OPENAI_API_KEY={OPENAI}\n")
-    failing = 'const t = await read_file("conf.env");\nconsole.log("read " + t);\nthrow new Error("bad config: " + t);'
-    long = ('const t = await read_file("conf.env");\n'
-            'return Array.from({length: 400}, (_, i) => `${i} ${t}`).join("");')
-
-    def page_back(body):
-        ident = re.search(r'read_result\("(r_[0-9a-f]+)"', tool_results(body)[-1]["content"]).group(1)
-        return code_call(f'return (await read_result("{ident}", {{limit: 200}})) + "|" + '
-                         f'(await read_result("{ident}", {{offset: 31000}}));', "call-3")
-
-    async def body():
-        with fake_provider(code_call(failing, "call-1"), lambda b: code_call(long, "call-2"), page_back,
-                           text_frames("checked")) as provider:
-            _, run = await run_turn(ssh_host.uid, "check the config", thread=project_thread(ssh_host, swap=True))
-        return run, provider.bodies
-
-    run, bodies = run_async(body())
-
-    assert run["status"] == "completed"
-    for request in bodies:
-        assert OPENAI not in json.dumps(request["messages"])
-    error, cut, paged = (m["content"] for m in tool_results(bodies[3]))
-    assert error.startswith("Error: bad config: OPENAI_API_KEY=sk-proj-") and "[console]\nread OPENAI_API_KEY=sk-proj-" in error
-    assert "result cut at" in cut and "OPENAI_API_KEY=sk-proj-" in cut
-    assert paged.count("OPENAI_API_KEY=sk-proj-") >= 2
-    assert kept and all(OPENAI not in text for _, _, text in kept.values())

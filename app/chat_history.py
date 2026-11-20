@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from . import chat_images, secret_swap
+from . import chat_images
 
 
 def _json(value):
@@ -113,7 +113,8 @@ NO_RESULT = "No result was recorded for this tool call."
 def _clean(messages):
     """Keep provider fields, never historical system instructions or UI fields."""
     fields = {"role", "content", "tool_calls", "tool_call_id", "name", "reasoning_content", "reasoning_details",
-              "claude_thinking", "_fuse_reasoning_model", secret_swap.MARK}
+              "claude_thinking", "_fuse_reasoning_model",
+              "_fuse_tok"}  # still on rows of chats that swapped secrets
     return [{k: v for k, v in row.items() if k in fields} for row in messages
             if isinstance(row, dict) and row.get("role") in ("user", "assistant", "tool")]
 
@@ -130,14 +131,6 @@ def _matches_user(candidate, expected):
         # Saved rows keep large images as references; display rows inline.
         return chat_images.canonical_content(candidate) == chat_images.canonical_content(expected)
     return False
-
-
-def _swap(user_id, thread_id, conn):
-    # Unreadable pairs: the runtime refuses the turn before anything is sent.
-    try:
-        return secret_swap.for_thread(user_id, thread_id, conn)
-    except secret_swap.SwapUnavailable:
-        return None
 
 
 def _row_hash(row):
@@ -191,7 +184,7 @@ def _automated_user(row):
     return str(content or "").startswith(("[Fuse]", "[Fuse session context"))
 
 
-def _legacy_turn(run, user_message, assistant, swap=None):
+def _legacy_turn(run, user_message, assistant):
     from . import chats, chat_store
 
     if not run or not user_message:
@@ -222,9 +215,6 @@ def _legacy_turn(run, user_message, assistant, swap=None):
         return None
     tail = chat_store.seal_provider_messages(tail)
     text = "".join(str(row.get("content") or "") for row in tail if row.get("role") == "assistant")
-    if swap is not None:
-        # The display shows restored values; compare what the model wrote the same way.
-        text = swap.restore(text)
     visible = assistant.get("content") or ""
     if visible.startswith(text):
         if visible[len(text):]:
@@ -266,7 +256,6 @@ def build(conn, user_id, thread_id, messages, state, *, retained=None, model="",
     """
     from . import chats, context_compact as context
 
-    swap = _swap(user_id, thread_id, conn)
     rows = _retained_display(messages)
     inherited = []
     offset = None
@@ -333,7 +322,7 @@ def build(conn, user_id, thread_id, messages, state, *, retained=None, model="",
             continue
         if row.get("role") != "assistant":
             continue
-        recovered = _legacy_turn(runs.get(row.get("id")), previous_user, row, swap)
+        recovered = _legacy_turn(runs.get(row.get("id")), previous_user, row)
         if recovered is not None:
             prefix.extend(recovered)
             info["recovered_turns"] += 1
@@ -352,10 +341,6 @@ def build(conn, user_id, thread_id, messages, state, *, retained=None, model="",
             if key not in seen:
                 seen.add(key)
                 cutoffs_out.append({"display": cut["display"], "provider": cut["provider"]})
-    if swap is not None:
-        # Rows rebuilt from the display carry real values: swap them now, so
-        # the stored request and its row hashes are what the model is sent.
-        swap.prepare(prefix)
     return prefix, info
 
 
@@ -373,10 +358,6 @@ def finalize(conn, run, request, display, message):
         return  # old in-flight runs are recovered per turn, not trusted as full history
     source = _clean(_load(run["provider_messages"], [])) or _clean(_load(run["request"], {}).get("messages") or [])
     source = chat_store.seal_provider_messages(source, notice="Tool interrupted before a result was saved; outcome unknown. Verify before retrying.")
-    swap = _swap(run["user_id"], run["thread_id"], conn)
-    if swap is not None:
-        swap.bind(lambda: source)  # the model's own transcript decides what it wrote
-    shown = swap.restore if swap is not None else (lambda text: text)
     input_hashes = request.get("history_input_hashes") or []
     boundary = 0
     for row, digest in zip(source, input_hashes):
@@ -390,7 +371,7 @@ def finalize(conn, run, request, display, message):
     for item in source[boundary:]:
         if item.get("role") != "assistant" or not str(item.get("content") or "").strip():
             continue
-        text = shown(str(item["content"])).strip()
+        text = str(item["content"]).strip()
         while cursor < len(visible) and visible[cursor].isspace():
             cursor += 1
         if not visible.startswith(text, cursor):
@@ -408,15 +389,15 @@ def finalize(conn, run, request, display, message):
         if floor:
             after_compact = visible[floor:]
             latest = latest if after_compact.endswith(latest) else after_compact
-        last_saved = shown(next((str(m.get("content") or "") for m in reversed(source)
-                                 if m.get("role") == "assistant" and m.get("content")), ""))
+        last_saved = next((str(m.get("content") or "") for m in reversed(source)
+                           if m.get("role") == "assistant" and m.get("content")), "")
         # A display that shows less than the saved reply (a clipped or
         # lagging view) is missing nothing; appending it would replay the
         # reply twice, the second copy cut short, on every later turn.
         if latest.strip() not in last_saved:
             missing = latest[len(last_saved):] if last_saved and latest.startswith(last_saved) else latest
     if missing.strip():
-        source.append({"role": "assistant", "content": swap.to_model(missing) if swap is not None else missing})
+        source.append({"role": "assistant", "content": missing})
     # A user steer is displayed immediately but may not reach the provider before
     # Stop. Its display anchor must not consume a user row absent from replay.
     from . import chats
