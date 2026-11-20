@@ -42,7 +42,7 @@ class KeyedPreset:
     base_url: str = ""  # used when the preset has no regions
     regions: tuple[Region, ...] = ()  # the first is the default
     prefix: str = ""  # public model id prefix; default "<id>/"
-    protocol: str = "openai_chat"
+    protocol: str = "openai_chat"  # or "anthropic_messages"
     auth: str = "bearer"  # "bearer" or "x-api-key"
     headers: tuple[tuple[str, str], ...] = ()
     # Model catalog: a path under the base URL or an absolute URL. It also
@@ -57,6 +57,7 @@ class KeyedPreset:
     group: str = "api_key"  # "api_key" or "subscription" on Sources
     key_url: str = ""  # where a user creates a key
     cache_key: bool = False  # forwards prompt_cache_key (session-scoped)
+    max_tokens: int = 8192  # anthropic_messages: default when the client sets none
     strip: tuple[str, ...] = field(default=STRIP)
 
     @property
@@ -93,6 +94,9 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 hide=r"embedding|whisper|tts|dall-e|image|moderation|transcribe|realtime|audio|search|davinci|babbage|sora",
                 efforts=((r"^(o\d|gpt-5)", _LOW_HIGH),), cache_key=True,
                 key_url="https://platform.openai.com/api-keys"),
+    KeyedPreset("anthropic", "Anthropic API", base_url="https://api.anthropic.com/v1",
+                protocol="anthropic_messages", auth="x-api-key", headers=(("anthropic-version", "2023-06-01"),),
+                key_url="https://console.anthropic.com/settings/keys"),
     KeyedPreset("xai", "xAI API", base_url="https://api.x.ai/v1", hide=r"image|video|embed",
                 key_url="https://console.x.ai"),
     KeyedPreset("gemini", "Gemini API", base_url="https://generativelanguage.googleapis.com/v1beta/openai",
@@ -100,6 +104,14 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 efforts=((r"^gemini-(2\.5|[3-9])", _LOW_HIGH),), key_url="https://aistudio.google.com/apikey"),
     KeyedPreset("deepseek", "DeepSeek", base_url="https://api.deepseek.com",
                 key_url="https://platform.deepseek.com/api_keys"),
+    KeyedPreset("minimax", "MiniMax", regions=(
+                Region("global", "Global (minimax.io)", "https://api.minimax.io/v1"),
+                Region("cn", "Mainland China (minimaxi.com)", "https://api.minimaxi.com/v1"),
+                ),
+                methods=(KeyMethod("api_key", "Pay-as-you-go API key"),
+                         KeyMethod("m_plan", "Coding Plan key", "The subscription key from Plan Details; "
+                                   "a pay-as-you-go key does not work as a plan key, nor the reverse.")),
+                key_url="https://platform.minimax.io"),
     KeyedPreset("mistral", "Mistral", base_url="https://api.mistral.ai/v1", hide=r"embed|moderation|ocr",
                 key_url="https://console.mistral.ai/api-keys"),
     KeyedPreset("groq", "Groq", base_url="https://api.groq.com/openai/v1", hide=r"whisper|tts|guard|playai",

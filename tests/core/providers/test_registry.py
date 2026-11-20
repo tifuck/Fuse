@@ -112,7 +112,7 @@ CATALOGS = {
     "claude": ["claude/claude-opus-5"],
     "cursor": ["cursor/auto"],
 }
-KEYED = frozenset({"openai_api", "deepseek"})
+KEYED = frozenset({"openai_api", "deepseek", "anthropic"})
 
 
 @fixture
@@ -187,6 +187,7 @@ GOLDEN = [
     ("openrouter/openai/gpt-x", KEYED, ("openrouter", "openai/gpt-x")),
     ("deepseek/deepseek-chat", NONE, ("openrouter", "deepseek/deepseek-chat")),
     ("deepseek/deepseek-chat", KEYED, ("deepseek", "deepseek-chat")),
+    ("anthropic/claude-x", KEYED, ("anthropic", "claude-x")),
     ("deepseek/unlisted", NONE, None),
     ("xai/grok-4", ALL, None),
     ("gpt-5.5", KEYED, None),

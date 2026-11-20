@@ -1,6 +1,6 @@
 """Keyed (API-key) providers: whose key a request uses, what reaches the wire
 (fields stripped, efforts mapped, each auth header style), key validation and
-storage, per-user listing.
+storage, per-user listing, and the Anthropic Messages adapter.
 """
 import asyncio
 import json
@@ -10,10 +10,11 @@ from pytest import fixture
 
 import app.sources as sources
 from app import db
+from app.providers.protocols import anthropic_messages
 from app.sources import keyed
 from tests.core.helpers import quick_user
 
-from ._support import completion, key
+from ._support import completion, drain, frames_of, key
 
 MSG = [{"role": "user", "content": "hi"}]
 
@@ -140,3 +141,85 @@ def test_an_unreachable_or_failing_check_says_so_without_the_body(fresh_db, upst
     assert asyncio.run(keyed.store_key("groq", "gsk-groq-secret", user_id=uid))[1].startswith("Could not reach Groq")
     assert asyncio.run(keyed.store_key("groq", "gsk-groq-secret", user_id=uid)) == (
         None, "Groq could not check the key (HTTP 500).")
+
+
+def test_regions_pick_the_base_url(fresh_db, upstream):
+    uid = quick_user()
+    upstream.on("GET", "api.minimaxi.com/v1/models", httpx.Response(200, json={"data": []}))
+    upstream.on("POST", "api.minimaxi.com/v1/chat/completions", httpx.Response(200, json=completion()))
+    cid, err = asyncio.run(keyed.store_key("minimax", "mm-plan-key-12345", user_id=uid, method="m_plan", region="cn"))
+    assert cid and not err
+    assert _chat(keyed.ensure_source("minimax"), uid, {"model": "MiniMax-M3"}).status == 200
+    assert upstream.calls("api.minimaxi.com/v1/chat/completions")
+
+
+def _anthropic_sse(*events):
+    text = "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events)
+    return httpx.Response(200, content=text.encode(), headers={"content-type": "text/event-stream"})
+
+
+REPLY = (
+    {"type": "message_start", "message": {"id": "msg_1", "usage": {"input_tokens": 12, "output_tokens": 1}}},
+    {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "hello"}},
+    {"type": "content_block_stop", "index": 0},
+    {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 3}},
+    {"type": "message_stop"},
+)
+
+
+def test_anthropic_api_keys_use_x_api_key_and_translate_the_stream(fresh_db, upstream):
+    uid = quick_user()
+    sid = keyed.ensure_source("anthropic")
+    key(sid, "sk-ant-personal-1", owner=uid)
+    upstream.on("POST", "api.anthropic.com/v1/messages", _anthropic_sse(*REPLY))
+
+    result = _chat(sid, uid, {"model": "claude-x", "stream": True, "reasoning_effort": "high"})
+    frames = frames_of(asyncio.run(drain(result.stream)))
+    (headers,) = upstream.headers("api.anthropic.com/v1/messages")
+    assert headers["x-api-key"] == "sk-ant-personal-1" and "authorization" not in headers
+    assert headers["anthropic-version"] == "2023-06-01"
+    (sent,) = upstream.sent("api.anthropic.com/v1/messages")
+    assert sent["model"] == "claude-x" and "system" not in sent and "thinking" not in sent
+    assert {f["model"] for f in frames} == {"anthropic/claude-x"}
+    assert "".join(f["choices"][0]["delta"].get("content") or "" for f in frames if f["choices"]) == "hello"
+    assert result.stream.usage["prompt_tokens"] == 12
+
+
+def test_anthropic_errors_keep_the_reason_and_a_rejected_key_fails_over(fresh_db, upstream):
+    uid = quick_user()
+    sid = keyed.ensure_source("anthropic")
+    key(sid, "sk-ant-personal-1", owner=uid)
+    key(sid, "sk-ant-site-key-1")
+    _site_access(sid, "everyone")
+    upstream.on("POST", "api.anthropic.com/v1/messages",
+                httpx.Response(401, json={"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}}),
+                _anthropic_sse(*REPLY))
+    result = _chat(sid, uid, {"model": "claude-x"})
+    assert result.status == 200 and result.body["choices"][0]["message"]["content"] == "hello"
+    assert result.body["model"] == "anthropic/claude-x"
+    assert [a["status"] for a in result.attempts] == [401]
+
+
+def test_the_anthropic_payload_has_no_subscription_shaping():
+    body = {
+        "messages": [
+            {"role": "system", "content": "be brief"},
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "", "claude_thinking": [{"thinking": "t", "signature": "sig"}],
+             "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "grep", "arguments": "{\"q\": 1}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "found"},
+        ],
+        "tools": [{"type": "function", "function": {"name": "grep", "parameters": {"type": "object"}}}],
+        "tool_choice": "required", "temperature": 0.3, "top_p": 0.9, "stop": "END", "max_tokens": 500,
+    }
+    payload = anthropic_messages.build_payload(body, "claude-x")
+    assert payload["system"] == [{"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}]
+    assert [m["role"] for m in payload["messages"]] == ["user", "assistant", "user"]
+    assert [b["type"] for b in payload["messages"][1]["content"]] == ["tool_use"]  # thinking dropped
+    assert payload["messages"][2]["content"][0]["type"] == "tool_result"
+    assert payload["tools"] == [{"name": "grep", "description": "", "input_schema": {"type": "object"},
+                                 "cache_control": {"type": "ephemeral"}}]
+    assert payload["tool_choice"] == {"type": "any"}
+    assert (payload["max_tokens"], payload["temperature"], payload["stop_sequences"]) == (500, 0.3, ["END"])
+    assert "top_p" not in payload

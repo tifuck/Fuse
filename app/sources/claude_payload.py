@@ -249,7 +249,9 @@ def _mark_newest_eligible(messages: list[dict], skip=None):
     return None
 
 
-def build_messages_payload(body: dict, model: str) -> dict:
+def convert_messages(body: dict, *, mid_system: bool = False) -> tuple[list[dict], list[dict]]:
+    """The OpenAI chat messages as Anthropic (system blocks, messages).
+    mid_system: the model takes role "system" turns mid-conversation."""
     system: list[dict] = []
     messages: list[dict] = []
     pending_results: list[dict] = []
@@ -273,7 +275,7 @@ def build_messages_payload(body: dict, model: str) -> dict:
             # assistant turn or the end; anywhere else it joins the top-level
             # system prompt as before.
             following = next((row.get("role") for row in rows[at + 1:] if row.get("role") not in ("system", "developer")), None)
-            if (model in _MID_SYSTEM and messages and messages[-1]["role"] in ("user", "system")
+            if (mid_system and messages and messages[-1]["role"] in ("user", "system")
                     and following in (None, "assistant")):
                 messages.append({"role": "system", "content": text})
             else:
@@ -306,6 +308,38 @@ def build_messages_payload(body: dict, model: str) -> dict:
     flush_results()
     if not messages:
         messages = [{"role": "user", "content": [{"type": "text", "text": ""}]}]
+    return system, messages
+
+
+def convert_tools(body: dict) -> list[dict]:
+    """The OpenAI function tools as Anthropic tool definitions."""
+    tools = []
+    for tool in body.get("tools") or []:
+        if not isinstance(tool, dict) or tool.get("type") not in (None, "function"):
+            continue
+        fn = tool.get("function") if isinstance(tool.get("function"), dict) else tool
+        name = str(fn.get("name") or "").strip()
+        if not name:
+            continue
+        schema = fn.get("parameters") if isinstance(fn.get("parameters"), dict) else {"type": "object", "properties": {}}
+        tools.append(
+            {
+                "name": name[:64],
+                "description": str(fn.get("description") or "")[:4096],
+                "input_schema": schema,
+                # Without it Anthropic holds each argument until it is
+                # complete: a large write_file body was minutes of silence
+                # on the stream. Claude Code sends it too. Arguments are no
+                # longer validated upstream; calls_incomplete catches
+                # invalid JSON.
+                "eager_input_streaming": True,
+            }
+        )
+    return tools
+
+
+def build_messages_payload(body: dict, model: str) -> dict:
+    system, messages = convert_messages(body, mid_system=model in _MID_SYSTEM)
 
     # Anthropic requires max_tokens: default to the model's own output
     # ceiling from the catalog, so Fuse never cuts a reply short itself.
@@ -330,28 +364,7 @@ def build_messages_payload(body: dict, model: str) -> dict:
         "text": "You are Claude Code, Anthropic's official CLI for Claude.",
     }
     payload["system"] = [identity, *system]
-    tools = []
-    for tool in body.get("tools") or []:
-        if not isinstance(tool, dict) or tool.get("type") not in (None, "function"):
-            continue
-        fn = tool.get("function") if isinstance(tool.get("function"), dict) else tool
-        name = str(fn.get("name") or "").strip()
-        if not name:
-            continue
-        schema = fn.get("parameters") if isinstance(fn.get("parameters"), dict) else {"type": "object", "properties": {}}
-        tools.append(
-            {
-                "name": name[:64],
-                "description": str(fn.get("description") or "")[:4096],
-                "input_schema": schema,
-                # Without it Anthropic holds each argument until it is
-                # complete: a large write_file body was minutes of silence
-                # on the stream. Claude Code sends it too. Arguments are no
-                # longer validated upstream; calls_incomplete catches
-                # invalid JSON.
-                "eager_input_streaming": True,
-            }
-        )
+    tools = convert_tools(body)
     if tools:
         payload["tools"] = tools
     # Up to four breakpoints: the system prefix (the identity line when the

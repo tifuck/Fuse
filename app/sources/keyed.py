@@ -19,8 +19,10 @@ import httpx
 from .. import accounts, db
 from ..crypto import encrypt
 from ..providers import registry
+from ..proxy import UsageStream
 from .base import ChatResult, map_effort
 from .openai_compat import OpenAICompatSource
+from .pool_pick import AUTH_RECHECK_SECONDS, note_failure
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +216,63 @@ class KeyedSource(OpenAICompatSource):
         self.creds = self.usable(user_id)
         if not self.creds:
             return ChatResult(status=403, body={"error": {"message": f"Add a {self.preset.label} API key on Sources to use its models."}})
-        return await super().chat(prepare(self.preset, body), session_id=session_id)
+        payload = prepare(self.preset, body)
+        if self.preset.protocol == "anthropic_messages":
+            return await self._anthropic(payload)
+        return await super().chat(payload, session_id=session_id)
+
+    async def _anthropic(self, body: dict) -> ChatResult:
+        from ..providers.protocols import anthropic_messages
+        from .claude_stream import _aggregate, _error_fields, _error_message, _translated_stream
+
+        upstream = str(body.get("model") or "")
+        public = self.preset.public_prefix + upstream
+        label = self.preset.label
+        payload = anthropic_messages.build_payload(body, upstream, max_tokens=self.preset.max_tokens)
+        attempts: list[dict] = []
+        last = ChatResult(status=503, body={"error": {"message": "All keys failed"}}, model=public)
+        for cred in self._next_creds():
+            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            headers = {**self._headers(accounts.cred_secret(cred)), "Accept": "text/event-stream"}
+            try:
+                req = client.build_request("POST", self._url() + "/messages", headers=headers, json=payload)
+                resp = await client.send(req, stream=True)
+            except httpx.HTTPError as exc:
+                await client.aclose()
+                status = 504 if isinstance(exc, httpx.TimeoutException) else 502
+                return ChatResult(status=status, body={"error": {"message": f"{label} request failed ({type(exc).__name__})"}},
+                                  credential_id=cred["id"], model=public, attempts=attempts)
+            if resp.status_code != 200:
+                raw = (await resp.aread()).decode("utf-8", errors="replace")
+                retry_after = str(resp.headers.get("retry-after") or "").strip()
+                await resp.aclose()
+                await client.aclose()
+                detail = _error_message(raw)
+                error = {"message": f"{label} request failed ({resp.status_code})" + (f": {detail[:300]}" if detail else "")}
+                error.update(_error_fields(raw))
+                last = ChatResult(status=resp.status_code, body={"error": error}, credential_id=cred["id"], model=public,
+                                  response_headers={"Retry-After": retry_after} if retry_after else {})
+                if resp.status_code == 401:
+                    note_failure(cred["id"], cooldown_seconds=AUTH_RECHECK_SECONDS)
+                    attempts.append({"credential_id": cred["id"], "status": 401, "usage": {}})
+                    continue
+                last.attempts = attempts
+                return last
+            if body.get("stream"):
+                collected: dict = {}
+                stream = _translated_stream(resp, client, upstream, collected, public_id=public)
+                return ChatResult(status=200, stream=UsageStream(stream, collected), credential_id=cred["id"],
+                                  model=public, attempts=attempts)
+            obj = await _aggregate(resp, client, upstream, public_id=public)
+            if isinstance(obj.get("error"), dict):
+                usage = obj.pop("_fuse_usage", {}) or {}
+                return ChatResult(status=502, body=obj, usage=usage, credential_id=cred["id"], model=public, attempts=attempts)
+            usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
+            return ChatResult(status=200, body=obj, usage=usage, credential_id=cred["id"], model=public, attempts=attempts)
+        if attempts and last.credential_id == attempts[-1].get("credential_id"):
+            attempts.pop()
+        last.attempts = attempts
+        return last
 
 
 async def validate_key(p, key: str, region: str = "") -> str:
