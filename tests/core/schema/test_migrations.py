@@ -7,15 +7,15 @@ provider_messages and no way to finish it."""
 import re
 
 from scripts import check_schema, init_db
-from tests.core.schema._support import admin, before_provider_tail, run, scratch_schema, show_create
+from tests.core.schema._support import admin, before_provider_tail, before_run_sweeps, run, scratch_schema, show_create
 
 EXPECTED = check_schema.expected_schema(check_schema.SCHEMA_SQL.read_text(encoding="utf-8"))
 MIGRATIONS = sorted(check_schema.MIGRATIONS.glob("2026-*.sql"))
 
 
-def _touched() -> list:
+def _touched(*paths) -> list:
     """Tables the migrations name, plus the tables their foreign keys reference."""
-    text = "\n".join(path.read_text(encoding="utf-8") for path in MIGRATIONS)
+    text = "\n".join(path.read_text(encoding="utf-8") for path in paths or MIGRATIONS)
     tables = {table for table in EXPECTED if re.search(rf"\b{table}\b", text)}
     refs = re.compile(r"REFERENCES `([^`]+)`")
     while more := {ref for table in tables for ref in refs.findall(EXPECTED[table]["create"])} - tables:
@@ -44,8 +44,11 @@ def test_every_migration_reruns_from_the_old_shape_to_schema_sql():
 
 
 def test_provider_tail_finishes_after_stopping_between_its_statements():
-    runs = "\n".join(line for line in EXPECTED["chat_runs"]["create"].splitlines()
-                     if not line.strip().startswith(("`provider_messages`", "`activity`")))
-    with scratch_schema(EXPECTED["users"]["create"], runs) as (url, name), admin() as conn:
-        _apply(url, *(check_schema.MIGRATIONS / f"2026-10-20-{name}.sql" for name in ("provider-tail", "run-activity")))
+    paths = [check_schema.MIGRATIONS / f"{name}.sql"
+             for name in ("2026-10-20-provider-tail", "2026-10-20-run-activity", "2026-11-20-run-sweeps")]
+    creates = {table: EXPECTED[table]["create"] for table in _touched(*paths)}
+    creates["chat_runs"] = "\n".join(line for line in before_run_sweeps(creates["chat_runs"]).splitlines()
+                                      if not line.strip().startswith(("`provider_messages`", "`activity`")))
+    with scratch_schema(*creates.values()) as (url, name), admin() as conn:
+        _apply(url, *paths)
         assert show_create(conn, name)["chat_runs"] == EXPECTED["chat_runs"]["create"]

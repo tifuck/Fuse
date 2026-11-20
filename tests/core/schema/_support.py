@@ -81,11 +81,21 @@ def show_create(conn, schema: str) -> dict:
     return out
 
 
+_RUN_SWEEPS = ("`message_digest`", "`provider_base_digest`", "`provider_base_chars`", "`provider_tail_digest`",
+               "`wake_pending`", "KEY `chat_runs_wake`", "KEY `chat_runs_status_created`")
+
+
+def before_run_sweeps(create: str) -> str:
+    """chat_runs from schema.sql as it was before 2026-11-20-run-sweeps."""
+    return "\n".join(line for line in create.splitlines() if not line.strip().startswith(_RUN_SWEEPS))
+
+
 def before_provider_tail(create: str) -> str:
     """chat_runs from schema.sql as it was before 2026-10-20-provider-tail and
-    -run-activity: one plain provider_messages where provider_base is now."""
+    -run-activity (so before -run-sweeps too): one plain provider_messages
+    where provider_base is now."""
     lines = []
-    for line in create.splitlines():
+    for line in before_run_sweeps(create).splitlines():
         name = line.strip().split(" ")[0]
         if name in ("`provider_tail`", "`provider_messages`", "`activity`"):
             continue
