@@ -596,18 +596,13 @@ def sweep_wakes() -> None:
         return
     from . import command_jobs
 
+    # wake_pending=1 (generated, indexed): a finished background child, not
+    # delivered, with wake budget left and not stopped by the user.
     rows = list(db.fetchall(
         """SELECT user_id,thread_id,
                   MAX(COALESCE(json_extract(request, '$.agent.user_resumed_at'), '')) AS resumed_at
-           FROM chat_runs
-           WHERE parent_run_id IS NOT NULL
-             AND status IN ('completed','failed','cancelled','interrupted')
-             AND json_extract(request, '$.agent.background') = 1
-             AND COALESCE(json_extract(request, '$.agent.wake_sent'), 0) = 0
-             AND COALESCE(json_extract(request, '$.agent.wake_attempts'), 0) < 2
-             AND NOT (status='cancelled' AND cancel_requested=?)
-           GROUP BY user_id,thread_id""",
-        (chat_store.USER_STOPPED,),
+           FROM chat_runs WHERE wake_pending=1
+           GROUP BY user_id,thread_id"""
     ))
     # Command-only wakes (a finished background command or a fired monitor on
     # a thread with no wake-pending subagents) have no chat_runs row, so the
@@ -1506,10 +1501,13 @@ async def resume_queued(user_id=None):
                ORDER BY created_at,id""",
             (user_id,),
         )
+    owners: dict = {}
     for row in rows:
         if _owns_run(_tasks.get(row["id"])):
             continue
-        owner = await asyncio.to_thread(accounts.get_user, row["user_id"])
+        if row["user_id"] not in owners:
+            owners[row["user_id"]] = await asyncio.to_thread(accounts.get_user, row["user_id"])
+        owner = owners[row["user_id"]]
         if owner is None:
             continue
         # Queued runs about to launch need their full request; fetch it only

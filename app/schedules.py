@@ -692,6 +692,7 @@ def reconcile() -> None:
            LEFT JOIN chat_runs r ON r.id=f.run_id
            WHERE f.status IN ('queued','running')"""
     )
+    closed = []
     for row in fires:
         run_status = row["run_status"]
         if run_status in RUN_TERMINAL:
@@ -704,16 +705,21 @@ def reconcile() -> None:
         else:
             # queued without a run stays retryable; active runs stay live.
             continue
-        db.execute(
-            "UPDATE schedule_fires SET status=?, error=?, finished_at=? WHERE id=? AND status IN ('queued','running')",
-            (status, err, finished, row["fid"]),
-        )
-        if row["run_id"]:
-            db.execute(
-                """UPDATE chat_schedules SET last_status=?, last_error=?, updated_at=?
-                   WHERE id=? AND last_run_id=? AND last_status IN ('queued','running')""",
-                (status, err, finished, row["schedule_id"], row["run_id"]),
-            )
+        closed.append((row, status, err, finished))
+    if closed:
+        # One commit for the batch; each update keeps its own guard.
+        with db.tx() as conn:
+            for row, status, err, finished in closed:
+                conn.execute(
+                    "UPDATE schedule_fires SET status=?, error=?, finished_at=? WHERE id=? AND status IN ('queued','running')",
+                    (status, err, finished, row["fid"]),
+                )
+                if row["run_id"]:
+                    conn.execute(
+                        """UPDATE chat_schedules SET last_status=?, last_error=?, updated_at=?
+                           WHERE id=? AND last_run_id=? AND last_status IN ('queued','running')""",
+                        (status, err, finished, row["schedule_id"], row["run_id"]),
+                    )
     for row in db.fetchall(
         """SELECT s.id AS sid, s.last_run_id, r.status AS run_status, r.updated_at AS run_updated
            FROM chat_schedules s
@@ -823,23 +829,24 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
                 )
                 return
         def over_capacity() -> bool:
+            # active_parent_thread (generated, indexed) is set exactly on live
+            # root runs: at most 32 rows, so instr() reads only their requests.
             n_sched = int(db.fetchone(
                 """SELECT COUNT(*) AS n FROM chat_runs r
-                   WHERE r.user_id=? AND r.status IN ('queued','running') AND r.parent_run_id IS NULL
+                   WHERE r.user_id=? AND r.active_parent_thread IS NOT NULL
                      AND instr(r.request, '"scheduled":true') > 0""",
                 (user_id,),
             )["n"])
             n_user = int(db.fetchone(
-                """SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND status IN ('queued','running')
-                   AND parent_run_id IS NULL""",
+                "SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL",
                 (user_id,),
             )["n"])
             n_global = int(db.fetchone(
-                """SELECT COUNT(*) AS n FROM chat_runs WHERE status IN ('queued','running') AND parent_run_id IS NULL"""
+                "SELECT COUNT(*) AS n FROM chat_runs WHERE active_parent_thread IS NOT NULL"
             )["n"])
             n_sched_global = int(db.fetchone(
                 """SELECT COUNT(*) AS n FROM chat_runs r
-                   WHERE r.status IN ('queued','running') AND r.parent_run_id IS NULL
+                   WHERE r.active_parent_thread IS NOT NULL
                      AND instr(r.request, '"scheduled":true') > 0"""
             )["n"])
             return n_sched >= MAX_CONCURRENT_USER or n_sched_global >= MAX_CONCURRENT_GLOBAL or n_user >= 20 or n_global >= 32

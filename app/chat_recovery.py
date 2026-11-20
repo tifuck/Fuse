@@ -439,9 +439,10 @@ def _check_resume_admission(row, user_id, is_child):
 
     live = "status IN ('queued','running')"
     if not is_child:
-        if count(f"SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND {live} AND parent_run_id IS NULL", (user_id,)) >= 20:
+        # active_parent_thread (generated) is set exactly on live root runs.
+        if count("SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL", (user_id,)) >= 20:
             raise chats.ChatValidationError("maximum of 20 active runs reached", 409)
-        if count(f"SELECT COUNT(*) AS n FROM chat_runs WHERE {live} AND parent_run_id IS NULL") >= 32:
+        if count("SELECT COUNT(*) AS n FROM chat_runs WHERE active_parent_thread IS NOT NULL") >= 32:
             raise chats.ChatValidationError("chat generation capacity reached; try again shortly", 429)
         return
     root = row["root_run_id"] or row["parent_run_id"]
@@ -618,7 +619,7 @@ def recover_runs():
     oldest = []
     last_id = ""
     while True:
-        # Ids first: no index serves this filter, and selecting every column
+        # Ids first (chat_runs_status_created serves the filter): selecting every column
         # made InnoDB read each run's transcript blobs (gigabytes, minutes on
         # a cold start) only to discard the inactive ones.
         ids = [row["id"] for row in db.fetchall(
