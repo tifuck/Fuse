@@ -18,25 +18,43 @@
     matcha: { label: "Matcha", scheme: "light", ink: "#f3f4ea", panel: "#e6ead8", raise: "#d8dec6", mist: "#1c2418", mute: "#5c6850", line: "#c8d0b4", brass: "#4a6b32", steel: "#3d6a52", reason: "#4e5a46", fault: "#c24b40", ok: "#2f7a48", onBrass: "#ffffff", code: "#eef0e2" },
     ivory: { label: "Ivory", scheme: "light", ink: "#fffcf7", panel: "#f4efe6", raise: "#e8e0d4", mist: "#1c1a28", mute: "#5c5868", line: "#d8d0c4", brass: "#3d4a9a", steel: "#3d6a80", reason: "#4e5a66", fault: "#c24b40", ok: "#2f7a48", onBrass: "#ffffff", code: "#faf6f0" },
   };
+  // The gallery's order and categories (BACKDROP_GROUPS). A key without a
+  // scene yet (scenes.js) is listed with an empty preview and draws nothing.
   const BACKDROPS = {
     none: { label: "None", hint: "Solid" },
-    fogpines: { label: "Fog Pines", hint: "Tile pines · valley mist" },
-    auroralake: { label: "Aurora Lake", hint: "Northern lights · lake" },
-    bamboo: { label: "Bamboo Grove", hint: "Tile culms · sun shafts" },
-    waterfall: { label: "Waterfall Gorge", hint: "Tile cliffs · plunge pool" },
-    sakura: { label: "Sakura Wind", hint: "Old cherry · moon bridge" },
-    terraces: { label: "Rice Terraces", hint: "Flooded steps · sunrise" },
-    meadow: { label: "Alpine Meadow", hint: "Golden hour · backlit grass" },
-    desert: { label: "Desert Night", hint: "Star trails · moonlit dunes" },
-    cliffs: { label: "Coastal Cliffs", hint: "Lighthouse · dusk surf" },
-    deepsea: { label: "Deep Sea", hint: "Whale passing · god rays" },
-    orbital: { label: "Orbital", hint: "Planet limb · station" },
-    harbor: { label: "Harbor Night", hint: "Neon skyline · bay" },
-    rain: { label: "Rain District", hint: "Neon alley · wet reflections" },
-    rooftops: { label: "Rooftops", hint: "Clay roofs · sunset · a cat" },
-    circuit: { label: "Circuit City", hint: "PCB city map · data traffic" },
-    launch: { label: "Launch Site", hint: "Rocket at dawn · launch cycle" },
+    auroralake: { label: "Aurora Lake", hint: "Northern lights · lake", group: "aurora" },
+    auroraveil: { label: "Aurora Veil", hint: "Green curtains · starfield", group: "aurora" },
+    auroracorona: { label: "Aurora Corona", hint: "Overhead · converging rays", group: "aurora" },
+    auroracrimson: { label: "Crimson Aurora", hint: "Red storm · high sky", group: "aurora" },
+    aurorabands: { label: "Aurora Ribbons", hint: "Drifting bands · Milky Way", group: "aurora" },
+    auroraorbit: { label: "Aurora from Orbit", hint: "Planet limb · auroral oval", group: "aurora" },
+    auroraridge: { label: "Aurora Ridge", hint: "Wide sky · ridge line", group: "aurora" },
+    fogpines: { label: "Fog Pines", hint: "Tile pines · valley mist", group: "nature" },
+    bamboo: { label: "Bamboo Grove", hint: "Tile culms · sun shafts", group: "nature" },
+    waterfall: { label: "Waterfall Gorge", hint: "Tile cliffs · plunge pool", group: "nature" },
+    sakura: { label: "Sakura Wind", hint: "Old cherry · moon bridge", group: "nature" },
+    terraces: { label: "Rice Terraces", hint: "Flooded steps · sunrise", group: "nature" },
+    meadow: { label: "Alpine Meadow", hint: "Golden hour · backlit grass", group: "nature" },
+    desert: { label: "Desert Night", hint: "Star trails · moonlit dunes", group: "nature" },
+    cliffs: { label: "Coastal Cliffs", hint: "Lighthouse · dusk surf", group: "nature" },
+    deepsea: { label: "Deep Sea", hint: "Whale passing · god rays", group: "nature" },
+    harbor: { label: "Harbor Night", hint: "Neon skyline · bay", group: "city" },
+    rain: { label: "Rain District", hint: "Neon alley · wet reflections", group: "city" },
+    rooftops: { label: "Rooftops", hint: "Clay roofs · sunset · a cat", group: "city" },
+    circuit: { label: "Circuit City", hint: "PCB city map · data traffic", group: "city" },
+    orbital: { label: "Orbital", hint: "Planet limb · station", group: "space" },
+    launch: { label: "Launch Site", hint: "Rocket at dawn · launch cycle", group: "space" },
   };
+  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", city: "City", space: "Space", yours: "Yours" };
+  // A custom backdrop (GET /api/backdrops) is "u-" + its id. A saved one
+  // draws on load; it is dropped only once the list has arrived without it.
+  const CUSTOM_BACKDROP = /^u-[a-z0-9]{12}$/;
+  let customState = "idle";
+  // Collapsed, the gallery shows two rows: the current pick first.
+  const GALLERY_ROWS = 2;
+  let backdropFilter = "all";
+  let backdropQuery = "";
+  let backdropAll = false;
   // Saved choices from retired backdrops map to their nearest replacement
   // instead of silently switching the wallpaper off.
   const LEGACY_BACKDROPS = {
@@ -314,9 +332,11 @@
   strength = views[view].strength;
 
   // A saved key may name a wallpaper registered later (addWallpaper); until
-  // then it draws nothing.
+  // then it draws nothing. A custom one draws while its list is on the way.
+  const knownBackdrop = (id) => Object.prototype.hasOwnProperty.call(BACKDROPS, id)
+    || (CUSTOM_BACKDROP.test(id) && customState !== "ready");
   function shownBackdrop() {
-    return Object.prototype.hasOwnProperty.call(BACKDROPS, backdrop) ? backdrop : "none";
+    return knownBackdrop(backdrop) ? backdrop : "none";
   }
 
   function fontFor() {
@@ -493,18 +513,224 @@
       }
     }
     const backHost = document.querySelector("[data-chat-backdrop-swatches]");
+    if (backHost) ensureGallery(backHost);
     if (backHost && !backHost.childElementCount) {
-      for (const [id, spec] of Object.entries(BACKDROPS)) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "ap-backdrop";
-        btn.dataset.chatBackdrop = id;
-        btn.setAttribute("aria-pressed", "false");
-        btn.innerHTML = `<i class="chat-backdrop-preview" data-kind="${id}" aria-hidden="true"></i><span>${spec.label}</span><small>${spec.hint}</small>`;
-        backHost.append(btn);
+      const ids = Object.keys(BACKDROPS);
+      const custom = ids.filter((id) => BACKDROPS[id].custom);
+      for (const id of ["none", ...custom, ...ids.filter((id) => id !== "none" && !BACKDROPS[id].custom)]) {
+        backHost.append(backdropCard(id, BACKDROPS[id]));
       }
       window.FuseBackdrop?.previews(backHost);
+      filterBackdrops();
     }
+  }
+
+  // The gallery around the cards: category chips, a search field, an empty
+  // note and "Browse all". Built here so every page with the cards gets it.
+  function ensureGallery(host) {
+    if (host.parentElement?.classList.contains("ap-gallery")) return;
+    const gallery = document.createElement("div");
+    gallery.className = "ap-gallery";
+    const chips = [["all", "All"], ...Object.entries(BACKDROP_GROUPS)]
+      .map(([id, label]) => `<button type="button" data-chat-backdrop-filter="${id}" aria-pressed="${id === backdropFilter}">${label}</button>`).join("");
+    gallery.innerHTML = '<div class="ap-gallery-bar">' +
+      `<div class="ap-filters" role="group" aria-label="Filter backdrops" data-chat-backdrop-filters>${chips}</div>` +
+      '<input type="search" class="ap-search" data-chat-backdrop-search placeholder="Search backdrops" aria-label="Search backdrops" autocomplete="off" spellcheck="false"></div>' +
+      '<p class="ap-note" data-chat-backdrop-empty hidden></p>' +
+      '<button type="button" class="ap-more" data-chat-backdrop-more aria-expanded="false" hidden>Browse all</button>';
+    host.before(gallery);
+    gallery.querySelector(".ap-gallery-bar").after(host);
+    gallery.addEventListener("click", (event) => {
+      const chip = event.target.closest("[data-chat-backdrop-filter]");
+      if (chip) {
+        backdropFilter = chip.dataset.chatBackdropFilter;
+        filterBackdrops();
+      } else if (event.target.closest("[data-chat-backdrop-more]")) {
+        backdropAll = !backdropAll;
+        filterBackdrops();
+      }
+    });
+    gallery.querySelector("[data-chat-backdrop-search]").addEventListener("input", (event) => {
+      backdropQuery = event.target.value;
+      filterBackdrops();
+    });
+  }
+
+  // Custom names come from the user's documents: text only, never markup.
+  function backdropCard(id, spec) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ap-backdrop";
+    btn.dataset.chatBackdrop = id;
+    btn.setAttribute("aria-pressed", "false");
+    const art = document.createElement("i");
+    art.className = "chat-backdrop-preview";
+    art.dataset.kind = id;
+    if (spec.custom) art.dataset.scheme = spec.scheme;
+    art.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.textContent = spec.label;
+    const hint = document.createElement("small");
+    hint.textContent = spec.hint;
+    btn.append(art, name, hint);
+    const group = spec.group || "";
+    const find = `${spec.label} ${spec.hint} ${BACKDROP_GROUPS[group] || ""}`.toLowerCase();
+    if (!spec.custom) {
+      Object.assign(btn.dataset, { group, find });
+      return btn;
+    }
+    const cell = document.createElement("div");
+    cell.className = "ap-backdrop-cell";
+    Object.assign(cell.dataset, { chatBackdropCell: id, group, find });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "ap-backdrop-del";
+    del.dataset.chatBackdropDelete = id;
+    del.title = "Delete";
+    del.setAttribute("aria-label", `Delete ${spec.label}`);
+    del.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    cell.append(btn, del);
+    return cell;
+  }
+
+  function galleryColumns(host) {
+    const tracks = getComputedStyle(host).gridTemplateColumns || "";
+    return /^[\d.]+px( [\d.]+px)*$/.test(tracks) ? tracks.split(" ").length : 3;
+  }
+
+  // Chips and search narrow the cards; with neither, the collapsed gallery
+  // shows the current pick and the first few, and "Browse all" the rest.
+  function filterBackdrops() {
+    const host = document.querySelector("[data-chat-backdrop-swatches]");
+    if (!host) return;
+    const query = backdropQuery.trim().toLowerCase();
+    const narrowed = backdropFilter !== "all" || Boolean(query);
+    const current = shownBackdrop();
+    const cards = [...host.children];
+    const idOf = (el) => el.dataset.chatBackdrop || el.dataset.chatBackdropCell;
+    const matches = cards.filter((el) => (backdropFilter === "all" || el.dataset.group === backdropFilter)
+      && (!query || el.dataset.find.includes(query)));
+    const limit = Math.max(4, galleryColumns(host) * GALLERY_ROWS);
+    const collapsed = !narrowed && !backdropAll && matches.length > limit;
+    let shown = collapsed ? matches.slice(0, limit) : matches;
+    // A current pick further down takes the first slot, so it stays in view.
+    const pinned = collapsed && !shown.some((el) => idOf(el) === current) && matches.find((el) => idOf(el) === current);
+    if (pinned) shown = [pinned, ...shown.slice(0, limit - 1)];
+    const visible = new Set(shown);
+    for (const el of cards) {
+      el.hidden = !visible.has(el);
+      el.style.order = el === pinned ? "-1" : "";
+    }
+    document.querySelectorAll("[data-chat-backdrop-filter]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.chatBackdropFilter === backdropFilter));
+    });
+    const more = document.querySelector("[data-chat-backdrop-more]");
+    if (more) {
+      more.hidden = narrowed || matches.length <= limit;
+      more.textContent = backdropAll ? "Show fewer" : `Browse all ${matches.length}`;
+      more.setAttribute("aria-expanded", String(backdropAll));
+    }
+    const empty = document.querySelector("[data-chat-backdrop-empty]");
+    if (empty) {
+      empty.hidden = matches.length > 0;
+      empty.textContent = query ? `No backdrop matches “${backdropQuery.trim()}”.`
+        : customState === "failed" ? "Your backdrops could not be loaded."
+        : "None yet. Ask the model for a custom backdrop; its page has a button that adds it here.";
+    }
+  }
+
+  function repaintBackdrops() {
+    const backHost = document.querySelector("[data-chat-backdrop-swatches]");
+    if (backHost && backHost.childElementCount) {
+      backHost.replaceChildren();
+      paintSwatches();
+    }
+  }
+
+  function wallpapersChanged() {
+    if (typeof CustomEvent === "function" && document.dispatchEvent) {
+      try { document.dispatchEvent(new CustomEvent("fuse-wallpapers")); } catch (_) {}
+    }
+  }
+
+  function addCustomBackdrop(raw) {
+    const id = String(raw?.id || "");
+    if (!/^[a-z0-9]{12}$/.test(id)) return "";
+    const key = "u-" + id;
+    const scheme = raw.scheme === "light" ? "light" : "dark";
+    BACKDROPS[key] = { label: String(raw.name || "Custom").slice(0, 40), hint: `Yours · ${scheme}`, group: "yours", scheme, custom: true };
+    return key;
+  }
+
+  // Any theme still showing a removed custom backdrop goes back to None (and
+  // to the palette a light one replaced).
+  function dropMissingCustom(gone) {
+    const missing = (id) => id === gone || (CUSTOM_BACKDROP.test(id) && !knownBackdrop(id));
+    let changed = false;
+    for (const id of VIEWS) {
+      const entry = views[id];
+      if (id === view || !missing(entry.backdrop)) continue;
+      entry.backdrop = "none";
+      if (entry.restore) {
+        entry.palette = entry.restore;
+        entry.restore = "";
+      }
+      changed = true;
+    }
+    if (changed) persistViews();
+    if (missing(backdrop)) setBackdrop("none");
+  }
+
+  // The API may be missing (an older server): the gallery then just has no
+  // custom cards and a saved custom pick stays as it is.
+  async function loadCustomBackdrops() {
+    if (customState === "loading" || customState === "ready") return;
+    customState = "loading";
+    try {
+      const res = await fetch("/api/backdrops", { credentials: "same-origin", headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = (await res.json())?.backdrops;
+      if (!Array.isArray(list)) throw new Error("bad list");
+      for (const key of Object.keys(BACKDROPS)) if (BACKDROPS[key].custom) delete BACKDROPS[key];
+      list.forEach(addCustomBackdrop);
+      customState = "ready";
+    } catch (_) {
+      customState = "failed";
+    }
+    repaintBackdrops();
+    filterBackdrops();
+    dropMissingCustom();
+    apply();
+    syncSwatches();
+    wallpapersChanged();
+  }
+
+  async function deleteCustomBackdrop(key) {
+    const spec = BACKDROPS[key];
+    if (!spec || !spec.custom) return;
+    const ok = await window.fuseConfirm?.(`Delete the backdrop “${spec.label}”? Any theme using it goes back to None.`, { confirmLabel: "Delete", danger: true });
+    if (!ok) return;
+    try {
+      const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+      const res = await fetch("/api/backdrops/" + encodeURIComponent(key.slice(2)), {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "X-CSRF-Token": token },
+      });
+      if (!res.ok && res.status !== 404) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.detail === "string" ? data.detail : `Request failed (${res.status})`);
+      }
+    } catch (error) {
+      window.fuseUI?.toast?.({ kind: "err", title: "Could not delete the backdrop", msg: String(error?.message || error) });
+      return;
+    }
+    delete BACKDROPS[key];
+    repaintBackdrops();
+    dropMissingCustom(key);
+    apply();
+    syncSwatches();
+    wallpapersChanged();
   }
 
   function paintFonts() {
@@ -557,6 +783,7 @@
       btn.setAttribute("aria-pressed", String(id === shownBackdrop()));
       btn.classList.toggle("is-on", id === shownBackdrop());
     });
+    filterBackdrops();
     document.querySelectorAll("[data-chat-view-choice]").forEach((btn) => {
       btn.setAttribute("aria-pressed", String(btn.dataset.chatViewChoice === chosenView));
     });
@@ -621,7 +848,7 @@
     return (window.FuseBackdrop?.scheme?.(id)) || BACKDROPS[id]?.scheme || "";
   }
   function setBackdrop(next) {
-    backdrop = Object.prototype.hasOwnProperty.call(BACKDROPS, next) ? next : "none";
+    backdrop = knownBackdrop(next) ? next : "none";
     const entry = views[view];
     if (wallpaperScheme(backdrop) === "light") {
       if (specFor(theme).scheme !== "light") {
@@ -680,7 +907,7 @@
     try { result = engine.register(key, spec); } catch (error) { result = { ok: false, errors: [String(error && error.message || error)] }; }
     if (!result || !result.ok) return { ok: false, errors: (result && result.errors) || ["invalid wallpaper"] };
     const name = String(spec.name || key).slice(0, 40);
-    BACKDROPS[key] = { label: name, hint: "Wallpaper", scheme: spec.scheme === "light" ? "light" : "dark", added: true };
+    BACKDROPS[key] = { label: name, hint: "Wallpaper", group: "yours", scheme: spec.scheme === "light" ? "light" : "dark", added: true };
     const backHost = document.querySelector("[data-chat-backdrop-swatches]");
     if (backHost && backHost.childElementCount) {
       backHost.replaceChildren();
@@ -722,6 +949,17 @@
     setStrength,
     setScheme,
     addWallpaper,
+    // A custom backdrop the server just stored ({id, name, scheme}): listed
+    // under Yours and in /theme; returns its key ("u-" + id) or "".
+    addCustomBackdrop(raw) {
+      const key = addCustomBackdrop(raw);
+      if (!key) return "";
+      repaintBackdrops();
+      syncSwatches();
+      wallpapersChanged();
+      return key;
+    },
+    loadCustomBackdrops,
     get themeId() { return view; },
     get palette() { return theme; },
     get scheme() { return specFor(theme).scheme; },
@@ -729,7 +967,7 @@
     // The data-only wallpapers (built-in presets and any added), for the /theme picker.
     get wallpapers() {
       return Object.entries(BACKDROPS)
-        .filter(([id]) => window.FuseBackdrop?.isWallpaper?.(id))
+        .filter(([id, spec]) => spec.custom || window.FuseBackdrop?.isWallpaper?.(id))
         .map(([id, spec]) => ({ id, label: spec.label, hint: spec.hint, scheme: wallpaperScheme(id) || "dark" }));
     },
     getComposerPrefs,
@@ -755,11 +993,29 @@
     document.querySelectorAll("[data-chat-view-choice]").forEach((btn) => {
       btn.addEventListener("click", () => setView(btn.dataset.chatViewChoice));
     });
-    document.querySelector("[data-chat-backdrop-swatches]")?.addEventListener("click", (event) => {
+    const backHost = document.querySelector("[data-chat-backdrop-swatches]");
+    backHost?.addEventListener("click", (event) => {
+      const del = event.target.closest("[data-chat-backdrop-delete]");
+      if (del) {
+        deleteCustomBackdrop(del.dataset.chatBackdropDelete);
+        return;
+      }
       const btn = event.target.closest("[data-chat-backdrop]");
       if (!btn) return;
       setBackdrop(btn.dataset.chatBackdrop);
     });
+    // The collapsed gallery holds two rows, however many columns fit.
+    if (backHost && typeof ResizeObserver === "function") {
+      let columns = 0;
+      new ResizeObserver(() => {
+        const next = galleryColumns(backHost);
+        if (next !== columns) {
+          columns = next;
+          filterBackdrops();
+        }
+      }).observe(backHost);
+    }
+    loadCustomBackdrops();
     document.querySelector("[data-chat-custom-ink]")?.addEventListener("input", (event) => {
       setCustom({ ink: event.target.value, brass: custom.brass });
     });
