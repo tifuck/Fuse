@@ -21,7 +21,14 @@ def _source_cfg(row) -> dict:
         return {}
 
 
-def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -> dict:
+def _pool_batch(user, rows) -> dict:
+    """What _pool_card reads per card (cost coverage, donor emails for an
+    admin), for a whole board at once."""
+    donors = {row["donated_by"] for row in rows if row["donated_by"]} if user["is_admin"] else set()
+    return {"coverage": stats.fuse_coverage(rows), "donors": stats.user_emails(donors)}
+
+
+def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None, batch: dict | None = None) -> dict:
     mine = row["donated_by"] == user["id"]
     admin = bool(user["is_admin"])
     extra = extra if isinstance(extra, dict) else {}
@@ -43,11 +50,14 @@ def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -
         elif kind == "Cursor":
             email = cursor_mod.account_email(extra)
         if not email and admin and row["donated_by"] and row["donated_by"] != user["id"]:
-            donor = accounts.get_user(row["donated_by"])
-            try:
-                email = str((donor["email"] if donor is not None else "") or "").strip()
-            except (KeyError, IndexError, TypeError):
-                email = ""
+            if batch is not None:
+                email = batch["donors"].get(int(row["donated_by"]), "")
+            else:
+                donor = accounts.get_user(row["donated_by"])
+                try:
+                    email = str((donor["email"] if donor is not None else "") or "").strip()
+                except (KeyError, IndexError, TypeError):
+                    email = ""
     return {
         "id": row["id"],
         "label": label,
@@ -55,5 +65,5 @@ def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -
         "mine": mine,
         "can_revoke": mine or admin,
         "show_billing": mine or admin,
-        "fuse": stats.fuse_view(row),
+        "fuse": stats.fuse_view(row, coverage=batch["coverage"] if batch is not None else None),
     }

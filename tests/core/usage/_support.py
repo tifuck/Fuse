@@ -45,7 +45,7 @@ def api_key(uid, name="Laptop"):
 
 def rollup_drift():
     """Rollup rows that disagree with SUM(usage_events); {} when every rollup
-    (credentials, api_keys, provider_usage, usage_hourly) matches."""
+    (credentials, api_keys, provider_usage, usage_rollup_hourly) matches."""
     with db.tx() as conn:
         return {name: count for name, count in rebuild.report(conn).items() if count}
 
@@ -57,7 +57,7 @@ def cost_sums():
 
     return {
         "events": total("SELECT COALESCE(SUM(COALESCE(reported_cost_micros, estimated_cost_micros)),0) AS c FROM usage_events"),
-        "hourly": total("SELECT COALESCE(SUM(cost_micros),0) AS c FROM usage_hourly"),
+        "hourly": total("SELECT COALESCE(SUM(cost),0) AS c FROM usage_rollup_hourly"),
         "credentials": total("SELECT COALESCE(SUM(cost_micros),0) AS c FROM credentials"),
         "api_keys": total("SELECT COALESCE(SUM(cost_micros),0) AS c FROM api_keys"),
         "providers": total("SELECT COALESCE(SUM(cost_micros),0) AS c FROM provider_usage"),

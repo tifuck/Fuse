@@ -363,20 +363,38 @@ async def sync_openrouter_prices() -> dict:
 
     def store() -> set[str]:
         manual_ids: set[str] = set()
-        with db.tx() as conn:
-            for (provider, model) in staged:
-                row = conn.execute(
-                    "SELECT origin FROM model_prices WHERE provider=? AND model=?", (provider, model)
-                ).fetchone()
-                if row is not None and row["origin"] == "manual":
-                    # The upsert's manual guard will skip this row; do not count
-                    # it as synced.
-                    if provider == "openrouter":
-                        manual_ids.add(model)
+        existing = {
+            (row["provider"], row["model"]): row
+            for row in db.fetchall(
+                f"SELECT * FROM model_prices WHERE provider IN ({','.join('?' * len({p for p, _ in staged}))})",
+                tuple({p for p, _ in staged}),
+            )
+        } if staged else {}
+        unchanged = []
         # One transaction per model: a save reprices the history its snapshot
         # sees, so the snapshot must start after its own price-row lock.
         for (provider, model), values in staged.items():
+            row = existing.get((provider, model))
+            if row is not None and row["origin"] == "manual":
+                # The upsert's manual guard skips this row (and its history is
+                # already priced at it); do not count it as synced.
+                if provider == "openrouter":
+                    manual_ids.add(model)
+                continue
+            if (row is not None and row["origin"] == "openrouter" and row["openrouter_id"] == values["openrouter_id"]
+                    and _same_price(row, values)):
+                # A resave would only move synced_at: no reprice needed.
+                unchanged.append((provider, model))
+                continue
             db.save_model_price(provider, model, **values)
+        ts = db.now()
+        for provider in {p for p, _ in unchanged}:
+            models = [m for p, m in unchanged if p == provider]
+            db.execute(
+                f"""UPDATE model_prices SET synced_at=?, updated_at=?
+                    WHERE origin='openrouter' AND provider=? AND model IN ({','.join('?' * len(models))})""",
+                (ts, ts, provider, *models),
+            )
         return manual_ids
 
     # Every save reprices that model's history: run it off the event loop.

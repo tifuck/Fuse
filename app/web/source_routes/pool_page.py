@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _pool_card
+from .context import _pool_batch, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -70,6 +70,10 @@ def _pool_card_scope(card: dict, kind: str, row, user, routable_ids: set[int]) -
     card["share"] = "everyone" if card["mine"] else pool_policy.share_level(kind, row["donated_by"])
 
 
+def _card_batch(user, rows, routable_ids: set[int]) -> dict:
+    return _pool_batch(user, [row for row in rows if _pool_account_visible(user, row, routable_ids)])
+
+
 def _fuse_fill(cards: list[dict]) -> None:
     peak = max((c["fuse"]["total_tokens"] for c in cards if c.get("fuse")), default=0)
     for card in cards:
@@ -107,6 +111,7 @@ def user_sources(request: Request):
     access = grok_access_state(user["id"])
     grok_ui, grok_ids, grok_routable = _pool_scope(user, "grok", rows, access["ok"])
     visible = []
+    batch = _card_batch(user, rows, grok_ids)
     for a in rows:
         if not _pool_account_visible(user, a, grok_ids):
             continue
@@ -116,7 +121,7 @@ def user_sources(request: Request):
         held = is_held(a)
         authed = grok_mod.credential_is_authed(a, extra)
         subscribed = grok_mod.billing_has_subscription(billing if isinstance(billing, dict) else extra.get("billing"))
-        card = _pool_card(user, a, kind="Grok", index=len(visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Grok", index=len(visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "grok", a, user, grok_ids)
         card.update(
             {
@@ -153,13 +158,14 @@ def user_sources(request: Request):
     chatgpt_access = chatgpt_mod.chatgpt_access_state(user["id"])
     chatgpt_ui, chatgpt_ids, chatgpt_routable = _pool_scope(user, "chatgpt", chatgpt_rows, chatgpt_access["ok"])
     chatgpt_visible = []
+    batch = _card_batch(user, chatgpt_rows, chatgpt_ids)
     for a in chatgpt_rows:
         if not _pool_account_visible(user, a, chatgpt_ids):
             continue
         extra = accounts.cred_extra(a)
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else None
         plan = chatgpt_plan_type(extra)
-        card = _pool_card(user, a, kind="ChatGPT", index=len(chatgpt_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="ChatGPT", index=len(chatgpt_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "chatgpt", a, user, chatgpt_ids)
         card.update(
             {
@@ -195,6 +201,7 @@ def user_sources(request: Request):
     zai_access = zai_mod.zai_access_state(user["id"])
     zai_ui, zai_ids, zai_routable = _pool_scope(user, "zai", zai_rows, zai_access["ok"])
     zai_visible = []
+    batch = _card_batch(user, zai_rows, zai_ids)
     for a in zai_rows:
         if not _pool_account_visible(user, a, zai_ids):
             continue
@@ -204,7 +211,7 @@ def user_sources(request: Request):
         held = zai_mod.is_held(a)
         authed = zai_mod.credential_is_authed(a, extra)
         subscribed = zai_mod.billing_has_subscription(billing if isinstance(billing, dict) else extra.get("billing"))
-        card = _pool_card(user, a, kind="Z.AI", index=len(zai_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Z.AI", index=len(zai_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "zai", a, user, zai_ids)
         card.update(
             {
@@ -229,12 +236,13 @@ def user_sources(request: Request):
     devin_access = devin_mod.devin_access_state(user["id"])
     devin_ui, devin_ids, devin_routable = _pool_scope(user, "devin", devin_rows, devin_access["ok"])
     devin_visible = []
+    batch = _card_batch(user, devin_rows, devin_ids)
     for a in devin_rows:
         if not _pool_account_visible(user, a, devin_ids):
             continue
         extra = accounts.cred_extra(a)
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else None
-        card = _pool_card(user, a, kind="Devin", index=len(devin_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Devin", index=len(devin_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "devin", a, user, devin_ids)
         card.update(
             {
@@ -258,6 +266,7 @@ def user_sources(request: Request):
     kimi_access = kimi_mod.kimi_access_state(user["id"])
     kimi_ui, kimi_ids, kimi_routable = _pool_scope(user, "kimi", kimi_rows, kimi_access["ok"])
     kimi_visible = []
+    batch = _card_batch(user, kimi_rows, kimi_ids)
     for a in kimi_rows:
         if not _pool_account_visible(user, a, kimi_ids):
             continue
@@ -267,7 +276,7 @@ def user_sources(request: Request):
         held = kimi_mod.is_held(a)
         authed = kimi_mod.credential_is_authed(a, extra)
         subscribed = kimi_mod.billing_has_subscription(billing if isinstance(billing, dict) else extra.get("billing"))
-        card = _pool_card(user, a, kind="Kimi", index=len(kimi_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Kimi", index=len(kimi_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "kimi", a, user, kimi_ids)
         card.update(
             {
@@ -303,6 +312,7 @@ def user_sources(request: Request):
     mimo_access = mimo_mod.mimo_access_state(user["id"])
     mimo_ui, mimo_ids, mimo_routable = _pool_scope(user, "mimo", mimo_rows, mimo_access["ok"])
     mimo_visible = []
+    batch = _card_batch(user, mimo_rows, mimo_ids)
     for a in mimo_rows:
         if not _pool_account_visible(user, a, mimo_ids):
             continue
@@ -312,7 +322,7 @@ def user_sources(request: Request):
         held = mimo_mod.is_held(a)
         authed = mimo_mod.credential_is_authed(a, extra)
         subscribed = mimo_mod.billing_has_subscription(billing if isinstance(billing, dict) else extra.get("billing"))
-        card = _pool_card(user, a, kind="Xiaomi", index=len(mimo_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Xiaomi", index=len(mimo_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "mimo", a, user, mimo_ids)
         card.update(
             {
@@ -338,6 +348,7 @@ def user_sources(request: Request):
     claude_access = claude_mod.claude_access_state(user["id"])
     claude_ui, claude_ids, claude_routable = _pool_scope(user, "claude", claude_rows, claude_access["ok"])
     claude_visible = []
+    batch = _card_batch(user, claude_rows, claude_ids)
     for a in claude_rows:
         if not _pool_account_visible(user, a, claude_ids):
             continue
@@ -347,7 +358,7 @@ def user_sources(request: Request):
         held = claude_mod.is_held(a)
         authed = claude_mod.credential_is_authed(a, extra)
         subscribed = claude_mod.billing_has_subscription(billing if isinstance(billing, dict) else extra.get("billing"))
-        card = _pool_card(user, a, kind="Claude", index=len(claude_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Claude", index=len(claude_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "claude", a, user, claude_ids)
         card.update(
             {
@@ -372,6 +383,7 @@ def user_sources(request: Request):
     cursor_access = cursor_mod.cursor_access_state(user["id"])
     cursor_ui, cursor_ids, cursor_routable = _pool_scope(user, "cursor", cursor_rows, cursor_access["ok"])
     cursor_visible = []
+    batch = _card_batch(user, cursor_rows, cursor_ids)
     for a in cursor_rows:
         if not _pool_account_visible(user, a, cursor_ids):
             continue
@@ -379,7 +391,7 @@ def user_sources(request: Request):
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else None
         guard = extra.get("guard") if isinstance(extra.get("guard"), dict) else None
         held = cursor_mod.is_held(a)
-        card = _pool_card(user, a, kind="Cursor", index=len(cursor_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Cursor", index=len(cursor_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "cursor", a, user, cursor_ids)
         card.update(
             {
@@ -404,6 +416,7 @@ def user_sources(request: Request):
     nanogpt_access = nanogpt_mod.nanogpt_access_state(user["id"])
     nanogpt_ui, nanogpt_ids, nanogpt_routable = _pool_scope(user, "nanogpt", nanogpt_rows, nanogpt_access["ok"])
     nanogpt_visible = []
+    batch = _card_batch(user, nanogpt_rows, nanogpt_ids)
     for a in nanogpt_rows:
         if not _pool_account_visible(user, a, nanogpt_ids):
             continue
@@ -411,7 +424,7 @@ def user_sources(request: Request):
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
         guard = extra.get("guard") if isinstance(extra.get("guard"), dict) else None
         held = nanogpt_mod.is_held(a)
-        card = _pool_card(user, a, kind="NanoGPT", index=len(nanogpt_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="NanoGPT", index=len(nanogpt_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "nanogpt", a, user, nanogpt_ids)
         # The balance is the owner's business; everyone else sees quota only.
         shown = billing if card["show_billing"] else {k: v for k, v in billing.items() if k != "prepaid_cents"}
@@ -442,12 +455,13 @@ def user_sources(request: Request):
         user, "refuseless", refuseless_rows, refuseless_access["ok"]
     )
     refuseless_visible = []
+    batch = _card_batch(user, refuseless_rows, refuseless_ids)
     for a in refuseless_rows:
         if not _pool_account_visible(user, a, refuseless_ids):
             continue
         extra = accounts.cred_extra(a)
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-        card = _pool_card(user, a, kind="Refuseless", index=len(refuseless_visible) + 1, extra=extra)
+        card = _pool_card(user, a, kind="Refuseless", index=len(refuseless_visible) + 1, extra=extra, batch=batch)
         _pool_card_scope(card, "refuseless", a, user, refuseless_ids)
         # A key's balance is its owner's business.
         shown = billing if card["show_billing"] else {k: v for k, v in billing.items() if k != "prepaid_cents"}

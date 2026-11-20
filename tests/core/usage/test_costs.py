@@ -24,7 +24,7 @@ def _record(uid, source_id, cred, model="glm-x", provider="zai", key_id=None, **
 
 def _totals():
     event = db.fetchone("SELECT COALESCE(SUM(estimated_cost_micros),0) AS c FROM usage_events")["c"]
-    hourly = db.fetchone("SELECT COALESCE(SUM(cost_micros),0) AS c FROM usage_hourly")["c"]
+    hourly = db.fetchone("SELECT COALESCE(SUM(cost),0) AS c FROM usage_rollup_hourly")["c"]
     credential = db.fetchone("SELECT COALESCE(SUM(cost_micros),0) AS c FROM credentials")["c"]
     return int(event), int(hourly), int(credential)
 

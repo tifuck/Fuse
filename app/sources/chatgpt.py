@@ -525,12 +525,10 @@ async def refresh_one(cred) -> bool:
     return await shield_refresh(run())
 
 
-async def refresh_due() -> None:
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='chatgpt' AND c.disabled=0"
-    )
+def _due_accounts(rows) -> tuple[list, list[float]]:
+    """The accounts whose token is due, and when each one comes due."""
     soon = datetime.now(timezone.utc) + REFRESH_WINDOW
-    due = []
+    due, due_at = [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         exp = extra.get("expires_at")
@@ -542,9 +540,26 @@ async def refresh_due() -> None:
             continue
         if when <= soon:
             due.append(cred)
+        due_at.append((when - REFRESH_WINDOW).timestamp())
+    return due, due_at
+
+
+async def refresh_due(rows=None) -> bool:
+    """Refresh every due token; True when one was due. rows: a request's pool,
+    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
+    if rows is not None and not pool_refresh.scan_due("chatgpt", rows):
+        return False
+    if rows is None:
+        rows = await asyncio.to_thread(
+            db.fetchall,
+            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='chatgpt' AND c.disabled=0",
+        )
+    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    pool_refresh.scanned("chatgpt", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
         log_refresh_failures("ChatGPT OAuth refresh", due, results)
+    return bool(due)
 
 
 USAGE_TTL = 300
@@ -841,16 +856,9 @@ class ChatGPTSource:
             note_failure(cred_id, cooldown_seconds=5, affinity_safe=True)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_due()
+        rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("chatgpt", refresh_pool_usage)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall(
-                "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
-                (self.source_id,),
-            ),
-            "chatgpt",
-            user_id,
-        )
+        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "chatgpt", user_id)
         model = body.get("model") or CHATGPT_MODELS[0]
         payload = build_responses_payload(body, model, session_id=session_id)
         turn_key = _turn_key(session_id, payload)
@@ -874,7 +882,7 @@ class ChatGPTSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            _note_invoke(cred["id"])
+            await asyncio.to_thread(_note_invoke, cred["id"])
             token = extra.get("access_token") or accounts.cred_secret(cred)
             account_id = extra.get("account_id") or None
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))

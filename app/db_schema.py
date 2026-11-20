@@ -150,22 +150,31 @@ def _init(conn: sqlite3.Connection) -> None:
             provider_request_id TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS usage_hourly (
+        CREATE TABLE IF NOT EXISTS usage_rollup_hourly (
             user_id INTEGER NOT NULL,
             hour TEXT NOT NULL,
-            source_id INTEGER NOT NULL DEFAULT 0,
-            model TEXT NOT NULL DEFAULT '',
-            prompt_tokens INTEGER NOT NULL DEFAULT 0,
-            completion_tokens INTEGER NOT NULL DEFAULT 0,
-            output_tokens INTEGER NOT NULL DEFAULT 0,
-            visible_tokens INTEGER NOT NULL DEFAULT 0,
-            reasoning_tokens INTEGER NOT NULL DEFAULT 0,
-            cached_tokens INTEGER NOT NULL DEFAULT 0,
-            cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-            total_tokens INTEGER NOT NULL DEFAULT 0,
-            cost_micros INTEGER NOT NULL DEFAULT 0,
+            api_key_id INTEGER NOT NULL DEFAULT 0,
+            source_type TEXT NOT NULL,
+            model TEXT NOT NULL,
+            tokens INTEGER NOT NULL DEFAULT 0,
             requests INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (user_id, hour, source_id, model)
+            prompt INTEGER NOT NULL DEFAULT 0,
+            completion INTEGER NOT NULL DEFAULT 0,
+            output INTEGER NOT NULL DEFAULT 0,
+            reasoning INTEGER NOT NULL DEFAULT 0,
+            cached INTEGER NOT NULL DEFAULT 0,
+            cache_write INTEGER NOT NULL DEFAULT 0,
+            ok_requests INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            cancelled INTEGER NOT NULL DEFAULT 0,
+            cost INTEGER NOT NULL DEFAULT 0,
+            estimated_cost INTEGER NOT NULL DEFAULT 0,
+            priced INTEGER NOT NULL DEFAULT 0,
+            priced_tokens INTEGER NOT NULL DEFAULT 0,
+            unpriced_events INTEGER NOT NULL DEFAULT 0,
+            first_at TEXT NOT NULL,
+            last_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, hour, api_key_id, source_type, model)
         );
         CREATE TABLE IF NOT EXISTS pool_sessions (
             kind TEXT NOT NULL,
@@ -243,14 +252,12 @@ def _init(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (provider, model)
         );
         CREATE INDEX IF NOT EXISTS usage_events_user_created ON usage_events (user_id, created_at);
-        CREATE INDEX IF NOT EXISTS usage_hourly_user_hour ON usage_hourly (user_id, hour);
         """
     )
     _ensure_usage_columns(conn)
     _ensure_provider_usage_columns(conn)
     _ensure_event_columns(conn)
     _migrate_logical_request_count(conn)
-    _ensure_hourly_columns(conn)
     _ensure_price_columns(conn)
     _ensure_cred_guard_columns(conn)
     _ensure_cred_usage_columns(conn)
@@ -267,7 +274,6 @@ def _init(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS pool_sessions_updated ON pool_sessions (updated_at)")
     _backfill_canonical_usage(conn)
-    _backfill_hourly(conn)
     _backfill_current_usage(conn)
     _backfill_credential_usage(conn)
     _strip_openrouter_costs(conn)
@@ -357,24 +363,6 @@ def _migrate_logical_request_count(conn: sqlite3.Connection) -> None:
                 "UPDATE usage_events SET count_request=1 WHERE id=?",
                 [(item["id"],) for item in ids],
             )
-    else:
-        # Existing hourly counters were maintained with count_request at write
-        # time, so they are the most precise migration source for old rows.
-        for row in conn.execute("SELECT * FROM usage_hourly").fetchall():
-            args = (row["user_id"], row["hour"], row["source_id"], row["model"])
-            where = """user_id=? AND substr(created_at, 1, 13) || ':00:00Z'=?
-                       AND COALESCE(source_id, 0)=? AND COALESCE(model, '')=?"""
-            conn.execute(f"UPDATE usage_events SET count_request=0 WHERE {where}", args)
-            ids = conn.execute(
-                f"""SELECT id FROM usage_events WHERE {where}
-                    ORDER BY (request_status='success') DESC, id DESC LIMIT ?""",
-                (*args, max(0, int(row["requests"] or 0))),
-            ).fetchall()
-            conn.executemany(
-                "UPDATE usage_events SET count_request=1 WHERE id=?",
-                [(item["id"],) for item in ids],
-            )
-    conn.execute("DELETE FROM usage_hourly")
     conn.execute(
         "INSERT OR IGNORE INTO schema_meta(key,value) VALUES('logical_request_count_v1',?)",
         (now(),),
@@ -383,21 +371,6 @@ def _migrate_logical_request_count(conn: sqlite3.Connection) -> None:
         "INSERT INTO schema_meta(key,value) VALUES('logical_request_count_v2',?)",
         (now(),),
     )
-
-
-_HOURLY_COLS = (
-    ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
-    ("visible_tokens", "INTEGER NOT NULL DEFAULT 0"),
-    ("cached_tokens", "INTEGER NOT NULL DEFAULT 0"),
-    ("cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
-    ("total_tokens", "INTEGER NOT NULL DEFAULT 0"),
-    ("cost_micros", "INTEGER NOT NULL DEFAULT 0"),
-)
-
-
-def _ensure_hourly_columns(conn: sqlite3.Connection) -> None:
-    for name, spec in _HOURLY_COLS:
-        _ensure_column(conn, "usage_hourly", name, spec)
 
 
 _PRICE_COLS = (
@@ -1025,7 +998,6 @@ def _backfill_canonical_usage(conn: sqlite3.Connection) -> None:
            FROM usage_events GROUP BY user_id, COALESCE(NULLIF(source_type,''),'unknown')""",
         (now(),),
     )
-    conn.execute("DELETE FROM usage_hourly")
     conn.execute(
         "INSERT INTO schema_meta(key,value) VALUES('canonical_usage_v2',?)",
         (now(),),
@@ -1076,55 +1048,6 @@ def _strip_openrouter_costs(conn: sqlite3.Connection) -> None:
            GROUP BY e.user_id, COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')""",
         (now(),),
     )
-    conn.execute("DELETE FROM usage_hourly")
-    conn.execute(
-        """INSERT INTO usage_hourly
-           (user_id, hour, source_id, model, prompt_tokens, completion_tokens, output_tokens,
-            visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
-            cost_micros, requests)
-           SELECT user_id,
-                  substr(created_at, 1, 13) || ':00:00Z',
-                  COALESCE(source_id, 0),
-                  COALESCE(model, ''),
-                  SUM(prompt_tokens),
-                  SUM(completion_tokens),
-                  SUM(output_tokens),
-                  SUM(visible_tokens),
-                  SUM(reasoning_tokens),
-                  SUM(cached_tokens),
-                  SUM(cache_write_tokens),
-                  SUM(CASE WHEN total_tokens>0 THEN total_tokens ELSE prompt_tokens+output_tokens END),
-                  SUM(COALESCE(reported_cost_micros, estimated_cost_micros, 0)),
-                  SUM(count_request)
-           FROM usage_events
-           GROUP BY 1, 2, 3, 4"""
-    )
     conn.execute("INSERT INTO schema_meta(key,value) VALUES('openrouter_uncosted_v1',?)", (now(),))
 
 
-def _backfill_hourly(conn: sqlite3.Connection) -> None:
-    n = conn.execute("SELECT COUNT(*) FROM usage_hourly").fetchone()[0]
-    if n:
-        return
-    conn.execute(
-        """INSERT INTO usage_hourly
-           (user_id, hour, source_id, model, prompt_tokens, completion_tokens, output_tokens,
-            visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
-            cost_micros, requests)
-           SELECT user_id,
-                  substr(created_at, 1, 13) || ':00:00Z',
-                  COALESCE(source_id, 0),
-                  COALESCE(model, ''),
-                   SUM(prompt_tokens),
-                   SUM(completion_tokens),
-                   SUM(output_tokens),
-                   SUM(visible_tokens),
-                   SUM(reasoning_tokens),
-                   SUM(cached_tokens),
-                   SUM(cache_write_tokens),
-                   SUM(CASE WHEN total_tokens>0 THEN total_tokens ELSE prompt_tokens+output_tokens END),
-                   SUM(COALESCE(reported_cost_micros, estimated_cost_micros, 0)),
-                    SUM(count_request)
-           FROM usage_events
-           GROUP BY 1, 2, 3, 4"""
-    )

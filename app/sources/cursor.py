@@ -454,15 +454,38 @@ def _due(extra: dict, *, within: timedelta) -> bool:
     return not when or when <= datetime.now(timezone.utc) + within
 
 
-async def refresh_due() -> None:
+def _due_accounts(rows) -> tuple[list, list[float]]:
+    """The accounts whose token is due, and when each one comes due."""
+    window = timedelta(minutes=10)
+    due, due_at = [], []
+    for row in rows:
+        extra = accounts.cred_extra(row)
+        if not (extra.get("refresh_token") or extra.get("api_key")):
+            continue
+        if _due(extra, within=window):
+            due.append(row)
+        when = _parse_ts(str(extra.get("expires_at") or ""))
+        due_at.append((when - window).timestamp() if when else 0.0)
+    return due, due_at
+
+
+async def refresh_due(rows=None) -> bool:
+    """Refresh every due token; True when one was due. rows: a request's pool,
+    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
     await refresh_client_version()
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0"
-    )
-    due = [row for row in rows if _due(accounts.cred_extra(row), within=timedelta(minutes=10))]
+    if rows is not None and not pool_refresh.scan_due("cursor", rows):
+        return False
+    if rows is None:
+        rows = await asyncio.to_thread(
+            db.fetchall,
+            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0",
+        )
+    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    pool_refresh.scanned("cursor", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
         log_refresh_failures("Cursor token refresh", due, results)
+    return bool(due)
 
 
 # --- Usage ----------------------------------------------------------------------
@@ -1088,9 +1111,9 @@ class CursorSource:
         return _Round(run, conv, messages, first, events)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_due()
+        rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("cursor", refresh_pool_quota)
-        self._load(user_id)
+        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "cursor", user_id)
         reasoning = body.get("reasoning") if isinstance(body.get("reasoning"), dict) else {}
         sel = resolve(body.get("model") or "auto", body.get("reasoning_effort") or reasoning.get("effort"))
         model = PREFIX + upstream_id(body.get("model") or "auto")
