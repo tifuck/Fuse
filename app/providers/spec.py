@@ -44,3 +44,9 @@ class ProviderSpec:
     default_share: str = "everyone"  # pool_policy share level of a new donor
     usage_walk: bool = False  # usage_walk refreshes its credentials
     keyed: object | None = None  # the KeyedPreset of an API-key provider (presets.py)
+    # How users add a personal key on Sources (a KeyedPreset); keyed providers
+    # and Ollama Cloud have one.
+    key: object | None = None
+    # True for a user whose model list is their own (Source.models(user_id=))
+    # rather than the shared cached catalog.
+    user_catalog: Callable[[int | None], bool] | None = None

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import importlib
 
-from .presets import PRESETS
+from .presets import PRESETS, KeyedPreset
 from .spec import ProviderSpec
 
 
@@ -46,8 +46,15 @@ def _keyed(p) -> ProviderSpec:
         ensure=lambda: _m("keyed").ensure_source(p.id), efforts=lambda model, user_id: p.efforts_for(model),
         warm=False, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
         scan=False, call_style="user", access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
-        connect_copy=f"Add a {p.label} API key to use its models", keyed=p,
+        connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p, user_catalog=lambda user_id: True,
     )
+
+
+# Personal Ollama Cloud keys (the admin's keys stay on /admin/sources).
+OLLAMA_KEY = KeyedPreset(
+    "ollama", "Ollama Cloud", base_url="https://ollama.com/api", catalog="/tags",
+    key_url="https://ollama.com/settings/keys", validate=lambda key: _m("ollama").validate_key(key),
+)
 
 
 def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderSpec:
@@ -78,7 +85,8 @@ BUILTIN: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
-        error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="session",
+        error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="user",
+        key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"),
     ),
     _pool(
         "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",

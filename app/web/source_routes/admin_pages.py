@@ -36,7 +36,8 @@ def _ollama_key_views(source_id: int) -> list[dict]:
     row = db.fetchone("SELECT * FROM sources WHERE id=?", (source_id,))
     if not row:
         return []
-    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? ORDER BY id", (source_id,))
+    # Site keys only: a user's personal key is theirs, not the admin's.
+    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND donated_by IS NULL ORDER BY id", (source_id,))
     live = [c for c in creds if not c["disabled"]]
     src = OllamaSource(row, _source_cfg(row), live)
     views = []

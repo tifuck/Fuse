@@ -826,7 +826,7 @@
         </form>
       </div>
       {% endfor %}
-      <p class="usage-sub"><code>{{ p.prefix }}…</code> models{% if p.key_url %} · <a href="{{ p.key_url }}" target="_blank" rel="noopener noreferrer">Get a key</a>{% endif %}</p>
+      <p class="usage-sub">{% if p.prefix %}<code>{{ p.prefix }}…</code> models{% else %}Same model names as the shared list{% endif %}{% if p.key_url %} · <a href="{{ p.key_url }}" target="_blank" rel="noopener noreferrer">Get a key</a>{% endif %}</p>
     </article>
     {% endfor %}
     </section>

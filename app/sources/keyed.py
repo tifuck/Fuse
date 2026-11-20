@@ -37,8 +37,9 @@ _catalogs: dict[tuple[int, int], tuple[float, list[str]]] = {}
 
 
 def preset(type_id: str):
+    """How users add a key for this provider (its spec's key), or None."""
     spec = registry.get(type_id)
-    return spec.keyed if spec else None
+    return spec.key if spec else None
 
 
 def ensure_source(type_id: str) -> int:
@@ -60,9 +61,9 @@ def _cfg(raw) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def site_access(cfg: dict) -> str:
+def site_access(cfg: dict, default: str = "none") -> str:
     level = cfg.get("site_access")
-    return level if level in SITE_ACCESS else "none"
+    return level if level in SITE_ACCESS else default
 
 
 def _is_admin(user_id: int | None) -> bool:
@@ -72,8 +73,8 @@ def _is_admin(user_id: int | None) -> bool:
     return bool(row and row["is_admin"])
 
 
-def _site_allowed(cfg: dict, user_id: int | None) -> bool:
-    level = site_access(cfg)
+def site_allowed(cfg: dict, user_id: int | None, default: str = "none") -> bool:
+    level = site_access(cfg, default)
     return level == "everyone" or (level == "admins" and _is_admin(user_id))
 
 
@@ -99,7 +100,7 @@ def access_states(user_id: int) -> dict[str, dict]:
             continue
         if row["donated_by"] is not None:
             out[row["type"]] = {"ok": True, "reason": "own"}
-        elif not state["ok"] and _site_allowed(_cfg(row["config"]), user_id):
+        elif not state["ok"] and site_allowed(_cfg(row["config"]), user_id):
             out[row["type"]] = {"ok": True, "reason": "site"}
     return out
 
@@ -181,7 +182,7 @@ class KeyedSource(OpenAICompatSource):
             return []
         own = [c for c in self.all_creds if c["donated_by"] is not None and int(c["donated_by"]) == int(user_id)]
         site = [c for c in self.all_creds if c["donated_by"] is None]
-        if site and not _site_allowed(self.cfg, user_id):
+        if site and not site_allowed(self.cfg, user_id):
             site = []
         creds = own + site
         if not creds:
@@ -316,7 +317,7 @@ async def store_key(type_id: str, raw: str, *, user_id: int | None, label: str =
             continue
     if same is not None and not same["disabled"] and same["donated_by"] != user_id:
         return None, "That key is already linked to another account."
-    err = await validate_key(p, key, region)
+    err = await (p.validate(key) if p.validate else validate_key(p, key, region))
     if err:
         return None, err
     name = (label or "").strip()[:80] or f"{p.label} key"
@@ -353,7 +354,7 @@ def _labels(p, extra: dict) -> tuple[str, str]:
 
 
 def directory(user_id: int) -> list[dict]:
-    """Enabled keyed providers with the user's own keys, for Sources."""
+    """Enabled providers that take a personal key, with the user's own keys, for Sources."""
     states = access_states(user_id)
     enabled = {row["type"] for row in db.fetchall("SELECT type FROM sources WHERE enabled=1")}
     own = db.fetchall(
@@ -363,7 +364,7 @@ def directory(user_id: int) -> list[dict]:
     )
     out = []
     for spec in registry.specs():
-        p = spec.keyed
+        p = spec.key
         if p is None or p.id not in enabled:
             continue
         keys = []
@@ -371,9 +372,9 @@ def directory(user_id: int) -> list[dict]:
             if row["type"] == p.id:
                 method, region = _labels(p, _extra(row))
                 keys.append({"id": row["id"], "label": row["label"], "method": method, "region": region})
-        out.append({"id": p.id, "label": p.label, "group": p.group, "prefix": p.public_prefix, "key_url": p.key_url,
-                    "regions": p.regions, "methods": p.methods, "keys": keys,
-                    "site": states[p.id]["reason"] == "site"})
+        out.append({"id": p.id, "label": p.label, "group": p.group, "prefix": p.public_prefix if spec.keyed else "",
+                    "key_url": p.key_url, "regions": p.regions, "methods": p.methods, "keys": keys,
+                    "site": states.get(p.id, {}).get("reason") == "site"})
     return out
 
 

@@ -45,7 +45,7 @@ async def key_add(request: Request, pid: str, api_key: str = Form(""), label: st
     if err or not cred_id:
         return _back(user["id"], "err", err or "Could not add that key.")
     invalidate_model_cache(pid)
-    return _back(user["id"], "ok", f"{p.label} key saved for your account. Its models use the {p.public_prefix} prefix.")
+    return _back(user["id"], "ok", f"{p.label} key saved for your account.")
 
 
 @router.post("/sources/keys/{pid}/{cred_id}/revoke")

@@ -161,9 +161,17 @@
     <label>Add keys (one per line)
       <textarea name="keys" rows="3" placeholder="Paste new keys. Existing keys are kept."></textarea>
     </label>
+    {% set ollama_site = ollama_cfg.get('site_access', 'everyone') %}
+    <label>These keys serve
+      <select name="site_access">
+        <option value="everyone"{% if ollama_site == 'everyone' %} selected{% endif %}>Everyone</option>
+        <option value="admins"{% if ollama_site == 'admins' %} selected{% endif %}>Admins</option>
+        <option value="none"{% if ollama_site == 'none' %} selected{% endif %}>Nobody (personal keys only)</option>
+      </select>
+    </label>
     <label class="check">
       <input type="checkbox" name="enabled" value="1"{% if ollama and ollama['enabled'] %} checked{% endif %}>
-      Enabled — list and route Ollama Cloud models for every user
+      Enabled — list and route Ollama Cloud models; users may add their own key on Sources
     </label>
     <button type="submit" class="btn">Save Ollama</button>
   </form>

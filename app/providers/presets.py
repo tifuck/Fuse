@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 
 # Sent to no keyed provider: Fuse-internal or provider-specific fields that a
 # strict OpenAI-compatible API rejects.
@@ -59,6 +60,7 @@ class KeyedPreset:
     cache_key: bool = False  # forwards prompt_cache_key (session-scoped)
     max_tokens: int = 8192  # anthropic_messages: default when the client sets none
     strip: tuple[str, ...] = field(default=STRIP)
+    validate: Callable | None = None  # async (key) -> error; default: GET the catalog with the key
 
     @property
     def public_prefix(self) -> str:

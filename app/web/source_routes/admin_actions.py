@@ -199,11 +199,13 @@ async def admin_ollama_save(
     keys: str = Form(""),
     model: str = Form(""),
     enabled: str = Form("0"),
+    site_access: str = Form(""),
 ):
     user, redir = require_admin(request)
     if redir:
         return redir
     from ...sources import ensure_ollama_source
+    from ...sources.keyed import SITE_ACCESS
 
     sid = ensure_ollama_source()
     url = base_url.strip() or OLLAMA_BASE
@@ -221,6 +223,8 @@ async def admin_ollama_save(
         cfg["model"] = model.strip()[:120]
     else:
         cfg.pop("model", None)
+    if site_access in SITE_ACCESS:
+        cfg["site_access"] = site_access
     on = 1 if enabled in ("1", "on", "true") else 0
     try:
         with db.tx() as conn:
@@ -349,11 +353,11 @@ async def admin_ollama_key_delete(request: Request, cred_id: int):
     from ...sources import ensure_ollama_source
 
     sid = ensure_ollama_source()
-    row = db.fetchone("SELECT id, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
+    row = db.fetchone("SELECT id, source_id, donated_by FROM credentials WHERE id=?", (cred_id,))
+    if not row or row["source_id"] != sid or row["donated_by"] is not None:
         raise HTTPException(404, "Not found")
     with db.tx() as conn:
-        conn.execute("DELETE FROM credentials WHERE id=? AND source_id=?", (cred_id, sid))
+        conn.execute("DELETE FROM credentials WHERE id=? AND source_id=? AND donated_by IS NULL", (cred_id, sid))
     _notices[user["id"]] = "Ollama key removed."
     return RedirectResponse("/admin/sources", status_code=303)
 

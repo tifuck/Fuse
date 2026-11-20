@@ -24,6 +24,7 @@ def _clear():
     llama._models_cache.clear()
     llama._model_aliases.clear()
     ollama._tags_cache.clear()
+    ollama._own_tags.clear()
     ollama._think_values.clear()
     ollama._pools.clear()
     ollama._plain.clear()

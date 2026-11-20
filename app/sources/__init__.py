@@ -220,8 +220,9 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
             return await s.models(user_id=user_id)
         except CatalogError:
             return []
-    if registry.get(s.type_id).keyed:
-        # The catalog follows the key this user routes through; KeyedSource caches it.
+    spec = registry.get(s.type_id)
+    if spec.user_catalog and spec.user_catalog(user_id):
+        # The catalog follows the key this user routes through; the source caches it.
         return await s.models(user_id=user_id)
     key = _cache_key(s, user_id)
     hit = _model_cache.get(key)
@@ -276,6 +277,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         _live.clear()
         llama_mod._models_cache.clear()
         ollama_mod._tags_cache.clear()
+        ollama_mod._own_tags.clear()
         keyed_mod.clear_catalogs()
         return
     sids = [s.source_id for s in all_enabled() if s.type_id == source_type]
@@ -285,6 +287,8 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         # advertising the previous server's models until the TTL.
         llama_mod._models_cache.pop(sid, None)
         ollama_mod._tags_cache.pop(sid, None)
+        for key in [k for k in ollama_mod._own_tags if k[0] == sid]:
+            ollama_mod._own_tags.pop(key, None)
         keyed_mod.clear_catalogs(sid)
     for key in [k for k in _model_cache if k[0] in sids]:
         _model_cache.pop(key, None)
@@ -412,8 +416,11 @@ async def pick(model: str, *, user_id: int | None = None, access: Access | None 
         spec = registry.get(s.type_id)
         if not spec.scan:
             continue
-        hit = _cache.get(s.source_id)
-        if hit and model in hit[1]:
+        if spec.user_catalog and spec.user_catalog(user_id):
+            names = await s.models(user_id=user_id)
+        else:
+            names = (_cache.get(s.source_id) or (0, []))[1]
+        if model in names:
             return s, spec.upstream(model) if spec.upstream else model
     no_gates = Access()
     for s in _sources(no_gates):
