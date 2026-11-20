@@ -167,6 +167,32 @@ def _init(conn: sqlite3.Connection) -> None:
             requests INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (user_id, hour, source_id, model)
         );
+        CREATE TABLE IF NOT EXISTS usage_rollup_hourly (
+            user_id INTEGER NOT NULL,
+            hour TEXT NOT NULL,
+            api_key_id INTEGER NOT NULL DEFAULT 0,
+            source_type TEXT NOT NULL,
+            model TEXT NOT NULL,
+            tokens INTEGER NOT NULL DEFAULT 0,
+            requests INTEGER NOT NULL DEFAULT 0,
+            prompt INTEGER NOT NULL DEFAULT 0,
+            completion INTEGER NOT NULL DEFAULT 0,
+            output INTEGER NOT NULL DEFAULT 0,
+            reasoning INTEGER NOT NULL DEFAULT 0,
+            cached INTEGER NOT NULL DEFAULT 0,
+            cache_write INTEGER NOT NULL DEFAULT 0,
+            ok_requests INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            cancelled INTEGER NOT NULL DEFAULT 0,
+            cost INTEGER NOT NULL DEFAULT 0,
+            estimated_cost INTEGER NOT NULL DEFAULT 0,
+            priced INTEGER NOT NULL DEFAULT 0,
+            priced_tokens INTEGER NOT NULL DEFAULT 0,
+            unpriced_events INTEGER NOT NULL DEFAULT 0,
+            first_at TEXT NOT NULL,
+            last_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, hour, api_key_id, source_type, model)
+        );
         CREATE TABLE IF NOT EXISTS pool_sessions (
             kind TEXT NOT NULL,
             session_id TEXT NOT NULL,
@@ -243,7 +269,6 @@ def _init(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (provider, model)
         );
         CREATE INDEX IF NOT EXISTS usage_events_user_created ON usage_events (user_id, created_at);
-        CREATE INDEX IF NOT EXISTS usage_hourly_user_hour ON usage_hourly (user_id, hour);
         """
     )
     _ensure_usage_columns(conn)

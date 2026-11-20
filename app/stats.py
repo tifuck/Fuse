@@ -315,23 +315,34 @@ def _change(current, previous) -> float | None:
 
 
 def _window_filters(
-    user_id: int, start: str, end: str, provider: str, all_users: bool, *, subject_id: int | None = None
+    user_id: int, start: str, end: str, provider: str, all_users: bool, *, subject_id: int | None = None,
+    column: str = "e.created_at",
 ) -> tuple[str, list]:
-    clauses = ["e.created_at<?"]
+    """WHERE for one window; column "e.hour" filters usage_rollup_hourly,
+    which names its user and provider columns like usage_events."""
+    clauses = [f"{column}<?"]
     args: list = [end]
     if start:
-        clauses.insert(0, "e.created_at>=?")
+        clauses.insert(0, f"{column}>=?")
         args.insert(0, start)
+    scope, scope_args = _scope_filters(user_id, provider, all_users, subject_id)
+    return " AND ".join(clauses + scope), args + scope_args
+
+
+def _scope_filters(user_id: int, provider: str, all_users: bool, subject_id: int | None) -> tuple[list, list]:
+    clauses, args = [], []
     if not all_users:
         clauses.append("e.user_id=?")
         args.append(subject_id if subject_id is not None else user_id)
     if provider:
         clauses.append(f"{_PROVIDER_SQL}=?")
         args.append(provider)
-    return " AND ".join(clauses), args
+    return clauses, args
 
 
-_PROVIDER_SQL = "COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')"
+# Every writer sets source_type (record_usage falls back to the source's type,
+# then 'unknown'; scripts/sql/2026-11-20-usage-rollups.sql backfilled old rows).
+_PROVIDER_SQL = "e.source_type"
 _TOKENS_SQL = "CASE WHEN e.total_tokens>0 THEN e.total_tokens ELSE e.prompt_tokens+e.output_tokens END"
 _PRICED_SQL = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known=1)"
 _EVENT_SUMS = f"""COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
@@ -366,22 +377,73 @@ def _event_summary(
 ) -> dict:
     """Window totals. With model_tokens, the same scan also fills it with
     tokens per provider and model (one pass instead of two)."""
-    where, args = _window_filters(user_id, start, end, provider, all_users, subject_id=subject_id)
-    by_model = model_tokens is not None
-    group_cols = f"{_PROVIDER_SQL} AS provider, COALESCE(NULLIF(e.model, ''), 'Unknown') AS model, " if by_model else ""
-    rows = db.fetchall(
-        f"""SELECT {group_cols}{_EVENT_SUMS}
-             FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id
-             WHERE {where}{" GROUP BY provider, model" if by_model else ""}""",
-        tuple(args),
-    )
     totals = dict.fromkeys(_SUMMARY_KEYS, 0)
-    for row in rows:
+    for row in _window_rows(user_id, start, end, provider, all_users, subject_id=subject_id):
         for key in _SUMMARY_KEYS:
             totals[key] += int(row[key] or 0)
-        if by_model:
-            model_tokens[f"{row['provider']}\x1f{row['model']}"] = int(row["tokens"] or 0)
+        if model_tokens is not None:
+            key = f"{row['provider']}\x1f{row['model']}"
+            model_tokens[key] = model_tokens.get(key, 0) + int(row["tokens"] or 0)
     return totals
+
+
+def _event_rows(
+    granule: int, ranges: list[tuple[str, str]], user_id: int, provider: str, all_users: bool,
+    *, subject_id: int | None = None,
+) -> list:
+    """usage_events summed per granule, user, API key, provider and model over
+    [start, end) ranges (start "" is unbounded)."""
+    times, args = [], []
+    for start, end in ranges:
+        times.append("(e.created_at>=? AND e.created_at<?)" if start else "e.created_at<?")
+        args += [start, end] if start else [end]
+    scope, scope_args = _scope_filters(user_id, provider, all_users, subject_id)
+    where = " AND ".join([f"({' OR '.join(times)})", *scope])
+    return db.fetchall(
+        f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / ?) * ? AS bucket,
+                   e.user_id, e.api_key_id,
+                   {_PROVIDER_SQL} AS provider,
+                   COALESCE(NULLIF(e.model, ''), 'Unknown') AS model,
+                   {_EVENT_SUMS},
+                   MIN(e.created_at) AS first_at,
+                   MAX(e.created_at) AS last_at
+            FROM usage_events e
+            WHERE {where}
+            GROUP BY bucket, e.user_id, e.api_key_id, provider, model""",
+        (granule, granule, *args, *scope_args),
+    )
+
+
+def _hour_floor(iso: str) -> str:
+    return iso[:13] + ":00:00Z"
+
+
+def _window_rows(
+    user_id: int, start: str, end: str, provider: str, all_users: bool, *, subject_id: int | None = None,
+) -> list:
+    """The window per UTC hour, user, API key, provider and model: whole hours
+    from usage_rollup_hourly, the partial hours at its edges from usage_events.
+    Same rows as _event_rows(3600, [(start, end)], ...)."""
+    first = _hour_floor(start) if start else ""
+    if first and first != start:
+        first = _iso(datetime.fromisoformat(first.replace("Z", "+00:00")) + timedelta(hours=1))
+    last = _hour_floor(end)
+    if start and first >= last:
+        return list(_event_rows(3600, [(start, end)], user_id, provider, all_users, subject_id=subject_id))
+    edges = ([(start, first)] if start and start < first else []) + ([(last, end)] if last < end else [])
+    rows = list(_event_rows(3600, edges, user_id, provider, all_users, subject_id=subject_id)) if edges else []
+    where, args = _window_filters(user_id, first, last, provider, all_users, subject_id=subject_id, column="e.hour")
+    rows += db.fetchall(
+        f"""SELECT CAST(strftime('%s', e.hour) AS INTEGER) AS bucket, e.user_id,
+                   NULLIF(e.api_key_id, 0) AS api_key_id, e.source_type AS provider, e.model,
+                   {", ".join(f"e.{col} AS {col}" for col in db.ROLLUP_SUMS)},
+                   CASE WHEN e.source_type='openrouter' THEN e.requests ELSE 0 END AS untracked,
+                   e.first_at, e.last_at
+            FROM usage_rollup_hourly e
+            WHERE {where}""",
+        tuple(args),
+    )
+    return rows
 
 
 def _hit_rate(cached: int, prompt: int) -> float | None:
@@ -477,6 +539,40 @@ def _bucket_of(epoch: int, size: int, utc_offset: int = 0) -> int:
     return ((epoch - offset) // size) * size + offset
 
 
+_RECENT = 25
+
+
+def _recent_events(
+    user_id: int, start: str, end_dt: datetime, provider: str, all_users: bool, subject_id: int | None,
+) -> list:
+    """The window's latest events. ORDER BY created_at sorts every matching row
+    (no index orders a LONGTEXT), so the last hour, day and week are tried
+    first: once a tail holds _RECENT rows, they are the window's latest."""
+    end = _iso(end_dt)
+    for tail in (timedelta(hours=1), timedelta(days=1), timedelta(days=7), None):
+        tail_start = start if tail is None else _iso(end_dt - tail)
+        if tail is not None and start and tail_start <= start:
+            continue
+        where, args = _window_filters(user_id, tail_start, end, provider, all_users, subject_id=subject_id)
+        rows = db.fetchall(
+            f"""SELECT e.created_at, e.model, e.api_key_id,
+                       {_PROVIDER_SQL} AS provider,
+                       k.name AS key_name,
+                       e.prompt_tokens, e.cached_tokens, e.output_tokens, e.reasoning_tokens, e.total_tokens,
+                       COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0) AS cost,
+                       e.pricing_known, e.reported_cost_micros,
+                       e.request_status
+                FROM usage_events e
+                LEFT JOIN api_keys k ON k.id=e.api_key_id
+                WHERE {where}
+                ORDER BY e.created_at DESC
+                LIMIT {_RECENT}""",
+            tuple(args),
+        )
+        if tail is None or len(rows) == _RECENT:
+            return rows
+
+
 def usage_analytics(
     user_id: int,
     *,
@@ -498,68 +594,33 @@ def usage_analytics(
     utc_offset = int(end_dt.astimezone(display_zone.get()).utcoffset().total_seconds())
     # The one scan of the window, at hour (or finer) grain: series, models,
     # providers, users, sources and the heatmap all fold out of these rows.
+    # Whole hours come from usage_rollup_hourly (see _window_rows).
     # The grain divides the offset too: a +5:30 or +5:45 viewer's midnight
     # falls inside a UTC hour.
     granule = math.gcd(min(bucket_seconds, 3600), utc_offset)
-    where, args = _window_filters(user_id, start, end, provider, all_users, subject_id=subject_id)
     # A weekday x hour pattern needs a week of history even when the chosen
     # range is shorter, so short ranges scan seven days for the heatmap.
     short = not lifetime and duration < _HEATMAP_MIN
     prev_model_tokens: dict[str, int] = {}
-    # ponytail: lifetime is a full scan of the scope's usage_events (~0.7 s per
-    # 180k rows); a day-grain rollup table is the upgrade once that hurts.
     with ThreadPoolExecutor(max_workers=4) as scans:
-        rows_job = scans.submit(
-            db.fetchall,
-            f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / ?) * ? AS bucket,
-                       e.user_id, e.api_key_id,
-                       {_PROVIDER_SQL} AS provider,
-                       COALESCE(NULLIF(e.model, ''), 'Unknown') AS model,
-                       {_EVENT_SUMS},
-                       MIN(e.created_at) AS first_at,
-                       MAX(e.created_at) AS last_at
-                FROM usage_events e
-                LEFT JOIN sources s ON s.id=e.source_id
-                WHERE {where}
-                GROUP BY bucket, e.user_id, e.api_key_id, provider, model""",
-            (granule, granule, *args),
-        )
+        if granule == 3600:
+            rows_job = scans.submit(_window_rows, user_id, start, end, provider, all_users, subject_id=subject_id)
+        else:
+            # A sub-hour grain (short ranges, a +5:30 viewer's midnight) cannot
+            # come out of hourly rollups: those windows read the events.
+            rows_job = scans.submit(
+                _event_rows, granule, [(start, end)], user_id, provider, all_users, subject_id=subject_id,
+            )
         previous_job = None if lifetime else scans.submit(
             _event_summary, user_id, _iso(end_dt - 2 * duration), start, provider, all_users,
             subject_id=subject_id, model_tokens=prev_model_tokens,
         )
         heat_job = None
         if short:
-            heat_where, heat_args = _window_filters(
-                user_id, _iso(end_dt - _HEATMAP_MIN), end, provider, all_users, subject_id=subject_id,
-            )
             heat_job = scans.submit(
-                db.fetchall,
-                f"""SELECT (CAST(strftime('%s', e.created_at) AS INTEGER) / 3600) * 3600 AS hour,
-                           COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
-                           COALESCE(SUM(e.count_request), 0) AS requests
-                    FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id
-                    WHERE {heat_where}
-                    GROUP BY hour""",
-                tuple(heat_args),
+                _window_rows, user_id, _iso(end_dt - _HEATMAP_MIN), end, provider, all_users, subject_id=subject_id,
             )
-        recent_job = scans.submit(
-            db.fetchall,
-            f"""SELECT e.created_at, e.model, e.api_key_id,
-                       {_PROVIDER_SQL} AS provider,
-                       k.name AS key_name,
-                       e.prompt_tokens, e.cached_tokens, e.output_tokens, e.reasoning_tokens, e.total_tokens,
-                       COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0) AS cost,
-                       e.pricing_known, e.reported_cost_micros,
-                       e.request_status
-                FROM usage_events e
-                LEFT JOIN sources s ON s.id=e.source_id
-                LEFT JOIN api_keys k ON k.id=e.api_key_id
-                WHERE {where}
-                ORDER BY e.created_at DESC
-                LIMIT 25""",
-            tuple(args),
-        )
+        recent_job = scans.submit(_recent_events, user_id, start, end_dt, provider, all_users, subject_id)
     rows = [{**{key: row[key] for key in row.keys()}, **{key: int(row[key] or 0) for key in _METRICS}}
             for row in rows_job.result()]
     previous = previous_job.result() if previous_job else dict.fromkeys(_SUMMARY_KEYS, 0)
@@ -763,7 +824,11 @@ def usage_analytics(
         for row in recent_job.result()
     ]
     if heat_job:
-        by_hour = {int(row["hour"]): [int(row["tokens"] or 0), int(row["requests"] or 0)] for row in heat_job.result()}
+        by_hour = {}
+        for row in heat_job.result():
+            hour = by_hour.setdefault(int(row["bucket"]), [0, 0])
+            hour[0] += int(row["tokens"] or 0)
+            hour[1] += int(row["requests"] or 0)
     if span.total_seconds() > _HEATMAP_FOLD:
         week = _bucket_of(int(end_dt.timestamp()), _WEEK)
         folded: dict[int, list[int]] = {}
@@ -898,8 +963,39 @@ def pricing_views() -> list[dict]:
     return out
 
 
-def fuse_view(row, *, week: str | None = None) -> dict:
-    """Lifetime Fuse traffic through a pool credential, plus this ISO week."""
+def fuse_coverage(rows) -> dict[int, dict]:
+    """fuse_view's API-equivalent cost and priced/unpriced counts for many
+    credentials in one query (a credential without events is absent)."""
+    ids = sorted({int(row["id"]) for row in rows})
+    if not ids:
+        return {}
+    return {
+        int(row["credential_id"]): row
+        for row in db.fetchall(
+            f"""SELECT credential_id,
+                 COALESCE(SUM(estimated_cost_micros), 0) AS api_equiv,
+                 COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=0
+                                   THEN 1 ELSE 0 END), 0) AS unpriced,
+                 COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=1
+                                   THEN 1 ELSE 0 END), 0) AS priced
+               FROM usage_events WHERE credential_id IN ({",".join("?" * len(ids))})
+               GROUP BY credential_id""",
+            tuple(ids),
+        )
+    }
+
+
+def user_emails(ids) -> dict[int, str]:
+    ids = sorted({int(uid) for uid in ids})
+    if not ids:
+        return {}
+    rows = db.fetchall(f"SELECT id, email FROM users WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
+    return {int(row["id"]): str(row["email"] or "").strip() for row in rows}
+
+
+def fuse_view(row, *, week: str | None = None, coverage: dict[int, dict] | None = None) -> dict:
+    """Lifetime Fuse traffic through a pool credential, plus this ISO week.
+    coverage: fuse_coverage() of the page's credentials (else one query)."""
     week = week or db.iso_week_start()
     prompt = int(row["prompt_tokens"] or 0)
     completion = int(row["completion_tokens"] or 0)
@@ -913,16 +1009,7 @@ def fuse_view(row, *, week: str | None = None) -> dict:
     week_tokens = int(row["week_tokens"] or 0) if this_week else 0
     week_requests = int(row["week_requests"] or 0) if this_week else 0
     has = bool(requests or total)
-    coverage = db.fetchone(
-        """SELECT
-             COALESCE(SUM(estimated_cost_micros), 0) AS api_equiv,
-             COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=0
-                               THEN 1 ELSE 0 END), 0) AS unpriced,
-             COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=1
-                               THEN 1 ELSE 0 END), 0) AS priced
-           FROM usage_events WHERE credential_id=?""",
-        (row["id"],),
-    )
+    coverage = (fuse_coverage([row]) if coverage is None else coverage).get(int(row["id"]))
     api_equiv = int(coverage["api_equiv"] or 0) if coverage else 0
     unpriced = int(coverage["unpriced"] or 0) if coverage else 0
     priced = int(coverage["priced"] or 0) if coverage else 0

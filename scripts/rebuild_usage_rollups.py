@@ -5,7 +5,7 @@ Usage: python -m scripts.rebuild_usage_rollups [--apply]
 Run from the tree whose schema you mean (/root/fuse is fuse_live, /root/fuse-dev
 is fuse_dev). Without --apply it only reports how many rollup rows disagree
 with their events. --apply rewrites credentials, api_keys, provider_usage and
-usage_hourly in one transaction; stop the service first, since every request
+usage_hourly and usage_rollup_hourly in one transaction; stop the service first, since every request
 writes the same rows (--apply refuses while another connection uses the
 schema: rows a live request writes during the rebuild would be lost).
 Credential week counters (week_tokens/week_requests) are left alone: they restart each ISO week. Uses one connection, not a pool.
@@ -45,6 +45,35 @@ PROVIDER_AGG = (f"SELECT e.user_id, {PROVIDER} AS provider, {_sums(KEY_COLS)} "
 HOUR = "CONCAT(LEFT(e.created_at, 13), ':00:00Z')"
 HOURLY_AGG = (f"SELECT e.user_id, {HOUR} AS hour, COALESCE(e.source_id, 0) AS source_id, COALESCE(e.model, '') AS model, "
               f"{_sums(CRED_COLS)} FROM usage_events e GROUP BY 1, 2, 3, 4")
+TOKENS = "CASE WHEN e.total_tokens > 0 THEN e.total_tokens ELSE e.prompt_tokens + e.output_tokens END"
+PRICED = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known = 1)"
+# usage_rollup_hourly columns as sums over their events (stats._EVENT_SUMS).
+ROLLUP_SUMS = {
+    "tokens": TOKENS,
+    "requests": "e.count_request",
+    "prompt": "e.prompt_tokens",
+    "completion": "e.completion_tokens",
+    "output": "e.output_tokens",
+    "reasoning": "e.reasoning_tokens",
+    "cached": "e.cached_tokens",
+    "cache_write": "e.cache_write_tokens",
+    "ok_requests": "CASE WHEN e.count_request = 1 AND e.request_status = 'success' THEN 1 ELSE 0 END",
+    "failed": "CASE WHEN e.count_request = 1 AND e.request_status = 'failed' THEN 1 ELSE 0 END",
+    "cancelled": "CASE WHEN e.count_request = 1 AND e.request_status = 'cancelled' THEN 1 ELSE 0 END",
+    "cost": "COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0)",
+    "estimated_cost": "e.estimated_cost_micros",
+    "priced": f"CASE WHEN e.count_request = 1 AND {PRICED} THEN 1 ELSE 0 END",
+    "priced_tokens": f"CASE WHEN {PRICED} THEN {TOKENS} ELSE 0 END",
+    "unpriced_events": f"CASE WHEN {TOKENS} > 0 AND NOT {PRICED} THEN 1 ELSE 0 END",
+}
+assert tuple(ROLLUP_SUMS) == db.ROLLUP_SUMS
+ROLLUP_KEY = ("user_id", "hour", "api_key_id", "source_type", "model")
+ROLLUP_COLS = (*ROLLUP_SUMS, "first_at", "last_at")
+ROLLUP_AGG = (f"SELECT e.user_id, {HOUR} AS hour, COALESCE(e.api_key_id, 0) AS api_key_id, e.source_type, "
+              "COALESCE(NULLIF(e.model, ''), 'Unknown') AS model, "
+              + ", ".join(f"COALESCE(SUM({expr}), 0) AS {col}" for col, expr in ROLLUP_SUMS.items())
+              + ", MIN(e.created_at) AS first_at, MAX(e.created_at) AS last_at FROM usage_events e GROUP BY 1, 2, 3, 4, 5")
+ROLLUP_ON = " AND ".join(f"a.{col}=r.{col}" for col in ROLLUP_KEY)
 
 REPORT = {
     "credentials": f"SELECT COUNT(*) FROM credentials c LEFT JOIN ({CRED_AGG}) a ON a.id=c.id WHERE {_differs(CRED_COLS, 'c', 'a')}",
@@ -58,6 +87,10 @@ REPORT = {
     "usage_hourly missing": (f"SELECT COUNT(*) FROM ({HOURLY_AGG}) a WHERE NOT EXISTS "
                              "(SELECT 1 FROM usage_hourly h WHERE h.user_id=a.user_id AND h.hour=a.hour "
                              "AND h.source_id=a.source_id AND h.model=a.model)"),
+    "usage_rollup_hourly": (f"SELECT COUNT(*) FROM usage_rollup_hourly r LEFT JOIN ({ROLLUP_AGG}) a ON {ROLLUP_ON} "
+                            "WHERE a.user_id IS NULL OR " + " OR ".join(f"r.{col} <> a.{col}" for col in ROLLUP_COLS)),
+    "usage_rollup_hourly missing": (f"SELECT COUNT(*) FROM ({ROLLUP_AGG}) a WHERE NOT EXISTS "
+                                    f"(SELECT 1 FROM usage_rollup_hourly r WHERE {ROLLUP_ON})"),
 }
 
 
@@ -82,6 +115,9 @@ def apply(conn):
     conn.native(f"INSERT INTO usage_hourly (user_id, hour, source_id, model, {cols}) "
                 f"SELECT a.user_id, a.hour, a.source_id, a.model, {', '.join('a.' + col for col in _all(CRED_COLS))} "
                 f"FROM ({HOURLY_AGG}) a")
+    conn.native("DELETE FROM usage_rollup_hourly")
+    conn.native(f"INSERT INTO usage_rollup_hourly ({', '.join(ROLLUP_KEY + ROLLUP_COLS)}) "
+                f"SELECT {', '.join(ROLLUP_KEY + ROLLUP_COLS)} FROM ({ROLLUP_AGG}) a")
 
 
 def report(conn) -> dict[str, int]:

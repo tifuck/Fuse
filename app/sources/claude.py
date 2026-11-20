@@ -621,12 +621,10 @@ async def refresh_pool_quota(*, force: bool = False) -> None:
         log_refresh_failures("Claude quota refresh", rows, results)
 
 
-async def refresh_due() -> None:
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='claude' AND c.disabled=0"
-    )
+def _due_accounts(rows) -> tuple[list, list[float]]:
+    """The accounts whose token is due, and when each one comes due."""
     soon = datetime.now(timezone.utc) + REFRESH_WINDOW
-    due = []
+    due, due_at = [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         if not extra.get("refresh_token"):
@@ -634,9 +632,26 @@ async def refresh_due() -> None:
         when = _parse_ts(str(extra.get("expires_at") or ""))
         if not when or when <= soon:
             due.append(cred)
+        due_at.append((when - REFRESH_WINDOW).timestamp() if when else 0.0)
+    return due, due_at
+
+
+async def refresh_due(rows=None) -> bool:
+    """Refresh every due token; True when one was due. rows: a request's pool,
+    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
+    if rows is not None and not pool_refresh.scan_due("claude", rows):
+        return False
+    if rows is None:
+        rows = await asyncio.to_thread(
+            db.fetchall,
+            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='claude' AND c.disabled=0",
+        )
+    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    pool_refresh.scanned("claude", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
         log_refresh_failures("Claude OAuth refresh", due, results)
+    return bool(due)
 
 
 async def revoke_remote(cred) -> None:
@@ -735,16 +750,9 @@ class ClaudeSource:
         return await client.send(req, stream=True)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_due()
+        rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("claude", refresh_pool_quota)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall(
-                "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
-                (self.source_id,),
-            ),
-            "claude",
-            user_id,
-        )
+        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "claude", user_id)
         tried: set[int] = set()
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": {"message": "No Claude accounts in the pool"}})

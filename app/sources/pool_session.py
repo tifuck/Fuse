@@ -44,8 +44,13 @@ CACHE_BODY_FIELDS = ("prompt_cache_key", "prompt_cache_retention", "prompt_cache
 # Tests set this False so they do not write the live database.
 persist = True
 
+# A pin's durable row is touched at most this often: updated_at only feeds
+# the RETENTION_DAYS vacuum, which an hour-old stamp cannot change.
+TOUCH_SECONDS = 3600
+
 _lock = threading.Lock()
-_mem: dict[tuple[str, str], tuple[int, str]] = {}
+# (kind, session id) -> (credential id, last use, updated_at last written)
+_mem: dict[tuple[str, str], tuple[int, str, str]] = {}
 
 
 def _ts(now: datetime | None = None) -> str:
@@ -221,15 +226,19 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
     kind = str(kind)
     session_id = str(session_id)[:SESSION_ID_MAX]
     cid = int(credential_id)
+    now = now or datetime.now(timezone.utc)
     stamp = _ts(now)
     cutoff = _cutoff(now)
     with _lock:
-        _mem[(kind, session_id)] = (cid, stamp)
+        prev = _mem.get((kind, session_id))
+        # The same pin, written recently: the durable row already says so.
+        same = prev is not None and prev[0] == cid and prev[2] >= _ts(now - timedelta(seconds=TOUCH_SECONDS))
+        _mem[(kind, session_id)] = (cid, stamp, prev[2] if same else stamp)
         # Bounded: pins idle past retention are dropped so the map can't grow
         # forever. A healthy active pin is refreshed by every lookup.
-        for key in [k for k, (_, updated) in _mem.items() if updated < cutoff]:
+        for key in [k for k, (_, updated, _saved) in _mem.items() if updated < cutoff]:
             _mem.pop(key, None)
-    if persist:
+    if persist and not same:
         # Pinning runs after the upstream already served the request: a DB
         # error here must not turn a delivered (and billed) reply into a 502.
         try:
@@ -254,32 +263,40 @@ def lookup(kind: str, session_id: str | None, *, now: datetime | None = None) ->
         return None
     kind = str(kind)
     session_id = str(session_id)[:SESSION_ID_MAX]
+    now = now or datetime.now(timezone.utc)
     stamp = _ts(now)
+    stale = _ts(now - timedelta(seconds=TOUCH_SECONDS))
     cid: int | None = None
+    touch = False
     with _lock:
         hit = _mem.get((kind, session_id))
         if hit:
             cid = int(hit[0])
-            _mem[(kind, session_id)] = (cid, stamp)
+            touch = hit[2] < stale
+            _mem[(kind, session_id)] = (cid, stamp, stamp if touch else hit[2])
     if persist:
         if cid is not None:
-            # Keep the durable row as fresh as the memory pin, or the retention
-            # vacuum would forget an active conversation after a restart.
-            db.execute(
-                "UPDATE pool_sessions SET updated_at=? WHERE kind=? AND session_id=?",
-                (stamp, kind, session_id),
-            )
+            # Keep the durable row about as fresh as the memory pin, or the
+            # retention vacuum would forget an active conversation after a restart.
+            if touch:
+                db.execute(
+                    "UPDATE pool_sessions SET updated_at=? WHERE kind=? AND session_id=?",
+                    (stamp, kind, session_id),
+                )
             return cid
         row = db.fetchone(
-            "SELECT credential_id FROM pool_sessions WHERE kind=? AND session_id=?",
+            "SELECT credential_id, updated_at FROM pool_sessions WHERE kind=? AND session_id=?",
             (kind, session_id),
         )
         if row:
             cid = int(row["credential_id"])
-            db.execute(
-                "UPDATE pool_sessions SET updated_at=? WHERE kind=? AND session_id=?",
-                (stamp, kind, session_id),
-            )
+            saved = str(row["updated_at"] or "")
+            if saved < stale:
+                db.execute(
+                    "UPDATE pool_sessions SET updated_at=? WHERE kind=? AND session_id=?",
+                    (stamp, kind, session_id),
+                )
+                saved = stamp
             with _lock:
-                _mem[(kind, session_id)] = (cid, stamp)
+                _mem[(kind, session_id)] = (cid, stamp, saved)
     return cid
