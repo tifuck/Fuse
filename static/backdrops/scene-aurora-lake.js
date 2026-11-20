@@ -8,11 +8,21 @@
 import { noise, seeded, newSeed } from "./noise.js";
 import { tiles, tile, put, layer, dotGrid, mixc, shade } from "./tiles.js";
 import { pineCells, mountains } from "./tile-land.js";
+import { buildField, field, buildRays, drawRays, GREEN, TEAL } from "./scene-aurora-sky.js";
 
 const TAU = Math.PI * 2;
-const ACELL = 6;
-const RAY = ["#59f0a8", "#4fe3c0", "#5fc8e0", "#8f9cf0", "#b98cf0", "#d28ae6"];
-const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+// Three curtains folding over the lake, hems a little above the far shore.
+const AURORA = {
+  mode: "line",
+  glow: 1.05,
+  rayThr: 0.1,
+  rayAlpha: 1.3,
+  curtains: [
+    { y: 0.19, amp: 0.03, hr: 0.13, gain: 0.5, x0: 0.3, x1: 1.2, drift: 3, lut: TEAL, rays: 0.06 },
+    { y: 0.27, amp: 0.035, hr: 0.19, gain: 0.8, x0: -0.2, x1: 0.7, drift: 6, lut: GREEN },
+    { y: 0.335, amp: 0.03, hr: 0.24, gain: 1.05, x0: 0.15, x1: 1.2, drift: 9, lut: GREEN, rays: 0.04 },
+  ],
+};
 
 function build(s) {
   const R = seeded(s.seed);
@@ -81,68 +91,15 @@ function build(s) {
   ].map(([dc, dr, gl, f, i]) => ({ x: (cx + dc) * cell, y: (cr + dr) * cell, id: tile(s, gl, f, i), win: gl === "#" }));
   s.smoke = { x: (cx + 2) * cell, y: (cr - 6) * cell, ids: ["o", "°", ".", "~"].map((gl) => tile(s, gl, null, "#9fb0c0")) };
   s.windowGlow = { x: (cx + 0.5) * cell, y: (cr - 1.5) * cell };
-  // Aurora field: three ribbons, computed at low resolution.
-  s.aw = Math.ceil(w / (ACELL * k)) + 1;
-  s.ah = Math.ceil(hz / (ACELL * k)) + 1;
-  s.acell = ACELL * k;
-  s.aur = document.createElement("canvas");
-  s.aur.width = s.aw;
-  s.aur.height = s.ah;
-  s.aurCtx = s.aur.getContext("2d");
-  s.aurImg = s.aurCtx.createImageData(s.aw, s.ah);
-  s.acc = new Float32Array(s.aw * s.ah * 4);
-  s.ribbons = [
-    { y: 0.44, amp: 0.08, hr: 0.4, gain: 1.15, f: 0.0042, x0: -0.1, x1: 0.8 },
-    { y: 0.3, amp: 0.06, hr: 0.28, gain: 0.85, f: 0.0035, x0: 0.25, x1: 1.1 },
-    { y: 0.55, amp: 0.05, hr: 0.26, gain: 0.6, f: 0.0055, x0: 0.1, x1: 0.95 },
-  ].map((r) => ({ ...r, ph: R() * 100, f: r.f / k }));
-  s.rayIds = RAY.map((c) => ["!", "|", ":", "'", "."].map((gl) => tile(s, gl, null, c)));
+  // The aurora: the shared curtain renderer, kept above the far shore.
+  s.aurora = { ...AURORA, rayFloor: hz / h };
+  buildField(s, s.aurora, R);
+  buildRays(s, s.aurora);
   s.top = layer(s);
   s.swellIds = ["~", "-", "~"].map((gl, i) => tile(s, gl, null, ["#3f8f8a", "#2f6f78", "#56b0a0"][i]));
   s.swells = Array.from({ length: Math.round(50 * Math.max(0.4, (w * h) / 1.3e6)) }, () => ({ x: R() * w, y: hz + cell * 2 + Math.pow(R(), 0.9) * (h - hz - cell * 2), len: Math.round(R.range(2, 5)), v: R.range(1.5, 4) * k * (R() < 0.5 ? -1 : 1), ph: R() * TAU }));
   s.meteor = R() * 1000;
   s.meteorIds = ["*", "-", "-", ".", "."].map((gl) => tile(s, gl, null, "#ffffff"));
-}
-
-// The aurora field: intensity and colour per low-res cell, in acc (r, g, b, a).
-function aurora(s, t) {
-  const { aw, ah, acell, acc, hz } = s;
-  acc.fill(0);
-  for (const [ri, r] of s.ribbons.entries()) {
-    const hr = r.hr * hz;
-    for (let x = 0; x < aw; x += 1) {
-      const px = x * acell;
-      const u = px / s.w;
-      const env = clamp01((u - r.x0) / 0.15) * clamp01((r.x1 - u) / 0.15);
-      if (env <= 0) continue;
-      const fold = 0.35 + 0.65 * Math.pow(noise(px * 0.0022 + r.ph + t * 0.02, ri * 3.3), 1.5);
-      const rays = 0.35 + 0.65 * Math.pow(noise(px * 0.05 + t * 0.25, ri * 7.1 + t * 0.06), 2);
-      const base = hz * r.y + hz * r.amp * Math.sin(px * r.f + t * 0.06 + r.ph) + hz * 0.04 * (noise(px * 0.003 + t * 0.03, r.ph) - 0.5);
-      const I = env * fold * r.gain;
-      const y0 = Math.max(0, Math.floor((base - hr) / acell));
-      const y1 = Math.min(ah - 1, Math.ceil((base + 3 * acell) / acell));
-      for (let y = y0; y <= y1; y += 1) {
-        const d = base - y * acell;
-        let a = d < 0 ? Math.exp(d / (acell * 0.9)) : 0.75 * Math.exp(-d / (hr * 0.22)) + 0.4 * rays * Math.exp(-d / (hr * 0.6)) * (1 - d / hr);
-        a *= I * (0.55 + 0.45 * rays);
-        if (a <= 0.004) continue;
-        const v = clamp01(d / hr);
-        const o = (y * aw + x) * 4;
-        acc[o] += a * (60 + 170 * v * v);
-        acc[o + 1] += a * (255 - 190 * v);
-        acc[o + 2] += a * (150 + 90 * v);
-        acc[o + 3] = Math.max(acc[o + 3], v + 0.0001);
-      }
-    }
-  }
-  const d = s.aurImg.data;
-  for (let i = 0; i < acc.length; i += 4) {
-    d[i] = acc[i] * 0.8;
-    d[i + 1] = acc[i + 1] * 0.8;
-    d[i + 2] = acc[i + 2] * 0.8;
-    d[i + 3] = 255;
-  }
-  s.aurCtx.putImageData(s.aurImg, 0, 0);
 }
 
 export const auroralake = {
@@ -165,29 +122,12 @@ export const auroralake = {
     g.drawImage(s.sky, 0, 0, w, h);
     for (const st of s.stars) put(g, s, st.id, st.x, st.y, 0.2 + 0.7 * (0.5 + 0.5 * Math.sin((TAU * t) / st.p + st.ph)));
     // The glow, then rays of glyphs drawn from the same field.
-    aurora(s, t);
+    field(s, s.aurora, t);
     g.globalAlpha = 1;
     g.globalCompositeOperation = "lighter";
     g.imageSmoothingEnabled = true;
-    g.drawImage(s.aur, -s.acell / 2, -s.acell / 2, s.aw * s.acell, s.ah * s.acell);
-    const { aw, acell, acc } = s;
-    const rows = Math.floor(hz / cell);
-    const cols = Math.ceil(w / cell);
-    for (let r = 0; r < rows; r += 1) {
-      const ay = Math.min(s.ah - 1, Math.round(((r + 0.5) * cell) / acell));
-      for (let c = 0; c < cols; c += 1) {
-        const ax = Math.min(aw - 1, Math.round(((c + 0.5) * cell) / acell));
-        const o = (ay * aw + ax) * 4;
-        const I = (acc[o + 1] + acc[o + 2] * 0.4) / 255;
-        if (I < 0.1) continue;
-        const v = acc[o + 3];
-        const shimmer = noise(c * 0.9 + t * 1.6, r * 0.25 - t * 0.5);
-        if (shimmer < 0.28) continue;
-        const ids = s.rayIds[Math.min(RAY.length - 1, Math.floor(v * RAY.length))];
-        const gl = I > 0.6 ? 0 : I > 0.42 ? 1 : I > 0.26 ? 2 : I > 0.16 ? 3 : 4;
-        put(g, s, ids[gl], c * cell, r * cell, Math.min(0.95, (0.25 + I) * shimmer));
-      }
-    }
+    g.drawImage(s.aur, 0, 0, s.aw, s.ah, -s.acell / 2, -s.acell / 2, s.aw * s.acell, s.ah * s.acell);
+    drawRays(s, g, t, s.aurora);
     g.globalCompositeOperation = "source-over";
     // A falling star every half minute or so.
     const P = 29;
