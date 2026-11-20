@@ -224,12 +224,17 @@ def session_user(session):
     now = time.time()
     if issued > now + 60 or now - issued > _session_max_age():
         return None
-    user = get_user(uid)
+    user = db.fetchone(
+        "SELECT u.*, EXISTS(SELECT 1 FROM session_revocations WHERE sid=?) AS session_revoked"
+        " FROM users u WHERE u.id=?",
+        (sid, uid),
+    )
     if not user:
         return None
+    revoked = user.pop("session_revoked")
     if stamp != password_fingerprint(user):
         return None
-    if db.fetchone("SELECT 1 AS one FROM session_revocations WHERE sid=?", (sid,)):
+    if revoked:
         return None
     return user
 
@@ -316,13 +321,22 @@ def unlock_vault(user_id: int, password: str) -> None:
         raise ValueError("vault") from exc
 
 
+# last_used_at is a coarse "recently used" marker: every /v1 request writing
+# it was a commit and fsync per call.
+_KEY_TOUCH_S = 60
+
+
 def user_by_api_key(raw: str):
     row = db.fetchone(
-        "SELECT u.*, k.id AS key_id FROM api_keys k JOIN users u ON u.id=k.user_id WHERE k.key_hash=?",
+        "SELECT u.*, k.id AS key_id, k.last_used_at AS key_last_used_at"
+        " FROM api_keys k JOIN users u ON u.id=k.user_id WHERE k.key_hash=?",
         (key_hash(raw),),
     )
     if row:
-        db.execute("UPDATE api_keys SET last_used_at=? WHERE id=?", (db.now(), row["key_id"]))
+        used = row.pop("key_last_used_at")
+        recent = (datetime.now(timezone.utc) - timedelta(seconds=_KEY_TOUCH_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if not used or used < recent:
+            db.execute("UPDATE api_keys SET last_used_at=? WHERE id=?", (db.now(), row["key_id"]))
     return row
 
 
