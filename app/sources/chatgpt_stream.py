@@ -445,9 +445,7 @@ class _Translator:
         return out
 
 
-async def _translated_stream(
-    resp: httpx.Response, client: httpx.AsyncClient, model: str, collected: dict | None = None, account=None
-):
+async def _translated_stream(resp: httpx.Response, model: str, collected: dict | None = None, account=None):
     translator = _Translator(model, account)
     stream_status = "failed"
     try:
@@ -485,7 +483,6 @@ async def _translated_stream(
             yield piece
     finally:
         await resp.aclose()
-        await client.aclose()
         if collected is not None:
             collected.clear()
             collected.update(translator.usage or {})
@@ -501,7 +498,7 @@ def _request_caused(err: dict) -> bool:
     return str(err.get("code") or "") in _REQUEST_ERROR_CODES or err.get("type") == "invalid_request_error"
 
 
-async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str, account=None) -> dict:
+async def _aggregate(resp: httpx.Response, model: str, account=None) -> dict:
     translator = _Translator(model, account)
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
@@ -585,7 +582,6 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
         translator.error = f"upstream stream failed ({type(exc).__name__})"
     finally:
         await resp.aclose()
-        await client.aclose()
     if not terminal and not translator.error:
         translator.error = "upstream stream ended before a terminal response"
     if translator.error:

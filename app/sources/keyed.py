@@ -20,6 +20,7 @@ from .. import accounts, db
 from ..crypto import encrypt
 from ..providers import registry
 from ..proxy import UsageStream
+from . import http_pool
 from .base import ChatResult, map_effort
 from .openai_compat import OpenAICompatSource
 from .pool_pick import AUTH_RECHECK_SECONDS, note_failure
@@ -295,13 +296,12 @@ class KeyedSource(OpenAICompatSource):
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": {"message": "All keys failed"}}, model=public)
         for cred in self._next_creds():
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             headers = {**self._headers(accounts.cred_secret(cred)), "Accept": "text/event-stream"}
             try:
                 req = client.build_request("POST", self._url() + "/messages", headers=headers, json=payload)
                 resp = await client.send(req, stream=True)
             except httpx.HTTPError as exc:
-                await client.aclose()
                 status = 504 if isinstance(exc, httpx.TimeoutException) else 502
                 return ChatResult(status=status, body={"error": {"message": f"{label} request failed ({type(exc).__name__})"}},
                                   credential_id=cred["id"], model=public, attempts=attempts)
@@ -309,7 +309,6 @@ class KeyedSource(OpenAICompatSource):
                 raw = (await resp.aread()).decode("utf-8", errors="replace")
                 retry_after = str(resp.headers.get("retry-after") or "").strip()
                 await resp.aclose()
-                await client.aclose()
                 detail = _error_message(raw)
                 error = {"message": f"{label} request failed ({resp.status_code})" + (f": {detail[:300]}" if detail else "")}
                 error.update(_error_fields(raw))
@@ -323,10 +322,10 @@ class KeyedSource(OpenAICompatSource):
                 return last
             if body.get("stream"):
                 collected: dict = {}
-                stream = _translated_stream(resp, client, upstream, collected, public_id=public)
+                stream = _translated_stream(resp, upstream, collected, public_id=public)
                 return ChatResult(status=200, stream=UsageStream(stream, collected), credential_id=cred["id"],
                                   model=public, attempts=attempts)
-            obj = await _aggregate(resp, client, upstream, public_id=public)
+            obj = await _aggregate(resp, upstream, public_id=public)
             if isinstance(obj.get("error"), dict):
                 usage = obj.pop("_fuse_usage", {}) or {}
                 return ChatResult(status=502, body=obj, usage=usage, credential_id=cred["id"], model=public, attempts=attempts)

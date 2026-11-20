@@ -7,6 +7,7 @@ import httpx
 
 from .. import accounts
 from ..proxy import openai_chat
+from . import http_pool
 from .base import ChatResult
 from .openai_compat import OpenAICompatSource, _v1
 
@@ -142,13 +143,12 @@ class LlamaSource(OpenAICompatSource):
         payload["model"] = _model_aliases.get(self.source_id, {}).get(
             payload["model"], payload["model"]
         )
-        client = self._client(httpx.Timeout(300.0, connect=15.0))
+        client = http_pool.client(httpx.Timeout(300.0, connect=15.0), verify=self._verify())
         status, obj, stream, usage, response_headers = await openai_chat(
             client,
             self._url() + "/chat/completions",
             self._headers(self._key()),
             payload,
-            close_client=True,
         )
         if stream is not None:
             return ChatResult(

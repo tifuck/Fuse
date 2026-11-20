@@ -305,7 +305,7 @@ def _trailer_sku_kind(payload: bytes) -> str:
     return sku_error_kind(str(error.get("message") or ""))
 
 
-async def _stream_sse(resp, client, collected: dict, model: str, uid: str = "", hints: dict | None = None):
+async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: dict | None = None):
     cid = _completion_id()
     created = int(time.time())
     pending = b""
@@ -458,7 +458,6 @@ async def _stream_sse(resp, client, collected: dict, model: str, uid: str = "", 
         raise
     finally:
         await resp.aclose()
-        await client.aclose()
 
 
 async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, dict, str]:

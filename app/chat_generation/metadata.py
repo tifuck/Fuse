@@ -146,21 +146,8 @@ def clip_prompt_text(text: str, limit: int) -> str:
 
 
 async def metadata_once(request, user, model, text, system, limit, parser, *, consume):
-    from .. import api, secret_swap
+    from .. import api
 
-    # Titles and recaps read the user's own text: a chat that swaps secrets
-    # (or one of an account that does) sends this one-off call stand-ins too,
-    # and shows the result real. Unreadable pairs: no call at all.
-    uid = (user or {}).get("id")
-    thread_id = request.scope.get("fuse_swap_thread") if request is not None else None
-    try:
-        swap = (await asyncio.to_thread(secret_swap.for_thread, uid, thread_id)
-                or await asyncio.to_thread(secret_swap.for_user, uid))
-    except secret_swap.SwapUnavailable:
-        logger.warning("Chat title skipped: thread %s cannot be swapped", thread_id)
-        return ""
-    if swap is not None:
-        text = await asyncio.to_thread(swap.tokenize, text or "")
     prompt = clip_prompt_text(text or "", max(1, min(int(limit), chats.TITLE_REGEN_PROMPT_MAX)))
     if not prompt or not isinstance(model, str) or not model.strip():
         return ""
@@ -219,8 +206,6 @@ async def metadata_once(request, user, model, text, system, limit, parser, *, co
         )
         return ""
     raw = summary.get("content") or ""
-    if swap is not None:
-        raw = swap.restore(raw)
     title = parser(raw)
     if not title:
         logger.info(

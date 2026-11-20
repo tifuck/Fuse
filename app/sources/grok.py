@@ -19,7 +19,7 @@ from ..crypto import encrypt
 from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
 from .pool_pick import Failover, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .grok_version import current_version, force_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
 from .token_store import (
@@ -514,8 +514,8 @@ class GrokSource:
         return list(GROK_MODELS)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        # refresh_pool_billing() opens with its own refresh_due() sweep.
-        await refresh_pool_billing()
+        await refresh_due()
+        pool_refresh.start("grok", refresh_pool_billing)
         self.creds = pool_policy.filter_credentials(
             db.fetchall(
                 "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
@@ -550,7 +550,7 @@ class GrokSource:
             note_pool_invoke(cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
             token = extra.get("access_token") or accounts.cred_secret(cred)
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False
             try:
                 reserve(cred["id"])
@@ -559,7 +559,6 @@ class GrokSource:
                     settings.grok_proxy + "/chat/completions",
                     self._headers(token, model, session_id),
                     payload,
-                    close_client=True,
                     reasoning_separate=True,
                 )
                 if status == 401:
@@ -568,25 +567,21 @@ class GrokSource:
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                         extra = accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],)))
                         token = extra.get("access_token") or accounts.cred_secret(cred)
-                        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
                         status, obj, stream, usage, response_headers = await openai_chat(
                             client,
                             settings.grok_proxy + "/chat/completions",
                             self._headers(token, model, session_id),
                             payload,
-                            close_client=True,
                             reasoning_separate=True,
                         )
                 if status == 426 and await force_refresh():
                     # Upgrade Required: the proxy refused this client version.
                     attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
-                    client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
                     status, obj, stream, usage, response_headers = await openai_chat(
                         client,
                         settings.grok_proxy + "/chat/completions",
                         self._headers(token, model, session_id),
                         payload,
-                        close_client=True,
                         reasoning_separate=True,
                     )
                 if stream is not None:

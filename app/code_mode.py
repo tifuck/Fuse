@@ -4,9 +4,8 @@ Each run is one disposable worker process (app/code_worker.py): a V8 isolate
 with no I/O or network of its own, an empty environment and no root. The
 worker sends each helper call back here, and `call` (tool_runner.run_tools)
 runs it as a real tool job of the same round: the permission gate,
-confinement, secret swap, transcript rows and failure log apply exactly as
-to a direct call, and the code only sees the swapped text a direct call
-would return. Only what the code returns, plus its console output, reaches
+confinement, transcript rows and failure log apply exactly as to a direct
+call, and the code only sees the text a direct call would return. Only what the code returns, plus its console output, reaches
 the model. The worker is killed at its deadline or when the run stops, so no
 script can hold the server's event loop or outlive its run."""
 from __future__ import annotations
@@ -37,8 +36,8 @@ CHILD_CONCURRENCY = 16
 DEFAULT_TIMEOUT_MS = 300_000
 MAX_TIMEOUT_MS = 600_000
 ERROR_CHARS = 2_000
-# Text the helpers may hand one run (each result is also secret-swapped and
-# piped to the worker): 16 whole 2 MB files, or hundreds of ordinary ones.
+# Text the helpers may hand one run (each result is also piped to the
+# worker): 16 whole 2 MB files, or hundreds of ordinary ones.
 RESULT_BUDGET = 32_000_000
 # Calls that change something run one at a time, like direct calls on a
 # host, so a run raises at most one permission card at a time.
@@ -206,7 +205,7 @@ def _unlabel(text: str, trace: dict) -> str:
 
 def _value(name: str, text: str, trace: dict):
     """What a helper returns to the code, built only from the call's own
-    (secret-swapped) text; the trace keeps real values for the user's view."""
+    text."""
     body = _unlabel(text, trace)
     if name != "run_terminal_command":
         return body

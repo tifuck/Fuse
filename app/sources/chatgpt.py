@@ -40,7 +40,7 @@ from .pool_pick import (
     release,
     reserve,
 )
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, lookup
 from .token_store import (
     dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh,
@@ -842,7 +842,7 @@ class ChatGPTSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         await refresh_due()
-        await refresh_pool_usage()
+        pool_refresh.start("chatgpt", refresh_pool_usage)
         self.creds = pool_policy.filter_credentials(
             db.fetchall(
                 "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
@@ -877,7 +877,8 @@ class ChatGPTSource:
             _note_invoke(cred["id"])
             token = extra.get("access_token") or accounts.cred_secret(cred)
             account_id = extra.get("account_id") or None
-            client = _client()
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
+            resp = None
             stream_reserved = False
             try:
                 reserve(cred["id"])
@@ -885,7 +886,6 @@ class ChatGPTSource:
                     resp = await self._post(token, account_id, for_account(payload, cred["id"]), client,
                                             _turn_state(cred["id"], turn_key))
                 except httpx.TimeoutException as exc:
-                    await client.aclose()
                     last = ChatResult(
                         status=504,
                         body={"error": {"message": f"upstream timeout ({type(exc).__name__})"}},
@@ -900,7 +900,6 @@ class ChatGPTSource:
                     last.attempts = attempts
                     return last
                 except httpx.TransportError as exc:
-                    await client.aclose()
                     last = ChatResult(
                         status=502,
                         body={"error": {"message": f"upstream transport failure ({type(exc).__name__})"}},
@@ -930,7 +929,6 @@ class ChatGPTSource:
                         obj["_fuse_headers"] = kept
                     status = resp.status_code
                     await resp.aclose()
-                    await client.aclose()
                     last = ChatResult(status=status, body=obj, credential_id=cred["id"], model=model)
                     msg = ""
                     if isinstance(obj, dict):
@@ -978,7 +976,7 @@ class ChatGPTSource:
                 _remember_turn_state(cred["id"], turn_key, getattr(resp, "headers", None))
                 if wants_stream:
                     collected: dict = {}
-                    inner = _translated_stream(resp, client, model, collected, account=cred["id"])
+                    inner = _translated_stream(resp, model, collected, account=cred["id"])
 
                     async def _bind_on_finish():
                         try:
@@ -1000,7 +998,7 @@ class ChatGPTSource:
                     result = ChatResult(status=200, stream=stream, credential_id=cred["id"], model=model)
                     result.attempts = attempts
                     return result
-                obj = await _aggregate(resp, client, model, account=cred["id"])
+                obj = await _aggregate(resp, model, account=cred["id"])
                 if isinstance(obj.get("error"), dict):
                     partial_usage = obj.pop("_fuse_usage", {}) if isinstance(obj, dict) else {}
                     if partial_usage:
@@ -1024,7 +1022,8 @@ class ChatGPTSource:
                 result.attempts = attempts
                 return result
             except httpx.HTTPError as exc:
-                await client.aclose()
+                if resp is not None:
+                    await resp.aclose()
                 failed = 504 if isinstance(exc, httpx.TimeoutException) else 502
                 last = ChatResult(
                     status=failed,
@@ -1040,7 +1039,8 @@ class ChatGPTSource:
             except Exception:
                 # A local failure (encoding, translation bug) would repeat on
                 # every account. Do not cool accounts or fail over; surface it.
-                await client.aclose()
+                if resp is not None:
+                    await resp.aclose()
                 logger.exception("ChatGPT request failed locally credential=%s", cred["id"])
                 last = ChatResult(
                     status=500,

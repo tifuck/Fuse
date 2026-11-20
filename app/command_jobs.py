@@ -1021,23 +1021,7 @@ def mark_delivered(ids: list[str], conn=None) -> None:
     _mark_delivered(ids)
 
 
-def _model_view(rec: dict) -> dict:
-    """rec as a swapping chat's model may read it, swapped whole before the
-    envelope clips it (app/secret_swap.py)."""
-    from . import secret_swap
-
-    try:
-        swap = secret_swap.for_thread(rec.get("user_id"), rec.get("thread_id"))
-    except secret_swap.SwapUnavailable:
-        swap = None
-    if swap is None:
-        return rec
-    return {**rec, **{key: swap.tokenize(rec[key]) for key in ("command", "url", "out", "err", "error")
-                      if isinstance(rec.get(key), str)}}
-
-
 def notification(rec: dict) -> str:
-    rec = _model_view(rec)
     if _is_monitor(rec):
         from . import monitor as monitor_mod
 

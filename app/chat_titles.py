@@ -80,7 +80,6 @@ async def _generate(user_id: int, thread_id: int, model: str, prompt: str, place
             failed = True
             return
         request = chat_runs.internal_request(user_id)
-        request.scope["fuse_swap_thread"] = thread_id
         title = await chat_runtime.generate_thread_title(request, dict(owner), model, prompt)
         if not title:
             failed = True
@@ -190,7 +189,6 @@ async def regenerate(user_id: int, thread_id: int) -> bool:
         if owner is None:
             return False
         request = chat_runs.internal_request(user_id)
-        request.scope["fuse_swap_thread"] = thread_id
         title = await chat_runtime.generate_thread_title(
             request,
             dict(owner),

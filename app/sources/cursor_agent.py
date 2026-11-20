@@ -28,6 +28,7 @@ import uuid
 
 import httpx
 
+from . import http_pool
 from .devin_proto import CONNECT_END_STREAM, ProtoDecoder, ProtoEncoder, connect_frame, iter_connect_frames
 
 logger = logging.getLogger(__name__)
@@ -596,7 +597,7 @@ class CursorRun:
         self.tools = tools
         self.names = {t["name"] for t in tools}
         self.request_id = str(uuid.uuid4())
-        self.client = httpx.AsyncClient(timeout=timeout)
+        self.client = http_pool.client(timeout)
         self.queue: asyncio.Queue = asyncio.Queue()
         self.pending: dict[str, tuple[int, str]] = {}
         self.checkpoint: bytes | None = None
@@ -872,7 +873,6 @@ class CursorRun:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         if self._resp is not None:
             await self._resp.aclose()
-        await self.client.aclose()
 
 
 # --- kept conversations -----------------------------------------------------------

@@ -30,57 +30,58 @@ async def chat_page(request: Request):
     if redir:
         return redir
     available, locked = await _models_page_families(user)
-    agent_settings = hosts.settings_for(user["id"])
-    families = [
-        {
-            "type": group["type"],
-            "title": group["title"],
-            "logo": provider_logo_url(group["type"]),
-            "models": [
-                {
-                    "id": m["id"],
-                    "name": m.get("name") or m["id"],
-                    "reasoning": list(_reasoning_efforts(group["type"], m["id"], user_id=user["id"])),
-                    "reasoning_default": _reasoning_default(group["type"], m["id"], user_id=user["id"]),
-                    "context_window": m.get("context_window") or context_meter.window_for(m["id"], group["type"]),
-                    "image": model_caps.image_input(group["type"], m["id"], user_id=user["id"]),
-                }
-                for m in group["models"]
-            ],
+
+    def _context():
+        agent_settings = hosts.settings_for(user["id"])
+        families = [
+            {
+                "type": group["type"],
+                "title": group["title"],
+                "logo": provider_logo_url(group["type"]),
+                "models": [
+                    {
+                        "id": m["id"],
+                        "name": m.get("name") or m["id"],
+                        "reasoning": list(_reasoning_efforts(group["type"], m["id"], user_id=user["id"])),
+                        "reasoning_default": _reasoning_default(group["type"], m["id"], user_id=user["id"]),
+                        "context_window": m.get("context_window") or context_meter.window_for(m["id"], group["type"]),
+                        "image": model_caps.image_input(group["type"], m["id"], user_id=user["id"]),
+                    }
+                    for m in group["models"]
+                ],
+            }
+            for group in available
+        ]
+        return {
+            "skills_bundle": skills.list_bundle(user["id"]),
+            "chat_config": {
+                "families": families,
+                "locked": [group["title"] for group in locked],
+                "favorites": model_favorites.list_favorites(user["id"]),
+                "preselect": (request.query_params.get("model") or "").strip()[:200],
+                "tools": chat_tools.AVAILABLE,
+                "context": chats.get_user_context(user["id"]),
+                "vault": "unlocked" if vault.unlocked(user["id"]) else "locked",
+                "uid": user["id"],
+                "ssh_hosts": hosts.has_ssh_hosts(user["id"]),
+                "limits": {
+                    "context": chats.CONTEXT_MAX,
+                    "attachments": chats.ATTACH_MAX,
+                    "attachment_chars": chats.ATTACH_DATA_MAX,
+                },
+                "compaction": context_meter.public_config(),
+                "skills": skills.index_for_chat(user["id"]),
+                "coding": bool(agent_settings.get("agent_coding")),
+                "openrouter": bool(openrouter_mod.user_has_openrouter(user["id"])),
+                "speech": speech.available(),
+                "permission_defaults": {
+                    "chat": agent_settings["default_chat_permissions"],
+                    "project": agent_settings["default_project_permissions"],
+                },
+            },
         }
-        for group in available
-    ]
-    return render(
-        request,
-        "chat.html",
-        user,
-        skills_bundle=skills.list_bundle(user["id"]),
-        chat_config={
-            "families": families,
-            "locked": [group["title"] for group in locked],
-            "favorites": model_favorites.list_favorites(user["id"]),
-            "preselect": (request.query_params.get("model") or "").strip()[:200],
-            "tools": chat_tools.AVAILABLE,
-            "context": chats.get_user_context(user["id"]),
-            "vault": "unlocked" if vault.unlocked(user["id"]) else "locked",
-            "uid": user["id"],
-            "ssh_hosts": hosts.has_ssh_hosts(user["id"]),
-            "limits": {
-                "context": chats.CONTEXT_MAX,
-                "attachments": chats.ATTACH_MAX,
-                "attachment_chars": chats.ATTACH_DATA_MAX,
-            },
-            "compaction": context_meter.public_config(),
-            "skills": skills.index_for_chat(user["id"]),
-            "coding": bool(agent_settings.get("agent_coding")),
-            "openrouter": bool(openrouter_mod.user_has_openrouter(user["id"])),
-            "speech": speech.available(),
-            "permission_defaults": {
-                "chat": agent_settings["default_chat_permissions"],
-                "project": agent_settings["default_project_permissions"],
-            },
-        },
-    )
+
+    return render(request, "chat.html", user, **await asyncio.to_thread(_context))
 
 
 
@@ -1021,13 +1022,6 @@ async def chat_compact(request: Request, thread_id: str):
         raise HTTPException(400, "Invalid strategy")
     pk = _chat_thread_pk(user, thread_id)
     revision = _chat_revision(raw)
-    from .. import secret_swap
-
-    try:
-        # The summarizer would read the real values: refuse as a turn does.
-        await asyncio.to_thread(secret_swap.for_thread, user["id"], pk)
-    except secret_swap.SwapUnavailable as exc:
-        raise HTTPException(409, str(exc)) from None
     try:
         prepared = chat_store.prepare_compact(
             user["id"],
@@ -1179,7 +1173,7 @@ async def chat_context_put(request: Request):
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "secret_swap", "expected_revision", "command_id"}:
+    if set(raw) - {"instructions", "profile", "recaps", "artifacts", "memory", "expected_revision", "command_id"}:
         raise HTTPException(422, "Unsupported context fields")
     kwargs = {"expected_revision": _chat_revision(raw), "command_id": raw.get("command_id")}
     if "instructions" in raw:
@@ -1202,10 +1196,6 @@ async def chat_context_put(request: Request):
         if not isinstance(raw["memory"], bool):
             raise HTTPException(400, "Invalid memory")
         kwargs["memory"] = raw["memory"]
-    if "secret_swap" in raw:
-        if not isinstance(raw["secret_swap"], bool):
-            raise HTTPException(400, "Invalid secret_swap")
-        kwargs["secret_swap"] = raw["secret_swap"]
     try:
         data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
     except chats.ChatValidationError as exc:

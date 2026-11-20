@@ -41,7 +41,7 @@ from . import cursor_agent as agent
 from .cursor_agent import TurnError
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy
+from . import pool_policy, pool_refresh
 from .pool_session import bind, lookup
 from .token_store import log_refresh_failures, persist_rotated, shield_refresh
 
@@ -511,8 +511,15 @@ async def fetch_usage(token: str) -> tuple[dict | None, str, str]:
             status, usage = await _unary(client, "/aiserver.v1.DashboardService/GetCurrentPeriodUsage", token)
             if status != 200:
                 return None, "", f"http {status}"
-            _, plan = await _unary(client, "/aiserver.v1.DashboardService/GetPlanInfo", token)
-            _, me = await _unary(client, "/aiserver.v1.AuthService/GetEmail", token)
+            plan_reply, me_reply = await asyncio.gather(
+                _unary(client, "/aiserver.v1.DashboardService/GetPlanInfo", token),
+                _unary(client, "/aiserver.v1.AuthService/GetEmail", token),
+                return_exceptions=True,
+            )
+            for reply in (plan_reply, me_reply):
+                if isinstance(reply, BaseException):
+                    raise reply
+            (_, plan), (_, me) = plan_reply, me_reply
     except httpx.HTTPError:
         return None, "", "fetch failed"
     return parse_usage_payload(usage, plan), str(me.get("email") or ""), ""
@@ -1082,7 +1089,7 @@ class CursorSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         await refresh_due()
-        await refresh_pool_quota()
+        pool_refresh.start("cursor", refresh_pool_quota)
         self._load(user_id)
         reasoning = body.get("reasoning") if isinstance(body.get("reasoning"), dict) else {}
         sel = resolve(body.get("model") or "auto", body.get("reasoning_effort") or reasoning.get("effort"))

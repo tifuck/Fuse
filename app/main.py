@@ -308,6 +308,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Failed while closing search HTTP client")
         try:
+            from .sources import http_pool
+
+            await http_pool.aclose_all()
+        except Exception:
+            logger.exception("Failed while closing upstream HTTP clients")
+        try:
             sched_task = getattr(app.state, "schedules_task", None)
             if sched_task is not None:
                 sched_task.cancel()
