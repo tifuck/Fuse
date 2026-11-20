@@ -922,7 +922,7 @@ class OpenRouterSource:
         catalog = await fetch_catalog()
         return [public_id(mid) for mid in (catalog.get("free_ids") or []) + (catalog.get("paid_ids") or [])]
 
-    async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         catalog = await fetch_catalog()
         requested = str(body.get("model") or "")
         upstream = upstream_id(requested)

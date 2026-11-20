@@ -581,7 +581,7 @@ class OllamaSource:
             return response, cred
         return None, None
 
-    async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         own = self._own(user_id)
         site = _site_allowed(self.cfg, user_id)
         if not own and not site:

@@ -717,7 +717,7 @@ class ClaudeSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         names = await fetch_catalog()
         return names or list(CLAUDE_MODELS)
 

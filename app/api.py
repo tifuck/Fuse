@@ -16,7 +16,6 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, provider_errors
 from .config import settings
-from .providers import registry
 from .providers.access import Access
 from .proxy import merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
@@ -284,16 +283,7 @@ def _validate_reasoning(body: dict) -> None:
 
 
 async def _run_chat(src, body: dict, user_id: int, session_id: str | None = None, affinity_id: str | None = None):
-    style = registry.get(src.type_id).call_style
-    if style == "user":
-        return await src.chat(body, user_id=user_id, session_id=session_id)
-    if style == "pool":
-        if affinity_id:
-            return await src.chat(body, session_id=session_id, user_id=user_id, affinity_id=affinity_id)
-        return await src.chat(body, session_id=session_id, user_id=user_id)
-    if style == "session":
-        return await src.chat(body, session_id=session_id)
-    return await src.chat(body)
+    return await src.chat(body, session_id=session_id, user_id=user_id, affinity_id=affinity_id)
 
 
 def _record_attempts(result, user, src, upstream: str, requested_model: str) -> None:
@@ -661,13 +651,11 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
                                                        user_id=user["id"], snapshot=images)
     if prepared is not None:
         await prepared()
-    session_id = None
     affinity_id = None
     # ChatGPT Fast is a service tier on the same model: toggling it keeps the
     # conversation's cache key and account pin.
     scope_model = chatgpt_base_slug(upstream) if src.type_id == "chatgpt" else upstream
-    if registry.get(src.type_id).call_style != "plain":
-        session_id = session_id_from(request.headers, body, user_id=user["id"], model=scope_model)
+    session_id = session_id_from(request.headers, body, user_id=user["id"], model=scope_model)
     if src.type_id in POOL_TYPES:
         # A subagent's run sets its parent's cache key (server-side scope,
         # never client input) so its first request can start where the parent

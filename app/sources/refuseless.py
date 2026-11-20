@@ -531,7 +531,7 @@ class RefuselessSource:
         self.cfg = cfg
         self.creds = list(creds)
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         catalog = await fetch_catalog()
         if not catalog_available() and not catalog["by_id"] and _live_rows():
             raise RuntimeError("Refuseless catalog unavailable")

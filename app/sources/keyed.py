@@ -275,7 +275,7 @@ class KeyedSource(OpenAICompatSource):
         hit = _catalogs.get((self.source_id, int(creds[0]["id"]))) if creds else None
         return list(hit[1]) if hit else []
 
-    async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         self.creds = self.usable(user_id)
         if not self.creds:
             return ChatResult(status=403, body={"error": {"message": f"Add a {self.preset.label} API key on Sources to use its models."}})

@@ -60,7 +60,7 @@ class LlamaSource(OpenAICompatSource):
     def _client(self, timeout) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=timeout, verify=self._verify())
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         hit = _models_cache.get(self.source_id)
         if hit and time.time() - hit[0] < _MODELS_TTL:
             return list(hit[1])
@@ -134,7 +134,7 @@ class LlamaSource(OpenAICompatSource):
                 _models_cache[self.source_id] = (time.time(), list(names))
             return names
 
-    async def chat(self, body: dict, *, session_id: str | None = None) -> ChatResult:
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         cred_id = self.creds[0]["id"] if self.creds else None
         payload = dict(body)
         if not payload.get("model"):

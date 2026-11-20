@@ -3,6 +3,7 @@ still says what it said before (snapshots), the specs are complete, and a
 golden table pins how pick() routes every kind of model id.
 """
 import asyncio
+import inspect
 import time
 
 import httpx
@@ -72,15 +73,16 @@ def test_every_spec_is_complete():
     ids = [s.id for s in registry.specs()]
     assert len(ids) == len(set(ids))
     for spec in registry.specs():
-        assert registry.builder(spec.id), spec.id
-        assert spec.call_style in ("plain", "session", "pool", "user"), spec.id
+        source = registry.builder(spec.id)
+        # api._run_chat passes every source the same keywords.
+        assert {"session_id", "user_id", "affinity_id"} <= set(inspect.signature(source.chat).parameters), spec.id
+        assert "user_id" in inspect.signature(source.models).parameters, spec.id
         assert bool(spec.claim) == bool(spec.claims), spec.id
         if spec.pool:
             assert spec.ensure and spec.access and spec.own_access and spec.connect_copy, spec.id
-            assert spec.call_style == "pool", spec.id
         elif spec.keyed:
             p = spec.keyed
-            assert spec.claim == "soft" and spec.call_style == "user" and spec.access, spec.id
+            assert spec.claim == "soft" and spec.personal and spec.access, spec.id
             assert p.base().startswith("https://") and all(r.base_url.startswith("https://") for r in p.regions), spec.id
             assert p.protocol in ("openai_chat", "anthropic_messages") and p.auth in ("bearer", "x-api-key"), spec.id
             assert p.methods and p.public_prefix.endswith("/"), spec.id

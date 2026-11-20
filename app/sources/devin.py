@@ -559,7 +559,7 @@ class DevinSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         picked = self._pick()
         token = ""
         if picked:

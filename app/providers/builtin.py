@@ -45,7 +45,7 @@ def _keyed(p) -> ProviderSpec:
         id=p.id, label=p.label, type_label=p.label, builder="keyed:KeyedSource", error_label=p.label,
         ensure=lambda: _m("keyed").ensure_source(p.id), efforts=lambda model, user_id: p.efforts_for(model),
         warm=not p.per_key, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
-        scan=False, call_style="user", access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
+        scan=False, personal=True, access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
         connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p,
         user_catalog=(lambda user_id: True) if p.per_key else None, public_id=lambda upstream: p.public_prefix + upstream,
         group=p.group, vendor=p.vendor, site=True, admin_anchor="/admin/sources#keyed",
@@ -68,7 +68,7 @@ def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderS
     return ProviderSpec(
         id=id, label=label, type_label=type_label, builder=builder, pool=True,
         ensure=_fn(id, f"ensure_{id}_source"), access=_fn(id, f"{id}_access_state"),
-        own_access=_fn(id, f"{id}_own_access"), call_style="pool", panel=True, admin_anchor="/admin/pools", **kw,
+        own_access=_fn(id, f"{id}_own_access"), panel=True, admin_anchor="/admin/pools", **kw,
     )
 
 
@@ -90,12 +90,12 @@ BUILTIN: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
-        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session", site=True, catalog_ttl=300.0,
+        builder="openai_compat:OpenAICompatSource", builtin=False, site=True, catalog_ttl=300.0,
         admin_anchor="/admin/sources#compat",
     ),
     ProviderSpec(
         id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
-        error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="user",
+        error_label="Ollama Cloud", efforts=_model_efforts("ollama"), personal=True,
         key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"), group="api_key", site=True,
         # /tags plus one /show per model: hourly, not on every page.
         catalog_ttl=3600.0, catalog_state=True,
@@ -182,7 +182,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         builder="explabs:ExperientialLabsSource", error_label="Experiential Labs",
         ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts, public_id=_fn("explabs", "public_id"),
         # Private catalogs: nothing shared to warm or scan.
-        warm=False, scan=False, call_style="user", panel=True, group="api_key",
+        warm=False, scan=False, personal=True, panel=True, group="api_key",
     ),
     ProviderSpec(
         id="openrouter", label="OpenRouter", type_label="OpenRouter", builder="openrouter:OpenRouterSource",
@@ -190,7 +190,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         efforts=_model_efforts("openrouter"),
         # One shared catalog; listable keeps it to users with a key, and only
         # the per-account resolve() admits a model.
-        listable=_fn("openrouter", "listable_models"), scan=False, call_style="user", usage_walk=True,
+        listable=_fn("openrouter", "listable_models"), scan=False, personal=True, usage_walk=True,
         panel=True, group="aggregator", catalog_ttl=600.0, public_id=_fn("openrouter", "public_id"),
         model_groups=(("free", "Free models", True), ("paid", "Paid models", True)),
         model_group=lambda model: "free" if _m("openrouter").model_is_free(model, _m("openrouter").cached_catalog()) else "paid",

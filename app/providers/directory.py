@@ -84,7 +84,7 @@ def admin_overview() -> list[dict]:
         if not sources:
             continue
         kinds = [label for on, label in (
-            (spec.pool, "Pool"), (spec.site, "Site keys"), (spec.call_style == "user", "Personal keys"),
+            (spec.pool, "Pool"), (spec.site, "Site keys"), (spec.personal, "Personal keys"),
         ) if on]
         out.append({"id": spec.id, "label": spec.label, "kinds": kinds, "group": dict(GROUPS)[spec.group],
                     "source_id": sources[0]["id"] if len(sources) == 1 else None,

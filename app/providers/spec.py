@@ -34,8 +34,7 @@ class ProviderSpec:
     upstream: Callable[[str], str] | None = None  # public id -> upstream id
     resolve: Callable | None = None  # async (model, user_id) -> upstream or None
     scan: bool = True  # a model in its cached catalog routes here
-    # Which keyword arguments Source.chat takes (see base.Source).
-    call_style: Literal["plain", "session", "pool", "user"] = "plain"
+    personal: bool = False  # users link their own key (OpenRouter, Experiential Labs, keyed, Ollama)
     # Access. No access callable: every user may use its site sources.
     access: Callable[[int], dict] | None = None  # {"ok": bool, "reason": str, ...}
     own_access: Callable[[int], dict] | None = None  # the user's own accounts alone

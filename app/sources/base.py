@@ -55,18 +55,15 @@ class ChatResult:
 class Source(Protocol):
     """What app.sources builds from a sources row: Class(row, cfg, creds).
 
-    chat() takes the keyword arguments of its spec's call_style
-    (app/providers/spec.py), which api._run_chat passes:
-      plain:   chat(body)
-      session: chat(body, session_id=)
-      pool:    chat(body, session_id=, user_id=[, affinity_id=])
-      user:    chat(body, user_id=, session_id=)
-    models() takes user_id= for "user" sources (per-account catalogs) and
-    nothing otherwise."""
+    Every source takes the same keywords (api._run_chat passes them all; a
+    source ignores what it has no use for):
+      chat(body, *, session_id=None, user_id=None, affinity_id=None)
+      models(*, user_id=None)  # user_id: a per-user catalog (spec.user_catalog)"""
 
     type_id: str
     source_id: int
     name: str
 
-    async def models(self, **kwargs) -> list[str]: ...
-    async def chat(self, body: dict, **kwargs) -> ChatResult: ...
+    async def models(self, *, user_id: int | None = None) -> list[str]: ...
+    async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None,
+                   affinity_id: str | None = None) -> ChatResult: ...

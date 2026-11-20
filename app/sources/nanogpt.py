@@ -863,7 +863,7 @@ class NanoGPTSource:
         self.cfg = cfg
         self.creds = list(creds)
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         catalog = cached_catalog() or await fetch_catalog()
         if not catalog["by_id"]:
             raise RuntimeError("NanoGPT catalog unavailable")

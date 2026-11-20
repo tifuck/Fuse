@@ -784,7 +784,7 @@ class ChatGPTSource:
             why=why,
         )
 
-    async def models(self) -> list[str]:
+    async def models(self, *, user_id: int | None = None) -> list[str]:
         if not self.creds:
             return []
         cached = cached_models(300.0)
