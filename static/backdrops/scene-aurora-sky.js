@@ -113,6 +113,22 @@ function paintSky(s, R, cfg) {
     g.fillStyle = hg;
     g.fillRect(0, h * 0.6, w, h * 0.4);
   }
+  if (cfg.wash) {
+    g.save();
+    g.globalCompositeOperation = "lighter";
+    for (const [x, y, rx, ry, c] of cfg.wash) {
+      const R0 = Math.max(rx * w, 1);
+      const wg = g.createRadialGradient(0, 0, 0, 0, 0, R0);
+      wg.addColorStop(0, c);
+      wg.addColorStop(1, "rgba(0,0,0,0)");
+      g.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+      g.translate(x * w, y * h);
+      g.scale(1, (ry * h) / R0);
+      g.fillStyle = wg;
+      g.fillRect(-R0, -R0, R0 * 2, R0 * 2);
+    }
+    g.restore();
+  }
   dotGrid(g, s, cfg.grid || "#5d8fa0", 0.16);
   if (P) paintPlanet(s, g, R);
   return sky;
@@ -288,7 +304,7 @@ export function field(s, cfg, t) {
       const fold = Math.pow(noise(u * ff + ph + t * 0.018, v * ff + c.ci * 3.3), 1.4);
       const rr = 0.62 * noise(u * fr + t * 0.22, v * fr + c.ci * 7.1 + t * 0.07) + 0.38 * noise(u * fr * 0.31 - t * 0.09, v * fr * 0.31 + ph);
       ray[b] = clamp01((rr - 0.2) * 1.5) ** 1.5;
-      let gl = env * (0.25 + 0.75 * fold) * gain;
+      let gl = env * (0.5 + 0.5 * fold) * gain;
       if (surge) gl *= 1 + surge * Math.exp(-(((p - pc) / 0.16) ** 2));
       I[b] = gl;
       tall[b] = L * c.hr * (0.7 + 0.5 * fold) * (0.8 + 0.4 * ray[b]) * (0.5 + 0.5 * env);
@@ -300,6 +316,7 @@ export function field(s, cfg, t) {
     const pink = c.fringe ?? 0.7;
     const soft = c.soft || 0.03;
     const base = c.base || 0.04;
+    const body = c.body ?? 0.22;
     for (let b = 0; b < nb; b += 1) {
       const Ib = I[b];
       if (Ib <= 0) continue;
@@ -316,7 +333,7 @@ export function field(s, cfg, t) {
         if (cr[m] < lo) j0 = m + 1;
         else j1 = m;
       }
-      const amp = Ib * (0.18 + 0.82 * rb);
+      const amp = Ib * (0.4 + 0.6 * rb);
       const ife = 1 / fe;
       const ic = 1 / (0.08 * H + acell);
       const ib = 1 / (0.4 * H);
@@ -325,7 +342,7 @@ export function field(s, cfg, t) {
         const v = d / H;
         let a;
         if (d < 0) a = (0.55 + base + 0.8 * rb) * ex(-d * ife) * pink;
-        else a = 0.55 * ex(d * ic) + (base + 0.8 * rb) * (1 - v) * (1 - v) * (0.35 + 0.65 * ex(d * ib));
+        else a = 0.55 * ex(d * ic) + (base + 0.8 * rb) * (1 - v) * (1 - v) * (0.35 + 0.65 * ex(d * ib)) + body * (1 - v) * (1 - v);
         a *= amp;
         if (a < 0.004) continue;
         let li = Math.round(((v - LO) / (1 - LO)) * (LUT - 1));
@@ -343,7 +360,8 @@ export function field(s, cfg, t) {
     }
   }
   const px = s.aurImg.data;
-  const gain = 2.8 * (cfg.glow || 1);
+  // A phone's transcript covers the whole width and dims it all: glow harder there.
+  const gain = 3.6 * (cfg.glow || 1) * (s.w < 700 ? 1.45 : 1);
   for (let i = 0, j = 0; i < acc.length; i += 3, j += 4) {
     px[j] = TONE[Math.min(1023, (acc[i] * gain) | 0)];
     px[j + 1] = TONE[Math.min(1023, (acc[i + 1] * gain) | 0)];
@@ -373,7 +391,9 @@ export function buildRays(s, cfg) {
       const dy = Math.abs(y - C.y);
       d = dx < dy * 0.41 ? 0 : dy < dx * 0.41 ? 2 : (x - C.x) * (y - C.y) > 0 ? 3 : 1;
     }
-    s.rt.push(ay * aw + ax, c, r, d);
+    // Glyph rays thin out behind the centre column, where the text sits.
+    const calm = w < 700 ? 0.6 : clamp01((Math.abs(x / w - 0.5) - 0.1) / 0.22);
+    s.rt.push(ay * aw + ax, c, r, d, Math.round(100 * (0.12 + 0.88 * calm)));
   }
   s.rt = Int32Array.from(s.rt);
   const GL = [["|", "!", ":", "'", "."], ["/", "/", ":", "'", "."], ["-", "-", "~", "'", "."], ["\\", "\\", ":", "'", "."]];
@@ -388,7 +408,7 @@ export function drawRays(s, g, t, cfg) {
   const { rt, acc, wmax, dom, cell, rayIds } = s;
   const thr = cfg.rayThr || 0.13;
   const ga = cfg.rayAlpha || 1;
-  for (let j = 0; j < rt.length; j += 4) {
+  for (let j = 0; j < rt.length; j += 5) {
     const o = rt[j];
     const I = (acc[o * 3] + acc[o * 3 + 1] + acc[o * 3 + 2]) / 420;
     if (I < thr || wmax[o] <= 0) continue;
@@ -397,7 +417,7 @@ export function drawRays(s, g, t, cfg) {
     const sh = noise(c * 0.85 + t * 1.3, r * 0.22 - t * 0.45);
     if (sh < 0.4) continue;
     const lv = I > 0.75 ? 0 : I > 0.5 ? 1 : I > 0.3 ? 2 : I > 0.2 ? 3 : 4;
-    put(g, s, rayIds[dom[o]][rt[j + 3]][lv], c * cell, r * cell, Math.min(0.9, (0.18 + I * 0.8) * (sh - 0.28) * 1.9 * ga));
+    put(g, s, rayIds[dom[o]][rt[j + 3]][lv], c * cell, r * cell, Math.min(0.9, (0.18 + I * 0.8) * (sh - 0.28) * 1.9 * ga) * rt[j + 4] * 0.01);
   }
 }
 
@@ -450,7 +470,7 @@ function build(s, cfg) {
     s.L = 0.5 * Math.hypot(w, h);
   } else if (cfg.mode === "orbit") {
     const r = Math.max(w, h) * (h > w ? 1.1 : 1.25);
-    s.planet = { x: w * 0.5, y: h * (h > w ? 0.78 : 0.76) + r, r };
+    s.planet = { x: w * 0.5, y: h * (h > w ? 0.76 : 0.73) + r, r };
     s.center = s.planet;
     s.L = r;
   }
@@ -528,12 +548,13 @@ export const auroraveil = scene({
   sky: [[0, "#010309"], [0.4, "#030c1e"], [0.8, "#06192a"], [1, "#0a242e"]],
   stars: 1.6,
   glyphStars: 70,
-  horizon: "rgba(30,150,110,0.14)",
+  horizon: "rgba(30,150,110,0.16)",
+  wash: [[0.5, 0.62, 0.7, 0.32, "rgba(40,200,140,0.12)"], [0.25, 0.3, 0.35, 0.2, "rgba(60,110,200,0.06)"]],
   meteor: true,
   curtains: [
-    { y: 0.36, amp: 0.05, hr: 0.22, gain: 0.5, x0: 0.25, x1: 1.15, drift: 3, lut: GREEN, rays: 0.06 },
-    { y: 0.52, amp: 0.07, hr: 0.34, gain: 0.8, x0: -0.15, x1: 0.72, drift: 6, lut: GREEN },
-    { y: 0.74, amp: 0.08, hr: 0.5, gain: 1.15, x0: 0.08, x1: 1.1, drift: 9, lut: GREEN, rays: 0.04 },
+    { y: 0.4, amp: 0.06, hr: 0.32, gain: 0.7, x0: -0.25, x1: 1.25, drift: 3, lut: GREEN, rays: 0.06 },
+    { y: 0.58, amp: 0.08, hr: 0.46, gain: 0.95, x0: -0.3, x1: 0.95, drift: 6, lut: GREEN },
+    { y: 0.8, amp: 0.08, hr: 0.62, gain: 1.25, x0: -0.2, x1: 1.3, drift: 9, lut: GREEN, rays: 0.04 },
   ],
 });
 
@@ -544,13 +565,14 @@ export const auroracorona = scene({
   stars: 1.3,
   glyphStars: 55,
   zenith: true,
+  wash: [[0.5, 0.4, 0.55, 0.6, "rgba(60,190,150,0.1)"], [0.5, 0.38, 0.22, 0.32, "rgba(140,100,230,0.1)"]],
   breathe: true,
   grid: "#6a6aa8",
   glow: 1.5,
   curtains: [
-    { y: 0.95, amp: 0.16, hr: 0.85, gain: 1.25, x0: -1, x1: 2, drift: 0, lut: CORONA, rays: 0.028, fold: 0.003, patch: 0.15, soft: 0.2 },
-    { y: 0.66, amp: 0.14, hr: 0.6, gain: 0.9, x0: -1, x1: 2, drift: 0, lut: CORONA, rays: 0.036, fold: 0.004, patch: 0.05, soft: 0.2 },
-    { y: 0.4, amp: 0.1, hr: 0.36, gain: 0.55, x0: -1, x1: 2, drift: 0, lut: VIOLET, rays: 0.05, fold: 0.005, patch: 0, soft: 0.25, fringe: 0.5 },
+    { y: 0.9, amp: 0.14, hr: 0.85, gain: 1.35, x0: -1, x1: 2, drift: 0, lut: CORONA, rays: 0.028, fold: 0.003, patch: 0.35, soft: 0.2 },
+    { y: 0.62, amp: 0.12, hr: 0.6, gain: 1.05, x0: -1, x1: 2, drift: 0, lut: CORONA, rays: 0.036, fold: 0.004, patch: 0.25, soft: 0.2 },
+    { y: 0.36, amp: 0.1, hr: 0.34, gain: 0.7, x0: -1, x1: 2, drift: 0, lut: VIOLET, rays: 0.05, fold: 0.005, patch: 0.2, soft: 0.25, fringe: 0.5 },
   ],
 });
 
@@ -561,35 +583,37 @@ export const auroracrimson = scene({
   sky: [[0, "#060208"], [0.45, "#100516"], [0.85, "#140818"], [1, "#0c0e14"]],
   stars: 1.1,
   glyphStars: 45,
-  horizon: "rgba(160,30,70,0.12)",
+  horizon: "rgba(160,30,70,0.14)",
+  wash: [[0.5, 0.55, 0.75, 0.4, "rgba(200,30,80,0.12)"], [0.7, 0.2, 0.4, 0.25, "rgba(120,50,200,0.07)"]],
   grid: "#a06080",
   storm: true,
-  glow: 1.2,
+  glow: 1.25,
   curtains: [
-    { y: 0.5, amp: 0.06, hr: 0.42, gain: 0.55, x0: 0.3, x1: 1.3, drift: 4, lut: CRIMSON, rays: 0.05, base: 0.14 },
-    { y: 0.82, amp: 0.07, hr: 0.72, gain: 0.95, x0: -0.3, x1: 0.85, drift: 7, lut: CRIMSON, rays: 0.035, base: 0.14 },
-    { y: 0.93, amp: 0.05, hr: 0.62, gain: 0.65, x0: 0.45, x1: 1.3, drift: 10, lut: CRIMSON, rays: 0.04, base: 0.14 },
+    { y: 0.5, amp: 0.06, hr: 0.48, gain: 0.8, x0: -0.2, x1: 1.3, drift: 4, lut: CRIMSON, rays: 0.05, base: 0.14 },
+    { y: 0.8, amp: 0.07, hr: 0.75, gain: 1.05, x0: -0.3, x1: 1.0, drift: 7, lut: CRIMSON, rays: 0.035, base: 0.14 },
+    { y: 0.93, amp: 0.05, hr: 0.66, gain: 0.85, x0: 0.2, x1: 1.3, drift: 10, lut: CRIMSON, rays: 0.04, base: 0.14 },
   ],
 });
 
-// Ribbons: thin bands of teal and violet at different heights, each
-// drifting at its own speed, the Milky Way behind them.
+// Ribbons: bands of teal and violet at different heights, each drifting
+// at its own speed, the Milky Way behind them.
 export const aurorabands = scene({
   mode: "line",
   sky: [[0, "#02030a"], [0.5, "#050a1a"], [1, "#071420"]],
   stars: 1.2,
   glyphStars: 50,
-  milky: { x: 0.5, y: 0.45, angle: -0.42, width: 0.26, alpha: 0.075 },
+  milky: { x: 0.5, y: 0.45, angle: -0.42, width: 0.26, alpha: 0.09 },
+  wash: [[0.5, 0.5, 0.75, 0.45, "rgba(70,120,210,0.08)"]],
   grid: "#6080b0",
   rayThr: 0.16,
-  rayAlpha: 0.8,
-  glow: 1.2,
+  rayAlpha: 0.9,
+  glow: 1.5,
   curtains: [
-    { y: 0.2, amp: 0.035, hr: 0.11, gain: 0.45, x0: -0.3, x1: 1.3, drift: 2, lut: VIOLET, rays: 0.06, f: 0.006, soft: 0.3, fringe: 0.6 },
-    { y: 0.35, amp: 0.045, hr: 0.13, gain: 0.6, x0: -0.3, x1: 0.95, drift: 5, lut: TEAL, rays: 0.05, f: 0.005, soft: 0.3, fringe: 0.6 },
-    { y: 0.51, amp: 0.05, hr: 0.15, gain: 0.7, x0: 0.1, x1: 1.3, drift: 9, lut: VIOLET, rays: 0.045, f: 0.0045, soft: 0.3, fringe: 0.6 },
-    { y: 0.67, amp: 0.055, hr: 0.17, gain: 0.85, x0: -0.3, x1: 1.3, drift: 14, lut: TEAL, rays: 0.04, f: 0.004, soft: 0.3, fringe: 0.6 },
-    { y: 0.85, amp: 0.05, hr: 0.19, gain: 0.7, x0: -0.3, x1: 0.9, drift: 20, lut: GREEN, rays: 0.035, f: 0.0035, soft: 0.25, fringe: 0.5 },
+    { y: 0.22, amp: 0.04, hr: 0.16, gain: 0.8, x0: -0.3, x1: 1.3, drift: 2, lut: VIOLET, rays: 0.06, f: 0.006, soft: 0.3, fringe: 0.6, body: 0.35 },
+    { y: 0.38, amp: 0.05, hr: 0.18, gain: 0.95, x0: -0.3, x1: 1.3, drift: 5, lut: TEAL, rays: 0.05, f: 0.005, soft: 0.3, fringe: 0.6, body: 0.35 },
+    { y: 0.54, amp: 0.05, hr: 0.2, gain: 1.0, x0: -0.3, x1: 1.3, drift: 9, lut: VIOLET, rays: 0.045, f: 0.0045, soft: 0.3, fringe: 0.6, body: 0.35 },
+    { y: 0.7, amp: 0.055, hr: 0.22, gain: 1.1, x0: -0.3, x1: 1.3, drift: 14, lut: TEAL, rays: 0.04, f: 0.004, soft: 0.3, fringe: 0.6, body: 0.35 },
+    { y: 0.87, amp: 0.05, hr: 0.24, gain: 1.0, x0: -0.3, x1: 1.3, drift: 20, lut: GREEN, rays: 0.035, f: 0.0035, soft: 0.25, fringe: 0.5, body: 0.35 },
   ],
 });
 
@@ -601,11 +625,13 @@ export const auroraorbit = scene({
   stars: 1.5,
   glyphStars: 45,
   starFloor: 1,
+  wash: [[0.5, 0.72, 0.75, 0.3, "rgba(40,210,150,0.12)"]],
   grid: "#5a6aa0",
-  glow: 1.4,
+  glow: 1.7,
   curtains: [
-    { y: 1.004, amp: 0.005, hr: 0.1, gain: 1.2, base: 0.25, x0: -0.1, x1: 0.95, drift: 5, lut: GREEN, rays: 0.05, fold: 0.003, soft: 0.06 },
-    { y: 1.0, amp: 0.004, hr: 0.05, gain: 0.7, x0: 0.2, x1: 1.2, drift: 8, lut: TEAL, rays: 0.06, fold: 0.004, soft: 0.2, fringe: 0.3 },
+    { y: 1.004, amp: 0.006, hr: 0.22, gain: 1.5, base: 0.25, x0: -0.3, x1: 1.3, drift: 5, lut: GREEN, rays: 0.05, fold: 0.003, soft: 0.06, body: 0.35 },
+    { y: 1.0, amp: 0.004, hr: 0.09, gain: 1.0, x0: -0.3, x1: 1.3, drift: 8, lut: TEAL, rays: 0.06, fold: 0.004, soft: 0.2, fringe: 0.3 },
+    { y: 1.07, amp: 0.008, hr: 0.18, gain: 0.5, x0: 0.1, x1: 1.3, drift: 3, lut: VIOLET, rays: 0.04, fold: 0.003, soft: 0.3, fringe: 0.2 },
   ],
 });
 
@@ -615,13 +641,14 @@ export const auroraridge = scene({
   sky: [[0, "#010308"], [0.45, "#03101e"], [0.85, "#072030"], [1, "#0a2a34"]],
   stars: 1.4,
   glyphStars: 60,
-  horizon: "rgba(40,190,130,0.18)",
+  horizon: "rgba(40,190,130,0.2)",
+  wash: [[0.5, 0.7, 0.8, 0.35, "rgba(40,200,140,0.12)"]],
   rayFloor: 0.95,
   ridge: true,
   meteor: true,
   curtains: [
-    { y: 0.42, amp: 0.05, hr: 0.26, gain: 0.45, x0: -0.2, x1: 0.7, drift: 3, lut: TEAL, rays: 0.06 },
-    { y: 0.62, amp: 0.07, hr: 0.4, gain: 0.75, x0: 0.3, x1: 1.2, drift: 6, lut: GREEN },
-    { y: 0.86, amp: 0.06, hr: 0.6, gain: 1.1, x0: -0.2, x1: 1.2, drift: 9, lut: GREEN, rays: 0.035 },
+    { y: 0.42, amp: 0.05, hr: 0.34, gain: 0.7, x0: -0.3, x1: 1.0, drift: 3, lut: TEAL, rays: 0.06 },
+    { y: 0.62, amp: 0.07, hr: 0.5, gain: 0.95, x0: 0.0, x1: 1.3, drift: 6, lut: GREEN },
+    { y: 0.85, amp: 0.06, hr: 0.7, gain: 1.25, x0: -0.3, x1: 1.3, drift: 9, lut: GREEN, rays: 0.035 },
   ],
 });
