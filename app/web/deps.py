@@ -54,7 +54,6 @@ logger = logging.getLogger("app.web")
 _pending: dict[int, dict] = {}
 _chatgpt_pending: dict[int, dict] = {}
 _devin_pending: dict[int, dict] = {}
-_kimi_pending: dict[int, dict] = {}
 _mimo_pending: dict[int, dict] = {}
 _claude_pending: dict[int, dict] = {}
 _cursor_pending: dict[int, dict] = {}

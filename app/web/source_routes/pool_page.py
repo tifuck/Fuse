@@ -24,8 +24,9 @@ from ...sources import zai as zai_mod
 from ...sources.grok import ensure_grok_source, grok_access_state, is_held
 from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_usage_percent, grok_usage_percent
 from ...sources import pool_policy
+from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _chatgpt_pending_for, _claude_pending_for, _cursor_pending_for, _devin_pending_for, _kimi_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pending_for, _pool_card
+from .context import _chatgpt_pending_for, _claude_pending_for, _cursor_pending_for, _devin_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pending_for, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -282,7 +283,7 @@ def user_sources(request: Request):
     _sort_mine_first(kimi_visible)
     kimi_pool = stats.kimi_pool_meter(kimi_routable, owner_id=user["id"])
     _fuse_fill(kimi_visible)
-    kimi_pending = _kimi_pending_for(user["id"])
+    kimi_pending = logins.get(user["id"], "kimi", clamp=True)
     kimi_interval = 5
     kimi_verify = ""
     kimi_code = ""

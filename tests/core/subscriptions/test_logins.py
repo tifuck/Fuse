@@ -3,11 +3,13 @@ end once (a cancelled or replaced attempt never links an account), keep the
 device-code answers of RFC 8628, and match callbacks by state. Removing an
 account is one route for every provider: donor or admin only, with the
 provider's revoke call where it has one."""
+import asyncio
 import time
 from unittest.mock import AsyncMock, patch
 
 from app import db
 from app.providers import auth_flows, logins
+from app.sources import kimi
 from app.web.deps import _pool_flash
 from tests.core.auth._support import sign_in, web_client
 from tests.core.subscriptions._support import account, row, user
@@ -71,3 +73,18 @@ def test_one_revoke_route_for_every_provider(fresh_db):
     assert row(claude_cred)["disabled"] == 1 and row(kimi_cred)["disabled"] == 1
     assert _pool_flash.pop(alice)[1:] == ("Kimi account removed.", "kimi")
 
+
+def test_generic_sign_in_urls_reach_the_providers_handlers(fresh_db, monkeypatch):
+    uid = user()
+    monkeypatch.setattr(kimi, "start_device", AsyncMock(return_value={
+        "device_code": "dc", "user_code": "UC", "interval": 5, "_region": "global", "_device_id": "d"}))
+    with web_client() as web:
+        sign_in(web, uid)
+        assert web.post("/sources/p/kimi/connect", data={"region": "global"}, follow_redirects=False).status_code == 303
+        assert logins.get(uid, "kimi")["device_code"] == "dc"
+        monkeypatch.setattr(kimi, "poll_device", AsyncMock(return_value={"error": "authorization_pending"}))
+        assert web.post("/sources/p/kimi/poll").json() == {"pending": True, "retry_after": 5}
+        assert web.post("/pool/kimi/poll").json() == {"pending": True, "retry_after": 5}  # older URL still works
+        web.post("/sources/p/kimi/cancel", follow_redirects=False)
+    assert logins.get(uid, "kimi") is None
+    assert asyncio.run(auth_flows.api_key_paste("deepseek", "x", user_id=uid)) == (None, "Enter a DeepSeek API key.")

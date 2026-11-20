@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import time
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import kimi as kimi_mod
-from ..deps import _kimi_pending, _pool_flash, logger, require_user
-from .context import _kimi_pending_for, _oauth_tokens, _terminal_oauth_error
+from ...providers import auth_flows, logins
+from ..deps import _pool_flash, logger, require_user
+from .sign_in import revoke
+from .context import _oauth_tokens
 
 router = APIRouter()
 
@@ -40,7 +42,7 @@ async def kimi_start(request: Request, region: str = Form("global")):
         _pool_flash[user["id"]] = ("err", "Kimi returned an invalid sign-in response. Try again shortly.", "kimi")
         return RedirectResponse("/sources", status_code=303)
     data["_started"] = time.time()
-    _kimi_pending[user["id"]] = data
+    logins.put(user["id"], "kimi", data)
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -50,7 +52,7 @@ async def kimi_poll(request: Request):
     user, redir = require_user(request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
-    pending = _kimi_pending_for(user["id"])
+    pending = logins.get(user["id"], "kimi", clamp=True)
     if not pending:
         return JSONResponse({"error": "No Kimi sign-in in progress."}, status_code=400)
     region = str(pending.get("_region") or "global")
@@ -83,9 +85,8 @@ async def kimi_poll(request: Request):
             if profile.get("account_id"):
                 tokens["account_id"] = profile["account_id"]
         # Cancelled or restarted while Kimi answered: do not donate it.
-        if _kimi_pending.get(user["id"]) is not pending:
+        if not logins.claim(user["id"], "kimi", pending):
             return JSONResponse({"error": "That Kimi sign-in was cancelled or replaced."}, status_code=409)
-        _kimi_pending.pop(user["id"], None)
         sid = kimi_mod.ensure_kimi_source()
         cred_id = kimi_mod.store_tokens(
             sid,
@@ -103,24 +104,8 @@ async def kimi_poll(request: Request):
                 logger.warning("Kimi quota refresh failed after OAuth", exc_info=True)
         invalidate_model_cache("kimi")
         return JSONResponse({"ok": True})
-    err = data.get("error")
-    if err == "slow_down":
-        try:
-            current_interval = int(pending.get("interval") or 5)
-        except (TypeError, ValueError):
-            current_interval = 5
-        pending["interval"] = min(30, max(3, current_interval) + 5)
-        return JSONResponse({"pending": True, "error": "Kimi asked Fuse to poll more slowly.", "retry_after": pending["interval"]})
-    if err == "authorization_pending":
-        return JSONResponse({"pending": True, "retry_after": pending.get("interval", 5)})
-    error_text = str(err or data.get("error_description") or "")
-    if _terminal_oauth_error(error_text):
-        _kimi_pending.pop(user["id"], None)
-        return JSONResponse({"error": "Kimi sign-in was denied or expired. Start again."}, status_code=400)
-    return JSONResponse(
-        {"pending": True, "error": "Kimi returned an unexpected response; retrying.", "retry_after": pending.get("interval", 5)},
-        status_code=502,
-    )
+    status, body = auth_flows.device_step(user["id"], "kimi", "Kimi", pending, data)
+    return JSONResponse(body, status_code=status)
 
 
 @router.post("/sources/kimi/cancel")
@@ -129,7 +114,7 @@ async def kimi_cancel(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
-    _kimi_pending.pop(user["id"], None)
+    logins.drop(user["id"], "kimi")
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -155,16 +140,4 @@ async def kimi_add(request: Request, api_key: str = Form(""), label: str = Form(
 @router.post("/sources/kimi/{cred_id}/revoke")
 @router.post("/pool/kimi/{cred_id}/revoke")
 async def kimi_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = kimi_mod.ensure_kimi_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    kimi_mod.disable_credential(cred_id)
-    invalidate_model_cache("kimi")
-    _pool_flash[user["id"]] = ("ok", "Kimi account removed.", "kimi")
-    return RedirectResponse("/sources", status_code=303)
+    return await revoke(request, "kimi", cred_id)
