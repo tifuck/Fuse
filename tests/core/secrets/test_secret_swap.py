@@ -394,3 +394,26 @@ def test_unreadable_pairs_stop_the_turn_before_the_model_is_called(swap):
     assert chats.get_thread(uid, swap.public_id) is not None  # the chat still opens
     with pytest.raises(secret_swap.SwapUnavailable):
         secret_swap.for_thread(uid, swap.thread_id)
+
+
+def test_with_the_site_switch_off_nothing_new_is_swapped_and_old_stand_ins_still_restore(fresh_db, monkeypatch):
+    uid = quick_user()
+    db.execute("UPDATE users SET chat_secret_swap=1 WHERE id=?", (uid,))
+    old = chats.resolve_thread_pk(uid, chats.create_thread(uid, model="offline", tools=[])["id"])
+    db.execute("UPDATE chat_threads SET secret_swap=1 WHERE id=?", (old,))
+    key = "sk-proj-" + "Qx7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0Ga" * 2
+    fake = secret_swap.for_thread(uid, old).tokenize(f"OPENAI_API_KEY={key}").split("=", 1)[1]
+    assert fake != key
+    monkeypatch.setattr(secret_swap.settings, "secret_swap_enabled", False)
+    swap = secret_swap.for_thread(uid, old)
+    assert swap.tokenize(f"again {key}") == f"again {key}"
+    rows = [{"role": "user", "content": f"KEY={key}"}]
+    assert swap.prepare(rows) is False and rows[0]["content"] == f"KEY={key}"
+    assert swap.leaks(rows) == []
+    assert swap.restore_args("run_terminal_command", json.dumps({"command": f"echo {fake}"})) == (
+        json.dumps({"command": f"echo {key}"}), True)
+    assert secret_swap.for_user(uid) is None
+    new = chats.resolve_thread_pk(uid, chats.create_thread(uid, model="offline", tools=[])["id"])
+    with db.tx() as conn:
+        secret_swap.enable_for_new_thread(conn, {"chat_secret_swap": 1}, new, [])
+    assert secret_swap.for_thread(uid, new) is None

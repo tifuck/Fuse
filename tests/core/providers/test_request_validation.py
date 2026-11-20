@@ -8,7 +8,7 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
-from app import api, chat_runs
+from app import api, chat_runs, model_caps
 from tests.core.helpers import quick_user
 
 from ._support import completion, key, route, source
@@ -127,3 +127,28 @@ def test_unknown_and_unavailable_models_say_which(uid, upstream):
     sources._unavailable_types.add("openai")
     err = _rejected(uid, {"model": "nope", "messages": _user("x")})
     assert (err.status_code, err.detail) == (503, "Model catalog is temporarily unavailable")
+
+def test_message_checks_and_image_preparation_run_off_the_event_loop(uid, monkeypatch):
+    on_loop = {}
+
+    def watched(name, fn):
+        def run(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                on_loop[name] = True
+            except RuntimeError:
+                on_loop[name] = False
+            return fn(*args, **kwargs)
+        return run
+
+    for name in ("_validate_messages", "_ensure_encodable"):
+        monkeypatch.setattr(api, name, watched(name, getattr(api, name)))
+    monkeypatch.setattr(model_caps, "prepare", watched("prepare", model_caps.prepare))
+
+    *_, result = _invoke(uid, {"messages": _user([{"type": "image_url", "image_url": {"url": PNG}}])})
+    assert result.status == 200
+    assert on_loop == {"_validate_messages": False, "_ensure_encodable": False, "prepare": False}
+    # Still the same client error, now raised in the worker thread.
+    bad = {"type": "image_url", "image_url": {"url": "data:image/png;base64,@@@"}}
+    err = _rejected(uid, {"messages": _user([bad])})
+    assert err.status_code == 400 and "Invalid base64" in err.detail

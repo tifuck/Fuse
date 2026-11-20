@@ -172,3 +172,18 @@ def test_an_admin_route_onto_any_pool_obeys_that_pools_gate(fresh_db, kind):
                                          "nanogpt", "refuseless") if k != kind}
     assert _pick("alias", **others) is None
     assert _pick("alias", **{f"allow_{kind}": True}) == (kind, "up-model")
+
+def test_a_fallback_pick_reads_the_enabled_sources_once(fresh_db, upstream, monkeypatch):
+    upstream.on("GET", "/models", httpx.Response(200, json={"data": []}))
+    source("llama", {"base_url": "https://llama.test", "model": "local"})
+    reads = []
+    real = sources.all_enabled
+
+    def counted():
+        reads.append(1)
+        return real()
+
+    monkeypatch.setattr(sources, "all_enabled", counted)
+    # Every fallback step runs: OpenRouter, the union, the scan, the lone llama.
+    assert _pick("anything") == ("llama", "anything")
+    assert len(reads) == 1

@@ -8,12 +8,20 @@ stand-ins it was given, as a model would.
 import json
 import re
 
+import pytest
+
 from app import chats, hosts
+from app.config import settings
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames, tool_call_frames
 from tests.core.tools._support import make_project
 
 OPENAI = "sk-proj-" + "Q7v2Lp9X" * 6
 GITHUB = "ghp_" + "R4m8Tz2Kc9" * 3 + "W1x5Yb"
+
+
+@pytest.fixture(autouse=True)
+def swap_on(monkeypatch):
+    monkeypatch.setattr(settings, "secret_swap_enabled", True)
 
 
 def sent(body):

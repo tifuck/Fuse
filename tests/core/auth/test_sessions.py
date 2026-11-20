@@ -298,6 +298,24 @@ def test_registration_attempts_share_the_address_limit(web, monkeypatch, tight_l
     assert web.post("/register", data=form, follow_redirects=False).status_code == 429
 
 
+def test_a_session_check_is_one_query_revoked_or_not(fresh_db, monkeypatch):
+    uid = quick_user("ada@core.test")
+    user = accounts.get_user(uid)
+    session = {}
+    accounts.start_session(session, user)
+    real, calls = db.tx, []
+
+    def counted():
+        calls.append(1)
+        return real()
+
+    monkeypatch.setattr(db, "tx", counted)
+    assert accounts.session_user(session) == user and len(calls) == 1
+    accounts.revoke_session(session)
+    calls.clear()
+    assert accounts.session_user(session) is None and len(calls) == 1
+
+
 def test_a_forged_cookie_signed_with_another_secret_is_ignored(web):
     import base64
     import json

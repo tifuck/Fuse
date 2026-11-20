@@ -491,7 +491,7 @@ class _TapResponse(StreamingResponse):
 
 @router.get("/v1/models")
 async def list_models(request: Request):
-    user = require_key(request)
+    user = await asyncio.to_thread(require_key, request)
     names = await models_union(user_id=user["id"])
     if not names and catalog_unavailable_for(""):
         raise HTTPException(503, "Model catalog is temporarily unavailable")
@@ -507,7 +507,7 @@ async def list_models(request: Request):
 
 @router.get("/v1/opencode")
 async def opencode_provider(request: Request):
-    user = require_key(request)
+    user = await asyncio.to_thread(require_key, request)
     entries = await opencode_mod.model_options(user["id"])
     if not entries and catalog_unavailable_for(""):
         raise HTTPException(503, "Model catalog is temporarily unavailable")
@@ -558,6 +558,22 @@ def _set_cheap_reasoning(body: dict, type_id: str, model: str, user_id: int) -> 
         body["reasoning_effort"] = effort
 
 
+def _prepare_images(original, type_id: str, upstream: str, user_id: int, images: dict) -> tuple[list, int, int]:
+    """model_caps.prepare, shedding older images while the request's inline
+    image data is over _MAX_IMAGE_CHARS. Returns (messages, omitted, shed)."""
+    messages, omitted = model_caps.prepare(original, type_id, upstream, user_id=user_id, snapshot=images)
+    shed_total = 0
+    while model_caps.inline_image_chars(messages) > _MAX_IMAGE_CHARS:
+        shed = model_caps.shed(images, type_id, upstream, reason="size")
+        if not shed:
+            break
+        shed_total += shed
+        logger.warning("Request image data over %s chars provider=%s model=%s; dropped %s older image(s)",
+                       _MAX_IMAGE_CHARS, type_id, upstream, shed)
+        messages, omitted = model_caps.prepare(original, type_id, upstream, user_id=user_id, snapshot=images)
+    return messages, omitted, shed_total
+
+
 async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: bool = False,
                        image_snapshot: dict | None = None, prepared=None, secret_swap=None):
     user = dict(user)
@@ -570,7 +586,10 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
         # Stored transcripts keep large images once per thread; providers get
         # the same inline bytes as the first time. Lookups are this user's own.
         body = {**body, "messages": await asyncio.to_thread(chat_images.rehydrate, user["id"], body["messages"])}
-    _validate_messages(body.get("messages"), retained=bool(request.scope.get("fuse_retained_history")))
+    # Validation decodes every distinct image: off the loop, like the image
+    # work below, so one large transcript does not stall every other stream.
+    await asyncio.to_thread(_validate_messages, body.get("messages"),
+                            retained=bool(request.scope.get("fuse_retained_history")))
     if secret_swap is not None:
         leaked = await asyncio.to_thread(secret_swap.leaks, body.get("messages"))
         if leaked:
@@ -630,25 +649,15 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     src, upstream = picked
     if not access.allows(src.type_id):
         raise HTTPException(403, pool_denial_message(src.type_id, user["id"]))
-    _ensure_encodable(body)
+    await asyncio.to_thread(_ensure_encodable, body)
     requested = model
     if cheap_reasoning:
         _set_cheap_reasoning(body, src.type_id, model, user["id"])
     body["model"] = upstream
     original = body["messages"]
     images = image_snapshot if image_snapshot is not None else {}
-    body["messages"], omitted = model_caps.prepare(original, src.type_id, upstream,
-                                                   user_id=user["id"], snapshot=images)
-    shed_total = 0
-    while model_caps.inline_image_chars(body["messages"]) > _MAX_IMAGE_CHARS:
-        shed = model_caps.shed(images, src.type_id, upstream, reason="size")
-        if not shed:
-            break
-        shed_total += shed
-        logger.warning("Request image data over %s chars provider=%s model=%s; dropped %s older image(s)",
-                       _MAX_IMAGE_CHARS, src.type_id, upstream, shed)
-        body["messages"], omitted = model_caps.prepare(original, src.type_id, upstream,
-                                                       user_id=user["id"], snapshot=images)
+    body["messages"], omitted, shed_total = await asyncio.to_thread(
+        _prepare_images, original, src.type_id, upstream, user["id"], images)
     if prepared is not None:
         await prepared()
     affinity_id = None
@@ -687,8 +696,8 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
         await asyncio.to_thread(_safe_record_usage, user["id"], src.source_id, result.credential_id, upstream,
                                 result.usage, key_id=user.get("key_id"), provider=src.type_id,
                                 requested_model=requested, request_status="failed", count_request=False)
-        body["messages"], omitted = model_caps.prepare(original, src.type_id, upstream,
-                                                       user_id=user["id"], snapshot=images)
+        body["messages"], omitted = await asyncio.to_thread(model_caps.prepare, original, src.type_id, upstream,
+                                                            user_id=user["id"], snapshot=images)
         if prepared is not None:
             await prepared()
     if result.status != 200:
@@ -797,7 +806,7 @@ def _release(user_id: int, token) -> None:
 async def chat_completions(request: Request):
     from .web.deps import _json_object
 
-    user = require_key(request)
+    user = await asyncio.to_thread(require_key, request)
     token = _admit(user["id"])
     if token is None:
         raise HTTPException(429, "Too many concurrent requests")

@@ -454,12 +454,12 @@ def catalog_unavailable_for(model: str) -> bool:
     return bool(_unavailable_types & {"llama", "openai", "ollama"})
 
 
-def _sources(access: Access) -> list[Source]:
-    return [s for s in all_enabled() if access.allows(s.type_id)]
+def _sources(access: Access, enabled: list[Source] | None = None) -> list[Source]:
+    return [s for s in (all_enabled() if enabled is None else enabled) if access.allows(s.type_id)]
 
 
-def _openrouter_source() -> Source | None:
-    for s in all_enabled():
+def _openrouter_source(enabled: list[Source] | None = None) -> Source | None:
+    for s in all_enabled() if enabled is None else enabled:
         if s.type_id == "openrouter":
             return s
     return None
@@ -491,8 +491,9 @@ def _seed_pool_catalogs() -> None:
             _cache[s.source_id] = (stale, list(names))
 
 
-async def models_union(*, user_id: int | None = None, access: Access | None = None) -> list[str]:
-    sources = _sources(access or Access(user_id))
+async def models_union(*, user_id: int | None = None, access: Access | None = None,
+                       enabled: list[Source] | None = None) -> list[str]:
+    sources = _sources(access or Access(user_id), enabled)
     results = await asyncio.gather(*(_user_source_models(s, user_id) for s in sources))
     names: list[str] = []
     for m in results:
@@ -553,24 +554,27 @@ async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Sou
             if await openrouter_mod.resolve(openrouter_mod.public_id(upstream), user_id):
                 return src, upstream
             return None
+    # One read of the enabled sources serves every lookup below (two queries
+    # each, and this runs on every routed request).
+    enabled = all_enabled()
     # Claims by name (registry order). A hard claim never leaves its provider;
     # a soft one falls through when its provider cannot take the id.
     for spec in registry.claim_order():
         if not spec.claims(model):
             continue
         if access.allows(spec.id):
-            for s in all_enabled():
+            for s in enabled:
                 if s.type_id == spec.id:
                     return await _claimed(spec, s, model, user_id)
         if spec.claim == "hard":
             return None
-    or_src = _openrouter_source()
+    or_src = _openrouter_source(enabled)
     if or_src:
         resolved = await openrouter_mod.resolve(model, user_id)
         if resolved:
             return or_src, resolved[0]
-    await models_union(user_id=user_id, access=access)
-    for s in _sources(access):
+    await models_union(user_id=user_id, access=access, enabled=enabled)
+    for s in _sources(access, enabled):
         # OpenRouter's _cache is whichever account refreshed last; only its
         # per-account resolve() above may admit a model for this user.
         # NanoGPT's lists every catalog id; its resolve() applies the user's list.
@@ -584,15 +588,15 @@ async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Sou
         if model in names:
             return s, spec.upstream(model) if spec.upstream else model
     no_gates = Access()
-    for s in _sources(no_gates):
+    for s in _sources(no_gates, enabled):
         if s.type_id != "llama":
             continue
         cfg = getattr(s, "cfg", None) or {}
         named = str(cfg.get("model") or "")
         if named and named not in ("local", "llama") and model == named:
             return s, named
-    others = [s for s in _sources(no_gates) if s.type_id == "llama"]
-    if len(others) == 1 and len(_sources(no_gates)) == 1:
+    others = [s for s in _sources(no_gates, enabled) if s.type_id == "llama"]
+    if len(others) == 1 and len(_sources(no_gates, enabled)) == 1:
         return others[0], model
     return None
 

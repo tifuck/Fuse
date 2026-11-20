@@ -121,3 +121,17 @@ def test_concurrent_requests_per_account_are_capped_and_given_back(web, served, 
     bad = web.post("/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, content=b"{not json")
     assert bad.status_code == 400
     assert uid not in api._in_flight
+
+
+def test_a_key_used_again_within_a_minute_is_not_rewritten(fresh_db):
+    uid = quick_user()
+    raw = accounts.create_api_key(uid, "ci")
+    user = accounts.user_by_api_key(raw)
+    assert user["id"] == uid and "key_last_used_at" not in user
+    assert accounts.keys_for(uid)[0]["last_used_at"]
+    with patch.object(db, "execute", side_effect=AssertionError("last_used_at rewritten")):
+        assert accounts.user_by_api_key(raw)["id"] == uid
+    stale = "2020-01-01T00:00:00Z"
+    db.execute("UPDATE api_keys SET last_used_at=? WHERE user_id=?", (stale, uid))
+    accounts.user_by_api_key(raw)
+    assert accounts.keys_for(uid)[0]["last_used_at"] > stale
