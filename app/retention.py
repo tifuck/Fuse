@@ -50,7 +50,6 @@ def init_schema(conn):
     db._ensure_column(conn, "chat_threads", "archived_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "chat_threads", "active_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "chat_threads", "archived_by_project", "INTEGER NOT NULL DEFAULT 0")
-    db._ensure_column(conn, "chat_threads", "media_purged_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "users", "retention_archive_hours", "INTEGER NOT NULL DEFAULT 0")
     db._ensure_column(conn, "users", "retention_archive_chats", "INTEGER NOT NULL DEFAULT 1")
     db._ensure_column(conn, "users", "retention_archive_projects", "INTEGER NOT NULL DEFAULT 1")
@@ -63,6 +62,10 @@ def init_schema(conn):
             mime TEXT NOT NULL,
             data BLOB NOT NULL,
             updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS chat_media_purges (
+            thread_id INTEGER PRIMARY KEY REFERENCES chat_threads(id) ON DELETE CASCADE,
+            purged_at TEXT NOT NULL
         );
     """)
 
@@ -145,7 +148,7 @@ def _latest(*values) -> str:
 def _thread_activity(conn, user_id: int) -> tuple[list[dict], set[int]]:
     rows = conn.execute(
         """SELECT id, kind, project_id, archived, archived_at, archived_by_project, schedule_id,
-                  created_at, updated_at, active_at, revision, pinned, media_purged_at
+                  created_at, updated_at, active_at, revision, pinned
            FROM chat_threads WHERE user_id=?""",
         (user_id,),
     ).fetchall()
@@ -492,7 +495,12 @@ def _purge_thread_media(user_id: int, thread: dict) -> int | None:
         history = _strip_history(row["retained_history"], messages, stripped)
         shas = [r["sha"] for r in conn.execute("SELECT sha FROM chat_images WHERE thread_id=?", (tid,)).fetchall()]
         conn.execute("DELETE FROM chat_images WHERE thread_id=?", (tid,))
-        sets, args = ["media_purged_at=?"], [db.now()]
+        conn.execute(
+            "INSERT INTO chat_media_purges(thread_id, purged_at) VALUES(?,?)"
+            " ON CONFLICT(thread_id) DO UPDATE SET purged_at=excluded.purged_at",
+            (tid, db.now()),
+        )
+        sets, args = [], []
         if history is not None:
             sets.append("retained_history=?")
             args.append(history)
@@ -500,7 +508,8 @@ def _purge_thread_media(user_id: int, thread: dict) -> int | None:
             # Not active_at or updated_at: losing media is not activity.
             sets += ["messages=?", "revision=revision+1"]
             args.append(chat_tx.dumps(stripped))
-        conn.execute(f"UPDATE chat_threads SET {','.join(sets)} WHERE id=?", (*args, tid))
+        if sets:
+            conn.execute(f"UPDATE chat_threads SET {','.join(sets)} WHERE id=?", (*args, tid))
         if stripped is not messages:
             chat_tx.thread_event(conn, user_id, tid, transcript_changed=True)
     chat_images.forget(user_id, shas)
@@ -561,13 +570,16 @@ def purge_idle_media(*, now: datetime | None = None) -> dict:
         with db.tx() as conn:
             conn.execute("BEGIN")
             threads, busy = _thread_activity(conn, uid)
+            purged = {int(r["thread_id"]): r["purged_at"] for r in conn.execute(
+                "SELECT m.thread_id, m.purged_at FROM chat_media_purges m JOIN chat_threads t ON t.id=m.thread_id"
+                " WHERE t.user_id=?", (uid,)).fetchall()}
         for t in threads:
             if counts["threads"] >= _PURGE_MAX:
                 break
             if t["id"] in busy or not t["last_active"] or t["last_active"] >= cutoff:
                 continue
             # Strictly after: activity in the purge's own second may follow it.
-            if t["media_purged_at"] and t["media_purged_at"] > t["last_active"]:
+            if purged.get(t["id"], "") > t["last_active"]:
                 continue
             try:
                 deleted = _purge_thread_media(uid, t)
