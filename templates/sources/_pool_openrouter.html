@@ -31,14 +31,12 @@
       <div class="or-settings" data-or-settings>
         <fieldset class="or-group">
           <legend>Models</legend>
+          {% for g in openrouter_groups %}
           <label class="or-switch">
-            <input type="checkbox" role="switch" data-or-setting="free_models" {% if a.free_models %}checked{% endif %}>
-            <span><b>Free models</b><small>List every <code>:free</code> model. Free models never cost credits.</small></span>
+            <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
+            <span><b>{% if g.id == 'free' %}Free models{% else %}Every paid model{% endif %}</b><small>{% if g.id == 'free' %}Every <code>:free</code> model on or off. Free models never cost credits.{% else %}Every paid model on or off.{% endif %} Single models below stay editable.</small></span>
           </label>
-          <label class="or-switch">
-            <input type="checkbox" role="switch" data-or-setting="paid_all" {% if a.paid_all %}checked{% endif %}>
-            <span><b>Every paid model</b><small>Turn off to choose paid models one by one below.</small></span>
-          </label>
+          {% endfor %}
         </fieldset>
         <fieldset class="or-group">
           <legend>Privacy, on every request</legend>
@@ -53,24 +51,28 @@
         </fieldset>
       </div>
 
-      <section class="or-models" data-or-models data-paid-all="{{ '1' if a.paid_all else '0' }}" data-free-on="{{ '1' if a.free_models else '0' }}">
+      <section class="or-models" data-or-models data-prefs="/sources/models/openrouter">
         <div class="or-toolbar">
           <input type="search" data-or-filter placeholder="Search models, e.g. glm, deepseek, anthropic/" aria-label="Search OpenRouter models">
           <div class="or-seg" role="group" aria-label="Show">
             <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
             <button type="button" data-or-view="on" aria-pressed="false">On</button>
+            <button type="button" data-or-view="off" aria-pressed="false">Off</button>
             <button type="button" data-or-view="pinned" aria-pressed="false">Pinned</button>
             <button type="button" data-or-view="free" aria-pressed="false">Free</button>
           </div>
+          <div class="or-bulk" role="group" aria-label="Every model">
+            <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
+            <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
+          </div>
           <span class="or-count" data-or-count aria-live="polite"></span>
         </div>
-        <p class="or-paid-note" data-or-paid-note{% if not a.paid_all %} hidden{% endif %}>Every paid model is on. Turn off <b>Every paid model</b> above to pick them individually.</p>
         <ul class="or-list" data-or-list>
           {% for m in openrouter_models %}
-          <li class="or-row{% if m.enabled %} is-on{% endif %}" data-or-row data-id="{{ m.id }}" data-free="{{ '1' if m.free else '0' }}" data-pinned="{{ m.pinned }}">
+          <li class="or-row{% if m.enabled %} is-on{% endif %}" data-or-row data-id="{{ m.id }}" data-model="{{ m.model }}" data-group="{{ m.group }}" data-free="{{ '1' if m.free else '0' }}" data-pinned="{{ m.pinned }}">
             <div class="or-row-main">
-              <label class="or-toggle" title="{{ 'Controlled by Free models' if m.free else 'Show in my model picker' }}">
-                <input type="checkbox" role="switch" data-or-model {% if m.enabled %}checked{% endif %}{% if m.free or a.paid_all %} disabled{% endif %} aria-label="Enable {{ m.name }}">
+              <label class="or-toggle" title="Show in my model picker">
+                <input type="checkbox" role="switch" data-or-model {% if m.enabled %}checked{% endif %} aria-label="Enable {{ m.name }}">
               </label>
               <div class="or-row-title">
                 <span class="or-row-name">{{ m.name }}</span>

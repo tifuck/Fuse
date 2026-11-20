@@ -131,11 +131,11 @@ def _price_m(value) -> float | None:
 def _openrouter_model_rows(user_id: int) -> list[dict]:
     """Every catalog model with this account's switch state, list price and
     pinned-provider count. Reads only the shared in-memory catalog."""
+    from ...providers import model_prefs
+
     catalog = openrouter_mod.cached_catalog() or {}
     by_id = catalog.get("by_id") or {}
-    pref = openrouter_mod.paid_models_pref(user_id)
-    free_on = openrouter_mod.free_models_enabled(user_id)
-    allowed = set(pref["enabled"])
+    prefs = model_prefs.load(user_id, "openrouter")
     pinned = openrouter_mod.provider_prefs(user_id)["models"]
     rows = []
     for mid, rec in by_id.items():
@@ -147,7 +147,9 @@ def _openrouter_model_rows(user_id: int) -> list[dict]:
                 "name": str(rec.get("name") or mid),
                 "author": str(rec.get("author") or ""),
                 "free": free,
-                "enabled": free_on if free else (pref["all"] or mid in allowed),
+                "model": openrouter_mod.public_id(mid),
+                "group": "free" if free else "paid",
+                "enabled": model_prefs.state("openrouter", openrouter_mod.public_id(mid), prefs),
                 "input": None if free else _price_m(pricing.get("prompt")),
                 "output": None if free else _price_m(pricing.get("completion")),
                 "context": rec.get("context_length"),
@@ -208,23 +210,6 @@ async def openrouter_settings(request: Request):
             "zdr": prefs["zdr"],
         }
     )
-
-
-@router.post("/sources/openrouter/model")
-async def openrouter_model_toggle(request: Request):
-    user, body, err = await _openrouter_json(request)
-    if err:
-        return err
-    model = str(body.get("model") or "").strip()
-    rec = ((openrouter_mod.cached_catalog() or {}).get("by_id") or {}).get(model)
-    if not rec or rec.get("free"):
-        return JSONResponse({"error": "Unknown paid model."}, status_code=400)
-    if openrouter_mod.paid_models_pref(user["id"])["all"]:
-        return JSONResponse({"error": "Every paid model is already on."}, status_code=409)
-    if not openrouter_mod.set_paid_model(user["id"], model, bool(body.get("enabled"))):
-        return JSONResponse({"error": "You can enable up to 500 paid models."}, status_code=400)
-    invalidate_model_cache("openrouter")
-    return JSONResponse({"enabled": openrouter_mod.paid_model_allowed(user["id"], model)})
 
 
 @router.get("/sources/openrouter/providers")

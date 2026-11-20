@@ -29,6 +29,7 @@ from .source_routes import (
     admin_pages,
     admin_actions,
     keys,
+    model_choices,
 )
 from .source_routes.admin_pages import _ollama_key_views
 from .source_routes.context import _pool_card  # public: app.web re-exports _pool_card from here
@@ -100,3 +101,4 @@ router.include_router(openrouter.router)
 router.include_router(admin_pages.router)
 router.include_router(admin_actions.router)
 router.include_router(keys.router)
+router.include_router(model_choices.router)

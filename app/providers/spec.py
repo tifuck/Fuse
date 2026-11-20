@@ -55,4 +55,14 @@ class ProviderSpec:
     vendor: str = ""  # shown on this provider's pane (an API key beside its subscription)
     panel: bool = False  # has its own panel, templates/sources/_pool_<id>.html
     site: bool = False  # an admin adds keys (or a server) that serve users
+    # Shared catalog refresh (app.sources.refresh_due_catalogs): seconds
+    # between background fetches, and whether a fetch needs no credential.
+    catalog_ttl: float = 21600.0
+    catalog_keyless: bool = False
+    # Per-user model visibility (app/providers/model_prefs.py): groups as
+    # (id, label, on by default), the group of a public model id, and the
+    # public id of an upstream one (routed aliases are checked by it).
+    model_groups: tuple = ()
+    model_group: Callable[[str], str] | None = None
+    public_id: Callable[[str], str] | None = None
     admin_anchor: str = ""  # its settings on the admin pages; default /admin/sources#<id>

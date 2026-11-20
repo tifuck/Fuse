@@ -7,7 +7,11 @@ vendor's pane instead (xAI API beside the x.ai pool).
 from __future__ import annotations
 
 from .. import db
-from . import registry
+from . import model_prefs, registry
+from .access import Access
+
+# Providers whose panel draws its own model list (with prices and provider pins).
+OWN_LIST = frozenset({"openrouter", "nanogpt"})
 
 GROUPS = (("subscription", "Subscriptions"), ("api_key", "API keys"), ("aggregator", "Aggregators"), ("local", "Local"))
 
@@ -35,6 +39,37 @@ def panes(key_entries: list[dict]) -> list[dict]:
             pane["names"].append(spec.label.lower())
     order = [group for group, _label in GROUPS]
     return sorted(by_id.values(), key=lambda pane: order.index(pane["group"]))
+
+
+def group_switches(provider: str, user_id: int) -> list[dict]:
+    prefs = model_prefs.load(user_id, provider)
+    return [{"id": g, "label": label, "on": model_prefs.group_on(provider, g, prefs)}
+            for g, label, _default in model_prefs.groups(provider)]
+
+
+def model_lists(user_id: int, panes: list[dict]) -> dict[str, list[dict]]:
+    """Per pane: one model list per provider on it the user can use, from
+    cached catalogs only (a provider whose list has not loaded yet shows none)."""
+    from ..sources import choosable_models
+
+    access = Access(user_id)
+    wanted = {}
+    for pane in panes:
+        ids = ([pane["id"]] if pane["partial"] else []) + [entry["id"] for entry in pane["keys"]]
+        wanted[pane["id"]] = [pid for pid in ids if pid not in OWN_LIST and access.allows(pid)]
+    names = choosable_models(user_id, {pid for ids in wanted.values() for pid in ids})
+    out: dict[str, list[dict]] = {}
+    for pane_id, ids in wanted.items():
+        for pid in ids:
+            if not names.get(pid):
+                continue
+            spec = registry.get(pid)
+            rows = model_prefs.rows(pid, user_id, names[pid])
+            out.setdefault(pane_id, []).append({
+                "provider": pid, "label": spec.label, "rows": rows, "on": sum(1 for r in rows if r["on"]),
+                "groups": group_switches(pid, user_id) if spec.model_groups else [],
+            })
+    return out
 
 
 def admin_overview() -> list[dict]:

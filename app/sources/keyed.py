@@ -27,7 +27,7 @@ from .pool_pick import AUTH_RECHECK_SECONDS, note_failure
 logger = logging.getLogger(__name__)
 
 SITE_ACCESS = ("none", "admins", "everyone")
-CATALOG_TTL = 600.0
+CATALOG_TTL = 21600.0  # per-key catalogs (presets with per_key)
 FAILED_TTL = 60.0
 # Message fields every OpenAI-compatible API takes; Fuse's own replay fields
 # (claude_thinking, reasoning_content, ...) are a 400 on strict ones.
@@ -137,16 +137,39 @@ def parse_catalog(p, data) -> list[str]:
     return names
 
 
-async def fetch_models(p, key: str, region: str = "") -> list[str] | None:
-    """Public ids from the provider's catalog, or None when it failed."""
+async def fetch_models(p, key: str, region: str = "", *, etag: str | None = None,
+                       last_modified: str | None = None, meta: dict | None = None) -> list[str] | None:
+    """Public ids from the provider's catalog, or None when it failed.
+
+    With the etag / last_modified a previous answer carried, the request is
+    conditional: a 304 returns NOT_MODIFIED. meta (when given) receives the
+    validators of a 200 answer and its HTTP status."""
+    headers = auth_headers(p, key)
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_modified:
+        headers["If-Modified-Since"] = last_modified
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(catalog_url(p, region), headers=auth_headers(p, key))
+            r = await client.get(catalog_url(p, region), headers=headers)
+        if meta is not None:
+            meta["status"] = r.status_code
+        if r.status_code == 304 and (etag or last_modified):
+            if meta is not None:
+                meta.update(etag=etag, last_modified=last_modified)
+            return NOT_MODIFIED
         if r.status_code != 200:
             return None
-        return parse_catalog(p, r.json())
+        names = parse_catalog(p, r.json())
+        if meta is not None:
+            meta.update(etag=r.headers.get("etag"), last_modified=r.headers.get("last-modified"))
+        return names
     except (httpx.HTTPError, ValueError):
         return None
+
+
+# fetch_models' answer to a conditional request the provider says is unchanged.
+NOT_MODIFIED: list[str] = []
 
 
 def prepare(p, body: dict) -> dict:
@@ -196,7 +219,40 @@ class KeyedSource(OpenAICompatSource):
     def _headers(self, key: str) -> dict:
         return auth_headers(self.preset, key)
 
+    def catalog_creds(self) -> list:
+        """Keys the shared catalog may be read with: site keys first, then
+        personal ones (every key lists the same models unless the preset
+        says per_key)."""
+        site = [c for c in self.all_creds if c["donated_by"] is None]
+        return site + [c for c in self.all_creds if c["donated_by"] is not None]
+
+    async def shared_models(self, stored: dict | None = None) -> list[str]:
+        """The provider's catalog read with one working key, for every user
+        with access. stored: the last saved catalog row, whose validators make
+        the request conditional; a 304 returns its list. Sets catalog_meta to
+        the validators to save. Raises when no key could read it."""
+        self.catalog_meta = {}
+        for cred in self.catalog_creds()[:3]:
+            region = str(_extra(cred).get("region") or "")
+            meta: dict = {}
+            names = await fetch_models(self.preset, accounts.cred_secret(cred), region,
+                                       etag=(stored or {}).get("etag"), last_modified=(stored or {}).get("last_modified"),
+                                       meta=meta)
+            if names is NOT_MODIFIED:
+                self.catalog_meta = {"etag": meta.get("etag"), "last_modified": meta.get("last_modified")}
+                return list(stored["models"])
+            if names is not None:
+                self.catalog_meta = {"etag": meta.get("etag"), "last_modified": meta.get("last_modified")}
+                return names
+            if meta.get("status") not in (401, 403):
+                break  # an outage, not this key: the next key would fail the same way
+        raise ValueError(f"{self.preset.label} catalog unavailable")
+
     async def models(self, *, user_id: int | None = None) -> list[str]:
+        if not (self.preset.per_key and user_id):
+            from ..providers import catalogs
+
+            return await self.shared_models(catalogs.get(self.source_id))
         creds = self.usable(user_id)
         if not creds:
             return []
@@ -212,6 +268,12 @@ class KeyedSource(OpenAICompatSource):
             ttl = CATALOG_TTL
         _catalogs[key] = (time.time() + ttl, names)
         return list(names)
+
+    def cached_models(self, user_id: int | None) -> list[str]:
+        """This user's per-key catalog as last read, without a fetch."""
+        creds = self.usable(user_id)
+        hit = _catalogs.get((self.source_id, int(creds[0]["id"]))) if creds else None
+        return list(hit[1]) if hit else []
 
     async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
         self.creds = self.usable(user_id)

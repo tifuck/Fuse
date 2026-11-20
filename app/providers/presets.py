@@ -62,6 +62,9 @@ class KeyedPreset:
     max_tokens: int = 8192  # anthropic_messages: default when the client sets none
     strip: tuple[str, ...] = field(default=STRIP)
     validate: Callable | None = None  # async (key) -> error; default: GET the catalog with the key
+    # Each key lists models of its own account (fine-tunes, deployments):
+    # the catalog is read per user, never shared.
+    per_key: bool = False
 
     @property
     def public_prefix(self) -> str:
@@ -95,7 +98,7 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 key_url="https://opencode.ai/auth"),
     KeyedPreset("openai_api", "OpenAI API", base_url="https://api.openai.com/v1", prefix="openai/", vendor="chatgpt",
                 hide=r"embedding|whisper|tts|dall-e|image|moderation|transcribe|realtime|audio|search|davinci|babbage|sora",
-                efforts=((r"^(o\d|gpt-5)", _LOW_HIGH),), cache_key=True,
+                efforts=((r"^(o\d|gpt-5)", _LOW_HIGH),), cache_key=True, per_key=True,
                 key_url="https://platform.openai.com/api-keys"),
     KeyedPreset("anthropic", "Anthropic API", base_url="https://api.anthropic.com/v1", vendor="claude",
                 protocol="anthropic_messages", auth="x-api-key", headers=(("anthropic-version", "2023-06-01"),),
@@ -121,11 +124,11 @@ PRESETS: tuple[KeyedPreset, ...] = (
     KeyedPreset("cerebras", "Cerebras", base_url="https://api.cerebras.ai/v1",
                 efforts=((r"gpt-oss", _LOW_HIGH),), key_url="https://cloud.cerebras.ai"),
     KeyedPreset("together", "Together AI", base_url="https://api.together.xyz/v1",
-                hide=r"embed|rerank|flux|stable-diffusion|whisper|sonic|guard", key_url="https://api.together.ai/settings/api-keys"),
+                hide=r"embed|rerank|flux|stable-diffusion|whisper|sonic|guard", per_key=True, key_url="https://api.together.ai/settings/api-keys"),
     KeyedPreset("fireworks", "Fireworks AI", base_url="https://api.fireworks.ai/inference/v1",
-                hide=r"embed|flux|whisper|stable-diffusion", key_url="https://fireworks.ai/account/api-keys"),
+                hide=r"embed|flux|whisper|stable-diffusion", per_key=True, key_url="https://fireworks.ai/account/api-keys"),
     KeyedPreset("deepinfra", "DeepInfra", base_url="https://api.deepinfra.com/v1/openai",
-                hide=r"embed|whisper|flux|stable-diffusion|sdxl|rerank", key_url="https://deepinfra.com/dash/api_keys"),
+                hide=r"embed|whisper|flux|stable-diffusion|sdxl|rerank", per_key=True, key_url="https://deepinfra.com/dash/api_keys"),
     KeyedPreset("moonshot", "Moonshot AI", base_url="https://api.moonshot.ai/v1", vendor="kimi",
                 key_url="https://platform.moonshot.ai/console/api-keys"),
     KeyedPreset("huggingface", "Hugging Face", base_url="https://router.huggingface.co/v1", group="aggregator",

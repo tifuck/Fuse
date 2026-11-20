@@ -100,7 +100,31 @@ _FAILED_RETRY_S = 60.0
 
 
 def _cache_key(s: Source, user_id: int | None) -> tuple[int, int | None]:
-    return (s.source_id, user_id) if s.type_id == "openrouter" else (s.source_id, None)
+    """Shared catalogs are one per source; per-user lists go through
+    spec.user_catalog instead."""
+    return (s.source_id, None)
+
+
+def _ttl(s: Source) -> float:
+    spec = registry.get(s.type_id)
+    return spec.catalog_ttl if spec else _MODEL_TTL
+
+
+# Upstream catalog fetches running at once, per event loop: a restart or a
+# quiet spell must not fire every provider's fetch together.
+MAX_FETCHES = 2
+_slots: dict[int, asyncio.Semaphore] = {}
+
+
+def _fetch_slot() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    slot = _slots.get(id(loop))
+    if slot is None or getattr(slot, "_fuse_loop", None) is not loop:
+        slot = asyncio.Semaphore(MAX_FETCHES)
+        slot._fuse_loop = loop
+        _slots.clear()
+        _slots[id(loop)] = slot
+    return slot
 
 
 def _sticky_names(key: tuple[int, int | None], names: list[str]) -> list[str]:
@@ -129,17 +153,14 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
     key = _cache_key(s, user_id)
     hit = _model_cache.get(key)
     try:
-        empty_ok = False
+        async with _fetch_slot():
+            m = await s.models()
+        stale_only = False
+        empty_ok = s.type_id in POOL_TYPES
         if s.type_id == "openrouter":
-            m = await s.models(user_id=user_id)
             from . import openrouter as openrouter_mod
 
             stale_only = not openrouter_mod.catalog_available()
-            empty_ok = not (user_id and openrouter_mod.user_has_openrouter(user_id))
-        else:
-            m = await s.models()
-            stale_only = False
-            empty_ok = s.type_id in POOL_TYPES
         if not isinstance(m, list) or (not m and not empty_ok):
             raise ValueError("empty or invalid model catalog")
         m = [name for name in m if isinstance(name, str) and name]
@@ -148,8 +169,9 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
     except Exception as exc:
         _unavailable_types.add(s.type_id)
         logger.warning("Model catalog unavailable for source id=%s: %s", s.source_id, type(exc).__name__)
+        delay = _persist_failure(s, exc)
         if not (hit and hit[1]) and not _fallback_models(s):
-            _model_cache[key] = (time.time() - _MODEL_TTL + _FAILED_RETRY_S, [])
+            _model_cache[key] = (time.time() - _ttl(s) + delay, [])
         return hit[1] if hit else []
     if stale_only:
         _unavailable_types.add(s.type_id)
@@ -157,7 +179,30 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
         _unavailable_types.discard(s.type_id)
     _store_models(key, m, sticky=s.type_id in POOL_TYPES)
     _live.add(key)
+    _persist_success(s, _model_cache[key][1])
     return _model_cache[key][1]
+
+
+def _persist_success(s: Source, names: list[str]) -> None:
+    from ..providers import catalogs
+
+    meta = getattr(s, "catalog_meta", None) or {}
+    try:
+        catalogs.saved(s.source_id, s.type_id, names, _ttl(s), etag=meta.get("etag"),
+                       last_modified=meta.get("last_modified"))
+    except Exception:
+        logger.warning("Could not store the catalog of source id=%s", s.source_id, exc_info=True)
+
+
+def _persist_failure(s: Source, exc: Exception) -> float:
+    """Record the failure; returns how long until the next try (backoff)."""
+    from ..providers import catalogs
+
+    try:
+        return catalogs.failed(s.source_id, s.type_id, type(exc).__name__, _ttl(s))
+    except Exception:
+        logger.warning("Could not store the catalog failure of source id=%s", s.source_id, exc_info=True)
+        return _FAILED_RETRY_S
 
 
 def _schedule_model_refresh(s: Source, user_id: int | None) -> asyncio.Task | None:
@@ -225,12 +270,12 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
         # The catalog follows the key this user routes through; the source caches it.
         return await s.models(user_id=user_id)
     key = _cache_key(s, user_id)
-    hit = _model_cache.get(key)
+    hit = _model_cache.get(key) or _stored(s)
     if hit and key not in _live and s.type_id in POOL_TYPES:
         await _await_first_fetch(s, user_id)
         hit = _model_cache.get(key) or hit
     if hit:
-        if time.time() - hit[0] >= _MODEL_TTL:
+        if time.time() - hit[0] >= _ttl(s):
             _schedule_model_refresh(s, user_id)
         return hit[1]
     fallback = _fallback_models(s)
@@ -238,13 +283,72 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
         await _await_first_fetch(s, user_id)
         hit = _model_cache.get(key)
         return hit[1] if hit else fallback
-    return await _refresh_source_models(s, user_id)
+    # Nothing cached or saved yet: wait for the (single-flight) first fetch.
+    task = _schedule_model_refresh(s, user_id)
+    if task is None:
+        return await _refresh_source_models(s, user_id)
+    try:
+        await asyncio.shield(task)
+    except Exception:
+        pass
+    hit = _model_cache.get(key)
+    return hit[1] if hit else []
+
+
+def _stored(s: Source) -> tuple[float, list[str]] | None:
+    """The saved catalog of a source missing from memory (a cache was just
+    dropped): served at once while a fresh fetch runs behind it."""
+    from ..providers import catalogs
+
+    try:
+        row = catalogs.get(s.source_id)
+    except Exception:
+        return None
+    if not row or not row["models"]:
+        return None
+    _model_cache[_cache_key(s, None)] = _cache[s.source_id] = (row["fetched_at"], list(row["models"]))
+    _live.add(_cache_key(s, None))
+    return _model_cache[_cache_key(s, None)]
 
 
 async def _user_source_models(s: Source, user_id: int | None) -> list[str]:
+    """What this user lists from one source: what they could run, minus the
+    models they turned off on Sources."""
+    from ..providers import model_prefs
+
     names = await _source_models(s, user_id)
     spec = registry.get(s.type_id)
-    return spec.listable(names, user_id) if spec and spec.listable else names
+    names = spec.listable(names, user_id) if spec and spec.listable else names
+    return model_prefs.visible(s.type_id, user_id, names)
+
+
+def choosable_models(user_id: int, type_ids) -> dict[str, list[str]]:
+    """Every model this user could turn on, per provider, from what is
+    already cached (no fetch): the Sources model lists."""
+    from . import nanogpt as nanogpt_mod
+    from .explabs import cached_models as explabs_models
+
+    wanted = set(type_ids)
+    out: dict[str, list[str]] = {type_id: [] for type_id in wanted}
+    for s in all_enabled():
+        spec = registry.get(s.type_id)
+        if s.type_id not in wanted or spec is None:
+            continue
+        if s.type_id == "explabs":
+            listed = explabs_models(user_id) or []
+        elif spec.user_catalog and spec.user_catalog(user_id):
+            cached = getattr(s, "cached_models", None)
+            listed = cached(user_id) if cached else []
+        else:
+            hit = _model_cache.get(_cache_key(s, None)) or _stored(s)
+            listed = list(hit[1]) if hit else []
+        if s.type_id == "nanogpt":
+            listed = nanogpt_mod.lane_models(listed, user_id)
+        elif spec.listable:
+            listed = spec.listable(listed, user_id)
+        names = out[s.type_id]
+        names.extend(name for name in listed if name not in names)
+    return out
 
 
 # Picker efforts per provider. Providers without their own list get every
@@ -279,6 +383,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         ollama_mod._tags_cache.clear()
         ollama_mod._own_tags.clear()
         keyed_mod.clear_catalogs()
+        _forget_stored(None)
         return
     sids = [s.source_id for s in all_enabled() if s.type_id == source_type]
     for sid in sids:
@@ -293,6 +398,16 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
     for key in [k for k in _model_cache if k[0] in sids]:
         _model_cache.pop(key, None)
         _live.discard(key)
+    _forget_stored(sids)
+
+
+def _forget_stored(sids) -> None:
+    from ..providers import catalogs
+
+    try:
+        catalogs.forget(sids)
+    except Exception:
+        logger.warning("Could not drop stored catalogs", exc_info=True)
 
 
 def catalog_unavailable_for(model: str) -> bool:
@@ -338,13 +453,27 @@ def _openrouter_source() -> Source | None:
 
 
 def _seed_pool_catalogs() -> None:
+    """At boot: each source's saved catalog, else its seed list. A saved list
+    is served without the first-load wait; the refresh loop updates it when due."""
+    from ..providers import catalogs
+
+    try:
+        saved = catalogs.all_rows()
+    except Exception:
+        logger.warning("Could not read saved catalogs", exc_info=True)
+        saved = {}
     stale = time.time() - _MODEL_TTL - 1
     for s in all_enabled():
-        names = _SEEDED_MODELS.get(s.type_id)
-        if not names:
-            continue
         key = _cache_key(s, None)
-        if key not in _model_cache:
+        if key in _model_cache:
+            continue
+        row = saved.get(s.source_id)
+        if row and row["models"]:
+            _model_cache[key] = _cache[s.source_id] = (row["fetched_at"], list(row["models"]))
+            _live.add(key)
+            continue
+        names = _SEEDED_MODELS.get(s.type_id)
+        if names:
             _model_cache[key] = (stale, list(names))
             _cache[s.source_id] = (stale, list(names))
 
@@ -367,13 +496,32 @@ async def _claimed(spec, s: Source, model: str, user_id: int | None) -> tuple[So
     return s, spec.upstream(model) if spec.upstream else model
 
 
-async def pick(model: str, *, user_id: int | None = None, access: Access | None = None) -> tuple[Source, str] | None:
+async def pick(model: str, *, user_id: int | None = None, access: Access | None = None,
+               ignore_prefs: bool = False) -> tuple[Source, str] | None:
     """The source and upstream id for `model`, or None. `access` (default:
-    computed for user_id) gates every provider that has an access verdict."""
+    computed for user_id) gates every provider that has an access verdict,
+    and a model the user turned off on Sources is refused (ignore_prefs:
+    say where it would have gone, for the 403 that explains it)."""
+    picked = await _pick(model, user_id=user_id, access=access or Access(user_id))
+    if picked and not ignore_prefs and not model_allowed(picked[0].type_id, user_id, model, picked[1]):
+        return None
+    return picked
+
+
+def model_allowed(type_id: str, user_id: int | None, model: str, upstream: str) -> bool:
+    """The user's on/off choice for a routed model, read by its public id (a
+    routed alias by its target's)."""
+    from ..providers import model_prefs
+
+    spec = registry.get(type_id)
+    public = spec.public_id(upstream) if spec and spec.public_id and model != upstream else model
+    return model_prefs.allowed(type_id, user_id, public)
+
+
+async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Source, str] | None:
     from . import openrouter as openrouter_mod
     from . import explabs as explabs_mod
 
-    access = access or Access(user_id)
     if model.startswith(explabs_mod.PUBLIC_PREFIX):
         for src in all_enabled():
             if src.type_id == "explabs":
@@ -540,36 +688,70 @@ def start_pools() -> None:
             pool.start_sweeper()
 
 
-def warm_catalogs() -> None:
-    """Start every shared catalog fetch at boot. Otherwise the first /chat,
-    /models or /docs after a restart waits on them: pools up to
-    _FIRST_FETCH_WAIT, llama and Ollama Cloud (tags plus one show per model)
-    for as long as they take. OpenRouter lists per user and Experiential Labs
-    catalogs are private, so neither has a shared list to warm."""
-    for s in all_enabled():
-        spec = registry.get(s.type_id)
-        if spec and spec.warm:
-            _schedule_model_refresh(s, None)
+def warm_catalogs() -> asyncio.Task | None:
+    """At boot: fetch the catalogs that are due (no saved list, or a stale
+    one) in the background, at most MAX_FETCHES at a time."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+    return loop.create_task(refresh_due_catalogs())
 
 
-async def refresh_stale_catalogs() -> None:
-    """Refresh-loop job: refetch a shared pool catalog once it ages past
-    _MODEL_TTL. A page only revalidates behind itself, so after a quiet spell
-    the first /chat got the hours-old list and a new upstream model showed
-    only on the next load."""
-    now = time.time()
-    tasks = []
+def _can_fetch(s: Source, spec) -> bool:
+    """A shared catalog worth fetching: the provider is on (all_enabled), it
+    has a shared list, and some credential can read it."""
+    if not spec or not spec.warm:
+        return False
+    if spec.catalog_keyless:
+        return True
+    return bool(getattr(s, "all_creds", None) or getattr(s, "creds", None))
+
+
+def due_catalogs(now: float | None = None) -> list[Source]:
+    """Enabled sources whose shared catalog is due, soonest first. Never one
+    whose fetch is already running (single flight)."""
+    from ..providers import catalogs
+
+    now = time.time() if now is None else now
+    try:
+        saved = catalogs.all_rows()
+    except Exception:
+        logger.warning("Could not read saved catalogs", exc_info=True)
+        saved = {}
+    due = []
     for s in all_enabled():
-        if s.type_id not in POOL_TYPES:
+        if not _can_fetch(s, registry.get(s.type_id)) or _cache_key(s, None) in _refreshing:
             continue
-        hit = _model_cache.get(_cache_key(s, None))
-        if hit and now - hit[0] < _MODEL_TTL:
+        row = saved.get(s.source_id)
+        if row and row["next_due"] > now:
             continue
-        task = _schedule_model_refresh(s, None)
-        if task is not None:
-            tasks.append(task)
+        due.append((row["next_due"] if row else 0.0, s))
+    due.sort(key=lambda item: item[0])
+    return [s for _due, s in due]
+
+
+async def refresh_due_catalogs() -> None:
+    """Refresh-loop job: fetch every shared catalog that is due. Fetches share
+    MAX_FETCHES slots; a failure backs off (catalogs.failed); due times carry
+    jitter, so providers drift apart instead of firing together."""
+    tasks = [task for s in due_catalogs() if (task := _schedule_model_refresh(s, None)) is not None]
     if tasks:
         await asyncio.gather(*(asyncio.shield(t) for t in tasks), return_exceptions=True)
+
+
+def refresh_catalog_now(type_id: str) -> None:
+    """A first key for this provider: fetch its catalog now, in the background."""
+    from ..providers import catalogs
+
+    for s in all_enabled():
+        if s.type_id != type_id or not _can_fetch(s, registry.get(type_id)):
+            continue
+        try:
+            catalogs.mark_due(s.source_id)
+        except Exception:
+            pass
+        _schedule_model_refresh(s, None)
 
 
 async def stop_pools() -> None:
@@ -607,10 +789,19 @@ async def bootstrap() -> None:
             cfg["base_url"] = settings.llama_base_url
             db.execute("UPDATE sources SET config=? WHERE id=?", (json.dumps(cfg), llama_id))
     ensure_ollama_source()
-    _seed_pool_catalogs()
-    from . import openrouter as openrouter_mod
+    from . import nanogpt as nanogpt_mod, openrouter as openrouter_mod, refuseless as refuseless_mod
+    from ..providers import model_prefs
 
-    from . import nanogpt as nanogpt_mod
+    for load in (openrouter_mod.load_saved, nanogpt_mod.load_saved, refuseless_mod.load_saved):
+        try:
+            load()
+        except Exception:
+            logger.warning("Could not load a saved catalog", exc_info=True)
+    _seed_pool_catalogs()
+    try:
+        model_prefs.migrate_legacy()
+    except Exception:
+        logger.warning("Could not move older model choices", exc_info=True)
 
     try:
         loop = asyncio.get_running_loop()

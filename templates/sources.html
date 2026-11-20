@@ -447,6 +447,7 @@
     <p class="callout {% if keys_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ keys_flash_msg }}</p>
     {% endif %}
     {% for p in pane['keys'] %}{% include "sources/_key.html" %}{% endfor %}
+    {% for ml in model_lists.get(pane.id, []) %}{% include "sources/_models.html" %}{% endfor %}
     </section>
     {% endfor %}
   </div>

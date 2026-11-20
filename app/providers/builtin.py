@@ -44,9 +44,10 @@ def _keyed(p) -> ProviderSpec:
     return ProviderSpec(
         id=p.id, label=p.label, type_label=p.label, builder="keyed:KeyedSource", error_label=p.label,
         ensure=lambda: _m("keyed").ensure_source(p.id), efforts=lambda model, user_id: p.efforts_for(model),
-        warm=False, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
+        warm=not p.per_key, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
         scan=False, call_style="user", access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
-        connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p, user_catalog=lambda user_id: True,
+        connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p,
+        user_catalog=(lambda user_id: True) if p.per_key else None, public_id=lambda upstream: p.public_prefix + upstream,
         group=p.group, vendor=p.vendor, site=True, admin_anchor="/admin/sources#keyed",
     )
 
@@ -60,6 +61,9 @@ OLLAMA_KEY = KeyedPreset(
 
 def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderSpec:
     kw.setdefault("group", "subscription")
+    # Unchanged from before the scheduler: one request on one pooled account,
+    # and the list follows that account's plan, so it is read every 5 minutes.
+    kw.setdefault("catalog_ttl", 300.0)
     return ProviderSpec(
         id=id, label=label, type_label=type_label, builder=builder, pool=True,
         ensure=_fn(id, f"ensure_{id}_source"), access=_fn(id, f"{id}_access_state"),
@@ -80,16 +84,20 @@ BUILTIN: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         id="llama", label="llama.cpp", type_label="Local llama.cpp", builder="llama:LlamaSource",
         error_label="llama.cpp", site=True,
+        # A local server swapped to another model must show it soon; no key needed.
+        catalog_ttl=300.0, catalog_keyless=True,
     ),
     ProviderSpec(
         id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
-        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session", site=True,
+        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session", site=True, catalog_ttl=300.0,
         admin_anchor="/admin/sources#compat",
     ),
     ProviderSpec(
         id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
         error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="user",
         key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"), group="api_key", site=True,
+        # /tags plus one /show per model: hourly, not on every page.
+        catalog_ttl=3600.0,
     ),
     _pool(
         "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",
@@ -130,6 +138,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         "claude", "Anthropic", "Claude pool", "claude:ClaudeSource", pool_label="Claude", error_label="Claude",
         seeds=lambda: _m("claude").CLAUDE_MODELS, efforts=_model_efforts("claude"),
         claim="hard", claims=_fn("claude", "is_claude_model"), upstream=_fn("claude", "upstream_id"),
+        public_id=lambda upstream: _m("claude_catalog").fuse_id(upstream),
         connect_copy="Connect a Claude account to use Claude models", guard=True,
     ),
     _pool(
@@ -137,6 +146,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         seeds=lambda: _m("cursor").CURSOR_MODELS, efforts=_model_efforts("cursor"),
         listable=_fn("cursor", "listable_models"),
         claim="hard", claims=_fn("cursor", "is_cursor_model"), upstream=_fn("cursor", "upstream_id"),
+        public_id=lambda upstream: _m("cursor").PREFIX + upstream,
         connect_copy="Connect a Cursor account to use Cursor models", guard=True, usage_walk=True,
     ),
     _pool(
@@ -144,12 +154,16 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         efforts=_model_efforts("nanogpt"), listable=_fn("nanogpt", "listable_models"),
         # Its catalog lists every id; resolve() applies the user's own list.
         claim="hard", claims=_fn("nanogpt", "is_nanogpt_model"), resolve=_fn("nanogpt", "resolve"), scan=False,
+        public_id=_fn("nanogpt", "public_id"), catalog_ttl=1800.0,
+        model_groups=(("subscription", "Subscription models", True), ("paid", "Paid models", False)),
+        model_group=lambda model: "subscription" if (_m("nanogpt").catalog_record(model) or {}).get("subscription") else "paid",
         connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True, group="aggregator",
     ),
     _pool(
         "refuseless", "Refuseless", "Refuseless pool", "refuseless:RefuselessSource", error_label="Refuseless",
         efforts=_model_efforts("refuseless"),
         claim="hard", claims=_fn("refuseless", "is_refuseless_model"), resolve=_fn("refuseless", "resolve"),
+        public_id=_fn("refuseless", "public_id"),
         scan=False, connect_copy="Link a Refuseless API key to use Refuseless models",
         # Its keys bill their owner per token, so a new donor starts private.
         default_share="private", usage_walk=True, group="api_key",
@@ -158,7 +172,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
     ProviderSpec(
         id="explabs", label="Experiential Labs", type_label="Experiential Labs",
         builder="explabs:ExperientialLabsSource", error_label="Experiential Labs",
-        ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts,
+        ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts, public_id=_fn("explabs", "public_id"),
         # Private catalogs: nothing shared to warm or scan.
         warm=False, scan=False, call_style="user", panel=True, group="api_key",
     ),
@@ -166,7 +180,11 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         id="openrouter", label="OpenRouter", type_label="OpenRouter", builder="openrouter:OpenRouterSource",
         error_label="OpenRouter", ensure=_fn("openrouter", "ensure_openrouter_source"),
         efforts=_model_efforts("openrouter"),
-        # Lists per account; only its per-account resolve() admits a model.
-        warm=False, scan=False, call_style="user", usage_walk=True, panel=True, group="aggregator",
+        # One shared catalog; listable keeps it to users with a key, and only
+        # the per-account resolve() admits a model.
+        listable=_fn("openrouter", "listable_models"), scan=False, call_style="user", usage_walk=True,
+        panel=True, group="aggregator", catalog_ttl=600.0, public_id=_fn("openrouter", "public_id"),
+        model_groups=(("free", "Free models", True), ("paid", "Paid models", True)),
+        model_group=lambda model: "free" if _m("openrouter").model_is_free(model, _m("openrouter").cached_catalog()) else "paid",
     ),
 ) + tuple(_keyed(p) for p in PRESETS)

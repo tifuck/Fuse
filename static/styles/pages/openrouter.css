@@ -9,7 +9,7 @@
 .or-switch > span { display: grid; gap: 0.12rem; min-width: 0; }
 .or-switch b { font-weight: 500; font-size: 0.9rem; color: var(--mist); }
 .or-switch small { color: var(--mute); font-size: 0.78rem; line-height: 1.35; }
-.or-switch code, .or-paid-note code { font-size: 0.72rem; }
+.or-switch code { font-size: 0.72rem; }
 .or-switch input, .or-toggle input {
   position: relative; flex: 0 0 auto; width: 2.1rem; height: 1.2rem; margin: 0.1rem 0 0; padding: 0;
   border: 1px solid var(--line); border-radius: 999px;
@@ -42,8 +42,11 @@
 .or-seg button:hover { color: var(--mist); }
 :where(html:not(.is-chat-root)) .or-seg button.on { background: var(--raise); color: var(--mist); }
 .or-count { margin-left: auto; color: var(--mute); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
-.or-paid-note { margin: 0; color: var(--mute); font-size: 0.82rem; }
-.or-paid-note b { color: var(--mist); font-weight: 500; }
+.or-bulk { display: inline-flex; gap: 0.3rem; }
+/* The model list under a provider: folded to one line until opened. */
+.model-list > summary { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2.75rem; cursor: pointer; }
+.model-list > summary b { font-weight: 500; }
+.model-list[open] > summary { margin-bottom: 0.6rem; }
 
 .or-list {
   list-style: none; margin: 0; padding: 0; max-height: 30rem; overflow: auto;

@@ -515,6 +515,7 @@ def user_sources(request: Request):
     keyed = keyed_mod.directory(user["id"])
     panes = directory.panes(keyed)
     pane_of = {entry["id"]: pane["id"] for pane in panes for entry in pane["keys"]}
+    model_lists = directory.model_lists(user["id"], panes)
     flash = _pool_flash.pop(user["id"], None)
     if flash and len(flash) < 3:
         flash = (flash[0], flash[1], "zai")
@@ -609,7 +610,10 @@ def user_sources(request: Request):
         # session never sees NanoGPT's redirect back: offer the device code there.
         nanogpt_oauth=bool(_nanogpt_redirect_uri(request)) and "FuseDesktop/" not in request.headers.get("user-agent", ""),
         nanogpt_owner=nanogpt_owner,
-        nanogpt_models=_nanogpt_model_rows(user["id"]) if nanogpt_owner else [],
+        nanogpt_models=_nanogpt_model_rows(user["id"]) if nanogpt_owner or nanogpt_access["ok"] else [],
+        nanogpt_groups=directory.group_switches("nanogpt", user["id"]),
+        openrouter_groups=directory.group_switches("openrouter", user["id"]),
+        model_lists=model_lists,
         nanogpt_prefs=nanogpt_mod.model_prefs(user["id"]),
         nanogpt_flash_kind=flash[0] if flash and flash[2] == "nanogpt" else "",
         nanogpt_flash_msg=flash[1] if flash and flash[2] == "nanogpt" else "",

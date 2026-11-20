@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ from ..crypto import encrypt
 from ..proxy import openai_chat
 from .base import ChatResult
 from .pool_pick import auth_failure_confirmed, forget_error
+
+logger = logging.getLogger(__name__)
 
 BASE_URL = "https://openrouter.ai/api/v1"
 CATALOG_TTL = 600
@@ -204,6 +207,7 @@ async def fetch_catalog(*, force: bool = False) -> dict:
     if by_id:
         _catalog = (now, catalog)
         _catalog_available = True
+        _persist(catalog, now)
     else:
         _catalog_available = False
         if _catalog:
@@ -213,6 +217,26 @@ async def fetch_catalog(*, force: bool = False) -> dict:
 
 def catalog_available() -> bool:
     return _catalog_available
+
+
+def _persist(catalog: dict, at: float) -> None:
+    from ..providers import catalogs
+
+    try:
+        catalogs.save_detail(ensure_openrouter_source(), "openrouter", catalog, at)
+    except Exception:
+        logger.warning("Could not store the OpenRouter catalog", exc_info=True)
+
+
+def load_saved() -> None:
+    """At boot: the stored catalog, so the first pages need no fetch."""
+    global _catalog, _catalog_available
+    from ..providers import catalogs
+
+    if _catalog is None:
+        stored = catalogs.load_detail(ensure_openrouter_source())
+        if stored and stored[1].get("by_id"):
+            _catalog, _catalog_available = stored, True
 
 
 def cached_catalog() -> dict | None:
@@ -316,88 +340,77 @@ def user_has_openrouter(user_id: int) -> bool:
     return user_credential(user_id) is not None
 
 
+# Model choices live in app/providers/model_prefs.py (groups "free" and
+# "paid"); these keep the older per-switch API.
+
 def free_models_enabled(user_id: int | None) -> bool:
-    """Free OpenRouter SKUs are listed and directly callable only when the
-    user has a key and has not turned free models off."""
-    if not user_id:
+    """The user has a key and the free group is on."""
+    from ..providers import model_prefs
+
+    if not user_id or not user_credential(user_id):
         return False
-    owned = user_credential(user_id)
-    return bool(owned) and owned[1].get("free_models") is not False
+    return model_prefs.group_on("openrouter", "free", model_prefs.load(user_id, "openrouter"))
 
 
 def set_free_models(user_id: int, enabled: bool) -> bool:
-    owned = user_credential(user_id)
-    if not owned:
+    from ..providers import model_prefs
+
+    if not user_credential(user_id):
         return False
-    cred, extra = owned
-    extra["free_models"] = bool(enabled)
-    accounts.update_extra(cred["id"], extra)
+    model_prefs.set_group(user_id, "openrouter", "free", bool(enabled))
     return True
 
 
 def paid_models_pref(user_id: int | None) -> dict:
-    """Paid-SKU selection for this account. Default is every paid SKU
-    ({"all": True}); turning the bulk switch off lands on {"all": False,
-    "enabled": [upstream ids]} where only the listed ids stay available."""
-    owned = user_credential(user_id) if user_id else None
-    if not owned:
+    """{"all": paid group on, "enabled": paid upstream ids turned on one by one}."""
+    from ..providers import model_prefs
+
+    if not user_id or not user_credential(user_id):
         return {"all": False, "enabled": []}
-    raw = owned[1].get("paid_models")
-    if not isinstance(raw, dict):
-        return {"all": True, "enabled": []}
-    enabled = raw.get("enabled")
-    clean = (
-        [str(mid) for mid in enabled if isinstance(mid, str) and mid.strip()]
-        if isinstance(enabled, list)
-        else []
-    )
-    return {"all": bool(raw.get("all")), "enabled": clean}
+    prefs = model_prefs.load(user_id, "openrouter")
+    enabled = [upstream_id(m) for m, on in prefs["models"].items()
+               if on and model_prefs.group_of("openrouter", m) == "paid"]
+    return {"all": model_prefs.group_on("openrouter", "paid", prefs), "enabled": enabled}
 
 
 def paid_model_allowed(user_id: int | None, upstream: str) -> bool:
-    pref = paid_models_pref(user_id)
-    return pref["all"] or upstream in set(pref["enabled"])
+    from ..providers import model_prefs
+
+    return model_prefs.allowed("openrouter", user_id, public_id(upstream))
 
 
 def set_paid_models_all(user_id: int, on: bool) -> bool:
-    owned = user_credential(user_id)
-    if not owned:
+    from ..providers import model_prefs
+
+    if not user_credential(user_id):
         return False
-    cred, extra = owned
-    extra["paid_models"] = {"all": bool(on), "enabled": []}
-    accounts.update_extra(cred["id"], extra)
+    model_prefs.set_group(user_id, "openrouter", "paid", bool(on))
     return True
 
 
 def set_paid_models_enabled(user_id: int, enabled: list) -> bool:
-    """Switch the account to an explicit allowlist of paid upstream ids."""
-    owned = user_credential(user_id)
-    if not owned:
+    """Paid models off, except these upstream ids."""
+    from ..providers import model_prefs
+
+    if not user_credential(user_id):
         return False
-    clean: list[str] = []
+    prefs = model_prefs.load(user_id, "openrouter")
+    keep = {m: v for m, v in prefs["models"].items() if model_prefs.group_of("openrouter", m) != "paid"}
     for mid in enabled or []:
-        if not isinstance(mid, str):
-            continue
-        mid = mid.strip()
-        if mid and mid not in clean:
-            clean.append(mid)
-    cred, extra = owned
-    extra["paid_models"] = {"all": False, "enabled": clean[:500]}
-    accounts.update_extra(cred["id"], extra)
+        if isinstance(mid, str) and mid.strip():
+            keep[public_id(mid.strip())] = True
+    model_prefs.replace(user_id, "openrouter", groups_on={"paid": False}, models=dict(list(keep.items())[:500]))
     return True
 
 
 def set_paid_model(user_id: int, upstream: str, on: bool) -> bool:
-    """Enable or disable one paid SKU on the explicit allowlist."""
-    pref = paid_models_pref(user_id)
-    if pref["all"]:
+    """Turn one paid model on or off."""
+    from ..providers import model_prefs
+
+    if not user_credential(user_id):
         return False
-    enabled = [mid for mid in pref["enabled"] if mid != upstream]
-    if on:
-        if len(enabled) >= 500:
-            return False
-        enabled.append(upstream)
-    return set_paid_models_enabled(user_id, enabled)
+    model_prefs.set_model(user_id, "openrouter", public_id(upstream), bool(on))
+    return True
 
 
 # --- Provider routing preferences ------------------------------------------
@@ -793,22 +806,20 @@ def _is_auth_failure(status: int, obj) -> bool:
     return any(marker in text for marker in ("invalid api key", "invalid_api_key", "authentication", "unauthorized"))
 
 
+def listable_models(names: list[str], user_id: int | None) -> list[str]:
+    """The shared catalog is listed only to users with their own key."""
+    return names if user_id and user_has_openrouter(user_id) else []
+
+
 def models_for_user(user_id: int | None, catalog: dict | None = None) -> list[str]:
-    """Only enabled SKUs are ever listed: free ones while the free toggle is
-    on, paid ones per the account's paid-models selection (all by default)."""
+    """The SKUs this account lists: its key's catalog minus what it turned off."""
+    from ..providers import model_prefs
+
     catalog = catalog or (_catalog[1] if _catalog else _empty_catalog())
     if not user_id or not user_has_openrouter(user_id):
         return []
-    out: list[str] = []
-    if free_models_enabled(user_id):
-        out.extend(public_id(mid) for mid in catalog.get("free_ids") or [])
-    pref = paid_models_pref(user_id)
-    if pref["all"]:
-        out.extend(public_id(mid) for mid in catalog.get("paid_ids") or [])
-    else:
-        want = set(pref["enabled"])
-        out.extend(public_id(mid) for mid in catalog.get("paid_ids") or [] if mid in want)
-    return out
+    names = [public_id(mid) for mid in (catalog.get("free_ids") or []) + (catalog.get("paid_ids") or [])]
+    return model_prefs.visible("openrouter", user_id, names)
 
 
 def denied_reason(model: str, user_id: int | None, catalog: dict | None = None) -> str | None:
@@ -830,12 +841,18 @@ def denied_reason(model: str, user_id: int | None, catalog: dict | None = None) 
         return None
     if not (user_id and user_has_openrouter(user_id)):
         return "Connect an OpenRouter API key to use OpenRouter models."
-    if rec.get("free"):
-        if not free_models_enabled(user_id):
+    from ..providers import model_prefs
+
+    public = public_id(upstream_id(model))
+    if model_prefs.allowed("openrouter", user_id, public):
+        return None
+    prefs = model_prefs.load(user_id, "openrouter")
+    group = "free" if rec.get("free") else "paid"
+    if public not in prefs["models"] and not model_prefs.group_on("openrouter", group, prefs):
+        if group == "free":
             return "Free OpenRouter models are turned off for this account."
-    elif not paid_model_allowed(user_id, upstream_id(model)):
         return "That paid OpenRouter model is not enabled for your account. Manage the list on the Sources page."
-    return None
+    return "That OpenRouter model is turned off for your account. Turn it on under Sources."
 
 
 def _chat_payload(
@@ -900,10 +917,10 @@ class OpenRouterSource:
         self.creds = list(creds)
 
     async def models(self, *, user_id: int | None = None) -> list[str]:
-        catalog = cached_catalog()
-        if catalog is None:
-            catalog = await fetch_catalog()
-        return models_for_user(user_id, catalog)
+        """The whole shared catalog; listable_models and the user's model
+        choices narrow it per user."""
+        catalog = await fetch_catalog()
+        return [public_id(mid) for mid in (catalog.get("free_ids") or []) + (catalog.get("paid_ids") or [])]
 
     async def chat(self, body: dict, *, user_id: int | None = None, session_id: str | None = None) -> ChatResult:
         catalog = await fetch_catalog()
@@ -958,10 +975,8 @@ class OpenRouterSource:
 async def resolve(model: str, user_id: int | None) -> tuple[str, bool] | None:
     """Return (upstream_id, free) for a directly callable OpenRouter slug.
 
-    Free SKUs are callable while the user has free models enabled. Paid SKUs
-    are callable per the account's paid-models selection (all by default,
-    else the explicit allowlist) — usage bills to that user's key. Only
-    enabled ids are listed (models_for_user)."""
+    A SKU is callable while the user's model choices leave it on
+    (app/providers/model_prefs.py); usage bills to that user's key."""
     if not looks_like_openrouter_id(model):
         return None
     catalog = await fetch_catalog()
@@ -971,9 +986,8 @@ async def resolve(model: str, user_id: int | None) -> tuple[str, bool] | None:
         return None
     if not (user_id and user_has_openrouter(user_id)):
         return None
-    free = bool(rec.get("free"))
-    if free and not free_models_enabled(user_id):
+    from ..providers import model_prefs
+
+    if not model_prefs.allowed("openrouter", user_id, public_id(upstream)):
         return None
-    if not free and not paid_model_allowed(user_id, upstream):
-        return None
-    return upstream, free
+    return upstream, bool(rec.get("free"))

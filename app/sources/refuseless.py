@@ -204,6 +204,7 @@ async def fetch_catalog(*, force: bool = False) -> dict:
             _catalog = (time.time(), catalog)
             _catalog_ok = True
             _remember_windows(catalog)
+            _persist(catalog, _catalog[0])
             return catalog
         _catalog_ok = False
         if _catalog:
@@ -214,6 +215,27 @@ async def fetch_catalog(*, force: bool = False) -> dict:
 
 def cached_catalog() -> dict:
     return _catalog[1] if _catalog else _FALLBACK
+
+
+def _persist(catalog: dict, at: float) -> None:
+    from ..providers import catalogs
+
+    try:
+        catalogs.save_detail(ensure_refuseless_source(), "refuseless", catalog, at)
+    except Exception:
+        pass  # the in-memory catalog serves; the next fetch stores it
+
+
+def load_saved() -> None:
+    """At boot: the stored lineup, so the first pages need no fetch."""
+    global _catalog, _catalog_ok
+    from ..providers import catalogs
+
+    if _catalog is None:
+        stored = catalogs.load_detail(ensure_refuseless_source())
+        if stored and isinstance(stored[1].get("by_id"), dict):
+            _catalog, _catalog_ok = stored, True
+            _remember_windows(stored[1])
 
 
 def catalog_available() -> bool:

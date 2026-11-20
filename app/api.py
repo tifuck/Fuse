@@ -624,6 +624,11 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
         denied = nanogpt_mod.denied_reason(model, user["id"]) or openrouter_mod.denied_reason(model, user["id"])
         if denied:
             raise HTTPException(403, denied)
+        # Turned off on Sources: say so, not "Unknown model".
+        off = await pick(model, user_id=user["id"], access=access, ignore_prefs=True)
+        if off:
+            raise HTTPException(403, f"{provider_errors.label(off[0].type_id)}: {model} is turned off for your account. "
+                                     "Turn it on in Sources.")
         if catalog_unavailable_for(model):
             raise HTTPException(503, "Model catalog is temporarily unavailable")
         # A model of a pool the user lost their account for (e.g. an OAuth

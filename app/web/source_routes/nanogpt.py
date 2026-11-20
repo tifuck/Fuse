@@ -240,23 +240,6 @@ async def nanogpt_settings(request: Request):
     return JSONResponse({"free_models": prefs["subscription"], "paid_all": prefs["paid_all"]})
 
 
-@router.post("/sources/nanogpt/model")
-async def nanogpt_model_toggle(request: Request):
-    user, body, err = await _owner_json(request)
-    if err:
-        return err
-    model = str(body.get("model") or "").strip()
-    rec = _by_id().get(model)
-    if not rec or rec["subscription"]:
-        return JSONResponse({"error": "Unknown paid model."}, status_code=400)
-    if nanogpt_mod.model_prefs(user["id"])["paid_all"]:
-        return JSONResponse({"error": "Every paid model is already on."}, status_code=409)
-    if not nanogpt_mod.set_paid_model(user["id"], model, bool(body.get("enabled"))):
-        return JSONResponse({"error": f"You can enable up to {nanogpt_mod.MAX_PAID_MODELS} paid models."}, status_code=400)
-    invalidate_model_cache("nanogpt")
-    return JSONResponse({"enabled": model in nanogpt_mod.model_prefs(user["id"])["paid"]})
-
-
 @router.get("/sources/nanogpt/providers")
 async def nanogpt_model_providers(request: Request, model: str = ""):
     user, _body, err = await _owner_json(request)
@@ -294,18 +277,25 @@ def model_rows(user_id: int) -> list[dict]:
     """Every catalog model with this account's switch state, list price and
     pinned-provider count, shaped like OpenRouter's rows for the shared list UI
     (`free` marks a subscription model)."""
+    from ...providers import model_prefs
+
     prefs = nanogpt_mod.model_prefs(user_id)
-    paid = set(prefs["paid"])
+    choices = model_prefs.load(user_id, "nanogpt")
+    own = nanogpt_mod.nanogpt_own_access(user_id)["ok"]
     rows = []
     for mid, rec in _by_id().items():
         pricing = rec.get("pricing") or {}
         sub = bool(rec["subscription"])
+        if not (sub or own):
+            continue  # paid models run only on the user's own key
         rows.append(
             {
                 "id": mid,
                 "name": rec.get("name") or mid,
                 "free": sub,
-                "enabled": prefs["subscription"] if sub else (prefs["paid_all"] or mid in paid),
+                "model": nanogpt_mod.public_id(mid),
+                "group": "subscription" if sub else "paid",
+                "enabled": model_prefs.state("nanogpt", nanogpt_mod.public_id(mid), choices),
                 "input": nanogpt_mod._as_float(pricing.get("prompt")),
                 "output": nanogpt_mod._as_float(pricing.get("completion")),
                 "context": rec.get("context_length"),

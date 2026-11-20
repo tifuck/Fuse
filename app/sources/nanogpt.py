@@ -184,7 +184,28 @@ async def fetch_catalog(*, force: bool = False) -> dict:
         return _catalog[1] if _catalog else catalog
     _catalog = (time.time(), catalog)
     _catalog_ok = True
+    _persist(catalog, _catalog[0])
     return catalog
+
+
+def _persist(catalog: dict, at: float) -> None:
+    from ..providers import catalogs
+
+    try:
+        catalogs.save_detail(ensure_nanogpt_source(), "nanogpt", catalog, at)
+    except Exception:
+        pass  # the in-memory catalog serves; the next fetch stores it
+
+
+def load_saved() -> None:
+    """At boot: the stored catalog, so the first pages need no fetch."""
+    global _catalog, _catalog_ok
+    from ..providers import catalogs
+
+    if _catalog is None:
+        stored = catalogs.load_detail(ensure_nanogpt_source())
+        if stored and stored[1].get("by_id"):
+            _catalog, _catalog_ok = stored, True
 
 
 def cached_catalog() -> dict | None:
@@ -211,19 +232,26 @@ def efforts_for(model: str | None) -> tuple[str, ...]:
     return tuple(rec.get("reasoning_efforts") or ())
 
 
-# --- Per-user model list (users.pool_prefs["nanogpt"]["models"]) ------------
+# --- Per-user model list ------------------------------------------------------
+#
+# Which models a user shows lives in app/providers/model_prefs.py (groups
+# "subscription", on by default, and "paid", off). Provider pins stay in
+# users.pool_prefs["nanogpt"]["models"]["providers"]. These keep the older API.
 
 def model_prefs(user_id: int | None) -> dict:
+    from ..providers import model_prefs as mprefs
+
     raw = {}
     if user_id:
         item = pool_policy.user_prefs(int(user_id)).get("nanogpt")
         raw = item.get("models") if isinstance(item, dict) and isinstance(item.get("models"), dict) else {}
-    paid = raw.get("paid") if isinstance(raw.get("paid"), list) else []
     pins = raw.get("providers") if isinstance(raw.get("providers"), dict) else {}
+    prefs = mprefs.load(user_id, "nanogpt")
     return {
-        "subscription": raw.get("subscription", True) is not False,
-        "paid_all": raw.get("paid_all") is True,
-        "paid": [m for m in paid if isinstance(m, str) and m][:MAX_PAID_MODELS],
+        "subscription": mprefs.group_on("nanogpt", "subscription", prefs),
+        "paid_all": mprefs.group_on("nanogpt", "paid", prefs),
+        "paid": [upstream_id(m) for m, on in prefs["models"].items()
+                 if on and mprefs.group_of("nanogpt", m) == "paid"][:MAX_PAID_MODELS],
         "providers": {
             str(mid): [s for s in slugs if isinstance(s, str) and s][:MAX_PINS]
             for mid, slugs in pins.items()
@@ -232,7 +260,7 @@ def model_prefs(user_id: int | None) -> dict:
     }
 
 
-def _save_model_prefs(user_id: int, prefs: dict) -> None:
+def _save_pins(user_id: int, pins: dict) -> None:
     uid = int(user_id)
     with db.tx() as conn:
         row = conn.execute("SELECT pool_prefs FROM users WHERE id=? FOR UPDATE", (uid,)).fetchone()
@@ -242,46 +270,44 @@ def _save_model_prefs(user_id: int, prefs: dict) -> None:
             data = {}
         data = data if isinstance(data, dict) else {}
         item = dict(data.get("nanogpt")) if isinstance(data.get("nanogpt"), dict) else {}
-        item["models"] = prefs
+        models = dict(item.get("models")) if isinstance(item.get("models"), dict) else {}
+        models["providers"] = pins
+        item["models"] = models
         data["nanogpt"] = item
         conn.execute("UPDATE users SET pool_prefs=? WHERE id=?", (json.dumps(data), uid))
 
 
 def set_model_switches(user_id: int, *, subscription: bool | None = None, paid_all: bool | None = None) -> dict:
-    prefs = model_prefs(user_id)
+    from ..providers import model_prefs as mprefs
+
     if subscription is not None:
-        prefs["subscription"] = bool(subscription)
+        mprefs.set_group(user_id, "nanogpt", "subscription", bool(subscription))
     if paid_all is not None:
-        if not paid_all and prefs["paid_all"]:
-            prefs["paid"] = []
-        prefs["paid_all"] = bool(paid_all)
-    _save_model_prefs(user_id, prefs)
-    return prefs
+        mprefs.set_group(user_id, "nanogpt", "paid", bool(paid_all))
+    return model_prefs(user_id)
 
 
 def set_paid_model(user_id: int, upstream: str, on: bool) -> bool:
-    prefs = model_prefs(user_id)
-    paid = [m for m in prefs["paid"] if m != upstream]
-    if on:
-        if len(paid) >= MAX_PAID_MODELS:
-            return False
-        paid.append(upstream)
-    prefs["paid"] = paid
-    _save_model_prefs(user_id, prefs)
+    from ..providers import model_prefs as mprefs
+
+    try:
+        mprefs.set_model(user_id, "nanogpt", public_id(upstream), bool(on))
+    except ValueError:
+        return False
     return True
 
 
 def set_model_providers(user_id: int, upstream: str, slugs: list[str]) -> bool:
     """Empty slugs restores NanoGPT's own routing for that model."""
-    prefs = model_prefs(user_id)
+    pins = model_prefs(user_id)["providers"]
     clean = list(dict.fromkeys(s.strip()[:64] for s in slugs if isinstance(s, str) and s.strip()))[:MAX_PINS]
     if clean:
-        if upstream not in prefs["providers"] and len(prefs["providers"]) >= MAX_PINNED_MODELS:
+        if upstream not in pins and len(pins) >= MAX_PINNED_MODELS:
             return False
-        prefs["providers"][upstream] = clean
+        pins[upstream] = clean
     else:
-        prefs["providers"].pop(upstream, None)
-    _save_model_prefs(user_id, prefs)
+        pins.pop(upstream, None)
+    _save_pins(user_id, pins)
     return True
 
 
@@ -388,26 +414,21 @@ def note_pool_invoke(cred_id: int) -> None:
 
 
 def listable_models(names: list[str], user_id: int | None) -> list[str]:
-    """Subscription models while the user's switch is on; paid ones only on
-    their own key, per their selection (all of them, or the allowlist)."""
+    """Subscription models, and paid ones only on the user's own key; then
+    what the user turned on (app/providers/model_prefs.py)."""
+    from ..providers import model_prefs as mprefs
+
+    return mprefs.visible("nanogpt", user_id, lane_models(names, user_id))
+
+
+def lane_models(names: list[str], user_id: int | None) -> list[str]:
+    """What this user could run, before their own on/off choices."""
     if not user_id:
         return []
     by_id = (cached_catalog() or {}).get("by_id") or {}
-    prefs = model_prefs(user_id)
     own = nanogpt_own_access(user_id)["ok"]
-    paid = set(prefs["paid"])
-    out = []
-    for name in names:
-        upstream = upstream_id(name)
-        rec = by_id.get(upstream)
-        if rec is None:
-            continue
-        if rec["subscription"]:
-            if prefs["subscription"]:
-                out.append(name)
-        elif own and (prefs["paid_all"] or upstream in paid):
-            out.append(name)
-    return out
+    return [name for name in names
+            if (rec := by_id.get(upstream_id(name))) is not None and (rec["subscription"] or own)]
 
 
 async def resolve(model: str, user_id: int | None) -> str | None:
@@ -426,13 +447,20 @@ def denied_reason(model: str, user_id: int | None) -> str | None:
         return None
     if not user_has_nanogpt(user_id):
         return "Connect a NanoGPT account to use NanoGPT models."
-    if rec["subscription"]:
-        if model_prefs(user_id)["subscription"]:
-            return None
-        return "NanoGPT subscription models are turned off for your account. Turn them on under Sources."
-    if not nanogpt_own_access(user_id)["ok"]:
+    from ..providers import model_prefs as mprefs
+
+    if not rec["subscription"] and not nanogpt_own_access(user_id)["ok"]:
         return "Paid NanoGPT models run only on your own NanoGPT account. Sign in with NanoGPT on Sources."
-    return "That paid NanoGPT model is not enabled for your account. Turn it on under Sources."
+    public = public_id(upstream_id(model))
+    if mprefs.allowed("nanogpt", user_id, public):
+        return None
+    prefs = mprefs.load(user_id, "nanogpt")
+    group = "subscription" if rec["subscription"] else "paid"
+    if public not in prefs["models"] and not mprefs.group_on("nanogpt", group, prefs):
+        if group == "subscription":
+            return "NanoGPT subscription models are turned off for your account. Turn them on under Sources."
+        return "That paid NanoGPT model is not enabled for your account. Turn it on under Sources."
+    return "That NanoGPT model is turned off for your account. Turn it on under Sources."
 
 
 # --- Sign-in ------------------------------------------------------------------

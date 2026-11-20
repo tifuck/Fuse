@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from ... import db
 from ...security import limiter
-from ...sources import invalidate_model_cache
+from ...sources import invalidate_model_cache, refresh_catalog_now
 from ...sources import keyed as keyed_mod
 from ..deps import _notices, _pool_flash, require_admin, require_user
 
@@ -45,6 +45,7 @@ async def key_add(request: Request, pid: str, api_key: str = Form(""), label: st
     if err or not cred_id:
         return _back(user["id"], "err", err or "Could not add that key.", pid)
     invalidate_model_cache(pid)
+    refresh_catalog_now(pid)
     return _back(user["id"], "ok", f"{p.label} key saved for your account.", pid)
 
 
@@ -91,6 +92,8 @@ async def admin_site_key_add(request: Request, pid: str, api_key: str = Form("")
         cred_id, err = await keyed_mod.store_key(pid, api_key, user_id=None, label=label, region=region)
         _notices[user["id"]] = err if err or not cred_id else f"{p.label} site key saved."
         invalidate_model_cache(pid)
+        if cred_id:
+            refresh_catalog_now(pid)
     return RedirectResponse("/admin/sources#keyed", status_code=303)
 
 
