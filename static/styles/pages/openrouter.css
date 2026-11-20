@@ -44,9 +44,9 @@
 .or-count { margin-left: auto; color: var(--mute); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .or-bulk { display: inline-flex; gap: 0.3rem; }
 /* The model list under a provider: folded to one line until opened. */
-.model-list > summary { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2.75rem; cursor: pointer; }
-.model-list > summary b { font-weight: 500; }
-.model-list[open] > summary { margin-bottom: 0.6rem; }
+.provider-models > summary { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2.75rem; cursor: pointer; }
+.provider-models > summary b { font-weight: 500; }
+.provider-models[open] > summary { margin-bottom: 0.6rem; }
 
 .or-list {
   list-style: none; margin: 0; padding: 0; max-height: 30rem; overflow: auto;
