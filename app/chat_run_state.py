@@ -140,8 +140,7 @@ def steer_turn(user_id, thread_id, text, command_id, attachments=None):
         )
         chats.unarchive_on_activity(conn, row, db.now())
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"thread_id": pk, "message_id": user_message.get("id")})
-        chat_tx.thread_event(conn, user_id, pk, transcript_changed=True)
-        result = {"idempotent": False, "thread": chat_views.thread_view(conn, user_id, pk)}
+        result = {"idempotent": False, "thread": chat_views.publish_thread_view(conn, user_id, pk, transcript_changed=True)}
     # Committed: a wait the run is blocked in returns so the steer lands now.
     run_inbox.arrived(run["id"], f"steer:{command_id}")
     return result
@@ -1181,7 +1180,7 @@ def finish_run(run_id, message, status):
             # writer lock them: thread_event's read locks the thread row, and
             # taking it after the event's cursor upsert deadlocks (1213) with
             # a writer holding the thread and waiting for the cursor.
-            chat_tx.lock_thread(conn, row["thread_id"], row["user_id"])
+            chat_tx.lock_thread_id(conn, row["thread_id"], row["user_id"])
             chat_tx.event(conn, row["user_id"], "agent." + status, row["thread_id"], payload)
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
             return

@@ -119,7 +119,7 @@ def _finalizing(kind, uid, thread, root):
         return root["id"], (chat_tx, "lock_thread")
     child = chat_store.start_child_run(user_id=uid, thread_id=thread["id"], parent_run_id=root["id"],
                                        prompt="look around", description="helper")["id"]
-    return child, (chat_tx, "lock_thread") if kind == "child" else (chat_tx, "thread_event")
+    return child, (chat_tx, "lock_thread_id") if kind == "child" else (chat_tx, "thread_event")
 
 
 @pytest.mark.parametrize("finalizer", FINALIZERS)

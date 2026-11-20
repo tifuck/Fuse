@@ -711,8 +711,7 @@ def finish_compact(user_id, thread_id, checkpoint, *, command_id, fingerprint, e
             "UPDATE chat_threads SET compaction=?, revision=revision+1, updated_at=? WHERE id=? AND user_id=?",
             (ctxmod.dump_state(state), ts, pk, user_id),
         )
-        chat_tx.thread_event(conn, user_id, pk)
-        view = chat_views.thread_view(conn, user_id, pk)
+        view = chat_views.publish_thread_view(conn, user_id, pk)
         chat_tx.event(conn, user_id, "compaction.done", pk, (view or {}).get("compaction") or {})
         chat_tx.remember(
             conn,
@@ -763,8 +762,7 @@ def apply_compaction_checkpoint(user_id, thread_id, checkpoint, *, meter=None, r
                 "UPDATE chat_threads SET compaction=?, revision=revision+1, updated_at=? WHERE id=? AND user_id=?",
                 (ctxmod.dump_state(state), ts, pk, user_id),
             )
-            chat_tx.thread_event(conn, user_id, pk)
-            view = chat_views.thread_view(conn, user_id, pk)
+            view = chat_views.publish_thread_view(conn, user_id, pk)
             chat_tx.event(conn, user_id, "compaction.done", pk, (view or {}).get("compaction") or {})
             return view
 

@@ -174,7 +174,7 @@ def _force_terminal(run_id, status, message):
         if child:
             # Thread before cursor (see finish_run): thread_event below locks
             # the thread row, which must not come after the event's cursor.
-            chat_tx.lock_thread(conn, row["thread_id"], row["user_id"])
+            chat_tx.lock_thread_id(conn, row["thread_id"], row["user_id"])
             # Same abandonment contract as _finalize_abandoned: queued parent
             # follow-ups must be reported, not stranded in the request blob.
             try:
