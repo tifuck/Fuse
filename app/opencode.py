@@ -6,6 +6,7 @@ import re
 
 from . import context_meter as ctxmod, model_caps
 from .sources import devin as devin_mod
+from .providers import registry
 from .sources import models_by_source
 from .sources import openrouter as openrouter_mod
 from .sources import explabs as explabs_mod
@@ -15,13 +16,8 @@ from .web.models import _model_display_name, _opencode_model_config
 
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 FUSE_NPM = "@ai-sdk/openai-compatible"
-_OPENCODE_NAME_PREFIX = {
-    "devin": "Devin",
-    "cursor": "Cursor",
-    "explabs": "Experiential Labs",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-}
+# Resellers' models get their label as prefix (spec.reseller).
+_OPENCODE_NAME_PREFIX = {s.id: s.label for s in registry.specs() if s.reseller}
 
 
 def opencode_display_name(type_id: str, name: str) -> str:

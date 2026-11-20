@@ -23,6 +23,10 @@ def _fn(mod: str, attr: str):
     return lambda *args: getattr(_m(mod), attr)(*args)
 
 
+def _starts(*prefixes: str):
+    return lambda mid: mid.startswith(prefixes)
+
+
 def _model_efforts(mod: str, attr: str = "efforts_for"):
     return lambda model, user_id: getattr(_m(mod), attr)(model)
 
@@ -81,17 +85,25 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="soft", claims=lambda model: model.startswith("grok"),
         connect_copy="Connect a Grok account with an active subscription to use Grok models",
         guard=True, usage_walk=True,
+        title="Grok", context_window=500_000, guess=_starts("grok"), aliases=("grok", "xai", "x.ai", "x-ai"), probe="_probe_grok",
+        lock_copy={
+            "none": "You need to link a Grok account.",
+            "no_sub": "The linked Grok account needs an active SuperGrok subscription.",
+            "unauthed": "The linked Grok sign-in is no longer valid.",
+        },
     ),
     ProviderSpec(
         id="llama", label="llama.cpp", type_label="Local llama.cpp", builder="llama:LlamaSource",
         error_label="llama.cpp", site=True,
         # A local server swapped to another model must show it soon; no key needed.
         catalog_ttl=300.0, catalog_keyless=True, catalog_state=True,
+        title="Local inference", context_window=8_192, aliases=("llama", "llama.cpp"),
     ),
     ProviderSpec(
         id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
         builder="openai_compat:OpenAICompatSource", builtin=False, site=True, catalog_ttl=300.0,
         admin_anchor="/admin/sources#compat",
+        context_window=128_000,
     ),
     ProviderSpec(
         id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
@@ -99,6 +111,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"), group="api_key", site=True,
         # /tags plus one /show per model: hourly, not on every page.
         catalog_ttl=3600.0, catalog_state=True,
+        title="Ollama Cloud", context_window=128_000, aliases=("ollama",),
     ),
     _pool(
         "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",
@@ -108,12 +121,23 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         # stay on the pool, not fall through to the user's OpenRouter key.
         claim="soft", claims=_fn("chatgpt", "is_chatgpt_model"),
         connect_copy="Connect a ChatGPT account to use ChatGPT models", usage_walk=True,
+        title="ChatGPT", context_window=1_050_000, guess=_starts("gpt-"), aliases=("chatgpt", "openai", "chat-gpt"), probe="_probe_chatgpt",
+        lock_copy={
+            "none": "You need to link a ChatGPT account.",
+            "unauthed": "The linked ChatGPT sign-in is no longer valid.",
+        },
     ),
     _pool(
         "zai", "Z.AI", "Z.AI pool", "zai:ZaiSource", error_label="Z.AI",
         seeds=lambda: _m("zai").ZAI_MODELS, efforts=_model_efforts("zai"),
         claim="soft", claims=lambda model: model in _m("zai").ZAI_MODELS or model.startswith("glm-"),
         connect_copy="Connect a Z.AI key to use GLM models", guard=True, usage_walk=True,
+        title="Z.AI", context_window=1_000_000, guess=_starts("glm-"), aliases=("zai", "z.ai", "z-ai", "glm"), probe="_probe_zai",
+        lock_copy={
+            "none": "You need to link a Z.AI key, or share a live x.ai or OpenAI account.",
+            "no_sub": "The linked Z.AI key needs an active GLM Coding Plan.",
+            "unauthed": "The linked Z.AI key is no longer valid.",
+        },
     ),
     _pool(
         "devin", "Devin", "Devin pool", "devin:DevinSource", error_label="Devin",
@@ -123,6 +147,12 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="hard", claims=_fn("devin", "is_devin_model"), upstream=_fn("devin", "listed_upstream"),
         connect_copy="Connect a Devin account to use Devin models", usage_walk=True,
         removed_copy="Devin account removed.",
+        title="Devin", context_window=200_000, guess=_starts("devin/"), aliases=("devin", "cascade", "windsurf"), probe="_probe_devin", reseller=True,
+        lock_copy={
+            "none": "You need to link a Devin account.",
+            "no_sub": "The linked Devin account needs an active Pro plan.",
+            "unauthed": "The linked Devin sign-in is no longer valid.",
+        },
     ),
     _pool(
         "kimi", "Kimi", "Kimi pool", "kimi:KimiSource", error_label="Kimi",
@@ -130,6 +160,12 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="hard", claims=_fn("kimi", "is_kimi_model"),
         connect_copy="Connect a Kimi membership to use Kimi models", guard=True, usage_walk=True,
         removed_copy="Kimi account removed.",
+        title="Kimi", context_window=262_144, guess=lambda mid: mid.startswith(("kimi-", "k3-", "k3.")) or mid == "k3", probe="_probe_kimi",
+        lock_copy={
+            "none": "You need to link a Kimi membership.",
+            "no_sub": "The linked Kimi account needs an active membership.",
+            "unauthed": "The linked Kimi sign-in is no longer valid.",
+        },
     ),
     _pool(
         "mimo", "Xiaomi", "Xiaomi pool", "mimo:MimoSource", error_label="MiMo",
@@ -137,6 +173,12 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="hard", claims=_fn("mimo", "is_mimo_model"),
         connect_copy="Connect a Xiaomi Token Plan to use MiMo models", guard=True, usage_walk=True,
         removed_copy="Xiaomi account removed.",
+        title="Xiaomi", context_window=1_048_576, guess=_starts("mimo-"), probe="_probe_mimo",
+        lock_copy={
+            "none": "You need to link a Xiaomi Token Plan.",
+            "no_sub": "The linked Xiaomi key is not showing a Token Plan.",
+            "unauthed": "The linked Xiaomi key is no longer valid.",
+        },
     ),
     _pool(
         "claude", "Anthropic", "Claude pool", "claude:ClaudeSource", pool_label="Claude", error_label="Claude",
@@ -145,6 +187,12 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         public_id=lambda upstream: _m("claude_catalog").fuse_id(upstream),
         revoke_upstream=_fn("claude", "revoke_remote"), removed_copy="Claude account removed.",
         connect_copy="Connect a Claude account to use Claude models", guard=True,
+        title="Claude", context_window=1_000_000, guess=_starts("claude/"), probe="_probe_claude",
+        lock_copy={
+            "none": "You need to link a Claude account.",
+            "no_sub": "The linked Claude account needs an active subscription.",
+            "unauthed": "The linked Claude sign-in is no longer valid.",
+        },
     ),
     _pool(
         "cursor", "Cursor", "Cursor pool", "cursor:CursorSource", error_label="Cursor",
@@ -154,6 +202,11 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         public_id=lambda upstream: _m("cursor").PREFIX + upstream,
         connect_copy="Connect a Cursor account to use Cursor models", guard=True, usage_walk=True,
         removed_copy="Cursor account removed.",
+        title="Cursor", context_window=200_000, guess=_starts("cursor/"), probe="_probe_cursor", reseller=True,
+        lock_copy={
+            "none": "You need to link a Cursor account.",
+            "unauthed": "The linked Cursor sign-in is no longer valid.",
+        },
     ),
     _pool(
         "nanogpt", "NanoGPT", "NanoGPT pool", "nanogpt:NanoGPTSource", error_label="NanoGPT",
@@ -166,6 +219,11 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True, group="aggregator",
         removed_copy=("NanoGPT account removed from Fuse. NanoGPT has no revoke API: delete the \"OAuth: Fuse\" key "
                       "on nano-gpt.com/api to end its access."),
+        title="NanoGPT", context_window=128_000, guess=_starts("nanogpt/"), aliases=("nanogpt", "nano-gpt"), probe="_probe_nanogpt", reseller=True,
+        lock_copy={
+            "none": "Sign in with NanoGPT to use its models.",
+            "unauthed": "The linked NanoGPT key is no longer valid. Sign in with NanoGPT again.",
+        },
     ),
     _pool(
         "refuseless", "Refuseless", "Refuseless pool", "refuseless:RefuselessSource", error_label="Refuseless",
@@ -175,6 +233,11 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         scan=False, connect_copy="Link a Refuseless API key to use Refuseless models",
         # Its keys bill their owner per token, so a new donor starts private.
         default_share="private", usage_walk=True, group="api_key",
+        title="Refuseless", context_window=128_000, guess=_starts("refuseless/"), aliases=("refuseless",), probe="_probe_refuseless", reseller=True,
+        lock_copy={
+            "none": "Link your Refuseless API key to use its models.",
+            "unauthed": "The linked Refuseless key is no longer valid. Link a new key.",
+        },
     ),
     # Experiential Labs before OpenRouter: bootstrap creates their rows in this order.
     ProviderSpec(
@@ -183,6 +246,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts, public_id=_fn("explabs", "public_id"),
         # Private catalogs: nothing shared to warm or scan.
         warm=False, scan=False, personal=True, panel=True, group="api_key",
+        title="Experiential Labs", context_window=128_000, guess=_starts("explabs/"), aliases=("explabs", "experiential-labs"), probe="_probe_explabs", reseller=True,
     ),
     ProviderSpec(
         id="openrouter", label="OpenRouter", type_label="OpenRouter", builder="openrouter:OpenRouterSource",
@@ -194,5 +258,9 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         panel=True, group="aggregator", catalog_ttl=600.0, public_id=_fn("openrouter", "public_id"),
         model_groups=(("free", "Free models", True), ("paid", "Paid models", True)),
         model_group=lambda model: "free" if _m("openrouter").model_is_free(model, _m("openrouter").cached_catalog()) else "paid",
+        title="OpenRouter", context_window=128_000, guess=_starts("openrouter/"), aliases=("openrouter",), probe="_probe_openrouter",
+        lock_copy={
+            "none": "Add your OpenRouter API key to use free OpenRouter models.",
+        },
     ),
 ) + tuple(_keyed(p) for p in PRESETS)

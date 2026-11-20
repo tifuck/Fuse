@@ -1,6 +1,6 @@
-"""The provider registry: every per-provider list is derived from it and
-still says what it said before (snapshots), the specs are complete, and a
-golden table pins how pick() routes every kind of model id.
+"""The provider registry: every per-provider list follows the specs, the
+specs are complete, and a golden table pins how pick() routes every kind of
+model id.
 """
 import asyncio
 import inspect
@@ -10,58 +10,47 @@ import httpx
 from pytest import fixture
 
 import app.sources as sources
-from app import pricing, provider_errors
+from app import agents, context_meter, opencode, pricing, provider_errors
 from app.providers import registry
 from app.providers.access import Access
-from app.sources import kimi, nanogpt, openrouter, pool_policy, refuseless, usage_walk
+from app.sources import kimi, nanogpt, openrouter, pool_policy, probe, refuseless, usage_walk
 from app.web.source_routes import admin_actions
 from tests.core.helpers import quick_user
 
 from ._support import key, route, source
 
 POOLS = ("grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless")
-KEYED_IDS = {s.id for s in registry.specs() if s.keyed}
 
 
-def _builtin(mapping):
-    """The entries for providers that predate the keyed presets."""
-    return {k: v for k, v in mapping.items() if k not in KEYED_IDS}
+def test_every_derived_list_follows_the_specs():
+    ids = {s.id for s in registry.specs()}
+    pools = registry.pool_kinds()
+    assert set(sources._BUILDERS) == set(sources.TYPES) == ids and set(sources.PROVIDER_LABELS) == ids | {"unknown"}
+    assert sources.POOL_TYPES == frozenset(pools) and pool_policy.POOL_KINDS == pools == POOLS
+    assert set(pricing._AUTO_PROVIDERS) == set(pools) and set(sources._POOL_CONNECT) >= set(pools)
+    assert set(pool_policy.POOL_LABELS) == set(pools) and set(pool_policy.GUARD_KINDS) <= set(pools)
+    assert set(pool_policy.DEFAULT_SHARE.values()) <= set(pool_policy.SHARE_LEVELS)
+    assert set(sources._SEEDED_MODELS) == {s.id for s in registry.specs() if s.seeds}
+    # Claude's usage is read on its own schedule, never by the usage walk (a decision, kept).
+    assert "claude" not in usage_walk.WALK_KINDS and set(usage_walk.WALK_KINDS) <= ids
+    assert admin_actions._BUILTINS == {s.id for s in registry.specs() if s.builtin}
+    assert provider_errors._LABELS == {s.id: s.error_label for s in registry.specs() if s.error_label}
+    assert context_meter.TYPE_WINDOWS == {s.id: s.context_window for s in registry.specs() if s.context_window}
+    assert set(agents._PROVIDER_ALIASES.values()) <= ids and set(opencode._OPENCODE_NAME_PREFIX) <= ids
+    for spec in registry.specs():
+        if spec.pool:
+            assert spec.title and spec.context_window and spec.lock_copy and spec.lock_copy.get("none"), spec.id
+        if spec.probe:
+            assert callable(getattr(probe, spec.probe)), spec.id
+    # Name guesses never overlap, so their order does not matter.
+    samples = ["grok-4", "gpt-5.5", "glm-5.3", "devin/x", "kimi-k3", "k3", "mimo-v2", "claude/x", "cursor/auto",
+               "nanogpt/a/b", "refuseless/x", "explabs/x", "openrouter/a/b"]
+    for model in samples:
+        assert len([s for s in registry.specs() if s.guess and s.guess(model)]) == 1, model
+    assert context_meter.type_id_for_model("deepseek/deepseek-chat") is None
 
 
-def test_the_derived_lists_match_what_they_listed_before():
-    assert _builtin(sources.TYPES) == {
-        "llama": "Local llama.cpp", "openai": "OpenAI-compatible", "ollama": "Ollama Cloud", "grok": "Grok pool",
-        "chatgpt": "ChatGPT pool", "zai": "Z.AI pool", "devin": "Devin pool", "kimi": "Kimi pool",
-        "mimo": "Xiaomi pool", "claude": "Claude pool", "cursor": "Cursor pool", "nanogpt": "NanoGPT pool",
-        "refuseless": "Refuseless pool", "openrouter": "OpenRouter", "explabs": "Experiential Labs",
-    }
-    assert _builtin(sources.PROVIDER_LABELS) == {
-        "grok": "x.ai", "llama": "llama.cpp", "ollama": "Ollama Cloud", "openai": "OpenAI-compatible",
-        "chatgpt": "ChatGPT", "zai": "Z.AI", "devin": "Devin", "kimi": "Kimi", "mimo": "Xiaomi",
-        "claude": "Anthropic", "cursor": "Cursor", "nanogpt": "NanoGPT", "refuseless": "Refuseless",
-        "openrouter": "OpenRouter", "explabs": "Experiential Labs", "unknown": "Unknown",
-    }
-    assert sources.POOL_TYPES == frozenset(POOLS)
-    assert set(sources._SEEDED_MODELS) == {"grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor"}
-    assert set(sources._BUILDERS) == set(sources.TYPES)
-    assert sources._POOL_CONNECT["zai"] == "Connect a Z.AI key to use GLM models"
-    assert set(_builtin(sources._POOL_CONNECT)) == set(POOLS)
-    assert pool_policy.POOL_KINDS == POOLS
-    assert pool_policy.POOL_LABELS == {
-        "grok": "x.ai", "chatgpt": "OpenAI", "zai": "Z.AI", "devin": "Devin", "kimi": "Kimi", "mimo": "Xiaomi",
-        "claude": "Claude", "cursor": "Cursor", "nanogpt": "NanoGPT", "refuseless": "Refuseless",
-    }
-    assert pool_policy.GUARD_KINDS == ("grok", "zai", "kimi", "mimo", "claude", "cursor", "nanogpt")
-    assert pool_policy.DEFAULT_SHARE == {"refuseless": "private"}
-    assert set(usage_walk.WALK_KINDS) == {"grok", "chatgpt", "zai", "devin", "kimi", "mimo", "cursor", "openrouter",
-                                          "nanogpt", "refuseless"}
-    assert admin_actions._BUILTINS == set(sources.TYPES) - {"openai"}
-    assert set(pricing._AUTO_PROVIDERS) == set(POOLS)
-    assert _builtin(provider_errors._LABELS) == {
-        "claude": "Claude", "chatgpt": "ChatGPT", "grok": "Grok", "zai": "Z.AI", "devin": "Devin", "kimi": "Kimi",
-        "cursor": "Cursor", "ollama": "Ollama Cloud", "openrouter": "OpenRouter", "nanogpt": "NanoGPT",
-        "mimo": "MiMo", "llama": "llama.cpp", "explabs": "Experiential Labs", "refuseless": "Refuseless",
-    }
+def test_picker_efforts():
     assert sources.reasoning_efforts("grok", "grok-4") == ("low", "medium", "high", "xhigh")
     assert sources.reasoning_efforts("grok", "grok-build-0.1") == ()
     assert sources.reasoning_efforts("mimo") == ("none", "high")

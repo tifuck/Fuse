@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 
 from .. import context_meter as ctxmod, db
 from ..sources import TYPES, grok as grok_mod, models_by_source, reasoning_efforts
-from ..sources import chatgpt as chatgpt_mod
 from ..sources import chatgpt_catalog as chatgpt_catalog_mod
 from ..sources import devin as devin_mod
 from ..sources import devin_catalog as devin_catalog_mod
@@ -66,85 +65,9 @@ def _opencode_model_config(name: str, type_id: str, model: str | None = None, us
     }
 
 
-_FAMILY_TITLES = {
-    "grok": "Grok",
-    "chatgpt": "ChatGPT",
-    "zai": "Z.AI",
-    "devin": "Devin",
-    "kimi": "Kimi",
-    "mimo": "Xiaomi",
-    "claude": "Claude",
-    "cursor": "Cursor",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-    "llama": "Local inference",
-    "ollama": "Ollama Cloud",
-    "openrouter": "OpenRouter",
-    "explabs": "Experiential Labs",
-}
-
-_LOCK_COPY = {
-    "grok": {
-        "none": "You need to link a Grok account.",
-        "no_sub": "The linked Grok account needs an active SuperGrok subscription.",
-        "unauthed": "The linked Grok sign-in is no longer valid.",
-    },
-    "chatgpt": {
-        "none": "You need to link a ChatGPT account.",
-        "unauthed": "The linked ChatGPT sign-in is no longer valid.",
-    },
-    "zai": {
-        "none": "You need to link a Z.AI key, or share a live x.ai or OpenAI account.",
-        "no_sub": "The linked Z.AI key needs an active GLM Coding Plan.",
-        "unauthed": "The linked Z.AI key is no longer valid.",
-    },
-    "openrouter": {
-        "none": "Add your OpenRouter API key to use free OpenRouter models.",
-    },
-    "devin": {
-        "none": "You need to link a Devin account.",
-        "no_sub": "The linked Devin account needs an active Pro plan.",
-        "unauthed": "The linked Devin sign-in is no longer valid.",
-    },
-    "kimi": {
-        "none": "You need to link a Kimi membership.",
-        "no_sub": "The linked Kimi account needs an active membership.",
-        "unauthed": "The linked Kimi sign-in is no longer valid.",
-    },
-    "mimo": {
-        "none": "You need to link a Xiaomi Token Plan.",
-        "no_sub": "The linked Xiaomi key is not showing a Token Plan.",
-        "unauthed": "The linked Xiaomi key is no longer valid.",
-    },
-    "claude": {
-        "none": "You need to link a Claude account.",
-        "no_sub": "The linked Claude account needs an active subscription.",
-        "unauthed": "The linked Claude sign-in is no longer valid.",
-    },
-    "cursor": {
-        "none": "You need to link a Cursor account.",
-        "unauthed": "The linked Cursor sign-in is no longer valid.",
-    },
-    "nanogpt": {
-        "none": "Sign in with NanoGPT to use its models.",
-        "unauthed": "The linked NanoGPT key is no longer valid. Sign in with NanoGPT again.",
-    },
-    "refuseless": {
-        "none": "Link your Refuseless API key to use its models.",
-        "unauthed": "The linked Refuseless key is no longer valid. Link a new key.",
-    },
-}
-
-_POOL_FALLBACKS = {
-    "grok": grok_mod.GROK_MODELS,
-    "chatgpt": chatgpt_mod.CHATGPT_MODELS,
-    "zai": zai_mod.ZAI_MODELS,
-    "devin": devin_mod.DEVIN_MODELS,
-    "kimi": kimi_mod.KIMI_MODELS,
-    "mimo": mimo_mod.MIMO_MODELS,
-    "claude": claude_mod.CLAUDE_MODELS,
-    "cursor": cursor_mod.CURSOR_MODELS,
-}
+_FAMILY_TITLES = {s.id: s.title for s in registry.specs() if s.title}
+_LOCK_COPY = {s.id: s.lock_copy for s in registry.specs() if s.lock_copy}
+_POOL_FALLBACKS = {s.id: s.seeds() for s in registry.specs() if s.seeds}
 
 _MODEL_NAMES = {
     "grok-4.7": "Grok 4.7",

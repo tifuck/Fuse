@@ -9,6 +9,7 @@ import time
 
 from . import chat_runs, chat_store, run_inbox
 from .async_work import durable_call
+from .providers import registry
 from .chat_store import SpawnCapError
 from .hosts import host_by_alias
 from .workspace import RESERVED
@@ -30,31 +31,8 @@ FOLLOWUP_DELIVERED = (
 # tuned and pinned by a contract test; the wake path covers longer children.
 FOREGROUND_BUDGET_S = 60.0
 _MODEL_RESULT_CHARS = 6_000
-_PROVIDER_ALIASES = {
-    "grok": "grok",
-    "xai": "grok",
-    "x.ai": "grok",
-    "x-ai": "grok",
-    "chatgpt": "chatgpt",
-    "openai": "chatgpt",
-    "chat-gpt": "chatgpt",
-    "zai": "zai",
-    "z.ai": "zai",
-    "z-ai": "zai",
-    "glm": "zai",
-    "devin": "devin",
-    "cascade": "devin",
-    "windsurf": "devin",
-    "openrouter": "openrouter",
-    "explabs": "explabs",
-    "experiential-labs": "explabs",
-    "nanogpt": "nanogpt",
-    "nano-gpt": "nanogpt",
-    "refuseless": "refuseless",
-    "ollama": "ollama",
-    "llama": "llama",
-    "llama.cpp": "llama",
-}
+# What users call each provider in a model search (spec.aliases).
+_PROVIDER_ALIASES = {alias: s.id for s in registry.specs() for alias in s.aliases}
 
 
 def _norm_model_query(raw: str) -> str:

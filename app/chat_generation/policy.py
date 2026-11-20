@@ -121,28 +121,12 @@ _CAP_TTL = 3600.0
 
 
 def _model_type_guess(model: str) -> str | None:
-    mid = (model or "").strip()
-    if mid.startswith("explabs/"):
-        return "explabs"
-    if mid.startswith("nanogpt/"):
-        return "nanogpt"
-    if mid.startswith("refuseless/"):
-        return "refuseless"
-    if mid.startswith("openrouter/"):
-        return "openrouter"
-    if mid.startswith("devin/"):
-        return "devin"
-    if mid.startswith("grok"):
-        return "grok"
-    if mid.startswith("gpt-"):
-        return "chatgpt"
-    if mid.startswith("glm-"):
-        return "zai"
-    if mid.startswith("kimi-") or mid == "k3" or mid.startswith(("k3-", "k3.")):
-        return "kimi"
-    if mid.startswith("cursor/"):
-        return "cursor"
-    return None
+    """The provider a model id looks like by name. Xiaomi and Claude ids were
+    never guessed here (their runs resolve a source first), so they stay out."""
+    from ..context_meter import type_id_for_model
+
+    kind = type_id_for_model(model)
+    return None if kind in ("mimo", "claude") else kind
 
 
 def _error_obj(status: int, body) -> dict:

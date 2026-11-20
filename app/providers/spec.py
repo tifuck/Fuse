@@ -35,6 +35,16 @@ class ProviderSpec:
     resolve: Callable | None = None  # async (model, user_id) -> upstream or None
     scan: bool = True  # a model in its cached catalog routes here
     personal: bool = False  # users link their own key (OpenRouter, Experiential Labs, keyed, Ollama)
+    # Display and guesses outside routing.
+    title: str = ""  # Models page / picker family title; default the source's name
+    lock_copy: dict | None = None  # Models page "locked" reason per access reason
+    context_window: int | None = None  # default window when a model reports none
+    # The model ids this provider's names look like, by name alone (context
+    # windows, run guesses). Narrower than claims: a guess, never routing.
+    guess: Callable[[str], bool] | None = None
+    reseller: bool = False  # resells other vendors' models: OpenCode names get the label as prefix
+    aliases: tuple[str, ...] = ()  # what users call it in a model search (agents.py)
+    probe: str = ""  # its check in app/sources/probe.py; "" is the generic chat-source check
     # Access. No access callable: every user may use its site sources.
     access: Callable[[int], dict] | None = None  # {"ok": bool, "reason": str, ...}
     own_access: Callable[[int], dict] | None = None  # the user's own accounts alone
