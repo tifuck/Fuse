@@ -10,7 +10,8 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | --- | --- |
 | `app/` | The server. Large modules keep stable facades (`app/chats.py`, `app/chat_store.py` re-export their owner modules); new code imports the owner. |
 | `app/web/` | Dashboard HTTP routes (`auth`, `hosts`, `skills`, `schedules`, `dashboard`, `models`, `chat`, `notifications`, `artifacts`, `sources`, `settings`); `deps.py` holds shared auth/render helpers. No domain SQL here. |
-| `app/sources/` | Model backends, one module per type, registered in `app/sources/__init__.py` (`_BUILDERS` + `TYPES`). |
+| `app/providers/` | The provider registry: one `ProviderSpec` per provider (`builtin.py`, API-key presets in `presets.py`), access, sign-in flows, catalogs, model choices, credential helpers. Every per-provider list is derived from it. |
+| `app/sources/` | Model backends (`Source` classes), one module per provider; `app/sources/__init__.py` lists, routes (`pick`) and caches models. |
 | `app/chat_generation/` | Dashboard generation loop pieces (parsing, streaming, resume policy, tool rounds, run inbox). |
 | `app/search/` | Fuse-hosted web search: one file per provider under `providers/`. |
 | `app/workspace_ops/` | Workspace tool families used by `app/workspace.py`. |
@@ -31,27 +32,65 @@ Docker entrypoint both run it.
 
 ## Model sources
 
-Types: `llama`, `openai`, `ollama`, `openrouter`, `explabs` (site or per-user
-keys) and the shared subscription pools `grok`, `chatgpt`, `zai`, `devin`,
-`kimi`, `mimo`, `claude`, `cursor`, `nanogpt`, `refuseless` (`POOL_TYPES`). New upstream models need no code
-change: each pool merges its live catalog into its seed list.
+Every provider is a `ProviderSpec` in `app/providers/` (`spec.py` documents
+each field). Source types, labels, pool kinds, claim order, efforts, access,
+catalog schedules, admin and Sources panes, probes and display names all come
+from the specs; `tests/core/providers/test_registry.py` checks the specs are
+complete and pins routing with a golden table.
 
-- Pools route only for users who may use them (`user_has_*`; always pass the
-  `allow_*=` flags and `user_id=` into `pick` / `models_union`).
-  `pool_policy.filter_credentials` decides which donated accounts a request
-  may use; a healthy session pin always wins over load balancing.
-- `openrouter` and `explabs` are per-account keys only. OpenRouter ids are
-  `openrouter/{author}/{slug}`; Experiential Labs ids are `explabs/{model}`.
-- `nanogpt` ids are `nanogpt/{nanogpt id}`. Its subscription models may use
-  shared keys only when the key cannot spend its owner's balance; paid models
-  use only the caller's own key (`app/sources/nanogpt.py`).
-- `refuseless` ids are `refuseless/{refuseless id}`. Pay-as-you-go keys each
-  user links; they start private (`pool_policy.DEFAULT_SHARE`) and join the
-  shared pool only when their owner turns Sharing on (`app/sources/refuseless.py`).
+- Access: `providers.access.Access(user_id)` asks each provider's
+  `spec.access` once per request; pass it (or `user_id=`) to `pick`,
+  `models_union` and `models_by_source`. Pools decide which donated
+  accounts a request may use in `pool_policy.filter_credentials`; a healthy
+  session pin always wins over load balancing.
+- Model ids: pools keep their own names (`grok-*`, `gpt-*`, `devin/…`,
+  `claude/…`); OpenRouter `openrouter/{author}/{slug}`; API-key providers
+  `<prefix>/<model>` (a soft claim: without access the id routes as before).
+- Catalogs (`app/providers/catalogs.py`): one shared list per source, saved in
+  `provider_catalogs` and refreshed by the refresh loop only when due
+  (`spec.catalog_ttl`, two fetches at a time, backoff on failure, ETag for
+  API-key providers). `spec.catalog_state` sources (llama, Ollama, pools)
+  learn per-model facts while listing and are fetched at every boot;
+  `spec.user_catalog` lists per user (per-key presets, Ollama personal keys).
+- Model on/off (`app/providers/model_prefs.py`): per user and provider,
+  group defaults (`spec.model_groups`) plus per-model overrides in
+  `user_model_prefs`; every listing and `pick` apply them.
+- Sign-in (`app/providers/logins.py`, `auth_flows.py`): pending sign-ins live
+  in `provider_logins` (encrypted, 15 minutes); `/sources/p/{pid}/…` reaches
+  each provider's handlers and one revoke route removes accounts
+  (`spec.revoke_upstream` ends the grant upstream where the provider has a call).
 - Probes never run completions on pooled subscriptions: they check quota
   and/or catalog only.
 - Permission auto-approve (`app/jev.py`) asks OpenRouter's decisions API and
   is available only to users with their own OpenRouter key. It fails closed.
+
+### Adding a provider
+
+**An API-key provider** is one `KeyedPreset` in `app/providers/presets.py`:
+`id`, `label`, `base_url` (or `regions`), `protocol` (`openai_chat` or
+`anthropic_messages`), `auth` (`bearer` or `x-api-key`, extra `headers`),
+`prefix` (default the id with hyphens), `catalog` (path or URL; it also
+validates a pasted key unless `validate` is set), `hide` (non-chat ids),
+`efforts` (regex to levels; none: no effort is sent), `methods` (key types),
+`strip` (fields never sent), `per_key` (keys list account-specific models),
+`group`, `vendor` (sits on that provider's Sources pane) and `key_url`.
+Users then add personal keys on Sources; admins enable it and add site keys
+on /admin/sources. A logo is `static/logos/<id>.svg` (else the Fuse icon).
+Pricing for API-key providers is not wired yet. Tests: run
+`scripts/test.sh providers`; add a wire test in
+`tests/core/providers/test_keyed.py` only for a new protocol, header or field
+rule.
+
+**A subscription or OAuth provider** is a Source module in `app/sources/` plus
+its spec in `app/providers/builtin.py` (`_pool(...)` for a shared pool).
+Use `app/providers/creds.py` for credential helpers, `auth_flows` for token
+checks and device-code answers, `logins` for the pending sign-in, and set
+`revoke_upstream` only if the provider documents a revoke call. Set
+`catalog_state` if `models()` learns windows or capabilities. Its Sources
+panel is `templates/sources/_pool_<id>.html` (`panel=True`), its sign-in
+routes go in `app/web/source_routes/<id>.py` (mounted in `app/web/sources.py`,
+which adds `/sources/p/<id>/…`). Tests: sign-in, refresh and routing in
+`tests/core/subscriptions/`; the registry test lists what a spec must set.
 
 ## Web conventions
 
