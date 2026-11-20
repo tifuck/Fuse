@@ -23,7 +23,10 @@ const GOLD = rgb("#ffc45e");
 const SUN = rgb("#fff6dc");
 const PALE = rgb("#ffe8d2");
 // Banks: earth, stone, moss.
-const BANK = ["#5a3e2c", "#6e5a46", "#4e5428"];
+const BANK = ["#6e4e3c", "#7a6652", "#5e6038"];
+// The morning haze that far terraces, and the quiet middle of the screen,
+// sink into.
+const HAZE = "#f4cdb6";
 const RIP_INK = ["#b45a66", "#a8742c", "#7a5c9c"];
 
 function build(s) {
@@ -43,7 +46,11 @@ function build(s) {
   const off = R() * 100;
   const sunLit = (u) => Math.exp(-(((u - su) / 0.45) ** 2));
   // Spacing between lips grows toward the viewer.
-  const spAt = (y) => cell * (3 + 9.5 * Math.pow(clamp01((y - top) / (h - top)), 1.25));
+  const spAt = (y) => cell * (3.6 + 11 * Math.pow(clamp01((y - top) / (h - top)), 1.25));
+  // How far a tile at (x, y) sinks into the haze: with distance up the hill,
+  // and in the middle of the screen, behind the transcript.
+  const calm = (x, y) => 0.42 * Math.exp(-(((x - w / 2) / (0.3 * w)) ** 2) - (((y - h * 0.5) / (0.32 * h)) ** 2));
+  const veil = (x, y) => clamp01(0.4 * (1 - clamp01((y - top) / (h * 0.55))) + calm(x, y));
   const bowl = (u) => Math.pow(clamp01(1 - ((u - cx) / 0.62) ** 2), 1.4);
   // Lips, far to near, as curves wrapping round the spur; T[0] is the crest.
   const T = [];
@@ -195,10 +202,10 @@ function build(s) {
     const x = c * cell;
     const u = (x + cell / 2) / w;
     if (kindAt(j, c) === "green") {
-      const f = shade(mixc("#3c7a26", "#5a9a34", quant(noise(c * 0.2 + off, j), 4)), quant(0.85 + 0.25 * sunLit(u), 6));
+      const f = mixc(shade(mixc("#6a9448", "#7ca456", quant(noise(c * 0.2 + off, j), 4)), quant(0.88 + 0.22 * sunLit(u), 6)), HAZE, 0.2);
       g.fillStyle = f;
       g.fillRect(x, a * cell, cell, (b - a) * cell);
-      for (let r = a; r < b; r += 1) if (hash(c, r, 6) < 0.55) put(g, s, tile(s, hash(c, r, 7) < 0.5 ? "\"" : ",", null, shade(f, 0.7)), x, r * cell);
+      for (let r = a; r < b; r += 1) if (hash(c, r, 6) < 0.22) put(g, s, tile(s, hash(c, r, 7) < 0.5 ? "\"" : ",", null, shade(f, 0.8)), x, r * cell);
       continue;
     }
     if (kind[j] === "plant") {
@@ -229,10 +236,11 @@ function build(s) {
     const face = d < 0 ? 0.12 : d > 0 ? -0.1 : 0;
     const base = BANK[Math.floor(noise(c * 0.15 + off, j * 0.7) * 2.99)];
     for (let r = a; r < b; r += 1) {
-      const lit = quant(0.74 + 0.28 * sunLit(u) + face + (r === a ? 0.06 : 0) - 0.12 * ((r - a) / Math.max(1, b - a)), 10);
-      const fill = shade(base, lit);
-      const gl = r === a ? (hash(c, r, 1) < 0.5 ? "'" : ",") : ["#", "=", "%", ":", "#"][Math.floor(hash(c, r, 2) * 5)];
-      put(g, s, tile(s, gl, fill, r === a ? "#78b03c" : shade(fill, 1.55)), c * cell, r * cell);
+      const lit = quant(0.8 + 0.26 * sunLit(u) + face + (r === a ? 0.06 : 0) - 0.12 * ((r - a) / Math.max(1, b - a)), 10);
+      const fill = mixc(shade(base, lit), HAZE, quant(veil(c * cell, r * cell), 6));
+      // Stone courses show as a sparse mark; most of the bank is bare earth.
+      const gl = r === a ? (hash(c, r, 1) < 0.3 ? "," : " ") : hash(c, r, 2) < 0.16 ? ":" : " ";
+      put(g, s, tile(s, gl, fill, r === a ? mixc(fill, "#8ab860", 0.6) : shade(fill, 1.22)), c * cell, r * cell);
     }
   }
   // Lips: a bund of grass tiles, glyphs running with the contour; the crest
@@ -246,17 +254,18 @@ function build(s) {
       const d = row(j, c + 1) - row(j, c - 1);
       for (let r = r0; r <= r1; r += 1) {
         if (j === 0) {
-          const f = shade("#4a7442", quant(0.85 + 0.3 * noise(c * 0.4, r), 6));
-          put(g, s, tile(s, ["@", "&", "%"][Math.floor(hash(c, r, 3) * 3)], f, shade(f, 1.5)), c * cell, r * cell);
-          if (r === r0 && hash(c, 0, 4) < 0.55) put(g, s, tile(s, hash(c, 1, 4) < 0.5 ? "^" : "*", null, "#5e7e58"), c * cell, (r - 1) * cell);
+          const f = mixc(shade("#5c7c52", quant(0.88 + 0.24 * noise(c * 0.4, r), 6)), HAZE, 0.38);
+          put(g, s, tile(s, hash(c, r, 3) < 0.2 ? "^" : " ", f, shade(f, 1.25)), c * cell, r * cell);
+          if (r === r0 && hash(c, 0, 4) < 0.4) put(g, s, tile(s, "^", null, mixc("#6e8a66", HAZE, 0.3)), c * cell, (r - 1) * cell);
           continue;
         }
-        const gl = r1 > r0 ? (d > 0 ? "\\" : d < 0 ? "/" : "|") : d >= 2 ? "\\" : d <= -2 ? "/" : ["-", "-", "~", "="][Math.floor(hash(c, j, 8) * 4)];
-        const lit = quant(0.84 + 0.3 * sunLit(u) + 0.08 * (hash(c, r, 9) - 0.5), 8);
+        // Glyphs only where the bund steps: the slope reads, the flat runs stay calm.
+        const gl = r1 > r0 ? (d > 0 ? "\\" : d < 0 ? "/" : "|") : d >= 2 ? "\\" : d <= -2 ? "/" : hash(c, j, 8) < 0.12 ? "-" : " ";
+        const lit = quant(0.88 + 0.24 * sunLit(u) + 0.06 * (hash(c, r, 9) - 0.5), 8);
         // Far bunds pale with distance, near ones a deep green.
         const near = quant(clamp01((r * cell) / h), 4);
-        const fill = shade(mixc(mixc("#7cbc40", "#a8dc5a", quant(noise(c * 0.3, j), 3)), "#3c8226", near * 0.7), lit);
-        put(g, s, tile(s, gl, fill, shade(fill, 0.58)), c * cell, r * cell);
+        const fill = mixc(shade(mixc(mixc("#94bc6a", "#aecb7c", quant(noise(c * 0.3, j), 3)), "#4c7a38", near * 0.7), lit), HAZE, quant(veil(c * cell, r * cell), 6));
+        put(g, s, tile(s, gl, fill, shade(fill, 0.7)), c * cell, r * cell);
       }
     }
   }
@@ -280,8 +289,8 @@ function build(s) {
     if (ch === "|") fill = "#6e4c2e";
     if (ch === "#") fill = "#ffd070";
     if (ch === "=") fill = "#4e3220";
-    const ink = ch === "#" ? "#b0601a" : ch === "|" || ch === "=" ? "#c09062" : shade(fill, 0.6);
-    put(g, fig, tile(fig, ch, fill, ink), hutC * cell + (i - 3) * F, (hutBase + 1) * cell - (5 - r) * F);
+    const ink = ch === "#" ? "#b0601a" : ch === "|" || ch === "=" ? "#c09062" : shade(fill, ch === "%" ? 0.84 : 0.6);
+    put(g, fig, tile(fig, ch === "%" ? "'" : ch, fill, ink), hutC * cell + (i - 3) * F, (hutBase + 1) * cell - (5 - r) * F);
   }));
   s.hut = { x: hutC * cell, y: (hutBase + 1) * cell - 6 * F, win: { x: hutC * cell - F / 2, y: (hutBase + 1) * cell - F / 2 } };
   // Palms standing on the bunds near the edges: trunks painted, crowns sway.

@@ -167,7 +167,7 @@ function build(s) {
     tg.lineWidth = (0.5 + 1.4 * b) * k;
     const seg = 10;
     for (let j = 0; j < seg; j += 1) {
-      tg.strokeStyle = `rgba(${cr},${cg},${cb},${(0.12 + 0.6 * b) * Math.pow(1 - j / seg, 1.4)})`;
+      tg.strokeStyle = `rgba(${cr},${cg},${cb},${(0.1 + 0.48 * b) * Math.pow(1 - j / seg, 1.4)})`;
       tg.beginPath();
       tg.arc(0, 0, r, a0 + (EXPO * j) / seg, a0 + (EXPO * (j + 1)) / seg + 0.002);
       tg.stroke();
@@ -287,13 +287,14 @@ function build(s) {
     for (let r = r0; r < rows; r += 1) {
       const y = r * cell + cell / 2;
       const depth = (y - front.crest[xi]) / cell;
-      const keep = 1 - depth / 6 + 0.6 * (noise(c * 0.3, r * 0.5) - 0.5);
+      const keep = 1 - depth / 4 + 0.5 * (noise(c * 0.3, r * 0.5) - 0.5);
       if (keep < hash(c, r, 5)) continue;
       const sh = shadowAt(front, x, y) > 0;
       const t = clamp01(depth / 10);
       const fill = sh ? mixc("#2e2448", "#3e2e54", t) : mixc("#e0a46a", "#9a5e48", t);
-      const gl = [".", ":", ".", ",", "'", ":"][Math.floor(hash(c, r, 6) * 6)];
-      put(lg, s, tile(s, gl, fill, sh ? shade(fill, 1.5) : shade(fill, 0.72)), c * cell, r * cell, 0.8 - 0.4 * clamp01(depth / 6));
+      // Sand grain as bare tiles, a ripple mark now and then.
+      const gl = hash(c, r, 6) < 0.25 ? (sh ? "." : "~") : " ";
+      put(lg, s, tile(s, gl, fill, sh ? shade(fill, 1.35) : shade(fill, 0.8)), c * cell, r * cell, 0.75 - 0.45 * clamp01(depth / 4));
     }
   }
   lg.globalAlpha = 1;
@@ -312,7 +313,7 @@ function build(s) {
     const L = !on(r, c - 1);
     const Rr = !on(r, c + 1);
     const T = !on(r - 1, c);
-    const gl = T ? (L ? "/" : Rr ? "\\" : r < 3 || on(r, c - 1) && on(r, c + 1) && !on(r, c - 2) ? "^" : "-") : L ? "(" : Rr ? ")" : on(r + 1, c) ? ":" : "=";
+    const gl = T ? (L ? "/" : Rr ? "\\" : r < 3 || on(r, c - 1) && on(r, c + 1) && !on(r, c - 2) ? "^" : "-") : L ? "(" : Rr ? ")" : on(r + 1, c) ? " " : "=";
     const ink = L ? "#f0b47a" : T ? "#8a6a7a" : "#3e3a68";
     put(lg, s, tile(s, gl, L ? "#2a2038" : body, ink), (sgC + c) * cell, (top0 + r) * cell);
   }));
