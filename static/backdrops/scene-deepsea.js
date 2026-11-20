@@ -126,11 +126,11 @@ function build(s) {
   s.src = { x: w * (port ? 0.42 : 0.38), y: -h * 0.35 };
   const [back, g] = layer(s);
   const lin = g.createLinearGradient(0, 0, 0, h);
-  lin.addColorStop(0, "#3fb8c4");
-  lin.addColorStop(0.1, "#1a8aa4");
-  lin.addColorStop(0.32, "#0c5878");
-  lin.addColorStop(0.62, "#073356");
-  lin.addColorStop(1, "#020d1e");
+  lin.addColorStop(0, "#2ea2b4");
+  lin.addColorStop(0.1, "#147e9a");
+  lin.addColorStop(0.32, "#0a5070");
+  lin.addColorStop(0.62, "#052c4a");
+  lin.addColorStop(1, "#010a18");
   g.fillStyle = lin;
   g.fillRect(0, 0, w, h);
   const win = g.createRadialGradient(s.src.x + w * 0.04, 0, 0, s.src.x + w * 0.04, 0, Math.max(w, h) * 0.55);
@@ -293,7 +293,7 @@ function build(s) {
     const side = sideOf(c);
     if (R() > 0.06 + 0.5 * side * side) continue;
     const top = rockTop(c);
-    const col = deep(R.pick(CORAL), R.range(0.18, 0.4) + 0.2 * (1 - side));
+    const col = deep(R.pick(CORAL), R.range(0.3, 0.48) + 0.2 * (1 - side));
     const kind = R();
     if (kind < 0.3 && side > 0.3) {
       branch(c, top - 1, Math.round(R.range(2, 4)), 0, col, side > 0.7 ? 2 : 1);
@@ -347,8 +347,8 @@ function build(s) {
       const base = rockTop(c) + 1;
       const H = Math.round(rows * R.range(0.3, far ? 0.6 : 0.8) * Math.pow(side, 1.6));
       if (H < 6) continue;
-      const stalkInk = far ? "#1e5048" : "#9a9440";
-      const leaf = far ? ["#123c3c", "#2a6660", "#1e5450"] : ["#323c1c", "#c8b858", "#a8a048"];
+      const stalkInk = far ? "#1e5048" : "#646034";
+      const leaf = far ? ["#123c3c", "#2a6660", "#1e5450"] : ["#242c1a", "#867e44", "#5e6034"];
       const cells = [];
       const ph = R() * TAU;
       const dx = (j) => Math.round(1.4 * Math.sin(j * 0.28 + ph));
@@ -362,8 +362,7 @@ function build(s) {
           const big = j > H * 0.25 && R() < 0.8;
           cells.push({ dc: d0 + sd, j, lift, id: tile(s, sd > 0 ? ")" : "(", leaf[0], leaf[1]) });
           if (big) cells.push({ dc: d0 + sd * 2, j: j + 1, lift, id: tile(s, "~", null, leaf[2]) });
-          if (big && R() < 0.5) cells.push({ dc: d0 + sd * 3, j: j + 1, lift, id: tile(s, sd > 0 ? "'" : "'", null, leaf[2]) });
-          if (!far) cells.push({ dc: d0 + sd, j: j - 1, lift, id: tile(s, "o", null, "#e8e090") });
+
         }
       }
       for (let i = 0; i < 3; i += 1) cells.push({ dc: dx(H) + (i - 1), j: H + (i === 1 ? 1 : 0), lift: 1, id: tile(s, "~", leaf[0], leaf[1]) });
@@ -392,6 +391,10 @@ function build(s) {
   };
   s.jx = [w * (port ? 0.18 : 0.08 + R() * 0.1), w * (port ? 0.85 : 0.86 + R() * 0.08)];
   s.seedT = R() * 1000;
+  // The deep: everything near the floor sinks into the dark.
+  s.deepFog = g.createLinearGradient(0, h * 0.55, 0, h);
+  s.deepFog.addColorStop(0, "rgba(1,10,24,0)");
+  s.deepFog.addColorStop(1, "rgba(1,10,24,0.5)");
 }
 
 function whale(ctx, s, t) {
@@ -472,7 +475,7 @@ export const deepsea = {
         const n = noise(c * 0.35 + t * 0.5, r * 0.8 - t * 0.2) * 0.65 + noise(c * 0.9 - t * 0.7, r * 1.3 + t * 0.15) * 0.35;
         if (n < 0.53) continue;
         const near = 1 - Math.min(1, Math.abs(c * cell - s.src.x) / (w * 0.6));
-        put(ctx, s, s.ripIds[(c + r * 2 + Math.floor(n * 9)) % 5], c * cell, r * cell, (n - 0.45) * 2.2 * fade * (0.45 + 0.55 * near));
+        put(ctx, s, s.ripIds[(c + r * 2 + Math.floor(n * 9)) % 5], c * cell, r * cell, (n - 0.45) * 1.5 * fade * (0.3 + 0.7 * near));
       }
     }
     // Marine snow, glinting where it crosses a ray.
@@ -589,5 +592,7 @@ export const deepsea = {
     }
     kelp(false);
     ctx.globalAlpha = 1;
+    ctx.fillStyle = s.deepFog;
+    ctx.fillRect(0, h * 0.55, w, h * 0.45);
   },
 };
