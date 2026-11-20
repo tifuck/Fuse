@@ -11,7 +11,7 @@ from ..config import ROOT
 from ..proxy import UsageStream, usage_from_obj
 from .base import ChatResult
 from .key_pool import KeyPool, NoAvailableKeyError
-from . import ollama_access
+from . import http_pool, ollama_access
 from .pool_session import bind, lookup
 
 _pools: dict[int, KeyPool] = {}
@@ -594,7 +594,7 @@ class OllamaSource:
         except UnsupportedAttachment as exc:
             return ChatResult(status=400, body={"error": {"message": str(exc)}})
         payload["stream"] = stream
-        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+        client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
         prefer_key = None
         pinned_cid = None
         if self.cfg.get("sticky_sessions", True) and session_id:
@@ -612,17 +612,14 @@ class OllamaSource:
                     client, endpoint=self.base + "/chat", payload=payload, prefer_key=prefer_key
                 )
         except httpx.TimeoutException as exc:
-            await client.aclose()
             return ChatResult(
                 status=504,
                 body={"error": {"message": f"upstream timeout ({type(exc).__name__})"}},
                 model=payload["model"],
             )
         except NoAvailableKeyError:
-            await client.aclose()
             return _no_key_result(self.pool, payload["model"])
         except (httpx.TransportError, ConnectionError) as exc:
-            await client.aclose()
             return ChatResult(
                 status=502,
                 body={"error": {"message": f"upstream transport failure ({type(exc).__name__})"}},
@@ -680,7 +677,7 @@ class OllamaSource:
             if stream:
                 stream_returned = True
                 collected: dict = {}
-                inner = _stream(response, model, client, collected)
+                inner = _stream(response, model, collected=collected)
 
                 async def _bind_on_finish():
                     try:
@@ -751,7 +748,7 @@ class OllamaSource:
             return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model, attempts=own_attempts)
         finally:
             if not stream_returned:
-                await client.aclose()
+                await response.aclose()
 
 
 async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | None = None, collected: dict | None = None):

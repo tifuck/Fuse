@@ -30,7 +30,7 @@ from ..proxy import UsageStream
 from .base import ChatResult
 from . import devin_proto as proto
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
 
 from .devin_catalog import (
@@ -576,7 +576,7 @@ class DevinSource:
         return await fetch_catalog(token)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_pool_status()
+        pool_refresh.start("devin", refresh_pool_status)
         self.creds = pool_policy.filter_credentials(
             db.fetchall(
                 "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
@@ -706,16 +706,14 @@ class DevinSource:
         )
         frame = proto.connect_frame(proto.encode_get_chat_message(req))
         url = _api_server() + CHAT_PATH
-        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+        client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
         want_stream = bool(body.get("stream"))
         try:
             req_http = client.build_request("POST", url, content=frame, headers=_headers(streaming=True))
             resp = await client.send(req_http, stream=True)
         except httpx.TimeoutException:
-            await client.aclose()
             return ChatResult(status=504, body={"error": {"message": "Devin timed out"}}, credential_id=cred["id"], model=model)
         except httpx.TransportError as exc:
-            await client.aclose()
             return ChatResult(
                 status=502,
                 body={"error": {"message": f"Devin transport failure ({type(exc).__name__})"}},
@@ -728,7 +726,6 @@ class DevinSource:
             except Exception:
                 err_body = b""
             await resp.aclose()
-            await client.aclose()
             status = resp.status_code
             # Not classified for the SKU breaker: a non-200 on this streaming
             # endpoint is an HTTP-level failure (gateway, auth, outage).
@@ -744,7 +741,7 @@ class DevinSource:
             hints: dict = {}
             result = ChatResult(
                 status=200,
-                stream=_stream_sse(resp, client, collected, model, model_uid, hints),
+                stream=_stream_sse(resp, collected, model, model_uid, hints),
                 usage=collected,
                 credential_id=cred["id"],
                 model=model,
@@ -766,7 +763,6 @@ class DevinSource:
             )
         finally:
             await resp.aclose()
-            await client.aclose()
         if trailer_error:
             error = obj.get("error") or {"message": trailer_error}
             return ChatResult(

@@ -36,7 +36,7 @@ from .. import accounts, db, file_images
 from ..config import settings
 from ..crypto import DecryptionError, encrypt
 from ..proxy import UsageStream, openai_chat
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .base import EFFORTS, ChatResult, map_effort
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
@@ -327,6 +327,14 @@ def reading_recent(extra: dict | None) -> bool:
     """The last successful usage reading is under two refresh periods old."""
     when = _parse_ts(_billing(extra).get("fetched_at") or "")
     return bool(when and datetime.now(timezone.utc) - when < timedelta(seconds=2 * USAGE_TTL))
+
+
+def _stale_loan(row, uid: int | None) -> bool:
+    """Another user's key whose last reading is too old to lend it on."""
+    try:
+        return pool_policy.donated_by(row) != uid and not reading_recent(accounts.cred_extra(row))
+    except (DecryptionError, accounts.CredentialDataError):
+        return False
 
 
 def lendable_row(row) -> bool:
@@ -875,22 +883,31 @@ class NanoGPTSource:
         rec = catalog["by_id"].get(upstream)
         if rec is None:
             return ChatResult(status=404, body={"error": {"message": "That model is not in NanoGPT's catalog."}}, model=upstream)
-        await refresh_pool_usage()
-        # filter_credentials already drops other users' keys that can spend
-        # their owner's balance; paid models also skip every shared key.
-        rows = pool_policy.filter_credentials(
-            db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
-            "nanogpt",
-            user_id,
-        )
+        refresh = pool_refresh.start("nanogpt", refresh_pool_usage)
         uid = int(user_id) if user_id is not None else None
+
+        def candidates():
+            # filter_credentials already drops other users' keys that can spend
+            # their owner's balance; paid models also skip every shared key.
+            return pool_policy.filter_credentials(
+                db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
+                "nanogpt",
+                user_id,
+            )
+
+        rows = candidates()
+        if any(_stale_loan(row, uid) for row in rows):
+            # A lent key serves only on a recent reading: wait for the
+            # refresh rather than refuse the request.
+            await pool_refresh.wait(refresh)
+            rows = candidates()
 
         def usable(cred, extra) -> bool:
             # NanoGPT's own advice that this key can route nothing right now.
             if not credential_is_authed(cred, extra) or _billing(extra).get("recommended") == "unavailable":
                 return False
             # A lent key's reading must also be recent: the refresh above
-            # brings every key up to date unless it raised.
+            # was awaited for a stale one unless it failed.
             return pool_policy.donated_by(cred) == uid or (
                 rec["subscription"] and shareable(extra) and reading_recent(extra)
             )
@@ -942,17 +959,17 @@ class NanoGPTSource:
             payload = chat_payload(body, upstream, rec, owner=owner, prefs=prefs, covered=covered)
             request_ids: list[str] = []
 
-            async def capture(response, request_ids=request_ids):
+            def capture(response, request_ids=request_ids):
                 rid = response.headers.get("x-request-id") or ""
                 if rid and all(32 <= ord(ch) < 127 for ch in rid):
                     request_ids.append(rid[:128])
 
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0), event_hooks={"response": [capture]})
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False
             try:
                 reserve(cid)
                 status, obj, stream, usage, headers = await openai_chat(
-                    client, _api() + "/v1/chat/completions", _headers(accounts.cred_secret(cred)), payload, close_client=True
+                    client, _api() + "/v1/chat/completions", _headers(accounts.cred_secret(cred)), payload, on_response=capture
                 )
                 if request_ids:
                     usage["provider_request_id"] = request_ids[-1]

@@ -24,7 +24,7 @@ from ..providers import creds
 from .. import accounts, db
 from ..crypto import DecryptionError, encrypt
 from ..proxy import UsageStream, openai_chat
-from . import pool_policy
+from . import http_pool, pool_policy
 from .base import EFFORTS, ChatResult, map_effort
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
 from .pool_session import bind, drop_cache_routing_fields, lookup
@@ -589,17 +589,17 @@ class RefuselessSource:
             payload = pool_policy.lent_payload(prepared, cred, uid)
             request_ids: list[str] = []
 
-            async def capture(response, request_ids=request_ids):
+            def capture(response, request_ids=request_ids):
                 rid = response.headers.get("x-request-id") or ""
                 if rid and all(32 <= ord(ch) < 127 for ch in rid):
                     request_ids.append(rid[:128])
 
-            client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=15.0), event_hooks={"response": [capture]})
+            client = http_pool.client(httpx.Timeout(600.0, connect=15.0))
             stream_reserved = False
             try:
                 reserve(cid)
                 status, obj, stream, usage, headers = await openai_chat(
-                    client, BASE_URL + "/chat/completions", _headers(accounts.cred_secret(cred)), payload, close_client=True
+                    client, BASE_URL + "/chat/completions", _headers(accounts.cred_secret(cred)), payload, on_response=capture
                 )
                 if request_ids:
                     usage["provider_request_id"] = request_ids[-1]

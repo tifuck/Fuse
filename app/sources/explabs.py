@@ -10,6 +10,7 @@ import httpx
 from .. import accounts, db
 from ..crypto import encrypt
 from ..proxy import openai_chat
+from . import http_pool
 from .base import ChatResult
 from .pool_pick import auth_failure_confirmed, forget_error
 
@@ -330,26 +331,21 @@ class ExperientialLabsSource:
         gateway_headers = {}
         responses = []
 
-        async def capture_headers(response):
+        def capture_headers(response):
             responses.append(response)
             for name in ("x-request-id", "x-gateway-provider", "x-gateway-replay-repair"):
                 value = response.headers.get(name)
                 if value and not any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
                     gateway_headers[name] = value[:256]
 
-        client = httpx.AsyncClient(
-            timeout=httpx.Timeout(300.0, connect=15.0),
-            event_hooks={"response": [capture_headers]},
-        )
         status, obj, stream, usage, headers = await openai_chat(
-            client, BASE_URL + "/chat/completions",
-            {"Authorization": f"Bearer {accounts.cred_secret(cred)}"}, payload, close_client=True,
+            http_pool.client(httpx.Timeout(300.0, connect=15.0)), BASE_URL + "/chat/completions",
+            {"Authorization": f"Bearer {accounts.cred_secret(cred)}"}, payload, on_response=capture_headers,
         )
         if stream is not None:
             async def close_stream():
                 for response in responses:
                     await response.aclose()
-                await client.aclose()
 
             stream._on_close = close_stream
         if status == 200:

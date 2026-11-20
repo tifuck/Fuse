@@ -319,8 +319,12 @@ async def openai_chat(
     *,
     close_client: bool = False,
     reasoning_separate: bool = False,
+    on_response=None,
 ) -> tuple[int, dict | None, AsyncIterator[bytes] | None, dict, dict[str, str]]:
-    """POST chat/completions with normalized transport/protocol failures."""
+    """POST chat/completions with normalized transport/protocol failures.
+
+    on_response(resp) sees the upstream response as soon as its headers
+    arrive, for per-request capture on a shared client."""
     payload = dict(body)
     stream = bool(payload.get("stream"))
     if stream:
@@ -344,6 +348,8 @@ async def openai_chat(
                 await client.aclose()
             return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, httpx.ConnectError) else "request_sent")
+        if on_response is not None:
+            on_response(resp)
         if resp.status_code != 200:
             safe_headers = {}
             if resp.headers.get("retry-after"):
@@ -425,6 +431,8 @@ async def openai_chat(
         except httpx.HTTPError as exc:
             return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, httpx.ConnectError) else "request_sent")
+        if on_response is not None:
+            on_response(resp)
         if resp.status_code != 200:
             safe_headers = {}
             if resp.headers.get("retry-after"):

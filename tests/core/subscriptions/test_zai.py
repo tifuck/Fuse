@@ -1,6 +1,7 @@
 """Z.AI GLM Coding Plan: effort mapping per model generation, the coding
 endpoint and region, the plan-key probe (raw auth first, then Bearer, global
 then China), quota windows, 429 holds until the named reset, and the catalog."""
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -161,3 +162,28 @@ def test_quota_parse_falls_back_to_legacy_fields(fresh_db):
     parsed = zai.parse_quota_payload({"fiveHourPercent": 12, "weeklyPercent": 30, "monthlyMCPUsage": 5})
     assert [(w["name"], w["percent"]) for w in parsed["windows"]] == [("5-hour", 12.0), ("Weekly", 30.0)]
     assert parsed["credit_usage_percent"] == 30.0
+
+
+def test_chats_start_one_background_quota_refresh_and_never_wait_for_it(fresh_db):
+    owner = user()
+    account("zai", owner, {"api_key": "zk-plan-1", "region": "global", "billing": fresh_billing(plan_type="pro")})
+    source = zai.ZaiSource({"id": pool_policy.source_id("zai"), "name": "Z.AI"}, {}, [])
+    started = []
+
+    async def stuck_refresh():
+        started.append(1)
+        await asyncio.Event().wait()
+
+    async def two_chats():
+        results = []
+        for _ in range(2):
+            results.append(await source.chat({"model": "glm-5.3", "messages": [{"role": "user", "content": "hi"}]},
+                                             user_id=owner))
+            await asyncio.sleep(0)  # the refresh is running, and stuck, before the next chat
+        return results
+
+    with patch.object(zai, "refresh_pool_quota", stuck_refresh), \
+            patch.object(zai, "openai_chat", new_callable=AsyncMock, return_value=reply()):
+        results = run(asyncio.wait_for(two_chats(), 5))
+    assert [r.status for r in results] == [200, 200]
+    assert started == [1]  # the second chat found the first refresh still in flight

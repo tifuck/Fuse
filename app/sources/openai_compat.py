@@ -7,6 +7,7 @@ import httpx
 
 from .. import accounts, db
 from ..proxy import UsageStream, openai_chat
+from . import http_pool
 from .base import ChatResult
 from .pool_pick import AUTH_RECHECK_SECONDS, Failover, cooling_down, note_failure
 from .pool_session import bind, lookup
@@ -147,7 +148,7 @@ class OpenAICompatSource:
             tried.add(cred["id"])
             key = accounts.cred_secret(cred)
             while True:
-                client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+                client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
                 if cache_key:
                     # Always send the tenant-scoped id, never the raw client/thread
                     # key: two users picking the same string must not share an
@@ -158,7 +159,6 @@ class OpenAICompatSource:
                     self._url() + "/chat/completions",
                     self._headers(key),
                     body,
-                    close_client=True,
                 )
                 if not (status == 400 and cache_key and "prompt_cache_key" in str(obj)):
                     break

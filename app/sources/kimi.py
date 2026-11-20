@@ -20,7 +20,7 @@ from ..security import safe_verify_url
 from .base import ChatResult
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
 from .token_store import (
     dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh,
@@ -988,7 +988,7 @@ class KimiSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         await refresh_due()
-        await refresh_pool_quota()
+        pool_refresh.start("kimi", refresh_pool_quota)
         self.creds = pool_policy.filter_credentials(
             db.fetchall(
                 "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
@@ -1025,7 +1025,7 @@ class KimiSource:
             if region not in _REGIONS:
                 region = "global"
             _, base = _endpoints(region)
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False
             try:
                 reserve(cred["id"])
@@ -1034,7 +1034,6 @@ class KimiSource:
                     base + "/chat/completions",
                     _chat_headers(token, extra),
                     payload,
-                    close_client=True,
                     reasoning_separate=False,
                 )
                 if status == 401 and extra.get("refresh_token") and not _capability_denial(obj):
@@ -1046,13 +1045,11 @@ class KimiSource:
                         attempts.append({"credential_id": cred["id"], "status": status, "usage": usage or {}})
                         extra = accounts.cred_extra(db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],)))
                         token = _bearer(cred, extra)
-                        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
                         status, obj, stream, usage, response_headers = await openai_chat(
                             client,
                             base + "/chat/completions",
                             _chat_headers(token, extra),
                             payload,
-                            close_client=True,
                             reasoning_separate=False,
                         )
                 if stream is not None:

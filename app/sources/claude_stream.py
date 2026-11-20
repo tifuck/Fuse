@@ -319,7 +319,7 @@ def _signature_retryable(message: str) -> bool:
     return "signature" in text and "thinking" in text
 
 
-async def _translated_stream(resp: httpx.Response, client: httpx.AsyncClient, model: str, collected: dict | None = None,
+async def _translated_stream(resp: httpx.Response, model: str, collected: dict | None = None,
                              reply: dict | None = None, public_id: str | None = None):
     translator = _Translator(public_id or fuse_id(model))
     stream_status = "failed"
@@ -350,7 +350,6 @@ async def _translated_stream(resp: httpx.Response, client: httpx.AsyncClient, mo
             yield piece
     finally:
         await resp.aclose()
-        await client.aclose()
         if collected is not None:
             collected.clear()
             collected.update(translator.usage or {})
@@ -365,7 +364,7 @@ async def _translated_stream(resp: httpx.Response, client: httpx.AsyncClient, mo
             # failed the turn ("Generation usage limit reached.").
 
 
-async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str, reply: dict | None = None,
+async def _aggregate(resp: httpx.Response, model: str, reply: dict | None = None,
                      public_id: str | None = None) -> dict:
     translator = _Translator(public_id or fuse_id(model))
     text_parts: list[str] = []
@@ -390,7 +389,6 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
         translator.error = f"upstream stream failed ({type(exc).__name__})"
     finally:
         await resp.aclose()
-        await client.aclose()
     if not terminal and not translator.error:
         translator.error = "upstream stream ended before a terminal response"
     if translator.error:

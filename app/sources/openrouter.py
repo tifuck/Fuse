@@ -12,6 +12,7 @@ from .. import accounts, db
 from ..config import settings
 from ..crypto import encrypt
 from ..proxy import openai_chat
+from . import http_pool
 from .base import ChatResult
 from .pool_pick import auth_failure_confirmed, forget_error
 
@@ -944,13 +945,12 @@ class OpenRouterSource:
             # A mandatory-reasoning model rejects "none" (e.g. an effort saved
             # before the catalog said so): leave the effort to its default.
             payload["reasoning"] = {k: v for k, v in reasoning.items() if k != "effort"}
-        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+        client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
         status, obj, stream, usage, response_headers = await openai_chat(
             client,
             BASE_URL + "/chat/completions",
             _headers(key),
             payload,
-            close_client=True,
         )
         if status == 200:
             forget_error(cred["id"])

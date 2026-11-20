@@ -11,6 +11,7 @@ import pytest
 
 from app import api, db
 from app.proxy import openai_chat
+from app.sources import http_pool
 from tests.core.helpers import quick_user, wait_until
 
 from ._support import completion, delta, drain, events, frames_of, source, sse, sse_response
@@ -217,3 +218,22 @@ def test_a_request_that_may_have_generated_is_never_replayed_on_another_key(fres
     # A 5xx arrived before any output: it fails over, but to at most two keys.
     failed = chat()
     assert failed.status == 500 and len(upstream.requests) == 4
+
+
+def test_completions_reuse_one_client_per_event_loop(upstream):
+    upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion()))
+
+    async def two_calls():
+        clients = []
+        for _ in range(2):
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
+            status, *_rest = await openai_chat(client, URL, {}, {"model": "m", "messages": []})
+            assert status == 200
+            clients.append(client)
+        return clients
+
+    first, second = asyncio.run(two_calls())
+    assert first is second and not first.is_closed
+    # A new loop (each test, or a restarted app) never inherits another loop's client.
+    assert asyncio.run(two_calls())[0] is not first
+    assert len(upstream.requests) == 4

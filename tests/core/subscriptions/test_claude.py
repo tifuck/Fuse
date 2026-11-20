@@ -328,3 +328,18 @@ def test_removing_an_account_revokes_upstream_only_where_this_database_owns_the_
         response = run(claude_routes.claude_revoke(None, cred))
     assert response.status_code == 303 and row(cred)["disabled"] == 1
     assert [r.url.path for r in calls.requests] == ["/v1/oauth/token/revoke"] * revokes
+
+
+def test_a_failed_quota_check_keeps_the_last_figures_and_is_not_retried_until_it_ages(fresh_db):
+    last_good = {**claude.parse_usage_payload({"five_hour": {"utilization": 0.4}}), "fetched_at": "2026-01-01T00:00:00Z"}
+    cred = account("claude", user(), {"auth_kind": "oauth", "access_token": "at-1", "refresh_token": "rt-1",
+                                      "expires_at": iso(8 * 3600), "billing": last_good})
+    with patch.object(claude, "fetch_profile", AsyncMock(return_value=None)) as profile, \
+            patch.object(claude, "fetch_usage", AsyncMock(return_value=(None, "usage http 500"))) as usage:
+        run(claude.refresh_quota(row(cred)))
+        run(claude.refresh_quota(row(cred)))
+
+    billing = extra_of(cred)["billing"]
+    assert billing["last_error"] == "usage http 500" and billing["checked_at"]
+    assert (billing["five_hour_percent"], billing["fetched_at"]) == (40.0, "2026-01-01T00:00:00Z")
+    assert (profile.await_count, usage.await_count) == (1, 1)

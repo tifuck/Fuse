@@ -31,7 +31,7 @@ from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
 from .token_store import log_refresh_failures
 
@@ -561,7 +561,7 @@ class MimoSource:
         return list(MIMO_MODELS)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
-        await refresh_pool_quota()
+        pool_refresh.start("mimo", refresh_pool_quota)
         self.creds = pool_policy.filter_credentials(
             db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
             "mimo",
@@ -593,7 +593,7 @@ class MimoSource:
             key = extra.get("api_key") or accounts.cred_secret(cred)
             region = extra.get("region") if extra.get("region") in _REGIONS else "cn"
             base = extra.get("base_url") or base_for_region(region)
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False
             try:
                 reserve(cred["id"])
@@ -602,7 +602,6 @@ class MimoSource:
                     base.rstrip("/") + "/chat/completions",
                     _chat_headers(key),
                     payload,
-                    close_client=True,
                 )
                 if stream is not None:
                     stream_reserved = True

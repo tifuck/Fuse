@@ -34,7 +34,7 @@ from ..proxy import UsageStream
 from .base import ChatResult
 from .grok import apply_usage_guard, is_held as credential_is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import claude_thread, pool_policy
+from . import claude_thread, http_pool, pool_policy, pool_refresh
 from .pool_session import bind, lookup
 from .token_store import dead_grant, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh
 
@@ -452,10 +452,10 @@ async def refresh_quota(cred, *, force: bool = False) -> dict | None:
             return None
         extra = accounts.cred_extra(row)
         billing = extra.get("billing") if isinstance(extra.get("billing"), dict) else {}
-        if not force and billing.get("fetched_at") and not billing.get("last_error"):
-            when = _parse_ts(str(billing.get("fetched_at") or ""))
-            if when and datetime.now(timezone.utc) - when < timedelta(seconds=USAGE_TTL):
-                return billing
+        # Fresh by checked_at, stamped on failures too: a failing account is
+        # retried once per USAGE_TTL, not on every call.
+        if not force and creds.usage_fresh(billing, USAGE_TTL):
+            return billing
         if extra.get("refresh_token"):
             exp = extra.get("expires_at")
             when = _parse_ts(str(exp or ""))
@@ -464,19 +464,20 @@ async def refresh_quota(cred, *, force: bool = False) -> dict | None:
                     row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
                     extra = accounts.cred_extra(row)
         token = _bearer(row, extra)
-        profile = await fetch_profile(token)
-        parsed, err = await fetch_usage(token)
+        profile, (parsed, err) = await asyncio.gather(fetch_profile(token), fetch_usage(token))
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if not profile and parsed is None:
-            if billing.get("fetched_at"):
-                return billing
-            return _store_billing(row["id"], {"last_error": err or "usage unavailable", "fetched_at": ""})
+            # Keep the last good figures; only the error and the check time change.
+            return _store_billing(row["id"], {"fetched_at": "", **billing, "last_error": err or "usage unavailable",
+                                              "checked_at": now})
         merged = dict(billing)
+        merged["checked_at"] = now
         if profile:
             merged.update(_profile_billing(profile))
         if parsed is not None:
             merged.update(parsed)
             merged["last_error"] = ""
-            merged["fetched_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            merged["fetched_at"] = now
         elif err:
             merged["last_error"] = err
         return _store_billing(row["id"], merged)
@@ -735,7 +736,7 @@ class ClaudeSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         await refresh_due()
-        await refresh_pool_quota()
+        pool_refresh.start("claude", refresh_pool_quota)
         self.creds = pool_policy.filter_credentials(
             db.fetchall(
                 "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
@@ -769,7 +770,8 @@ class ClaudeSource:
             tried.add(int(cred["id"]))
             note_pool_invoke(cred["id"])
             token = _bearer(cred, extra)
-            client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
+            client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
+            resp = None
             stream_reserved = False
             try:
                 reserve(cred["id"])
@@ -780,7 +782,6 @@ class ClaudeSource:
                     # Read the reason first: a failed refresh reports it below.
                     await resp.aread()
                     await resp.aclose()
-                    await client.aclose()
                     ok = await refresh_one(cred)
                     if ok:
                         attempts.append({"credential_id": cred["id"], "status": 401, "usage": {}})
@@ -789,7 +790,6 @@ class ClaudeSource:
                             continue
                         extra = accounts.cred_extra(row)
                         token = _bearer(cred, extra)
-                        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=15.0))
                         resp = await self._post(client, token, send)
                         status = resp.status_code
                 # Thread refusals happen before the model runs and cost no
@@ -807,7 +807,6 @@ class ClaudeSource:
                 if status == 400:
                     raw = (await resp.aread()).decode("utf-8", errors="replace")
                     await resp.aclose()
-                    await client.aclose()
                     message = _error_message(raw) or "Claude rejected the request"
                     if _signature_retryable(raw):
                         # Rewriting the client's history behind its back is
@@ -837,7 +836,6 @@ class ClaudeSource:
                     detail = _error_message(raw)
                     retry_after = str(resp.headers.get("retry-after") or "").strip()
                     await resp.aclose()
-                    await client.aclose()
                     # error.type / details.error_code and the unified
                     # subscription headers tell a 5-hour or weekly cap from a
                     # per-minute limit; provider_errors reads them.
@@ -873,11 +871,11 @@ class ClaudeSource:
                 remember = partial(claude_thread.record, session_id, int(cred["id"]), payload, mode, reply)
                 if want_stream:
                     collected: dict = {}
-                    stream = _translated_stream(resp, client, upstream, collected, reply)
+                    stream = _translated_stream(resp, upstream, collected, reply)
                     stream_reserved = True
                     failover.served()
                     return self._stream_result(stream, collected, cred, session_id, fuse_id(upstream), attempts, remember)
-                obj = await _aggregate(resp, client, upstream, reply)
+                obj = await _aggregate(resp, upstream, reply)
                 if isinstance(obj.get("error"), dict):
                     partial_usage = obj.pop("_fuse_usage", {}) if isinstance(obj, dict) else {}
                     if partial_usage:
@@ -902,10 +900,11 @@ class ClaudeSource:
                     attempts.append({"credential_id": cred["id"], "status": failed, "usage": {}})
                 last = ChatResult(status=failed, body={"error": {"message": f"Claude request failed ({type(exc).__name__})"}}, credential_id=cred["id"], model=fuse_id(upstream))
                 last.attempts = attempts
-                try:
-                    await client.aclose()
-                except Exception:
-                    pass
+                if resp is not None:
+                    try:
+                        await resp.aclose()
+                    except Exception:
+                        pass
                 if retry:
                     continue
                 return last
