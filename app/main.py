@@ -33,6 +33,7 @@ from .sources.nanogpt import refresh_due as nanogpt_refresh_due
 from .sources.refuseless import refresh_due as refuseless_refresh_due
 from .sources.openrouter import refresh_due as openrouter_refresh_due
 from .pricing import auto_price_due
+from .providers import logins
 from .sources.usage_walk import WALK_PAUSE, walk_next
 from .security import AccessLogRedactor, MaxBodyMiddleware, SecurityHeadersMiddleware
 
@@ -124,6 +125,7 @@ async def _refresh_loop(app: FastAPI):
     )
     local_jobs = (
         ("model pricing", auto_price_due),
+        ("sign-in sweep", logins.sweep),
     )
     # Each job backs off on its own: one failing catalog job used to
     # double the shared delay and hold OAuth refresh back for up to 5 minutes.

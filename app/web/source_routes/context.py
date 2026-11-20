@@ -12,6 +12,7 @@ from ...sources import devin as devin_mod
 from ...sources import kimi as kimi_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
+from ...providers.auth_flows import oauth_tokens as _oauth_tokens, terminal_error as _terminal_oauth_error  # noqa: F401
 from ..deps import _chatgpt_pending, _devin_pending, _kimi_pending, _mimo_pending, _claude_pending, _cursor_pending, _nanogpt_pending, _pending, _PENDING_TTL
 
 def _source_cfg(row) -> dict:
@@ -114,60 +115,6 @@ def _clamp_interval(data: dict) -> None:
         data["interval"] = max(3, min(int(data.get("interval") or 5), 30))
     except (TypeError, ValueError, OverflowError):
         data["interval"] = 5
-
-
-def _oauth_tokens(raw) -> dict:
-    if not isinstance(raw, dict):
-        raise ValueError("Token response was not an object.")
-    access = raw.get("access_token")
-    refresh = raw.get("refresh_token", "")
-    expires = raw.get("expires_in")
-    if (
-        not isinstance(access, str)
-        or not access
-        or len(access) > 16_384
-        or any(ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in access)
-    ):
-        raise ValueError("Token response did not contain a valid access token.")
-    if not isinstance(refresh, str) or len(refresh) > 16_384 or any(
-        ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in refresh
-    ):
-        raise ValueError("Token response contained an invalid refresh token.")
-    if expires in (None, ""):
-        # Optional in OAuth (RFC 6749 5.1): the issued tokens are already
-        # spent from the device code, so keep them; expires_at() applies the
-        # provider default.
-        return {**raw, "access_token": access, "refresh_token": refresh, "expires_in": None}
-    if isinstance(expires, bool):
-        raise ValueError("Token response contained an invalid expiry.")
-    try:
-        expires = int(expires)
-    except (TypeError, ValueError):
-        raise ValueError("Token response contained an invalid expiry.") from None
-    if expires <= 0 or expires > 31_536_000:
-        raise ValueError("Token response contained an invalid expiry.")
-    return {**raw, "access_token": access, "refresh_token": refresh, "expires_in": expires}
-
-
-# Terminal device-flow error codes, matched exactly: a transient message
-# merely containing "expired" or "denied" must keep polling, not kill the
-# pending sign-in.
-_TERMINAL_OAUTH_ERRORS = frozenset(
-    {
-        "access_denied",
-        "authorization_declined",
-        "cancelled",
-        "expired_token",
-        "invalid_grant",
-        "invalid_request",
-        "unauthorized_client",
-        "unsupported_grant_type",
-    }
-)
-
-
-def _terminal_oauth_error(error: str) -> bool:
-    return (error or "").strip().lower() in _TERMINAL_OAUTH_ERRORS
 
 
 def _pool_card(user, row, *, kind: str, index: int, extra: dict | None = None) -> dict:

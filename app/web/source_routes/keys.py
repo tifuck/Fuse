@@ -9,6 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from ... import db
+from ...providers import auth_flows
 from ...security import limiter
 from ...sources import invalidate_model_cache, refresh_catalog_now
 from ...sources import keyed as keyed_mod
@@ -41,7 +42,7 @@ async def key_add(request: Request, pid: str, api_key: str = Form(""), label: st
     row = db.fetchone("SELECT enabled FROM sources WHERE id=?", (keyed_mod.ensure_source(pid),))
     if not row or not row["enabled"]:
         return _back(user["id"], "err", f"{p.label} is turned off on this server.", pid)
-    cred_id, err = await keyed_mod.store_key(pid, api_key, user_id=user["id"], label=label, method=method, region=region)
+    cred_id, err = await auth_flows.api_key_paste(pid, api_key, user_id=user["id"], label=label, method=method, region=region)
     if err or not cred_id:
         return _back(user["id"], "err", err or "Could not add that key.", pid)
     invalidate_model_cache(pid)

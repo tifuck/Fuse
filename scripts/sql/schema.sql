@@ -572,6 +572,22 @@ CREATE TABLE `provider_catalogs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `provider_logins` (
+  `user_id` bigint(20) NOT NULL,
+  `provider` varchar(64) NOT NULL,
+  `token` char(32) NOT NULL,
+  `state_hash` char(64) DEFAULT NULL,
+  `data` longtext NOT NULL,
+  `created_at` double NOT NULL,
+  `expires_at` double NOT NULL,
+  PRIMARY KEY (`user_id`,`provider`),
+  KEY `provider_logins_state` (`state_hash`),
+  KEY `provider_logins_expiry` (`expires_at`),
+  CONSTRAINT `provider_logins_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `provider_usage` (
   `user_id` bigint(20) NOT NULL,
   `provider` varchar(64) NOT NULL,

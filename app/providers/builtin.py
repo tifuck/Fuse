@@ -122,24 +122,28 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         # slugs that would otherwise match ChatGPT or look like OpenRouter.
         claim="hard", claims=_fn("devin", "is_devin_model"), upstream=_fn("devin", "listed_upstream"),
         connect_copy="Connect a Devin account to use Devin models", usage_walk=True,
+        removed_copy="Devin account removed.",
     ),
     _pool(
         "kimi", "Kimi", "Kimi pool", "kimi:KimiSource", error_label="Kimi",
         seeds=lambda: _m("kimi").KIMI_MODELS, efforts=_model_efforts("kimi"),
         claim="hard", claims=_fn("kimi", "is_kimi_model"),
         connect_copy="Connect a Kimi membership to use Kimi models", guard=True, usage_walk=True,
+        removed_copy="Kimi account removed.",
     ),
     _pool(
         "mimo", "Xiaomi", "Xiaomi pool", "mimo:MimoSource", error_label="MiMo",
         seeds=lambda: _m("mimo").MIMO_MODELS, efforts=lambda model, user_id: ("none", "high"),
         claim="hard", claims=_fn("mimo", "is_mimo_model"),
         connect_copy="Connect a Xiaomi Token Plan to use MiMo models", guard=True, usage_walk=True,
+        removed_copy="Xiaomi account removed.",
     ),
     _pool(
         "claude", "Anthropic", "Claude pool", "claude:ClaudeSource", pool_label="Claude", error_label="Claude",
         seeds=lambda: _m("claude").CLAUDE_MODELS, efforts=_model_efforts("claude"),
         claim="hard", claims=_fn("claude", "is_claude_model"), upstream=_fn("claude", "upstream_id"),
         public_id=lambda upstream: _m("claude_catalog").fuse_id(upstream),
+        revoke_upstream=_fn("claude", "revoke_remote"), removed_copy="Claude account removed.",
         connect_copy="Connect a Claude account to use Claude models", guard=True,
     ),
     _pool(
@@ -149,6 +153,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="hard", claims=_fn("cursor", "is_cursor_model"), upstream=_fn("cursor", "upstream_id"),
         public_id=lambda upstream: _m("cursor").PREFIX + upstream,
         connect_copy="Connect a Cursor account to use Cursor models", guard=True, usage_walk=True,
+        removed_copy="Cursor account removed.",
     ),
     _pool(
         "nanogpt", "NanoGPT", "NanoGPT pool", "nanogpt:NanoGPTSource", error_label="NanoGPT",
@@ -159,6 +164,8 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         model_groups=(("subscription", "Subscription models", True), ("paid", "Paid models", False)),
         model_group=lambda model: "subscription" if (_m("nanogpt").catalog_record(model) or {}).get("subscription") else "paid",
         connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True, group="aggregator",
+        removed_copy=("NanoGPT account removed from Fuse. NanoGPT has no revoke API: delete the \"OAuth: Fuse\" key "
+                      "on nano-gpt.com/api to end its access."),
     ),
     _pool(
         "refuseless", "Refuseless", "Refuseless pool", "refuseless:RefuselessSource", error_label="Refuseless",

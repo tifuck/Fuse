@@ -43,6 +43,10 @@ class ProviderSpec:
     guard: bool = False  # pool_policy outside-usage guard
     default_share: str = "everyone"  # pool_policy share level of a new donor
     usage_walk: bool = False  # usage_walk refreshes its credentials
+    # async (credential row) -> None: end the grant at the provider when a
+    # user removes the account (only where the provider documents a revoke).
+    revoke_upstream: Callable | None = None
+    removed_copy: str = ""  # flash after a user removes an account; "" shows none
     keyed: object | None = None  # the KeyedPreset of an API-key provider (presets.py)
     # How users add a personal key on Sources (a KeyedPreset); keyed providers
     # and Ollama Cloud have one.
