@@ -1,0 +1,8 @@
+      {% call pool_head(devin_ui, 'Devin', 'devin', pool_state(devin_ok, devin_reason, devin_ui, 'needs a Devin sign-in'), [('Pool usage', devin_pool)]) %}<form method="post" action="/sources/devin/start"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="btn sm{{ '' if devin_pending else ' ghost' }}">{{ 'Continue linking' if devin_pending else 'Add account' }}</button></form>{% endcall %}
+      {% if devin_reason == 'unauthed' %}
+      <p class="callout fault">The linked Devin sign-in is no longer valid. Remove it and add the account again.</p>
+      {% endif %}
+      {% if devin_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ devin_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(devin_accounts, 'Devin', '/sources/devin', 'Remove this Devin account from the shared pool?', 'Optional — Devin is already unlocked. Add an account if you want to donate one.' if devin_ok and devin_reason == 'open' else ('Sign in to Devin to unlock its catalog. No API key needed.' if devin_ui.uses_shared else 'Add a Devin account. This pool is limited to accounts you link.'), devin_ui) }}

@@ -1,0 +1,36 @@
+<dialog class="modal" id="key-{{ p.id }}-dialog" aria-labelledby="key-{{ p.id }}-title"{% if keys_flash_kind == 'err' and keys_flash_provider == p.id %} data-auto-open{% endif %}>
+  <div class="modal-shell">
+    <header class="modal-head">
+      <div>
+        <p class="metric-label">{{ p.label }} · API key</p>
+        <h2 id="key-{{ p.id }}-title">Add your {{ p.label }} key</h2>
+      </div>
+      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close {{ p.label }} key dialog">Close</button>
+    </header>
+    <p class="aside">Requests bill this key. Fuse checks it against {{ p.label }}'s model list, stores it encrypted, never shows it again and never shares it.</p>
+    {% if keys_flash_kind == 'err' and keys_flash_provider == p.id %}
+    <p class="callout fault" role="alert">{{ keys_flash_msg }}</p>
+    {% endif %}
+    <form method="post" action="/sources/keys/{{ p.id }}/add" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if p.methods|length > 1 %}
+      <label>Key type
+        <select name="method">{% for m in p.methods %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}</select>
+      </label>
+      <p class="usage-note">{% for m in p.methods %}<b>{{ m.label }}</b>{% if m.help %}: {{ m.help }}{% endif %}. {% endfor %}The key types are not interchangeable.</p>
+      {% endif %}
+      {% if p.regions|length > 1 %}
+      <label>Region
+        <select name="region">{% for r in p.regions %}<option value="{{ r.id }}">{{ r.label }}</option>{% endfor %}</select>
+      </label>
+      {% endif %}
+      <label>API key
+        <input name="api_key" type="password" autocomplete="off" required maxlength="4096">
+      </label>
+      <label>Label (optional)
+        <input name="label" maxlength="80" placeholder="{{ p.label }} key">
+      </label>
+      <button type="submit" class="btn">Save key</button>
+    </form>
+  </div>
+</dialog>

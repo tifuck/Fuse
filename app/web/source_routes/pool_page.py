@@ -13,6 +13,7 @@ from ...sources import devin as devin_mod
 from ...sources import openrouter as openrouter_mod
 from ...sources import explabs as explabs_mod
 from ...sources import keyed as keyed_mod
+from ...providers import directory
 from ...sources import kimi as kimi_mod
 from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
@@ -512,9 +513,12 @@ def user_sources(request: Request):
             "label": explabs_owned["label"] or "Experiential Labs key",
         }
     keyed = keyed_mod.directory(user["id"])
+    panes = directory.panes(keyed)
+    pane_of = {entry["id"]: pane["id"] for pane in panes for entry in pane["keys"]}
     flash = _pool_flash.pop(user["id"], None)
     if flash and len(flash) < 3:
         flash = (flash[0], flash[1], "zai")
+    key_flash = flash if flash and flash[2] in pane_of else None
     return render(
         request,
         "sources.html",
@@ -639,10 +643,13 @@ def user_sources(request: Request):
         openrouter_flash_kind=flash[0] if flash and flash[2] == "openrouter" else "",
         openrouter_flash_msg=flash[1] if flash and flash[2] == "openrouter" else "",
         keyed=keyed,
-        keyed_n=sum(len(p["keys"]) for p in keyed),
-        keys_flash_kind=flash[0] if flash and flash[2] == "keys" else "",
-        keys_flash_msg=flash[1] if flash and flash[2] == "keys" else "",
-        flash_pane=flash[2] if flash and flash[2] != "pool" else "",
+        panes=panes,
+        groups=directory.GROUPS,
+        keys_flash_kind=key_flash[0] if key_flash else "",
+        keys_flash_msg=key_flash[1] if key_flash else "",
+        keys_flash_provider=key_flash[2] if key_flash else "",
+        keys_flash_pane=pane_of[key_flash[2]] if key_flash else "",
+        flash_pane=pane_of.get(flash[2], flash[2]) if flash and flash[2] != "pool" else "",
     )
 
 

@@ -55,7 +55,8 @@ class KeyedPreset:
     # no reasoning_effort and the picker offers none.
     efforts: tuple[tuple[str, tuple[str, ...]], ...] = ()
     methods: tuple[KeyMethod, ...] = (API_KEY,)
-    group: str = "api_key"  # "api_key" or "subscription" on Sources
+    group: str = "api_key"  # Sources group: api_key, subscription or aggregator
+    vendor: str = ""  # shown on this provider's pane: xAI API on x.ai (grok)
     key_url: str = ""  # where a user creates a key
     cache_key: bool = False  # forwards prompt_cache_key (session-scoped)
     max_tokens: int = 8192  # anthropic_messages: default when the client sets none
@@ -87,19 +88,19 @@ class KeyedPreset:
 _LOW_HIGH = ("low", "medium", "high")
 
 PRESETS: tuple[KeyedPreset, ...] = (
-    KeyedPreset("opencode_zen", "OpenCode Zen", base_url="https://opencode.ai/inference/openai/v1",
+    KeyedPreset("opencode_zen", "OpenCode Zen", base_url="https://opencode.ai/inference/openai/v1", group="aggregator",
                 key_url="https://opencode.ai/auth"),
     KeyedPreset("opencode_go", "OpenCode Go", base_url="https://opencode.ai/inference/go/openai/v1",
                 catalog="https://opencode.ai/inference/go/v1/models", group="subscription",
                 key_url="https://opencode.ai/auth"),
-    KeyedPreset("openai_api", "OpenAI API", base_url="https://api.openai.com/v1", prefix="openai/",
+    KeyedPreset("openai_api", "OpenAI API", base_url="https://api.openai.com/v1", prefix="openai/", vendor="chatgpt",
                 hide=r"embedding|whisper|tts|dall-e|image|moderation|transcribe|realtime|audio|search|davinci|babbage|sora",
                 efforts=((r"^(o\d|gpt-5)", _LOW_HIGH),), cache_key=True,
                 key_url="https://platform.openai.com/api-keys"),
-    KeyedPreset("anthropic", "Anthropic API", base_url="https://api.anthropic.com/v1",
+    KeyedPreset("anthropic", "Anthropic API", base_url="https://api.anthropic.com/v1", vendor="claude",
                 protocol="anthropic_messages", auth="x-api-key", headers=(("anthropic-version", "2023-06-01"),),
                 key_url="https://console.anthropic.com/settings/keys"),
-    KeyedPreset("xai", "xAI API", base_url="https://api.x.ai/v1", hide=r"image|video|embed",
+    KeyedPreset("xai", "xAI API", base_url="https://api.x.ai/v1", hide=r"image|video|embed", vendor="grok",
                 key_url="https://console.x.ai"),
     KeyedPreset("gemini", "Gemini API", base_url="https://generativelanguage.googleapis.com/v1beta/openai",
                 id_strip="models/", hide=r"embedding|imagen|veo|aqa|tts|image",
@@ -125,9 +126,9 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 hide=r"embed|flux|whisper|stable-diffusion", key_url="https://fireworks.ai/account/api-keys"),
     KeyedPreset("deepinfra", "DeepInfra", base_url="https://api.deepinfra.com/v1/openai",
                 hide=r"embed|whisper|flux|stable-diffusion|sdxl|rerank", key_url="https://deepinfra.com/dash/api_keys"),
-    KeyedPreset("moonshot", "Moonshot AI", base_url="https://api.moonshot.ai/v1",
+    KeyedPreset("moonshot", "Moonshot AI", base_url="https://api.moonshot.ai/v1", vendor="kimi",
                 key_url="https://platform.moonshot.ai/console/api-keys"),
-    KeyedPreset("huggingface", "Hugging Face", base_url="https://router.huggingface.co/v1",
+    KeyedPreset("huggingface", "Hugging Face", base_url="https://router.huggingface.co/v1", group="aggregator",
                 key_url="https://huggingface.co/settings/tokens"),
     KeyedPreset("venice", "Venice AI", base_url="https://api.venice.ai/api/v1", hide=r"embed|tts|image|upscale",
                 key_url="https://venice.ai/settings/api"),

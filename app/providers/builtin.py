@@ -47,6 +47,7 @@ def _keyed(p) -> ProviderSpec:
         warm=False, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
         scan=False, call_style="user", access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
         connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p, user_catalog=lambda user_id: True,
+        group=p.group, vendor=p.vendor, site=True, admin_anchor="/admin/sources#keyed",
     )
 
 
@@ -58,10 +59,11 @@ OLLAMA_KEY = KeyedPreset(
 
 
 def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderSpec:
+    kw.setdefault("group", "subscription")
     return ProviderSpec(
         id=id, label=label, type_label=type_label, builder=builder, pool=True,
         ensure=_fn(id, f"ensure_{id}_source"), access=_fn(id, f"{id}_access_state"),
-        own_access=_fn(id, f"{id}_own_access"), call_style="pool", **kw,
+        own_access=_fn(id, f"{id}_own_access"), call_style="pool", panel=True, admin_anchor="/admin/pools", **kw,
     )
 
 
@@ -77,16 +79,17 @@ BUILTIN: tuple[ProviderSpec, ...] = (
     ),
     ProviderSpec(
         id="llama", label="llama.cpp", type_label="Local llama.cpp", builder="llama:LlamaSource",
-        error_label="llama.cpp",
+        error_label="llama.cpp", site=True,
     ),
     ProviderSpec(
         id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
-        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session",
+        builder="openai_compat:OpenAICompatSource", builtin=False, call_style="session", site=True,
+        admin_anchor="/admin/sources#compat",
     ),
     ProviderSpec(
         id="ollama", label="Ollama Cloud", type_label="Ollama Cloud", builder="ollama:OllamaSource",
         error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="user",
-        key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"),
+        key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"), group="api_key", site=True,
     ),
     _pool(
         "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",
@@ -141,7 +144,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         efforts=_model_efforts("nanogpt"), listable=_fn("nanogpt", "listable_models"),
         # Its catalog lists every id; resolve() applies the user's own list.
         claim="hard", claims=_fn("nanogpt", "is_nanogpt_model"), resolve=_fn("nanogpt", "resolve"), scan=False,
-        connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True,
+        connect_copy="Connect a NanoGPT account to use NanoGPT models", guard=True, usage_walk=True, group="aggregator",
     ),
     _pool(
         "refuseless", "Refuseless", "Refuseless pool", "refuseless:RefuselessSource", error_label="Refuseless",
@@ -149,7 +152,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         claim="hard", claims=_fn("refuseless", "is_refuseless_model"), resolve=_fn("refuseless", "resolve"),
         scan=False, connect_copy="Link a Refuseless API key to use Refuseless models",
         # Its keys bill their owner per token, so a new donor starts private.
-        default_share="private", usage_walk=True,
+        default_share="private", usage_walk=True, group="api_key",
     ),
     # Experiential Labs before OpenRouter: bootstrap creates their rows in this order.
     ProviderSpec(
@@ -157,13 +160,13 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         builder="explabs:ExperientialLabsSource", error_label="Experiential Labs",
         ensure=_fn("explabs", "ensure_explabs_source"), efforts=_explabs_efforts,
         # Private catalogs: nothing shared to warm or scan.
-        warm=False, scan=False, call_style="user",
+        warm=False, scan=False, call_style="user", panel=True, group="api_key",
     ),
     ProviderSpec(
         id="openrouter", label="OpenRouter", type_label="OpenRouter", builder="openrouter:OpenRouterSource",
         error_label="OpenRouter", ensure=_fn("openrouter", "ensure_openrouter_source"),
         efforts=_model_efforts("openrouter"),
         # Lists per account; only its per-account resolve() admits a model.
-        warm=False, scan=False, call_style="user", usage_walk=True,
+        warm=False, scan=False, call_style="user", usage_walk=True, panel=True, group="aggregator",
     ),
 ) + tuple(_keyed(p) for p in PRESETS)

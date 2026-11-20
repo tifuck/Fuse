@@ -763,8 +763,9 @@ document.querySelectorAll(".sources-dir").forEach((dir) => {
   });
 });
 
-// Add source: every provider A to Z, narrowed as you type to the names that
-// start with what you typed; arrows and Enter pick without the mouse. Picking
+// Add source: every provider by group, A to Z, narrowed as you type to the
+// names that start with what you typed (a pane can answer to several: x.ai
+// and xAI API); arrows and Enter pick without the mouse. Picking
 // opens that provider's pane through its (possibly hidden) rail link.
 document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
   const find = dialog.querySelector("[data-source-find]");
@@ -782,7 +783,10 @@ document.querySelectorAll("[data-source-picker]").forEach((dialog) => {
   }
   function filter() {
     const q = find.value.trim().toLowerCase();
-    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.startsWith(q); });
+    items.forEach((a) => { a.parentElement.hidden = !a.dataset.name.split("|").some((name) => name.startsWith(q)); });
+    dialog.querySelectorAll("[data-source-group]").forEach((group) => {
+      group.hidden = !group.querySelector("li:not([hidden]) > [data-source-pick]");
+    });
     none.hidden = shown().length > 0;
     mark(0);
   }

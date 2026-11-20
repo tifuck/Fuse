@@ -1,0 +1,58 @@
+"""The Sources page directory: one pane per provider, grouped.
+
+A provider with a hand-written panel (templates/sources/_pool_<id>.html) or a
+personal key gets a pane; an API key whose spec names a vendor sits on that
+vendor's pane instead (xAI API beside the x.ai pool).
+"""
+from __future__ import annotations
+
+from .. import db
+from . import registry
+
+GROUPS = (("subscription", "Subscriptions"), ("api_key", "API keys"), ("aggregator", "Aggregators"), ("local", "Local"))
+
+
+def _pane(spec, title: str, partial: str | None) -> dict:
+    return {"id": spec.id, "title": title, "group": spec.group, "partial": partial, "keys": [],
+            "names": list(dict.fromkeys([title.lower(), spec.label.lower()]))}
+
+
+def panes(key_entries: list[dict]) -> list[dict]:
+    """Panes in group order, then registry order. key_entries: the user's
+    providers that take a personal key (keyed.directory)."""
+    keys = {entry["id"]: entry for entry in key_entries}
+    by_id: dict[str, dict] = {}
+    for spec in registry.specs():
+        if spec.panel:
+            by_id[spec.id] = _pane(spec, spec.pool_label or spec.label, f"sources/_pool_{spec.id}.html")
+    for spec in registry.specs():
+        entry = keys.get(spec.id)
+        if entry is None:
+            continue
+        pane = by_id.get(spec.vendor) or by_id.setdefault(spec.id, _pane(spec, spec.label, None))
+        pane["keys"].append(entry)
+        if spec.label.lower() not in pane["names"]:
+            pane["names"].append(spec.label.lower())
+    order = [group for group, _label in GROUPS]
+    return sorted(by_id.values(), key=lambda pane: order.index(pane["group"]))
+
+
+def admin_overview() -> list[dict]:
+    """Every provider with a source row, for the admin providers table: what
+    kinds of credentials it takes, whether it is on, and where its settings are."""
+    rows: dict[str, list] = {}
+    for row in db.fetchall("SELECT id, type, enabled FROM sources ORDER BY id"):
+        rows.setdefault(row["type"], []).append(row)
+    out = []
+    for spec in sorted(registry.specs(), key=lambda s: [g for g, _l in GROUPS].index(s.group)):
+        sources = rows.get(spec.id) or []
+        if not sources:
+            continue
+        kinds = [label for on, label in (
+            (spec.pool, "Pool"), (spec.site, "Site keys"), (spec.call_style == "user", "Personal keys"),
+        ) if on]
+        out.append({"id": spec.id, "label": spec.label, "kinds": kinds, "group": dict(GROUPS)[spec.group],
+                    "source_id": sources[0]["id"] if len(sources) == 1 else None,
+                    "enabled": any(r["enabled"] for r in sources), "count": len(sources),
+                    "href": spec.admin_anchor or f"/admin/sources#{spec.id}"})
+    return out

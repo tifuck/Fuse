@@ -1,0 +1,7 @@
+      {% call pool_head(grok_ui, 'x.ai', 'grok', pool_state(grok_ok, grok_reason, grok_ui, 'needs SuperGrok', 'No SuperGrok subscription'), [('Pool usage', grok_pool)]) %}{{ add_button('grok-connect-dialog', 'Add account', pending) }}{% endcall %}
+      {% if grok_reason == 'no_sub' %}
+      <p class="callout fault">A Grok account is linked, but x.ai is not showing an active SuperGrok subscription. Grok models stay locked.</p>
+      {% elif grok_reason == 'unauthed' %}
+      <p class="callout fault">The linked Grok sign-in is no longer valid. Remove it and add the account again.</p>
+      {% endif %}
+      {{ pool_accounts(accounts, 'x.ai', '/sources/grok', 'Remove this Grok account from the shared pool?', 'Optional — Grok is already unlocked. Add a SuperGrok account if you want to donate one.' if grok_ok and grok_reason == 'open' else ('Add a Grok account with an active SuperGrok subscription to join the shared pool.' if grok_ui.uses_shared else 'Add a Grok account with an active SuperGrok subscription. This pool is limited to accounts you link.'), grok_ui) }}

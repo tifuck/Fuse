@@ -50,3 +50,9 @@ class ProviderSpec:
     # True for a user whose model list is their own (Source.models(user_id=))
     # rather than the shared cached catalog.
     user_catalog: Callable[[int | None], bool] | None = None
+    # Sources directory (app/providers/directory.py).
+    group: str = "local"  # subscription, api_key, aggregator or local
+    vendor: str = ""  # shown on this provider's pane (an API key beside its subscription)
+    panel: bool = False  # has its own panel, templates/sources/_pool_<id>.html
+    site: bool = False  # an admin adds keys (or a server) that serve users
+    admin_anchor: str = ""  # its settings on the admin pages; default /admin/sources#<id>

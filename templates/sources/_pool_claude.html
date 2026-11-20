@@ -1,0 +1,8 @@
+      {% call pool_head(claude_ui, 'Claude', 'claude', pool_state(claude_ok, claude_reason, claude_ui, 'needs a Claude sign-in'), [('Pool usage', claude_pool)]) %}{{ add_button('claude-connect-dialog', 'Add account', claude_pending) }}{% endcall %}
+      {% if claude_reason == 'unauthed' %}
+      <p class="callout fault">The linked Claude sign-in is no longer valid. Remove it and add the account again.</p>
+      {% endif %}
+      {% if claude_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ claude_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(claude_accounts, 'Claude', '/sources/claude', 'Remove this Claude account from the shared pool?', 'Optional — Claude is already unlocked. Add an account if you want to donate one.' if claude_ok and claude_reason == 'open' else ('Sign in with the same Claude account you use for Claude Code.' if claude_ui.uses_shared else 'Add a Claude account. This pool is limited to accounts you link.'), claude_ui) }}

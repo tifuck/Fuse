@@ -1,0 +1,36 @@
+    <header class="pool-head">
+      <div class="pool-id">
+        <h2><img class="provider-logo" src="{{ provider_logo_url('explabs') }}" alt="" aria-hidden="true">Experiential Labs</h2>
+        <p class="pool-state{% if explabs_account %} is-ok{% endif %}"><b>{% if explabs_account %}Key linked{% else %}No key{% endif %}</b><span>personal, never shared</span></p>
+      </div>
+    </header>
+    <p class="sources-note">Your own key, never shared. Only <code>explabs/…</code> models use it; subscription pools never fall back to it.</p>
+    {% if explabs_flash_msg %}
+    <p class="callout {% if explabs_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ explabs_flash_msg }}</p>
+    {% endif %}
+    <article class="panel">
+      <div class="section-heading">
+        <h2>{% if explabs_account %}Replace key{% else %}Add your key{% endif %}</h2>
+        <span class="usage-sub">personal · not a pool</span>
+      </div>
+      <p class="usage-note">The key is stored encrypted and is never displayed.</p>
+      <form method="post" action="/sources/explabs/add" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>API key <input name="api_key" type="password" autocomplete="off" required maxlength="4096"></label>
+        <label>Label (optional) <input name="label" maxlength="80" placeholder="Experiential Labs key"></label>
+        <button type="submit" class="btn">{% if explabs_account %}Replace my key{% else %}Save my key{% endif %}</button>
+      </form>
+    </article>
+    {% if explabs_account %}
+    <article class="panel">
+      <div class="section-heading">
+        <h2>{{ explabs_account.label }} <span class="badge">Yours only</span> <span class="badge {{ 'on' if explabs_access.ok else 'off' }}">{{ 'Linked' if explabs_access.ok else 'Unavailable' }}</span></h2>
+        <form method="post" action="/sources/explabs/{{ explabs_account.id }}/revoke" data-confirm="Remove your Experiential Labs key? Other users are not affected.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn danger sm">Remove</button>
+        </form>
+      </div>
+      <p class="usage-sub">{{ explabs_access.model_count }} callable chat models · <a href="/models">Models</a></p>
+      {% if explabs_access.last_error %}<p class="callout fault">{{ explabs_access.last_error }}</p>{% endif %}
+    </article>
+    {% endif %}

@@ -13,6 +13,7 @@ from ...sources import devin as devin_mod
 from ...sources import openrouter as openrouter_mod
 from ...sources import explabs as explabs_mod
 from ...sources import keyed as keyed_mod
+from ...providers import directory
 from ...sources import kimi as kimi_mod
 from ...sources import mimo as mimo_mod
 from ...sources import claude as claude_mod
@@ -178,6 +179,7 @@ def _admin_sources_ctx(error: str | None = None, notice: str | None = None, olla
         "notice": notice,
         "types": TYPES,
         "keyed_admin": keyed_mod.admin_rows(),
+        "providers_overview": directory.admin_overview(),
     }
 
 

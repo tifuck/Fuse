@@ -1,0 +1,8 @@
+      {% call pool_head(cursor_ui, 'Cursor', 'cursor', pool_state(cursor_ok, cursor_reason, cursor_ui, 'needs a Cursor sign-in'), [('Pool usage', cursor_pool)]) %}{% if cursor_pending %}{{ add_button('cursor-connect-dialog', 'Add account', cursor_pending) }}{% else %}<form method="post" action="/sources/cursor/start"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="btn sm ghost">Add account</button></form>{% endif %}{% endcall %}
+      {% if cursor_reason == 'unauthed' %}
+      <p class="callout fault">The linked Cursor sign-in is no longer valid. Remove it and add the account again.</p>
+      {% endif %}
+      {% if cursor_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ cursor_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(cursor_accounts, 'Cursor', '/sources/cursor', 'Remove this Cursor account from the shared pool?', 'Optional — Cursor is already unlocked. Add an account if you want to donate one.' if cursor_ok and cursor_reason == 'open' else ('Sign in with Cursor to unlock its models. No API key needed.' if cursor_ui.uses_shared else 'Add a Cursor account. This pool is limited to accounts you link.'), cursor_ui) }}

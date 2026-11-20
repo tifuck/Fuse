@@ -1,0 +1,10 @@
+      {% call pool_head(kimi_ui, 'Kimi', 'kimi', pool_state(kimi_ok, kimi_reason, kimi_ui, 'needs a Kimi membership', 'No Kimi membership'), [('Pool usage', kimi_pool)]) %}{{ add_button('kimi-connect-dialog', 'Add account', kimi_pending) }}{% endcall %}
+      {% if kimi_reason == 'no_sub' %}
+      <p class="callout fault">A Kimi account is linked, but it is not showing an active membership. Kimi models stay locked.</p>
+      {% elif kimi_reason == 'unauthed' %}
+      <p class="callout fault">The linked Kimi sign-in is no longer valid. Remove it and add the account again.</p>
+      {% endif %}
+      {% if kimi_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ kimi_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(kimi_accounts, 'Kimi', '/sources/kimi', 'Remove this Kimi account from the shared pool?', 'Optional — Kimi is already unlocked. Add a membership if you want to donate one.' if kimi_ok and kimi_reason == 'open' else ('Add a Kimi membership via device sign-in, or paste a Kimi Code console API key.' if kimi_ui.uses_shared else 'Add a Kimi membership. This pool is limited to accounts you link.'), kimi_ui) }}

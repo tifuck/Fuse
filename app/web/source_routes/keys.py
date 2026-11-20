@@ -24,8 +24,8 @@ def _preset(pid: str):
     return p
 
 
-def _back(user_id: int, kind: str, message: str):
-    _pool_flash[user_id] = (kind, message, "keys")
+def _back(user_id: int, kind: str, message: str, pid: str):
+    _pool_flash[user_id] = (kind, message, pid)
     return RedirectResponse("/sources", status_code=303)
 
 
@@ -37,15 +37,15 @@ async def key_add(request: Request, pid: str, api_key: str = Form(""), label: st
         return redir
     p = _preset(pid)
     if not limiter.allow(f"keyed-add:{user['id']}", 5, 60):
-        return _back(user["id"], "err", "Too many attempts. Try again in a minute.")
+        return _back(user["id"], "err", "Too many attempts. Try again in a minute.", pid)
     row = db.fetchone("SELECT enabled FROM sources WHERE id=?", (keyed_mod.ensure_source(pid),))
     if not row or not row["enabled"]:
-        return _back(user["id"], "err", f"{p.label} is turned off on this server.")
+        return _back(user["id"], "err", f"{p.label} is turned off on this server.", pid)
     cred_id, err = await keyed_mod.store_key(pid, api_key, user_id=user["id"], label=label, method=method, region=region)
     if err or not cred_id:
-        return _back(user["id"], "err", err or "Could not add that key.")
+        return _back(user["id"], "err", err or "Could not add that key.", pid)
     invalidate_model_cache(pid)
-    return _back(user["id"], "ok", f"{p.label} key saved for your account.")
+    return _back(user["id"], "ok", f"{p.label} key saved for your account.", pid)
 
 
 @router.post("/sources/keys/{pid}/{cred_id}/revoke")
@@ -57,7 +57,7 @@ async def key_revoke(request: Request, pid: str, cred_id: int):
     if not keyed_mod.remove_key(pid, cred_id, user_id=user["id"]):
         raise HTTPException(404, "Not found")
     invalidate_model_cache(pid)
-    return _back(user["id"], "ok", f"{p.label} key removed.")
+    return _back(user["id"], "ok", f"{p.label} key removed.", pid)
 
 
 @router.post("/admin/providers/{pid}")

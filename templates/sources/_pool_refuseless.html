@@ -1,0 +1,12 @@
+      {% call pool_head(refuseless_ui, 'Refuseless', 'refuseless', pool_state(refuseless_ok, refuseless_reason, refuseless_ui, 'needs your Refuseless API key'), [('Your credits', refuseless_pool)]) %}{{ add_button('refuseless-add-dialog', 'Add key', False) }}{% endcall %}
+      <p class="sources-note">Pay as you go: every request bills the key it runs on. Your keys stay yours alone until you turn on <b>Sharing</b>; then other users who share Refuseless keys may fall back to yours, and you to theirs.</p>
+      {% if refuseless_reason == 'unauthed' %}
+      <p class="callout fault">Refuseless no longer accepts the key you linked. Remove it and link a new one.</p>
+      {% endif %}
+      {% if refuseless_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ refuseless_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(refuseless_accounts, 'Refuseless', '/sources/refuseless', 'Remove this Refuseless key from Fuse? It stays valid on Refuseless until you revoke it there.', 'Link your Refuseless API key to use its models. Fuse checks it against your credit balance, never with a paid request.', refuseless_ui) }}
+      {% if refuseless_ok %}
+      <p class="usage-sub">{{ refuseless_models }} model{{ 's' if refuseless_models != 1 else '' }} in the live lineup, shown as <code>refuseless/…</code> · <a href="/models">Models</a></p>
+      {% endif %}

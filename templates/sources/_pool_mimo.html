@@ -1,0 +1,10 @@
+      {% call pool_head(mimo_ui, 'Xiaomi', 'mimo', pool_state(mimo_ok, mimo_reason, mimo_ui, 'needs a Token Plan', 'No Token Plan'), [('Pool usage', mimo_pool)]) %}{{ add_button('mimo-connect-dialog', 'Add account', mimo_pending) }}{% endcall %}
+      {% if mimo_reason == 'no_sub' %}
+      <p class="callout fault">A Xiaomi key is linked, but it is not showing a Token Plan. MiMo models stay locked.</p>
+      {% elif mimo_reason == 'unauthed' %}
+      <p class="callout fault">The linked Xiaomi key is no longer valid. Remove it and add the plan again.</p>
+      {% endif %}
+      {% if mimo_flash_kind == 'ok' %}
+      <p class="callout ok" role="alert">{{ mimo_flash_msg }}</p>
+      {% endif %}
+      {{ pool_accounts(mimo_accounts, 'Xiaomi', '/sources/mimo', 'Remove this Xiaomi account from the shared pool?', 'Optional — Xiaomi is already unlocked. Add a Token Plan if you want to donate one.' if mimo_ok and mimo_reason == 'open' else ('Sign in with Xiaomi, or paste the Token Plan key from the console (tp-… or ttp-…).' if mimo_ui.uses_shared else 'Add a Xiaomi Token Plan. This pool is limited to accounts you link.'), mimo_ui) }}
