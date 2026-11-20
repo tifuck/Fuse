@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _claude_pending_for, _cursor_pending_for, _devin_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pool_card
+from .context import _claude_pending_for, _cursor_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -633,8 +633,8 @@ def user_sources(request: Request):
         zai_flash_msg=flash[1] if flash and flash[2] == "zai" else "",
         devin_flash_kind=flash[0] if flash and flash[2] == "devin" else "",
         devin_flash_msg=flash[1] if flash and flash[2] == "devin" else "",
-        devin_pending=_devin_pending_for(user["id"]),
-        devin_auth_url=safe_verify_url((_devin_pending_for(user["id"]) or {}).get("auth_url") or ""),
+        devin_pending=logins.get(user["id"], "devin"),
+        devin_auth_url=safe_verify_url((logins.get(user["id"], "devin") or {}).get("auth_url") or ""),
         explabs_access=explabs_access,
         explabs_account=explabs_card,
         explabs_flash_kind=flash[0] if flash and flash[2] == "explabs" else "",
