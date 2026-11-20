@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _chatgpt_pending_for, _claude_pending_for, _cursor_pending_for, _devin_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pending_for, _pool_card
+from .context import _chatgpt_pending_for, _claude_pending_for, _cursor_pending_for, _devin_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -131,7 +131,7 @@ def user_sources(request: Request):
     _sort_mine_first(visible)
     grok_pool = stats.grok_pool_meter(grok_routable, owner_id=user["id"])
     _fuse_fill(visible)
-    pending = _pending_for(user["id"])
+    pending = logins.get(user["id"], "grok", clamp=True)
     interval = 5
     verify = ""
     user_code = ""
