@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
-from ... import db
 from ...security import limiter
 from ...sources import invalidate_model_cache
 from ...sources import refuseless as refuseless_mod
 from ..deps import _pool_flash, require_user
+from .sign_in import revoke
 
 router = APIRouter()
 
@@ -33,15 +33,4 @@ async def refuseless_add(request: Request, api_key: str = Form(""), label: str =
 
 @router.post("/sources/refuseless/{cred_id}/revoke")
 async def refuseless_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
-    if redir:
-        return redir
-    sid = refuseless_mod.ensure_refuseless_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
-    if not row or row["source_id"] != sid:
-        raise HTTPException(404, "Not found")
-    if row["donated_by"] != user["id"] and not user["is_admin"]:
-        raise HTTPException(403, "Forbidden")
-    refuseless_mod.disable_credential(cred_id)
-    invalidate_model_cache("refuseless")
-    return RedirectResponse("/sources#pool-refuseless", status_code=303)
+    return await revoke(request, "refuseless", cred_id, back="/sources#pool-refuseless", auth=require_user)
