@@ -809,16 +809,6 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
                     _finish_fire(schedule, fire, status, error, None, None, consume=schedule["recur_kind"] != "once")
                     return
         from .sources import pick
-        from .sources.chatgpt import user_has_chatgpt
-        from .sources.devin import user_has_devin
-        from .sources.grok import user_has_grok
-        from .sources.kimi import user_has_kimi
-        from .sources.mimo import user_has_mimo
-        from .sources.claude import user_has_claude
-        from .sources.cursor import user_has_cursor
-        from .sources.nanogpt import user_has_nanogpt
-        from .sources.refuseless import user_has_refuseless
-        from .sources.zai import user_has_zai
 
         if schedule["fresh_each_fire"] == 0 and schedule.get("thread_id"):
             if db.fetchone(
@@ -860,20 +850,7 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
             return
         # Model resolution last: capacity/overlap skips must not pay for it
         # (and a capacity-skip retry loop would otherwise hammer pick).
-        chosen = await pick(
-            schedule["model"],
-            allow_grok=user_has_grok(user_id),
-            allow_chatgpt=user_has_chatgpt(user_id),
-            allow_zai=user_has_zai(user_id),
-            allow_devin=user_has_devin(user_id),
-            allow_kimi=user_has_kimi(user_id),
-            allow_mimo=user_has_mimo(user_id),
-            allow_claude=user_has_claude(user_id),
-            allow_cursor=user_has_cursor(user_id),
-            allow_nanogpt=user_has_nanogpt(user_id),
-            allow_refuseless=user_has_refuseless(user_id),
-            user_id=user_id,
-        )
+        chosen = await pick(schedule["model"], user_id=user_id)
         if chosen is None:
             raise ScheduleError("model unavailable", 400)
         # Everything from here to start_turn runs without an await, so this

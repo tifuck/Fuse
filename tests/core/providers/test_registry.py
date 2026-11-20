@@ -11,7 +11,8 @@ from pytest import fixture
 import app.sources as sources
 from app import pricing, provider_errors
 from app.providers import registry
-from app.sources import nanogpt, openrouter, pool_policy, refuseless, usage_walk
+from app.providers.access import Access
+from app.sources import kimi, nanogpt, openrouter, pool_policy, refuseless, usage_walk
 from app.web.source_routes import admin_actions
 from tests.core.helpers import quick_user
 
@@ -114,8 +115,8 @@ def world(fresh_db, upstream):
 
 
 def _pick(model, uid, allowed):
-    allow = {f"allow_{kind}": kind in allowed for kind in POOLS}
-    picked = asyncio.run(sources.pick(model, user_id=uid, **allow))
+    access = Access.fixed(uid, {kind: kind in allowed for kind in POOLS})
+    picked = asyncio.run(sources.pick(model, user_id=uid, access=access))
     return picked and (picked[0].type_id, picked[1])
 
 
@@ -166,8 +167,20 @@ def test_golden_routing_table(world):
 
 
 def test_a_denied_pool_names_itself_in_claim_order(world):
-    denied = {kind: False for kind in POOLS}
+    denied = Access.fixed(world, {})
     assert sources.pool_denial("devin/claude-opus-5", world, denied).startswith("Devin: access denied.")
     assert sources.pool_denial("grok-4", world, denied).startswith("Grok: access denied.")
-    assert sources.pool_denial("gpt-5.5", world, {**denied, "chatgpt": True}) is None
+    assert sources.pool_denial("gpt-5.5", world, Access.fixed(world, {"chatgpt": True})) is None
     assert sources.pool_denial("local-model", world, denied) is None
+
+
+def test_access_asks_each_provider_once_and_only_when_needed(monkeypatch):
+    asked = []
+    monkeypatch.setattr(kimi, "kimi_access_state", lambda uid: asked.append(uid) or {"ok": True, "reason": "ok"})
+    access = Access(7)
+    assert asked == []
+    assert access.allows("kimi") and access.allows("kimi") and access.state("kimi")["reason"] == "ok"
+    assert asked == [7]
+    assert access.allows("llama") and access.allows("openrouter")  # no access verdict: open
+    assert not Access().allows("kimi")  # no user: gated providers are denied
+    assert asked == [7]

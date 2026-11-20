@@ -9,6 +9,7 @@ from typing import Callable
 from .. import db
 from ..config import settings
 from ..providers import registry
+from ..providers.access import Access
 from .base import ChatResult, Source
 from .chatgpt import CHATGPT_MODELS, ChatGPTSource, ensure_chatgpt_source, refresh_due as chatgpt_refresh_due, user_has_chatgpt
 from .grok import GROK_MODELS, GrokSource, ensure_grok_source, grok_access_state, refresh_due, user_has_grok
@@ -316,33 +317,8 @@ def catalog_unavailable_for(model: str) -> bool:
     return bool(_unavailable_types & {"llama", "openai", "ollama"})
 
 
-def _sources(
-    *,
-    allow_grok: bool,
-    allow_chatgpt: bool = False,
-    allow_zai: bool = False,
-    allow_devin: bool = False,
-    allow_kimi: bool = False,
-    allow_mimo: bool = False,
-    allow_claude: bool = False,
-    allow_cursor: bool = False,
-    allow_nanogpt: bool = False,
-    allow_refuseless: bool = False,
-) -> list[Source]:
-    return [
-        s
-        for s in all_enabled()
-        if (allow_grok or s.type_id != "grok")
-        and (allow_chatgpt or s.type_id != "chatgpt")
-        and (allow_zai or s.type_id != "zai")
-        and (allow_devin or s.type_id != "devin")
-        and (allow_kimi or s.type_id != "kimi")
-        and (allow_mimo or s.type_id != "mimo")
-        and (allow_claude or s.type_id != "claude")
-        and (allow_cursor or s.type_id != "cursor")
-        and (allow_nanogpt or s.type_id != "nanogpt")
-        and (allow_refuseless or s.type_id != "refuseless")
-    ]
+def _sources(access: Access) -> list[Source]:
+    return [s for s in all_enabled() if access.allows(s.type_id)]
 
 
 def _openrouter_source() -> Source | None:
@@ -364,32 +340,8 @@ def _seed_pool_catalogs() -> None:
             _cache[s.source_id] = (stale, list(names))
 
 
-async def models_union(
-    *,
-    allow_grok: bool = False,
-    allow_chatgpt: bool = False,
-    allow_zai: bool = False,
-    allow_devin: bool = False,
-    allow_kimi: bool = False,
-    allow_mimo: bool = False,
-    allow_claude: bool = False,
-    allow_cursor: bool = False,
-    allow_nanogpt: bool = False,
-    allow_refuseless: bool = False,
-    user_id: int | None = None,
-) -> list[str]:
-    sources = _sources(
-        allow_grok=allow_grok,
-        allow_chatgpt=allow_chatgpt,
-        allow_zai=allow_zai,
-        allow_devin=allow_devin,
-        allow_kimi=allow_kimi,
-        allow_mimo=allow_mimo,
-        allow_claude=allow_claude,
-        allow_cursor=allow_cursor,
-        allow_nanogpt=allow_nanogpt,
-        allow_refuseless=allow_refuseless,
-    )
+async def models_union(*, user_id: int | None = None, access: Access | None = None) -> list[str]:
+    sources = _sources(access or Access(user_id))
     results = await asyncio.gather(*(_user_source_models(s, user_id) for s in sources))
     names: list[str] = []
     for m in results:
@@ -399,33 +351,20 @@ async def models_union(
     return names
 
 
-async def pick(
-    model: str,
-    *,
-    allow_grok: bool = False,
-    allow_chatgpt: bool = False,
-    allow_zai: bool = False,
-    allow_devin: bool = False,
-    allow_kimi: bool = False,
-    allow_mimo: bool = False,
-    allow_claude: bool = False,
-    allow_cursor: bool = False,
-    allow_nanogpt: bool = False,
-    allow_refuseless: bool = False,
-    user_id: int | None = None,
-) -> tuple[Source, str] | None:
-    from . import openrouter as openrouter_mod
-    from . import nanogpt as nanogpt_mod
-    from . import refuseless as refuseless_mod
-    from . import chatgpt as chatgpt_mod
-    from . import devin as devin_mod
-    from . import kimi as kimi_mod
-    from . import mimo as mimo_mod
-    from . import claude as claude_mod
-    from . import cursor as cursor_mod
+async def _claimed(spec, s: Source, model: str, user_id: int | None) -> tuple[Source, str] | None:
+    if spec.resolve:
+        upstream = await spec.resolve(model, user_id)
+        return (s, upstream) if upstream else None
+    return s, spec.upstream(model) if spec.upstream else model
 
+
+async def pick(model: str, *, user_id: int | None = None, access: Access | None = None) -> tuple[Source, str] | None:
+    """The source and upstream id for `model`, or None. `access` (default:
+    computed for user_id) gates every provider that has an access verdict."""
+    from . import openrouter as openrouter_mod
     from . import explabs as explabs_mod
 
+    access = access or Access(user_id)
     if model.startswith(explabs_mod.PUBLIC_PREFIX):
         for src in all_enabled():
             if src.type_id == "explabs":
@@ -435,7 +374,7 @@ async def pick(
     route = db.fetchone("SELECT * FROM model_routes WHERE model=?", (model,))
     if route:
         src = get(route["source_id"])
-        if src and src.type_id != "explabs" and (allow_grok or src.type_id != "grok") and (allow_chatgpt or src.type_id != "chatgpt") and (allow_zai or src.type_id != "zai") and (allow_devin or src.type_id != "devin") and (allow_kimi or src.type_id != "kimi") and (allow_mimo or src.type_id != "mimo") and (allow_claude or src.type_id != "claude") and (allow_cursor or src.type_id != "cursor") and (allow_nanogpt or src.type_id != "nanogpt") and (allow_refuseless or src.type_id != "refuseless"):
+        if src and src.type_id != "explabs" and access.allows(src.type_id):
             upstream = route["upstream_model"] or model
             if src.type_id != "openrouter":
                 return src, upstream
@@ -444,117 +383,43 @@ async def pick(
             if await openrouter_mod.resolve(openrouter_mod.public_id(upstream), user_id):
                 return src, upstream
             return None
-    # Devin-prefixed ids never leave this pool — including GPT/Astra/Claude
-    # slugs that would otherwise match ChatGPT or look like OpenRouter.
-    if devin_mod.is_devin_model(model):
-        if allow_devin:
+    # Claims by name (registry order). A hard claim never leaves its provider;
+    # a soft one falls through when its provider cannot take the id.
+    for spec in registry.claim_order():
+        if not spec.claims(model):
+            continue
+        if access.allows(spec.id):
             for s in all_enabled():
-                if s.type_id == "devin":
-                    return s, devin_mod.listed_upstream(model)
-        return None
-    if kimi_mod.is_kimi_model(model):
-        if allow_kimi:
-            for s in all_enabled():
-                if s.type_id == "kimi":
-                    return s, model
-        return None
-    if mimo_mod.is_mimo_model(model):
-        if allow_mimo:
-            for s in all_enabled():
-                if s.type_id == "mimo":
-                    return s, model
-        return None
-    if claude_mod.is_claude_model(model):
-        if allow_claude:
-            for s in all_enabled():
-                if s.type_id == "claude":
-                    return s, claude_mod.upstream_id(model)
-        return None
-    if cursor_mod.is_cursor_model(model):
-        if allow_cursor:
-            for s in all_enabled():
-                if s.type_id == "cursor":
-                    return s, cursor_mod.upstream_id(model)
-        return None
-    if nanogpt_mod.is_nanogpt_model(model):
-        if allow_nanogpt:
-            for s in all_enabled():
-                if s.type_id == "nanogpt":
-                    upstream = await nanogpt_mod.resolve(model, user_id)
-                    return (s, upstream) if upstream else None
-        return None
-    if refuseless_mod.is_refuseless_model(model):
-        if allow_refuseless:
-            for s in all_enabled():
-                if s.type_id == "refuseless":
-                    upstream = await refuseless_mod.resolve(model, user_id)
-                    return (s, upstream) if upstream else None
-        return None
-    if allow_grok and model.startswith("grok"):
-        for s in all_enabled():
-            if s.type_id == "grok":
-                return s, model
-    # Live-listed slugs count too: a new Codex model (gpt-6.1-sol) must stay
-    # on the pool, not fall through to the user's OpenRouter key below.
-    if allow_chatgpt and chatgpt_mod.is_chatgpt_model(model):
-        for s in all_enabled():
-            if s.type_id == "chatgpt":
-                return s, model
-    if allow_zai and (model in ZAI_MODELS or model.startswith("glm-")):
-        for s in all_enabled():
-            if s.type_id == "zai":
-                return s, model
+                if s.type_id == spec.id:
+                    return await _claimed(spec, s, model, user_id)
+        if spec.claim == "hard":
+            return None
     or_src = _openrouter_source()
     if or_src:
         resolved = await openrouter_mod.resolve(model, user_id)
         if resolved:
             return or_src, resolved[0]
-    await models_union(
-        allow_grok=allow_grok,
-        allow_chatgpt=allow_chatgpt,
-        allow_zai=allow_zai,
-        allow_devin=allow_devin,
-        allow_kimi=allow_kimi,
-        allow_mimo=allow_mimo,
-        allow_claude=allow_claude,
-        allow_cursor=allow_cursor,
-        allow_nanogpt=allow_nanogpt,
-        allow_refuseless=allow_refuseless,
-        user_id=user_id,
-    )
-    for s in _sources(
-        allow_grok=allow_grok,
-        allow_chatgpt=allow_chatgpt,
-        allow_zai=allow_zai,
-        allow_devin=allow_devin,
-        allow_kimi=allow_kimi,
-        allow_mimo=allow_mimo,
-        allow_claude=allow_claude,
-        allow_cursor=allow_cursor,
-        allow_nanogpt=allow_nanogpt,
-        allow_refuseless=allow_refuseless,
-    ):
+    await models_union(user_id=user_id, access=access)
+    for s in _sources(access):
         # OpenRouter's _cache is whichever account refreshed last; only its
         # per-account resolve() above may admit a model for this user.
         # NanoGPT's lists every catalog id; its resolve() applies the user's list.
-        if s.type_id in ("explabs", "openrouter", "nanogpt", "refuseless"):
+        spec = registry.get(s.type_id)
+        if not spec.scan:
             continue
         hit = _cache.get(s.source_id)
         if hit and model in hit[1]:
-            if s.type_id == "devin":
-                return s, devin_mod.listed_upstream(model)
-            if s.type_id == "claude":
-                return s, claude_mod.upstream_id(model)
-            return s, model
-    for s in _sources(allow_grok=False):
+            return s, spec.upstream(model) if spec.upstream else model
+    no_gates = Access()
+    for s in _sources(no_gates):
         if s.type_id != "llama":
             continue
         cfg = getattr(s, "cfg", None) or {}
         named = str(cfg.get("model") or "")
         if named and named not in ("local", "llama") and model == named:
             return s, named
-    others = [s for s in _sources(allow_grok=False) if s.type_id == "llama"]
-    if len(others) == 1 and len(_sources(allow_grok=False)) == 1:
+    others = [s for s in _sources(no_gates) if s.type_id == "llama"]
+    if len(others) == 1 and len(_sources(no_gates)) == 1:
         return others[0], model
     return None
 
@@ -597,9 +462,9 @@ def pool_denial_message(type_id: str, user_id: int) -> str:
     return f"{name}: access denied. {connect}."
 
 
-def pool_denial(model: str, user_id: int, access: dict[str, bool]) -> str | None:
+def pool_denial(model: str, user_id: int, access: Access) -> str | None:
     """The 403 message when `model` belongs to a configured pool the caller
-    has no usable account for (`access[type] is False`), or None.
+    has no usable account for (`access` denies it), or None.
 
     pick() resolves such ids to None (a disabled credential must not keep
     serving), so without this a user whose account was disabled mid-session
@@ -608,7 +473,7 @@ def pool_denial(model: str, user_id: int, access: dict[str, bool]) -> str | None
     # Detection order mirrors pick()'s, so an id two pools could claim denies
     # as the one pick would have resolved it to.
     for spec in registry.claim_order():
-        if spec.pool and access.get(spec.id) is False and spec.id in enabled and spec.claims(model):
+        if spec.pool and spec.id in enabled and spec.claims(model) and not access.allows(spec.id):
             return pool_denial_message(spec.id, user_id)
     return None
 
@@ -641,32 +506,8 @@ def ensure_chatgpt_source_row() -> int:
     return ensure_chatgpt_source()
 
 
-async def models_by_source(
-    *,
-    allow_grok: bool = False,
-    allow_chatgpt: bool = False,
-    allow_zai: bool = False,
-    allow_devin: bool = False,
-    allow_kimi: bool = False,
-    allow_mimo: bool = False,
-    allow_claude: bool = False,
-    allow_cursor: bool = False,
-    allow_nanogpt: bool = False,
-    allow_refuseless: bool = False,
-    user_id: int | None = None,
-) -> list[dict]:
-    sources = _sources(
-        allow_grok=allow_grok,
-        allow_chatgpt=allow_chatgpt,
-        allow_zai=allow_zai,
-        allow_devin=allow_devin,
-        allow_kimi=allow_kimi,
-        allow_mimo=allow_mimo,
-        allow_claude=allow_claude,
-        allow_cursor=allow_cursor,
-        allow_nanogpt=allow_nanogpt,
-        allow_refuseless=allow_refuseless,
-    )
+async def models_by_source(*, user_id: int | None = None, access: Access | None = None) -> list[dict]:
+    sources = _sources(access or Access(user_id))
     results = await asyncio.gather(*(_user_source_models(s, user_id) for s in sources))
     groups = [
         {

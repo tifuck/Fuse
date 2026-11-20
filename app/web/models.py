@@ -21,8 +21,8 @@ from ..sources import cursor as cursor_mod
 from ..sources import nanogpt as nanogpt_mod
 from ..sources import refuseless as refuseless_mod
 from ..sources import zai as zai_mod
-from ..sources.grok import grok_access_state
 from ..sources import pool_policy
+from ..providers.access import Access
 from .deps import render, require_user
 
 router = APIRouter()
@@ -429,31 +429,10 @@ def _openrouter_locked_models(catalog: dict) -> list[str]:
 
 
 async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
-    grok = grok_access_state(user["id"])
-    chatgpt = chatgpt_mod.chatgpt_access_state(user["id"])
-    zai = zai_mod.zai_access_state(user["id"])
-    devin = devin_mod.devin_access_state(user["id"])
-    kimi = kimi_mod.kimi_access_state(user["id"])
-    mimo = mimo_mod.mimo_access_state(user["id"])
-    claude = claude_mod.claude_access_state(user["id"])
-    cursor = cursor_mod.cursor_access_state(user["id"])
-    nanogpt = nanogpt_mod.nanogpt_access_state(user["id"])
-    refuseless = refuseless_mod.refuseless_access_state(user["id"])
+    gates = Access(user["id"])
     or_state = openrouter_mod.openrouter_access_state(user["id"])
-    access = {"grok": grok, "chatgpt": chatgpt, "zai": zai, "devin": devin, "kimi": kimi, "mimo": mimo, "claude": claude, "cursor": cursor, "nanogpt": nanogpt, "refuseless": refuseless}
-    groups = await models_by_source(
-        allow_grok=grok["ok"],
-        allow_chatgpt=chatgpt["ok"],
-        allow_zai=zai["ok"],
-        allow_devin=devin["ok"],
-        allow_kimi=kimi["ok"],
-        allow_mimo=mimo["ok"],
-        allow_claude=claude["ok"],
-        allow_cursor=cursor["ok"],
-        allow_nanogpt=nanogpt["ok"],
-        allow_refuseless=refuseless["ok"],
-        user_id=user["id"],
-    )
+    access = {kind: gates.state(kind) for kind in pool_policy.POOL_KINDS}
+    groups = await models_by_source(user_id=user["id"], access=gates)
     catalog = openrouter_mod.cached_catalog()
     if catalog is None and or_state["ok"]:
         catalog = await openrouter_mod.fetch_catalog()

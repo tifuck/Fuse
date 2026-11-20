@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, provider_errors
 from .config import settings
+from .providers import registry
+from .providers.access import Access
 from .proxy import merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
 from .sources import (
@@ -26,16 +28,6 @@ from .sources import (
     pick,
     pool_denial,
     pool_denial_message,
-    user_has_chatgpt,
-    user_has_devin,
-    user_has_grok,
-    user_has_kimi,
-    user_has_mimo,
-    user_has_claude,
-    user_has_cursor,
-    user_has_nanogpt,
-    user_has_refuseless,
-    user_has_zai,
 )
 from .sources import pool_pick
 from .sources.base import ChatResult
@@ -292,13 +284,14 @@ def _validate_reasoning(body: dict) -> None:
 
 
 async def _run_chat(src, body: dict, user_id: int, session_id: str | None = None, affinity_id: str | None = None):
-    if src.type_id in ("openrouter", "explabs"):
+    style = registry.get(src.type_id).call_style
+    if style == "user":
         return await src.chat(body, user_id=user_id, session_id=session_id)
-    if src.type_id in POOL_TYPES:
+    if style == "pool":
         if affinity_id:
             return await src.chat(body, session_id=session_id, user_id=user_id, affinity_id=affinity_id)
         return await src.chat(body, session_id=session_id, user_id=user_id)
-    if src.type_id in ("openai", "ollama"):
+    if style == "session":
         return await src.chat(body, session_id=session_id)
     return await src.chat(body)
 
@@ -509,19 +502,7 @@ class _TapResponse(StreamingResponse):
 @router.get("/v1/models")
 async def list_models(request: Request):
     user = require_key(request)
-    names = await models_union(
-        allow_grok=user_has_grok(user["id"]),
-        allow_chatgpt=user_has_chatgpt(user["id"]),
-        allow_zai=user_has_zai(user["id"]),
-        allow_devin=user_has_devin(user["id"]),
-        allow_kimi=user_has_kimi(user["id"]),
-        allow_mimo=user_has_mimo(user["id"]),
-        allow_claude=user_has_claude(user["id"]),
-        allow_cursor=user_has_cursor(user["id"]),
-        allow_nanogpt=user_has_nanogpt(user["id"]),
-        allow_refuseless=user_has_refuseless(user["id"]),
-        user_id=user["id"],
-    )
+    names = await models_union(user_id=user["id"])
     if not names and catalog_unavailable_for(""):
         raise HTTPException(503, "Model catalog is temporarily unavailable")
     image = {e["id"]: e["image"] for e in await opencode_mod.model_options(user["id"])}
@@ -630,38 +611,11 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
             body[field] = max(1, int(number))
         except (TypeError, ValueError, OverflowError):
             raise HTTPException(400, f"Invalid {field}")
-    grok_ok = user_has_grok(user["id"])
-    chatgpt_ok = user_has_chatgpt(user["id"])
-    zai_ok = user_has_zai(user["id"])
-    devin_ok = user_has_devin(user["id"])
-    kimi_ok = user_has_kimi(user["id"])
-    mimo_ok = user_has_mimo(user["id"])
-    claude_ok = user_has_claude(user["id"])
-    cursor_ok = user_has_cursor(user["id"])
-    nanogpt_ok = user_has_nanogpt(user["id"])
-    refuseless_ok = user_has_refuseless(user["id"])
-    access = {
-        "grok": grok_ok, "chatgpt": chatgpt_ok, "zai": zai_ok, "devin": devin_ok, "kimi": kimi_ok,
-        "mimo": mimo_ok, "claude": claude_ok, "cursor": cursor_ok, "nanogpt": nanogpt_ok,
-        "refuseless": refuseless_ok,
-    }
+    access = Access(user["id"])
     if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
         raise HTTPException(403, "Connect an Experiential Labs API key to use its models")
     try:
-        picked = await pick(
-            model,
-            allow_grok=grok_ok,
-            allow_chatgpt=chatgpt_ok,
-            allow_zai=zai_ok,
-            allow_devin=devin_ok,
-            allow_kimi=kimi_ok,
-            allow_mimo=mimo_ok,
-            allow_claude=claude_ok,
-            allow_cursor=cursor_ok,
-            allow_nanogpt=nanogpt_ok,
-            allow_refuseless=refuseless_ok,
-            user_id=user["id"],
-        )
+        picked = await pick(model, user_id=user["id"], access=access)
     except explabs_mod.CatalogError:
         raise HTTPException(503, "Experiential Labs model catalog is temporarily unavailable") from None
     if not picked:
@@ -679,7 +633,7 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
             raise HTTPException(403, denial)
         raise HTTPException(404, "Unknown model")
     src, upstream = picked
-    if access.get(src.type_id) is False:
+    if not access.allows(src.type_id):
         raise HTTPException(403, pool_denial_message(src.type_id, user["id"]))
     _ensure_encodable(body)
     requested = model
@@ -707,7 +661,7 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     # ChatGPT Fast is a service tier on the same model: toggling it keeps the
     # conversation's cache key and account pin.
     scope_model = chatgpt_base_slug(upstream) if src.type_id == "chatgpt" else upstream
-    if src.type_id in POOL_TYPES or src.type_id in ("openai", "ollama", "openrouter", "explabs"):
+    if registry.get(src.type_id).call_style != "plain":
         session_id = session_id_from(request.headers, body, user_id=user["id"], model=scope_model)
     if src.type_id in POOL_TYPES:
         # A subagent's run sets its parent's cache key (server-side scope,

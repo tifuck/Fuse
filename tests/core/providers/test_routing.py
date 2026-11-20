@@ -1,4 +1,4 @@
-"""Model listing and routing (sources.pick / models_union): each pool's allow_*
+"""Model listing and routing (sources.pick / models_union): each pool's access
 gate hides its models and refuses to route them, admin routes obey the same
 gates, namespaced ids never fall into another backend, the lone-llama
 fallback, catalog outages per namespace, and cache invalidation.
@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 import app.sources as sources
 from app import accounts, api, chat_runs, db
+from app.providers.access import Access
 from app.sources import nanogpt, openrouter, refuseless
 from tests.core.helpers import quick_user
 
@@ -21,12 +22,16 @@ NANO = {"data": [{"id": "z-ai/glm-5.3", "subscription": {"included": True}}]}
 REFUSE = {"data": [{"id": "glm-5.3-abliterated"}]}
 
 
+def _access(uid, allow):
+    return Access.fixed(uid, {name.removeprefix("allow_"): on for name, on in allow.items()})
+
+
 def _union(uid=None, **allow):
-    return asyncio.run(sources.models_union(user_id=uid, **allow))
+    return asyncio.run(sources.models_union(user_id=uid, access=_access(uid, allow)))
 
 
 def _pick(model, uid=None, **allow):
-    picked = asyncio.run(sources.pick(model, user_id=uid, **allow))
+    picked = asyncio.run(sources.pick(model, user_id=uid, access=_access(uid, allow)))
     return picked and (picked[0].type_id, picked[1])
 
 
