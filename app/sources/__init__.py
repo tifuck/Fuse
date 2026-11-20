@@ -8,6 +8,7 @@ from typing import Callable
 
 from .. import db
 from ..config import settings
+from ..providers import registry
 from .base import ChatResult, Source
 from .chatgpt import CHATGPT_MODELS, ChatGPTSource, ensure_chatgpt_source, refresh_due as chatgpt_refresh_due, user_has_chatgpt
 from .grok import GROK_MODELS, GrokSource, ensure_grok_source, grok_access_state, refresh_due, user_has_grok
@@ -28,72 +29,11 @@ from .refuseless import RefuselessSource, ensure_refuseless_source, user_has_ref
 
 logger = logging.getLogger(__name__)
 
-_BUILDERS: dict[str, Callable] = {
-    "grok": GrokSource,
-    "llama": LlamaSource,
-    "openai": OpenAICompatSource,
-    "ollama": OllamaSource,
-    "chatgpt": ChatGPTSource,
-    "zai": ZaiSource,
-    "devin": DevinSource,
-    "kimi": KimiSource,
-    "mimo": MimoSource,
-    "claude": ClaudeSource,
-    "cursor": CursorSource,
-    "nanogpt": NanoGPTSource,
-    "refuseless": RefuselessSource,
-    "openrouter": OpenRouterSource,
-    "explabs": ExperientialLabsSource,
-}
-
-TYPES = {
-    "llama": "Local llama.cpp",
-    "openai": "OpenAI-compatible",
-    "ollama": "Ollama Cloud",
-    "grok": "Grok pool",
-    "chatgpt": "ChatGPT pool",
-    "zai": "Z.AI pool",
-    "devin": "Devin pool",
-    "kimi": "Kimi pool",
-    "mimo": "Xiaomi pool",
-    "claude": "Claude pool",
-    "cursor": "Cursor pool",
-    "nanogpt": "NanoGPT pool",
-    "refuseless": "Refuseless pool",
-    "openrouter": "OpenRouter",
-    "explabs": "Experiential Labs",
-}
-
-PROVIDER_LABELS = {
-    "grok": "x.ai",
-    "llama": "llama.cpp",
-    "ollama": "Ollama Cloud",
-    "openai": "OpenAI-compatible",
-    "chatgpt": "ChatGPT",
-    "zai": "Z.AI",
-    "devin": "Devin",
-    "kimi": "Kimi",
-    "mimo": "Xiaomi",
-    "claude": "Anthropic",
-    "cursor": "Cursor",
-    "nanogpt": "NanoGPT",
-    "refuseless": "Refuseless",
-    "openrouter": "OpenRouter",
-    "explabs": "Experiential Labs",
-    "unknown": "Unknown",
-}
-
-POOL_TYPES = frozenset({"grok", "chatgpt", "zai", "devin", "kimi", "mimo", "claude", "cursor", "nanogpt", "refuseless"})
-_SEEDED_MODELS = {
-    "grok": GROK_MODELS,
-    "chatgpt": CHATGPT_MODELS,
-    "zai": ZAI_MODELS,
-    "devin": DEVIN_MODELS,
-    "kimi": KIMI_MODELS,
-    "mimo": MIMO_MODELS,
-    "claude": CLAUDE_MODELS,
-    "cursor": CURSOR_MODELS,
-}
+_BUILDERS: dict[str, Callable] = {spec.id: registry.builder(spec.id) for spec in registry.specs()}
+TYPES = {spec.id: spec.type_label for spec in registry.specs()}
+PROVIDER_LABELS = {**{spec.id: spec.label for spec in registry.specs()}, "unknown": "Unknown"}
+POOL_TYPES = frozenset(registry.pool_kinds())
+_SEEDED_MODELS = {spec.id: spec.seeds() for spec in registry.specs() if spec.seeds}
 
 
 def _row_source(row, creds=None) -> Source:
@@ -298,19 +238,8 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
 
 async def _user_source_models(s: Source, user_id: int | None) -> list[str]:
     names = await _source_models(s, user_id)
-    if s.type_id == "chatgpt":
-        from . import chatgpt as chatgpt_mod
-
-        return chatgpt_mod.listable_models(names, user_id)
-    if s.type_id == "cursor":
-        from . import cursor as cursor_mod
-
-        return cursor_mod.listable_models(names, user_id)
-    if s.type_id == "nanogpt":
-        from . import nanogpt as nanogpt_mod
-
-        return nanogpt_mod.listable_models(names, user_id)
-    return names
+    spec = registry.get(s.type_id)
+    return spec.listable(names, user_id) if spec and spec.listable else names
 
 
 # Picker efforts per provider. Providers without their own list get every
@@ -319,49 +248,9 @@ GENERIC_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
 def reasoning_efforts(type_id: str, model: str | None = None, user_id: int | None = None) -> tuple[str, ...]:
-    from . import chatgpt_catalog, claude as claude_mod, devin as devin_mod, explabs as explabs_mod, kimi as kimi_mod
-
-    if type_id == "explabs":
-        catalog = explabs_mod.cached_catalog(user_id) or {}
-        record = catalog.get("by_id", {}).get(explabs_mod.upstream_id(model or "")) or {}
-        return tuple(record.get("reasoning_efforts") or [])
-    if type_id == "devin":
-        return devin_mod.efforts_for(model) if model else devin_mod.SEEDED_EFFORTS
-    if type_id == "grok":
-        # Grok Build documents no reasoning_effort.
-        return () if model == "grok-build-0.1" else ("low", "medium", "high", "xhigh")
-    if type_id == "chatgpt":
-        return chatgpt_catalog.efforts_for(model)
-    if type_id == "zai":
-        from . import zai as zai_mod
-
-        return zai_mod.efforts_for(model)
-    if type_id == "kimi":
-        return kimi_mod.efforts_for(model)
-    if type_id == "mimo":
-        return ("none", "high")
-    if type_id == "claude":
-        return claude_mod.efforts_for(model)
-    if type_id == "cursor":
-        from . import cursor as cursor_mod
-
-        return cursor_mod.efforts_for(model)
-    if type_id == "nanogpt":
-        from . import nanogpt as nanogpt_mod
-
-        return nanogpt_mod.efforts_for(model)
-    if type_id == "refuseless":
-        from . import refuseless as refuseless_mod
-
-        return refuseless_mod.efforts_for(model)
-    if type_id == "ollama":
-        return ollama_mod.efforts_for(model)
-    if type_id == "openrouter":
-        from . import openrouter as openrouter_mod
-
-        efforts = openrouter_mod.efforts_for(model)
-        return GENERIC_EFFORTS if efforts is None else efforts
-    return GENERIC_EFFORTS
+    spec = registry.get(type_id)
+    efforts = spec.efforts(model, user_id) if spec and spec.efforts else None
+    return GENERIC_EFFORTS if efforts is None else efforts
 
 
 def metadata_effort(type_id: str, model: str | None = None, user_id: int | None = None) -> str | None:
@@ -670,18 +559,7 @@ async def pick(
     return None
 
 
-_POOL_CONNECT = {
-    "devin": "Connect a Devin account to use Devin models",
-    "kimi": "Connect a Kimi membership to use Kimi models",
-    "mimo": "Connect a Xiaomi Token Plan to use MiMo models",
-    "claude": "Connect a Claude account to use Claude models",
-    "cursor": "Connect a Cursor account to use Cursor models",
-    "grok": "Connect a Grok account with an active subscription to use Grok models",
-    "chatgpt": "Connect a ChatGPT account to use ChatGPT models",
-    "zai": "Connect a Z.AI key to use GLM models",
-    "nanogpt": "Connect a NanoGPT account to use NanoGPT models",
-    "refuseless": "Link a Refuseless API key to use Refuseless models",
-}
+_POOL_CONNECT = {spec.id: spec.connect_copy for spec in registry.specs() if spec.connect_copy}
 
 
 def _signed_out(type_id: str, user_id: int) -> bool:
@@ -726,33 +604,12 @@ def pool_denial(model: str, user_id: int, access: dict[str, bool]) -> str | None
     pick() resolves such ids to None (a disabled credential must not keep
     serving), so without this a user whose account was disabled mid-session
     saw "Unknown model" with nothing to reconnect."""
-    from . import chatgpt as chatgpt_mod
-    from . import devin as devin_mod
-    from . import kimi as kimi_mod
-    from . import mimo as mimo_mod
-    from . import claude as claude_mod
-    from . import cursor as cursor_mod
-    from . import nanogpt as nanogpt_mod
-    from . import refuseless as refuseless_mod
-
     enabled = {s.type_id for s in all_enabled()}
     # Detection order mirrors pick()'s, so an id two pools could claim denies
     # as the one pick would have resolved it to.
-    checks = (
-        ("devin", devin_mod.is_devin_model(model)),
-        ("kimi", kimi_mod.is_kimi_model(model)),
-        ("mimo", mimo_mod.is_mimo_model(model)),
-        ("claude", claude_mod.is_claude_model(model)),
-        ("cursor", cursor_mod.is_cursor_model(model)),
-        ("nanogpt", nanogpt_mod.is_nanogpt_model(model)),
-        ("refuseless", refuseless_mod.is_refuseless_model(model)),
-        ("grok", model.startswith("grok")),
-        ("chatgpt", chatgpt_mod.is_chatgpt_model(model)),
-        ("zai", model in ZAI_MODELS or model.startswith("glm-")),
-    )
-    for type_id, matches in checks:
-        if matches and access.get(type_id) is False and type_id in enabled:
-            return pool_denial_message(type_id, user_id)
+    for spec in registry.claim_order():
+        if spec.pool and access.get(spec.id) is False and spec.id in enabled and spec.claims(model):
+            return pool_denial_message(spec.id, user_id)
     return None
 
 
@@ -837,7 +694,8 @@ def warm_catalogs() -> None:
     for as long as they take. OpenRouter lists per user and Experiential Labs
     catalogs are private, so neither has a shared list to warm."""
     for s in all_enabled():
-        if s.type_id not in ("openrouter", "explabs"):
+        spec = registry.get(s.type_id)
+        if spec and spec.warm:
             _schedule_model_refresh(s, None)
 
 
@@ -871,21 +729,12 @@ async def bootstrap() -> None:
     from ..accounts import add_credential
     from ..pricing import ensure_default_prices
 
-    ensure_grok_source()
-    ensure_chatgpt_source()
-    ensure_zai_source()
-    ensure_devin_source()
-    ensure_kimi_source()
-    ensure_mimo_source()
-    ensure_claude_source()
-    ensure_cursor_source()
-    ensure_nanogpt_source()
-    ensure_refuseless_source()
-    ensure_explabs_source()
-    or_id = ensure_openrouter_source()
+    for spec in registry.specs():
+        if spec.ensure:
+            spec.ensure()
     from .openrouter import clear_global_key
 
-    clear_global_key(or_id)
+    clear_global_key()
     ensure_default_prices()
     llama_id = ensure_llama_source()
     if settings.llama_api_key:
