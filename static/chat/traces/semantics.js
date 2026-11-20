@@ -298,6 +298,9 @@ function deliveryTraces(text) {
 }
 
 function foldAutoCommandResults(rows) {
+  // A report delivered again unchanged (its first wake turn ended without a
+  // reply, so Fuse sent it once more) is marked so the views draw it once.
+  const shown = new Set();
   rows.forEach((msg, index) => {
     if (msg.role !== "user" || !msg.auto) return;
     const text = String(msg.content || "");
@@ -307,6 +310,12 @@ function foldAutoCommandResults(rows) {
       return;
     }
     msg.autoSteps = items.map((item) => item.kind === "task" ? reportStepTrace(item.report) : wakeStepTrace(item.result));
+    for (const trace of msg.autoSteps) {
+      if (!trace.agentReport) continue;
+      const key = JSON.stringify([trace.child_id, trace.state, trace.summary]);
+      if (shown.has(key)) trace.repeat = true;
+      else shown.add(key);
+    }
     const results = items.map((item) => item.kind === "command" ? item.result : null);
     const findTrace = (id) => {
       for (const name of ["run_terminal_command", "get_command_output", "monitor"]) {

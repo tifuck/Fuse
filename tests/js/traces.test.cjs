@@ -255,6 +255,18 @@ test('auto handoffs fold every delivered result in order and settle matching cal
   assert.equal(command.status, 'done', 'the result settles its call');
 });
 
+test('a report delivered again unchanged is marked as a repeat, a changed one is not', () => {
+  const task = (state, text) => `<task id="c1" state="${state}">\n<summary>Audit</summary>\n<task_result>\n${text}\n</task_result>\n</task>`;
+  const rows = [
+    { role: 'user', auto: true, content: task('completed', 'Found one bug.') },
+    { role: 'assistant', content: '' },
+    { role: 'user', auto: true, content: task('completed', 'Found one bug.') },
+    { role: 'user', auto: true, content: task('completed', 'Found two bugs.') },
+  ];
+  sem.foldAutoCommandResults(rows);
+  assert.deepEqual([rows[0], rows[2], rows[3]].map((m) => Boolean(m.autoSteps[0].repeat)), [false, true, false]);
+});
+
 test('applying a result keeps output, caps on code points and never revives a settled call', () => {
   const kept = { name: 'run_terminal_command', status: 'running', output: 'already kept' };
   sem.applyCommandResult(kept, { state: 'completed', exit_code: 0, duration_ms: 9, output: 'shorter preview' });

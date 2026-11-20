@@ -363,8 +363,8 @@ function consoleAgentNoticeHtml(trace, key) {
     );
   }
 
-// Finished background work in one wake, as a ledger: a summary line counted
-// like the activity groups, opening into rows drawn like the Activity pane's.
+// Finished background work: subagent reports share one card, drawn like the
+// Activity pane's rows; each finished command or monitor is one line.
 function dkLedgerTone(trace) {
     const state = deps.executionState(trace);
     if (trace.status === "interrupted" || ["cancelled", "interrupted", "lost", "timed_out"].includes(state)) return "stopped";
@@ -373,89 +373,89 @@ function dkLedgerTone(trace) {
     return exit === null || exit === 0 ? "done" : "failed";
   }
 
-function dkLedgerRowHtml(trace, key) {
+// A report's opening lines as one paragraph, with its inline code and bold.
+function dkReportPreview(text) {
+    const flat = String(text || "").split("\n").map((line) => line.trim().replace(/^(#+|[-*]|\d+\.)\s+/, ""))
+      .filter((line) => line && !/^(-{3,}|\*{3,})$/.test(line)).slice(0, 4).join(" ");
+    return deps.escapeHtml(deps.ccClip(flat, 400)).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  }
+
+function dkReportRowHtml(trace) {
     const tone = dkLedgerTone(trace);
-    const agent = Boolean(trace.agentReport);
-    const monitor = trace.name === "monitor";
-    const name = deps.ccFlat(trace.description) || (agent ? "Subagent" : monitor ? deps.ccFlat(trace.url) : deps.ccFlat(deps.displayCommand(trace))) || (monitor ? "Monitor" : "Command");
-    const firstLine = (text) => String(text || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
-    const output = agent || monitor || typeof trace.output !== "string" ? "" : deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "");
-    const lines = output ? output.split("\n") : [];
-    const sub = agent
-      ? (tone === "failed" ? deps.providerErrorLine(deps.ccFlat(trace.error)).replace(/^Subagent failed:\s*/i, "") : firstLine(trace.summary))
-      : monitor
-        ? (Number(trace.event_count) ? `${trace.event_count} ${Number(trace.event_count) === 1 ? "event" : "events"}` : "No events")
-        : [...lines].reverse().find((line) => line.trim()) || deps.ccFlat(trace.error);
-    const exit = agent ? null : deps.shellExitCode(trace);
-    const took = Number(trace.latency_ms ?? trace.duration_ms);
-    const side = tone === "stopped" ? "Stopped"
-      : tone === "failed" ? (exit !== null && exit !== 0 ? `Exit ${exit}` : "Failed")
-      : Number.isFinite(took) && took > 0 ? deps.ccDuration(Math.max(1000, took)) : "";
-    const more = lines.length > 1;
-    const action = agent && trace.child_id
-      ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}">Open</button>`
-      : more ? `<button type="button" class="dk-ledger-act" data-step-toggle aria-expanded="false">Output</button>` : "";
-    const reveal = more
-      ? `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><pre class="chat-console-out is-stdout">${deps.consoleTailHtml(lines, 12, false).html}</pre></div></div>`
-      : "";
+    const name = deps.ccFlat(trace.description) || "Subagent";
+    const sub = tone === "failed"
+      ? deps.escapeHtml(deps.providerErrorLine(deps.ccFlat(trace.error)).replace(/^Subagent failed:\s*/i, ""))
+      : dkReportPreview(trace.summary);
+    const state = tone === "stopped" ? "Stopped" : tone === "failed" ? "Failed" : "";
+    const open = trace.child_id
+      ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}">Open</button>` : "";
     return (
-      `<li class="dk-ledger-row is-${tone}"${more ? ` data-step="${deps.escapeHtml(key)}"` : ""}>` +
-      `<span class="dk-ledger-dot" aria-hidden="true"></span>` +
-      `<div class="chat-step-main"><div class="chat-step-head dk-ledger-line">` +
-      `<div class="dk-ledger-text"><span class="dk-ledger-name">${deps.escapeHtml(name)}</span>` +
-      (sub ? `<span class="dk-ledger-sub${agent || monitor ? "" : " is-mono"}">${deps.escapeHtml(deps.ccClip(sub, 240))}</span>` : "") + `</div>` +
-      `<span class="dk-ledger-side">${side ? `<span class="dk-ledger-state">${side}</span>` : ""}${action}</span>` +
-      `</div>${reveal}</div></li>`
+      `<li class="dk-report is-${tone}"><span class="dk-ledger-dot" aria-hidden="true"></span>` +
+      `<div class="dk-report-text"><span class="dk-report-name">${deps.escapeHtml(name)}</span>${sub ? `<span class="dk-report-sub">${sub}</span>` : ""}</div>` +
+      `<span class="dk-report-side">${state ? `<span class="dk-ledger-state">${state}</span>` : ""}${open}</span></li>`
     );
   }
 
-function dkLedgerHtml(items, key) {
-    const tones = items.map(({ trace }) => dkLedgerTone(trace));
-    const count = (pick) => items.filter(({ trace }) => pick(trace)).length;
-    const agents = count((trace) => trace.agentReport);
-    const monitors = count((trace) => !trace.agentReport && trace.name === "monitor");
-    const commands = items.length - agents - monitors;
-    const word = (n, one) => `<b>${n}</b> ${one}${n === 1 ? "" : "s"}`;
-    const parts = [agents && word(agents, "agent"), commands && word(commands, "command"), monitors && word(monitors, "monitor")].filter(Boolean);
-    const failed = tones.filter((tone) => tone === "failed").length;
-    const stopped = tones.filter((tone) => tone === "stopped").length;
-    const tallies = (failed ? `<span class="dk-tally is-failed">${failed} failed</span>` : "") + (stopped ? `<span class="dk-tally is-stopped">${stopped} stopped</span>` : "");
-    const head = `Background ${parts.join(", ")} ${failed || stopped ? "returned" : "finished"}`;
-    const rows = items.map(({ trace, key: rowKey }) => dkLedgerRowHtml(trace, rowKey)).join("");
+function dkReportsHtml(traces) {
     return (
-      `<li class="chat-step is-dk-ledger" data-step="${deps.escapeHtml(key)}">` +
-      `<div class="chat-step-main"><div class="chat-step-head"><button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="true">` +
-      `<span class="chat-step-label">${head}</span>${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</button></div>` +
-      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><ul class="dk-ledger-table" role="list">${rows}</ul></div></div></div></li>`
+      `<li class="chat-step is-dk-reports"><div class="chat-step-main">` +
+      `<ul class="dk-reports" role="list" aria-label="Subagent reports">${traces.map(dkReportRowHtml).join("")}</ul></div></li>`
+    );
+  }
+
+function dkFinishLineHtml(trace, key) {
+    const tone = dkLedgerTone(trace);
+    const monitor = trace.name === "monitor";
+    const name = deps.ccFlat(trace.description) || (monitor ? deps.ccFlat(trace.url) : deps.ccFlat(deps.displayCommand(trace))) || (monitor ? "Monitor" : "Command");
+    const exit = deps.shellExitCode(trace);
+    const took = Number(trace.latency_ms ?? trace.duration_ms);
+    const verb = tone === "stopped" ? "stopped" : tone === "failed" ? "failed" : monitor ? "ended" : "finished";
+    const side = tone === "failed" && exit !== null && exit !== 0 ? `Exit ${exit}`
+      : tone === "done" && Number.isFinite(took) && took > 0 ? deps.ccDuration(Math.max(1000, took)) : "";
+    const output = monitor || typeof trace.output !== "string" ? "" : deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "");
+    const lines = output ? output.split("\n") : [];
+    const text = `<span class="dk-finish-dot" aria-hidden="true"></span><span class="dk-finish-name">${deps.escapeHtml(name)}</span>` +
+      `<span class="dk-finish-verb">${verb}</span>${side ? `<span class="dk-finish-side">${side}</span>` : ""}`;
+    if (!lines.length) {
+      return `<li class="chat-step is-dk-finish is-${tone}"><div class="chat-step-main"><div class="chat-step-head"><span class="dk-finish-line">${text}</span></div></div></li>`;
+    }
+    return (
+      `<li class="chat-step is-dk-finish is-${tone}" data-step="${deps.escapeHtml(key)}"><div class="chat-step-main">` +
+      `<div class="chat-step-head"><button type="button" class="chat-step-toggle dk-finish-line" data-step-toggle aria-expanded="false">${text}</button></div>` +
+      `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><pre class="chat-console-out is-stdout">${deps.consoleTailHtml(lines, 12, false).html}</pre></div></div></div></li>`
     );
   }
 
 // Result rows for background work handed to the main agent: a wake turn's
 // message (msg.autoSteps) or a delivery segment inside a reply. Every
 // delivery renders through here, so the same result always looks the same.
-// Finished work joins one ledger, drawn where the first of it landed.
 function consoleAutoStepsHtml(msg) {
     const traces = msg.autoSteps || [];
     const out = [];
-    const finished = [];
+    const reports = [];
     let at = -1;
     for (let i = 0; i < traces.length; i += 1) {
       const trace = traces[i];
       const key = "wake-" + (msg.id || "") + "-" + i;
+      if (trace.repeat) continue;
+      if (trace.agentReport) {
+        if (at < 0) { at = out.length; out.push(""); }
+        reports.push(trace);
+        continue;
+      }
       // Subagent calls show in the agents pane, not as rows here.
-      if (!trace.agentReport && ["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"].includes(trace.name)) continue;
+      if (["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"].includes(trace.name)) continue;
       if (trace.name === "monitor" && trace.backgroundResult && trace.status === "running") {
         out.push(consoleMonitorEventHtml(trace, key));
         continue;
       }
-      if (trace.agentReport || trace.backgroundResult) {
-        if (at < 0) { at = out.length; out.push(""); }
-        finished.push({ trace, key });
+      if (trace.backgroundResult) {
+        out.push(dkFinishLineHtml(trace, key));
         continue;
       }
       out.push(deps.toolStepHtml(trace, key, false, false, null, { oneLine: true }));
     }
-    if (finished.length) out[at] = dkLedgerHtml(finished, "wake-" + (msg.id || "") + "-ledger");
+    if (reports.length) out[at] = dkReportsHtml(reports);
     return out.join("");
   }
 
