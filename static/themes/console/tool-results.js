@@ -344,7 +344,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const lines = out ? out.split("\n") : [];
       const meta = !out ? "" : failed ? "Error" : lines.length === 1 ? `Returned ${deps.toolText(lines[0], 80)}` : `Returned ${lines.length} lines`;
       items.push({ key: `${key}:code`, state: "done",
-        head: `<span class="chat-console-call"><span class="chat-tool-action">Code</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>` +
+        head: `<span class="chat-console-call"><span class="chat-tool-action">Source</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>` +
           (meta ? `<span class="chat-console-dim chat-console-codemeta">${deps.escapeHtml(meta)}</span>` : ""),
         body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
     }
