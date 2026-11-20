@@ -170,7 +170,7 @@ function feature(G, b, z, Y, dz, dY, side) {
         const sh = Math.floor(Y / 0.12);
         const it = hash(Math.floor(lz / 0.12), sh, b.id);
         if (it < 0.18) return null;
-        return [sh % 2 ? "_" : it < 0.4 ? "o" : it < 0.6 ? "8" : it < 0.8 ? "#" : "%", glow(shade(b.shopC, sh % 2 ? 0.45 : 0.68)), glow(shade(b.shopC, 0.3))];
+        return [sh % 2 ? "_" : it < 0.5 ? "o" : it < 0.75 ? "." : " ", glow(shade(b.shopC, sh % 2 ? 0.4 : 0.6)), glow(shade(b.shopC, 0.32))];
       }
       if (b.shop === "noren" && frac((lz - 0.3) / 1.2) < 0.6) {
         if (Y > 0.36) return [frac(lz / 0.14) < 0.15 ? "|" : "~", dim("#283a6e"), dim("#8ea2e0")];
@@ -211,11 +211,11 @@ function feature(G, b, z, Y, dz, dY, side) {
       if (hv < b.lit) {
         const c = b.warm ? GLASS[Math.floor(hash(b.id, fl, m + 50) * 3)] : GLASS[3 + Math.floor(hash(b.id, fl, m + 50) * 2)];
         const kind = Math.floor(hash(m, fl, b.id + 9) * 4);
-        const gl = ["#", "=", "%", "#"][kind];
-        const fill = glow(shade(c, 0.85 + 0.15 * (ly - wy0) / b.wh));
+        const gl = [":", " ", "=", " "][kind];
+        const fill = glow(shade(c, 0.72 + 0.14 * (ly - wy0) / b.wh));
         return [gl, fill, glow(shade(c, 0.5)), "win", fl, m, c];
       }
-      return [".", null, dim("#5a6a78"), "win", fl, m, null];
+      return [".", null, dim("#46525e"), "win", fl, m, null];
     }
     if (ux < b.ww / 2 + dz * 0.4 && ly > wy0 - Math.max(0.04, dY) && ly <= wy0) return ["_", null, dim("#8a949a")];
     // An AC unit under some windows.
@@ -515,7 +515,7 @@ function build(s) {
       const x = Math.round(side < 0 ? xw + q * 0.12 : xw - q * 0.12 - c);
       const y0 = Math.round(yAt(q, Yt));
       const fog = fogAt(G, z);
-      const on = Array.from(word).map((ch) => (box ? tk(K, ch, mixc(n.c, HAZE, fog * 0.4), "#2a1420") : tk(K, ch, mixc(shade(n.c, 0.22), HAZE, fog * 0.5), mixc(n.c, HAZE, fog * 0.3))));
+      const on = Array.from(word).map((ch) => (box ? tk(K, ch, mixc(shade(n.c, 0.84), HAZE, fog * 0.4), "#2a1420") : tk(K, ch, mixc(shade(n.c, 0.22), HAZE, fog * 0.5), mixc(n.c, HAZE, fog * 0.3))));
       const off = Array.from(word).map((ch) => tk(K, ch, mixc(shade(n.c, 0.18), HAZE, fog * 0.5), mixc(shade(n.c, 0.4), HAZE, fog * 0.5)));
       const cap = tk(K, "=", mixc("#2a3038", HAZE, fog), mixc("#6a7680", HAZE, fog));
       s.signs.push({ K, x, y0, word, n, on, off, cap, side, q, z, flick: false, ph: R() * 100 });
@@ -563,14 +563,14 @@ function build(s) {
   const vr = vq * 0.9;
   wg.drawImage(s.glow("150,230,255"), vx + (vCols * vc) / 2 - vr, vy + (vRows * vc) / 2 - vr, vr * 2, vr * 2);
   wg.restore();
-  const cans = ["#ff5a5a", "#ffd24a", "#5ad1ff", "#7dff8a", "#ff9ad8", "#ffffff"];
+  const cans = ["#d85a5e", "#d8b44a", "#5ab4d8", "#6ad480", "#d88ab8", "#d8e4ea"];
   for (let r = 0; r < vRows; r += 1) {
     for (let c = 0; c < vCols; c += 1) {
       let t0;
       if (r === 0) t0 = ["=", "#e04a5a", "#ffd0d6"];
-      else if (r < vRows * 0.62) t0 = r % 2 ? ["o", "#d8f4ff", cans[Math.floor(hash(r, c, 5) * cans.length)]] : ["_", "#bfe6f6", "#6a9ab0"];
+      else if (r < vRows * 0.62) t0 = r % 2 ? ["o", "#9ccadc", cans[Math.floor(hash(r, c, 5) * cans.length)]] : ["_", "#86b4c8", "#4e7c90"];
       else if (r === vRows - 2) t0 = ["[", "#1a2228", "#5a6a74"];
-      else t0 = [c === vCols - 1 ? ":" : "|", "#c0d0da", "#5a6a78"];
+      else t0 = [c === vCols - 1 ? ":" : "|", "#7e909c", "#3e4c58"];
       pk(wg, VK, tk(VK, t0[0], t0[1], t0[2]), vx + c * vc, vy + r * vc);
     }
   }

@@ -14,7 +14,7 @@ import { tiles, tile, put, layer, dotGrid, mixc, shade } from "./tiles.js";
 const TAU = Math.PI * 2;
 const ROCK = "#3e5052";
 const WARM = "#c8a878";
-const MOSS = ["#4f8a3c", "#3e7432", "#6aa44a", "#2f5f2c"];
+const MOSS = ["#4c7040", "#3f6038", "#5a7e4a", "#33512f"];
 const WATER = ["#f6feff", "#d4f1f6", "#a6dce6", "#78bccb"];
 const FALL = ["|", "!", ":", "'", "|", "!", "."];
 
@@ -46,13 +46,13 @@ function build(s) {
   const [back, g] = layer(s);
   // Sky over the rim, sun to the upper left.
   const sky = g.createLinearGradient(0, 0, 0, h * 0.7);
-  sky.addColorStop(0, "#f6e9c8");
-  sky.addColorStop(0.5, "#d6e6da");
-  sky.addColorStop(1, "#9ec0bc");
+  sky.addColorStop(0, "#d8cfb0");
+  sky.addColorStop(0.5, "#aec2b8");
+  sky.addColorStop(1, "#7c9c98");
   g.fillStyle = sky;
   g.fillRect(0, 0, w, h);
   const sun = g.createRadialGradient(w * 0.3, -h * 0.05, 0, w * 0.3, -h * 0.05, w * 0.6);
-  sun.addColorStop(0, "rgba(255,244,210,0.95)");
+  sun.addColorStop(0, "rgba(250,236,200,0.8)");
   sun.addColorStop(1, "rgba(255,244,210,0)");
   g.fillStyle = sun;
   g.fillRect(0, 0, w, h);
@@ -141,9 +141,9 @@ function build(s) {
         const xx = Math.round((x + c * cell) / cell) * cell;
         const y = Math.floor(rim(xx) / cell) * cell - r * cell;
         const tip = r === bh - 1 || Math.abs(c) === half;
-        const f = shade(R.pick(["#3a5a2e", "#4a6c34", "#2e4a2a"]), 1 + 0.1 * r);
-        if (tip) put(g, s, tile(s, R.pick(["^", "*", "'", "v", "%"]), null, R.pick(["#5f8a3c", "#7aa04a", "#4a7032"])), xx, y);
-        else put(g, s, tile(s, R.pick(["%", "*", "&", "#"]), f, mixc(f, "#d8dc80", 0.4)), xx, y);
+        const f = shade(R.pick(["#3c5432", "#465e38", "#34482e"]), 1 + 0.1 * r);
+        if (tip) put(g, s, tile(s, R.pick(["^", "'", "v", " "]), null, R.pick(["#5a7a40", "#6a8a4a", "#4a6634"])), xx, y);
+        else put(g, s, tile(s, R() < 0.2 ? "'" : " ", f, mixc(f, "#c8cc80", 0.3)), xx, y);
       }
     }
   }
@@ -289,7 +289,7 @@ function build(s) {
         const lit = r === 0 || c <= -half + 1;
         const f = shade(lit ? "#6a7c74" : "#2e3c3a", R.range(0.9, 1.1));
         const top = r === 0;
-        const gl = top ? (c <= -half + 0.5 ? "/" : c >= half - 0.5 ? "\\" : R.pick(['"', "_", "-"])) : R.pick(["%", ":", "#", " ", "."]);
+        const gl = top ? (c <= -half + 0.5 ? "/" : c >= half - 0.5 ? "\\" : R.pick(['"', " ", "-"])) : R.pick([" ", " ", ":", " ", "."]);
         cells.push({ dc: c, dr: r, id: tile(s, gl, top && R() < 0.5 ? mixc(f, MOSS[0], 0.5) : f, shade(f, lit ? 1.45 : 0.6)) });
       }
     }
@@ -354,7 +354,7 @@ function voro(g, s, R, o) {
   const gx = Math.ceil(C / o.sx) + 2;
   const gy = Math.ceil(RW / o.sy) + 2;
   const seeds = [];
-  for (let j = 0; j < gy; j += 1) for (let i = 0; i < gx; i += 1) seeds.push({ id: seeds.length, x: (i - 1 + R()) * o.sx, y: (j - 1 + R()) * o.sy, tone: R.range(0.8, 1.15), style: Math.floor(R() * 3) });
+  for (let j = 0; j < gy; j += 1) for (let i = 0; i < gx; i += 1) seeds.push({ id: seeds.length, x: (i - 1 + R()) * o.sx, y: (j - 1 + R()) * o.sy, tone: R.range(0.9, 1.08), style: Math.floor(R() * 3) });
   const alpha = (c, r) => o.fade(c * cell, r * cell);
   const owner = new Int32Array(C * RW).fill(-1);
   for (let r = 0; r < RW; r += 1) {
@@ -398,35 +398,36 @@ function voro(g, s, R, o) {
       const ry = (r + 0.5 - sd.y) / o.sy;
       const dome = clamp01(0.55 - 0.45 * (rx * 0.8 + ry * 1.1));
       const sun = o.lit(x, y);
-      let f = shade(o.tone, sd.tone * (0.62 + 0.62 * dome));
+      let f = shade(o.tone, sd.tone * (0.7 + 0.48 * dome));
       f = mixc(f, WARM, sun * (0.25 + 0.5 * dome));
       let gl;
       let ink;
       const open = at(c, r - 1) < 0;
-      if (up && R() < (open ? 0.35 : 0.12) + o.moist(x, y) * 0.6) {
-        f = mixc(mixc(R.pick(MOSS), WARM, sun * 0.3), "#1c2a26", (1 - dome) * 0.3);
-        gl = R.pick(['"', ",", ";", "'"]);
-        ink = shade(f, 1.55);
+      if (up && R() < (open ? 0.3 : 0.06) + o.moist(x, y) * 0.3) {
+        f = mixc(mixc(mixc(R.pick(MOSS), f, 0.3), WARM, sun * 0.25), "#1c2a26", (1 - dome) * 0.3);
+        gl = R() < 0.4 ? R.pick(['"', ",", "'"]) : " ";
+        ink = shade(f, 1.35);
         if (open && R() < 0.3) s.ledges.push({ x, y, side: o.side, lit: sun });
       } else if (up) {
-        f = shade(f, 1.15);
-        gl = left ? "/" : right ? "\\" : R.pick(["-", "_", "^", "-"]);
-        ink = shade(f, 1.45);
+        f = shade(f, 1.12);
+        gl = left ? "/" : right ? "\\" : R() < 0.3 ? "-" : " ";
+        ink = shade(f, 1.35);
       } else if (left) {
-        gl = R() < 0.6 ? "|" : "(";
-        ink = shade(f, 1.4);
+        gl = R() < 0.4 ? "|" : " ";
+        ink = shade(f, 1.3);
       } else if (right || down) {
         f = shade(f, 0.8);
         gl = down ? (right ? "/" : "_") : "|";
         ink = shade(f, 0.62);
       } else {
+        // Faces stay bare: a faint stratum mark here and there, no fill pattern.
         const n = noise(c * 0.45, r * 0.45 + 11);
-        gl = sd.style === 0 ? (n < 0.35 ? "%" : n < 0.5 ? ":" : " ") : sd.style === 1 ? (n < 0.3 ? "/" : n < 0.45 ? "\\" : n < 0.6 ? "." : " ") : n < 0.3 ? "#" : n < 0.5 ? "=" : " ";
-        ink = shade(f, dome > 0.5 ? 1.3 : 0.66);
-        if (R() < o.moist(x, y) * 0.18) {
-          f = mixc(f, R.pick(MOSS), 0.45);
-          gl = R.pick(['"', ",", "%"]);
-          ink = shade(f, 1.4);
+        gl = n < 0.2 ? (sd.style === 1 ? "." : ":") : " ";
+        ink = shade(f, dome > 0.5 ? 1.18 : 0.78);
+        if (R() < o.moist(x, y) * 0.07) {
+          f = mixc(f, R.pick(MOSS), 0.35);
+          gl = R() < 0.5 ? "," : " ";
+          ink = shade(f, 1.3);
         }
       }
       put(g, s, tile(s, gl, f, ink), x, y, alpha(c, r));

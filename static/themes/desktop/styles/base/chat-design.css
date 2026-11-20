@@ -881,6 +881,95 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop .chat-backdrop-preview { display: block; height: 2.6rem; margin-bottom: 0.2rem; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop span { font: 550 0.75rem/1.2 var(--ap-ui); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop small { color: var(--mute); font: 0.6875rem/1.3 var(--ap-ui); }
+/* Gallery: category chips and a search field over the cards. Collapsed it
+   holds two rows (the current pick stays in them); "Browse all" opens the rest. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-gallery { display: grid; gap: 0.6rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-gallery-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-gallery-bar .ap-filters { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-gallery-bar .ap-filters::-webkit-scrollbar { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-gallery-bar .ap-filters button { flex: 0 0 auto; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-search {
+  flex: 1 1 9rem;
+  min-width: 0;
+  height: 1.95rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--mist);
+  font: 0.8125rem/1.3 var(--ap-ui);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-search::placeholder { color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-search:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrops > [hidden] { display: none; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop :is(span, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop[aria-pressed="true"]::after {
+  content: "✓";
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: var(--brass);
+  color: var(--on-brass);
+  font: 700 0.6875rem/1 var(--ap-ui);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 60%, transparent);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-cell { position: relative; display: grid; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--mist) 18%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 78%, transparent);
+  color: var(--mist);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del:hover { border-color: var(--fault); color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+/* A custom card: its scheme's ground until its frame (a third-size document
+   scaled down) mounts while the card is on screen. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview[data-kind^="u-"] { position: relative; background: linear-gradient(135deg, color-mix(in srgb, var(--brass) 26%, #0b0d12), #05060a); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview[data-scheme="light"] { background: linear-gradient(135deg, #f6f1e7, #d8d0c0); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview > iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 300%;
+  height: 300%;
+  border: 0;
+  transform: scale(0.3334);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-more {
+  justify-self: start;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ap-card);
+  color: var(--mist);
+  font: 0.75rem/1.3 var(--ap-ui);
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-more:hover { background: var(--ap-hover); border-color: color-mix(in srgb, var(--mist) 22%, var(--line)); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-more:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) :is(.ap-more, .ap-note)[hidden] { display: none; }
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrops { grid-template-columns: repeat(auto-fill, minmax(6.6rem, 1fr)); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-search { flex-basis: 100%; height: 44px; font-size: 1rem; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-more { min-height: 44px; }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del { width: 2rem; height: 2rem; top: 0.5rem; right: 0.5rem; }
+}
 /* Sliders: label · track · value on one line. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-slider {
   --ap-step: 1.75rem;

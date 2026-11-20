@@ -28,6 +28,7 @@ import ntpath
 import posixpath
 import re
 import shlex
+import threading
 import time
 from uuid import uuid4
 
@@ -794,9 +795,11 @@ def set_auto(user_id: int, thread_id: int, enabled: bool, conn=None) -> None:
         logger.info("set_auto user=%s thread=%s enabled=%s", user_id, thread_id, enabled)
     if conn is not None:
         _run(conn)
+        _wake_asks_after(conn, thread_id)
         return
     with db.tx() as c:
         _run(c)
+    _wake_asks(thread_id)
 
 
 def set_bypass(user_id: int, thread_id: int, enabled: bool, conn=None) -> None:
@@ -807,11 +810,13 @@ def set_bypass(user_id: int, thread_id: int, enabled: bool, conn=None) -> None:
         _run(conn)
         if enabled:
             resolve_thread_pending(user_id, thread_id, "allow", by="bypass", conn=conn)
+        _wake_asks_after(conn, thread_id)
         return
     with db.tx() as c:
         _run(c)
         if enabled:
             resolve_thread_pending(user_id, thread_id, "allow", by="bypass", conn=c)
+    _wake_asks(thread_id)
 
 
 def add_grant(user_id: int, thread_id: int | None, host_id: int, kind: str, value: str, conn=None) -> None:
@@ -839,7 +844,15 @@ def grant_covers(user_id: int, thread_id: int | None, host_id: int, kind: str, v
     v = _norm(value, windows) if value else ""
     if not v:
         return False
-    for row in _grant_rows(user_id, thread_id, host_id):
+    return _rows_cover(_grant_rows(user_id, thread_id, host_id), kind, value, windows)
+
+
+def _rows_cover(rows, kind: str, value: str, windows: bool) -> bool:
+    """grant_covers over grant rows already read (_grant_rows)."""
+    v = _norm(value, windows) if value else ""
+    if not v:
+        return False
+    for row in rows:
         if row["kind"] != kind:
             continue
         g = _norm(row["value"] or "", windows)
@@ -1043,6 +1056,13 @@ def _get_ask(user_id: int, ask_id: str):
 
 def resolve(user_id: int, thread_id: int, ask_id: str, action: str) -> dict:
     """HTTP decision path. Returns the public ask payload or raises ValueError."""
+    try:
+        return _resolve(user_id, thread_id, ask_id, action)
+    finally:
+        _wake_asks(thread_id)
+
+
+def _resolve(user_id: int, thread_id: int, ask_id: str, action: str) -> dict:
     if action not in _ACTIONS:
         raise ValueError("invalid action")
     ask_id = str(ask_id)
@@ -1097,7 +1117,9 @@ def extend(user_id: int, thread_id: int, ask_id: str) -> dict:
         iso = datetime.fromtimestamp(until, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if iso > row["expires_at"]:
             conn.execute("UPDATE chat_permission_asks SET expires_at=? WHERE id=? AND status='pending'", (iso, ask_id))
-        return _public_payload(conn.execute("SELECT * FROM chat_permission_asks WHERE id=?", (ask_id,)).fetchone())
+        payload = _public_payload(conn.execute("SELECT * FROM chat_permission_asks WHERE id=?", (ask_id,)).fetchone())
+    _wake_asks(thread_id)
+    return payload
 
 
 def resolve_thread_pending(user_id: int, thread_id: int, action: str, *, by: str = "", conn=None) -> int:
@@ -1125,6 +1147,7 @@ def cancel_run_asks(run_id: str) -> None:
             )
     except Exception:
         logger.exception("Could not cancel pending permission asks of run %s", run_id)
+    _wake_asks()
 
 
 def recover() -> None:
@@ -1207,6 +1230,51 @@ def _insert_ask(gate: Gate, ask_id: str, expires_iso: str, payload: dict) -> boo
     return True
 
 
+# A waiting card re-reads its ask at once when this process changes it
+# (resolve, extend, set_auto, set_bypass, a cancelled run) and every
+# _ASK_POLL_S otherwise, for answers written by another process.
+_ASK_POLL_S = 1.5
+_ask_waiters: dict[int | None, set] = {}
+_ask_waiters_lock = threading.Lock()
+
+
+def _wake_asks(thread_id: int | None = None) -> None:
+    """Wake the waiting asks of one thread (all of them when None). Callable
+    from any thread."""
+    with _ask_waiters_lock:
+        if thread_id is None:
+            waiters = [w for group in _ask_waiters.values() for w in group]
+        else:
+            waiters = list(_ask_waiters.get(int(thread_id), ()))
+    for loop, event in waiters:
+        try:
+            loop.call_soon_threadsafe(event.set)
+        except RuntimeError:  # its loop has closed
+            pass
+
+
+def _wake_asks_after(conn, thread_id: int) -> None:
+    """Wake once the caller's chat transaction commits; a waiter woken before
+    the commit would read the old row and sleep a whole poll."""
+    from . import chat_tx
+
+    try:
+        chat_tx.after_commit(lambda: _wake_asks(thread_id))
+    except RuntimeError:  # not inside chat_tx.transaction(): the poll catches it
+        _wake_asks(thread_id)
+
+
+async def _ask_pause(wake: asyncio.Event, cancel: asyncio.Event | None, seconds: float) -> None:
+    waits = [asyncio.ensure_future(wake.wait())]
+    if cancel is not None:
+        waits.append(asyncio.ensure_future(cancel.wait()))
+    try:
+        await asyncio.wait(waits, timeout=max(0.0, seconds), return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for waiter in waits:
+            waiter.cancel()
+
+
 def _thread_modes(user_id: int, thread_id: int | None) -> tuple[bool, bool]:
     """(bypass, auto) for a thread in one read."""
     if not thread_id:
@@ -1265,10 +1333,15 @@ async def _ask_and_wait(gate: Gate, payload: dict, auto_judge=None) -> str:
 
         asyncio.create_task(push.notify_permission(gate.user_id, gate.thread_id, payload))
     deadline = time.time() + ASK_TIMEOUT_S
+    wake = asyncio.Event()
+    waiter = (asyncio.get_running_loop(), wake)
+    with _ask_waiters_lock:
+        _ask_waiters.setdefault(gate.thread_id, set()).add(waiter)
     try:
         from . import chat_runs as chat_runs_mod
 
         while True:
+            wake.clear()  # before the read: a change after it wakes the pause below
             if gate._cancel is not None and gate._cancel.is_set():
                 await durable_call(_finish_ask, ask_id, "cancelled")
                 gate._notify({"event": "permission", "kind": "tool_permission", "id": ask_id, "status": "cancelled"})
@@ -1313,12 +1386,19 @@ async def _ask_and_wait(gate: Gate, payload: dict, auto_judge=None) -> str:
                 await durable_call(_finish_ask, ask_id, "timeout")
                 gate._notify({"event": "permission", "kind": "tool_permission", "id": ask_id, "status": "timeout"})
                 return "timeout"
-            await asyncio.sleep(0.25)
+            await _ask_pause(wake, gate._cancel, min(_ASK_POLL_S, deadline - time.time()))
     except BaseException:
         # Any exit without an answer (cancel, a failed poll, a judge error)
         # closes the card instead of leaving it pending.
         await durable_call(_finish_ask, ask_id, "cancelled")
         raise
+    finally:
+        with _ask_waiters_lock:
+            group = _ask_waiters.get(gate.thread_id)
+            if group is not None:
+                group.discard(waiter)
+                if not group:
+                    _ask_waiters.pop(gate.thread_id, None)
 
 
 def _finish_ask(ask_id: str, status: str) -> None:
@@ -1700,11 +1780,8 @@ async def review(*, tool: str, args: dict, user_id: int,
     needed = shell_grants if perm_kind == "shell" else [(grant_kind, grant_value)]
     covered = False
     if paths_resolved and grant_value and not (perm_kind == "shell" and (restricted_shell or secret or compound)):
-        covered = True
-        for kind, value in needed:
-            if not await asyncio.to_thread(grant_covers, gate.user_id, gate.thread_id, host_id, kind, value, windows):
-                covered = False
-                break
+        grants = await asyncio.to_thread(_grant_rows, gate.user_id, gate.thread_id, host_id)
+        covered = all(_rows_cover(grants, kind, value, windows) for kind, value in needed)
     if covered:
         return ReviewResult(allowed=True, root_override=relax, resolved=resolved)
 

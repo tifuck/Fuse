@@ -135,6 +135,42 @@ function listen() {
   reduce.addEventListener?.("change", () => { if (SCENES[run.kind] && run.state) start(); });
 }
 
+// —— Custom backdrops ——
+// A user's own document ("u-" + id, GET /backdrop/<id>): a sandboxed frame
+// with an opaque origin, never focusable, never hit by the pointer.
+const CUSTOM = /^u-[a-z0-9]{12}$/;
+export const isCustom = (kind) => CUSTOM.test(kind || "");
+
+function customFrame(kind) {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("sandbox", "allow-scripts");
+  frame.setAttribute("referrerpolicy", "no-referrer");
+  frame.setAttribute("tabindex", "-1");
+  frame.setAttribute("aria-hidden", "true");
+  frame.title = "";
+  frame.src = "/backdrop/" + kind.slice(2);
+  return frame;
+}
+
+function syncFrame(scene, kind) {
+  const frame = scene?.querySelector("iframe[data-chat-scene-frame]");
+  if (!kind) return frame?.remove();
+  if (frame?.dataset.kind === kind) return;
+  frame?.remove();
+  const next = customFrame(kind);
+  next.dataset.chatSceneFrame = "";
+  next.dataset.kind = kind;
+  scene.querySelector("[data-chat-scene-veil]")?.before(next) || scene.append(next);
+}
+
+// A custom card runs its document only while the card is on screen.
+let framed = null;
+function framePreview(el, on) {
+  const frame = el.querySelector("iframe");
+  if (!on) return frame?.remove();
+  if (!frame) el.append(customFrame(el.dataset.kind));
+}
+
 // —— Picker previews ——
 // Each card shows a real, settled frame of its scene; the hovered card runs.
 const previews = new Map();
@@ -223,6 +259,18 @@ export function scanPreviews(root = document) {
     });
   }
   for (const el of els) {
+    if (isCustom(el.dataset.kind) && !el.dataset.fxObserved) {
+      el.dataset.fxObserved = "1";
+      if (typeof IntersectionObserver !== "function") {
+        framePreview(el, true);
+        continue;
+      }
+      framed ||= new IntersectionObserver((entries) => {
+        for (const entry of entries) framePreview(entry.target, entry.isIntersecting);
+      });
+      framed.observe(el);
+      continue;
+    }
     if (!hasScene(el.dataset.kind) || el.dataset.fxObserved) continue;
     el.dataset.fxObserved = "1";
     if (observer) seen.observe(el);
@@ -265,10 +313,13 @@ export function sync(scene, kind) {
   const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
   const animated = Boolean(canvas && !scene.hidden && hasScene(kind));
   const same = animated && run.state && run.kind === kind && run.canvas === canvas;
-  // Wallpapers (data-only specs and the landscape scenes) paint their own
-  // opaque ground: the CSS shows them at full strength, without the centre
-  // mask and the veil.
-  const dress = () => scene?.toggleAttribute("data-wallpaper", isWallpaper(kind));
+  // A custom backdrop is a frame, not a canvas scene: one of the two runs.
+  const custom = Boolean(scene && !scene.hidden && isCustom(kind));
+  syncFrame(scene, custom ? kind : "");
+  // Wallpapers (data-only specs, the landscape scenes and custom documents)
+  // paint their own opaque ground: the CSS shows them at full strength,
+  // without the centre mask and the veil.
+  const dress = () => scene?.toggleAttribute("data-wallpaper", custom || isWallpaper(kind));
   if (!animated) {
     dress();
     stop();

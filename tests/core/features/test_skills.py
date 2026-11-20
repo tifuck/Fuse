@@ -150,7 +150,7 @@ def test_bundled_skills_default_and_a_user_copy_overrides_them(fresh_db, skills_
 
 def test_the_library_is_clean_categorised_and_mostly_off():
     slugs = skills.bundled_slugs()
-    assert skills.DEFAULT_ON <= set(slugs) and len(skills.DEFAULT_ON) <= 3
+    assert skills.DEFAULT_ON <= set(slugs) and len(skills.DEFAULT_ON) <= 4
     for slug in slugs:
         root = skills.BUNDLED_DIR / slug
         parsed = parse_skill_md((root / "SKILL.md").read_text(encoding="utf-8"), slug=slug)

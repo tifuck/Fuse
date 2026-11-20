@@ -849,6 +849,22 @@ CREATE TABLE `user_agent_settings` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_backdrops` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `public_id` char(12) NOT NULL,
+  `user_id` bigint(20) NOT NULL,
+  `name` varchar(40) NOT NULL,
+  `scheme` varchar(8) NOT NULL DEFAULT 'dark',
+  `html` mediumtext NOT NULL,
+  `created_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_backdrops_public_id` (`public_id`),
+  KEY `user_backdrops_user` (`user_id`),
+  CONSTRAINT `user_backdrops_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_hosts` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `user_id` bigint(20) NOT NULL,

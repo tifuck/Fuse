@@ -110,7 +110,7 @@ async def events(ws: WebSocket):
 
     reader = asyncio.create_task(receive())
     try:
-        bundle = hosts.list_bundle(uid)
+        bundle = await asyncio.to_thread(hosts.list_bundle, uid)
         await send(
             {
                 "type": "ready",

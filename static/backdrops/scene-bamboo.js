@@ -9,7 +9,7 @@ import { noise, seeded, newSeed } from "./noise.js";
 import { tiles, tile, put, layer, dotGrid, mixc, shade } from "./tiles.js";
 
 const TAU = Math.PI * 2;
-const HAZE = "#dccf86";
+const HAZE = "#b6ad6c";
 const SUN = "#f4de8c";
 // Tile ranks, far to near: width and gap in tiles, colour, haze, foot
 // (fraction of height), sway, segment length, leaf-spray chance. The far
@@ -33,17 +33,17 @@ function build(s) {
   // Light through the canopy, the sun's glow, the floor: one still image.
   const [back, g] = layer(s);
   const lin = g.createLinearGradient(0, 0, 0, h);
-  lin.addColorStop(0, "#5d763a");
-  lin.addColorStop(0.4, "#7f9248");
-  lin.addColorStop(0.64, "#a4a660");
-  lin.addColorStop(0.72, "#56682e");
-  lin.addColorStop(0.88, "#26361a");
-  lin.addColorStop(1, "#111a0c");
+  lin.addColorStop(0, "#2c4022");
+  lin.addColorStop(0.4, "#46582c");
+  lin.addColorStop(0.64, "#6c7040");
+  lin.addColorStop(0.72, "#3a4a22");
+  lin.addColorStop(0.88, "#1a2612");
+  lin.addColorStop(1, "#0a1008");
   g.fillStyle = lin;
   g.fillRect(0, 0, w, h);
   const glow = g.createRadialGradient(sunX, -h * 0.08, 0, sunX, -h * 0.08, Math.max(w, h) * 0.7);
-  glow.addColorStop(0, "rgba(255,242,186,0.95)");
-  glow.addColorStop(0.3, "rgba(236,220,148,0.45)");
+  glow.addColorStop(0, "rgba(255,238,176,0.7)");
+  glow.addColorStop(0.3, "rgba(220,204,132,0.28)");
   glow.addColorStop(1, "rgba(236,220,148,0)");
   g.fillStyle = glow;
   g.fillRect(0, 0, w, h);
@@ -64,13 +64,13 @@ function build(s) {
   // A band of haze where the far floor meets the culms.
   const band = g.createLinearGradient(0, h * 0.52, 0, h * 0.8);
   band.addColorStop(0, "rgba(220,207,134,0)");
-  band.addColorStop(0.55, "rgba(220,207,134,0.42)");
+  band.addColorStop(0.55, "rgba(190,182,112,0.3)");
   band.addColorStop(1, "rgba(220,207,134,0)");
   g.fillStyle = band;
   g.fillRect(0, h * 0.52, w, h * 0.3);
   const vig = g.createRadialGradient(sunX, h * 0.3, Math.min(w, h) * 0.3, sunX, h * 0.3, Math.max(w, h) * 0.95);
   vig.addColorStop(0, "rgba(20,34,12,0)");
-  vig.addColorStop(1, "rgba(20,34,12,0.55)");
+  vig.addColorStop(1, "rgba(10,18,6,0.7)");
   g.fillStyle = vig;
   g.fillRect(0, 0, w, h);
   dotGrid(g, s, "#efe6b4", 0.16);
@@ -118,8 +118,8 @@ function build(s) {
     s.shafts.forEach((sh, i) => {
       if (i % 2 !== set) return;
       const gr = bg.createLinearGradient(sh.x0, sh.y0, sh.x1, sh.y1);
-      gr.addColorStop(0, `rgba(255,240,180,${0.7 * sh.a})`);
-      gr.addColorStop(0.55, `rgba(255,232,150,${0.38 * sh.a})`);
+      gr.addColorStop(0, `rgba(255,240,180,${0.55 * sh.a})`);
+      gr.addColorStop(0.55, `rgba(255,232,150,${0.26 * sh.a})`);
       gr.addColorStop(1, "rgba(255,226,140,0)");
       bg.fillStyle = gr;
       bg.beginPath();
@@ -148,7 +148,7 @@ function build(s) {
     while (x < w + cl) {
       const side = Math.abs(x / w - 0.5) * 2;
       const W = Math.round(R.range(L.wd[0], L.wd[1] + 0.99));
-      const keep = L.sides ? side > 0.62 : li === 1 ? side > 0.3 || R() < 0.5 : true;
+      const keep = L.sides ? side > 0.62 : li === 1 ? side > 0.3 || R() < 0.3 : true;
       if (keep) culms.push(culm(s, R, L, li, x, W, top, sprays));
       x += (W + Math.round(R.range(L.gap[0], L.gap[1]))) * cl;
     }
@@ -212,7 +212,7 @@ function build(s) {
 function canopy(s, R, sunX) {
   const { w, k } = s;
   const out = [];
-  const leafC = ["#2c5422", "#3a6a2a", "#24461c", "#4a7c30"];
+  const leafC = ["#283e1e", "#32502a", "#22381a", "#3c5a2c"];
   for (let x = -R() * 60 * k; x < w + 40 * k; x += R.range(40, 100) * k) {
     const u = x / w;
     const side = Math.abs(u - 0.5) * 2;
@@ -233,7 +233,7 @@ function canopy(s, R, sunX) {
         const f = shade(R.pick(leafC), R.range(0.85, 1.15));
         const lit = R() < 0.22;
         const gl = end ? R.pick(["v", "'"]) : dir > 0 ? "\\" : "/";
-        cells.push({ dc, dr: m + r0, id: tile(s, gl, filled ? (lit ? mixc(f, "#a4c858", 0.45) : f) : null, filled ? shade(f, lit ? 0.6 : 1.7) : mixc(R.pick(["#4f8a34", "#3c7028"]), SUN, lit ? 0.45 : 0)) });
+        cells.push({ dc, dr: m + r0, id: tile(s, gl, filled ? (lit ? mixc(f, "#a4b858", 0.3) : f) : null, filled ? shade(f, lit ? 0.7 : 1.45) : mixc(R.pick(["#4a7034", "#3a5a2a"]), SUN, lit ? 0.35 : 0)) });
       }
     }
     if (cells.length) out.push({ x, sp: bake(s, cells), ph: R() * TAU, deep });
@@ -275,22 +275,23 @@ function culm(s, R, L, li, x, W, top, sprays) {
     for (let i = 0; i < W; i += 1) {
       const a = across[i];
       let f = inSheath ? mixc(col, "#7a6630", 0.6) : col;
-      f = a > 0.85 ? mixc(shade(f, 1.45), SUN, 0.3) : shade(f, 0.5 + 0.55 * a);
+      f = a > 0.85 ? mixc(shade(f, 1.3), SUN, 0.2) : shade(f, 0.5 + 0.55 * a);
       f = mixc(f, HAZE, hz);
       const tex = R();
-      let gl = a > 0.85 || a < 0.15 ? "|" : tex < 0.25 ? ":" : tex < 0.38 ? "|" : tex < 0.46 ? "'" : " ";
-      let ink = a > 0.5 ? shade(f, 1.45) : shade(f, 0.6);
-      if (W === 1) gl = "|";
+      // Culms read by their nodes and a lit edge; the rest of the stem is bare.
+      let gl = a > 0.85 ? "|" : tex < 0.06 ? "'" : " ";
+      let ink = a > 0.5 ? shade(f, 1.3) : shade(f, 0.72);
+      if (W === 1) gl = a > 0.85 && tex < 0.5 ? "|" : " ";
       if (isNode) {
         gl = "=";
-        f = shade(f, 1.15);
-        ink = shade(f, 0.55);
+        f = shade(f, 1.12);
+        ink = shade(f, li === 0 ? 0.86 : 0.62);
       } else if (below) {
         gl = "-";
         ink = shade(f, 0.72);
       } else if (inSheath) {
-        gl = R() < 0.5 ? "%" : ":";
-        ink = shade(f, 0.62);
+        gl = R() < 0.3 ? ":" : " ";
+        ink = shade(f, 0.72);
       }
       put(g, s, tile(s, gl, f, ink), i * cell, r * cell);
     }
