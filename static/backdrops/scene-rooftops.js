@@ -673,7 +673,7 @@ function smoke(ctx, s, t) {
     const K = s.smokeK;
     for (let i = 0; i < 3; i += 1) {
       const life = (t / 4 + i / 3 + sm.ph) % 1;
-      pk(ctx, K, s.smokeIds[(i + Math.floor(life * 4)) % s.smokeIds.length], sm.x + life * sm.c * 4 - K.cell / 2, sm.y - life * sm.c * 3.5 - K.cell, 0.55 * Math.sin(Math.PI * life) * (1 - sm.haze));
+      pk(ctx, K, s.smokeIds[(i + Math.floor(life * 4)) % s.smokeIds.length], sm.x + life * sm.c * 4 - K.cell / 2, sm.y - life * sm.c * 3.5 - K.cell, 0.3 * Math.sin(Math.PI * life) * (1 - sm.haze));
     }
   }
   ctx.globalAlpha = 1;
