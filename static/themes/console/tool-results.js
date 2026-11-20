@@ -339,8 +339,13 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const out = parts.result.trim();
       const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre></div>` : "";
       const n = parts.code.split("\n").length;
+      // Like its sibling rows, the result follows the call: a one-line value
+      // itself, else how long it is.
+      const lines = out ? out.split("\n") : [];
+      const meta = !out ? "" : failed ? "Error" : lines.length === 1 ? `Returned ${deps.toolText(lines[0], 80)}` : `Returned ${lines.length} lines`;
       items.push({ key: `${key}:code`, state: "done",
-        head: `<span class="chat-tool-action">Code</span><span class="chat-console-dim chat-console-codemeta">${n} ${n === 1 ? "line" : "lines"} of JavaScript${ret ? failed ? " and its error" : " and what it returned" : ""}</span>`,
+        head: `<span class="chat-console-call"><span class="chat-tool-action">Code</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>` +
+          (meta ? `<span class="chat-console-dim chat-console-codemeta">${deps.escapeHtml(meta)}</span>` : ""),
         body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
     }
     return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: items.length ? `<div class="chat-console-codetree">${tree(items)}</div>` : "" };
