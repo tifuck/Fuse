@@ -24,6 +24,7 @@ from app import agent_catalog, code_mode
 from app.chat_generation import tool_jobs
 from app.chat_generation.tool_jobs import TOOL_RESULT_CHARS, ToolJob
 from app.code_worker import HELPERS
+from app.config import settings
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames
 from tests.core.tools.test_code_mode import OPENAI, Runner, code_call, one_round, project_thread, run_code, tool_results
 
@@ -486,7 +487,8 @@ def test_a_large_write_from_code_leaves_no_copy_of_its_content_in_the_round(ssh_
 
 # -- secret swap ---------------------------------------------------------------------
 
-def test_no_outcome_hands_the_model_or_the_code_a_real_secret(ssh_host, kept):
+def test_no_outcome_hands_the_model_or_the_code_a_real_secret(ssh_host, kept, monkeypatch):
+    monkeypatch.setattr(settings, "secret_swap_enabled", True)
     ssh_host.fs.write(f"{ssh_host.root}/conf.env", f"OPENAI_API_KEY={OPENAI}\n")
     failing = 'const t = await read_file("conf.env");\nconsole.log("read " + t);\nthrow new Error("bad config: " + t);'
     long = ('const t = await read_file("conf.env");\n'

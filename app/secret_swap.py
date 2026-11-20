@@ -22,6 +22,8 @@ What keeps data intact:
 - Nothing here stops a chat: a missed swap is logged, never refused.
 - Punctuation is never changed, so restoring cannot change quoting.
 - A tool call still holding part of a fake after restore is refused, never run.
+- With the site switch off (settings.secret_swap_enabled) nothing new is
+  swapped; chats that swapped before only restore.
 """
 from __future__ import annotations
 
@@ -618,7 +620,6 @@ class Swap:
         self.thread_id = thread_id
         self.states: dict[int, bool] = {}  # pair id -> clear, for the bound transcript
         self._rows = None
-        self._noticed: set[int] = set()
 
     def bind(self, rows_fn) -> None:
         """The transcript this swap decides for: the rows its model has read."""
@@ -627,14 +628,7 @@ class Swap:
 
     # decisions
 
-    def _use(self, pair: Pair, sent, detected: bool = True) -> bool:
-        swap = self._decide(pair, sent, detected)
-        if swap and self.thread_id is not None and pair.id not in self._noticed:
-            self._noticed.add(pair.id)
-            _notice(self.vault.user_id, self.thread_id, pair.id)
-        return swap
-
-    def _decide(self, pair: Pair, sent, detected: bool) -> bool:
+    def _decide(self, pair: Pair, sent, detected: bool = True) -> bool:
         """Swap this value here? `detected`: found by detection right now, not
         only as a known value (weak values need that or their stand-in in view)."""
         with self.vault.lock:
@@ -683,7 +677,7 @@ class Swap:
 
     def _exact(self, text: str, sent) -> str:
         table = self._tokenize_table()
-        return table.sub(text, lambda key: (lambda p, f: f if self._use(p, sent, detected=False) else None)(
+        return table.sub(text, lambda key: (lambda p, f: f if self._decide(p, sent, detected=False) else None)(
             *table.mapping[key]))
 
     def _fragments(self, text: str, sent) -> str:
@@ -705,7 +699,7 @@ class Swap:
                     found = (base, base + len(run), starts[run])
             if found and found[0] >= pos:
                 start, end, (pair, fake) = found
-                if self._use(pair, sent):
+                if self._decide(pair, sent):
                     out += [text[pos:start], fake]
                     pos = end
         if not out:
@@ -747,7 +741,7 @@ class Swap:
         """Real -> fake for text a model is about to read. Known strong values
         anywhere, weak ones this transcript has swapped, ends of known values
         cut by a clip, base64 copies, then newly detected values."""
-        if not isinstance(text, str) or not text:
+        if not isinstance(text, str) or not text or not settings.secret_swap_enabled:
             return text
         sent = self._sent_fn(sent)
         out = self._exact(text, sent)
@@ -762,7 +756,7 @@ class Swap:
             if self.vault.known_fake_in(value):
                 continue
             pair = self.vault.add(hit.kind, value, hit.keep, hit.tail)
-            if not self._use(pair, sent):
+            if not self._decide(pair, sent):
                 continue
             pieces += [out[pos:hit.start], pair.fake]
             pos = hit.end
@@ -798,13 +792,17 @@ class Swap:
             with self.vault.lock:
                 known = pair.id in self.states
             if not known:
-                self._use(pair, lambda: value)
+                self._decide(pair, lambda: value)
 
     def prepare(self, rows: list) -> bool:
         """Swap every unprocessed row in place and mark it. Marked rows were
         sent already and are never touched again. True when a row changed."""
         batch = [r for r in rows if isinstance(r, dict) and not r.get(MARK)]
         if not batch:
+            return False
+        if not settings.secret_swap_enabled:
+            for row in batch:
+                row[MARK] = 1
             return False
         fresh = {id(r) for r in batch if r.get("role") != "assistant"}
         sent = _lazy(lambda: "\n".join(t for r in rows if isinstance(r, dict) and id(r) not in fresh for t in _row_texts(r)))
@@ -830,6 +828,8 @@ class Swap:
     def leaks(self, messages) -> list[str]:
         """Kinds of this transcript's swapped values still present in messages.
         A tripwire for a path that skipped prepare: logged, never blocking."""
+        if not settings.secret_swap_enabled:
+            return []
         with self.vault.lock:
             swapped = {i for i, clear in self.states.items() if not clear}
         table = self._tokenize_table()
@@ -920,21 +920,6 @@ class Restorer:
         return out
 
 
-def _notice(user_id: int, thread_id: int, pair_id: int) -> None:
-    """Tell the user, on every device, that this chat swapped a secret: once
-    per secret, so a dismissed notice comes back only for a new one."""
-    from . import notices
-
-    def body(n):
-        if n == 1:
-            return ("Fuse swapped a secret in this chat for a stand-in before the model saw it. "
-                    "You and your machines still see the real value.")
-        return (f"Fuse swapped {n} secrets in this chat for stand-ins before the model saw them. "
-                "You and your machines still see the real values.")
-    notices.post_later(user_id, f"secret-swap:{thread_id}", title="Secret swapped", body=body, kind="ok",
-                       thread_id=thread_id, item=pair_id)
-
-
 # -- entry points ------------------------------------------------------------
 
 def _fetchone(conn, sql, args):
@@ -958,7 +943,7 @@ def for_thread(user_id, thread_id, conn=None) -> Swap | None:
 def for_user(user_id) -> Swap | None:
     """A one-off swap for a model call outside a chat's transcript (titles,
     recaps): it creates pairs and decides nothing for any transcript."""
-    if not user_id:
+    if not user_id or not settings.secret_swap_enabled:
         return None
     row = db.fetchone("SELECT chat_secret_swap FROM users WHERE id=?", (int(user_id),))
     if not row or not row["chat_secret_swap"]:
@@ -970,6 +955,8 @@ def for_user(user_id) -> Swap | None:
 def enable_for_new_thread(conn, account, thread_id, messages) -> None:
     """A chat swaps when the account switch is on at its first turn; it keeps
     that for life, so turning the switch off never runs a fake as a value."""
+    if not settings.secret_swap_enabled:
+        return
     keys = account.keys() if hasattr(account, "keys") else ()
     if "chat_secret_swap" not in keys or not account["chat_secret_swap"]:
         return

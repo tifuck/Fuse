@@ -17,6 +17,7 @@ import pytest
 
 from app import agent_catalog, chat_history, chat_output, chat_prompts, chat_tools, chats, code_mode, hosts, workspace
 from app.chat_generation import tool_jobs, tool_runner
+from app.config import settings
 from app.chat_generation.tool_jobs import ToolJob
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames, tool_call_frames
 from tests.core.tools._support import make_project, new_thread
@@ -81,7 +82,8 @@ return {slow, exit: t.exit_code, out: t.output.trim()};"""
     assert {t.get("parent") for t in calls} == {head["id"]}
 
 
-def test_code_only_ever_holds_stand_ins_while_the_machine_gets_real_values(ssh_host):
+def test_code_only_ever_holds_stand_ins_while_the_machine_gets_real_values(ssh_host, monkeypatch):
+    monkeypatch.setattr(settings, "secret_swap_enabled", True)
     command = f"./deploy.sh --key {OPENAI}"
     ssh_host.shell.on(command, out=f"deployed; ci token {GITHUB}\n")
     seen = {}

@@ -1,12 +1,12 @@
 """Persistent notices: one per key, shown until dismissed on any device,
-reopened only for something new; the secret swap and a provider usage limit
-post them, and a later good turn clears the limit."""
+reopened only for something new; a provider usage limit posts one, and a
+later good turn clears it."""
 import json
 from types import SimpleNamespace
 
 import pytest
 
-from app import chat_runs, chats, db, notices, secret_swap
+from app import chat_runs, chats, db, notices
 from tests.core.helpers import quick_user
 
 
@@ -67,17 +67,3 @@ def test_a_usage_limit_leaves_a_notice_that_a_good_turn_clears(owner):
     chat_runs._limit_notice(uid, pk, "run-3", "completed", SimpleNamespace(error_kind="", message={}))
     assert notices.list_open(uid) == []
 
-
-def test_a_swapped_secret_is_announced_once_per_chat(owner):
-    uid, public, pk = owner
-    db.execute("UPDATE users SET chat_secret_swap=1 WHERE id=?", (uid,))
-    db.execute("UPDATE chat_threads SET secret_swap=1 WHERE id=?", (pk,))
-    key = "sk-proj-" + "Qx7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0Ga" * 2
-    swap = secret_swap.for_thread(uid, pk)
-    assert key not in swap.tokenize(f"OPENAI_API_KEY={key}")
-    secret_swap.for_thread(uid, pk).tokenize(f"again {key}")
-    notices.flush()
-    (shown,) = notices.list_open(uid)
-    assert (shown["key"], shown["count"], shown["thread_id"]) == (f"secret-swap:{pk}", 1, public)
-    assert key not in shown["body"]
-    assert len(events(uid, "notice.updated")) == 1

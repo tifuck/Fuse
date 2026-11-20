@@ -1205,6 +1205,8 @@ async def chat_context_put(request: Request):
     if "secret_swap" in raw:
         if not isinstance(raw["secret_swap"], bool):
             raise HTTPException(400, "Invalid secret_swap")
+        if raw["secret_swap"] and not settings.secret_swap_enabled:
+            raise HTTPException(400, "Secret swap is off on this server")
         kwargs["secret_swap"] = raw["secret_swap"]
     try:
         data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
