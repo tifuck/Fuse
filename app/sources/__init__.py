@@ -13,7 +13,7 @@ from ..providers.access import Access
 from .base import ChatResult, Source
 from .chatgpt import CHATGPT_MODELS, ChatGPTSource, ensure_chatgpt_source, refresh_due as chatgpt_refresh_due, user_has_chatgpt
 from .grok import GROK_MODELS, GrokSource, ensure_grok_source, grok_access_state, refresh_due, user_has_grok
-from . import llama as llama_mod, ollama as ollama_mod
+from . import keyed as keyed_mod, llama as llama_mod, ollama as ollama_mod
 from .llama import LlamaSource
 from .openai_compat import OpenAICompatSource
 from .ollama import DEFAULT_BASE as OLLAMA_BASE, OllamaSource
@@ -220,6 +220,9 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
             return await s.models(user_id=user_id)
         except CatalogError:
             return []
+    if registry.get(s.type_id).keyed:
+        # The catalog follows the key this user routes through; KeyedSource caches it.
+        return await s.models(user_id=user_id)
     key = _cache_key(s, user_id)
     hit = _model_cache.get(key)
     if hit and key not in _live and s.type_id in POOL_TYPES:
@@ -273,6 +276,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         _live.clear()
         llama_mod._models_cache.clear()
         ollama_mod._tags_cache.clear()
+        keyed_mod.clear_catalogs()
         return
     sids = [s.source_id for s in all_enabled() if s.type_id == source_type]
     for sid in sids:
@@ -281,6 +285,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         # advertising the previous server's models until the TTL.
         llama_mod._models_cache.pop(sid, None)
         ollama_mod._tags_cache.pop(sid, None)
+        keyed_mod.clear_catalogs(sid)
     for key in [k for k in _model_cache if k[0] in sids]:
         _model_cache.pop(key, None)
         _live.discard(key)

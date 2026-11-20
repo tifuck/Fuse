@@ -76,7 +76,7 @@ async def admin_sources_create(
     if type != "openai":
         return RedirectResponse("/admin/sources", status_code=303)
     url = (base_url.strip() or "http://127.0.0.1:8080/v1")
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
@@ -123,7 +123,7 @@ async def admin_llama_save(
 
     sid = ensure_llama_source()
     url = base_url.strip() or "http://127.0.0.1:8080/v1"
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
@@ -207,7 +207,7 @@ async def admin_ollama_save(
 
     sid = ensure_ollama_source()
     url = base_url.strip() or OLLAMA_BASE
-    if not allowed_base_url(url):
+    if not allowed_base_url(url, allow_private=True):
         return render(
             request,
             "admin_sources.html",
