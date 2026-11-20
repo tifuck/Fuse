@@ -276,19 +276,34 @@ def _project_view(row) -> dict:
     }
 
 
-def _projects(conn, user_id: int, host_id: int) -> list[dict]:
-    rows = conn.execute(
-        """SELECT p.*, (SELECT COUNT(*) FROM chat_threads c
-                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS sessions,
-                       (SELECT MAX(c.updated_at) FROM chat_threads c
-                         WHERE c.user_id=p.user_id AND c.project_id=p.id AND c.kind='project') AS last_active_at
-           FROM user_projects p WHERE p.user_id=? AND p.host_id=? ORDER BY p.name""",
-        (user_id, host_id),
-    ).fetchall()
+def _projects_by_host(conn, user_id: int, host_id: int | None = None) -> dict[int, list[dict]]:
+    """The user's projects (one host's when host_id is given) grouped by host,
+    in name order: two queries however many hosts and projects."""
+    sql, args = "SELECT * FROM user_projects WHERE user_id=?", [user_id]
+    if host_id is not None:
+        sql, args = sql + " AND host_id=?", [user_id, host_id]
+    rows = conn.execute(sql + " ORDER BY name", tuple(args)).fetchall()
+    if not rows:
+        return {}
+    stats = {int(r["project_id"]): r for r in conn.execute(
+        """SELECT project_id, COUNT(*) AS sessions, MAX(updated_at) AS last_active_at FROM chat_threads
+           WHERE user_id=? AND kind='project' AND project_id IS NOT NULL GROUP BY project_id""",
+        (user_id,),
+    ).fetchall()}
     # The delete confirm names how many chats go with the project; the chat
     # chooser orders by both, most used first.
-    return [{**_project_view(r), "sessions": int(r["sessions"] or 0), "last_active_at": r["last_active_at"] or ""}
-            for r in rows]
+    out: dict[int, list[dict]] = {}
+    for r in rows:
+        s = stats.get(int(r["id"]))
+        out.setdefault(int(r["host_id"]), []).append(
+            {**_project_view(r), "sessions": int(s["sessions"] or 0) if s else 0,
+             "last_active_at": (s["last_active_at"] if s else "") or ""}
+        )
+    return out
+
+
+def _projects(conn, user_id: int, host_id: int) -> list[dict]:
+    return _projects_by_host(conn, user_id, int(host_id)).get(int(host_id), [])
 
 
 def _public_host(row, projects=None) -> dict:
@@ -342,7 +357,8 @@ def list_bundle(user_id: int) -> dict:
         hosts = conn.execute(
             "SELECT * FROM user_hosts WHERE user_id=? ORDER BY alias", (user_id,)
         ).fetchall()
-        items = [_public_host(row, _projects(conn, user_id, row["id"])) for row in hosts]
+        projects = _projects_by_host(conn, user_id)
+        items = [_public_host(row, projects.get(int(row["id"]), [])) for row in hosts]
         pending = _pending_from_conn(conn, user_id)
         return {
             "uid": user_id,
@@ -354,8 +370,13 @@ def list_bundle(user_id: int) -> dict:
         }
 
 
+def host_row(user_id: int, host_id: int):
+    """The raw user_hosts row, without the public view's project lists."""
+    return db.fetchone("SELECT * FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+
+
 def get_host(user_id: int, host_id: int):
-    row = db.fetchone("SELECT * FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+    row = host_row(user_id, host_id)
     if row is None:
         return None
     with db.tx() as conn:
@@ -689,11 +710,12 @@ def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dic
             moved = [int(r["id"]) for r in conn.execute(
                 "SELECT id FROM chat_threads WHERE user_id=? AND project_id=?", (user_id, project_id)
             ).fetchall()]
-            for tid in moved:
+            if moved:
                 conn.execute(
-                    "UPDATE chat_threads SET host_id=?, revision=revision+1 WHERE id=? AND user_id=?",
-                    (new_host, tid, user_id),
+                    f"UPDATE chat_threads SET host_id=?, revision=revision+1 WHERE user_id=? AND id IN ({','.join('?' * len(moved))})",
+                    (new_host, user_id, *moved),
                 )
+            for tid in moved:
                 store.thread_event(conn, user_id, tid)
         if "archived" in raw and raw["archived"] != bool(_row_get(row, "archived") or 0):
             set_project_archived(conn, user_id, project_id, raw["archived"])
@@ -735,12 +757,12 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
                 ids,
             ).fetchall()}
             ids = [i for i in ids if i not in busy]
-        for tid in ids:
+        if ids:
             # Archiving is not activity: updated_at (the list's age) stays put.
             conn.execute(
-                """UPDATE chat_threads SET archived=1, archived_at=?, archived_by_project=1, revision=revision+1
-                   WHERE id=? AND user_id=?""",
-                (ts, tid, user_id),
+                f"""UPDATE chat_threads SET archived=1, archived_at=?, archived_by_project=1, revision=revision+1
+                    WHERE user_id=? AND id IN ({','.join('?' * len(ids))})""",
+                (ts, user_id, *ids),
             )
     else:
         conn.execute(
@@ -752,11 +774,11 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
             (user_id, project_id),
         ).fetchall()
         ids = [int(r["id"]) for r in rows]
-        for tid in ids:
+        if ids:
             conn.execute(
-                """UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=?, revision=revision+1
-                   WHERE id=? AND user_id=?""",
-                (ts, tid, user_id),
+                f"""UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=?, revision=revision+1
+                    WHERE user_id=? AND id IN ({','.join('?' * len(ids))})""",
+                (ts, user_id, *ids),
             )
     for tid in ids:
         store.thread_event(conn, user_id, tid)
@@ -826,7 +848,6 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
     restore at any point stops the deletion (HostError 409) with nothing
     deleted."""
     from . import chat_store as store
-    from .chat_threads import public_id_for
 
     if sessions not in ("delete", "keep"):
         raise HostError("sessions must be delete or keep")
@@ -862,21 +883,19 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
                 conn.execute("UPDATE chat_runs SET cancel_requested=1,updated_at=? WHERE id=?", (db.now(), run["id"]))
                 kind = "agent.cancel_requested" if run["parent_run_id"] else "run.cancel_requested"
                 store.event(conn, user_id, kind, run["thread_id"], store._cancel_event_payload(run))
-            for t in threads:
-                conn.execute("DELETE FROM chat_runs WHERE thread_id=? AND user_id=?", (t["id"], user_id))
-                conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=?", (t["id"], user_id))
-                store.event(conn, user_id, "thread.deleted", t["id"],
-                            {"revision": int(t["revision"]) + 1, "id": t["public_id"] or public_id_for(t["id"], conn)})
+            _delete_threads(conn, user_id, threads)
         else:
-            for r in conn.execute(
+            kept = [int(r["id"]) for r in conn.execute(
                 "SELECT id FROM chat_threads WHERE user_id=? AND project_id=?", (user_id, project_id)
-            ).fetchall():
+            ).fetchall()]
+            if kept:
                 conn.execute(
-                    """UPDATE chat_threads SET kind='chat', host_id=NULL, project_id=NULL, archived_by_project=0,
-                       updated_at=?, revision=revision+1 WHERE id=? AND user_id=?""",
-                    (db.now(), r["id"], user_id),
+                    f"""UPDATE chat_threads SET kind='chat', host_id=NULL, project_id=NULL, archived_by_project=0,
+                        updated_at=?, revision=revision+1 WHERE user_id=? AND id IN ({','.join('?' * len(kept))})""",
+                    (db.now(), user_id, *kept),
                 )
-                store.thread_event(conn, user_id, r["id"])
+            for tid in kept:
+                store.thread_event(conn, user_id, tid)
         if archived_before is not None:
             project = conn.execute(
                 "SELECT archived, archived_at, updated_at, created_at FROM user_projects"
@@ -914,12 +933,28 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
     return result.rowcount > 0
 
 
+def _delete_threads(conn, user_id: int, threads) -> None:
+    """Delete a project's sessions (runs before threads, as delete_thread
+    does) in two statements, then one thread.deleted event each."""
+    from . import chat_store as store
+    from .chat_threads import public_id_for
+
+    if not threads:
+        return
+    marks = ",".join("?" * len(threads))
+    ids = [int(t["id"]) for t in threads]
+    conn.execute(f"DELETE FROM chat_runs WHERE user_id=? AND thread_id IN ({marks})", (user_id, *ids))
+    conn.execute(f"DELETE FROM chat_threads WHERE user_id=? AND id IN ({marks})", (user_id, *ids))
+    for t in threads:
+        store.event(conn, user_id, "thread.deleted", t["id"],
+                    {"revision": int(t["revision"]) + 1, "id": t["public_id"] or public_id_for(t["id"], conn)})
+
+
 def _delete_archived_project(user_id: int, host_id: int, project_id: int, archived_before: str) -> bool:
     """Retention: delete an archived project with its archived sessions in
     one transaction. Deleting session by session let a restore racing the
     sweep stop it halfway, with the deleted sessions gone for good."""
     from . import chat_store as store
-    from .chat_threads import public_id_for
 
     with store.transaction() as conn:
         project = conn.execute(
@@ -946,11 +981,7 @@ def _delete_archived_project(user_id: int, host_id: int, project_id: int, archiv
             (user_id, *ids),
         ).fetchone():
             raise HostError("project has a running session; nothing was deleted", 409)
-        for t in threads:
-            conn.execute("DELETE FROM chat_runs WHERE thread_id=? AND user_id=?", (t["id"], user_id))
-            conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=?", (t["id"], user_id))
-            store.event(conn, user_id, "thread.deleted", t["id"],
-                        {"revision": int(t["revision"]) + 1, "id": t["public_id"] or public_id_for(t["id"], conn)})
+        _delete_threads(conn, user_id, threads)
         result = conn.execute(
             "DELETE FROM user_projects WHERE id=? AND user_id=? AND host_id=?",
             (project_id, user_id, host_id),
@@ -1045,8 +1076,8 @@ def _catalog_roots_bit(host: dict, *, bound_host_id=None, bound_cwd: str = "") -
     return f"  roots: {', '.join(roots)}"
 
 
-def catalog_for_prompt(user_id: int, *, clip: bool = True, bound_host_id=None, bound_project_id=None, bound_cwd: str = "", only_bound: bool = False) -> str:
-    bundle = list_bundle(user_id)
+def catalog_for_prompt(user_id: int, *, clip: bool = True, bound_host_id=None, bound_project_id=None, bound_cwd: str = "", only_bound: bool = False, bundle: dict | None = None) -> str:
+    bundle = bundle if bundle is not None else list_bundle(user_id)
     lines = []
     bound_line = ""
     # The bound host leads so a clipped catalog never drops its roots line.
@@ -1169,19 +1200,33 @@ def latest_project_thread_id(user_id: int, host_id: int, project_id: int):
 
 
 def effective_permission(user_id: int, *, bound_host_id=None, bound_cwd="") -> str:
-    mode = settings_for(user_id).get("permission_mode") or "project"
+    return permission_in(permission_scope(user_id, bound_host_id if bound_cwd else None), bound_cwd)
+
+
+def permission_scope(user_id: int, host_id=None, *, mode: str | None = None) -> tuple[str, tuple[str, ...]]:
+    """Everything effective_permission reads, in one go: the account's mode
+    and the host's read-only project paths. permission_in() then decides any
+    number of paths in memory. mode skips the settings read when the caller
+    already has it."""
+    if mode is None:
+        mode = settings_for(user_id).get("permission_mode") or "project"
+    if mode == "read_only" or not host_id:
+        return mode, ()
+    rows = db.fetchall(
+        "SELECT remote_path FROM user_projects WHERE user_id=? AND host_id=? AND permission_mode='read_only'",
+        (user_id, int(host_id)),
+    )
+    return mode, tuple(_row_get(r, "remote_path") or "" for r in rows)
+
+
+def permission_in(scope: tuple[str, tuple[str, ...]], cwd: str = "") -> str:
+    mode, read_only = scope
     if mode == "read_only":
         return "read_only"
-    if not bound_host_id or not bound_cwd:
-        return mode if mode in ("project", "read_only") else "project"
     # Prefix, not equality: a subfolder of a read-only project (a subagent
     # spawned with cwd=<project>/sub, or a write target inside it) is still
     # read-only.
-    rows = db.fetchall(
-        "SELECT remote_path FROM user_projects WHERE user_id=? AND host_id=? AND permission_mode='read_only'",
-        (user_id, int(bound_host_id)),
-    )
-    if any(_path_within(bound_cwd, _row_get(r, "remote_path") or "") for r in rows):
+    if cwd and any(_path_within(cwd, path) for path in read_only):
         return "read_only"
     return "project"
 
