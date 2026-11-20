@@ -85,7 +85,7 @@ function rockMass(dst, s, R, m, cfg) {
         } else if (noise(c * 0.9 + cfg.off, r * 0.14) > 0.72) {
           glyph = "|";
         } else {
-          glyph = R.pick([".", ":", "%", "'", ".", ";", " "]);
+          glyph = R.pick([".", " ", ":", " ", "'", " ", " "]);
         }
         if (wet < 2) {
           fill = mixc(fill, ROCK.wet, 0.5);
@@ -96,7 +96,7 @@ function rockMass(dst, s, R, m, cfg) {
         // Deep inside, the rock is only painted dark with a faint glyph on it.
         if (dR > cfg.rim * 2 && depth > 2 && dL > 0 && wet > 1 && hash(c, r, cfg.off | 0) < (seam ? 0.85 : cfg.sparse)) {
           if (seam) glyph = "-";
-          if (glyph !== " ") put(g, s, tile(s, glyph, null, H(shade(BANDS[band % BANDS.length], 0.8))), c * cell, r * cell);
+          if (glyph !== " ") put(g, s, tile(s, glyph, null, H(shade(BANDS[band % BANDS.length], 0.8))), c * cell, r * cell, 0.55);
           continue;
         }
       }
