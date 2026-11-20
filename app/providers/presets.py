@@ -41,7 +41,7 @@ class KeyedPreset:
     label: str
     base_url: str = ""  # used when the preset has no regions
     regions: tuple[Region, ...] = ()  # the first is the default
-    prefix: str = ""  # public model id prefix; default "<id>/"
+    prefix: str = ""  # public model id prefix; default the id with hyphens, "opencode-zen/"
     protocol: str = "openai_chat"  # or "anthropic_messages"
     auth: str = "bearer"  # "bearer" or "x-api-key"
     headers: tuple[tuple[str, str], ...] = ()
@@ -62,7 +62,7 @@ class KeyedPreset:
 
     @property
     def public_prefix(self) -> str:
-        return self.prefix or f"{self.id}/"
+        return self.prefix or self.id.replace("_", "-") + "/"
 
     def upstream(self, model: str) -> str:
         mid = (model or "").strip()
@@ -108,9 +108,8 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 Region("global", "Global (minimax.io)", "https://api.minimax.io/v1"),
                 Region("cn", "Mainland China (minimaxi.com)", "https://api.minimaxi.com/v1"),
                 ),
-                methods=(KeyMethod("api_key", "Pay-as-you-go API key"),
-                         KeyMethod("m_plan", "Coding Plan key", "The subscription key from Plan Details; "
-                                   "a pay-as-you-go key does not work as a plan key, nor the reverse.")),
+                methods=(KeyMethod("api_key", "Pay-as-you-go API key", "billed per token from your MiniMax balance"),
+                         KeyMethod("m_plan", "M Plan key", "the subscription key under Plan Details")),
                 key_url="https://platform.minimax.io"),
     KeyedPreset("mistral", "Mistral", base_url="https://api.mistral.ai/v1", hide=r"embed|moderation|ocr",
                 key_url="https://console.mistral.ai/api-keys"),

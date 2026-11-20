@@ -88,6 +88,8 @@ def test_every_spec_is_complete():
             assert not (spec.guard or spec.access or spec.claim == "hard"), spec.id
     prefixes = [s.keyed.public_prefix for s in registry.specs() if s.keyed]
     assert len(prefixes) == len(set(prefixes))
+    # Public prefixes are hyphenated like OpenCode's (opencode-zen/), whatever the spec id.
+    assert not [p for p in prefixes if "_" in p] and registry.get("opencode_zen").keyed.public_prefix == "opencode-zen/"
     # No keyed prefix shadows a namespace an existing provider owns.
     taken = ("devin/", "claude/", "cursor/", "nanogpt/", "refuseless/", "explabs/", "openrouter/")
     assert not [p for p in prefixes if p.startswith(taken)]

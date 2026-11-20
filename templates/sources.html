@@ -1297,7 +1297,7 @@
       <label>Key type
         <select name="method">{% for m in p.methods %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}</select>
       </label>
-      {% for m in p.methods %}{% if m.help %}<p class="usage-note">{{ m.label }}: {{ m.help }}</p>{% endif %}{% endfor %}
+      <p class="usage-note">{% for m in p.methods %}<b>{{ m.label }}</b>{% if m.help %}: {{ m.help }}{% endif %}. {% endfor %}The key types are not interchangeable.</p>
       {% endif %}
       {% if p.regions|length > 1 %}
       <label>Region
