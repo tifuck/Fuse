@@ -5,6 +5,8 @@ offline operation; runtime schema probes may only verify existing objects.
 """
 from __future__ import annotations
 
+import asyncio
+import queue
 import re
 from .database_errors import IntegrityError, TransactionAborted
 import threading
@@ -378,28 +380,49 @@ def _raw_connect(parsed):
 # its next statement, is closed by the rollback, and reconnects at checkout.
 PING_AFTER = 1.0
 
+# Connections only a thread running an event loop may take. The default
+# executor has as many threads as the pool has connections, so with every
+# general one held by worker threads a query on the loop thread would freeze
+# the whole process until one came back. Loop-side DB code never awaits inside
+# a transaction, so a reserved connection is back before the loop runs
+# anything else; a nested db.tx() holds two.
+LOOP_RESERVED = 2
+
 
 class Pool:
     """One connection per concurrent transaction. Callers never share one."""
 
     def __init__(self, parsed, size):
-        import queue
         self._parsed = parsed
-        self._idle = queue.Queue(size)
+        reserved = LOOP_RESERVED if size > 4 else 0
+        self._idle = queue.Queue(size - reserved)
+        self._loop_idle = queue.Queue(reserved)
+        self._loop_only = set()
         self._all = []
         self._lock = threading.Lock()
         try:
-            for _ in range(size):
+            for i in range(size):
                 conn = Conn(_raw_connect(parsed))
                 self._all.append(conn)
-                self._idle.put(conn)
+                if i < reserved:
+                    self._loop_only.add(conn)
+                self._put(conn)
         except BaseException:
             self.close()
             raise
 
+    def _put(self, conn):
+        (self._loop_idle if conn in self._loop_only else self._idle).put(conn)
+
     def checkout(self, timeout=30):
         try:
-            conn = self._idle.get(timeout=timeout)
+            if self._loop_only and asyncio._get_running_loop() is not None:
+                try:
+                    conn = self._idle.get_nowait()
+                except queue.Empty:
+                    conn = self._loop_idle.get(timeout=timeout)
+            else:
+                conn = self._idle.get(timeout=timeout)
         except Exception as exc:
             raise TimeoutError("MariaDB connection pool exhausted") from exc
         released, conn.released_at = conn.released_at, None
@@ -407,7 +430,7 @@ class Pool:
             try:
                 conn.ensure_connected()
             except Exception:
-                self._idle.put(conn)
+                self._put(conn)
                 raise
         return conn
 
@@ -421,7 +444,7 @@ class Pool:
                 pass
         elif conn._aborted is None and conn._raw.open:
             conn.released_at = time.monotonic()
-        self._idle.put(conn)
+        self._put(conn)
 
     def execute(self, sql, args=()):
         # Schema probes during startup are not part of a caller transaction.
