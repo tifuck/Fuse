@@ -11,6 +11,7 @@
   <a href="#ollama">Ollama Cloud</a>
   <a href="#openrouter">OpenRouter</a>
   <a href="#explabs">Experiential Labs</a>
+  <a href="#keyed">API-key providers</a>
   <a href="#compat">OpenAI-compatible</a>
   {% if speech %}<a href="#speech">Speech to text</a>{% endif %}
 </nav>
@@ -204,6 +205,52 @@
     <label class="check"><input type="checkbox" name="enabled" value="1"{% if explabs and explabs['enabled'] %} checked{% endif %}> Enabled — route personal Experiential Labs keys</label>
     <button type="submit" class="btn">Save Experiential Labs</button>
   </form>
+</section>
+
+<section class="panel" id="keyed">
+  <div class="account-head">
+    <div><p class="eyebrow">API-key providers</p><h2>Personal keys, optional site keys</h2></div>
+  </div>
+  <p class="aside">Users add their own keys on <a href="/sources">Sources</a>; each serves only its owner. A site key serves nobody until you choose who may use it.</p>
+  {% for p in keyed_admin %}
+  <article class="panel">
+    <div class="account-head">
+      <div><h3>{{ p.label }}</h3><p class="usage-sub">{{ p.personal }} personal key{{ 's' if p.personal != 1 else '' }} · {{ p.site|length }} site key{{ 's' if p.site|length != 1 else '' }}</p></div>
+      <span class="badge {{ 'on' if p.enabled else 'off' }}">{{ 'On' if p.enabled else 'Off' }}</span>
+    </div>
+    <form method="post" action="/admin/providers/{{ p.id }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="check"><input type="checkbox" name="enabled" value="1"{% if p.enabled %} checked{% endif %}> Enabled</label>
+      <label>Site keys serve
+        <select name="site_access">
+          <option value="none"{% if p.site_access == 'none' %} selected{% endif %}>Nobody</option>
+          <option value="admins"{% if p.site_access == 'admins' %} selected{% endif %}>Admins</option>
+          <option value="everyone"{% if p.site_access == 'everyone' %} selected{% endif %}>Everyone</option>
+        </select>
+      </label>
+      <button type="submit" class="btn sm">Save {{ p.label }}</button>
+    </form>
+    {% for k in p.site %}
+    <form method="post" action="/admin/providers/{{ p.id }}/keys/{{ k.id }}/delete" class="account-head" data-confirm="Remove this {{ p.label }} site key?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <span>{{ k.label }}{% if k.region %} <span class="badge">{{ k.region }}</span>{% endif %}</span>
+      <button type="submit" class="btn danger sm">Remove</button>
+    </form>
+    {% endfor %}
+    <details>
+      <summary>Add a site key</summary>
+      <form method="post" action="/admin/providers/{{ p.id }}/keys" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if p.regions|length > 1 %}
+        <label>Region <select name="region">{% for r in p.regions %}<option value="{{ r.id }}">{{ r.label }}</option>{% endfor %}</select></label>
+        {% endif %}
+        <label>API key <input name="api_key" type="password" autocomplete="off" required maxlength="4096"></label>
+        <label>Label (optional) <input name="label" maxlength="80" placeholder="{{ p.label }} site key"></label>
+        <button type="submit" class="btn sm">Save site key</button>
+      </form>
+    </details>
+  </article>
+  {% endfor %}
 </section>
 
 {% if extras %}

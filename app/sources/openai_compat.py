@@ -41,6 +41,7 @@ def _v1(url: str) -> str:
 
 class OpenAICompatSource:
     type_id = "openai"
+    send_cache_key = True  # session-scoped prompt_cache_key on every request
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]
@@ -141,7 +142,7 @@ class OpenAICompatSource:
         prefer_id = lookup(self.pin_kind, session_id) if session_id else None
         model = body.get("model", "")
         failover = Failover()
-        cache_key = bool(session_id)
+        cache_key = bool(session_id) and self.send_cache_key
         for cred in self._next_creds(tried, prefer_id=prefer_id):
             tried.add(cred["id"])
             key = accounts.cred_secret(cred)

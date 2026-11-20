@@ -68,7 +68,7 @@ async def admin_speech_save(
     url, name, key = base_url.strip(), model.strip()[:200], api_key.strip()
     on = enabled in ("1", "on", "true")
     error = None
-    if url and not allowed_base_url(url):
+    if url and not allowed_base_url(url, allow_private=True):
         error = "Base URL must be http(s) and not a metadata host."
     elif len(key) > 4096 or any(ord(c) < 32 or 0xD800 <= ord(c) <= 0xDFFF for c in key):
         error = "API key must be at most 4096 valid characters."

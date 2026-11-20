@@ -373,6 +373,7 @@
   ('openrouter', 'OpenRouter', 'key linked' if openrouter_account else 'personal API key', 1 if openrouter_account else 0, 0),
   ('explabs', 'Experiential Labs', 'key linked' if explabs_account else 'personal API key', 1 if explabs_account else 0, 0),
 ] %}
+{% if keyed %}{% set src.all = src.all + [('keys', 'API keys', (keyed_n ~ ' key' ~ ('s' if keyed_n != 1 else '') ~ ' linked') if keyed_n else 'DeepSeek, Gemini, OpenAI and more', keyed_n, 0)] %}{% endif %}
 {% set connected = src.all|selectattr('3')|list %}
 
 <div class="stack-y sources-page">
@@ -797,6 +798,39 @@
     </article>
     {% endif %}
     </section>
+
+    {% if keyed %}
+    <section class="pool stack-y" id="pool-keys">
+    <header class="pool-head">
+      <div class="pool-id">
+        <h2><img class="provider-logo" src="{{ provider_logo_url('keys') }}" alt="" aria-hidden="true">API keys</h2>
+        <p class="pool-state{% if keyed_n %} is-ok{% endif %}"><b>{% if keyed_n %}{{ keyed_n }} linked{% else %}No keys{% endif %}</b><span>personal, never shared</span></p>
+      </div>
+    </header>
+    <p class="sources-note">Your own key for a provider, used only for your requests and billed to that key. Each provider's models carry its prefix, such as <code>deepseek/…</code>.</p>
+    {% if keys_flash_msg %}
+    <p class="callout {% if keys_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ keys_flash_msg }}</p>
+    {% endif %}
+    {% for p in keyed %}
+    <article class="panel">
+      <div class="section-heading">
+        <h2><img class="provider-logo" src="{{ provider_logo_url(p.id) }}" alt="" aria-hidden="true">{{ p.label }}{% if p.group == 'subscription' %} <span class="badge">Subscription</span>{% endif %}{% if p.site %} <span class="badge on" title="An admin opened a site key to you">Site key</span>{% endif %}</h2>
+        <button type="button" class="btn sm{% if p['keys'] %} ghost{% endif %}" data-dialog-open="key-{{ p.id }}-dialog" aria-haspopup="dialog">{% if p['keys'] %}Replace key{% else %}Add key{% endif %}</button>
+      </div>
+      {% for k in p['keys'] %}
+      <div class="section-heading">
+        <p>{{ k.label }} <span class="badge">Yours only</span>{% if k.method %} <span class="badge">{{ k.method }}</span>{% endif %}{% if k.region %} <span class="badge">{{ k.region }}</span>{% endif %}</p>
+        <form method="post" action="/sources/keys/{{ p.id }}/{{ k.id }}/revoke" data-confirm="Remove your {{ p.label }} key? Other users are not affected.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn danger sm">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+      <p class="usage-sub"><code>{{ p.prefix }}…</code> models{% if p.key_url %} · <a href="{{ p.key_url }}" target="_blank" rel="noopener noreferrer">Get a key</a>{% endif %}</p>
+    </article>
+    {% endfor %}
+    </section>
+    {% endif %}
   </div>
   </div>
 </div>
@@ -1245,6 +1279,42 @@
     </form>
   </div>
 </dialog>
+
+{% for p in keyed %}
+<dialog class="modal" id="key-{{ p.id }}-dialog" aria-labelledby="key-{{ p.id }}-title">
+  <div class="modal-shell">
+    <header class="modal-head">
+      <div>
+        <p class="metric-label">{{ p.label }} · API key</p>
+        <h2 id="key-{{ p.id }}-title">Add your {{ p.label }} key</h2>
+      </div>
+      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close {{ p.label }} key dialog">Close</button>
+    </header>
+    <p class="aside">Requests bill this key. Fuse checks it against {{ p.label }}'s model list, stores it encrypted, never shows it again and never shares it.</p>
+    <form method="post" action="/sources/keys/{{ p.id }}/add" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if p.methods|length > 1 %}
+      <label>Key type
+        <select name="method">{% for m in p.methods %}<option value="{{ m.id }}">{{ m.label }}</option>{% endfor %}</select>
+      </label>
+      {% for m in p.methods %}{% if m.help %}<p class="usage-note">{{ m.label }}: {{ m.help }}</p>{% endif %}{% endfor %}
+      {% endif %}
+      {% if p.regions|length > 1 %}
+      <label>Region
+        <select name="region">{% for r in p.regions %}<option value="{{ r.id }}">{{ r.label }}</option>{% endfor %}</select>
+      </label>
+      {% endif %}
+      <label>API key
+        <input name="api_key" type="password" autocomplete="off" required maxlength="4096">
+      </label>
+      <label>Label (optional)
+        <input name="label" maxlength="80" placeholder="{{ p.label }} key">
+      </label>
+      <button type="submit" class="btn">Save key</button>
+    </form>
+  </div>
+</dialog>
+{% endfor %}
 
 {{ pool_share_dialog(nanogpt_ui, nanogpt_accounts) }}
 {{ pool_share_dialog(refuseless_ui, refuseless_accounts) }}

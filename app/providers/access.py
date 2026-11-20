@@ -28,6 +28,11 @@ class Access:
                 self._states[type_id] = {"ok": ok, "reason": "ok" if ok else "none"}
             elif self.user_id is None:
                 self._states[type_id] = {"ok": False, "reason": "none"}
+            elif spec.keyed is not None:
+                # One query answers every keyed provider.
+                from ..sources import keyed
+
+                self._states.update(keyed.access_states(self.user_id))
             else:
                 self._states[type_id] = spec.access(self.user_id)
         return self._states[type_id]

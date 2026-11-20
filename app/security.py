@@ -180,7 +180,12 @@ _BLOCKED_HOSTS = {
 }
 
 
-def allowed_base_url(url: str) -> bool:
+def allowed_base_url(url: str, *, allow_private: bool = False) -> bool:
+    """A provider base URL Fuse may send requests (and keys) to.
+
+    allow_private: only for URLs an admin sets on a site source (a llama.cpp
+    server on the LAN); anything else must be https to a host whose every
+    address is public, so a user cannot point Fuse at the network it runs on."""
     url = (url or "").strip()
     if not url or len(url) > 500:
         return False
@@ -195,7 +200,17 @@ def allowed_base_url(url: str) -> bool:
         return False
     if host.startswith("169.254."):
         return False
-    return True
+    if allow_private:
+        return True
+    from .search import ssrf
+
+    if p.scheme != "https" or p.username is not None or p.password is not None:
+        return False
+    try:
+        port = p.port or 443
+    except ValueError:
+        return False
+    return bool(ssrf.public_ips(ssrf.ascii_host(host), port))
 
 
 def safe_verify_url(url: str) -> str:

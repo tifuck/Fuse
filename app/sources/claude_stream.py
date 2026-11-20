@@ -320,8 +320,8 @@ def _signature_retryable(message: str) -> bool:
 
 
 async def _translated_stream(resp: httpx.Response, client: httpx.AsyncClient, model: str, collected: dict | None = None,
-                             reply: dict | None = None):
-    translator = _Translator(fuse_id(model))
+                             reply: dict | None = None, public_id: str | None = None):
+    translator = _Translator(public_id or fuse_id(model))
     stream_status = "failed"
     try:
         try:
@@ -365,8 +365,9 @@ async def _translated_stream(resp: httpx.Response, client: httpx.AsyncClient, mo
             # failed the turn ("Generation usage limit reached.").
 
 
-async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str, reply: dict | None = None) -> dict:
-    translator = _Translator(fuse_id(model))
+async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str, reply: dict | None = None,
+                     public_id: str | None = None) -> dict:
+    translator = _Translator(public_id or fuse_id(model))
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
     terminal = False
@@ -408,7 +409,7 @@ async def _aggregate(resp: httpx.Response, client: httpx.AsyncClient, model: str
         "id": translator.completion_id,
         "object": "chat.completion",
         "created": translator.created,
-        "model": fuse_id(model),
+        "model": translator.model,
         "choices": [{"index": 0, "message": message, "finish_reason": translator.finish_reason()}],
     }
     if translator.usage:

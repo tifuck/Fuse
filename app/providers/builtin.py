@@ -1,13 +1,15 @@
 """Specs of the providers built into Fuse, in display order.
 
-Adding a provider: write its Source class in app/sources/, add its spec here,
-and run tests/core/providers/test_registry.py. Hard claims are tried in this
+Adding a provider: an API-key provider is one preset in presets.py; anything
+else gets its Source class in app/sources/ and its spec here. Then run
+tests/core/providers/test_registry.py. Hard claims are tried in this
 order, then soft claims in this order (see sources.pick).
 """
 from __future__ import annotations
 
 import importlib
 
+from .presets import PRESETS
 from .spec import ProviderSpec
 
 
@@ -35,6 +37,17 @@ def _explabs_efforts(model, user_id):
     catalog = explabs.cached_catalog(user_id) or {}
     record = catalog.get("by_id", {}).get(explabs.upstream_id(model or "")) or {}
     return tuple(record.get("reasoning_efforts") or [])
+
+
+def _keyed(p) -> ProviderSpec:
+    """An API-key provider from its preset (presets.py)."""
+    return ProviderSpec(
+        id=p.id, label=p.label, type_label=p.label, builder="keyed:KeyedSource", error_label=p.label,
+        ensure=lambda: _m("keyed").ensure_source(p.id), efforts=lambda model, user_id: p.efforts_for(model),
+        warm=False, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
+        scan=False, call_style="user", access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
+        connect_copy=f"Add a {p.label} API key to use its models", keyed=p,
+    )
 
 
 def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderSpec:
@@ -145,4 +158,4 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         # Lists per account; only its per-account resolve() admits a model.
         warm=False, scan=False, call_style="user", usage_walk=True,
     ),
-)
+) + tuple(_keyed(p) for p in PRESETS)
