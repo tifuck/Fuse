@@ -11,10 +11,20 @@ when they were archived. Instance-wide ceilings (RETENTION_FORCE_*) apply
 on top of what users choose and can only shorten it, and CHAT_MAX_IDLE_DAYS
 deletes any chat idle that long, archived or not, pinned or not, whatever the
 user chose. Artifacts expire on their own clock (artifacts.expire_idle).
+
+Media and run transcripts have shorter clocks of their own, for every chat
+whatever its user chose: a chat idle CHAT_MEDIA_IDLE_DAYS loses its images and
+attached files (each becomes a short note), and a finished run's stored
+provider transcript goes CHAT_AGENT_TRANSCRIPT_DAYS after a subagent ended, or
+CHAT_RUN_TRANSCRIPT_DAYS after a newer turn replaced a root run. The chat, its
+model history (retained_history) and each run's final message stay.
+Deleting a chat or project deletes its media with it (chat_images cascades
+from chat_threads; attachments live in the thread row).
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -40,6 +50,7 @@ def init_schema(conn):
     db._ensure_column(conn, "chat_threads", "archived_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "chat_threads", "active_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "chat_threads", "archived_by_project", "INTEGER NOT NULL DEFAULT 0")
+    db._ensure_column(conn, "chat_threads", "media_purged_at", "TEXT NOT NULL DEFAULT ''")
     db._ensure_column(conn, "users", "retention_archive_hours", "INTEGER NOT NULL DEFAULT 0")
     db._ensure_column(conn, "users", "retention_archive_chats", "INTEGER NOT NULL DEFAULT 1")
     db._ensure_column(conn, "users", "retention_archive_projects", "INTEGER NOT NULL DEFAULT 1")
@@ -65,6 +76,7 @@ def _limits() -> dict:
         "archive_days": max(0, int(getattr(settings, "retention_force_archive_days", 0) or 0)),
         "delete_days": max(0, int(getattr(settings, "retention_force_delete_days", 0) or 0)),
         "idle_days": max(0, int(getattr(settings, "chat_max_idle_days", 0) or 0)),
+        "media_days": max(0, int(getattr(settings, "chat_media_idle_days", 0) or 0)),
     }
 
 
@@ -133,7 +145,7 @@ def _latest(*values) -> str:
 def _thread_activity(conn, user_id: int) -> tuple[list[dict], set[int]]:
     rows = conn.execute(
         """SELECT id, kind, project_id, archived, archived_at, archived_by_project, schedule_id,
-                  created_at, updated_at, active_at, revision, pinned
+                  created_at, updated_at, active_at, revision, pinned, media_purged_at
            FROM chat_threads WHERE user_id=?""",
         (user_id,),
     ).fetchall()
@@ -337,7 +349,7 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
 def prune_history(*, now: datetime | None = None) -> dict:
     """Age out terminal fire/command history older than HISTORY_DAYS."""
     cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=HISTORY_DAYS))
-    counts = {"fires": 0, "jobs": 0}
+    counts = {"fires": 0, "jobs": 0, "orphan_runs": 0}
     with db.tx() as conn:
         cur = conn.execute(
             """DELETE FROM schedule_fires
@@ -352,6 +364,219 @@ def prune_history(*, now: datetime | None = None) -> dict:
                 (cutoff,),
             )
             counts["jobs"] = int(cur.rowcount or 0)
+        # chat_runs has no foreign key to its thread: runs some old path left
+        # behind when it deleted the thread.
+        cur = conn.execute(
+            """DELETE FROM chat_runs
+               WHERE status NOT IN ('queued','running') AND updated_at < ? AND thread_id IS NOT NULL
+                 AND thread_id NOT IN (SELECT id FROM chat_threads)""",
+            (cutoff,),
+        )
+        counts["orphan_runs"] = int(cur.rowcount or 0)
+    return counts
+
+
+def _days(name: str) -> int:
+    return max(0, int(getattr(settings, name, 0) or 0))
+
+
+_TERMINAL = "('completed','cancelled','failed','interrupted')"
+# Rows per transcript UPDATE: each holds megabytes, and one statement over
+# thousands of them would build an undo log as large.
+_CLEAR_BATCH = 50
+# Work per sweep: the maintenance loop waits for it (run reaper, wakes), so a
+# backlog (the first sweep on a large instance) drains over several sweeps.
+_CLEAR_MAX = 1000
+_PURGE_MAX = 50
+
+
+def _clear_transcripts(where: str, args: tuple) -> int:
+    split = db.provider_split()
+    held = "(r.provider_base IS NOT NULL OR r.provider_tail IS NOT NULL)" if split else "r.provider_messages IS NOT NULL"
+    clear = "provider_base=NULL, provider_tail=NULL" if split else "provider_messages=NULL"
+    total = 0
+    while total < _CLEAR_MAX:
+        ids = [row["id"] for row in db.fetchall(
+            f"SELECT r.id FROM chat_runs r WHERE r.status IN {_TERMINAL} AND {held} AND {where} LIMIT {_CLEAR_BATCH}", args)]
+        if not ids:
+            return total
+        with db.tx() as conn:
+            cur = conn.execute(
+                f"UPDATE chat_runs SET {clear} WHERE status IN {_TERMINAL} AND id IN ({','.join('?' * len(ids))})", ids)
+        if not cur.rowcount:
+            return total
+        total += int(cur.rowcount)
+    return total
+
+
+def prune_transcripts(*, now: datetime | None = None) -> dict:
+    """Drop stored provider transcripts nothing needs any more.
+
+    Every run stores the whole conversation up to it, so a chat's runs grow
+    with the square of its length. A finished root run a newer turn replaced
+    is covered by the thread's retained_history; a finished subagent keeps its
+    final message (its report). Their transcripts only fed old-run views,
+    resuming (a subagent then restarts from its task) and the rare replay
+    that misses retained_history (it falls back to the chat's tool traces)."""
+    now = now or datetime.now(timezone.utc)
+    counts = {"agent_runs": 0, "replaced_runs": 0}
+    agent_days, run_days = _days("chat_agent_transcript_days"), _days("chat_run_transcript_days")
+    if agent_days:
+        # A live root may still steer or continue its subagents.
+        counts["agent_runs"] = _clear_transcripts(
+            f"""r.parent_run_id IS NOT NULL AND r.updated_at < ?
+                AND NOT EXISTS (SELECT 1 FROM chat_runs p WHERE p.id=r.root_run_id AND p.status NOT IN {_TERMINAL})""",
+            (_iso(now - timedelta(days=agent_days)),),
+        )
+    if run_days:
+        counts["replaced_runs"] = _clear_transcripts(
+            """r.parent_run_id IS NULL AND r.updated_at < ?
+               AND EXISTS (SELECT 1 FROM chat_runs n WHERE n.thread_id=r.thread_id AND n.parent_run_id IS NULL
+                           AND n.created_at > r.created_at)""",
+            (_iso(now - timedelta(days=run_days)),),
+        )
+    return counts
+
+
+def _strip_history(raw: str, old_messages: list, new_messages: list) -> str | None:
+    """retained_history with its provider rows' media stripped and its anchors
+    moved to the stripped display rows, or None when it needs no change. An
+    anchor that matched the old row matches the new one, so replay still
+    reuses the retained prefix instead of rebuilding it from traces."""
+    from . import chat_history, chat_images
+
+    try:
+        memory = json.loads(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(memory, dict):
+        return None
+    changed = False
+    rows = memory.get("messages")
+    stripped = chat_images.strip_media(rows)
+    if stripped is not rows:
+        memory["messages"] = stripped
+        changed = True
+    anchor = memory.get("anchor")
+    if new_messages is not old_messages and isinstance(anchor, list):
+        old, new = chat_history.anchors(old_messages), chat_history.anchors(new_messages)
+        moved = [new[i] if i < len(old) and value == old[i] else value for i, value in enumerate(anchor)]
+        if moved != anchor:
+            memory["anchor"] = moved
+            changed = True
+    return chat_history._json(memory) if changed else None
+
+
+def _purge_thread_media(user_id: int, thread: dict) -> int | None:
+    """One idle thread's media, gone. The number of stored images deleted, or
+    None when the thread moved since the sweep read it."""
+    from . import chat_images, chat_tx
+
+    tid = thread["id"]
+    with chat_tx.transaction() as conn:
+        # Run before thread, the order finalizers and thread writers use.
+        if conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running') LIMIT 1",
+                        (tid,)).fetchone():
+            return None
+        row = conn.execute(
+            "SELECT messages, retained_history, revision FROM chat_threads WHERE id=? AND user_id=?" + db.for_update(conn),
+            (tid, user_id),
+        ).fetchone()
+        if row is None or int(row["revision"]) != int(thread["revision"]):
+            return None
+        try:
+            messages = json.loads(row["messages"] or "[]")
+        except (TypeError, ValueError):
+            messages = []
+        stripped = chat_images.strip_media(messages)
+        history = _strip_history(row["retained_history"], messages, stripped)
+        shas = [r["sha"] for r in conn.execute("SELECT sha FROM chat_images WHERE thread_id=?", (tid,)).fetchall()]
+        conn.execute("DELETE FROM chat_images WHERE thread_id=?", (tid,))
+        sets, args = ["media_purged_at=?"], [db.now()]
+        if history is not None:
+            sets.append("retained_history=?")
+            args.append(history)
+        if stripped is not messages:
+            # Not active_at or updated_at: losing media is not activity.
+            sets += ["messages=?", "revision=revision+1"]
+            args.append(chat_tx.dumps(stripped))
+        conn.execute(f"UPDATE chat_threads SET {','.join(sets)} WHERE id=?", (*args, tid))
+        if stripped is not messages:
+            chat_tx.thread_event(conn, user_id, tid, transcript_changed=True)
+    chat_images.forget(user_id, shas)
+    _strip_runs(user_id, tid)
+    return len(shas)
+
+
+def _strip_runs(user_id: int, thread_id: int) -> None:
+    """Media out of the finished runs a purged thread still keeps transcripts
+    or requests for (its latest turn, recent subagents)."""
+    from . import chat_images, chat_tx
+
+    for ident in [r["id"] for r in db.fetchall(
+            f"SELECT id FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN {_TERMINAL}", (thread_id, user_id))]:
+        with chat_tx.transaction() as conn:
+            run = conn.execute(
+                f"SELECT request, provider_messages FROM chat_runs WHERE id=? AND status IN {_TERMINAL}" + db.for_update(conn),
+                (ident,),
+            ).fetchone()
+            if run is None:
+                continue
+            sets, args = [], []
+            try:
+                transcript = json.loads(run["provider_messages"]) if run["provider_messages"] else None
+            except (TypeError, ValueError):
+                transcript = None
+            stripped = chat_images.strip_media(transcript)
+            if stripped is not transcript:
+                sets.append(db.set_provider_sql(conn))
+                args.append(chat_tx.dumps(stripped))
+            try:
+                request = json.loads(run["request"] or "{}")
+            except (TypeError, ValueError):
+                request = None
+            if isinstance(request, dict):
+                out = {key: chat_images.strip_media(request.get(key)) for key in ("messages", "display_seed")}
+                if any(out[key] is not request.get(key) for key in out):
+                    sets.append("request=?")
+                    args.append(chat_tx.dumps({**request, **{k: v for k, v in out.items() if k in request}}))
+            if sets:
+                conn.execute(f"UPDATE chat_runs SET {','.join(sets)} WHERE id=?", (*args, ident))
+
+
+def purge_idle_media(*, now: datetime | None = None) -> dict:
+    """Delete the images and attached files of every chat or project session
+    idle CHAT_MEDIA_IDLE_DAYS, pinned ones included; a busy one is in use.
+    A thread purged since its last activity is skipped; used again, it is
+    purged again once idle."""
+    days = _days("chat_media_idle_days")
+    counts = {"threads": 0, "images": 0}
+    if not days:
+        return counts
+    cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=days))
+    for user in db.fetchall("SELECT DISTINCT user_id FROM chat_threads"):
+        if counts["threads"] >= _PURGE_MAX:
+            break
+        uid = int(user["user_id"])
+        with db.tx() as conn:
+            conn.execute("BEGIN")
+            threads, busy = _thread_activity(conn, uid)
+        for t in threads:
+            if counts["threads"] >= _PURGE_MAX:
+                break
+            if t["id"] in busy or not t["last_active"] or t["last_active"] >= cutoff:
+                continue
+            # Strictly after: activity in the purge's own second may follow it.
+            if t["media_purged_at"] and t["media_purged_at"] > t["last_active"]:
+                continue
+            try:
+                deleted = _purge_thread_media(uid, t)
+            except Exception:
+                logger.exception("media purge failed for thread %s", t["id"])
+                continue
+            if deleted is not None:
+                counts["threads"] += 1
+                counts["images"] += deleted
     return counts
 
 
@@ -360,6 +585,14 @@ def sweep(*, now: datetime | None = None) -> dict:
     pruned = prune_history(now=now)
     if any(pruned.values()):
         logger.info("retention pruned history %s", pruned)
+    for name, step in (("transcripts", prune_transcripts), ("media", purge_idle_media)):
+        try:
+            done = step(now=now)
+        except Exception:
+            logger.exception("retention %s failed", name)
+        else:
+            if any(done.values()):
+                logger.info("retention %s %s", name, done)
     from . import artifacts
 
     try:

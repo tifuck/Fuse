@@ -1,0 +1,190 @@
+"""Media retention and transcript pruning: a chat idle past the media window
+loses its images and attached files but keeps its history, finished subagent
+and replaced root runs lose their stored transcripts, and deleting a chat or
+project (by hand or by the cleanup sweep) deletes its media."""
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app import chat_history, chat_images, chat_store, chats, db, hosts, retention
+from tests.core.agents._support import child, coding_user, parent_and_thread
+from tests.core.features._support import make_host, make_project
+from tests.core.helpers import make_user
+
+from ._support import image_attachment, image_url, pk
+
+
+@pytest.fixture(autouse=True)
+def _cold_image_cache():
+    chat_images._cache.clear()
+    chat_images._cache_bytes = 0
+    yield
+    chat_images._cache.clear()
+    chat_images._cache_bytes = 0
+
+
+def _iso(days_ago: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _turn(uid, thread, seed=1):
+    run = chat_store.start_turn(uid, thread["id"], "what is this?", chats.get_thread(uid, thread["id"])["revision"], None,
+                                attachments=[image_attachment(seed)])["run"]
+    chat_store.finish_run(run["id"], {"content": "a cat"}, "completed")
+    return run
+
+
+def _age(uid, thread, days):
+    ts, tid = _iso(days), pk(uid, thread["id"])
+    db.execute("UPDATE chat_threads SET created_at=?, updated_at=?, active_at=? WHERE id=?", (ts, ts, ts, tid))
+    db.execute("UPDATE chat_runs SET updated_at=? WHERE thread_id=?", (ts, tid))
+
+
+def _images(uid, thread):
+    return db.fetchone("SELECT COUNT(*) AS n FROM chat_images WHERE thread_id=?", (pk(uid, thread["id"]),))["n"]
+
+
+def _stored(uid, thread):
+    """Everything the thread and its runs store, as one string."""
+    tid = pk(uid, thread["id"])
+    row = db.fetchone("SELECT messages, retained_history FROM chat_threads WHERE id=?", (tid,))
+    runs = db.fetchall("SELECT request, provider_messages FROM chat_runs WHERE thread_id=?", (tid,))
+    return json.dumps([dict(row), [dict(r) for r in runs]])
+
+
+def _anchored(uid, thread) -> bool:
+    row = db.fetchone("SELECT messages, retained_history FROM chat_threads WHERE id=?", (pk(uid, thread["id"]),))
+    anchor = json.loads(row["retained_history"])["anchor"]
+    display = chat_history._retained_display(json.loads(row["messages"]))
+    return bool(anchor) and chat_history.anchors(display)[:len(anchor)] == anchor
+
+
+def test_an_idle_chat_loses_its_media_and_keeps_its_history(fresh_db):
+    uid = make_user()
+    idle, recent = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    _turn(uid, idle, seed=1)
+    _turn(uid, recent, seed=2)
+    db.execute("UPDATE chat_threads SET pinned=1 WHERE id=?", (pk(uid, idle["id"]),))
+    _age(uid, idle, 4)
+    _age(uid, recent, 1)
+    assert _anchored(uid, idle)
+    aged = db.fetchone("SELECT active_at, updated_at FROM chat_threads WHERE id=?", (pk(uid, idle["id"]),))
+    chat_images.lookup(uid, [hashlib.sha256(image_url(1).encode()).hexdigest()])  # warm the cache
+    assert chat_images._cache
+    cursor = chat_store.cursor(uid)
+
+    assert retention.purge_idle_media() == {"threads": 1, "images": 1}
+
+    assert (_images(uid, idle), _images(uid, recent)) == (0, 1)
+    stored = _stored(uid, idle)
+    assert "data:image/" not in stored and chat_images.PREFIX not in stored
+    assert chat_images.ATTACHMENT_REMOVED in stored and chat_images.MISSING in stored
+    attachment = chats.get_thread(uid, idle["id"])["messages"][0]["attachments"][0]
+    assert (attachment["kind"], attachment["name"]) == ("text", "shot1.png")
+    assert not chat_images._cache
+    # Replay still reuses the retained history rather than rebuilding it.
+    assert _anchored(uid, idle)
+    assert any(e["type"] == "thread.updated" for e in chat_store.events_after(uid, cursor))
+    # Purging is not activity, and a purged chat is not purged again.
+    row = db.fetchone("SELECT active_at, updated_at FROM chat_threads WHERE id=?", (pk(uid, idle["id"]),))
+    assert dict(row) == dict(aged)
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+
+
+def test_a_chat_used_after_its_purge_is_purged_again_once_idle(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    _turn(uid, thread, seed=1)
+    _age(uid, thread, 4)
+    retention.purge_idle_media()
+    _turn(uid, thread, seed=2)
+
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+    later = datetime.now(timezone.utc) + timedelta(days=4)
+    assert retention.purge_idle_media(now=later) == {"threads": 1, "images": 1}
+    assert "data:image/" not in _stored(uid, thread)
+
+
+def test_a_busy_chat_keeps_its_media(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    chat_store.start_turn(uid, thread["id"], "look", thread["revision"], None, attachments=[image_attachment(1)])
+    _age(uid, thread, 4)
+
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+    assert _images(uid, thread) == 1
+
+
+def test_media_retention_off_keeps_everything(fresh_db, monkeypatch):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    _turn(uid, thread)
+    _age(uid, thread, 40)
+    monkeypatch.setattr(retention.settings, "chat_media_idle_days", 0)
+
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+    assert _images(uid, thread) == 1
+
+
+def _set(run_id, *, status="completed", days=2.0, created=None):
+    sets = f"{db.set_provider_sql()}, status=?, updated_at=?" + (", created_at=?" if created else "")
+    args = ('[{"role":"user","content":"inspect"}]', status, _iso(days), *((_iso(created),) if created else ()))
+    db.execute(f"UPDATE chat_runs SET {sets} WHERE id=?", (*args, run_id))
+
+
+def _kept(run_id) -> bool:
+    return bool(db.fetchone("SELECT provider_messages FROM chat_runs WHERE id=?", (run_id,))["provider_messages"])
+
+
+def test_finished_subagent_and_replaced_root_transcripts_are_dropped(fresh_db):
+    uid = coding_user()
+    thread, first = parent_and_thread(uid)
+    old_child, new_child = child(uid, thread, first), child(uid, thread, first)
+    _set(first["id"], created=3)
+    _set(old_child["id"])
+    _set(new_child["id"], days=0.2)
+    second = chat_store.start_turn(uid, thread["id"], "again", chats.get_thread(uid, thread["id"])["revision"], None)["run"]
+    live_child = child(uid, thread, second)
+    _set(second["id"], status="running", created=2.5)
+    _set(live_child["id"])
+
+    assert retention.prune_transcripts() == {"agent_runs": 1, "replaced_runs": 1}
+    assert not _kept(first["id"]) and not _kept(old_child["id"])
+    # The latest turn, a recent subagent and one its live root may continue stay.
+    assert _kept(second["id"]) and _kept(new_child["id"]) and _kept(live_child["id"])
+    assert retention.prune_transcripts() == {"agent_runs": 0, "replaced_runs": 0}
+
+
+def test_runs_whose_thread_is_gone_are_deleted(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    run = _turn(uid, thread)
+    db.execute("UPDATE chat_runs SET updated_at=? WHERE id=?", (_iso(40), run["id"]))
+    db.execute("DELETE FROM chat_threads WHERE id=?", (pk(uid, thread["id"]),))
+
+    assert retention.prune_history()["orphan_runs"] == 1
+    assert db.fetchone("SELECT 1 FROM chat_runs WHERE id=?", (run["id"],)) is None
+
+
+def test_deleting_a_chat_or_project_deletes_its_media(fresh_db_fk):
+    uid = make_user()
+    chat, swept = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    host = make_host(uid)
+    project = make_project(uid, host)
+    session = chats.create_thread(uid, model="offline", kind="project", host_id=host, project_id=project)
+    for seed, thread in enumerate((chat, swept, session)):
+        _turn(uid, thread, seed=seed)
+    images = lambda: db.fetchone("SELECT COUNT(*) AS n FROM chat_images")["n"]  # noqa: E731
+    assert images() == 3
+
+    assert chats.delete_thread(uid, chat["id"]) is True
+    assert images() == 2
+    _age(uid, swept, 40)
+    prefs = {"archive_hours": 0, "delete_days": 0, "limits": {"archive_days": 0, "delete_days": 0, "idle_days": 30}}
+    assert retention.sweep_user(uid, prefs)["deleted_chats"] == 1
+    assert images() == 1
+    assert hosts.delete_project(uid, host, project) is True
+    assert images() == 0
+    assert db.fetchone("SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=?", (uid,))["n"] == 0

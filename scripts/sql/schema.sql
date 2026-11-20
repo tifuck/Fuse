@@ -372,6 +372,7 @@ CREATE TABLE `chat_threads` (
   `unread` bigint(20) NOT NULL DEFAULT 0,
   `memory_off` bigint(20) NOT NULL DEFAULT 0,
   `secret_swap` bigint(20) NOT NULL DEFAULT 0,
+  `media_purged_at` varchar(32) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
   KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),

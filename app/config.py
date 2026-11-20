@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     # Drop an artifact's pages once nobody opened (in Fuse or by its share
     # link) or changed it for this many days; a small stub says so.
     artifact_max_idle_days: int = 7
+    # Media retention (0 = off). Delete a chat's images and attached files
+    # once nothing happened in it for this many days, pinned ones included.
+    chat_media_idle_days: int = 3
+    # Drop the stored provider transcript of a finished subagent run, and of a
+    # finished root run a newer turn has replaced, this many days after it
+    # ended. The chat and its model history are kept.
+    chat_agent_transcript_days: int = 1
+    chat_run_transcript_days: int = 1
 
     # Dashboard context meter + compaction. Ratios are of the model window.
     # Strategy is a name in app.context_compact.STRATEGIES so a later summarizer can
