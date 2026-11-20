@@ -522,8 +522,7 @@ def apply_generated_title(user_id, thread_id, title, placeholder="", *, token=No
         )
         if not cur.rowcount:
             return None
-        chat_tx.thread_event(conn, user_id, thread_id)
-        return chat_views.thread_view(conn, user_id, thread_id)
+        return chat_views.publish_thread_view(conn, user_id, thread_id)
 
 
 def apply_regenerated_title(user_id, thread_id, title, *, token=None):
@@ -557,8 +556,7 @@ def apply_regenerated_title(user_id, thread_id, title, *, token=None):
         )
         if not cur.rowcount:
             return None
-        chat_tx.thread_event(conn, user_id, pk)
-        return chat_views.thread_view(conn, user_id, pk)
+        return chat_views.publish_thread_view(conn, user_id, pk)
 
 
 def title_regen_failed(user_id, thread_id):
@@ -585,7 +583,8 @@ def pending_title_threads(limit=3, *, attempted_before="", due=()):
     due = [int(i) for i in due][:50]
     due_sql = (" OR t.id IN (" + ",".join("?" for _ in due) + ")") if due else ""
     rows = db.fetchall(
-        f"""SELECT t.*, p.name AS project_name FROM chat_threads t
+        f"""SELECT t.id, t.user_id, t.model, t.title, t.title_state, t.title_attempts, t.messages,
+                  p.name AS project_name FROM chat_threads t
            LEFT JOIN user_projects p ON p.id=t.project_id
            WHERE t.title_state=''
              AND ((t.title_attempted_at='' OR t.title_attempted_at < ?) AND t.title_attempts < ?{due_sql})
@@ -594,6 +593,7 @@ def pending_title_threads(limit=3, *, attempted_before="", due=()):
         (attempted_before, TITLE_SWEEP_ATTEMPTS, *due, db.now(), *due, max(int(limit) * 8, int(limit))),
     )
     out = []
+    unqualified = []
     for row in rows:
         keys = row.keys()
         project_name = (row["project_name"] or "") if "project_name" in keys else ""
@@ -621,7 +621,10 @@ def pending_title_threads(limit=3, *, attempted_before="", due=()):
         else:
             # No prompt qualifies yet (empty, too short, a slash command or
             # attachments only); the next message makes the thread due again.
-            db.execute("UPDATE chat_threads SET title_attempted_at=? WHERE id=?", (db.now(), row["id"]))
+            unqualified.append(int(row["id"]))
+    if unqualified:
+        db.execute(f"UPDATE chat_threads SET title_attempted_at=? WHERE id IN ({','.join('?' for _ in unqualified)})",
+                   (db.now(), *unqualified))
     return out
 
 

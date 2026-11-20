@@ -65,9 +65,18 @@ def _origin(origin):
 def replay_valid(uid, cursor):
     # A high-water mark alone cannot validate replay: the retention floor
     # remains authoritative after pruning. Read both off the event loop.
-    row = db.fetchone("SELECT cursor,floor FROM chat_event_cursors WHERE user_id=?", (uid,))
-    high = int(row["cursor"]) if row else 0
-    floor = int(row["floor"]) if row else 0
+    # The cached committed cursor never runs ahead of the table, and a cached
+    # floor is dropped before any prune starts (chat_tx.prune_events), so
+    # either answers exactly; anything else falls back to the row.
+    high = chat_store.committed_cursor(uid)
+    floor = chat_store.committed_floor(uid)
+    if high is None or floor is None or cursor > high:
+        epoch = chat_store.prune_epoch()
+        row = db.fetchone("SELECT cursor,floor FROM chat_event_cursors WHERE user_id=?", (uid,))
+        high = int(row["cursor"]) if row else 0
+        floor = int(row["floor"]) if row else 0
+        if row:
+            chat_store.remember_floor(uid, floor, epoch)
     return floor <= cursor <= high
 
 

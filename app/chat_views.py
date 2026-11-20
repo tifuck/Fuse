@@ -801,7 +801,10 @@ def _row_agent(row: dict) -> dict:
     return agent
 
 
-def child_writeup(row: dict, conn=None) -> str:
+_READ = object()
+
+
+def child_writeup(row: dict, conn=None, *, provider_messages=_READ) -> str:
     """Deliver a completed report, or a status-only failure notification.
 
     Partial prose and tool output remain available in the child's transcript,
@@ -827,7 +830,7 @@ def child_writeup(row: dict, conn=None) -> str:
         return _cap_report(out)
     text = final_report_text(msg)
     if not text:
-        text = _fallback_report(row, msg, conn)
+        text = _fallback_report(row, msg, conn, provider_messages)
     carried = str(agent.get("carried_report") or "").strip()
     if carried and text:
         # A follow-up continuation re-used this run: the report written
@@ -838,15 +841,19 @@ def child_writeup(row: dict, conn=None) -> str:
     return _cap_report(text)
 
 
-def _fallback_report(row: dict, msg: dict, conn=None) -> str:
+def _fallback_report(row: dict, msg: dict, conn=None, provider_messages=_READ) -> str:
+    """provider_messages: the run's stored transcript when the caller already
+    read it (None when the run has none); by default it is read here."""
     ident = row.get("id")
     transcript = []
     if ident:
-        # Use the caller's transaction when it has one: a second pool
-        # checkout while that transaction is open can wait on its own pool.
-        sql, args = "SELECT provider_messages FROM chat_runs WHERE id=?", (ident,)
-        stored = conn.execute(sql, args).fetchone() if conn is not None else db.fetchone(sql, args)
-        raw_pm = stored["provider_messages"] if stored and "provider_messages" in stored.keys() else None
+        raw_pm = provider_messages
+        if raw_pm is _READ:
+            # Use the caller's transaction when it has one: a second pool
+            # checkout while that transaction is open can wait on its own pool.
+            sql, args = "SELECT provider_messages FROM chat_runs WHERE id=?", (ident,)
+            stored = conn.execute(sql, args).fetchone() if conn is not None else db.fetchone(sql, args)
+            raw_pm = stored["provider_messages"] if stored and "provider_messages" in stored.keys() else None
         if raw_pm:
             try:
                 parsed = json.loads(raw_pm)
@@ -908,6 +915,13 @@ def _durable_cursor(run_id, stamps):
     return chat_checkpoint.durable_state_cursor(run_id)
 
 
+# chat_runs columns readers use, without the provider transcript (a virtual
+# column assembled from megabytes on every read).
+RUN_COLUMNS = ("id, thread_id, user_id, status, request, message_id, message, created_at, updated_at, "
+               "cancel_requested, parent_run_id, root_run_id, agent_depth, loaded_tools, resume_count, "
+               "cancel_requested_at, activity")
+
+
 def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
     from . import chat_checkpoint
     from . import chats
@@ -927,7 +941,7 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
     from . import hosts
     result = chats._view(row, include_messages=True, coding=bool(hosts.settings_for(user_id, conn).get("agent_coding")), conn=conn)
     run = run_view(conn.execute(
-        """SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')
+        f"""SELECT {RUN_COLUMNS} FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')
            AND parent_run_id IS NULL""",
         (thread_id, user_id),
     ).fetchone())
@@ -966,7 +980,27 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
     # acknowledgment. The command ledger remains the idempotency authority.
     result["accepted_queue_ids"] = accepted_commands(conn, user_id, thread_id, queued)
     high = conn.execute("SELECT cursor FROM chat_event_cursors WHERE user_id=?", (user_id,)).fetchone()
-    result["event_cursor"] = int(high[0]) if high else 0
+    _stamp_cursors(result, user_id, thread_id, int(high[0]) if high else 0, stamps)
+    from . import chat_recaps
+
+    return chat_recaps.attach(conn, user_id, thread_id, result)
+
+
+def publish_thread_view(conn, user_id, thread_id, transcript_changed=False):
+    """thread_view, then the thread's thread.updated event, for writers that
+    answer with the view. Publishing takes the per-user event cursor, held to
+    commit; building the view first keeps that lock short and its run reads
+    ahead of it (run -> thread -> cursor). The cursors are stamped as if the
+    event had been published before the view."""
+    result = thread_view(conn, user_id, thread_id)
+    eid = chat_tx.thread_event(conn, user_id, thread_id, transcript_changed=transcript_changed)
+    if result is not None and eid is not None:
+        _stamp_cursors(result, user_id, thread_id, eid, None)
+    return result
+
+
+def _stamp_cursors(result, user_id, thread_id, cursor, stamps):
+    result["event_cursor"] = cursor
     if result.get("run") and result["run"].get("status") in chat_tx.ACTIVE:
         # Same contract as get_run_snapshot: an active run's embedded message
         # is only durable up to its stamped cursor; replay the gap.
@@ -981,9 +1015,6 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
         # A watermark ahead of the clamped event cursor would let a reconcile
         # report "unchanged" against a transcript older than the live run.
         result["thread_cursor"] = result["event_cursor"]
-    from . import chat_recaps
-
-    return chat_recaps.attach(conn, user_id, thread_id, result)
 
 
 COMMAND_TOOLS = ("run_terminal_command", "get_command_output", "kill_command", "monitor")
@@ -1110,7 +1141,7 @@ def settle_command_traces(conn, user_id, thread_id, messages):
 _SETTLED_TRACE = ("done", "error", "interrupted")
 
 
-_thread_job_ids: dict[tuple, tuple[str, tuple]] = {}
+_thread_job_ids: dict[tuple, tuple[int, tuple]] = {}
 _thread_job_ids_lock = threading.Lock()
 
 
@@ -1138,14 +1169,15 @@ def historical_command_jobs(user_id, thread_id):
     """
     with chat_tx.transaction(immediate=False) as conn:
         # The stored transcript (often megabytes) rarely changes between
-        # polls: MariaDB digests it in place and it is re-read only on change.
-        row = conn.execute(f"SELECT {db.md5_of(conn, 'messages')} AS digest FROM chat_threads WHERE user_id=? AND id=?",
+        # polls: it is re-read only when the revision moves. Every writer of
+        # chat_threads.messages bumps it, and thread ids are never reused.
+        row = conn.execute("SELECT revision FROM chat_threads WHERE user_id=? AND id=?",
                            (user_id, thread_id)).fetchone()
         if row is None:
             return []
         key = (user_id, thread_id)
         cached = _thread_job_ids.get(key)
-        if row["digest"] is not None and cached is not None and cached[0] == row["digest"]:
+        if cached is not None and cached[0] == row["revision"]:
             ids = list(cached[1])
         else:
             stored = conn.execute("SELECT messages FROM chat_threads WHERE user_id=? AND id=?", (user_id, thread_id)).fetchone()
@@ -1153,12 +1185,11 @@ def historical_command_jobs(user_id, thread_id):
                 ids = _unsettled_job_ids(json.loads((stored["messages"] if stored else None) or "[]"))
             except (json.JSONDecodeError, TypeError):
                 ids = []
-            if row["digest"] is not None:
-                with _thread_job_ids_lock:
-                    _thread_job_ids.pop(key, None)
-                    _thread_job_ids[key] = (row["digest"], tuple(ids))
-                    while len(_thread_job_ids) > 256:
-                        _thread_job_ids.pop(next(iter(_thread_job_ids)))
+            with _thread_job_ids_lock:
+                _thread_job_ids.pop(key, None)
+                _thread_job_ids[key] = (row["revision"], tuple(ids))
+                while len(_thread_job_ids) > 256:
+                    _thread_job_ids.pop(next(iter(_thread_job_ids)))
         for run in conn.execute(
             """SELECT message FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')
                AND parent_run_id IS NULL""", (thread_id, user_id)):
@@ -1190,24 +1221,50 @@ def settle_spawn_traces(conn, user_id, messages):
     for offset in range(0, len(ids), 400):
         batch = ids[offset:offset + 400]
         placeholders = ",".join("?" for _ in batch)
+        # Settling reads a finished child's message and request.agent only;
+        # a running child needs neither.
         rows.update((row["id"], row) for row in conn.execute(
-            f"SELECT id, status, request, message FROM chat_runs WHERE user_id=? AND id IN ({placeholders})",
+            f"""SELECT id, status,
+                       CASE WHEN status IN ('queued','running') THEN NULL ELSE message END AS message,
+                       CASE WHEN status IN ('queued','running') OR NOT json_valid(request) THEN NULL
+                            ELSE JSON_QUERY(request, '$.agent') END AS agent
+                FROM chat_runs WHERE user_id=? AND id IN ({placeholders})""",
             (user_id, *batch),
         ))
     parsed = {}
 
     def columns(row):
-        # Each child's request and message (often large) are parsed once,
-        # however many traces name it.
+        # Each child's message (often large) is parsed once, however many
+        # traces name it.
         if row["id"] not in parsed:
             values = []
-            for key in ("message", "request"):
+            for key in ("message", "agent"):
                 try:
-                    values.append(json.loads(row[key] or "{}") if key in row.keys() else {})
+                    values.append(json.loads(row[key] or "{}"))
                 except (json.JSONDecodeError, TypeError, ValueError):
                     values.append({})
-            parsed[row["id"]] = tuple(values)
+            msg, agent = values
+            parsed[row["id"]] = (msg, {"agent": agent} if row["agent"] is not None else {})
         return parsed[row["id"]]
+
+    # A completed child without a written report falls back to its stored
+    # transcript (then request.messages): one read for all of them.
+    fallback = []
+    for ident, row in rows.items():
+        if row["status"] == "completed":
+            msg = columns(row)[0] if isinstance(columns(row)[0], dict) else {}
+            if not str(msg.get("error") or "").strip() and not final_report_text(msg):
+                fallback.append(ident)
+    transcripts = {}
+    for offset in range(0, len(fallback), 400):
+        batch = fallback[offset:offset + 400]
+        placeholders = ",".join("?" for _ in batch)
+        for row in conn.execute(
+            f"""SELECT id, provider_messages, CASE WHEN json_valid(request) THEN JSON_QUERY(request, '$.messages') END AS messages
+                FROM chat_runs WHERE user_id=? AND id IN ({placeholders})""",
+            (user_id, *batch),
+        ):
+            transcripts[row["id"]] = row
 
     for tool in wanted:
         row = rows.get(tool["child_id"])
@@ -1241,7 +1298,14 @@ def settle_spawn_traces(conn, user_id, messages):
         else:
             continue
         msg, req = columns(row)
-        writeup = child_writeup({"id": row["id"], "status": row["status"], "message": msg, "request": req}, conn)
+        stored = transcripts.get(row["id"])
+        if stored is not None and stored["messages"] is not None:
+            try:
+                req = {**req, "messages": json.loads(stored["messages"])}
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        writeup = child_writeup({"id": row["id"], "status": row["status"], "message": msg, "request": req}, conn,
+                                provider_messages=stored["provider_messages"] if stored is not None else _READ)
         if isinstance(msg, dict):
             if tool["status"] == "error":
                 tool["error"] = str(msg.get("error") or "Subagent failed without a report.")[:400]
@@ -1283,8 +1347,10 @@ def settle_artifact_traces(conn, user_id, messages):
     return messages
 
 
-def get_run(user_id, run_id):
-    return run_view(db.fetchone("SELECT * FROM chat_runs WHERE user_id=? AND id=?", (user_id, run_id)))
+def get_run(user_id, run_id, *, transcript=True):
+    """transcript=False leaves out provider_messages, for readers of the run's state."""
+    columns = "*" if transcript else RUN_COLUMNS
+    return run_view(db.fetchone(f"SELECT {columns} FROM chat_runs WHERE user_id=? AND id=?", (user_id, run_id)))
 
 
 def _run_replay(conn, user_id, run_id, after, through):
