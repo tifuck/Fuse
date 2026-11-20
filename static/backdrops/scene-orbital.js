@@ -138,11 +138,11 @@ function build(s) {
         // Day: forest, grass, desert in broad zones; hazy toward the limb.
         if (d > 0.12) {
           let fill = high ? "#8a8478" : bio > 0.58 ? "#b4a074" : bio > 0.45 ? "#7c8a5a" : "#4e6e4c";
-          const gl = high ? "^" : coast ? "~" : bio > 0.58 ? (hash(c, r, 1) < 0.5 ? "." : ":") : bio > 0.45 ? (hash(c, r, 1) < 0.5 ? "'" : ",") : "%";
+          const gl = high ? "^" : coast ? "~" : hash(c, r, 1) < 0.22 ? (bio > 0.58 ? "." : bio > 0.45 ? "'" : ":") : " ";
           fill = mixc(fill, "#2a5a90", 0.22);
           fill = mixc(fill, "#ff9a60", q((1 - d) * 0.5, 3));
           fill = mixc(fill, "#7ab4f0", q((1 - lim) * 0.85, 5));
-          put(g, s, tile(s, gl, fill, shade(fill, 0.8)), c * cell, r * cell, smooth((d - 0.12) / 0.55));
+          put(g, s, tile(s, gl, fill, shade(fill, 0.82)), c * cell, r * cell, 0.82 * smooth((d - 0.12) / 0.55));
         } else {
           put(g, s, tile(s, coast ? "~" : hash(c, r, 2) < 0.5 ? "." : "'", null, "#2a3c5c"), c * cell, r * cell, 0.5 * lim);
         }
@@ -266,9 +266,9 @@ function buildStation(s, R) {
   s.stIds = {
     truss: [tile(s, "=", "#7a808c", "#2a2e38"), tile(s, "#", "#8a909c", "#2a2e38"), tile(s, "|", "#9aa0ac", "#2a2e38")],
     module: new Map(),
-    radiator: [tile(s, "|", "#e8ecf0", "#8a96a8"), tile(s, "|", "#7a8494", "#3a4250"), tile(s, "-", "#c8d0dc", "#6a7484")],
+    radiator: [tile(s, "|", "#c4cad4", "#7a8698"), tile(s, "|", "#7a8494", "#3a4250"), tile(s, "-", "#c8d0dc", "#6a7484")],
   };
-  for (const gl of ["[", "]", "=", "O", "o", "H", "/", "\\", "A", "|", "V", "<"]) s.stIds.module.set(gl, [tile(s, gl, "#e4e6ea", "#5a606c"), tile(s, gl, "#8a8e98", "#2e323a")]);
+  for (const gl of ["[", "]", "=", "O", "o", "H", "/", "\\", "A", "|", "V", "<"]) s.stIds.module.set(gl, [tile(s, gl, "#c2c6ce", "#4a505c"), tile(s, gl, "#8a8e98", "#2e323a")]);
   // Panels: lit front (gold), dim front, back side (dark blue), edge-on.
   s.panelIds = [];
   for (let lv = 0; lv <= 5; lv += 1) {
