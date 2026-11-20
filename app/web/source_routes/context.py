@@ -13,7 +13,7 @@ from ...sources import kimi as kimi_mod
 from ...sources import claude as claude_mod
 from ...sources import cursor as cursor_mod
 from ...providers.auth_flows import oauth_tokens as _oauth_tokens, terminal_error as _terminal_oauth_error  # noqa: F401
-from ..deps import _chatgpt_pending, _devin_pending, _mimo_pending, _claude_pending, _cursor_pending, _nanogpt_pending, _PENDING_TTL
+from ..deps import _devin_pending, _mimo_pending, _claude_pending, _cursor_pending, _nanogpt_pending, _PENDING_TTL
 
 def _source_cfg(row) -> dict:
     try:
@@ -21,17 +21,6 @@ def _source_cfg(row) -> dict:
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
         return {}
-
-
-def _chatgpt_pending_for(uid: int):
-    data = _chatgpt_pending.get(uid)
-    if not data:
-        return None
-    if time.time() - float(data.get("_started") or 0) > _PENDING_TTL:
-        _chatgpt_pending.pop(uid, None)
-        return None
-    _clamp_interval(data)
-    return data
 
 
 def _devin_pending_for(uid: int):
