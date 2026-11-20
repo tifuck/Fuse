@@ -109,7 +109,7 @@ function build(s) {
         if (d > 1) continue;
         if (kind === "hole") {
           if (d < 0.55) continue;
-          const f = shade("#8a7848", 1.1 - 0.3 * clamp01((x + y) / (2 * r) + 0.5));
+          const f = shade("#5e5434", 1.1 - 0.3 * clamp01((x + y) / (2 * r) + 0.5));
           ptile(cx + x, cy + y, d > 0.85 ? "." : ":", f, shade(f, 0.6));
           continue;
         }
@@ -117,11 +117,11 @@ function build(s) {
         const a = Math.atan2(y, x);
         const stripe = Math.abs(((a - neg + TAU * 1.5) % TAU) - Math.PI) < 0.55;
         if (d > 0.78) {
-          const f = shade(stripe ? "#7d8792" : "#16243e", lit);
+          const f = shade(stripe ? "#5e6872" : "#16243e", lit);
           ptile(cx + x, cy + y, stripe ? "-" : "o", f, shade(f, stripe ? 0.6 : 1.9));
         } else {
           const vent = x === 0 || y === 0 || Math.abs(x) === Math.abs(y);
-          const f = shade("#9aa4a8", lit);
+          const f = shade("#6e787c", lit);
           ptile(cx + x, cy + y, vent ? (x === 0 && y === 0 ? "X" : x === 0 ? "|" : y === 0 ? "-" : x * y > 0 ? "\\" : "/") : ".", f, shade(f, vent ? 0.55 : 0.82));
         }
       }
