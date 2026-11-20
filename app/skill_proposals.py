@@ -18,26 +18,28 @@ TTL_HOURS = 24
 STATUSES = frozenset({"pending", "saved", "rejected", "expired", "error"})
 
 
-def expire_stale(conn=None) -> None:
+def expire_stale(user_id: int, conn=None) -> None:
+    """Expire one user's stale drafts: every reader of skill_proposals is
+    scoped to one user and calls this first."""
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
     cutoff = (now - timedelta(hours=TTL_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     stuck = (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     sql = (
-        "UPDATE skill_proposals SET status='expired' WHERE status='pending' AND created_at < ?"
+        "UPDATE skill_proposals SET status='expired' WHERE user_id=? AND status='pending' AND created_at < ?"
     )
     sql_stuck = (
         # A confirm that died between claim and finish goes back to pending;
         # the skill may or may not have installed, so the user re-decides.
-        "UPDATE skill_proposals SET status='pending', resolved_at=NULL WHERE status='resolving' AND resolved_at < ?"
+        "UPDATE skill_proposals SET status='pending', resolved_at=NULL WHERE user_id=? AND status='resolving' AND resolved_at < ?"
     )
     if conn is not None:
-        conn.execute(sql, (cutoff,))
-        conn.execute(sql_stuck, (stuck,))
+        conn.execute(sql, (user_id, cutoff))
+        conn.execute(sql_stuck, (user_id, stuck))
     else:
-        db.execute(sql, (cutoff,))
-        db.execute(sql_stuck, (stuck,))
+        db.execute(sql, (user_id, cutoff))
+        db.execute(sql_stuck, (user_id, stuck))
 
 
 def _files_json(files: dict[str, str]) -> str:
@@ -111,7 +113,7 @@ def public_full(item: dict) -> dict:
 
 
 def get_proposal(user_id: int, proposal_id: str, conn=None) -> dict | None:
-    expire_stale(conn)
+    expire_stale(user_id, conn)
     q = "SELECT * FROM skill_proposals WHERE id=? AND user_id=?"
     row = conn.execute(q, (proposal_id, user_id)).fetchone() if conn is not None else db.fetchone(q, (proposal_id, user_id))
     return _row(row) if row else None
@@ -177,7 +179,7 @@ def create(
     enable: bool = True,
     argument_hint: str = "",
 ) -> dict:
-    expire_stale()
+    expire_stale(user_id)
     if not limiter.allow(f"skill-propose:{user_id}", 10, 60):
         raise SkillError("too many skill drafts", 429)
     extra = {}
@@ -196,7 +198,7 @@ def create(
     store_files = {k: v for k, v in rebuilt.items() if k != "SKILL.md"}
     with db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        expire_stale(conn)
+        expire_stale(user_id, conn)
         n_user = conn.execute(
             "SELECT COUNT(*) AS n FROM skill_proposals WHERE user_id=? AND status='pending'",
             (user_id,),
@@ -285,7 +287,6 @@ def _patch_permission(user_id: int, thread_id: int, proposal_id: str, status: st
 
 
 def confirm_proposal(user_id: int, proposal_id: str, raw: dict) -> dict:
-    expire_stale()
     item = get_proposal(user_id, proposal_id)
     if item is None:
         raise SkillError("unknown proposal", 404)
@@ -370,7 +371,6 @@ def _release_claim(user_id: int, proposal_id: str) -> None:
 
 
 def reject_proposal(user_id: int, proposal_id: str) -> dict:
-    expire_stale()
     item = get_proposal(user_id, proposal_id)
     if item is None:
         raise SkillError("unknown proposal", 404)
