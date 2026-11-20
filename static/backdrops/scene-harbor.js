@@ -29,37 +29,57 @@ function build(s) {
   // Sky, moon glow, hills: one still image.
   const [back, g] = layer(s);
   const lin = g.createLinearGradient(0, 0, 0, sy);
-  lin.addColorStop(0, "#050819");
-  lin.addColorStop(0.55, "#121a44");
-  lin.addColorStop(0.85, "#2c2a63");
-  lin.addColorStop(1, "#4a3570");
+  lin.addColorStop(0, "#03050f");
+  lin.addColorStop(0.45, "#0b1030");
+  lin.addColorStop(0.78, "#1d1c4a");
+  lin.addColorStop(0.93, "#3a2a5c");
+  lin.addColorStop(1, "#5a3768");
   g.fillStyle = lin;
   g.fillRect(0, 0, w, h);
-  const mx = Math.round((w * 0.2) / cell) * cell;
-  const my = Math.round((h * 0.24) / cell) * cell;
-  const mr = Math.round(Math.min(w, h) * 0.055 / cell);
-  const glow = g.createRadialGradient(mx, my, 0, mx, my, mr * cell * 6);
-  glow.addColorStop(0, "rgba(255,214,150,0.2)");
-  glow.addColorStop(1, "rgba(255,214,150,0)");
+  // The city's own glow, low and warm along the skyline.
+  const cityGlow = g.createRadialGradient(w * 0.55, sy, 0, w * 0.55, sy, w * 0.7);
+  cityGlow.addColorStop(0, "rgba(255,138,120,0.16)");
+  cityGlow.addColorStop(0.5, "rgba(170,90,150,0.07)");
+  cityGlow.addColorStop(1, "rgba(120,70,150,0)");
+  g.fillStyle = cityGlow;
+  g.fillRect(0, 0, w, sy);
+  const mx = Math.round((w * 0.18) / cell) * cell;
+  const my = Math.round((h * 0.2) / cell) * cell;
+  const mR = Math.min(w, h) * 0.042;
+  const glow = g.createRadialGradient(mx, my, mR * 0.8, mx, my, mR * 9);
+  glow.addColorStop(0, "rgba(255,226,180,0.22)");
+  glow.addColorStop(0.25, "rgba(220,190,200,0.07)");
+  glow.addColorStop(1, "rgba(160,150,220,0)");
   g.fillStyle = glow;
   g.fillRect(0, 0, w, sy);
   for (let i = 0; i < 160 * Math.min(1, (w * h) / 1.3e6); i += 1) {
-    g.fillStyle = `rgba(220,226,255,${R.range(0.1, 0.5)})`;
-    const r = R.range(0.6, 1.4) * k;
-    g.fillRect(R() * w, Math.pow(R(), 1.5) * sy * 0.6, r, r);
+    const x = R() * w;
+    const y = Math.pow(R(), 1.6) * sy * 0.62;
+    const nearMoon = Math.hypot(x - mx, y - my) < mR * 3;
+    if (nearMoon) continue;
+    g.fillStyle = `rgba(220,226,255,${R.range(0.08, 0.42) * (1 - y / sy)})`;
+    const r = R.range(0.6, 1.3) * k;
+    g.fillRect(x, y, r, r);
   }
-  dotGrid(g, s, "#8d97d6", 0.2);
-  // The moon, in tiles: a pale gold disc with darker maria.
-  for (let r = -mr; r <= mr; r += 1) {
-    for (let c = -mr; c <= mr; c += 1) {
-      const d = Math.hypot(c, r * 1.0) / (mr + 0.4);
-      if (d > 1) continue;
-      const mare = noise(c * 0.5 + 3, r * 0.5 + 7) > 0.6;
-      const lit = 1 - 0.25 * Math.max(0, (c + r) / mr);
-      const fill = shade(mare ? "#e2c98c" : "#f6e6b8", lit);
-      put(g, s, tile(s, d > 0.85 ? ":" : mare ? "%" : ".", fill, shade(fill, 0.78)), mx + c * cell - cell / 2, my + r * cell - cell / 2);
-    }
+  dotGrid(g, s, "#8d97d6", 0.16);
+  // The moon: a painted disc, gently shaded, with soft maria.
+  const disc = g.createRadialGradient(mx - mR * 0.35, my - mR * 0.35, mR * 0.1, mx, my, mR);
+  disc.addColorStop(0, "#fff4d6");
+  disc.addColorStop(0.7, "#f1ddb0");
+  disc.addColorStop(1, "#d8bf8e");
+  g.fillStyle = disc;
+  g.beginPath();
+  g.arc(mx, my, mR, 0, TAU);
+  g.fill();
+  g.save();
+  g.clip();
+  for (let i = 0; i < 6; i += 1) {
+    g.fillStyle = `rgba(170,140,100,${R.range(0.12, 0.22)})`;
+    g.beginPath();
+    g.arc(mx + R.range(-0.55, 0.55) * mR, my + R.range(-0.55, 0.55) * mR, R.range(0.12, 0.3) * mR, 0, TAU);
+    g.fill();
   }
+  g.restore();
   g.globalAlpha = 1;
   // Hills behind the city, with a scatter of house lights.
   const hills = new Path2D();
@@ -69,15 +89,36 @@ function build(s) {
   for (let x = 0; x <= w + 4; x += 4) hills.lineTo(x, hillAt(x));
   hills.lineTo(w, sy);
   hills.closePath();
-  g.fillStyle = "#0e1230";
+  const hillFill = g.createLinearGradient(0, sy - h * 0.2, 0, sy);
+  hillFill.addColorStop(0, "#1a1a44");
+  hillFill.addColorStop(1, "#2a2350");
+  g.fillStyle = hillFill;
   g.fill(hills);
   for (let i = 0; i < 70 * Math.max(0.4, w / 1440); i += 1) {
     const x = R() * w;
     const y = hillAt(x) + R.range(4, 40) * k;
     if (y > sy - 4) continue;
-    g.fillStyle = `rgba(255,${R.range(190, 225) | 0},140,${R.range(0.35, 0.8)})`;
+    g.fillStyle = `rgba(255,${R.range(190, 225) | 0},140,${R.range(0.2, 0.5)})`;
     g.fillRect(x, y, 1.6 * k, 1.6 * k);
   }
+  // Thin cloud streaks, drifting past the moon on their own layer.
+  const [clouds, kg] = layer(s);
+  for (let i = 0; i < 9; i += 1) {
+    const cx = R() * w;
+    const cy = R.range(0.08, 0.42) * sy;
+    const cw = R.range(0.18, 0.4) * w;
+    const ch = R.range(16, 36) * k;
+    kg.save();
+    kg.translate(cx, cy);
+    kg.scale(1, ch / cw);
+    const cl = kg.createRadialGradient(0, 0, 0, 0, 0, cw / 2);
+    cl.addColorStop(0, `rgba(150,140,200,${R.range(0.04, 0.08)})`);
+    cl.addColorStop(1, "rgba(150,140,200,0)");
+    kg.fillStyle = cl;
+    for (const dx of [-w, 0, w]) kg.fillRect(dx - cw / 2, -cw / 2, cw, cw);
+    kg.restore();
+  }
+  s.clouds = clouds;
   s.back = back;
   // The city: three rows of buildings, far to near, in tiles.
   const [city, cg] = layer(s);
@@ -86,13 +127,25 @@ function build(s) {
   s.signs = [];
   s.sources = [];
   const ROWS = [
-    { h: [5, 15], w: [2, 4], body: "#262d63", win: 0.16, base: 0 },
-    { h: [7, 26], w: [3, 5], body: "#1c2252", win: 0.22, base: 0 },
-    { h: [4, 15], w: [3, 6], body: "#141938", win: 0.28, base: 0, near: true },
+    { h: [5, 15], w: [2, 4], body: "#2a2950", win: 0.1, haze: 0.5 },
+    { h: [7, 26], w: [3, 5], body: "#191a3a", win: 0.13, haze: 0.22 },
+    { h: [4, 15], w: [3, 6], body: "#0c0d20", win: 0.16, haze: 0, near: true },
   ];
   // One landmark: a tall tower with a lit crown, two-thirds across.
-  const landmark = Math.round((w * R.range(0.62, 0.7)) / cell);
+  const landmark = Math.round((w * R.range(0.7, 0.78)) / cell);
   for (const [ri, row] of ROWS.entries()) {
+    // Atmospheric perspective: what is already painted sinks into the haze.
+    if (ri > 0) {
+      const prev = ROWS[ri - 1].haze - row.haze;
+      const fog = cg.createLinearGradient(0, sy - h * 0.3, 0, sy);
+      fog.addColorStop(0, `rgba(40,36,92,${prev * 0.6})`);
+      fog.addColorStop(1, `rgba(92,60,112,${prev})`);
+      cg.globalAlpha = 1;
+      cg.globalCompositeOperation = "source-atop";
+      cg.fillStyle = fog;
+      cg.fillRect(0, 0, w, sy);
+      cg.globalCompositeOperation = "source-over";
+    }
     let c = -Math.floor(R() * 3);
     while (c < cols) {
       const bw = Math.round(R.range(row.w[0], row.w[1] + 0.99));
@@ -102,10 +155,10 @@ function build(s) {
       const isLandmark = ri === 1 && c <= landmark && c + bw > landmark;
       if (isLandmark) bh = Math.round((h * 0.42) / cell);
       const top = shore - bh;
-      const body = shade(row.body, R.range(0.85, 1.2));
+      const body = shade(row.body, R.range(0.88, 1.12));
       const warm = R() < 0.65;
       const office = R() < 0.35;
-      const lit = row.win * R.range(0.4, 2);
+      const lit = row.win * R.range(0.3, 2) * (0.45 + 0.55 * side);
       // Crowns: stepped, spire, antenna or flat.
       const crown = isLandmark ? "landmark" : R() < 0.18 ? "step" : R() < 0.22 ? "spire" : R() < 0.3 ? "mast" : "flat";
       if (crown === "step" && bw > 2) for (let i = 1; i < bw - 1; i += 1) put(cg, s, tile(s, "=", body, shade(body, 1.6)), (c + i) * cell, (top - 1) * cell);
@@ -138,15 +191,17 @@ function build(s) {
           const on = !edge && (office ? (r % 2 === 0 && R() < lit * 2.2) : R() < lit);
           const pal = warm ? WARM : COOL;
           const lightC = pal[Math.floor(R() * pal.length)];
-          const offT = tile(s, edge ? "|" : r % 2 ? "." : ":", r === top ? shade(body, 1.25) : body, shade(body, 2.1));
-          const onT = tile(s, office ? "=" : "#", mixc(lightC, body, ri === 0 ? 0.45 : 0.15), shade(lightC, 0.62));
+          const rim = i === bw - 1 && !row.near ? 1.35 : i === 0 ? 0.88 : 1;
+          const offT = tile(s, edge ? " " : r % 3 ? " " : ".", shade(r === top ? shade(body, 1.3) : body, rim), shade(body, 1.7));
+          const onT = tile(s, office ? "=" : r % 2 ? ":" : "'", mixc(lightC, body, [0.6, 0.4, 0.28][ri]), shade(lightC, 0.55));
           put(cg, s, on ? onT : offT, x, y);
           if (!edge && R() < 0.035) s.live.push({ x, y, on, onT, offT, p: R.range(20, 80), ph: R(), duty: R.range(0.2, 0.5) });
           if (on && ri === 2 && r > shore - 4 && R() < 0.25) s.sources.push({ x, c: lightC, a: 0.35, wide: 1 });
         }
       }
       // Neon signs hang off the near buildings, mostly toward the edges.
-      if (row.near && bh > 6 && side > 0.35 && R() < 0.5 && s.signs.length < 5) {
+      const spaced = s.signs.every((sg) => Math.abs(sg.x / cell - c) > 10);
+      if (row.near && bh > 6 && side > 0.35 && spaced && R() < 0.5 && s.signs.length < 5) {
         const word = WORDS[Math.floor(R() * WORDS.length)];
         const n = NEON[s.signs.length % NEON.length];
         const sx = (R() < 0.5 ? c - 1 : c + bw) * cell;
@@ -159,6 +214,30 @@ function build(s) {
   }
   cg.globalAlpha = 1;
   s.city = city;
+  s.moonX = mx;
+  // The moon's glitter path: soft on every side.
+  const gw = Math.round(cell * 8);
+  const gh = Math.max(1, Math.round(h - sy));
+  s.glitter = document.createElement("canvas");
+  s.glitter.width = gw;
+  s.glitter.height = gh;
+  const gg = s.glitter.getContext("2d");
+  const across = gg.createLinearGradient(0, 0, gw, 0);
+  across.addColorStop(0, "rgba(255,226,180,0)");
+  across.addColorStop(0.5, "rgba(255,226,180,0.2)");
+  across.addColorStop(1, "rgba(255,226,180,0)");
+  gg.fillStyle = across;
+  gg.fillRect(0, 0, gw, gh);
+  const down = gg.createLinearGradient(0, 0, 0, gh);
+  down.addColorStop(0, "#000");
+  down.addColorStop(1, "rgba(0,0,0,0)");
+  gg.globalCompositeOperation = "destination-in";
+  gg.fillStyle = down;
+  gg.fillRect(0, 0, gw, gh);
+  s.mist = g.createLinearGradient(0, sy - cell * 6, 0, sy + cell * 4);
+  s.mist.addColorStop(0, "rgba(90,64,120,0)");
+  s.mist.addColorStop(0.6, "rgba(90,64,120,0.28)");
+  s.mist.addColorStop(1, "rgba(90,64,120,0)");
   // The promenade: a lamp every few tiles along the shore.
   s.lamps = [];
   for (let c = 1; c < cols; c += 4) s.lamps.push({ x: c * cell, ph: R() * TAU });
@@ -218,6 +297,9 @@ export const harbor = {
     const sy = s.shore * cell;
     ctx.globalAlpha = 1;
     ctx.drawImage(s.back, 0, 0, w, h);
+    const drift = (t * 3 * k) % w;
+    ctx.drawImage(s.clouds, drift, 0, w, h);
+    ctx.drawImage(s.clouds, drift - w, 0, w, h);
     ctx.drawImage(s.city, 0, 0, w, h);
     for (const lv of s.live) {
       const flip = ((t / lv.p + lv.ph) % 1) < lv.duty;
@@ -249,8 +331,9 @@ export const harbor = {
     }
     // The bay.
     const water = ctx.createLinearGradient(0, sy, 0, h);
-    water.addColorStop(0, "#0a0d26");
-    water.addColorStop(1, "#04050f");
+    water.addColorStop(0, "#151536");
+    water.addColorStop(0.3, "#0a0c22");
+    water.addColorStop(1, "#03040c");
     ctx.globalAlpha = 1;
     ctx.fillStyle = water;
     ctx.fillRect(0, sy, w, h - sy);
@@ -270,6 +353,10 @@ export const harbor = {
       ctx.restore();
     }
     ctx.globalAlpha = 1;
+    ctx.drawImage(s.glitter, s.moonX - s.glitter.width / 2, sy);
+    // A low mist where the city meets the water.
+    ctx.fillStyle = s.mist;
+    ctx.fillRect(0, sy - cell * 6, w, cell * 10);
     // Swells drifting across the bay.
     for (const sw of s.swells) {
       const span = w + sw.len * cell;
