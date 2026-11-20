@@ -232,9 +232,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal { display: block; padding: 0; margin: 0; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal:not(.is-open) { display: none; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner {
-  margin: 0 0 0 2.4ch;
-  padding: 0 0 0 1.5ch;
-  border-left: 1px solid color-mix(in srgb, var(--mist) 20%, var(--ink));
+  margin: 0 0 0 3.9ch;
+  padding: 0;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codecall .chat-console-out { display: block; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-codepart + .chat-console-codepart { margin-top: 0; }
