@@ -776,8 +776,20 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   }
 }
 
-/* A script's row opens to the calls it made, lined up under its description. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-bundle .dk-script-calls { margin: 0; padding: 0 0 0 25px; }
+/* A script's row opens to the calls it made, each icon under its description,
+   joined to its row by a rail from the row's icon that curves into each call.
+   The rail is the call's background (every .chat-step::before is off here). */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  & { --dk-wire: color-mix(in srgb, var(--dk-mute, var(--mute)) 38%, transparent); }
+  & .chat-console-bundle .chat-step.is-console-call .chat-console-hang.is-expanded:has(> .chat-console-hang-body > .dk-script-calls) { margin-left: 0; }
+  & .chat-console-bundle .dk-script-calls { margin: 0 !important; padding: 0; }
+  & .chat-console-bundle .dk-script-calls > .chat-step.is-console-call { position: relative; padding-left: 25px; }
+  & .dk-script-calls > .chat-step:not(:last-child) { background: linear-gradient(var(--dk-wire), var(--dk-wire)) 7px 0 / 1px 100% no-repeat; }
+  & .dk-script-calls > .chat-step::after { content: ""; position: absolute; top: 0; left: 7px; width: 13px; height: calc(var(--dk-call-row) / 2); border-bottom: 1px solid var(--dk-wire); border-left: 1px solid var(--dk-wire); border-bottom-left-radius: 7px; pointer-events: none; }
+  & .dk-script-calls > .chat-step:not(:last-child)::after { border-left-color: transparent; }
+  & .dk-script-calls > .chat-step.is-error::after { border-bottom-color: color-mix(in srgb, var(--call-fail) 55%, transparent); }
+  & .dk-script-calls > .chat-step.is-error:last-child::after { border-left-color: color-mix(in srgb, var(--call-fail) 55%, transparent); }
+}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-part + .dk-code-part { border-top: 1px solid var(--dk-line, var(--line)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-label { padding: 0.45rem 0.75rem 0; font-size: 0.78rem; font-weight: 500; color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-code-label span { margin-left: 0.4rem; font-weight: 400; color: var(--dk-mute, var(--mute)); }

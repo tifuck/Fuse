@@ -282,14 +282,6 @@ function ccInterruptedText(trace) {
     return `${head} · the run ended before it finished`;
   }
 
-function ccCleanBackgroundEnd(trace) {
-    if (!trace || trace.name !== "run_terminal_command" || !trace.backgroundResult || trace.status !== "done") return false;
-    const state = deps.executionState(trace);
-    if (["cancelled", "interrupted", "lost", "timed_out"].includes(state)) return false;
-    const exit = deps.shellExitCode(trace);
-    return exit === null || exit === 0;
-  }
-
 function consoleMonitorEventHtml(trace, key) {
     const body = String(trace.summary || trace.preview || "").replace(/\r\n?/g, "\n").replace(/^\s*\n|\s+$/g, "");
     const lines = body ? body.split("\n") : [];
@@ -371,37 +363,99 @@ function consoleAgentNoticeHtml(trace, key) {
     );
   }
 
+// Finished background work in one wake, as a ledger: a summary line counted
+// like the activity groups, opening into rows drawn like the Activity pane's.
+function dkLedgerTone(trace) {
+    const state = deps.executionState(trace);
+    if (trace.status === "interrupted" || ["cancelled", "interrupted", "lost", "timed_out"].includes(state)) return "stopped";
+    if (trace.status !== "done") return "failed";
+    const exit = trace.agentReport ? null : deps.shellExitCode(trace);
+    return exit === null || exit === 0 ? "done" : "failed";
+  }
+
+function dkLedgerRowHtml(trace, key) {
+    const tone = dkLedgerTone(trace);
+    const agent = Boolean(trace.agentReport);
+    const monitor = trace.name === "monitor";
+    const name = deps.ccFlat(trace.description) || (agent ? "Subagent" : monitor ? deps.ccFlat(trace.url) : deps.ccFlat(deps.displayCommand(trace))) || (monitor ? "Monitor" : "Command");
+    const firstLine = (text) => String(text || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
+    const output = agent || monitor || typeof trace.output !== "string" ? "" : deps.cleanToolOutput(trace, trace.output).replace(/\s+$/, "");
+    const lines = output ? output.split("\n") : [];
+    const sub = agent
+      ? (tone === "failed" ? deps.providerErrorLine(deps.ccFlat(trace.error)).replace(/^Subagent failed:\s*/i, "") : firstLine(trace.summary))
+      : monitor
+        ? (Number(trace.event_count) ? `${trace.event_count} ${Number(trace.event_count) === 1 ? "event" : "events"}` : "No events")
+        : [...lines].reverse().find((line) => line.trim()) || deps.ccFlat(trace.error);
+    const exit = agent ? null : deps.shellExitCode(trace);
+    const took = Number(trace.latency_ms ?? trace.duration_ms);
+    const side = tone === "stopped" ? "Stopped"
+      : tone === "failed" ? (exit !== null && exit !== 0 ? `Exit ${exit}` : "Failed")
+      : Number.isFinite(took) && took > 0 ? deps.ccDuration(Math.max(1000, took)) : "";
+    const more = lines.length > 1;
+    const action = agent && trace.child_id
+      ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}">Open</button>`
+      : more ? `<button type="button" class="dk-ledger-act" data-step-toggle aria-expanded="false">Output</button>` : "";
+    const reveal = more
+      ? `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><pre class="chat-console-out is-stdout">${deps.consoleTailHtml(lines, 12, false).html}</pre></div></div>`
+      : "";
+    return (
+      `<li class="dk-ledger-row is-${tone}"${more ? ` data-step="${deps.escapeHtml(key)}"` : ""}>` +
+      `<span class="dk-ledger-dot" aria-hidden="true"></span>` +
+      `<div class="chat-step-main"><div class="chat-step-head dk-ledger-line">` +
+      `<div class="dk-ledger-text"><span class="dk-ledger-name">${deps.escapeHtml(name)}</span>` +
+      (sub ? `<span class="dk-ledger-sub${agent || monitor ? "" : " is-mono"}">${deps.escapeHtml(deps.ccClip(sub, 240))}</span>` : "") + `</div>` +
+      `<span class="dk-ledger-side">${side ? `<span class="dk-ledger-state">${side}</span>` : ""}${action}</span>` +
+      `</div>${reveal}</div></li>`
+    );
+  }
+
+function dkLedgerHtml(items, key) {
+    const tones = items.map(({ trace }) => dkLedgerTone(trace));
+    const count = (pick) => items.filter(({ trace }) => pick(trace)).length;
+    const agents = count((trace) => trace.agentReport);
+    const monitors = count((trace) => !trace.agentReport && trace.name === "monitor");
+    const commands = items.length - agents - monitors;
+    const word = (n, one) => `<b>${n}</b> ${one}${n === 1 ? "" : "s"}`;
+    const parts = [agents && word(agents, "agent"), commands && word(commands, "command"), monitors && word(monitors, "monitor")].filter(Boolean);
+    const failed = tones.filter((tone) => tone === "failed").length;
+    const stopped = tones.filter((tone) => tone === "stopped").length;
+    const tallies = (failed ? `<span class="dk-tally is-failed">${failed} failed</span>` : "") + (stopped ? `<span class="dk-tally is-stopped">${stopped} stopped</span>` : "");
+    const head = `Background ${parts.join(", ")} ${failed || stopped ? "returned" : "finished"}`;
+    const rows = items.map(({ trace, key: rowKey }) => dkLedgerRowHtml(trace, rowKey)).join("");
+    return (
+      `<li class="chat-step is-dk-ledger" data-step="${deps.escapeHtml(key)}">` +
+      `<div class="chat-step-main"><div class="chat-step-head"><button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="true">` +
+      `<span class="chat-step-label">${head}</span>${tallies ? `<span class="dk-tallies">${tallies}</span>` : ""}</button></div>` +
+      `<div class="chat-step-reveal is-open"><div class="chat-step-reveal-inner"><ul class="dk-ledger-table" role="list">${rows}</ul></div></div></div></li>`
+    );
+  }
+
 // Result rows for background work handed to the main agent: a wake turn's
 // message (msg.autoSteps) or a delivery segment inside a reply. Every
 // delivery renders through here, so the same result always looks the same.
+// Finished work joins one ledger, drawn where the first of it landed.
 function consoleAutoStepsHtml(msg) {
     const traces = msg.autoSteps || [];
     const out = [];
+    const finished = [];
+    let at = -1;
     for (let i = 0; i < traces.length; i += 1) {
       const trace = traces[i];
-      // Subagent reports and calls show in the agents pane, not as rows here.
-      if (trace.agentReport || ["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"].includes(trace.name)) continue;
+      const key = "wake-" + (msg.id || "") + "-" + i;
+      // Subagent calls show in the agents pane, not as rows here.
+      if (!trace.agentReport && ["spawn_subagent", "get_subagent_output", "kill_subagent", "list_subagents"].includes(trace.name)) continue;
       if (trace.name === "monitor" && trace.backgroundResult && trace.status === "running") {
-        out.push(consoleMonitorEventHtml(trace, "wake-" + (msg.id || "") + "-" + i));
+        out.push(consoleMonitorEventHtml(trace, key));
         continue;
       }
-      if (trace.backgroundResult && trace.status !== "running") {
-        let j = i;
-        while (ccCleanBackgroundEnd(traces[i]) && j + 1 < traces.length && ccCleanBackgroundEnd(traces[j + 1])) j += 1;
-        if (j > i) {
-          out.push(
-            `<li class="chat-step is-console-notice is-green">` +
-            `<span class="chat-step-node" aria-hidden="true"></span>` +
-            `<div class="chat-step-main"><span class="chat-console-notice-text">${j - i + 1} background commands completed</span></div></li>`
-          );
-          i = j;
-          continue;
-        }
-        out.push(deps.consoleWakeNoticeHtml(trace));
+      if (trace.agentReport || trace.backgroundResult) {
+        if (at < 0) { at = out.length; out.push(""); }
+        finished.push({ trace, key });
         continue;
       }
-      out.push(deps.toolStepHtml(trace, "wake-" + (msg.id || "") + "-" + i, false, false, null, { oneLine: true }));
+      out.push(deps.toolStepHtml(trace, key, false, false, null, { oneLine: true }));
     }
+    if (finished.length) out[at] = dkLedgerHtml(finished, "wake-" + (msg.id || "") + "-ledger");
     return out.join("");
   }
 
@@ -508,5 +562,5 @@ const CC_CALL_NAMES = {
     read_transcript: "Transcript",
   };
 
-  return { ccCallClockHtml, ccCallName, ccCallSummary, ccCallKind, ccCountsText, ccAgentLastCall, ccCallLine, ccAgentProgressHtml, ccAgentType, ccAgentDoneText, consoleOnlyFold, ccInterruptedFold, ccFailure, ccInterruptedText, ccCleanBackgroundEnd, consoleMonitorEventHtml, consoleAgentNoticeHtml, consoleAutoStepsHtml, ccAgentsGroupHtml, ccDoneAt, ccStillRunningText, ccStillRunningCount, CC_CALL_NAMES };
+  return { ccCallClockHtml, ccCallName, ccCallSummary, ccCallKind, ccCountsText, ccAgentLastCall, ccCallLine, ccAgentProgressHtml, ccAgentType, ccAgentDoneText, consoleOnlyFold, ccInterruptedFold, ccFailure, ccInterruptedText, consoleMonitorEventHtml, consoleAgentNoticeHtml, consoleAutoStepsHtml, ccAgentsGroupHtml, ccDoneAt, ccStillRunningText, ccStillRunningCount, CC_CALL_NAMES };
 }

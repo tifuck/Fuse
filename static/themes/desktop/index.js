@@ -367,7 +367,6 @@ export function createDesktopTheme(runtime) {
     get consoleStdoutHtml() { return theme.consoleStdoutHtml; },
     get consoleTailHtml() { return theme.consoleTailHtml; },
     get consoleTruncationNote() { return theme.consoleTruncationNote; },
-    get consoleWakeNoticeHtml() { return theme.consoleWakeNoticeHtml; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
     get executionIdentity() { return runtime.executionIdentity; },

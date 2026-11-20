@@ -787,6 +787,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      output line under its row. */
   & .chat-live-dock .dk-step { display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-width: 0; color: var(--dk-text); transition: color 300ms ease; }
   & .chat-live-dock .dk-step.is-done { color: var(--dk-mute); }
+  /* A script: no bar, its description in the transcript's type, and each call
+     joined to its icon by the rail and rounded branch its finished row has. */
+  & .chat-live-dock .dk-now.is-script { padding-left: 0; border-left: 0; }
+  & .chat-live-dock .dk-now.is-script .dk-fe-head .dk-fe-in { font: 13px/19px var(--sans); }
+  & .chat-live-dock .dk-step { position: relative; }
+  & .chat-live-dock .dk-step:not(:last-child)::before { content: ""; position: absolute; top: 0; bottom: 0; left: -15px; border-left: 1px solid var(--dk-wire); }
+  & .chat-live-dock .dk-step::after { content: ""; position: absolute; top: 0; left: -15px; width: 11px; height: 9.5px; border-bottom: 1px solid var(--dk-wire); border-left: 1px solid var(--dk-wire); border-bottom-left-radius: 6px; }
   & .chat-live-dock .dk-step-out { grid-column: 2 / -1; min-width: 0; overflow: hidden; color: var(--dk-dim); text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln { overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   & .chat-live-dock .dk-fe-ln b { color: var(--dk-text); font-weight: 400; }

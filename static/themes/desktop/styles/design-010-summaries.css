@@ -265,3 +265,37 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-auto-steps.is-delivery { margin: 0; }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-auto-steps.is-delivery .chat-timeline { padding: 0; }
+
+/* Finished background work: a summary line counted like the activity groups,
+   opening into a table drawn like the Activity pane's agent rows. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-dk-ledger {
+  & { display: block; width: 100%; }
+  & > .chat-step-main, & > .chat-step-main > .chat-step-head { display: block; }
+  & > .chat-step-main > .chat-step-head > .chat-step-toggle { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 12px; text-align: left; }
+  & .chat-step-label { display: block; min-width: 0; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); font-size: 14px; }
+  & .chat-step-label b { color: var(--dk-mute, var(--mute)); font-weight: 400; }
+  & > .chat-step-main > .chat-step-head > .chat-step-toggle:is(:hover, :focus-visible) .chat-step-label { color: var(--dk-mute, var(--mute)); }
+  & > .chat-step-main > .chat-step-head > .chat-step-toggle:is(:hover, :focus-visible) .chat-step-label b { color: var(--dk-text, var(--mist)); }
+  & .dk-tallies { display: inline-flex; gap: 10px; flex: none; font-size: 14px; }
+  & .dk-tally.is-failed { color: var(--fault); }
+  & .dk-tally.is-stopped { color: var(--dk-warn); }
+  & .dk-ledger-table { list-style: none; margin: 6px 0 4px; padding: 0; border: 1px solid var(--dk-card-line); border-radius: 8px; overflow: hidden; }
+  & .dk-ledger-row { display: grid; grid-template-columns: 7px minmax(0, 1fr); column-gap: 10px; padding: 8px 12px; border-top: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent); }
+  & .dk-ledger-row:first-child { border-top: 0; }
+  & .dk-ledger-dot { width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: var(--ok); }
+  & .dk-ledger-row.is-failed .dk-ledger-dot { background: var(--fault); }
+  & .dk-ledger-row.is-stopped .dk-ledger-dot { background: var(--dk-warn); }
+  & .dk-ledger-row > .chat-step-main { min-width: 0; }
+  & .dk-ledger-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 0; }
+  & .dk-ledger-text { display: grid; min-width: 0; }
+  & .dk-ledger-name { color: var(--dk-text, var(--mist)); font-size: 14px; font-weight: 500; line-height: 21px; overflow-wrap: anywhere; }
+  & .dk-ledger-sub { color: var(--dk-mute, var(--mute)); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+  & .dk-ledger-sub.is-mono { font-family: var(--code, "Red Hat Mono", ui-monospace, monospace); font-size: 12.5px; -webkit-line-clamp: 1; white-space: pre; text-overflow: ellipsis; display: block; }
+  & .dk-ledger-side { display: grid; justify-items: end; flex: none; font-size: 12.5px; line-height: 21px; color: var(--dk-mute, var(--mute)); white-space: nowrap; }
+  & .dk-ledger-row.is-failed .dk-ledger-state { color: var(--fault); }
+  & .dk-ledger-row.is-stopped .dk-ledger-state { color: var(--dk-warn); }
+  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act) { all: unset; cursor: pointer; color: var(--dk-link); font-size: 12.5px; line-height: 19px; }
+  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act):is(:hover, :focus-visible) { color: var(--dk-text, var(--mist)); text-decoration: underline; }
+  & :is(.dk-ledger-side > .chat-step-open, .dk-ledger-act):focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 3px; }
+  & .dk-ledger-row .chat-step-reveal .chat-console-out { margin: 6px 0 0; }
+}
