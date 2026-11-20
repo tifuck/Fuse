@@ -20,7 +20,7 @@ import traceback
 
 from fastapi import Request
 
-from .. import chats, code_mode
+from .. import chats, code_mode, injection_probe
 from ..chat_tools import ARTIFACT_TOOL_IDS
 from ..secret_swap import REFUSED
 
@@ -451,6 +451,8 @@ async def run_tools(
             # carry timing inside their result envelope already.
             if latency_ms >= 1000 and job.name in _DURATION_SUFFIX_TOOLS and not job.parent:
                 text = f"{text or ''}\n[duration {latency_ms}ms]" if (text or "").strip() else (text or "")
+            if not job.parent:
+                text = injection_probe.annotate(text or "")
             if swap is not None:
                 # Learn values from the fullest copy first, so a result the
                 # tool clipped through a secret still swaps its visible end.
