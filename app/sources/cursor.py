@@ -475,7 +475,10 @@ async def _refresh_one_unlocked(cred) -> bool:
         if r.status_code != 200 or not _valid_token(data.get("access_token")):
             note_failure(row["id"], cooldown_seconds=60 if r.status_code == 429 else 30)
             return False
-        access, refresh = data["access_token"], extra["refresh_token"]
+        # Cursor keeps the refresh token today; one it does rotate replaces ours.
+        rotated_refresh = data.get("refresh_token")
+        fresh = isinstance(rotated_refresh, str) and 0 < len(rotated_refresh) <= 16_384 and rotated_refresh.isprintable()
+        access, refresh = data["access_token"], rotated_refresh if fresh else extra["refresh_token"]
     rotated = {"access_token": access, "refresh_token": refresh, "expires_at": _expiry(access)}
     extra.update(rotated)
     return await durable_call(

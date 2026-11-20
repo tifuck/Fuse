@@ -122,3 +122,14 @@ def test_cursor_renews_with_its_non_rotating_refresh_token_and_logs_out_when_tol
     with http(lambda request: httpx.Response(200, json={"shouldLogout": True}), monkeypatch):
         assert run(cursor.refresh_one(row(cred))) is False
     assert row(cred)["disabled"] == 1
+
+
+def test_cursor_keeps_a_refresh_token_it_rotates(fresh_db, monkeypatch):
+    cred = cursor.store_tokens(cursor.ensure_cursor_source(), jwt({"sub": "u1"}), "refresh-token-1234", user())
+    renewed = jwt({"sub": "u1", "n": 2})
+    with http(lambda request: httpx.Response(200, json={"access_token": renewed, "refresh_token": "refresh-token-5678"}),
+              monkeypatch) as calls:
+        assert run(cursor.refresh_one(row(cred))) is True
+        assert run(cursor.refresh_one(row(cred))) is True
+    assert [json.loads(r.content)["refresh_token"] for r in calls.requests] == ["refresh-token-1234", "refresh-token-5678"]
+    assert extra_of(cred)["refresh_token"] == "refresh-token-5678"
