@@ -148,6 +148,15 @@ CREATE TABLE `chat_images` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `chat_media_purges` (
+  `thread_id` bigint(20) NOT NULL,
+  `purged_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`thread_id`),
+  CONSTRAINT `chat_media_purges_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `chat_permission_asks` (
   `id` varchar(191) NOT NULL,
   `user_id` bigint(20) NOT NULL,
@@ -372,7 +381,6 @@ CREATE TABLE `chat_threads` (
   `unread` bigint(20) NOT NULL DEFAULT 0,
   `memory_off` bigint(20) NOT NULL DEFAULT 0,
   `secret_swap` bigint(20) NOT NULL DEFAULT 0,
-  `media_purged_at` varchar(32) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
   KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),
