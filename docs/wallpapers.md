@@ -199,6 +199,62 @@ fires `fuse-wallpapers` so an open `/theme` picker refreshes. It returns
 only; a theme whose saved backdrop names one draws nothing until it is
 registered again.
 
+## Custom backdrops
+
+Besides the built-in scenes, each account can save up to 24 backdrops of its
+own, usually written by the model with the bundled `customize-fuse` skill.
+They show under "Yours" in Appearance > Backdrop and are removed there.
+
+**Format.** One self-contained HTML document: HTML, inline CSS and optional
+inline JS (canvas or WebGL), filling the viewport with no scrollbars. Nothing
+loads from the network; only `data:` (and `blob:`) images, fonts and media.
+It must be a pure picture: the iframe gets no pointer events.
+
+**Limits** (app/backdrops.py, checked on save): `html` at most 131072 UTF-8
+bytes, no NUL and valid UTF-8; `name` 1-40 characters after control
+characters are stripped and whitespace collapsed; `scheme` `"dark"`
+(default) or `"light"`; 24 per account (the 25th save answers 422 "You have
+24 custom backdrops; delete one first."). Saves are rate-limited per account.
+
+**Storage.** Table `user_backdrops` (migration
+`scripts/sql/2026-11-20-user-backdrops.sql`): `public_id` (12 chars
+`[a-z0-9]`), `user_id` (ON DELETE CASCADE, so deleting the account deletes
+them), `name`, `scheme`, `html`, `created_at`. Rows are never updated.
+
+**Security model.** The HTML is opaque text; nothing filters it. The safety is
+the frame: the chat draws it as
+`<iframe src="/backdrop/<id>" sandbox="allow-scripts" referrerpolicy="no-referrer">`,
+and `/backdrop/<id>` answers with
+`Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+`X-Frame-Options: SAMEORIGIN` and `Cache-Control: private, max-age=300`
+(an id's content never changes). The document runs with an opaque origin (no
+cookies, storage or same-origin access to Fuse), cannot fetch, navigate,
+submit or frame anything, and can be framed only by Fuse itself. Only the
+owner can load it.
+
+**API** (signed-in dashboard session; writes need the `x-csrf-token` header
+like every dashboard write):
+
+- `GET /api/backdrops` → `{"backdrops": [{"id", "name", "scheme", "created"}]}`, newest first.
+- `POST /api/backdrops` with JSON `{name, scheme, html}` → `{"backdrop": {...}}`; 422 `{"detail": msg}` when invalid.
+- `DELETE /api/backdrops/<id>` → `{"ok": true}`; 404 when it is not the caller's.
+- `GET /backdrop/<id>` → the stored document (`text/html; charset=utf-8`) for its owner; 404 for anyone else signed in, 401 signed out.
+
+The frontend key of a custom backdrop is `"u-" + id`.
+
+**Artifact bridge.** Artifact pages get
+`window.fuse.setBackdrop({name, scheme, html})` (app/artifacts.py,
+`_BRIDGE`). It checks the types, then posts
+`{fuseArtifact: 1, type: "backdrop", name, scheme, html}` to the chat's
+artifact viewer; on a standalone or shared artifact page it only logs a
+console note. The viewer acts only on a message from the artifact frame that
+follows a recent click in it, asks the user to confirm, POSTs
+`/api/backdrops` and applies the new backdrop at once. An artifact can
+preview options in nested `<iframe sandbox="allow-scripts" srcdoc=...>`
+frames: srcdoc frames are not blocked by the artifact CSP's `frame-src 'none'`
+(checked in headless Chromium).
+
 ## Example
 
 ```json

@@ -33,7 +33,7 @@ INDEX_CHAT_CAP = 80
 ORIGINS = frozenset({"bundled", "upload", "github", "skills_sh", "chat"})
 RESERVED = frozenset({"undo", "retry", "redo", "rewind", "init", "compact", "help", "title"})
 # The bundled skills are the built-in library; only these few start switched on.
-DEFAULT_ON = frozenset({"debug", "review", "verify"})
+DEFAULT_ON = frozenset({"debug", "review", "verify", "customize-fuse"})
 
 
 def _row(row) -> dict:

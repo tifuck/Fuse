@@ -9,6 +9,7 @@ from .deps import current_user, render, require_admin, require_user, restore_vau
 from .models import _opencode_model_config, _reasoning_default, _reasoning_efforts
 from .sources import _pool_card
 from . import artifacts as artifacts_routes
+from . import backdrops as backdrops_routes
 from . import auth
 from . import chat as chat_routes
 from . import dashboard
@@ -31,6 +32,7 @@ router.include_router(models_routes.router)
 router.include_router(chat_routes.router)
 router.include_router(notifications_routes.router)
 router.include_router(artifacts_routes.router)
+router.include_router(backdrops_routes.router)
 router.include_router(sources_routes.router)
 router.include_router(settings_routes.router)
 router.include_router(speech_routes.router)
