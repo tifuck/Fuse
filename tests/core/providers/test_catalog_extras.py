@@ -1,7 +1,7 @@
 """What clients build on top of the catalog: starred models per user, the
 OpenCode provider config (merged without losing the user's other settings,
-installer safe from a forged Host), and the admin source probe for a plain
-OpenAI-compatible server.
+installer safe from a forged Host), the admin source probe for a plain
+OpenAI-compatible server, and model display names.
 """
 import asyncio
 import json
@@ -12,6 +12,7 @@ import pytest
 from app import db, model_favorites, opencode
 from app.chat_schema import ChatValidationError
 from app.sources import probe
+from app.web.models import _model_display_name
 from tests.core.helpers import quick_user
 
 from ._support import completion, key, source
@@ -85,3 +86,21 @@ def test_the_probe_of_a_compatible_server_checks_reach_models_and_one_tiny_chat(
     failed = asyncio.run(probe.probe_source(sid))
     assert not failed["ok"] and failed["checks"][-1]["detail"] == "m-a: bad key"
     assert asyncio.run(probe.probe_source(sid + 999))["error"] == "Unknown source"
+
+
+@pytest.mark.parametrize("model,type_id,name", [
+    # API-key providers: the group header names the provider, so it is not repeated.
+    ("deepseek/deepseek-chat", "deepseek", "DeepSeek Chat"),
+    ("deepseek/deepseek-v4-pro", "deepseek", "DeepSeek V4 Pro"),
+    ("openai/gpt-5.5", "openai_api", "GPT 5.5"),
+    ("gemini/gemini-2.5-pro", "gemini", "Gemini 2.5 Pro"),
+    ("together/meta-llama/Llama-3.3-70B", "together", "Llama 3.3 70B"),
+    ("opencode-zen/glm-5.3", "opencode_zen", "GLM 5.3"),
+    # Unchanged for providers that predate them.
+    ("gpt-5.5", "chatgpt", "GPT 5.5"),
+    ("glm-5.3", "zai", "GLM 5.3"),
+    ("qwen3-32b", "llama", "Qwen3 32B"),
+    ("deepseek-v4.1:671b", "ollama", "DeepSeek V4.1 671B"),
+])
+def test_display_names_never_repeat_the_provider(model, type_id, name):
+    assert _model_display_name(model, type_id) == name

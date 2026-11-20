@@ -22,6 +22,7 @@ from ..sources import nanogpt as nanogpt_mod
 from ..sources import refuseless as refuseless_mod
 from ..sources import zai as zai_mod
 from ..sources import pool_policy
+from ..providers import registry
 from ..providers.access import Access
 from .deps import render, require_user
 
@@ -353,6 +354,12 @@ def _model_display_name(model: str, type_id: str, openrouter_catalog: dict | Non
         named = _named_model(model) or claude_mod.model_label(model)
         if named:
             return _standardize_display_name(named)
+    spec = registry.get(type_id)
+    if spec and spec.keyed:
+        # The group header names the provider: humanize the upstream id
+        # without its "deepseek/" prefix (or an "org/" path), not twice.
+        upstream = spec.keyed.upstream(model).split("/")[-1]
+        return _named_model(upstream) or _humanize_model_id(upstream)
     if type_id == "cursor":
         upstream = cursor_mod.upstream_id(model)
         label = cursor_mod.model_label(model) or ("Auto" if upstream == "auto" else "")
