@@ -271,7 +271,7 @@ async def _source_models(s: Source, user_id: int | None) -> list[str]:
         return await s.models(user_id=user_id)
     key = _cache_key(s, user_id)
     hit = _model_cache.get(key) or _stored(s)
-    if hit and key not in _live and s.type_id in POOL_TYPES:
+    if hit and key not in _live and (s.type_id in POOL_TYPES or spec.catalog_state):
         await _await_first_fetch(s, user_id)
         hit = _model_cache.get(key) or hit
     if hit:
@@ -306,9 +306,22 @@ def _stored(s: Source) -> tuple[float, list[str]] | None:
         return None
     if not row or not row["models"]:
         return None
-    _model_cache[_cache_key(s, None)] = _cache[s.source_id] = (row["fetched_at"], list(row["models"]))
-    _live.add(_cache_key(s, None))
+    _remember_saved(s, row)
     return _model_cache[_cache_key(s, None)]
+
+
+def _remember_saved(s: Source, row: dict) -> None:
+    """Put a saved list in memory. A source whose fetch also learns per-model
+    facts (spec.catalog_state) gets it as a stale fallback: its first page
+    waits briefly for a live fetch, which restores those facts."""
+    key = _cache_key(s, None)
+    spec = registry.get(s.type_id)
+    if spec and spec.catalog_state:
+        stale = time.time() - _ttl(s) - 1
+        _model_cache[key] = _cache[s.source_id] = (stale, list(row["models"]))
+        return
+    _model_cache[key] = _cache[s.source_id] = (row["fetched_at"], list(row["models"]))
+    _live.add(key)
 
 
 async def _user_source_models(s: Source, user_id: int | None) -> list[str]:
@@ -454,7 +467,8 @@ def _openrouter_source() -> Source | None:
 
 def _seed_pool_catalogs() -> None:
     """At boot: each source's saved catalog, else its seed list. A saved list
-    is served without the first-load wait; the refresh loop updates it when due."""
+    is served without the first-load wait (unless spec.catalog_state); the
+    refresh loop updates it when due."""
     from ..providers import catalogs
 
     try:
@@ -469,8 +483,7 @@ def _seed_pool_catalogs() -> None:
             continue
         row = saved.get(s.source_id)
         if row and row["models"]:
-            _model_cache[key] = _cache[s.source_id] = (row["fetched_at"], list(row["models"]))
-            _live.add(key)
+            _remember_saved(s, row)
             continue
         names = _SEEDED_MODELS.get(s.type_id)
         if names:
@@ -695,7 +708,7 @@ def warm_catalogs() -> asyncio.Task | None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return None
-    return loop.create_task(refresh_due_catalogs())
+    return loop.create_task(refresh_due_catalogs(boot=True))
 
 
 def _can_fetch(s: Source, spec) -> bool:
@@ -708,9 +721,10 @@ def _can_fetch(s: Source, spec) -> bool:
     return bool(getattr(s, "all_creds", None) or getattr(s, "creds", None))
 
 
-def due_catalogs(now: float | None = None) -> list[Source]:
+def due_catalogs(now: float | None = None, *, boot: bool = False) -> list[Source]:
     """Enabled sources whose shared catalog is due, soonest first. Never one
-    whose fetch is already running (single flight)."""
+    whose fetch is already running (single flight). At boot, a source whose
+    fetch learns per-model facts (spec.catalog_state) is always due."""
     from ..providers import catalogs
 
     now = time.time() if now is None else now
@@ -724,18 +738,18 @@ def due_catalogs(now: float | None = None) -> list[Source]:
         if not _can_fetch(s, registry.get(s.type_id)) or _cache_key(s, None) in _refreshing:
             continue
         row = saved.get(s.source_id)
-        if row and row["next_due"] > now:
+        if row and row["next_due"] > now and not (boot and registry.get(s.type_id).catalog_state):
             continue
         due.append((row["next_due"] if row else 0.0, s))
     due.sort(key=lambda item: item[0])
     return [s for _due, s in due]
 
 
-async def refresh_due_catalogs() -> None:
+async def refresh_due_catalogs(*, boot: bool = False) -> None:
     """Refresh-loop job: fetch every shared catalog that is due. Fetches share
     MAX_FETCHES slots; a failure backs off (catalogs.failed); due times carry
     jitter, so providers drift apart instead of firing together."""
-    tasks = [task for s in due_catalogs() if (task := _schedule_model_refresh(s, None)) is not None]
+    tasks = [task for s in due_catalogs(boot=boot) if (task := _schedule_model_refresh(s, None)) is not None]
     if tasks:
         await asyncio.gather(*(asyncio.shield(t) for t in tasks), return_exceptions=True)
 

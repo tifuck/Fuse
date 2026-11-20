@@ -9,12 +9,12 @@ import time
 import httpx
 
 import app.sources as sources
-from app import db
+from app import context_meter, db
 from app.providers import catalogs
 from app.sources import keyed
 from tests.core.helpers import quick_user, wait_until_async
 
-from ._support import key, source
+from ._support import completion, key, source
 
 MODELS = {"data": [{"id": "deepseek-chat"}, {"id": "deepseek-reasoner"}]}
 
@@ -123,3 +123,27 @@ def test_one_shared_catalog_serves_every_user_with_access(fresh_db, upstream):
     assert asyncio.run(sources.models_union(user_id=carol)) == []  # no key, no site access
     assert len(upstream.calls("api.deepseek.com/models")) == 1
     assert json.loads(db.fetchone("SELECT models FROM provider_catalogs WHERE source_id=?", (sid,))["models"])
+
+
+def test_a_restart_relearns_what_a_fetch_teaches_before_serving_the_saved_list(fresh_db, upstream):
+    """llama learns each model's window and its filesystem name only while
+    listing. Serving the saved list alone showed the default 8K window (and
+    sent the public id upstream) until the next due fetch."""
+    raw = "/models/bartowski-Qwen3-32B-Q4_K_M.gguf"
+    upstream.on("GET", "/v1/models", httpx.Response(200, json={"data": [
+        {"id": raw, "memory": {"effective": {"n_ctx": 262144}}, "architecture": {"input_modalities": ["text"]}}]}))
+    upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion()))
+    sid = source("llama", {"base_url": "https://llama.test"})
+    ds = keyed.ensure_source("deepseek")
+    key(ds, "sk-deepseek-key-123")
+    catalogs.saved(sid, "llama", ["qwen3-32b"], 300)
+    catalogs.saved(ds, "deepseek", ["deepseek/deepseek-chat"], 21600)
+    sources._seed_pool_catalogs()  # boot
+
+    # Due at boot whatever its due time; a keyed list (names only) is not.
+    assert _types(sources.due_catalogs(boot=True)) == ["llama"] and sources.due_catalogs() == []
+    assert asyncio.run(sources.models_union()) == ["qwen3-32b"]
+    assert context_meter.cached_window("llama", "qwen3-32b") == 262144
+    asyncio.run(sources.get(sid).chat({"model": "qwen3-32b", "messages": []}))
+    assert upstream.sent("/chat/completions")[0]["model"] == raw
+    assert len(upstream.calls("/v1/models")) == 1

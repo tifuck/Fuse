@@ -59,6 +59,11 @@ class ProviderSpec:
     # between background fetches, and whether a fetch needs no credential.
     catalog_ttl: float = 21600.0
     catalog_keyless: bool = False
+    # models() also learns per-model facts kept only in memory (context
+    # windows, vision, local aliases, catalog metadata): a saved list alone
+    # is not enough, so the catalog is fetched at boot and the first page
+    # waits for it briefly, as for a pool.
+    catalog_state: bool = False
     # Per-user model visibility (app/providers/model_prefs.py): groups as
     # (id, label, on by default), the group of a public model id, and the
     # public id of an upstream one (routed aliases are checked by it).

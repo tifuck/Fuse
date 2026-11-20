@@ -64,6 +64,7 @@ def _pool(id: str, label: str, type_label: str, builder: str, **kw) -> ProviderS
     # Unchanged from before the scheduler: one request on one pooled account,
     # and the list follows that account's plan, so it is read every 5 minutes.
     kw.setdefault("catalog_ttl", 300.0)
+    kw.setdefault("catalog_state", True)
     return ProviderSpec(
         id=id, label=label, type_label=type_label, builder=builder, pool=True,
         ensure=_fn(id, f"ensure_{id}_source"), access=_fn(id, f"{id}_access_state"),
@@ -85,7 +86,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         id="llama", label="llama.cpp", type_label="Local llama.cpp", builder="llama:LlamaSource",
         error_label="llama.cpp", site=True,
         # A local server swapped to another model must show it soon; no key needed.
-        catalog_ttl=300.0, catalog_keyless=True,
+        catalog_ttl=300.0, catalog_keyless=True, catalog_state=True,
     ),
     ProviderSpec(
         id="openai", label="OpenAI-compatible", type_label="OpenAI-compatible",
@@ -97,7 +98,7 @@ BUILTIN: tuple[ProviderSpec, ...] = (
         error_label="Ollama Cloud", efforts=_model_efforts("ollama"), call_style="user",
         key=OLLAMA_KEY, user_catalog=_fn("ollama", "user_catalog"), group="api_key", site=True,
         # /tags plus one /show per model: hourly, not on every page.
-        catalog_ttl=3600.0,
+        catalog_ttl=3600.0, catalog_state=True,
     ),
     _pool(
         "chatgpt", "ChatGPT", "ChatGPT pool", "chatgpt:ChatGPTSource", pool_label="OpenAI", error_label="ChatGPT",
