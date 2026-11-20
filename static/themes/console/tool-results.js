@@ -276,6 +276,15 @@ const CODE_CALL_WORDS = {
     list_dir: ["listed", "directory", "directories"], search_replace: ["edited", "file", "files"], write_file: ["wrote", "file", "files"],
     run_terminal_command: ["ran", "shell command", "shell commands"], read_result: ["read", "kept result", "kept results"],
   };
+// An opened shell row's first lines: the command, "$ " before its first
+// line, every wrapped or later line indented under the command's text.
+function consoleCommandHtml(trace) {
+    const command = String(deps.displayCommand(trace) || "").replace(/\s+$/, "");
+    if (!command) return "";
+    const lines = command.split("\n").map((line, i) => `<div class="chat-console-cmdline"><span class="chat-console-cmdpr" aria-hidden="true">${i ? "" : "$"}</span>${deps.escapeHtml(line) || " "}</div>`).join("");
+    return `<div class="chat-console-cmd">${lines}</div>`;
+  }
+
 function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const { running, failed, interrupted } = presentation;
     const parts = deps.codeRunParts(trace);
@@ -289,10 +298,14 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
     const noun = (n) => `${n === 1 ? "call" : "calls"}`;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
-    const statusHtml = failed ? deps.escapeHtml(`Error: ${String(trace.error || "run_code failed").split("\n")[0]}${total ? "" : ", no calls ran"}`)
+    // A failed run reads like a finished one, its calls first, with the error
+    // on one line under them.
+    const callsHtml = total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : `<span class="chat-console-codecount">No calls ran</span>`;
+    const errorLine = String(trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
+    const statusHtml = failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^Error: /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
       : interrupted ? `Interrupted, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
-      : total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : "No calls";
+      : total ? callsHtml : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
       const tip = title ? ` title="${deps.escapeHtml(title)}"` : "";
@@ -311,7 +324,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const meta = p.running ? "" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
       const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${consoleStatusHtml(meta)}</span>` : ""}`;
       const command = c.trace.name === "run_terminal_command" ? deps.displayCommand(c.trace) : "";
-      const body = consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
+      const body = (command ? consoleCommandHtml(c.trace) : "") + consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
       return { key: c.key, head, body, state: p.state, tool: c.trace.name, title: command || c.trace.path || "" };
     };
     const items = [];
@@ -569,5 +582,5 @@ function consoleResultLine(trace, presentation) {
     return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
   }
 
-  return { consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
+  return { consoleCommandHtml, consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };
 }

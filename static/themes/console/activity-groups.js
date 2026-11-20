@@ -281,7 +281,7 @@ function ccGroupHtml(group, msg, live, active, openMap, thinking) {
         `<span class="chat-step-node" aria-hidden="true"></span>` +
         `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">Thought for ${deps.escapeHtml(ccThinkClock(item.ms, 0))}</span></div>` +
         `<div class="chat-console-thought chat-think-markdown">${deps.renderMarkdown(item.text, false)}</div></div></li>`
-      : deps.toolStepHtml(item.entry.trace, item.key, live, true, openMap, { verbose: true })).join("");
+      : deps.toolStepHtml(item.entry.trace, item.key, live, deps.stepOpenAt(openMap, item.key), openMap)).join("");
     const state = active ? `is-running${errored ? " is-errored" : ""}` : "is-done";
     // A streaming thought: the transcript fills [data-reason-preview] and
     // keeps it pinned to the newest line (thinking-disclosure.js).
