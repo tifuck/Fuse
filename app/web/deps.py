@@ -51,7 +51,6 @@ templates.env.globals["chat_view_for"] = chat_themes.chat_view
 # A stored UTC timestamp in the viewer's time zone (stats.display_zone).
 templates.env.filters["when"] = stats.format_when
 logger = logging.getLogger("app.web")
-_mimo_pending: dict[int, dict] = {}
 _claude_pending: dict[int, dict] = {}
 _cursor_pending: dict[int, dict] = {}
 _nanogpt_pending: dict[int, dict] = {}

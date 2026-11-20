@@ -26,7 +26,7 @@ from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_
 from ...sources import pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
-from .context import _claude_pending_for, _cursor_pending_for, _mimo_pending_for, _nanogpt_pending_for, _pool_card
+from .context import _claude_pending_for, _cursor_pending_for, _nanogpt_pending_for, _pool_card
 from .nanogpt import _redirect_uri as _nanogpt_redirect_uri, model_rows as _nanogpt_model_rows
 from .openrouter import _openrouter_model_rows
 
@@ -328,7 +328,7 @@ def user_sources(request: Request):
     _sort_mine_first(mimo_visible)
     mimo_pool = stats.mimo_pool_meter(mimo_routable, owner_id=user["id"])
     _fuse_fill(mimo_visible)
-    mimo_pending = _mimo_pending_for(user["id"])
+    mimo_pending = logins.get(user["id"], "mimo")
 
     claude_sid = claude_mod.ensure_claude_source()
     claude_rows = db.fetchall(
