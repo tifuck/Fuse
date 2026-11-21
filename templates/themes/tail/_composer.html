@@ -69,6 +69,11 @@
             </button>
           </div>
         </div>
+        {#- Tail: the machine's load reads in the status bar, between the two groups. -#}
+        <div class="chat-host-stats" data-host-stats hidden role="group" aria-label="Machine usage">
+          <span class="hs-slice">cpu <b data-hs-cpu></b></span>
+          <span class="hs-slice">ram <b data-hs-ram></b></span>
+        </div>
         <div class="chat-box-right" data-box-group>
           <div class="chat-context-wrap" data-context-wrap hidden>
             <button type="button" class="chat-context" data-chat-context aria-label="Context usage" aria-expanded="false" aria-controls="chat-context-pop" title="Context usage">

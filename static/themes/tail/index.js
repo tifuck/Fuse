@@ -223,6 +223,7 @@ export function createTailTheme(runtime) {
     get todoClosed() { return runtime.todoClosed; },
   }));
   Object.assign(theme, createToolRows({
+    get consoleEditCounts() { return theme.consoleEditCounts; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get agentTraceWorkMs() { return theme.agentTraceWorkMs; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
@@ -357,6 +358,7 @@ export function createTailTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createActivityGroups({
+    get consoleEditCounts() { return theme.consoleEditCounts; },
     get activeRun() { return runtime.activeRun; },
     get agentLive() { return runtime.agentLive; },
     get agentsRows() { return runtime.agentsRows; },
@@ -390,6 +392,13 @@ export function createTailTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createTranscript({
+    get consoleEditCounts() { return theme.consoleEditCounts; },
+    get ccToolClass() { return theme.ccToolClass; },
+    get ccExitMeaning() { return theme.ccExitMeaning; },
+    get displayCommand() { return theme.displayCommand; },
+    get shellExitCode() { return runtime.shellExitCode; },
+    get ccDuration() { return theme.ccDuration; },
+    get STEP_CHEVRON() { return theme.STEP_CHEVRON; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get parseProviderError() { return theme.parseProviderError; },
     get providerErrorHtml() { return theme.providerErrorHtml; },
