@@ -536,7 +536,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   &.is-empty .tail-welcome { display: block; flex: none; width: 100%; max-width: 64rem; margin: auto auto 0 !important; padding: 1rem 1rem 0 calc(1rem + var(--tl-g)); }
   &.is-empty .tail-welcome > * { display: block; max-width: none; margin: 0 !important; padding: 0 !important; }
   &.is-empty .tail-welcome > .chat-welcome-kicker { display: none; }
-  &.is-empty .tail-welcome ~ .chat-library { flex: none !important; margin-top: 0 !important; padding-top: 0.6rem !important; }
+  &.is-empty .tail-welcome ~ .chat-library { flex: none !important; min-height: 0 !important; margin-top: 0 !important; padding-top: 0.6rem !important; }
   &.is-empty .tail-welcome ~ .chat-library .chat-library-body { margin-top: 0 !important; }
   & .tail-more-toggle { display: none !important; }
   & .tail-bar-more { display: contents; }
@@ -556,6 +556,6 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .tail-bar-more .chat-bar-btn[hidden] { display: none !important; }
     & .tail-bar-more .chat-bar-btn > span { display: inline !important; position: static !important; width: auto !important; height: auto !important; clip: auto !important; clip-path: none !important; overflow: visible !important; font: var(--tl-fs)/1 var(--mono); white-space: nowrap; }
     /* The bar has room for the machine's name or its load, not both. */
-    & .chat-box-bar > .chat-host-stats { display: none !important; }
+    & .chat-box-bar > .chat-host-stats:not([hidden]) { display: none !important; }
   }
 }
