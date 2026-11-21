@@ -26,7 +26,13 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-flow > .chat-md, & .chat-console-turn { grid-template-columns: var(--tl-g) minmax(0, 1fr) !important; column-gap: 0 !important; }
   & .chat-flow > .chat-md { margin: 0.2rem 0 0.35rem; max-width: 92ch; }
   & .chat-flow > .chat-md::before { background: none !important; }
+  & .chat-flow > .chat-md :is(ol, ul) { padding-left: 3ch !important; list-style-position: outside !important; }
   & .chat-foot { margin-top: 0.15rem; }
+  /* One corner for every surface the view draws. */
+  & :is(.chat-code, .chat-md table, .chat-library-tile, .chat-slash, .chat-picker-menu, .chat-context-pop, .chat-latest, .chat-skill-proposal, .chat-rewind, .chat-error) { border-radius: var(--tl-r) !important; }
+  & :is(.chat-code, .chat-md table) { overflow: hidden; }
+  & :is(.chat-welcome-kicker, .chat-welcome, .chat-welcome-note) { padding-inline: 1rem; }
+  & .chat-slash { margin-inline: 0.75rem !important; }
   & .chat-console-turn { align-items: baseline; color: var(--mute); }
   & .chat-console-turn-mark { justify-self: center; color: var(--ok); }
   & .chat-console-turn-mark:is(.is-fail, .is-stop) { color: var(--fault); }
@@ -80,6 +86,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & li.chat-step.is-console-call .chat-step-head :is(.chat-step-state, .chat-step-caret, .chat-step-open.is-empty) { display: none; }
   & li.chat-step.is-console-call .chat-step-label { display: flex !important; flex: 0 1 auto !important; align-items: baseline; gap: 0; min-width: 0; padding: 0 !important; text-indent: 0 !important; white-space: nowrap !important; overflow: hidden !important; }
   & li.chat-step.is-console-call .chat-console-took { margin-left: 1ch; color: var(--tl-dim); }
+  & li.chat-step.is-console-call .chat-step-head .chat-console-trunc { display: none; }
   & li.chat-step.is-console-call .chat-console-call { display: flex; align-items: baseline; min-width: 0; overflow: hidden; }
   & li.chat-step.is-console-call .chat-console-paren { display: none; }
   & li.chat-step.is-console-call .chat-tool-action { flex: none; min-width: 8ch; margin-right: 1ch; color: var(--tl-dim); font-weight: 400; text-transform: lowercase; }
@@ -170,7 +177,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-box-bar > .chat-host-stats:not([hidden]) { flex: none; display: flex !important; align-items: center; gap: 0.9rem; margin: 0 !important; padding: 0 0.7rem !important; border: 0 !important; border-left: 1px solid var(--line) !important; background: none !important; color: var(--mute); font: inherit !important; white-space: nowrap; }
   & .chat-box-bar > .chat-host-stats b { font-weight: 400; color: var(--mist); font-variant-numeric: tabular-nums; }
   /* Menus open over the control that owns them. */
-  & .chat-box-bar .chat-model .chat-picker-menu { left: 0 !important; right: auto !important; }
+  & .chat-box-bar .chat-model .chat-picker-menu { left: 0 !important; right: auto !important; width: min(24rem, calc(100vw - 1rem)) !important; }
 
   /* The ask sits on the prompt line, inside the column's gutters. */
   & .chat-perm-queue { margin: 0 0.75rem 0.6rem !important; }
