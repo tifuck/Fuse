@@ -333,7 +333,11 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const p = deps.toolPresentation(c.trace, live);
       const exit = deps.shellExitCode(c.trace);
       const meta = p.running ? "running…" : c.trace.name === "run_terminal_command" && !p.interrupted && exit !== null ? `exit ${exit}` : consoleResultLine(c.trace, p);
-      const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${consoleStatusHtml(meta)}</span>` : ""}`;
+      // As on a call's own row: a finished edit's line is its size.
+      const counts = p.state === "done" && ["search_replace", "write_file"].includes(c.trace.name) ? consoleEditCounts(c.trace) : null;
+      const stat = counts && (counts.added || counts.removed)
+        ? `<span class="tail-plus">+${counts.added}</span>${counts.removed ? ` <span class="tail-minus">−${counts.removed}</span>` : ""}` : "";
+      const head = `${deps.consoleCallHtml({ ...c.trace, host: "" }, p, false)}${meta ? `<span class="chat-console-dim chat-console-codemeta">${stat || consoleStatusHtml(meta)}</span>` : ""}`;
       const command = c.trace.name === "run_terminal_command" ? deps.displayCommand(c.trace) : "";
       const body = (command ? consoleCommandHtml(c.trace) : "") + consoleDetailHtml(command ? { ...c.trace, command: "" } : c.trace, p.failed, p.running);
       return { key: c.key, head, body, state: p.state, tool: c.trace.name, title: command || c.trace.path || "" };
@@ -353,7 +357,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const folder = (path) => path.slice(0, path.lastIndexOf("/") + 1);
       const where = paths.every((path) => folder(path) === folder(paths[0])) ? folder(paths[0]).replace(/\/$/, "") : "";
       items.push({ key: `${group[0].key}:reads`, tool: "read_file", state: "done",
-        head: `<span class="chat-console-call"><span class="chat-tool-action">Read</span>(<b>${group.length}</b> files${where ? ` in ${deps.escapeHtml(where)}` : ""})</span>`,
+        head: `<span class="chat-console-call"><span class="chat-tool-action">read</span><span class="chat-console-val">${group.length} files${where ? ` in ${deps.escapeHtml(where)}` : ""}</span></span>`,
         body: `<div class="chat-console-codetree">${tree(group.map(callRow))}</div>` });
       at = end;
     }
@@ -368,7 +372,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const lines = out ? out.split("\n") : [];
       const meta = !out ? "" : failed ? "Error" : lines.length === 1 ? `Returned ${deps.toolText(lines[0], 80)}` : `Returned ${lines.length} lines`;
       items.push({ key: `${key}:code`, state: "done",
-        head: `<span class="chat-console-call"><span class="chat-tool-action">Source</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>` +
+        head: `<span class="chat-console-call"><span class="chat-tool-action">source</span><span class="chat-console-val">${n} ${n === 1 ? "line" : "lines"} of JavaScript</span></span>` +
           (meta ? `<span class="chat-console-dim chat-console-codemeta">${deps.escapeHtml(meta)}</span>` : ""),
         body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
     }

@@ -90,8 +90,25 @@ base.
   grouped by project keeps that grouping. Plain chats have no machine and
   list as they are.
 
-## Not redrawn yet
+## The other rows, and the chrome
 
-Still Console's look inside Tail: the agents strip, subagent trees, notices
-and compaction marks, todos, the sheets (Context, Skills, Appearance) and the
-artifact viewer.
+- `styles/tail-rows.css` draws what else a transcript holds, in the same
+  grammar (verb, subject, leader, result, all on the one gutter): subagent
+  groups and reports, monitor events, run notices, compaction marks, thoughts,
+  todos, run_code's calls, the request-failed card, attachments, artifact
+  cards, sources and skill proposals, plus what sits above the prompt line:
+  permission asks, queued messages and the context alert.
+- `styles/tail-chrome.css` draws the chrome as one surface style (panel,
+  hairline, 6px corners, `--tl-row` rows): top bar, sidebar, the Context,
+  Skills, Appearance and Todos sheets, the menus, the artifact viewer and the
+  empty chat (the greeting over the prompt library, just above the prompt).
+- At ≤800px the top bar folds Appearance, Context, Skills and Alerts into one
+  More menu (`data-tail-more`, `pane.js`), and the status bar shows the
+  machine's name without its load.
+
+## Not seen yet
+
+No QA chat or fake produces these, so they were styled from made-up markup
+only: a live thought, a notice with more than two report lines, the
+automated-event chip, a recap, a note from the main agent, the rewind dialog.
+A subagent's own transcript cannot be opened in the QA chats.
