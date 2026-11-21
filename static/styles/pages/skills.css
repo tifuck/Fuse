@@ -311,6 +311,8 @@ dialog.skills-lib[open] { display: flex; }
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+:where(html:not(.is-chat-root)) .skills-review-file summary::before { content: "▸"; width: 1rem; flex: none; color: var(--mute); }
+:where(html:not(.is-chat-root)) .skills-review-file[open] > summary::before { content: "▾"; }
 :where(html:not(.is-chat-root)) .skills-review-file summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 :where(html:not(.is-chat-root)) .skills-review-file pre {
   max-height: 18rem;
