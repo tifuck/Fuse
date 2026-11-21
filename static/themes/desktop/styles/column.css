@@ -298,6 +298,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    them inherit the row's colour. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 var(--console-type)/var(--console-leading) var(--mono); color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); outline: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead b { font-weight: 400; color: var(--dk-mute, var(--mute)); }
+/* Its first word is capitalised like a summary line's: "Done", "Interrupted". */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-turn-text::first-letter { text-transform: uppercase; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; height: 1lh; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; --dur-hover: 0s; }
 /* A touch screen has no pointer to show them: the latest reply keeps its
