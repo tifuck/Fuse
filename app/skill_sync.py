@@ -24,8 +24,7 @@ def folder_for(slug: str, digest: str, windows: bool) -> str:
 
 def source_line(row: dict) -> str:
     if row.get("origin") in skills.THIRD_PARTY and row.get("source"):
-        # The warning first: a narrow card cuts the end of the line.
-        return f"Not made by Fuse · github.com/{row['source']}"
+        return f"From github.com/{row['source']} · not made by Fuse"
     return ""
 
 

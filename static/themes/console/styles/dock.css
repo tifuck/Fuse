@@ -175,6 +175,8 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-value { display: inline; word-break: normal; overflow-wrap: anywhere; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-note { display: inline; margin-left: 8px; white-space: normal; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why { grid-area: why; align-self: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; }
+  /* Who made a skill is the point of its card: never cut. */
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask.is-skill .chat-ask-why { display: block; overflow: visible; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-qrow { grid-template-columns: 16px minmax(0, 1fr) auto 68px; min-height: 30px; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-qrow-btn { width: 30px; height: 28px; }
 }
