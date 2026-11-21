@@ -7,7 +7,6 @@
 | `scripts/test.sh` | the whole core suite (`tests/core`, parallel) and `tests/js` |
 | `scripts/test.sh runs tools` | only those areas (`tests/core/<area>`) |
 | `scripts/test.sh changed [ref]` | the areas whose sources differ from `ref` (default `dev`), committed or not |
-| `scripts/test.sh legacy [path…]` | the frozen old suite (`tests/legacy`); never required |
 
 Extra pytest arguments go after `--`; `JOBS=N` sets parallel workers (`0` = off).
 
@@ -17,14 +16,13 @@ On 2026-11-16 a test passed `rm -rf /*` to a fake host that ran it in a real
 bash as root, a mutant had disabled the denylist, and the machine was wiped.
 Since then:
 
-- **Sandbox only.** `scripts/test.sh` (and `scripts/run_browser_tests.sh`)
-  run inside `scripts/test_sandbox.sh`: a systemd unit running as the
-  unprivileged system user `fuse-test`, with the whole file system read-only
-  (the tree under test included; `/tmp` and the home directories are empty)
+- **Sandbox only.** `scripts/test.sh` runs inside `scripts/test_sandbox.sh`:
+  a systemd unit running as the unprivileged system user `fuse-test`, with
+  the whole file system read-only (the tree under test included; `/tmp` and the home directories are empty)
   except the unit's own run dir (TMPDIR, HOME, bytecode cache), no devices,
   no new privileges, no capability or system call to reboot, mount or load
-  modules. Run it as root; it drops to `fuse-test`. `tests/conftest.py`,
-  `tests/core/__init__.py` and `tests/legacy/__init__.py` stop any run
+  modules. Run it as root; it drops to `fuse-test`. `tests/conftest.py`
+  and `tests/core/__init__.py` stop any run
   outside it (`python -m pytest` refuses, `--noconftest` too), and
   `scripts/test.sh` refuses options that would skip them (`--noconftest`,
   `--confcutdir`, `-p`, `-c`, `-o`, `--tx`, `--rsyncdir`, …), in its
@@ -67,8 +65,6 @@ Since then:
   server, the QA browser `scripts/qa/shot.mjs`, which is not published). Pure
   frontend logic with no DOM (formatters, parsers, state) may get a Node unit
   test in `tests/js/`.
-- Never add to `tests/legacy`, and never fix a legacy test: if one is in your
-  way, delete it.
 
 ## How core tests are written
 

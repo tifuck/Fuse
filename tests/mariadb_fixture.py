@@ -1,12 +1,11 @@
-"""Disposable MariaDB schema for offline integration and browser fixtures.
+"""Disposable MariaDB schema for offline integration fixtures.
 
 Importing this module installs the pymysql guard (``install_guard``): no test
 or harness may open a connection whose default schema is one of the real Fuse
 schemas (``fuse_dev``/``fuse_live``), including via ``pymysql.Connection``,
 ``read_default_file`` option files, ``select_db`` or ``USE``, and no statement
 may name one of them except a read (SELECT, SHOW CREATE TABLE), which is all
-the fixture needs to clone the template schema. Standalone harnesses such as
-tests/legacy/chat_browser_fixture.py get the same protection by importing here.
+the fixture needs to clone the template schema.
 
 Tests use their own database account, never the app's or root: 'fuse_test'
 (@localhost for the fixture's socket connection, @127.0.0.1 for the app's

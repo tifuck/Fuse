@@ -8,8 +8,7 @@ was wiped. Independent layers keep that from happening again:
   unprivileged user fuse-test, on a read-only file system (the tree under
   test included), writable only in the unit's own run directory.
 - refuse_unless_sandboxed(): every entry point (tests/conftest.py,
-  tests/core/__init__.py, tests/legacy/__init__.py, the browser fixture)
-  ends the process before app code is imported unless it runs in that unit.
+  tests/core/__init__.py) ends the process before app code is imported unless it runs in that unit.
 - install_process_guard(): no test may start a process or signal one it
   did not start. Every way Python starts one raises (libc's own entry
   points through ctypes included), except the exact
@@ -101,7 +100,7 @@ def sandbox_refusal() -> str | None:
 def refuse_unless_sandboxed(*, hard: bool = True) -> None:
     """End this process outside the sandbox.
 
-    hard (test packages, the browser fixture): os._exit at once. pytest
+    hard (test packages): os._exit at once. pytest
     turns exceptions raised while importing a test module into collection
     errors and carries on, so nothing else is certain to stop it; the
     message may stay in pytest's capture. tests/conftest.py passes

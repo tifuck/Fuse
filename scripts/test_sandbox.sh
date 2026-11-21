@@ -1,7 +1,7 @@
 #!/bin/bash
-# Run scripts/test.sh or scripts/run_browser_tests.sh inside a throwaway
-# systemd sandbox (tests/README.md). Nothing else runs in it, and tests refuse
-# to run anywhere else (tests/safety.py).
+# Run scripts/test.sh inside a throwaway systemd sandbox (tests/README.md).
+# Nothing else runs in it, and tests refuse to run anywhere else
+# (tests/safety.py).
 #
 #   scripts/test_sandbox.sh scripts/test.sh [args...]
 #
@@ -11,8 +11,7 @@
 #     read-only at /run/<unit>/tree, the venv at /run/<unit>/venv); /tmp and
 #     every home directory (/root, /home) are empty read-only tmpfs mounts;
 #   - the only writable place is the unit's own run directory /run/<unit>
-#     (TMPDIR, HOME, PYTHONPYCACHEPREFIX), removed when the unit ends, plus,
-#     for the browser runner only, one fresh log directory it was handed;
+#     (TMPDIR, HOME, PYTHONPYCACHEPREFIX), removed when the unit ends;
 #   - .env/config.env are not readable: the run gets the test database
 #     account and a test-only APP_SECRET from a root-only credential file
 #     (FUSE_TEST_CREDENTIALS, default /root/.config/fuse-test/test.env);
@@ -44,8 +43,8 @@ command -v systemd-run >/dev/null || die "systemd-run is required to run tests"
 [ "$tree" != / ] && [ -f "$tree/tests/safety.py" ] || die "$tree is not a Fuse tree"
 id fuse-test >/dev/null 2>&1 || die "the system user fuse-test is missing (useradd --system --user-group --no-create-home --shell /usr/sbin/nologin fuse-test)"
 case "${1:-}" in
-  scripts/test.sh|scripts/run_browser_tests.sh) ;;
-  *) die "usage: $self scripts/test.sh|scripts/run_browser_tests.sh [args...]" ;;
+  scripts/test.sh) ;;
+  *) die "usage: $self scripts/test.sh [args...]" ;;
 esac
 credentials=${FUSE_TEST_CREDENTIALS:-/root/.config/fuse-test/test.env}
 [ -f "$credentials" ] && [ ! -L "$credentials" ] && [ "$(stat -c '%u %a' "$credentials")" = "0 600" ] \
@@ -59,7 +58,6 @@ unit="fuse-test-$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 run="/run/$unit"
 
 binds_ro=("$tree:$run/tree" "$venv:$run/venv")
-binds_rw=()
 hidden=(-/run/dbus -/run/systemd/private -/etc/mysql/debian.cnf -/root/.ssh -/etc/ssh -/home)
 # .env and config.env: symlinks into /root vanish with the home tmpfs; a real
 # file in the tree is covered with /dev/null; any other target is made inaccessible.
@@ -78,21 +76,9 @@ env_args=(-E "FUSE_TEST_SANDBOX=systemd-run" -E "FUSE_TEST_RUN_DIR=$run" -E "TMP
           -E "PATH=/usr/local/bin:/usr/bin:/bin" -E "LANG=${LANG:-C.UTF-8}")
 # Settings the runners and tests read; nothing else of the caller's
 # environment (credentials, database URLs, writable paths) crosses into the unit.
-for name in JOBS TEST_TIMEOUT PYTEST_ADDOPTS TERM NO_COLOR FUSE_CHAT_TEST_MODE FUSE_CHAT_VIEW FUSE_BROWSER_PORT NODE_PATH; do
+for name in JOBS TEST_TIMEOUT PYTEST_ADDOPTS TERM NO_COLOR FUSE_CHAT_TEST_MODE; do
   [ -n "${!name+x}" ] && env_args+=(-E "$name=${!name}")
 done
-
-# The browser runner may hand over one fresh log directory it created.
-if [ -n "${FUSE_TEST_LOG_DIR:-}" ]; then
-  [ "$1" = scripts/run_browser_tests.sh ] || die "only the browser runner gets a log directory"
-  base=/tmp/fuse-browser-tests
-  [[ "$FUSE_TEST_LOG_DIR" =~ ^/tmp/fuse-browser-tests/run\.[A-Za-z0-9]{8}$ ]] || die "log directory must be $base/run.XXXXXXXX"
-  [ -d "$base" ] && [ ! -L "$base" ] && [ "$(stat -c %u "$base")" = 0 ] || die "$base must be a root-owned directory"
-  [ -d "$FUSE_TEST_LOG_DIR" ] && [ ! -L "$FUSE_TEST_LOG_DIR" ] && [ "$(stat -c %U "$FUSE_TEST_LOG_DIR")" = fuse-test ] \
-    && [ -z "$(ls -A "$FUSE_TEST_LOG_DIR")" ] || die "$FUSE_TEST_LOG_DIR must be a fresh empty directory owned by fuse-test"
-  binds_rw+=("$FUSE_TEST_LOG_DIR:$run/logs")
-  env_args+=(-E "FUSE_TEST_LOG_DIR=$run/logs")
-fi
 
 props=(
   -p User=fuse-test -p Group=fuse-test
@@ -120,7 +106,6 @@ props=(
   -p SystemCallErrorNumber=EPERM
   -p RuntimeMaxSec=3600
 )
-[ ${#binds_rw[@]} -gt 0 ] && props+=(-p "BindPaths=${binds_rw[*]}")
 
 status=0
 systemd-run --wait --pipe --collect --quiet --service-type=exec --unit="$unit" "${props[@]}" "${env_args[@]}" \

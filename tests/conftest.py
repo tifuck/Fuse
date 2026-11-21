@@ -3,12 +3,8 @@ the real-schema guard, safe settings, data writes kept in the run dir.
 
 First, before anything imports app code: tests run only inside the sandbox
 scripts/test.sh starts, and may not start processes (tests/safety.py). A raw
-`python -m pytest` stops here. tests/core/__init__.py and
-tests/legacy/__init__.py repeat both, so --noconftest cannot skip them.
-
-Default runs collect only tests/core. tests/legacy is the frozen pre-redesign
-suite: unmaintained, never required, collected only with FUSE_LEGACY_TESTS=1
-(scripts/test.sh legacy). Run it on its own, never in the same session as core.
+`python -m pytest` stops here. tests/core/__init__.py repeats both, so
+--noconftest cannot skip them.
 """
 import sys
 from pathlib import Path
@@ -20,17 +16,14 @@ from tests.safety import allow_xdist_workers, install_process_guard, refuse_unle
 refuse_unless_sandboxed(hard=False)
 install_process_guard()
 
-import os  # noqa: E402
-
 import pytest  # noqa: E402
 
 from tests.mariadb_fixture import install_guard  # noqa: E402
 
 install_guard()
 
-# Root-level test_*.py are local, gitignored legacy leftovers (real-page
-# fixtures); they belong to tests/legacy.
-collect_ignore_glob = ["test_*.py"] + ([] if os.environ.get("FUSE_LEGACY_TESTS") == "1" else ["legacy/*"])
+# Root-level test_*.py are local, gitignored leftovers (real-page fixtures).
+collect_ignore_glob = ["test_*.py"]
 
 
 @pytest.hookimpl(trylast=True)

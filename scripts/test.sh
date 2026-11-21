@@ -5,7 +5,6 @@
 #   scripts/test.sh runs tools      only these areas (tests/core/<area>; js = tests/js)
 #   scripts/test.sh changed [ref]   areas whose sources differ from ref (default dev),
 #                                   committed or not, mapped by tests/areas.txt
-#   scripts/test.sh legacy [path..] the frozen pre-redesign suite; never required
 #
 # Extra pytest arguments go after --. JOBS=N sets parallel workers (0 = off).
 #
@@ -77,12 +76,11 @@ read -ra addopts <<< "${PYTEST_ADDOPTS:-}"
 check_pytest_args "${addopts[@]}"
 for arg in "${args[@]:1}"; do
   case "${args[0]:-}" in
-    legacy) [[ "$arg" == tests/legacy/* && "$arg" != *..* ]] || refuse "legacy target $arg" ;;
     changed) [[ "$arg" =~ ^[A-Za-z0-9_./-]+$ ]] || refuse "ref $arg" ;;
   esac
 done
 case "${args[0]:-}" in
-  legacy|changed|"") ;;
+  changed|"") ;;
   *) for area in "${args[@]}"; do [[ "$area" =~ ^[a-z0-9_]+$ ]] || refuse "area $area"; done ;;
 esac
 
@@ -103,12 +101,6 @@ if [ "${FUSE_TEST_SANDBOX:-}" != "systemd-run" ]; then
 fi
 
 case "${args[0]:-}" in
-  legacy)
-    export FUSE_LEGACY_TESTS=1
-    targets=("${args[@]:1}")
-    [ ${#targets[@]} -eq 0 ] && targets=(tests/legacy)
-    pytest --timeout="${TEST_TIMEOUT:-300}" "${targets[@]}" "${extra[@]}"
-    ;;
   changed)
     echo "changed is resolved before entering the sandbox" >&2; exit 2
     ;;
