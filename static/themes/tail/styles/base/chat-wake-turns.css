@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-wake-turns.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-wake-turns.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Jump to latest: anchored to the thread's grid area above the dock. */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-latest {

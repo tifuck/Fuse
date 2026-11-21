@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/schedules.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/schedules.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 :where(html.is-chat-root[data-chat-view="tail"]) .hosts-tabs a.on {
   background: color-mix(in srgb, var(--mist) 10%, transparent);

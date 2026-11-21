@@ -1,4 +1,4 @@
-/* console theme copy of static/chat-design.css: the rules that style /chat, gated to
+/* tail theme copy of static/chat-design.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* One plain selector per element, not a :is() list over "*": the ancestor
    filter then rejects them on every element outside code at once. */

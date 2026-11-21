@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-sidebar-resize.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-sidebar-resize.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* —— Sidebar redesign: brand mark, tabs-first header, contextual +, uniform rows,
       user-resizable width. Loaded last so it wins the cascade. —— */

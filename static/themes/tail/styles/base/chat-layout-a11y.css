@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-layout-a11y.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-layout-a11y.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-empty { max-width: 38rem; padding: 2rem 0 3rem; }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-empty-glyph { display: grid; place-items: center; width: 3.75rem; height: 3.75rem; margin: 0 auto 1.5rem; color: var(--brass); border: 1px solid var(--line); border-radius: 18px; }

@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-subagents.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-subagents.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Agents and background commands: the work strip under the header, and a
    subagent's transcript shown in place of the main one. Rows share one grid

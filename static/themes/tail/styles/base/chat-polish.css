@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-polish.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-polish.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* —— Chat polish: tighter type, isolated context, keyboard-safe thread —— */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-bar .btn {

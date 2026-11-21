@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-footer-citations.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-footer-citations.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Footer: usage + duration. */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-foot { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 0.35rem 0.55rem; min-height: 2.25rem; margin-top: 0.2rem; }
