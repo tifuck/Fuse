@@ -1,0 +1,26 @@
+/* Console design: preserve import order. */
+/* The former shared chat-design.css layer (palettes stay shared there). */
+@import url("base/chat-design.css");
+@import url("design-001-tools.css");
+@import url("design-002-transcript.css");
+@import url("design-003-tools.css");
+@import url("design-004-composer.css");
+@import url("design-005-tools.css");
+@import url("design-006-tools.css");
+@import url("design-007-composer.css");
+@import url("design-008-tools.css");
+@import url("design-009-transcript.css");
+@import url("design-010-summaries.css");
+@import url("design-011-bottom.css");
+@import url("pages.css");
+@import url("design-012-work.css");
+@import url("chrome.css");
+@import url("dictation.css");
+@import url("wallpaper-picker.css");
+/* Spinner faces, formerly the shared spinner-next/future.css linked after this file. */
+@import url("base/spinner-next.css");
+@import url("base/spinner-future.css");
+/* Last: the polish over the working area. */
+@import url("design-013-polish.css");
+/* Last: the permission ask and the queue above the composer. */
+@import url("dock.css");

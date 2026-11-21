@@ -1,9 +1,0 @@
-{
-  "id": "combined",
-  "order": 1,
-  "label": "Combined",
-  "description": "Combined reads like a chat: a centered column, one-line steps, and a side rail for running agents.",
-  "font": "bricolage",
-  "wallpaper": "none",
-  "scheme": "dark"
-}

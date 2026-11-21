@@ -1,0 +1,5 @@
+/* Tail foundation: preserve import order. */
+/* What the shared app.css used to draw on /chat, now owned here, in app.css order. */
+@import url("styles/base.css");
+@import url("styles/foundation-001-tools.css");
+@import url("styles/foundation-002-composer.css");

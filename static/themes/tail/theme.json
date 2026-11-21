@@ -1,0 +1,9 @@
+{
+  "id": "tail",
+  "order": 1,
+  "label": "Tail",
+  "description": "Tail is a modern console: one line of ticks per burst of work, step output in a side pane, and a prompt line over a status bar.",
+  "font": "jetbrains",
+  "wallpaper": "none",
+  "scheme": "dark"
+}

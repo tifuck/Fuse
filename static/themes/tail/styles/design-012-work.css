@@ -1,0 +1,285 @@
+/* Work strip: the agent tree and the background commands of the transcript
+   on screen, one dense block under the header. Every row is one thin mono
+   line on the composer's surface, like Claude Code's agent and task lists:
+   no headings, the main row and the `$` prompt say what each group is.
+   Rows are the transcript's line height; main stays tall enough to tap,
+   since it folds the tree and leads back from a subagent. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work {
+  --work-row: var(--console-row);
+  --work-main: max(var(--work-row), 1.3rem);
+  padding: 0;
+  background: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  font: calc(var(--console-type) * 0.92)/var(--work-row) var(--mono);
+  color: var(--mist);
+}
+/* Room under the last row, but not under a lone main row: its tint runs to
+   the border. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work:has(:is(.chat-agents-row:not(.is-main), .chat-jobs-row)) { padding-bottom: 0.25rem; }
+/* Commands alone lead the strip: the same room above them as below. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work:has(> .chat-work-agents[hidden]) { padding-top: 0.25rem; }
+/* Both lists share their gutters and action column, so agent and command
+   clocks and stop buttons line up. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-work-agents, .chat-work-jobs) {
+  --work-gap: 0.6rem;
+  --work-act: 1.4rem;
+  --work-pad-l: 0.75rem;
+  --work-pad-r: 0.5rem;
+}
+/* A subgrid row hands its right padding to the last track's item as margin,
+   so that track carries it. The state column fits "wedged — force stop" and
+   the clock "59m 59s": a row changing state or a ticking clock moves no
+   other column. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents {
+  grid-template-columns: auto minmax(19ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
+  max-height: calc(var(--work-main) + 9 * var(--work-row));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
+  margin-top: 0.15rem;
+  padding-top: 0.15rem;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-agents-row, .chat-jobs-row) {
+  height: var(--work-row);
+  padding: 0 var(--work-pad-r) 0 var(--work-pad-l);
+  column-gap: var(--work-gap);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-row { grid-template-columns: minmax(0, 1fr) minmax(7ch, auto) var(--work-act); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row.is-main { height: var(--work-main); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-agents-row, .chat-jobs-row):hover {
+  background: color-mix(in srgb, var(--mist) 5%, transparent);
+}
+/* The transcript on screen: a tint and a brass bar on its row. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row[aria-current="true"] {
+  background: color-mix(in srgb, var(--brass) 9%, transparent);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--brass);
+}
+/* Main stays pinned while its subagents scroll under it, and the scrollbar
+   starts below it instead of running beside it. Its fills are opaque so no
+   row shows through. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents > .chat-agents-row.is-main {
+  --work-bg: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--work-bg);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents > .chat-agents-row.is-main:hover {
+  background: color-mix(in srgb, var(--mist) 5%, var(--work-bg));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents > .chat-agents-row.is-main[aria-current="true"] {
+  background: color-mix(in srgb, var(--brass) 9%, var(--work-bg));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents::-webkit-scrollbar-track { margin-top: var(--work-main); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-name {
+  max-width: 40ch;
+  color: color-mix(in srgb, var(--mist) 86%, var(--ink));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row[aria-current="true"] .chat-agents-name { color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row.is-main .chat-agents-name { font-weight: 600; color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-agents-meta, .chat-jobs-meta, .chat-agents-time, .chat-agents-fold) { color: var(--mute); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row.is-idle .chat-agents-state { color: var(--mute); }
+/* Between the task and the clock in weight, so the three never read as one. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-model { color: color-mix(in srgb, var(--mist) 62%, var(--ink)); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-fold:hover { color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-cmd { color: color-mix(in srgb, var(--mist) 86%, var(--ink)); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-output-link:hover .chat-jobs-cmd { color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-row:not(.is-monitor) .chat-jobs-cmd::before {
+  content: "$ ";
+  color: var(--mute);
+}
+/* The command gives way first; where and how it runs keeps its words. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-meta {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 40%;
+  text-overflow: ellipsis;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-agents-act, .chat-jobs-kill) {
+  width: var(--work-act);
+  height: var(--work-row);
+  overflow: hidden; /* a glyph's text box is taller than the row: keep its hit area out of the rows around it */
+  font-size: 0.95rem;
+}
+
+/* Phones: a taller main row to tap, the lists shorter so the transcript
+   keeps the screen. Clocks keep their column so they line up. A subagent
+   row drops what it is doing (its tooltip has the full line) so the task
+   keeps the room. */
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work {
+    --work-main: max(var(--work-row), 1.6rem);
+  }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-work-agents, .chat-work-jobs) {
+    --work-gap: 0.4rem;
+    --work-act: 1.6rem;
+    --work-pad-l: var(--console-gutter, 0.55rem);
+    --work-pad-r: 0.25rem;
+  }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents {
+    grid-template-columns: minmax(0, auto) minmax(16ch, auto) minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r));
+    max-height: calc(var(--work-main) + 5 * var(--work-row));
+  }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-jobs { max-height: calc(3 * var(--work-row)); }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row:not(.is-main) :is(.chat-agents-doing, .chat-agents-sum) { display: none; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row:not(.is-main) .chat-agents-name { max-width: none; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-model { max-width: 16ch; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-provider { display: none; }
+}
+/* Narrow phones: a subagent row is its task and dot (the dot carries its
+   state, the full line is in its tooltip); a command row is its command.
+   Main says "2 running": the fold beside it counts agents. */
+@media (max-width: 520px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row:not(.is-main) .chat-agents-meta,
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-meta,
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-noun { display: none; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-agents { grid-template-columns: minmax(0, auto) auto minmax(0, 1fr) auto minmax(7ch, auto) calc(var(--work-act) + var(--work-pad-r)); }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-model { max-width: 10ch; }
+  /* Main's dot carries idle/working, like a subagent's here; the count keeps the room. */
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-agents-row.is-main .chat-agents-state { display: none; }
+}
+/* An opened background command: its output under its row (never inside the
+   one-line row), the strip growing to hold it and the output scrolling on
+   its own. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-work-jobs:has(> .chat-jobs-detail.is-open) { max-height: min(50vh, calc(5 * var(--work-row) + 15rem)); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail {
+  padding: 0 var(--work-pad-r) 0.3rem calc(var(--work-pad-l) + var(--console-dot, 0.4rem) + 0.55rem);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail .chat-tool-section-head {
+  display: flex;
+  gap: 0.9rem;
+  color: var(--mute);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail .chat-tool-copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  cursor: pointer;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail .chat-tool-copy:hover { color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail .chat-tool-out {
+  max-height: 12rem;
+  margin: 0;
+  font: inherit;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-jobs-detail .chat-tool-context { display: flex; gap: 0.75rem; color: var(--mute); }
+
+/* run_code: its calls hang under the └ line as a tree, folded with the row;
+   each opens its own output under it. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-hang:not(.is-expanded) .chat-console-codetree { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codetree { margin: 0.1rem 0 0 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codetree .chat-console-codetree { margin: 0; }
+/* A finished script's count line reads like a folded work line: grey words,
+   bold counts. A failed, stopped or running one keeps its own colour. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_code"]:is(.is-done, .is-warning) > .chat-step-main .chat-console-hang:not(.is-error) > .chat-console-hang-body > .chat-console-result-text {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecount { color: var(--mist); }
+/* A failed script reads like a finished one: its grey count line, then the
+   error on one line of its own (cut short; the Source row holds all of it).
+   Its calls keep their own colours. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_code"] .chat-console-hang.is-error > .chat-console-hang-body > .chat-console-result-text {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codeerr { display: block; overflow: hidden; color: var(--fault); text-overflow: ellipsis; white-space: nowrap; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-hang.is-error .chat-console-codetree :is(.chat-console-out:not(.is-error), .chat-console-nbody) { color: var(--mist); }
+/* A shell row is one line: its description, or its command cut short; the
+   whole command opens under it. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle { min-width: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label { display: flex !important; flex: 0 1 auto; column-gap: 1ch; min-width: 0; padding-left: 0; text-indent: 0; white-space: nowrap; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > * { flex: 0 0 auto; margin-left: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-took { white-space: nowrap; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { white-space: nowrap; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call wbr { display: none; }
+/* An opened shell row: the command over its output, "$ " before its first
+   line and every wrapped or later line under the command's text. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-cmd { color: var(--mute); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-cmdline { padding-left: 2ch; text-indent: -2ch; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--console-row, 1.25rem); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-cmdpr { display: inline-block; width: 2ch; text-indent: 0; }
+/* An opened call in the tree is not the row opening its own body: the └ line stays. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-hang.is-expanded:has(> .chat-console-hang-body > .chat-console-full > .chat-console-codetree) > .chat-console-hang-body > .chat-console-result-text { display: block; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main { display: block; min-width: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head { display: block; min-height: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0 0.6ch;
+  width: 100%;
+  min-height: var(--console-row, 1.25rem);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > button.chat-step-toggle { cursor: pointer; }
+/* One line per call: the call is cut with an ellipsis; how it ended, its
+   clock and the branch keep their width. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > * { flex: 0 0 auto; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-call { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-call * { white-space: nowrap; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle:not([aria-expanded="true"]) > .chat-console-call wbr { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-console-codemeta { flex: 0 1 auto; min-width: 5ch; overflow: hidden; text-overflow: ellipsis; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall:not([data-tool="run_terminal_command"]) > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall:not([data-tool="run_terminal_command"]) > .chat-step-main > .chat-step-head > button[aria-expanded="true"] > .chat-console-call * { white-space: normal; overflow-wrap: anywhere; }
+/* The tree is typed, like every other branch: ├ on a row, └ on its level's
+   last, in the branch's grey. A row that is not the last continues the
+   tree with │ down the lines it wraps or opens to, so the next ├ always
+   meets it. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall { position: relative; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall:not(:last-child)::before {
+  content: "│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│\A│";
+  position: absolute;
+  top: var(--console-row, 1.25rem);
+  bottom: 0;
+  left: 0;
+  width: 1ch;
+  overflow: hidden;
+  white-space: pre;
+  line-height: var(--console-row, 1.25rem);
+  color: color-mix(in srgb, var(--mist) 34%, var(--ink));
+  pointer-events: none;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner:has(> .chat-console-codetree) { border-left: 0; padding-left: 0; margin-left: 2.06ch; }
+/* An opened row's body hangs from a └ under the row's name, as a row's
+   body does outside a script. A folded group of reads opens to its own tree. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner:not(:has(> .chat-console-codetree))::before {
+  content: "└";
+  position: absolute;
+  top: 0;
+  left: 0;
+  line-height: var(--console-row, 1.25rem);
+  color: color-mix(in srgb, var(--mist) 34%, var(--ink));
+  pointer-events: none;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall .chat-console-branch { flex: 0 0 auto; margin: 0 0.4ch 0 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall .chat-console-dim { color: var(--mute); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-reveal { display: block; padding: 0; margin: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-reveal:not(.is-open) { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner {
+  position: relative;
+  margin: 0 0 0 2.06ch;
+  padding: 0 0 0 2ch;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codecall .chat-console-out { display: block; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codepart + .chat-console-codepart { margin-top: 0; }
+/* Everything in the tree sits on its line grid (one row per line, no extra
+   gaps), so the │ that continues a row meets the next row's glyph the same
+   way after every opened body. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codetree :is(.chat-console-out, .chat-console-lines, .chat-console-codepart, pre) { margin-block: 0; padding-block: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-codetree :is(.chat-console-stdout, .chat-console-nline, .chat-console-codepart > span, pre, code, .chat-console-more) { line-height: var(--console-row, 1.25rem); }

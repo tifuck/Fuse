@@ -13,7 +13,7 @@
 # outside it, it creates that log directory (the only writable path the
 # sandbox grants it) and reruns itself there; the fixture server refuses to
 # start anywhere else and may not start processes (tests/safety.py).
-# FUSE_CHAT_VIEW=combined runs the suites under the Combined chat theme (the
+# FUSE_CHAT_VIEW=tail runs the suites under the Tail chat theme (the
 # fixture's login sets the fuse_chat_view cookie Appearance › Layout writes);
 # unset, they run under Console, the default.
 set -u

@@ -1,0 +1,254 @@
+/* Bottom stack (todo list, queue, composer) and top chrome (header line,
+   background commands). Loaded last: these settle earlier layers. */
+
+/* Header line: a transparent scroll-gutter border mitred the bottom rule's
+   end into a fade just before the agents pane; pad the gutter instead. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-bar {
+  border-right-width: 0;
+}
+@media (min-width: 801px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-bar {
+    padding-right: calc(0.75rem + var(--chat-scroll-gutter, 0px));
+  }
+}
+
+/* Stop reads as stop: a dull red, not the accent. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-send.is-stop {
+  color: color-mix(in srgb, var(--fault) 62%, var(--mute));
+  opacity: 1;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-send.is-stop:hover {
+  color: var(--fault);
+}
+/* Armed by a first Esc: the next Esc stops. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-send.is-stop.is-armed {
+  color: var(--fault);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fault) 45%, transparent);
+}
+
+/* Todo list: the header's todo button opens it; its page starts with a thin
+   head line (title, count, dismiss). */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-todo-head {
+  gap: 0.4rem;
+  font-size: calc(var(--console-type) * 0.92);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-todo-title { font-weight: 500; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-todo-dismiss {
+  width: 1.2rem;
+  height: 100%;
+  font-size: 0.85rem;
+}
+/* Open, the transcript on screen ends where the page begins: its scroll box
+   shrinks, so the scrollbar ends there too, not behind the page. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])) > .chat-live-dock:not([hidden]),
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])):not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
+  padding-bottom: 0.6rem;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"]:not(.is-empty):not(.is-agent-view) [data-chat-thread]:has(~ .chat-dock > .chat-live-todos.is-open:not([hidden])) {
+  margin-bottom: var(--todo-push, 0px);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) > .chat-live-dock:not([hidden]),
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])):not(:has(> .chat-live-dock:not([hidden]))) > .chat-log {
+  padding-bottom: 0.6rem;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"].is-agent-view [data-agent-view]:has(~ .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) {
+  margin-bottom: var(--agent-todo-push, 0px);
+}
+/* An open list over a queue: a clear rule between the two. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock:has(> :is(.chat-live-todos, .chat-agent-live-todos).is-open:not([hidden])) > .chat-queue:not([hidden]) {
+  border-top-color: var(--todo-edge, var(--line));
+}
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-todo-dismiss { width: 1.7rem; height: 100%; }
+}
+
+/* Queue: waiting prompts at the top of the composer, under the composer's
+   own rule. "queued" runs up the transcript's dot column as a side rail that
+   grows with the list (the count joins it once the list scrolls); messages
+   sit on the transcript's text column. The next message and held ones keep
+   their controls lit, the rest light up under the pointer. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue {
+  --queue-row: 1.3rem;
+  --queue-pad: 0.35rem;
+  --queue-pad-end: 0.15rem;
+  --queue-bg: color-mix(in srgb, var(--ink) 92%, var(--panel));
+  display: grid;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+  margin: 0 calc(-1 * var(--console-gutter, 0px));
+  padding: var(--queue-pad) calc(var(--console-gutter, 0px) + 0.15rem) var(--queue-pad-end);
+  border-top: 1px solid color-mix(in srgb, var(--mist) 22%, var(--ink));
+  background: var(--queue-bg);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock:has(> .chat-queue:not([hidden])):not(:has(> :is(.chat-live-todos, .chat-agent-live-todos).is-open:not([hidden]))) > .chat-box:not(.is-drop) {
+  border-top-color: transparent;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  /* Takes the rows' height plus the padding, never sets it: one message
+     stays one line and the label still fits beside it. */
+  margin: calc(-1 * var(--queue-pad)) 0 calc(-1 * var(--queue-pad-end));
+  contain: size;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 500 0.56rem/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--mute) 80%, var(--ink));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-kicker::before,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-kicker::after {
+  content: "";
+  flex: 1;
+  border-left: 1px solid color-mix(in srgb, var(--mist) 16%, var(--ink));
+}
+/* One message: no rail, and just enough padding for the word. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue:has(.chat-queue-item:only-child) { --queue-pad: 0.45rem; --queue-pad-end: 0.4rem; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker { gap: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::before,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue:has(.chat-queue-item:only-child) .chat-queue-kicker::after { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-kicker span { display: none; color: var(--brass); font-variant-numeric: tabular-nums; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-list {
+  gap: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  /* A half row past the third says the list scrolls. */
+  max-height: calc(3.5 * var(--queue-row));
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-list:has(> :nth-child(4)) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 0.5rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 0.5rem), transparent);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 0.45rem;
+  min-height: var(--queue-row);
+  animation: console-queue-in var(--dur-2, 200ms) var(--ease-glide, ease-out) both;
+}
+@keyframes console-queue-in {
+  from { opacity: 0; transform: translateY(0.3rem); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item { animation: none; }
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item + .chat-queue-item { border-top: 0; padding-top: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-dot { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-text {
+  font: var(--console-type)/var(--queue-row) var(--mono);
+  color: color-mix(in srgb, var(--mute) 82%, var(--ink));
+  transition: color var(--dur-hover) ease;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:first-child .chat-queue-text { color: color-mix(in srgb, var(--mist) 74%, var(--ink)); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:is(:hover, :focus-within) .chat-queue-text { color: var(--mist); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:is(.is-immediate, .is-sending) .chat-queue-text { color: var(--brass); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item.is-sending .chat-queue-text { animation: console-queue-sending 1.4s ease-in-out infinite; }
+@keyframes console-queue-sending {
+  50% { opacity: 0.55; }
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-state { font-size: 0.62rem; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-actions { gap: 0; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action {
+  min-height: 0;
+  padding: 0 0.4rem;
+  border-radius: 0;
+  font: 0.68rem/var(--queue-row) var(--mono);
+  color: var(--mute);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action:hover {
+  color: var(--mist);
+  background: color-mix(in srgb, var(--mist) 8%, transparent);
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action[data-queue-send] { transition: color var(--dur-hover) ease, opacity var(--dur-hover) ease; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:is(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { color: var(--brass); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action[data-queue-send]:hover {
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+}
+/* With a pointer, a later row's Send now waits under the pointer; its space
+   stays, so nothing shifts when it shows. */
+@media (hover: hover) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:not(:first-child, .is-held, :hover, :focus-within) .chat-queue-action[data-queue-send] { opacity: 0; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:not(:hover, :focus-within) .chat-queue-more:not(:disabled) { opacity: 0.6; }
+}
+/* One line per message at every width; the ⋮ menu opens beside its button so
+   the scrolling list never clips it. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item > * { grid-row: 1; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-text { grid-column: 1; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-state { grid-column: 2; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-state:empty { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-actions { grid-column: 3; align-items: center; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more-wrap { position: relative; display: inline-flex; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: var(--queue-row);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--mute);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more:hover:not(:disabled) {
+    color: var(--mist);
+    background: color-mix(in srgb, var(--mist) 8%, transparent);
+  }
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more[aria-expanded="true"]:not(:disabled) { color: var(--mist); opacity: 1; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more:disabled { opacity: 0.45; cursor: default; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-menu {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  padding-left: 0.2rem;
+  background: var(--queue-bg);
+  box-shadow: -1.2rem 0 0.8rem -0.2rem var(--queue-bg);
+  white-space: nowrap;
+}
+/* An open menu takes the place of the row's tail (state, Send now) and
+   fades the text it overlaps, instead of a box drawn over them. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item:has([aria-expanded="true"]) :is(.chat-queue-state, [data-queue-send]) { visibility: hidden; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-menu[hidden] { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-menu [data-queue-cancel]:hover { color: var(--fault); }
+@media (max-width: 600px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue { --queue-row: 1.5rem; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-item { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: 0; }
+  /* Phones: Send now is an arrow (its text stays the accessible name), so the
+     message keeps the width. */
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action[data-queue-send] { display: inline-grid; place-items: center; width: 1.7rem; height: var(--queue-row); min-height: 0; padding: 0; font-size: 0; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action[data-queue-send][hidden] { display: none; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-action[data-queue-send]::before { content: "\2191"; font-size: 0.9rem; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-more { width: 1.7rem; }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-queue-menu .chat-queue-action { padding: 0 0.55rem; }
+}
+
+/* Machine stats (static/chat/hoststats.js): at the right end of the live
+   status line, so they show only while a turn runs. Still one row on a
+   phone: the stats give way before the clock and tokens, ram first (a slice
+   that does not fit wraps out of the one-row box). */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-live-dock .chat-host-stats {
+  display: flex; flex-wrap: wrap; flex: 0 1000 auto; min-width: 0; height: var(--console-row);
+  margin-left: auto; padding-left: 1ch; column-gap: 1ch; overflow: hidden;
+  font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: var(--mute); cursor: default; user-select: none;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-host-stats[hidden], .chat-host-stats.is-squeezed, .chat-host-stats .is-dropped, .chat-host-stats [hidden]) { display: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-host-stats .hs-slice { display: inline-flex; align-items: center; gap: 1ch; height: var(--console-row); }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-host-stats .hs-slice b { min-width: 4ch; font-weight: 400; text-align: right; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn:has(> .chat-console-turn-peak) { grid-template-columns: var(--console-col) minmax(0, 1fr) auto; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn-peak { padding-left: 4ch; color: var(--mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A phone has no room beside the line: the peak takes its own row under it,
+   lined up with the text. */
+@media (max-width: 600px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn-peak { grid-column: 2; padding-left: 0; }
+}
