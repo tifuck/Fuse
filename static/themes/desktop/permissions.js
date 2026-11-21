@@ -54,7 +54,7 @@ function permQueueCardHtml(rec) {
               <button type="button" data-perm-decide="allow_session">Allow this ${esc(copy.noun)} in this chat</button>
               <button type="button" data-perm-decide="allow_host">Always allow this ${esc(copy.noun)}</button>
             </div>`;
-    return `<li class="chat-ask${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${esc(rec.id)}" data-perm-sig="${esc(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
+    return `<li class="chat-ask${rec.perm_kind === "skill" ? " is-skill" : ""}${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${esc(rec.id)}" data-perm-sig="${esc(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
       <span class="chat-ask-track" aria-hidden="true"><span class="chat-ask-bar" data-perm-bar></span></span>
       <div class="chat-ask-head">
         <span class="chat-ask-dot" aria-hidden="true"></span>
