@@ -22,8 +22,8 @@ unchanged.
 The built-in backdrops are code scenes, one module per art style
 (`static/backdrops/style-<style>.js`, exporting its scenes by key),
 registered in `scenes.js` and listed in `BACKDROPS` (`chat-appearance.js`)
-with a category (`BACKDROP_GROUPS`: nature, sky, water, space, abstract,
-objects) and an art style (`BACKDROP_STYLES`). The gallery filters by both.
+with a category (`BACKDROP_GROUPS`: aurora, nature, sky, water, space,
+abstract, objects) and an art style (`BACKDROP_STYLES`). The gallery filters by both.
 
 | Style | Language |
 | --- | --- |
