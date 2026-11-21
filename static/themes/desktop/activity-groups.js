@@ -435,8 +435,12 @@ function scriptRowHtml(item, live, openMap) {
     const parts = deps.codeRunParts(trace);
     const total = parts.calls.length ? parts.calls.reduce((n, [, k]) => n + k, 0) : calls.length;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
-    const result = presentation.failed ? String(trace.error || "failed").split("\n")[0]
-      : presentation.interrupted ? `Interrupted · ${finished} of ${total} ${total === 1 ? "call" : "calls"} finished` : `${total} ${total === 1 ? "call" : "calls"}`;
+    // Steps, as the summary line counts them; a syntax error names its line.
+    const steps = `${total} ${total === 1 ? "step" : "steps"}`;
+    const error = String(trace.error || "failed").split("\n")[0];
+    const at = error.match(/^(?:Error: )?line (\d+): (\w*Error)\b/);
+    const result = presentation.failed ? (at ? `${at[2]} on line ${at[1]}` : error)
+      : presentation.interrupted ? `${finished} of ${steps} done` : steps;
     // No description: the code's first line says what it is, as in Console.
     const name = trace.description || parts.code.split("\n").map((l) => l.trim()).find(Boolean) || "Script";
     const rows = [];
@@ -454,7 +458,9 @@ function scriptRowHtml(item, live, openMap) {
       rows.push(deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true }));
     }
     if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`), deps.escapeHtml(result)));
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-console-val">${deps.escapeHtml(name)}</span></span>` +
+    // A description reads as a sentence, like a described command's.
+    const said = trace.description ? deps.rowSentence(deps.ccFlat(trace.description), presentation) : null;
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described">${said ? `<span class="chat-tool-action">${deps.escapeHtml(said.lead)}</span>` : ""}<span class="chat-console-val">${deps.escapeHtml(said ? said.rest : name)}</span></span>` +
       `<span class="chat-console-result-text">${deps.escapeHtml(result)}</span>`;
     return (
       `<li class="chat-step is-console-call is-dk-script is-${presentation.state}${open ? " is-console-expanded" : ""}" data-tool="run_code" data-state="${presentation.state}" data-step="${deps.escapeHtml(key)}">` +
@@ -497,7 +503,7 @@ function codeRowHtml(trace, parts, key, open, meta) {
     const failed = deps.toolPresentation(trace, false).failed;
     const ret = parts.result.trim()
       ? `<div class="dk-code-part"><div class="dk-code-label">${failed ? "Error" : "Returned"}</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and what it returned"}</span>` : ""}</span>${meta ? `<span class="chat-console-result-text">${meta}</span>` : ""}`;
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">The script</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and its result"}</span>` : ""}</span>${meta ? `<span class="chat-console-result-text">${meta}</span>` : ""}`;
     const lines = parts.code.split("\n").length;
     const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
       `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;

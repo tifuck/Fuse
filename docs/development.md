@@ -16,7 +16,7 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `app/search/` | Fuse-hosted web search: one file per provider under `providers/`. |
 | `app/workspace_ops/` | Workspace tool families used by `app/workspace.py`. |
 | `agent/` | `fuse-agent` connector: C binary (`src/`, `make`) and Windows Go EXE (`windows/`). |
-| `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `combined`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. |
+| `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `tail`, `desktop`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. |
 | `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
 | `tests/` | `tests/core` (pytest, one folder per area), `tests/js` (Node unit suites, `*.test.cjs`) and the frozen `tests/legacy`; see `tests/README.md`. The UI has no automated tests: it is checked with screenshots. |
@@ -124,8 +124,9 @@ which adds `/sources/p/<id>/…`). Tests: sign-in, refresh and routing in
   `static/themes/<t>/theme.json` (id, order, label, description, default
   font, wallpaper and scheme) is the one list the `fuse_chat_view` cookie
   check (`app/chat_themes.py`), the Appearance › Layout buttons,
-  `chat-appearance.js` and `registry.js` read. The themes are `console` (default), `combined`
-  and `desktop` (a native coding-app window: top bar, sidebar, inspector).
+  `chat-appearance.js` and `registry.js` read. The themes are `console` (default), `tail`
+  (a modern console: tick lines, an output pane, a status bar) and `desktop`
+  (a native coding-app window: top bar, sidebar, inspector).
 - `/theme` (every theme) opens a strip of wallpaper cards above the
   composer: `static/chat/composer/wallpapers.js` owns the data, keys
   (arrows, Enter, Esc) and the choice; each theme draws the strip with

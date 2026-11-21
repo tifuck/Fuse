@@ -1,5 +1,7 @@
 // permissions presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
+// A draft's state in the card's own words: its button says Discard.
+const SKILL_STATUS = { pending: "waiting for you", rejected: "discarded", error: "couldn't save" };
 function permissionCardHtml(perm, msg) {
     if (!perm) return "";
     if (perm.kind === "tool_permission") return "";
@@ -23,7 +25,7 @@ function permissionCardHtml(perm, msg) {
          </div>`
       : `<p class="chat-perm-slug mono">${deps.escapeHtml(perm.slug || "")}</p><p class="usage-sub">${deps.escapeHtml(perm.description || "")}</p>`;
     return `<div class="chat-perm chat-skill-card" data-perm-id="${deps.escapeHtml(perm.id)}" data-msg="${deps.escapeHtml(msg.id || "")}">
-      <div class="chat-perm-head"><span>Skill proposal</span><span class="chat-perm-status" data-status="${deps.escapeHtml(status)}">${deps.escapeHtml(status)}</span></div>
+      <div class="chat-perm-head"><span>Skill draft</span><span class="chat-perm-status" data-status="${deps.escapeHtml(status)}">${deps.escapeHtml(SKILL_STATUS[status] || status)}</span></div>
       ${fields}${actions}
     </div>`;
   }

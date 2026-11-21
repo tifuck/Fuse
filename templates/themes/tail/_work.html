@@ -1,0 +1,28 @@
+{#- Tail theme: the transcript and the subagent view (the agents strip lives in the pane, _pane.html) with their live docks. Every data-* hook here is a runtime contract; the other
+    themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
+  <div class="chat-thread" data-chat-thread role="region" aria-label="Conversation" tabindex="0">
+    <div class="chat-log" data-chat-log hidden></div>
+    {#- Tail: the greeting opens an empty chat, over the prompt library. -#}
+    <div class="tail-welcome">
+  <p class="chat-welcome-kicker">Ideas into action</p>
+      <h2 class="chat-welcome" data-chat-welcome>What are we building?</h2>
+      <p class="chat-welcome-note">Think it through. Explore a codebase. Make something work.</p>
+    </div>
+    <section class="chat-library" data-chat-library aria-label="Prompt library" hidden></section>
+    <div class="chat-live-dock" data-live-dock hidden>
+      <span class="chat-activity-spin" data-live-dock-spin aria-hidden="true"></span>
+      <span class="chat-status-shimmer" data-dock-status><span data-live-dock-label><span class="chat-status-verb">Working</span><span class="chat-status-meta" hidden></span></span><span class="chat-dock-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
+    </div>
+  </div>
+  <div class="chat-thread chat-agent-view" data-agent-view data-agent-log hidden role="region" aria-label="Subagent transcript" tabindex="0">
+    <div class="chat-agent-error" data-agent-error role="alert" hidden>
+      <p data-agent-error-text></p>
+      <button type="button" class="chat-agent-view-tool" data-agent-retry>Retry</button>
+    </div>
+    <div class="chat-log chat-agent-log" data-agent-log-body></div>
+    <div class="chat-live-dock chat-agent-live-dock" data-agent-live-dock hidden>
+      <span class="chat-activity-spin" data-agent-live-spin aria-hidden="true"></span>
+      <span class="chat-status-shimmer" data-dock-status><span data-agent-live-label><span class="chat-status-verb">Working</span><span class="chat-status-meta" hidden></span></span><span class="chat-dock-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
+    </div>
+  </div>
+  <button type="button" class="chat-latest" data-chat-latest hidden><span class="chat-latest-arrow" aria-hidden="true">↓</span><span class="chat-activity-spin" data-chat-latest-spin aria-hidden="true"></span>Jump to latest</button>

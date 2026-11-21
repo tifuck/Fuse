@@ -297,28 +297,26 @@ function consoleCallHtml(trace, presentation, full = false) {
     if ((running) && name === "run_terminal_command" && pending) {
       return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;
     }
-    const verb = sentenceVerb(deps.consoleVerb(name, trace), name, presentation);
-    if (["todo_write", "list_subagents"].includes(name) || (name === "scratch" && !scratchAction(trace))) {
+    const verb = sentenceVerb(deps.consoleVerb(name, trace), name, presentation, trace);
+    if (name === "list_subagents") {
       // A bare call keeps the shared tail too: one clock and one host badge
       // per call, like every other row.
       return `<span class="chat-console-call"><span class="chat-tool-action">${deps.escapeHtml(verb)}</span></span>${hostHtml}${clock}`;
     }
+    if (name === "todo_write") {
+      // The row says what the call changed: "Added 3 todos, marked 1 finished".
+      const said = running ? "Updating todos" : todoChange(trace);
+      const cut = said.indexOf(" ");
+      return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(said.slice(0, cut))}</span>` +
+        `<span class="chat-console-val">${deps.escapeHtml(said.slice(cut + 1))}</span></span>${hostHtml}${clock}`;
+    }
     const described = shellDescription(trace, presentation, full);
     if (described) {
-      // The description is the row's sentence: in the past tense once it
-      // finished ("Listed the test areas"), running while it runs in the
-      // background ("Starting the server"), and as written when it failed or
-      // was cut short ("Build the release · Interrupted"), so it never claims
-      // what did not happen. Its first word is the verb, quiet like every
-      // other row's. A description that does not start with a verb keeps
-      // "Ran" before it.
-      const forms = deps.ccRunningForm(described) ? deps.ccInflect(described) : null;
-      const exitError = presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError;
-      const settled = !presentation?.running && !presentation?.failed && !presentation?.interrupted && !exitError;
-      const sentence = !forms ? "" : presentation?.running ? forms.running : settled ? forms.done : described;
-      const space = sentence.indexOf(" ");
-      const lead = !sentence ? verb : space === -1 ? sentence : sentence.slice(0, space);
-      const rest = !sentence ? described : space === -1 ? "" : sentence.slice(space + 1);
+      // The description is the row's sentence (rowSentence). A description
+      // that does not start with a verb keeps "Ran" before it.
+      const sentence = rowSentence(described, presentation, shellExitError(trace, presentation));
+      const lead = sentence ? sentence.lead : verb;
+      const rest = sentence ? sentence.rest : described;
       return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(lead)}</span>` +
         `${rest ? `<span class="chat-console-val">${deps.escapeHtml(rest)}</span>` : ""}</span>${hostHtml}${clock}`;
     }
@@ -355,26 +353,37 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = `"${pattern}"`;
       tail = where && where !== "." ? `in ${consoleArgText(where, 60)}` : "";
     } else if (name === "read_url") {
-      inner = consoleArgText(trace.url || "page", 100);
+      // The page, not its address: no scheme, query or fragment. The row's
+      // tooltip and its opened block keep the whole address.
+      let page = String(trace.url || "page");
+      try { const u = new URL(page); page = (u.host.replace(/^www\./, "") + u.pathname).replace(/\/$/, ""); } catch (_) {}
+      inner = consoleArgText(page, 100);
     } else if (isSearchTool(name)) {
       const queries = searchQueries(trace);
-      inner = queries.length ? `"${consoleArgText(queries[0], 80)}"${queries.length > 1 ? ` +${queries.length - 1}` : ""}` : "";
+      inner = queries.length ? `"${consoleArgText(queries[0], 80)}"${queries.length > 1 ? ` and ${queries.length - 1} more` : ""}` : "";
     } else if (["spawn_subagent", "get_subagent_output"].includes(name)) {
       inner = consoleArgText(agentSubject(trace) || "subagent", 90);
     } else if (name === "kill_subagent") {
       inner = consoleArgText(agentDescriptionFor(trace) || trace.child_id || "subagent", 90);
     } else if (name === "scratch") {
-      inner = consoleArgText(scratchAction(trace), 90);
+      inner = consoleArgText(scratchSaid(trace)[1], 90);
     } else if (["create_artifact", "update_artifact", "edit_artifact", "read_artifact"].includes(name)) {
       inner = consoleArgText(trace.title || "artifact", 80);
     } else if (name === "read_transcript") {
-      inner = consoleArgText(transcriptRange(trace), 90);
+      // The range is the row's result ("1–40 of 120").
+      inner = "";
+    } else if (name === "search_models") {
+      inner = trace.query ? `"${consoleArgText(trace.query, 80)}"` : "";
     } else if (["remember", "recall", "forget"].includes(name)) {
       inner = consoleArgText(trace.title || "memory", 90);
     } else if (name === "load_skill") {
-      // Skill(name), or Skill(name / file) for a supporting file; the line
-      // under it says what the skill is for.
-      inner = consoleArgText([trace.preview || "skill", trace.path].filter(Boolean).join(" / "), 90);
+      // "Loaded the skill x", or "Read file.md from the skill x" for a
+      // supporting file.
+      const skill = trace.preview || "skill";
+      prose = Boolean(trace.path);
+      inner = consoleArgText(trace.path ? `${String(trace.path).split("/").pop()} from the skill ${skill}` : skill, 90);
+    } else if (unknownTool(trace, presentation)) {
+      inner = consoleArgText(name, 90);
     } else {
       inner = consoleArgText(toolSubject(trace), 90);
     }
@@ -407,25 +416,111 @@ const VERB_FORMS = {
   Read: ["Read", "Reading"], View: ["Viewed", "Viewing"], List: ["Listed", "Listing"], Write: ["Wrote", "Writing"],
   Edit: ["Edited", "Editing"], Run: ["Ran", "Running"], Monitor: ["Watched", "Watching"], Wait: ["Waited for", "Waiting for"],
   Stop: ["Stopped", "Stopping"], Search: ["Searched", "Searching"], "Web search": ["Searched the web for", "Searching the web for"],
-  Fetch: ["Fetched", "Fetching"], Skill: ["Loaded", "Loading"], Draft: ["Drafted skill", "Drafting skill"],
-  Todos: ["Updated todos", "Updating todos"], Remember: ["Remembered", "Remembering"], Recall: ["Recalled", "Recalling"],
-  Forget: ["Forgot", "Forgetting"], Tools: ["Loaded tools", "Loading tools"], Transcript: ["Read transcript", "Reading transcript"],
-  Models: ["Searched models", "Searching models"],
+  Fetch: ["Fetched", "Fetching"], Skill: ["Loaded the skill", "Loading the skill"], Draft: ["Drafted the skill", "Drafting the skill"],
+  Remember: ["Remembered", "Remembering"], Recall: ["Recalled", "Recalling"],
+  Forget: ["Forgot", "Forgetting"], Tools: ["Loaded tools", "Loading tools"], Transcript: ["Reread earlier messages", "Rereading earlier messages"],
+  Models: ["Searched models for", "Searching models for"],
 };
 const ARTIFACT_VERBS = { create_artifact: "Create", update_artifact: "Update", edit_artifact: "Edit", read_artifact: "Read" };
 const ARTIFACT_FORMS = { Create: ["Created", "Creating"], Update: ["Updated", "Updating"], Edit: ["Edited", "Editing"], Read: ["Read", "Reading"] };
-function sentenceVerb(verb, name, presentation) {
+// A verb is only what happened: a stop that found nothing to stop tried to,
+// a wait that came back early checked on, a watch that was cut off stopped.
+function sentenceVerb(verb, name, presentation, trace) {
+    const running = Boolean(presentation?.running);
     const artifact = ARTIFACT_VERBS[name];
+    if (artifact && presentation?.failed) return `Couldn't ${artifact.toLowerCase()} the artifact`;
+    if (!running && trace) {
+      if (unknownTool(trace, presentation)) return "Tried a tool that doesn't exist";
+      if (name === "kill_command" && /^already /.test(String(trace.preview || ""))) return "Tried to stop";
+      if (name === "get_command_output" && deps.executionState(trace) === "running") return "Checked on";
+      if (name === "monitor" && (presentation?.interrupted || (presentation?.failed && deps.executionState(trace) === "timed_out"))) return "Stopped watching";
+      if (name === "write_file" && !presentation?.failed && /^created /.test(cleanToolOutput(trace, String(trace.output || "")).trim())) return "Created";
+      if (name === "load_skill" && trace.path) return "Read";
+    }
+    if (name === "load_skill" && trace?.path) return "Reading";
+    if (name === "scratch") return scratchSaid(trace, running)[0];
     const forms = artifact ? ARTIFACT_FORMS[artifact] : VERB_FORMS[verb];
-    const word = !forms ? (artifact || verb) : forms[presentation?.running ? 1 : 0];
-    return artifact ? `${word} artifact` : word;
+    const word = !forms ? (artifact || verb) : forms[running ? 1 : 0];
+    return artifact ? `${word} the artifact` : word;
   }
 
-function scratchAction(trace) {
-    const own = deps.ccFlat(trace && trace.description);
-    if (own) return own;
-    const read = String((trace && trace.preview) || "").match(/^(\S+) \(\d+ chars\)$/);
-    return read ? `Read ${read[1]}` : "";
+const unknownTool = (trace, presentation) => Boolean(presentation?.failed && /^unknown tool\b/i.test(String(trace?.error || "")));
+
+// A described call's sentence, split into its verb and the rest: past tense
+// once it finished ("Listed the test areas"), as it happens while it runs,
+// and "Failed to …" or "Stopped …ing" when it did not finish, so a row never
+// claims what did not happen. Null when the description does not start with
+// a verb.
+function rowSentence(described, presentation, exitError = false) {
+    const forms = deps.ccRunningForm(described) ? deps.ccInflect(described) : null;
+    if (!forms) return null;
+    const lower = (text) => text.charAt(0).toLowerCase() + text.slice(1);
+    const failed = presentation?.failed || exitError;
+    const [sentence, lead] = presentation?.running ? [forms.running, 1]
+      : failed ? [`Failed to ${lower(described)}`, 3]
+      : presentation?.interrupted ? [`Stopped ${lower(forms.running)}`, 2] : [forms.done, 1];
+    const words = sentence.split(" ");
+    return { lead: words.slice(0, lead).join(" "), rest: words.slice(lead).join(" ") };
+  }
+
+const shellExitError = (trace, presentation) => presentation?.state === "warning" && deps.ccExitMeaning(displayCommand(trace), deps.shellExitCode(trace)).isError;
+
+// A cut-short row whose sentence already says it stopped needs no "Stopped"
+// after it.
+function rowSaysStopped(trace, presentation) {
+    if (trace?.name === "monitor") return true;
+    const described = shellDescription(trace, presentation, false);
+    return Boolean(described && rowSentence(described, presentation));
+  }
+
+// What a todo_write changed, against the list before it. The model re-sends
+// the whole list on every call, so the list before is the newest landed call
+// ahead of this one in the chat. A call that is not in the chat's own
+// messages (a subagent's) has no list to compare with.
+function todoChange(trace) {
+    let before = [];
+    for (const msg of deps.messages || []) {
+      for (const other of Array.isArray(msg?.tools) ? msg.tools : []) {
+        if (other === trace) return todoChangeText(before, trace.todos);
+        if (other?.name === "todo_write" && other.status !== "error" && !other.error && Array.isArray(other.todos)) before = other.todos;
+      }
+    }
+    return todoChangeText(null, trace.todos);
+  }
+
+// "Added 3 todos, marked 1 finished": the first change names the todos, the
+// rest only count. before null: unknown, so only "Updated todos".
+function todoChangeText(before, now) {
+    const ids = (list) => new Map((Array.isArray(list) ? list : []).filter((item) => item && typeof item === "object")
+      .map((item, index) => [String(item.id || index + 1), item.status]));
+    if (!before) return "Updated todos";
+    const was = ids(before);
+    const is = ids(now);
+    const count = { added: 0, completed: 0, in_progress: 0, cancelled: 0 };
+    for (const [id, status] of is) {
+      if (!was.has(id)) count.added += 1;
+      else if (status !== was.get(id) && status in count) count[status] += 1;
+    }
+    const removed = [...was.keys()].filter((id) => !is.has(id)).length;
+    const parts = [[count.added, "added", ""], [count.completed, "marked", " finished"], [count.in_progress, "started", ""],
+      [count.cancelled, "cancelled", ""], [removed, "removed", ""]].filter(([n]) => n);
+    if (!parts.length) return "Updated todos";
+    const text = parts.map(([n, verb, tail], index) => `${verb} ${n}${index ? "" : n === 1 ? " todo" : " todos"}${tail}`).join(", ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+// A scratch call in plain words, from the server's receipt: "Wrote brief
+// (1,234 chars)" for one write, "brief (412 chars)" for a read, "2 slots"
+// for the list. [verb, the note's name].
+const SCRATCH_SAID = { Wrote: "Saved a note", "Appended to": "Added to its note", Edited: "Edited its note", Cleared: "Deleted its note", Changed: "Changed its note" };
+function scratchSaid(trace, running = false) {
+    const preview = String((trace && trace.preview) || "").trim();
+    const wrote = preview.match(/^(Wrote|Appended to|Edited|Cleared|Changed) (\S+?)(?: \([\d,]+ chars\))?$/);
+    if (wrote) return [SCRATCH_SAID[wrote[1]], wrote[2]];
+    const read = preview.match(/^(\S+) \([\d,]+ chars\)$/);
+    if (read) return ["Read its note", read[1]];
+    if (/^\d+ slots?$/.test(preview)) return ["Checked its notes", ""];
+    return [running ? "Updating its notes" : "Updated its notes", ""];
   }
 
 function consoleOutputText(trace, failed, running) {
@@ -642,5 +737,5 @@ function codeRunParts(trace) {
     return { result, code, calls };
   }
 
-  return { codeRunParts, isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, shellDescription, scratchAction, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
+  return { codeRunParts, isSearchTool, stackSpec, stackKey, toolIcon, shortToolPath, compactPath, displayCommand, toolSubject, toolAction, pageHost, stripPreview, relatedTrace, agentDescriptionFor, commandFor, commandOrigin, agentSubject, toolText, shortToolText, cleanToolOutput, splitNumberedLines, fileBodyHtml, kvListHtml, structuredToolHtml, webResultsHtml, transcriptRange, consoleArgText, consoleCallHtml, shellDescription, rowSentence, rowSaysStopped, todoChangeText, consoleOutputText, consoleMatchCount, consoleLineCount, consoleLangForPath, consoleNumberedHtml, STEP_ICONS, TOOL_ICON, STACK, visibleTraces, groupTraces, normErr, failNoteHtml, stepOpenAt, searchCountFor, searchQueries };
 }

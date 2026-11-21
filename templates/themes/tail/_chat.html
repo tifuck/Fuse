@@ -1,0 +1,10 @@
+{#- The theme's own shell: sidebar, header, strip and transcript, composer, sheets. -#}
+{% include "themes/tail/_sidebar.html" %}
+  <div class="chat-stage">
+{% include "themes/tail/_header.html" %}
+{% include "themes/tail/_work.html" %}
+{% include "themes/tail/_composer.html" %}
+{#- In the stage, so the open call's output (fixed, from inside the transcript) can sit over the pane. -#}
+{% include "themes/tail/_pane.html" %}
+  </div>
+{% include "themes/tail/_sheets.html" %}

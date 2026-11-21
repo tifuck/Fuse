@@ -86,13 +86,13 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label :is(.chat-tool-action, .chat-console-val, .dk-dir, .dk-think-first, .chat-console-took, .chat-console-result-text) { transition: color var(--dur-hover) ease; }
   & .chat-console-bundle .chat-step.is-console-call .chat-console-call .chat-console-val { color: color-mix(in srgb, var(--dk-text, var(--mist)) var(--dk-call-val, 82%), var(--dk-mute, var(--mute))); }
   @media (hover: hover) {
-    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
-    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:hover .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
-    & .chat-console-bundle .chat-step.is-console-call:not(.is-error, .is-interrupted) > .chat-step-main > .chat-step-head:hover .chat-step-label > :is(.chat-console-took, .chat-console-result-text) { color: var(--dk-mute, var(--mute)); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:has(> .chat-step-toggle):hover .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:has(> .chat-step-toggle):hover .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
+    & .chat-console-bundle .chat-step.is-console-call:not(.is-error, .is-interrupted) > .chat-step-main > .chat-step-head:has(> .chat-step-toggle):hover .chat-step-label > :is(.chat-console-took, .chat-console-result-text) { color: var(--dk-mute, var(--mute)); }
   }
   @media (hover: none) {
-    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
-    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:active .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:has(> .chat-step-toggle):active .chat-console-call .chat-console-val { color: var(--dk-text, var(--mist)); }
+    & .chat-console-bundle .chat-step.is-console-call > .chat-step-main > .chat-step-head:has(> .chat-step-toggle):active .chat-step-label :is(.chat-tool-action, .dk-dir, .dk-think-first) { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 50%, var(--dk-text, var(--mist))); }
     & .dk-call-copy:active { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
   }
   @media (prefers-reduced-motion: reduce) {

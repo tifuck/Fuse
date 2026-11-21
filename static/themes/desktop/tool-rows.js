@@ -142,8 +142,9 @@ function detailSectionHtml(label, value, kind = "", cap = 4000, command = "") {
       (characters.length > cap ? `<span class="chat-tool-truncated">Output truncated · showing ${deps.ccTokens(cap)} of ${deps.ccTokens(characters.length)} chars</span>` : "") + "</section>";
   }
 
-// The result after a row's object, worded so it does not repeat the verb:
-// "84 lines", "3 lines across 2 files", "+2 −1".
+// The result after a row's object, worded so it does not repeat the verb
+// and reads as a fact for the reader, not a receipt for the model:
+// "84 lines", "3 lines across 2 files", "+2 −1", "exit 5", "still running".
 function resultHtml(status) {
     const text = String(status || "");
     const edit = text.match(/^(?:Added (\d[\d,]*) lines?)?(?:, )?(?:[Rr]emoved (\d[\d,]*) lines?)?$/);
@@ -151,8 +152,11 @@ function resultHtml(status) {
       return [edit[1] && `<span class="dk-plus">+${edit[1]}</span>`, edit[2] && `<span class="dk-minus">−${edit[2]}</span>`].filter(Boolean).join(" ");
     }
     return deps.consoleStatusHtml(text.replace(/^(Wrote \d[\d,]* lines?) to .+$/, "$1").replace(/^(Read|Found|Listed|Received|Did|Wrote) (?=\d)/, "").replace(/^Ran (?=in the background)/, "")
-      .replace(/^Created .+ \(([^()]+)\)$/, "New file, $1").replace(/^\((No output)\)$/, "$1").replace(/^Exit code (?=\d)/, "Exit ")
-      .replace(/^[a-z]+(?:_[a-z]+)+$/, (state) => state.charAt(0).toUpperCase() + state.slice(1).replace(/_/g, " ")));
+      .replace(/^Created .+ \(([^()]+)\)$/, "$1").replace(/^\((No output)\)$/, "$1").replace(/^Exit code (?=\d)/, "exit ")
+      .replace(/^\d+ search(?:es)? in /, "").replace(/^(?:Returned while the command was still running|Still running)$/, "still running")
+      .replace(/^(?:Error: )?artifact is at v\d+, not v\d+: it changed since you read it.*$/, "it changed after it was read")
+      .replace(/^(?:Error: )?Unknown tool\b.*$/i, "")
+      .replace(/^[a-z]+(?:_[a-z]+)+$/, (state) => state.replace(/_/g, " ")));
   }
 
 // Desktop's opened summary line: each row starts with a glyph for its kind of
@@ -280,7 +284,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       const exit = deps.shellExitCode(trace);
       const status = opts.oneLine && running
         ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Cancelling" ? "Cancelling…" : "")
-        : stopText ? stopWord(stopText)
+        : stopText ? (deps.rowSaysStopped(trace, presentation) ? "" : stopWord(stopText))
         : fold.status || (opts.oneLine && (failed || dotState === "error")
           ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : errorLine(trace.error || trace.summary) || "failed")
           : "");
@@ -289,7 +293,8 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // the call has nothing else to say yet. A fold that already printed the
       // deadline (the command line under a described shell) is left as it is.
       const timeout = (running) && !verbose && !/\btimeout: [^)]*/.test(`${status} ${preview}`) ? deps.ccTimeoutNote(trace) : "";
-      const result = status || timeout ? `<span class="chat-console-result-text">${resultHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "";
+      const said = resultHtml(status);
+      const result = said || timeout ? `<span class="chat-console-result-text">${said}${said && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "";
       // Ledger: a one-line row carries its result on the line itself (verb,
       // subject, result); its hang is only the body that opens under it.
       const lineResult = opts.oneLine ? result : "";
