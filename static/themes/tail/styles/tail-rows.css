@@ -14,7 +14,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     margin: 0 !important; padding: 0 0.5rem 0 var(--tl-g) !important; border-radius: var(--tl-r); white-space: nowrap;
   }
   & .tail-note-call {
-    flex: 0 1 auto !important; display: flex !important; align-items: baseline; min-width: 0; margin: 0 !important; padding: 0 !important; border: 0; background: none;
+    flex: 0 1 auto !important; display: flex !important; align-items: baseline; gap: 0 !important; min-width: 0; margin: 0 !important; padding: 0 !important; border: 0; background: none;
     color: inherit; font: inherit; text-align: left; white-space: nowrap; overflow: hidden;
   }
   & button.tail-note-call { cursor: pointer; }
