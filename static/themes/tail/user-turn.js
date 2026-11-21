@@ -1,6 +1,7 @@
 // user-turn presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-// A monitor's end. A finished background command prints as its call (consoleAutoStepsHtml).
+// A monitor's end, as one aligned row: monitor, what it watched, how it
+// ended. A finished background command prints as its call (consoleAutoStepsHtml).
 function consoleWakeNoticeHtml(trace) {
     const label = deps.ccFlat(trace.description) || deps.ccFlat(trace.url) || deps.ccFlat(deps.displayCommand(trace)) || "monitor";
     const state = deps.executionState(trace);
@@ -9,19 +10,20 @@ function consoleWakeNoticeHtml(trace) {
     let text;
     let tone = "dim";
     const events = Number(trace.event_count) || 0;
-    if (stopped || state === "timed_out") { text = `Monitor "${label}" stopped`; tone = "gold"; }
+    if (stopped || state === "timed_out") { text = "stopped"; tone = "gold"; }
     else if (trace.status === "done") {
-      text = events ? `Monitor "${label}" stream ended` : `Monitor "${label}" ended without producing output`;
+      text = events ? "ended" : "ended, no output";
       tone = "green";
     }
-    else { text = `Monitor "${label}" script failed${exit !== null ? ` (exit ${exit})` : ""}`; tone = "red"; }
+    else { text = `failed${exit !== null ? ` (exit ${exit})` : ""}`; tone = "red"; }
     const took = Number(trace.latency_ms ?? trace.duration_ms);
     const detail = Number.isFinite(took) && took > 0 ? ` ${deps.ccDuration(Math.max(1000, took))}` : "";
     return (
       `<li class="chat-step is-console-notice is-${tone}" data-execution="${deps.escapeHtml(deps.executionIdentity(trace))}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
-      `<div class="chat-step-main"><span class="chat-console-notice-text">${deps.escapeHtml(text)}` +
-      (detail ? `<span class="chat-console-dim">${deps.escapeHtml(detail)}</span>` : "") + `</span></div></li>`
+      `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-console-notice-text tail-note-call"><span class="tail-note-verb">monitor</span>` +
+      `<span class="tail-note-subject">${deps.escapeHtml(label)}</span></span><span class="tail-note-leader" aria-hidden="true"></span>` +
+      `<span class="tail-note-result">${deps.escapeHtml(text)}${detail ? `<span class="chat-console-dim">${deps.escapeHtml(detail)}</span>` : ""}</span></div></div></li>`
     );
   }
 

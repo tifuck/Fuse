@@ -283,6 +283,18 @@ function ccCleanBackgroundEnd(trace) {
     return exit === null || exit === 0;
   }
 
+// A notice outside a burst reads like a call row: verb, subject, leader,
+// result. toggle: the row opens what hangs under it.
+function tailNoteHtml(verb, subjectHtml, resultHtml, toggle, extra = "") {
+    const call = `<span class="tail-note-verb">${deps.escapeHtml(verb)}</span><span class="tail-note-subject">${subjectHtml}</span>`;
+    return `<div class="chat-step-head">` +
+      (toggle
+        ? `<button type="button" class="chat-step-toggle chat-console-notice-text tail-note-call" data-step-toggle aria-expanded="false">${call}</button>`
+        : `<span class="chat-console-notice-text tail-note-call">${call}</span>`) +
+      `<span class="tail-note-leader" aria-hidden="true"></span>` +
+      (resultHtml ? `<span class="tail-note-result">${resultHtml}</span>` : "") + extra + `</div>`;
+  }
+
 function consoleMonitorEventHtml(trace, key) {
     const body = String(trace.summary || trace.preview || "").replace(/\r\n?/g, "\n").replace(/^\s*\n|\s+$/g, "");
     const lines = body ? body.split("\n") : [];
@@ -294,73 +306,61 @@ function consoleMonitorEventHtml(trace, key) {
       `<div class="chat-step-main">${headHtml}${hang}</div></li>`
     );
     const stdout = (rows) => `<pre class="chat-console-out is-stdout">${rows.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</pre>`;
-    const branch = `<span class="chat-console-branch" aria-hidden="true">└</span>`;
+    const hang = (inner) => `<div class="chat-console-hang is-expanded"><div class="chat-console-hang-body">${inner}</div></div>`;
+    const reveal = `<div class="chat-step-reveal"><div class="chat-step-reveal-inner">${hang(stdout(lines))}</div></div>`;
     if (!description) {
       const firstAt = lines.findIndex((line) => line.trim());
       const first = firstAt >= 0 ? lines[firstAt].trim() : "event";
       const rest = firstAt >= 0 ? lines.length - firstAt - 1 : 0;
-      const text = `Monitor event: ${deps.escapeHtml(deps.ccFlat(first))}<span class="chat-console-dim"> (${deps.escapeHtml(label)})</span>`;
-      if (!rest) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
+      const head = (toggle) => tailNoteHtml("monitor", deps.escapeHtml(deps.ccFlat(first)), deps.escapeHtml(label), toggle);
+      if (!rest) return row(head(false), "");
       return row(
-        `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${text}</button></div>`,
-        `<div class="chat-console-hang is-event-more" data-step-toggle>${branch}<div class="chat-console-hang-body"><span class="chat-console-dim">… +${rest} ${rest === 1 ? "line" : "lines"}</span></div></div>` +
-        `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${stdout(lines)}</div></div></div></div>`
+        head(true),
+        `<div class="chat-console-hang is-event-more" data-step-toggle><div class="chat-console-hang-body"><span class="chat-console-dim">… +${rest} ${rest === 1 ? "line" : "lines"}</span></div></div>` + reveal
       );
     }
-    const text = `Monitor event: ${deps.escapeHtml(description)}`;
-    if (!lines.length) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
+    const head = (toggle) => tailNoteHtml("monitor", deps.escapeHtml(description), "event", toggle);
+    if (!lines.length) return row(head(false), "");
     // The newest lines of the event, under the count of the older ones.
     const show = lines.length === 4 ? 4 : 3;
     const hidden = Math.max(0, lines.length - show);
-    const preview = `<div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">` +
-      (hidden ? `<div class="chat-console-dim is-event-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + `${stdout(lines.slice(hidden))}</div></div>`;
-    if (!hidden) return row(`<span class="chat-console-notice-text">${text}</span>`, preview);
-    return row(
-      `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${text}</button></div>`,
-      `<div class="is-event-preview">${preview}</div>` +
-      `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${stdout(lines)}</div></div></div></div>`
-    );
+    const preview = hang((hidden ? `<div class="chat-console-dim is-event-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + stdout(lines.slice(hidden)));
+    if (!hidden) return row(head(false), preview);
+    return row(head(true), `<div class="is-event-preview">${preview}</div>` + reveal);
   }
 
-// A delivered subagent report, worded as Claude Code words its notification:
-// Agent "<description>" finished / failed: <error> / was stopped. The first
-// lines of the report sit under it; the rest opens in place, and the name
+// A delivered subagent report as one row: agent, its task, how it ended. The
+// first lines of the report sit under it; the rest opens in place, and Open
 // opens the agent's pane.
 function consoleAgentNoticeHtml(trace, key) {
     const label = deps.ccFlat(trace.description) || "subagent";
     const stopped = trace.status === "interrupted";
     const failed = trace.status === "error";
-    const head = stopped ? `Agent "${label}" was stopped`
-      : failed ? `Agent "${label}" failed: ${deps.ccClip(deps.providerErrorLine(deps.ccFlat(trace.error)).replace(/^Subagent failed:\s*/i, "") || "Unknown error", 160)}`
-      : `Agent "${label}" finished`;
     const tone = stopped ? "gold" : failed ? "red" : "green";
-    const body = failed ? "" : String(trace.summary || "").replace(/\r\n?/g, "\n").replace(/^\s*\n|\s+$/g, "");
+    const body = failed
+      ? deps.ccClip(deps.providerErrorLine(deps.ccFlat(trace.error)).replace(/^Subagent failed:\s*/i, "") || "Unknown error", 160)
+      : String(trace.summary || "").replace(/\r\n?/g, "\n").replace(/^\s*\n|\s+$/g, "");
     const lines = body ? body.split("\n") : [];
     // The preview is the report's first lines of text; the whole report,
     // blank lines included, opens in place.
     const filled = lines.filter((line) => line.trim());
     const show = filled.length === 3 ? 3 : 2;
     const hidden = Math.max(0, filled.length - show);
-    const branch = `<span class="chat-console-branch" aria-hidden="true">└</span>`;
     const text = (rows) => `<div class="chat-console-report">${rows.map((line) => `<div>${deps.escapeHtml(line) || " "}</div>`).join("")}</div>`;
     const open = trace.child_id
       ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}" aria-label="Open agent">Open<span class="chat-open-target">&nbsp;agent ↗</span></button>`
       : "";
-    const headText = `<span class="chat-console-notice-text">${deps.escapeHtml(head)}</span>`;
     const preview = lines.length
-      ? `<div class="chat-console-hang is-expanded${hidden ? " is-event-preview" : ""}">${branch}<div class="chat-console-hang-body">${text(filled.slice(0, show))}` +
+      ? `<div class="chat-console-hang is-expanded${hidden ? " is-event-preview" : ""}"><div class="chat-console-hang-body">${text(filled.slice(0, show))}` +
         (hidden ? `<div class="chat-console-dim is-event-more" data-step-toggle>… +${hidden} ${hidden === 1 ? "line" : "lines"}</div>` : "") + `</div></div>`
       : "";
-    const headHtml = hidden
-      ? `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${deps.escapeHtml(head)}</button>${open}</div>`
-      : `<div class="chat-step-head">${headText}${open}</div>`;
     const reveal = hidden
-      ? `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${text(lines)}</div></div></div></div>`
+      ? `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded"><div class="chat-console-hang-body">${text(lines)}</div></div></div></div>`
       : "";
     return (
       `<li class="chat-step is-console-notice is-agent-report is-${tone}${hidden ? " is-event" : ""}" data-agent-report="${deps.escapeHtml(trace.child_id || "")}"${hidden ? ` data-step="${deps.escapeHtml(key)}"` : ""}>` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
-      `<div class="chat-step-main">${headHtml}${preview}${reveal}</div></li>`
+      `<div class="chat-step-main">${tailNoteHtml("agent", deps.escapeHtml(label), stopped ? "stopped" : failed ? "failed" : "finished", Boolean(hidden), open)}${preview}${reveal}</div></li>`
     );
   }
 
@@ -388,7 +388,7 @@ function consoleAutoStepsHtml(msg) {
           out.push(
             `<li class="chat-step is-console-notice is-green">` +
             `<span class="chat-step-node" aria-hidden="true"></span>` +
-            `<div class="chat-step-main"><span class="chat-console-notice-text">${j - i + 1} background commands completed</span></div></li>`
+            `<div class="chat-step-main">${tailNoteHtml("run", `${j - i + 1} background commands`, "completed", false)}</div></li>`
           );
           i = j;
           continue;
@@ -402,6 +402,8 @@ function consoleAutoStepsHtml(msg) {
     return out.join("");
   }
 
+// Subagents started together: a header line with one tick an agent, then one
+// aligned row each (its type as the verb, its task, how it ended).
 function ccAgentsGroupHtml(agents, live) {
     const rows = agents.map(({ entry }) => {
       const trace = entry.trace;
@@ -411,26 +413,22 @@ function ccAgentsGroupHtml(agents, live) {
     const unresolved = rows.some((row) => row.presentation.running);
     const errored = rows.some((row) => row.presentation.failed);
     const allBackground = rows.every((row) => row.background);
-    const sameType = rows.every((row) => row.type === rows[0].type);
-    const typeLabel = sameType && rows[0].type !== "Agent" ? `${rows[0].type} agents` : "agents";
     const n = rows.length;
-    const head = !unresolved
-      ? (allBackground ? `<b>${n}</b> background agents launched` : `<b>${n}</b> ${deps.escapeHtml(typeLabel)} finished`)
-      : `Running <b>${n}</b> ${deps.escapeHtml(typeLabel)}…`;
-    const items = rows.map((row, index) => {
+    const failures = rows.filter((row) => row.presentation.failed).length;
+    const ticks = rows.map(({ presentation }) =>
+      `<i${presentation.running ? ' class="is-live"' : presentation.failed ? ' class="is-bad"' : presentation.interrupted ? ' class="is-stop"' : ""}></i>`).join("");
+    const head = `<span class="tail-ticks" aria-hidden="true">${ticks}</span>` +
+      `<span class="tail-agents-count"><b>${n}</b> ${allBackground ? "background agents" : "agents"} ${unresolved ? "running" : allBackground ? "launched" : "finished"}</span>` +
+      (failures ? `<span class="tail-agents-stat tail-fail">${failures} failed</span>` : "");
+    const items = rows.map((row) => {
       const { trace, presentation, background } = row;
-      const last = index === rows.length - 1;
       const description = deps.ccFlat(deps.agentSubject(trace) || trace.description || "");
-      const label = sameType
-        ? `<b>${deps.escapeHtml(description || row.type)}</b>`
-        : `<b>${deps.escapeHtml(row.type)}</b>${description ? ` (${deps.escapeHtml(description)})` : ""}`;
       const resolvedBackground = background && !presentation.running;
       const uses = Number(trace.agent_tool_uses);
       const tokens = Number(trace.agent_tokens);
-      // A running child shows its clock — its counts are still moving. A
-      // settled one says so, so its bare name is never confused with a live
-      // row: a background child's report comes with its wake, so its line
-      // keeps just the state and how long it took.
+      // A running child shows its clock: its counts are still moving. A
+      // settled one says how it ended: a background child's report comes
+      // with its wake, so its row keeps just the state and how long it took.
       const base = Number(trace.agent_work_ms);
       const hasWork = Number.isFinite(base) && base >= 0;
       const liveClock = presentation.running && hasWork;
@@ -438,31 +436,33 @@ function ccAgentsGroupHtml(agents, live) {
       // data-since=0: render it ticking from this paint. The snap stays off
       // the trace so the next poll anchors the pair at server work_ms.
       const since = trace._workSnap || Date.now();
-      const took = hasWork ? `, ${deps.ccDuration(Math.max(1000, base))}` : "";
+      const took = hasWork ? ` ${deps.ccDuration(Math.max(1000, base))}` : "";
       const speed = presentation.running ? null : deps.ccGenSpeed(trace.agent_gen_out, trace.agent_gen_ms, trace.agent_gen_est > 0);
       const rate = speed ? `, <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "";
-      const stats = resolvedBackground
-        ? ` — ${presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished"}${presentation.failed || presentation.interrupted ? "" : took}`
-        : liveClock
-          ? ` <span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
-          : ` — ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? `, ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
-      const status = presentation.running
-        ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…")
-        : presentation.failed ? "Failed" : presentation.interrupted ? "Interrupted" : "Done";
-      const sub = resolvedBackground ? "" :
-        `<div class="chat-console-agent-sub"><span class="chat-console-branch${last ? " is-blank" : ""}" aria-hidden="true">│</span><span class="chat-console-dim"><span aria-hidden="true">└ </span>${deps.escapeHtml(status)}</span></div>`;
+      const meta = resolvedBackground || liveClock ? ""
+        : `${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? `, ${deps.ccTokens(tokens)} tokens` : ""}${rate}`;
+      const result = liveClock
+        ? `<span data-cc-clock="work" data-base="${Math.round(base)}" data-since="${since}">${deps.ccDuration(Math.max(1000, base))}</span>`
+        : presentation.running ? "running"
+        : presentation.failed ? `failed${resolvedBackground ? "" : took}`
+        : presentation.interrupted ? `stopped${resolvedBackground ? "" : took}`
+        : `finished${took}`;
+      // What a running child is doing goes under its row.
+      const status = presentation.running ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…") : "";
       return (
-        `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}">` +
-        `<div class="chat-console-agent-line"><span class="chat-console-branch" aria-hidden="true">${last ? "└─" : "├─"}</span>` +
-        `<span class="chat-console-agent-name${presentation.running ? " is-dim" : ""}">${label}${stats}</span></div>${sub}</li>`
+        `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}${presentation.interrupted && !presentation.running ? " is-stopped" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}">` +
+        `<div class="tail-agent-row"><span class="tail-note-call"><span class="tail-note-verb">${deps.escapeHtml(row.type.toLowerCase())}</span>` +
+        `<span class="tail-note-subject">${deps.escapeHtml(description || row.type)}</span>${meta ? `<span class="tail-note-meta">${meta}</span>` : ""}</span>` +
+        `<span class="tail-note-leader" aria-hidden="true"></span><span class="tail-note-result">${result}</span></div>` +
+        (status ? `<div class="tail-agent-doing">${deps.escapeHtml(status)}</div>` : "") + `</li>`
       );
     }).join("");
     const state = unresolved ? `is-running${errored ? " is-errored" : ""}` : errored ? "is-error" : "is-done";
     return (
       `<li class="chat-step is-console-group is-console-agents ${state}" data-step="agents-${deps.escapeHtml(deps.executionIdentity(rows[0].trace))}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +
-      `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label">${head}</span></div>` +
-      `<ul class="chat-console-agent-tree">${items}</ul></div></li>`
+      `<div class="chat-step-main"><div class="chat-step-head"><span class="chat-step-label tail-agents-head">${head}</span></div>` +
+      `<ul class="tail-agents">${items}</ul></div></li>`
     );
   }
 
