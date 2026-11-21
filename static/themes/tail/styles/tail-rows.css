@@ -1,1 +1,83 @@
 /* Tail: the transcript's other rows (agents, notices, thoughts, todos, asks), in the view's grammar. Loaded after tail.css. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+  --tl-verb: 8ch;
+
+  /* ---- a notice: verb, subject, leader, result (an agent's report, a monitor's event or end) ---- */
+  & li.chat-step:is(.is-console-notice, .is-console-agents, .is-console-thought),
+  & li.chat-step.is-console-group:not(.is-console-agents) { display: block !important; margin: 0 !important; padding: 0 !important; background: none !important; }
+  & li.chat-step:is(.is-console-notice, .is-console-agents, .is-console-thought, .is-console-group)::before { content: none !important; }
+  & li.chat-step:is(.is-console-notice, .is-console-agents, .is-console-thought, .is-console-group) > .chat-step-node { display: none !important; }
+  & li.chat-step:is(.is-console-notice, .is-console-agents) > .chat-step-main { display: block !important; min-width: 0; margin: 0 !important; padding: 0 !important; color: var(--mute); }
+  & li.chat-step.is-console-notice > .chat-step-main > .chat-step-head,
+  & .tail-agent-row {
+    display: flex !important; align-items: center; gap: 0 !important; min-width: 0; min-height: var(--tl-row);
+    margin: 0 !important; padding: 0 0.5rem 0 var(--tl-g) !important; border-radius: var(--tl-r); white-space: nowrap;
+  }
+  & .tail-note-call {
+    flex: 0 1 auto !important; display: flex !important; align-items: baseline; min-width: 0; margin: 0 !important; padding: 0 !important; border: 0; background: none;
+    color: inherit; font: inherit; text-align: left; white-space: nowrap; overflow: hidden;
+  }
+  & button.tail-note-call { cursor: pointer; }
+  & button.tail-note-call:focus-visible { outline: 2px solid var(--tl-ac); outline-offset: -2px; border-radius: var(--tl-r); }
+  & .tail-note-verb { flex: none; min-width: var(--tl-verb); margin-right: 1ch; color: var(--tl-dim); }
+  & .tail-note-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mist); }
+  & .tail-note-meta { flex: 0 100 auto; min-width: 0; margin-left: 2ch; overflow: hidden; text-overflow: ellipsis; color: var(--tl-dim); font-variant-numeric: tabular-nums; }
+  & .tail-note-leader { flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-line2); transform: translateY(0.25em); }
+  & .tail-note-result { flex: 0 1 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font-variant-numeric: tabular-nums; text-align: right; }
+  & .tail-note-result .chat-console-dim { color: var(--tl-dim) !important; }
+  & li.is-console-notice.is-red .tail-note-result, & .chat-console-agent.is-error .tail-note-result { color: var(--fault); }
+  & li.is-console-notice.is-gold .tail-note-result, & .chat-console-agent.is-stopped .tail-note-result { color: var(--status-live); }
+  & li.is-console-notice.is-red .tail-note-verb, & .chat-console-agent.is-error .tail-note-verb { color: var(--fault); }
+  & li.is-console-notice.is-event > .chat-step-main > .chat-step-head:has(> button):hover { background: var(--tl-soft); }
+  /* Open agent: a quiet control after the result. */
+  & li.is-console-notice .chat-step-head > .chat-step-open {
+    flex: none; display: inline-flex !important; align-items: center; min-height: 1.5rem; margin: 0 -0.25rem 0 0.75rem !important; padding: 0 0.5rem !important;
+    border: 1px solid var(--line) !important; border-radius: var(--tl-r) !important; background: none !important; color: var(--mute) !important; font: inherit !important; opacity: 1 !important; cursor: pointer;
+  }
+  & li.is-console-notice .chat-step-head > .chat-step-open:is(:hover, :focus-visible) { background: var(--tl-soft) !important; color: var(--mist) !important; text-decoration: none !important; }
+  & li.is-console-notice .chat-step-head > .chat-step-open:focus-visible { outline: 2px solid var(--tl-ac); outline-offset: -1px; }
+  /* What hangs under a notice starts on the subject's column. */
+  & li.is-console-notice > .chat-step-main :is(.chat-console-hang, .is-event-preview, .chat-step-reveal-inner) { display: block !important; margin: 0 !important; padding: 0 !important; }
+  & li.is-console-notice > .chat-step-main .chat-console-hang-body {
+    display: block !important; min-width: 0; margin: 0 !important; padding: 0 0.5rem 0.3rem calc(var(--tl-g) + var(--tl-verb) + 1ch) !important; color: var(--mute);
+  }
+  & li.is-console-notice .chat-console-hang-body :is(.chat-console-report, pre.chat-console-out) {
+    margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; color: var(--mute) !important; font: inherit !important; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  & li.is-console-notice .chat-step-reveal .chat-console-hang-body pre.chat-console-out { max-height: 18rem; overflow: auto; scrollbar-width: thin; }
+  & li.is-console-notice.is-red .chat-console-report { color: color-mix(in srgb, var(--fault) 80%, var(--mute)) !important; }
+  & li.is-console-notice .is-event-more { color: var(--tl-dim) !important; cursor: pointer; }
+  & li.is-console-notice .is-event-more:hover { color: var(--mist) !important; }
+  & li.is-console-notice.is-event:has(> .chat-step-main > .chat-step-reveal.is-open) :is(.is-event-more, .is-event-preview) { display: none !important; }
+
+  /* ---- subagents started together: a tick line, then one row an agent ---- */
+  & li.is-console-agents > .chat-step-main > .chat-step-head { display: block !important; margin: 0 !important; padding: 0 !important; }
+  & .tail-agents-head {
+    display: flex !important; align-items: center; min-height: var(--tl-row); margin: 0 !important; padding: 0 0.5rem 0 var(--tl-g) !important;
+    color: var(--mute); font-weight: 400 !important; white-space: nowrap; text-indent: 0 !important;
+  }
+  & .tail-agents-head .tail-ticks { flex: none; padding-right: 0.85rem; }
+  & .tail-agents-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--mist) 80%, var(--ink)); }
+  & .tail-agents-count b { font-weight: 500; color: var(--mist); }
+  & .tail-agents-stat { flex: none; margin-left: auto; padding-left: 0.9rem; font-variant-numeric: tabular-nums; }
+  & .tail-agents { display: block !important; margin: 0 !important; padding: 0 !important; list-style: none !important; }
+  & .tail-agents > .chat-console-agent { display: block !important; margin: 0 !important; padding: 0 !important; list-style: none !important; }
+  & .tail-agents > .chat-console-agent[data-open-agent]:not([data-open-agent=""]) { cursor: pointer; }
+  & .tail-agents > .chat-console-agent[data-open-agent]:not([data-open-agent=""]) > .tail-agent-row:hover { background: var(--tl-soft); }
+  & .chat-console-agent.is-running .tail-note-verb, & .chat-console-agent.is-running .tail-note-result { color: var(--tl-ac); }
+  & .tail-agent-doing { padding: 0 0.5rem 0.3rem calc(var(--tl-g) + var(--tl-verb) + 1ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); }
+  & .tail-note-meta .chat-console-speed { color: inherit !important; }
+
+  /* ---- background results: rows outside a burst, on the same columns ---- */
+  & .chat-turn.is-user.is-auto-steps { display: block !important; margin: 0.35rem 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0; background: none !important; }
+  & .chat-auto-steps { display: block !important; margin: 0.15rem 0 0.35rem !important; padding: 0 !important; border: 0 !important; background: none !important; }
+  & .chat-turn.is-auto-steps > .chat-auto-steps { margin: 0 !important; }
+  & .chat-auto-steps > .chat-timeline { display: block !important; margin: 0 !important; padding: 0 !important; gap: 0 !important; }
+}
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+    & .tail-note-meta { display: none; }
+    & li.is-console-notice .chat-step-head > .chat-step-open { min-height: 2rem; }
+    & li.is-console-notice .chat-step-head > .chat-step-open .chat-open-target { display: none; }
+  }
+}
