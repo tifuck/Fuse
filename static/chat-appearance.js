@@ -794,8 +794,15 @@
 
   // The API may be missing (an older server): the gallery then just has no
   // custom cards and a saved custom pick stays as it is.
-  async function loadCustomBackdrops(force) {
-    if (customState === "loading" || (customState === "ready" && !force)) return;
+  // Resolves once the list in flight (or a fresh one, with force) is in.
+  let customLoad = null;
+  function loadCustomBackdrops(force) {
+    if (customState === "loading" || (customState === "ready" && !force)) return customLoad || Promise.resolve();
+    customLoad = fetchCustomBackdrops();
+    return customLoad;
+  }
+
+  async function fetchCustomBackdrops() {
     customState = "loading";
     try {
       const res = await fetch("/api/backdrops", { credentials: "same-origin", headers: { Accept: "application/json" } });

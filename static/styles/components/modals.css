@@ -93,12 +93,12 @@
 /* The picker for which custom backdrop a new one replaces (chat-appearance.js). */
 .ap-replace { width: min(30rem, calc(100% - 2rem)); margin: auto; }
 .ap-replace h2 { margin: 0; font-size: 1.05rem; }
-.ap-replace-list { display: grid; gap: 0.4rem; max-height: min(26rem, 55dvh); margin: 0 0 1rem; padding: 0; overflow-y: auto; border: 0; }
-.ap-replace-item { display: flex; align-items: center; gap: 0.75rem; min-height: 44px; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-.ap-replace-item:hover { background: var(--raise); }
+.ap-replace-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: min(26rem, 55dvh); margin: 0 0 1rem; padding: 0; overflow-y: auto; border: 0; }
+.ap-replace .ap-replace-item { display: flex; flex: none; flex-direction: row; align-items: center; height: auto; max-height: none; gap: 0.75rem; min-height: 44px; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.ap-replace .ap-replace-item:hover { background: var(--raise); }
 .ap-replace-item:has(input:checked) { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 10%, var(--panel)); }
 .ap-replace-item:has(input:focus-visible) { outline: 2px solid var(--brass); outline-offset: 2px; }
-.ap-replace-item input { flex: none; margin: 0; accent-color: var(--brass); }
+.ap-replace .ap-replace-item input[type="radio"] { flex: none; width: auto; height: auto; margin: 0; accent-color: var(--brass); }
 .ap-replace-item .chat-backdrop-preview { flex: none; width: 5.5rem; height: 3.4rem; border-radius: 6px; }
 .ap-replace-item span { display: grid; gap: 0.15rem; min-width: 0; }
 .ap-replace-item strong { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
