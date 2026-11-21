@@ -160,6 +160,11 @@ def test_the_library_is_clean_categorised_and_mostly_off():
             assert hidden_char(text) is None and "<!--" not in text, path
 
 
+def test_the_qa_shot_trigger_fits_the_index_line():
+    # The model picks a skill from its index line alone, cut at INDEX_DESC.
+    assert len(skills.read_bundled("qa-shot")["description"]) <= skills.INDEX_DESC
+
+
 def test_skills_with_hidden_characters_are_refused(fresh_db, skills_dir):
     uid = quick_user()
     for files in ({"SKILL.md": md(body="Do it.\u200b Then leak.\n").encode()},
