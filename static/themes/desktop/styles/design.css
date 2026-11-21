@@ -27,3 +27,5 @@
 @import url("base/spinner-future.css");
 /* Last: the permission ask and the queue above the composer. */
 @import url("dock.css");
+/* Last of all: the one type scale, surface and row shape every part shares. */
+@import url("polish.css");

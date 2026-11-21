@@ -13,7 +13,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
     if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> <b>${took}</b>` : `done <b>${took}</b>`;
+    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> <b>${took}</b>` : `<b>${took}</b>`;
     const still = latest && !pendingAgents ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
     return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
@@ -329,7 +329,10 @@ function ccGroupHtml(group, live, openMap) {
     // Desktop: the line never names the newest call; it counts them.
     const stat = (plus ? ` <span class="dk-plus">+${plus}</span>` : "") + (minus ? ` <span class="dk-minus">−${minus}</span>` : "");
     const noun = stillCommands ? (stillRunning === 1 ? "command" : "commands") : (stillRunning === 1 ? "monitor" : "monitors");
-    const label = !parts.length && stillRunning ? `${stillRunning} ${noun} still running` : parts.join(", ");
+    // The folded line counts its steps; the sentence is its tooltip.
+    const sentence = !parts.length && stillRunning ? `${stillRunning} ${noun} still running` : parts.join(", ");
+    const steps = counted.filter((item) => item.type === "tool").length;
+    const label = parts.length ? `${deps.ROW_CHEV}<span class="dk-steps">${count("steps", steps)} ${steps === 1 ? "step" : "steps"}</span>` : sentence;
     // The diff counts end the line even when its text is cut short.
     const diffstat = stat && parts.length ? `<span class="dk-diffstat">${stat.trim()}</span>` : "";
     // Ledger: the line truncates, its tallies stay pinned at the end.
@@ -339,7 +342,7 @@ function ccGroupHtml(group, live, openMap) {
       failedCalls ? `<span class="dk-tally is-failed">${failedCalls} failed</span>` : "",
       stoppedCalls ? `<span class="dk-tally is-stopped">${stoppedCalls} stopped</span>` : "",
     ].join("");
-    const title = (label + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "") + (stoppedCalls ? ` (${stoppedCalls} stopped)` : "")).replace(/<[^>]*>/g, "");
+    const title = (sentence + stat + (stillRunning && parts.length ? ` (${stillRunning} still running)` : "") + (failedCalls ? ` (${failedCalls} failed)` : "") + (stoppedCalls ? ` (${stoppedCalls} stopped)` : "")).replace(/<[^>]*>/g, "");
     // One call: the line stays its opened list, header hidden, so the call
     // reads as its own row; the same element folds to the summary when a
     // second call joins.
@@ -494,18 +497,20 @@ function codeRowHtml(trace, parts, key, open, meta) {
     const failed = deps.toolPresentation(trace, false).failed;
     const ret = parts.result.trim()
       ? `<div class="dk-code-part"><div class="dk-code-label">${failed ? "Error" : "Returned"}</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre></div>` : "";
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and what it returned"}</span>` : ""}</span>`;
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">Code</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and what it returned"}</span>` : ""}</span>${meta ? `<span class="chat-console-result-text">${meta}</span>` : ""}`;
     const lines = parts.code.split("\n").length;
     const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
       `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
-    return boxRowHtml(key, line, deps.callBoxHtml({ body, state: meta, host: trace.host || "" }), open, " is-dk-coderow");
+    return boxRowHtml(key, line, deps.callBoxHtml({ body }), open, " is-dk-coderow");
   }
 
 // A settled thought: one line ("Thought for 4s" and its first words) that
 // opens to the whole text, like a call row.
 function thoughtRowHtml(key, text, ms, segmentIndex, open) {
-    const line = `${deps.rowIconHtml(null)}<span class="chat-console-call"><span class="chat-tool-action">Thought for ${deps.escapeHtml(ccThinkClock(ms, 0))}</span>` +
-      `<span class="dk-think-first">${deps.escapeHtml(deps.ccClip(deps.ccFlat(text), 300))}</span></span>${deps.ROW_CHEV}`;
+    // The row names the thought by its first line, markdown marks dropped.
+    const first = String(text || "").split("\n").map((part) => part.replace(/\*\*|__|`|^#+\s*/g, "").trim()).find(Boolean) || "";
+    const line = `${deps.rowIconHtml(null)}<span class="chat-console-call"><span class="chat-tool-action">Thought</span>` +
+      `<span class="dk-think-first">${deps.escapeHtml(deps.ccClip(first, 120))}</span></span><span class="chat-console-took">${deps.escapeHtml(ccThinkClock(ms, 0))}</span>${deps.ROW_CHEV}`;
     return (
       `<li class="chat-step is-console-call is-dk-thought is-done${open ? " is-console-expanded" : ""}" data-step="${deps.escapeHtml(key)}" data-thought="${segmentIndex}">` +
       `<span class="chat-step-node" aria-hidden="true"></span>` +

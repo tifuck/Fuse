@@ -23,7 +23,7 @@ function permissionCardHtml(perm, msg) {
          </div>`
       : `<p class="chat-perm-slug mono">${deps.escapeHtml(perm.slug || "")}</p><p class="usage-sub">${deps.escapeHtml(perm.description || "")}</p>`;
     return `<div class="chat-perm chat-skill-card" data-perm-id="${deps.escapeHtml(perm.id)}" data-msg="${deps.escapeHtml(msg.id || "")}">
-      <div class="chat-perm-head"><span>Skill proposal</span><span class="chat-perm-status">${deps.escapeHtml(status)}</span></div>
+      <div class="chat-perm-head"><span>Skill proposal</span><span class="chat-perm-status" data-status="${deps.escapeHtml(status)}">${deps.escapeHtml(status)}</span></div>
       ${fields}${actions}
     </div>`;
   }
