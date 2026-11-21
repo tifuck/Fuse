@@ -2,6 +2,12 @@
     themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
   <div class="chat-thread" data-chat-thread role="region" aria-label="Conversation" tabindex="0">
     <div class="chat-log" data-chat-log hidden></div>
+    {#- Tail: the greeting opens an empty chat, over the prompt library. -#}
+    <div class="tail-welcome">
+  <p class="chat-welcome-kicker">Ideas into action</p>
+      <h2 class="chat-welcome" data-chat-welcome>What are we building?</h2>
+      <p class="chat-welcome-note">Think it through. Explore a codebase. Make something work.</p>
+    </div>
     <section class="chat-library" data-chat-library aria-label="Prompt library" hidden></section>
     <div class="chat-live-dock" data-live-dock hidden>
       <span class="chat-activity-spin" data-live-dock-spin aria-hidden="true"></span>

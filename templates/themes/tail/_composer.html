@@ -1,9 +1,6 @@
 {#- Tail theme: the composer dock and its popovers. Every data-* hook here is a runtime contract; the other
     themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
   <form class="chat-dock" data-chat-form>
-    <p class="chat-welcome-kicker">Ideas into action</p>
-    <h2 class="chat-welcome" data-chat-welcome>What are we building?</h2>
-    <p class="chat-welcome-note">Think it through. Explore a codebase. Make something work.</p>
     <div class="chat-sync" role="group" aria-label="Chat synchronization" data-sync-state="connecting">
       <span data-sync-label role="status">Connecting</span>
       <button type="button" data-sync-retry hidden>Retry send</button>

@@ -9,6 +9,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   --tl-line2: color-mix(in srgb, var(--mist) 24%, transparent);
   --tl-soft: color-mix(in srgb, var(--mist) 6%, transparent);
   --tl-dim: color-mix(in srgb, var(--mute) 78%, var(--ink));
+  --tl-leader: color-mix(in srgb, var(--mute) 60%, transparent);
   --tl-pane: min(28rem, 40vw);
   --tl-r: 6px;
   --tty: var(--tl-fs);
@@ -78,7 +79,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & li.chat-step.is-console-call > .chat-step-main:hover { background: var(--tl-soft); }
   & li.chat-step.is-console-call.is-console-expanded > .chat-step-main { background: var(--tl-soft); box-shadow: inset 2px 0 0 var(--tl-ac); }
   & li.chat-step.is-console-call > .chat-step-main > .chat-step-head { flex: 1 1 0 !important; min-width: 54% !important; display: flex !important; align-items: center; min-width: 0; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
-  & li.chat-step.is-console-call > .chat-step-main > .chat-step-head::after { content: ""; flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-line2); transform: translateY(0.25em); }
+  & li.chat-step.is-console-call > .chat-step-main > .chat-step-head::after { content: ""; flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
   & li.chat-step.is-console-call > .chat-step-main:not(:has(> .chat-step-reveal .chat-console-result-text)) > .chat-step-head::after { visibility: hidden; }
   & li.chat-step.is-console-call > .chat-step-main > .chat-step-head > :is(.chat-step-toggle, .chat-step-static) {
     flex: 0 1 auto !important; min-width: 0; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; overflow: hidden;
@@ -166,7 +167,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-change-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mist); }
   & .tail-change-path i { font-style: normal; color: var(--mute); }
   & .tail-change-edits { flex: none; margin-left: 1ch; color: var(--tl-dim); }
-  & .tail-change-leader { flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-line2); transform: translateY(0.25em); }
+  & .tail-change-leader { flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
   & .tail-change-stat { flex: none; font-variant-numeric: tabular-nums; }
 
   /* Agents and background commands: the runtime's lists, as pane rows. */
@@ -246,6 +247,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-box-bar .chat-perm-btn svg { display: none; }
   & .chat-box-bar .chat-perm-btn-label { display: inline !important; position: static !important; width: auto !important; height: auto !important; clip: auto !important; clip-path: none !important; font-size: inherit !important; }
   & .chat-box-bar .chat-picker-btn { padding: 0 0.7rem !important; max-width: 24rem; }
+  & .chat-box-bar .chat-picker-btn small { opacity: 1 !important; color: var(--mute) !important; }
+  & .chat-box-bar .chat-picker-btn { color: var(--mist) !important; }
   & .chat-box > .chat-box-bar .chat-send {
     position: absolute; right: 0.4rem; bottom: calc(100% + 0.4rem); width: 1.75rem !important; height: 1.75rem !important; margin: 0 !important;
     border: 0 !important; border-radius: var(--tl-r) !important; background: var(--tl-ac) !important; color: var(--ink) !important;

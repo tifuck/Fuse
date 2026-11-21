@@ -116,9 +116,17 @@ export function create(deps) {
     li.scrollIntoView({ block: "center" });
   }
 
+  // A phone's top bar folds Appearance, Context, Skills and Alerts into one menu.
+  const more = root.querySelector("[data-tail-more]");
+  const setMore = (open) => {
+    if (!more || (more.getAttribute("aria-expanded") === "true") === open) return;
+    more.setAttribute("aria-expanded", String(open));
+  };
+
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    setMore(Boolean(target.closest("[data-tail-more]")) && more.getAttribute("aria-expanded") !== "true");
     if (target.closest("[data-tail-pane-toggle]")) { if (shown()) hide(); else show(last); return; }
     if (target.closest("[data-tail-pane-close]")) { hide(); return; }
     const tab = target.closest("[data-tail-tab]");
@@ -134,7 +142,9 @@ export function create(deps) {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || event.defaultPrevented || !shown()) return;
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (more?.getAttribute("aria-expanded") === "true") { setMore(false); more.focus(); return; }
+    if (!shown()) return;
     // A menu or dialog on screen takes Escape first (their shells stay in the page, unsized, while closed).
     const layers = document.querySelectorAll('[role="menu"]:not([hidden]), [role="listbox"]:not([hidden]), [role="dialog"]:not([hidden]), dialog[open]');
     if ([...layers].some((layer) => layer.getBoundingClientRect().width > 0)) return;
