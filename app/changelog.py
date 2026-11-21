@@ -11,7 +11,8 @@ commits between the version live at that turn and HEAD. A release commit
 
 check_upstream runs every few hours: a read-only git ls-remote of the branch
 HEAD tracks. A commit this checkout lacks is logged and shown to admins.
-Without git (a Docker image has no .git) all of this does nothing.
+Docker mounts the host checkout's .git read-only (docker-compose.yml).
+Without git history all of this does nothing.
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ _announced: set[int] = set()
 def _git(*args, timeout=10) -> str | None:
     """stdout, or None when git is missing or the command failed."""
     try:
-        out = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, timeout=timeout,
+        out = subprocess.run(["git", "-c", "safe.directory=*", "-C", str(ROOT), *args], capture_output=True, text=True, timeout=timeout,
                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except (OSError, subprocess.SubprocessError):
         return None
