@@ -1100,8 +1100,8 @@ html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none
   /* The bar's glass runs on 14px past its edge and fades out there, so it
      eases into the pane instead of ending on a line. */
   & .dk-head::before { inset: 0 0 -14px; -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent); mask-image: linear-gradient(#000 calc(100% - 14px), transparent); }
-  & :is(.chat-queue, .chat-perm-card) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
-  & :is(.chat-queue, .chat-perm-card) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
+  & :is(.chat-queue, .chat-perm-card, .dictation) { background: var(--dk-glass-bg); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
+  & :is(.chat-queue, .chat-perm-card, .dictation) { border-color: var(--dk-glass-edge); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); }
   & .chat-dock .dk-box { border: 0; background: none; box-shadow: none; }
   & .chat-dock .dk-box::before { border-color: var(--dk-glass-edge); background: var(--dk-glass-bg); box-shadow: var(--dk-rim), 0 8px 24px rgb(0 0 0 / 0.16); -webkit-backdrop-filter: var(--dk-glass); backdrop-filter: var(--dk-glass); }
   & .chat-dock .dk-box:focus-within::before { border-color: color-mix(in srgb, var(--dk-text) 34%, transparent); box-shadow: var(--dk-rim), 0 0 0 1px color-mix(in srgb, var(--dk-link) 40%, transparent), 0 8px 24px rgb(0 0 0 / 0.16); }
