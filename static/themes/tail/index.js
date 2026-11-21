@@ -481,7 +481,9 @@ export function createTailTheme(runtime) {
     get escapeHtml() { return runtime.escapeHtml; },
   }));
   createPane({
+    get compactPath() { return theme.compactPath; },
     get consoleEditCounts() { return theme.consoleEditCounts; },
+    get sessionProject() { return runtime.sessionProject; },
     get escapeHtml() { return runtime.escapeHtml; },
     get messages() { return runtime.messages; },
     get saveDisclosures() { return runtime.saveDisclosures; },

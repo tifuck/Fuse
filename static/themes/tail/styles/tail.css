@@ -177,36 +177,35 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-pane .chat-work-jobs:not([hidden]) { margin-top: 0.5rem !important; padding-top: 0.5rem !important; border-top: 1px solid var(--line) !important; }
   & .tail-pane .chat-work-jobs:not([hidden])::before { content: "background commands"; display: block; padding: 0 0.4rem 0.2rem; color: var(--mute); }
   & .tail-pane :is(.chat-agents-row, .chat-jobs-row) {
-    display: grid !important; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: 0.5rem;
-    min-height: var(--tl-row); height: auto !important; margin: 0 !important; padding: 0.15rem 0.2rem 0.15rem 0.4rem !important; border: 0 !important; border-radius: var(--tl-r); background: none !important;
+    display: grid !important; grid-template-columns: minmax(0, 1fr) auto auto !important; grid-template-rows: auto !important; align-items: start; column-gap: 0.4rem;
+    min-height: var(--tl-row); height: auto !important; margin: 0 !important; padding: 0.2rem 0.2rem 0.2rem 0.4rem !important; border: 0 !important; border-radius: var(--tl-r); background: none !important;
   }
+  & .tail-pane :is(.chat-agents-row, .chat-jobs-row) + :is(.chat-agents-row, .chat-jobs-row) { margin-top: 1px !important; }
   & .tail-pane :is(.chat-agents-row, .chat-jobs-row):hover { background: var(--tl-soft) !important; }
   & .tail-pane .chat-agents-row[aria-current="true"] { background: var(--tl-soft) !important; box-shadow: inset 2px 0 0 var(--tl-ac); }
   & .tail-pane :is(.chat-agents-pick, .chat-jobs-output-link) {
-    display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 0 0.5rem; min-width: 0; width: 100%;
+    grid-column: 1 !important; grid-row: 1 !important; display: flex !important; flex-direction: column; align-items: stretch; gap: 0; min-width: 0; width: 100%; height: auto !important;
     margin: 0 !important; padding: 0 !important; border: 0 !important; background: none !important; color: var(--mist); font: inherit !important; text-align: left; cursor: pointer;
   }
-  & .tail-pane .chat-agents-head { display: contents !important; }
-  & .tail-pane .chat-agents-tree { display: inline-flex !important; grid-column: 1; }
-  & .tail-pane .chat-agents-tree i { width: 0.75rem; font-size: 0 !important; }
-  & .tail-pane .chat-agents-dot { grid-column: 1; align-self: center; width: 6px !important; height: 6px !important; margin: 0 !important; border-radius: 50%; background: var(--tl-dim); }
-  & .tail-pane .chat-agents-tree + .chat-agents-dot { grid-column: auto; }
-  & .tail-pane :is(.chat-agents-row.is-running, .chat-jobs-row.is-running) .chat-agents-dot { background: var(--tl-ac); animation: tail-pulse 1.4s ease-in-out infinite; }
-  & .tail-pane .chat-agents-row:is(.is-completed, .is-done, .is-finished) .chat-agents-dot { background: var(--ok); }
-  & .tail-pane .chat-agents-row:is(.is-failed, .is-error, .is-undelivered) .chat-agents-dot { background: var(--fault); }
-  & .tail-pane .chat-agents-row:is(.is-stopped, .is-cancelled, .is-interrupted, .is-stalled) .chat-agents-dot { background: var(--status-live); }
-  & .tail-pane :is(.chat-agents-name, .chat-jobs-cmd) { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mist); font-weight: 500; }
-  & .tail-pane :is(.chat-agents-meta, .chat-jobs-meta, .chat-agents-model) { grid-column: 2; display: flex !important; gap: 0.75rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--mute); font-size: 0.92em; }
+  & .tail-pane .chat-jobs-output-link { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 0.5rem; }
+  & .tail-pane .chat-agents-head { display: flex !important; align-items: center; gap: 0.5rem; min-width: 0; min-height: 1.35rem; }
+  & .tail-pane .chat-agents-tree { display: inline-flex !important; flex: none; }
+  & .tail-pane .chat-agents-tree i { width: 0.6rem; font-size: 0 !important; }
+  & .tail-pane .chat-agents-dot { flex: none; width: 6px !important; height: 6px !important; margin: 0 !important; border-radius: 50% !important; }
+  & .tail-pane :is(.chat-agents-name, .chat-jobs-cmd) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mist); font-weight: 500; }
+  & .tail-pane :is(.chat-agents-meta, .chat-agents-model) { display: flex !important; gap: 0.75rem; min-width: 0; margin: 0 !important; padding: 0 0 0 calc(6px + 0.5rem) !important; overflow: hidden; white-space: nowrap; color: var(--mute); font-size: 0.92em; line-height: 1.5; }
+  & .tail-pane .chat-agents-row:not(.is-main) :is(.chat-agents-meta, .chat-agents-model) { padding-left: calc(6px + 1.1rem) !important; }
+  & .tail-pane .chat-jobs-meta { flex: 1 1 100%; padding-left: calc(6px + 0.5rem); color: var(--mute); font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .tail-pane :is(.chat-agents-doing, .chat-agents-sum) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   & .tail-pane .chat-agents-model { color: var(--tl-dim); }
-  & .tail-pane .chat-agents-time { align-self: start; padding-top: 0.1rem; color: var(--mute); font-variant-numeric: tabular-nums; }
+  & .tail-pane .chat-agents-time { grid-column: 2 !important; grid-row: 1 !important; padding-top: 0.1rem; color: var(--mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
   & .tail-pane :is(.chat-agents-act, .chat-jobs-kill, .chat-agents-fold) {
-    align-self: start; min-width: 1.5rem; height: 1.5rem; display: inline-grid !important; place-items: center; grid-auto-flow: column; gap: 0.3rem; padding: 0 0.3rem !important; border: 0 !important; border-radius: var(--tl-r);
-    background: none !important; color: var(--mute); font: inherit !important; cursor: pointer;
+    grid-column: 3 !important; grid-row: 1 !important; min-width: 1.5rem; height: 1.5rem; display: inline-flex !important; align-items: center; justify-content: center; gap: 0.3rem; margin: 0 !important; padding: 0 0.3rem !important; border: 0 !important; border-radius: var(--tl-r);
+    background: none !important; color: var(--mute); font: inherit !important; white-space: nowrap; cursor: pointer;
   }
   & .tail-pane span.chat-agents-act { cursor: default; }
   & .tail-pane :is(button.chat-agents-act, .chat-jobs-kill, .chat-agents-fold):hover { background: var(--tl-soft) !important; color: var(--mist); }
-  & .tail-pane .chat-agents-fold { grid-column: 2 / -1; }
+  & .tail-pane .chat-agents-fold { grid-column: 2 / -1 !important; }
   & .tail-pane .chat-jobs-detail { margin: 0 0 0.4rem 0.4rem; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: var(--tl-r); background: var(--ink); }
 
   /* ---- the prompt line and the status bar ---- */

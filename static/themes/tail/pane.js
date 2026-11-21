@@ -51,6 +51,7 @@ export function create(deps) {
         file.removed += counts.removed;
         file.edits += 1;
         file.step = deps.toolKey(trace, index);
+        file.label = deps.compactPath(trace.path, trace, 64);
         files.delete(trace.path);
         files.set(trace.path, file);
       });
@@ -59,12 +60,10 @@ export function create(deps) {
   }
 
   function changeRowHtml(file) {
-    const cut = file.path.lastIndexOf("/") + 1;
-    const dirs = file.path.slice(0, cut).split("/").filter(Boolean);
-    const dir = dirs.length > 3 ? "…/" + dirs.slice(-2).join("/") + "/" : file.path.slice(0, cut);
+    const cut = file.label.lastIndexOf("/") + 1;
     const stat = `<span class="tail-plus">+${file.added}</span>${file.removed ? ` <span class="tail-minus">−${file.removed}</span>` : ""}`;
     return `<button type="button" class="tail-change" data-tail-change="${esc(file.step)}" title="${esc(file.path)}">` +
-      `<span class="tail-change-path"><i>${esc(dir)}</i>${esc(file.path.slice(cut))}</span>` +
+      `<span class="tail-change-path"><i>${esc(file.label.slice(0, cut))}</i>${esc(file.label.slice(cut))}</span>` +
       (file.edits > 1 ? `<span class="tail-change-edits">${file.edits} edits</span>` : "") +
       `<span class="tail-change-leader" aria-hidden="true"></span><span class="tail-change-stat">${stat}</span></button>`;
   }
@@ -163,15 +162,14 @@ export function create(deps) {
     inAgent = now;
   }).observe(root, { attributes: true, attributeFilter: ["class"] });
 
-  // Where the chat works, for the status bar. The runtime writes the project's
-  // machine and path into the project chip's title ("name | Host: x | Path: y").
+  // Where the chat works, for the status bar. The runtime updates the project
+  // chip whenever the chat's project changes; that is the cue to read it.
   const chip = root.querySelector("[data-project-chip]");
   const where = root.querySelector("[data-tail-where]");
   function syncWhere() {
-    const parts = chip.hidden ? [] : String(chip.getAttribute("title") || "").split(" | ");
-    const part = (label) => (parts.find((text) => text.startsWith(label)) || "").slice(label.length);
-    const host = part("Host: ");
-    const path = part("Path: ");
+    const bound = chip.hidden ? null : deps.sessionProject();
+    const host = String(bound?.host_alias || "");
+    const path = String(bound?.remote_path || "");
     where.querySelector("[data-tail-host]").textContent = host;
     where.querySelector("[data-tail-path]").textContent = path;
     where.hidden = !host && !path;
