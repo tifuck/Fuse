@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The dev instance's permanent QA login and its artificial chats.
 
-    ./venv/bin/python -m scripts.dev_qa_account
+    ./venv/bin/python -m scripts.qa.dev_qa_account
 
 Run from the dev tree. Creates the QA account once and keeps it an admin (so
 the QA browser, scripts/qa/shot.mjs, can open the admin pages; it aborts every
@@ -37,7 +37,7 @@ from itertools import count
 from pathlib import Path
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.environ.setdefault("DATABASE_POOL_SIZE", "2")

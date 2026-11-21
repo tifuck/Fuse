@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The QA browser. Signs in to the dev instance as the QA login (an admin whose
-// chats are made up: scripts/dev_qa_account.py), opens a page, runs your steps
+// chats are made up: scripts/qa/dev_qa_account.py), opens a page, runs your steps
 // and writes what you shot as one PNG. Open the path it prints with read_file.
 // Every request that is not a GET is aborted, so a run changes nothing and any
 // number can run at once.
@@ -101,7 +101,7 @@
 //                       '[data-chat-send]' --wait 20000. A real run on the GPU
 //                       server: keep prompts tiny. It can use fetch and web
 //                       search, not shell or file tools, and leaves a chat
-//                       behind: reseed with scripts/dev_qa_account.py
+//                       behind: reseed with scripts/qa/dev_qa_account.py
 //   --base URL          the dev instance, default https://127.0.0.1:8088
 //
 // read_file scales down an image side over 2048 px, so a tall shot is cut into

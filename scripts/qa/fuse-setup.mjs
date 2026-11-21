@@ -293,7 +293,7 @@ export default {
   async targets(api) {
     const threads = await api.run(`fetch('/chat/sync').then((r) => r.json()).then((d) => (d.threads || []).map((t) => [t.title, t.id]))`);
     if (opts.list) {
-      console.log(threads.map(([title]) => title).join('\n') || 'no chats: run scripts/dev_qa_account.py');
+      console.log(threads.map(([title]) => title).join('\n') || 'no chats: run scripts/qa/dev_qa_account.py');
       return null;
     }
     if (!opts.thread) return api.pages.map((path) => ({ path, name: path }));
