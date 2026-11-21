@@ -61,17 +61,6 @@ function consoleDiffHtml(text, { limit, numbers = true } = {}) {
     return `<div class="chat-console-lines is-diff">${table}</div>${extra}`;
   }
 
-// The first prose line of a skill body (after its "# Title"), skipping
-// headings, lists, fences and the load preamble above the title.
-function skillBodyLead(text) {
-    const body = String(text || "");
-    const start = body.search(/^#\s/m);
-    if (start < 0) return "";
-    const line = body.slice(start).split("\n").map((row) => row.trim())
-      .find((row) => row && !/^(#|[-*+>|]|\d+[.)]\s|```|~~~|<)/.test(row));
-    return line ? deps.ccFlat(line) : "";
-  }
-
 function consoleFileBody(trace) {
     if (typeof trace.output === "string" && trace.output) return deps.cleanToolOutput(trace, trace.output);
     const preview = String(trace.preview || "").trim();
@@ -162,7 +151,7 @@ function consoleFold(trace, presentation, verbose, oneLine = false) {
       // One line says what the image is (or why the run stopped), the image
       // sits under it.
       const info = deps.toolImageInfo(trace);
-      return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : info || "Image preview unavailable",
+      return { status: presentation.interrupted ? deps.ccInterruptedText(trace) : info || "no preview",
         preview: info ? deps.toolImageHtml(trace) : "", full: "" };
     }
     {
@@ -177,9 +166,10 @@ function consoleFold(trace, presentation, verbose, oneLine = false) {
       return { status: "Running…", preview: "", full: consoleSameText(out, "Running…") ? "" : out };
     }
     const status = consoleResultLine(trace, presentation);
+    // A body that only repeats the row's receipt is not worth opening.
     const detail = () => {
       const html = consoleDetailHtml(trace, failed, running);
-      return consoleSameText(html, status) ? "" : html;
+      return consoleSameText(html, status) || consoleSameText(html, trace.preview) ? "" : html;
     };
     if (running || (failed && !shell)) {
       if (shell) {
@@ -416,7 +406,7 @@ function consoleResultLine(trace, presentation) {
       // The parenthetical is the HTTP status line: "OK" only where the
       // status actually says so.
       const code = Number(trace.http_status) || 200;
-      return `Received ${deps.ccBytes(trace.bytes)} (${code}${code >= 200 && code < 300 ? " OK" : ""})`;
+      return `${deps.ccBytes(trace.bytes).replace(/(\d)([KMG]B)$/, "$1 $2")}${code >= 200 && code < 300 ? "" : ` (${code})`}`;
     }
     if (name === "read_url") {
       const host = deps.pageHost(trace.url);
@@ -450,11 +440,9 @@ function consoleResultLine(trace, presentation) {
     }
     if (name === "todo_write") {
       const todos = deps.normalizeTodos(trace.todos);
-      if (todos.length) {
-        const done = todos.filter(deps.todoClosed).length;
-        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"} · ${done}/${todos.length} done`;
-      }
-      return "no todos";
+      // The row says what changed; this says where the list stands.
+      const done = todos.filter(deps.todoClosed).length;
+      return done ? `${done} of ${todos.length} done` : "";
     }
     if (name === "run_terminal_command") {
       if (deps.toolBackground(trace)) {
@@ -469,20 +457,20 @@ function consoleResultLine(trace, presentation) {
     if (name === "kill_command") {
       // The header names the target; this says what the stop found.
       const already = preview.match(/^already (\w+)$/);
-      if (!already) return "Stopped";
-      if (already[1] === "completed") return Number.isInteger(trace.exit_code) ? `Already finished (exit ${trace.exit_code})` : "Already finished";
-      return already[1] === "failed" || already[1] === "timed_out" ? `Already ${already[1].replace("_", " ")}` : "Already stopped";
+      if (!already) return "";
+      if (already[1] === "completed") return "it had already finished";
+      return already[1] === "failed" || already[1] === "timed_out" ? `it had already ${already[1].replace("_", " ")}` : "it had already stopped";
     }
     if (name === "kill_subagent") {
       const already = preview.match(/^already (\w+)/);
       return already ? `Already ${already[1]} · nothing to stop` : "Subagent stopped";
     }
     if (name === "scratch") {
-      const read = preview.match(/^(\S+) \((\d+) chars\)$/);
-      if (read) return `Read ${read[1]} (${Number(read[2]).toLocaleString()} chars)`;
-      const slots = preview.match(/^(\d+) slots$/);
-      if (slots) return `Pad holds ${slots[1]} ${slots[1] === "1" ? "slot" : "slots"}`;
-      return preview || "done";
+      // The row names the note; only the list and a call that changed
+      // several notes have more to say.
+      const slots = preview.match(/^(\d+) slots?$/);
+      if (slots) return `${slots[1]} saved`;
+      return preview.includes(", ") ? preview : "";
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
@@ -491,16 +479,16 @@ function consoleResultLine(trace, presentation) {
     }
     // A loaded skill reads as what it is for: its description, else the
     // body's first line of prose. The whole body opens below.
-    if (name === "load_skill") {
-      if (trace.path) return `Loaded ${deps.shortToolText(trace.path, 100)}`;
-      const about = deps.ccFlat(trace.summary) || skillBodyLead(trace.output);
-      return about ? deps.shortToolText(about, 160) : "Loaded skill";
-    }
+    if (name === "load_skill") return "";
     if (name === "read_transcript") {
       const range = deps.transcriptRange(trace);
-      return range ? `Read ${range}` : (preview || "Read transcript");
+      return /^\d+ messages$/.test(range) ? `all ${range.split(" ")[0]}` : range.replace(/^messages /, "");
     }
-    if (name === "propose_skill") return "Drafted for your review";
+    if (name === "propose_skill") return "for you to review";
+    if (name === "search_models") {
+      try { return `${JSON.parse(trace.output).models.length} found`; } catch (_) { return ""; }
+    }
+    if ((name === "remember" || name === "forget") && /^(saved|forgotten|updated|replaced)$/i.test(preview)) return "";
     if (name === "search_tools") {
       if (String(trace.query || "") === "hosts") return "Listed connected hosts";
       if (String(trace.query || "") === "skills") return "Listed installed skills";
@@ -512,10 +500,12 @@ function consoleResultLine(trace, presentation) {
       return text && text !== deps.displayCommand(trace) ? deps.shortToolText(text, 100) : "No output";
     }
     if (name === "create_artifact" || name === "update_artifact" || name === "edit_artifact") {
-      const v = trace.version != null ? ` v${trace.version}` : "";
-      return `${name === "create_artifact" ? "Created" : name === "edit_artifact" ? "Edited" : "Updated"}${v}`;
+      return trace.version != null ? `v${trace.version}` : "";
     }
-    if (name === "read_artifact") return trace.preview ? `Read ${deps.shortToolText(String(trace.preview), 80)}` : "Read source";
+    if (name === "read_artifact") {
+      const lines = String(trace.preview || "").match(/^lines (\d+)-(\d+) of (\d+)$/);
+      return lines ? (lines[1] === lines[2] ? `line ${lines[1]}` : `lines ${lines[1]}–${lines[2]} of ${lines[3]}`) : deps.shortToolText(String(trace.preview || ""), 80);
+    }
     if (name === "get_subagent_output") {
       const subject = deps.agentSubject(trace) || "subagent";
       // A join that returned while its child was still going is stored done

@@ -47,7 +47,7 @@ function toolStateHtml(running, failed, interrupted, statusLabel) {
 function toolOpenHtml(kind, id) {
     if (!id) return '<span class="chat-step-open is-empty" aria-hidden="true">Open</span>';
     const attr = kind === "artifact" ? "data-open-artifact" : "data-open-agent";
-    return `<button type="button" class="chat-step-open" ${attr}="${deps.escapeHtml(id)}" aria-label="Open ${kind === "artifact" ? "artifact" : "agent"}">Open${(`<span class="chat-open-target">&nbsp;${kind === "artifact" ? "artifact" : "agent"} ↗</span>`)}</button>`;
+    return `<button type="button" class="chat-step-open" ${attr}="${deps.escapeHtml(id)}" aria-label="Open ${kind === "artifact" ? "artifact" : "agent"}">Open${kind === "artifact" ? "" : `<span class="chat-open-target">&nbsp;agent ↗</span>`}</button>`;
   }
 
 function toolCaretHtml(expandable, open) {

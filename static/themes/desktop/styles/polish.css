@@ -73,6 +73,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-dk-thought .dk-think-first { color: var(--dk-soft); font-style: normal; }
   & .chat-step.is-dk-thought .dk-think-first::before { content: none; }
 
+  /* A row that cannot open is a line of text, not a button. */
+  & .chat-console-bundle .chat-step-head:has(> .chat-step-static) { cursor: auto; }
+  & .chat-console-bundle .chat-step-head > button.chat-step-open { cursor: pointer; }
+
   /* ---- An opened call: one borderless block, the same for every tool ---- */
   & .dk-call-box,
   & .chat-console-bundle .chat-step.is-dk-thought .chat-console-thought {

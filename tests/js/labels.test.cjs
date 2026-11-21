@@ -26,6 +26,19 @@ test('byte sizes take the larger unit once they round up to it, in every theme',
   }
 });
 
+test('a Desktop todo row says what the call changed since the list before it', async () => {
+  const { todoChangeText } = (await import('../../static/themes/desktop/tool-formatting.js')).create({});
+  const list = (...statuses) => statuses.map((status, index) => ({ id: String(index + 1), content: `todo ${index + 1}`, status }));
+  assert.equal(todoChangeText([], list('pending', 'pending', 'pending')), 'Added 3 todos');
+  assert.equal(todoChangeText(list('pending', 'pending'), list('completed', 'completed')), 'Marked 2 todos finished');
+  assert.equal(todoChangeText(list('in_progress', 'pending'), list('completed', 'in_progress', 'pending', 'pending')), 'Added 2 todos, marked 1 finished, started 1');
+  assert.equal(todoChangeText(list('pending', 'pending'), list('pending')), 'Removed 1 todo');
+  assert.equal(todoChangeText(list('pending'), list('cancelled')), 'Cancelled 1 todo');
+  // Nothing to compare with (a subagent's list), or nothing changed.
+  assert.equal(todoChangeText(null, list('pending')), 'Updated todos');
+  assert.equal(todoChangeText(list('pending'), list('pending')), 'Updated todos');
+});
+
 test('think tags split as the server does: openers only at the start, closers outside code', () => {
   const split = (text) => { const r = core.splitThink(text); return [r.reasoning, r.content, r.inThink]; };
   const F = '```';
@@ -166,8 +179,8 @@ test('desktop rows read as sentences: a described command in the past tense once
   const text = (trace, presentation = { state: 'done' }) => rows.consoleCallHtml(trace, presentation).replace(/<[^>]*>|[()]/g, '');
   const run = { name: 'run_terminal_command', command: 'make test', description: 'Run the test suite twice' };
   assert.equal(text(run), 'Ranthe test suite twice', 'the inflected verb is its own word, the rest the subject');
-  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Runthe test suite twice', 'a failed one reads as written: it did not do what it says');
-  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Runthe test suite twice', 'so does one cut short');
+  assert.equal(text({ ...run, exit_code: 2 }, { state: 'warning' }), 'Failed to runthe test suite twice', 'a failed one says so: it did not do what it says');
+  assert.equal(text(run, { state: 'interrupted', interrupted: true }), 'Stopped runningthe test suite twice', 'so does one cut short');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }, { state: 'error', failed: true }), 'Readmain.py in app');
   assert.equal(text({ ...run, description: 'Unit tests' }), 'RanUnit tests', 'no verb to inflect: the verb stays its own word');
   assert.equal(text({ name: 'read_file', path: 'app/main.py' }), 'Readmain.py in app');

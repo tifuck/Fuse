@@ -373,6 +373,10 @@ def planning_thread(proposal: str) -> list[dict]:
     return [
         user("Plan the 2.4 release and remember that I want short replies."),
         reply(
+            tool("todo_write", todos=[{"id": "1", "content": "Run the checks", "status": "pending"},
+                                      {"id": "2", "content": "Bump the version to 2.4.0", "status": "pending"},
+                                      {"id": "3", "content": "Tag and build the release", "status": "pending"},
+                                      {"id": "4", "content": "Publish the changelog to the old wiki", "status": "pending"}]),
             tool("todo_write", todos=[{"id": "1", "content": "Run the checks", "status": "completed"},
                                       {"id": "2", "content": "Bump the version to 2.4.0", "status": "in_progress"},
                                       {"id": "3", "content": "Tag and build the release", "status": "pending"},
@@ -385,7 +389,7 @@ def planning_thread(proposal: str) -> list[dict]:
             tool("search_models", query="small", output=json.dumps({"models": [
                 {"id": "qa/fixture-small", "name": "Fixture Small", "provider": "qa"},
                 {"id": "qa/fixture-large", "name": "Fixture Large", "provider": "qa"}]})),
-            tool("scratch", description="Save the release plan", preview="saved release-plan"),
+            tool("scratch", description="Save the release plan", preview="Wrote release-plan (412 chars)"),
             tool("scratch", preview="release-plan (412 chars)"),
             tool("scratch", preview="2 slots", output=json.dumps({"slots": {"release-plan": 412, "wave-2-prompts": 3810}})),
             tool("read_transcript", preview="messages 1-40 of 120"),

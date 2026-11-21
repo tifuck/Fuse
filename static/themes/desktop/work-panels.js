@@ -158,16 +158,21 @@ function compactionMarkHtml(text, summary) {
     const body = String(text || "").trim();
     const title = body.startsWith("Context pruned") ? "Context pruned" : "Context compacted";
     const handoff = String(summary || "").trim();
+    // Said as what happened to the chat, not by its internal name.
+    const SUMMARIZED = "Summarized the earlier conversation to free up context";
     if (title === "Context compacted" && handoff) {
       return (
         `<details class="chat-compact-banner" data-compaction open>` +
-        `<summary><strong>Compaction</strong><span>Handoff sent to the model</span></summary>` +
+        `<summary><span>${SUMMARIZED}</span></summary>` +
         `<div class="chat-compact-handoff chat-md">${deps.renderMarkdown(handoff, false, [])}</div>` +
         `</details>`
       );
     }
-    const detail = body.startsWith(title) ? body.slice(title.length).replace(/^[.\s]+/, "") : body;
-    return `<p class="chat-compact-mark" data-compaction><strong>${deps.escapeHtml(title)}</strong>${detail ? `<span>${deps.escapeHtml(detail)}</span>` : ""}</p>`;
+    const pruned = body.match(/^Pruned (\d+) old tool outputs?\b/);
+    const said = pruned ? `Trimmed ${pruned[1]} old tool output${pruned[1] === "1" ? "" : "s"} to free up context`
+      : title === "Context pruned" ? "Trimmed older tool outputs to free up context"
+      : body.startsWith(title) ? SUMMARIZED : body;
+    return `<p class="chat-compact-mark" data-compaction><span>${deps.escapeHtml(said)}</span></p>`;
   }
 
   // A background command: what it is for (else the command), then where it

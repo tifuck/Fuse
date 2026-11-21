@@ -298,7 +298,7 @@ function consoleMonitorEventHtml(trace, key) {
       const firstAt = lines.findIndex((line) => line.trim());
       const first = firstAt >= 0 ? lines[firstAt].trim() : "event";
       const rest = firstAt >= 0 ? lines.length - firstAt - 1 : 0;
-      const text = `Monitor event: ${deps.escapeHtml(deps.ccFlat(first))}<span class="chat-console-dim"> · ${deps.escapeHtml(label)}</span>`;
+      const text = `New output: ${deps.escapeHtml(deps.ccFlat(first))}<span class="chat-console-dim"> · ${deps.escapeHtml(label)}</span>`;
       if (!rest) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
       return row(
         `<div class="chat-step-head"><button type="button" class="chat-step-toggle chat-console-notice-text" data-step-toggle aria-expanded="false">${text}</button></div>`,
@@ -306,7 +306,7 @@ function consoleMonitorEventHtml(trace, key) {
         `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${stdout(lines)}</div></div></div></div>`
       );
     }
-    const text = `Monitor event: ${deps.escapeHtml(description)}`;
+    const text = `New output from ${deps.escapeHtml(description)}`;
     if (!lines.length) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
     // The newest lines of the event, under the count of the older ones.
     const show = lines.length === 4 ? 4 : 3;
