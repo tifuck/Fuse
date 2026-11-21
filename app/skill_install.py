@@ -22,7 +22,7 @@ from .skill_parse import NAME_RE, SkillError, parse_skill_md
 logger = logging.getLogger("app.skills")
 
 ALLOWED_EXT = {
-    ".md", ".txt", ".py", ".js", ".ts", ".sh", ".json", ".yml", ".yaml",
+    ".md", ".txt", ".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".json", ".yml", ".yaml",
     ".toml", ".html", ".css", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp",
 }
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}

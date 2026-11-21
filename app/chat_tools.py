@@ -1105,6 +1105,18 @@ async def execute_tool(
                 description = await asyncio.to_thread(skills_mod.description_for, user_id, preview)
                 if description:
                     rec["summary"] = description
+                # Read-only subagents never get files copied onto a machine.
+                if str((session or {}).get("subagent_type") or "") not in ("explore", "plan"):
+                    from . import skill_sync
+
+                    host_arg = args.get("host")
+                    note = await skill_sync.sync(
+                        user_id, preview.strip().lower(), host=host_arg if isinstance(host_arg, str) else None,
+                        bound_host_id=bound_host_id, bound_cwd=bound_cwd, thread_id=thread_id,
+                        run_id=str((session or {}).get("run_id") or ""), gate=gate,
+                    )
+                    if note:
+                        body = note + "\n\n" + body
             return body, rec
         if name == "read_transcript":
             if not agent_catalog.READ_TRANSCRIPT_ENABLED:

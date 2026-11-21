@@ -189,6 +189,10 @@ def apply_skill_preload(
     body = skills_mod.load(user_id, slug)
     if body == "Unknown skill.":
         return messages, None
+    if skills_mod.script_bundle(user_id, slug.lower()):
+        # No permission gate exists before the run starts: the copy waits for a real call.
+        body = (f"Skill files: not on any machine yet. Before running one of its scripts, call load_skill "
+                f"name={slug} (host= for a machine other than the bound one) to copy them.\n\n" + body)
     call_id = f"skill_{(run_id or '')[:8]}"
     args_json = json.dumps({"name": slug}, ensure_ascii=False)
     pair = [

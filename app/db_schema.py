@@ -562,11 +562,20 @@ def _ensure_skill_tables(conn: sqlite3.Connection) -> None:
             disable_model_invocation INTEGER NOT NULL DEFAULT 0,
             argument_hint TEXT NOT NULL DEFAULT '',
             content_hash TEXT NOT NULL DEFAULT '',
+            approved_hash TEXT NOT NULL DEFAULT '',
             installed_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(user_id, slug)
         );
         CREATE INDEX IF NOT EXISTS user_skills_user ON user_skills (user_id, enabled);
+        CREATE TABLE IF NOT EXISTS skill_host_approvals (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            host_id INTEGER NOT NULL,
+            slug TEXT NOT NULL,
+            files_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, host_id, slug, files_hash)
+        );
         CREATE TABLE IF NOT EXISTS skill_proposals (
             id TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -366,7 +366,10 @@ async def notify_permission(user_id: int, thread_id, ask: dict) -> int:
     if ref is None:
         return 0
     title, public = ref
-    what = " ".join(str(ask.get("description") or ask.get("command") or ask.get("path") or ask.get("tool") or "").split())
+    if ask.get("perm_kind") == "skill":
+        what = f"load skill {ask.get('command') or ''}"
+    else:
+        what = " ".join(str(ask.get("description") or ask.get("command") or ask.get("path") or ask.get("tool") or "").split())
     host = str(ask.get("host") or "").strip()
     body = _redact_secrets(f"Needs approval: {what}" + (f" on {host}" if host else ""))
     return await notify_user(
