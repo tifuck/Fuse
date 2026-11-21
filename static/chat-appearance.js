@@ -18,34 +18,46 @@
     matcha: { label: "Matcha", scheme: "light", ink: "#f3f4ea", panel: "#e6ead8", raise: "#d8dec6", mist: "#1c2418", mute: "#5c6850", line: "#c8d0b4", brass: "#4a6b32", steel: "#3d6a52", reason: "#4e5a46", fault: "#c24b40", ok: "#2f7a48", onBrass: "#ffffff", code: "#eef0e2" },
     ivory: { label: "Ivory", scheme: "light", ink: "#fffcf7", panel: "#f4efe6", raise: "#e8e0d4", mist: "#1c1a28", mute: "#5c5868", line: "#d8d0c4", brass: "#3d4a9a", steel: "#3d6a80", reason: "#4e5a66", fault: "#c24b40", ok: "#2f7a48", onBrass: "#ffffff", code: "#faf6f0" },
   };
-  // The gallery's order and categories (BACKDROP_GROUPS). A key without a
-  // scene yet (scenes.js) is listed with an empty preview and draws nothing.
+  // The gallery's order, categories (BACKDROP_GROUPS) and art styles
+  // (BACKDROP_STYLES). A key without a scene yet (scenes.js) is listed with
+  // an empty preview and draws nothing.
   const BACKDROPS = {
     none: { label: "None", hint: "Solid" },
-    auroralake: { label: "Aurora Lake", hint: "Northern lights · lake", group: "aurora" },
-    auroraveil: { label: "Aurora Veil", hint: "Green curtains · starfield", group: "aurora" },
-    auroracorona: { label: "Aurora Corona", hint: "Overhead · converging rays", group: "aurora" },
-    auroracrimson: { label: "Crimson Aurora", hint: "Red storm · high sky", group: "aurora" },
-    aurorabands: { label: "Aurora Ribbons", hint: "Drifting bands · Milky Way", group: "aurora" },
-    auroraorbit: { label: "Aurora from Orbit", hint: "Planet limb · auroral oval", group: "aurora" },
-    auroraridge: { label: "Aurora Ridge", hint: "Wide sky · ridge line", group: "aurora" },
-    fogpines: { label: "Fog Pines", hint: "Tile pines · valley mist", group: "nature" },
-    bamboo: { label: "Bamboo Grove", hint: "Tile culms · sun shafts", group: "nature" },
-    waterfall: { label: "Waterfall Gorge", hint: "Tile cliffs · plunge pool", group: "nature" },
-    sakura: { label: "Sakura Wind", hint: "Old cherry · moon bridge", group: "nature" },
-    terraces: { label: "Rice Terraces", hint: "Flooded steps · sunrise", group: "nature" },
-    meadow: { label: "Alpine Meadow", hint: "Golden hour · backlit grass", group: "nature" },
-    desert: { label: "Desert Night", hint: "Star trails · moonlit dunes", group: "nature" },
-    cliffs: { label: "Coastal Cliffs", hint: "Lighthouse · dusk surf", group: "nature" },
-    deepsea: { label: "Deep Sea", hint: "Whale passing · god rays", group: "nature" },
-    harbor: { label: "Harbor Night", hint: "Neon skyline · bay", group: "city" },
-    rain: { label: "Rain District", hint: "Neon alley · wet reflections", group: "city" },
-    rooftops: { label: "Rooftops", hint: "Clay roofs · sunset · a cat", group: "city" },
-    circuit: { label: "Circuit City", hint: "PCB city map · data traffic", group: "city" },
-    orbital: { label: "Orbital", hint: "Planet limb · station", group: "space" },
-    launch: { label: "Launch Site", hint: "Rocket at dawn · launch cycle", group: "space" },
+    aurora: { label: "Aurora", hint: "Green curtains · night sky", group: "aurora", style: "soft" },
+    auroracrimson: { label: "Crimson Aurora", hint: "Red storm · high sky", group: "aurora", style: "soft" },
+    auroracorona: { label: "Aurora Corona", hint: "Overhead · converging rays", group: "aurora", style: "soft" },
+    aurorabands: { label: "Aurora Ribbons", hint: "Violet bands · Milky Way", group: "aurora", style: "soft" },
+    auroraorbit: { label: "Aurora from Orbit", hint: "Planet limb · auroral oval", group: "aurora", style: "soft" },
+    auroralake: { label: "Aurora Lake", hint: "Mountains · mirrored sky", group: "aurora", style: "layered" },
+    auroraridge: { label: "Aurora Ridge", hint: "Pine ridges · wide arc", group: "aurora", style: "layered" },
+    auroraveil: { label: "Aurora Veil", hint: "Fine rays · cyan", group: "aurora", style: "line" },
+    aurorastipple: { label: "Aurora Stipple", hint: "Dotted curtains · teal", group: "aurora", style: "dots" },
+    nebula: { label: "Nebula", hint: "Violet dust · faint stars", group: "space", style: "soft" },
+    abyss: { label: "Abyss", hint: "Deep water · light shafts", group: "water", style: "soft" },
+    aura: { label: "Aura", hint: "Drifting colour · indigo", group: "abstract", style: "soft" },
+    bloom: { label: "Bloom", hint: "Drifting colour · pastel", group: "abstract", style: "soft" },
+    lanterns: { label: "Lanterns", hint: "Warm lights · rising", group: "objects", style: "soft" },
+    ranges: { label: "Ranges", hint: "Blue mountains · mist", group: "nature", style: "layered" },
+    pines: { label: "Pines", hint: "Forest layers · fog", group: "nature", style: "layered" },
+    dunes: { label: "Dunes", hint: "Sand ridges · midday", group: "nature", style: "layered" },
+    tide: { label: "Tide", hint: "Night sea · moon", group: "water", style: "layered" },
+    ringplanet: { label: "Ringed Planet", hint: "Gas giant · moons", group: "space", style: "layered" },
+    cloudscape: { label: "Cloudscape", hint: "Paper clouds · pale sky", group: "sky", style: "layered" },
+    contours: { label: "Contours", hint: "Shifting topography", group: "abstract", style: "line" },
+    currents: { label: "Currents", hint: "Flowing lines · ocean", group: "water", style: "line" },
+    constellations: { label: "Constellations", hint: "Star charts · slow turn", group: "space", style: "line" },
+    rainfall: { label: "Rainfall", hint: "Fine rain · night", group: "sky", style: "line" },
+    blueprint: { label: "Blueprint", hint: "Drafting gears · grid", group: "objects", style: "line" },
+    paperplanes: { label: "Paper Planes", hint: "Gliding outlines · paper", group: "objects", style: "line" },
+    halftone: { label: "Halftone", hint: "Dot wave · ink", group: "abstract", style: "dots" },
+    starfield: { label: "Starfield", hint: "Deep field · drift", group: "space", style: "dots" },
+    fireflies: { label: "Fireflies", hint: "Summer night · glow", group: "nature", style: "dots" },
+    snowfall: { label: "Snowfall", hint: "Quiet snow · dusk", group: "sky", style: "dots" },
+    glyphfield: { label: "Glyph Field", hint: "Fading characters · mono", group: "abstract", style: "dots" },
+    pollen: { label: "Pollen", hint: "Meadow light · drifting", group: "nature", style: "dots" },
   };
-  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", city: "City", space: "Space" };
+  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", sky: "Sky", water: "Water", space: "Space", abstract: "Abstract", objects: "Objects" };
+  const BACKDROP_STYLES = { soft: "Soft", layered: "Layered", line: "Line", dots: "Dots" };
   // A custom backdrop (GET /api/backdrops) is "u-" + its id. A saved one
   // draws on load; it is dropped only once the list has arrived without it.
   const CUSTOM_BACKDROP = /^u-[a-z0-9]{12}$/;
@@ -56,20 +68,23 @@
   // Collapsed, the gallery shows two rows: the current pick first.
   const GALLERY_ROWS = 2;
   let backdropFilter = "all";
+  let backdropStyle = "all";
   let backdropQuery = "";
   let backdropAll = false;
   // Saved choices from retired backdrops map to their nearest replacement
   // instead of silently switching the wallpaper off.
   const LEGACY_BACKDROPS = {
-    glyphs: "circuit", life: "circuit", ripple: "deepsea", spiral: "orbital", coral: "deepsea",
-    riso: "sakura", warp: "orbital", signal: "circuit", mandala: "sakura", aurora: "auroralake",
-    garden: "sakura", botanica: "bamboo", ivy: "bamboo", pond: "terraces", koi: "deepsea",
-    orbit: "orbital", galaxy: "orbital", eclipse: "orbital", belt: "orbital", contact: "orbital",
-    spark: "launch", clouddrift: "meadow", honulagoon: "deepsea", koipond: "deepsea",
-    jellyfish: "deepsea", paperboats: "cliffs", fireflies: "fogpines", moonlit: "auroralake",
-    hush: "circuit", tide: "deepsea", veil: "fogpines", ember: "launch", phosphor: "rain",
-    dither: "sakura", scope: "orbital", topo: "terraces", loom: "sakura", wind: "meadow",
-    maze: "bamboo", ants: "circuit", pulsar: "orbital", ink: "auroralake", fern: "bamboo", sumi: "deepsea",
+    fogpines: "pines", bamboo: "pines",
+    waterfall: "ranges", sakura: "bloom", terraces: "dunes", meadow: "pollen", desert: "dunes", cliffs: "tide",
+    deepsea: "abyss", harbor: "tide", rain: "rainfall", rooftops: "lanterns", circuit: "blueprint",
+    orbital: "ringplanet", launch: "starfield",
+    glyphs: "glyphfield", life: "halftone", ripple: "currents", spiral: "nebula", coral: "abyss", riso: "bloom",
+    warp: "starfield", signal: "glyphfield", mandala: "bloom", garden: "bloom", botanica: "pines", ivy: "pines",
+    pond: "currents", koi: "abyss", orbit: "ringplanet", galaxy: "nebula", eclipse: "ringplanet", belt: "ringplanet",
+    contact: "constellations", spark: "lanterns", clouddrift: "cloudscape", honulagoon: "abyss", koipond: "abyss",
+    jellyfish: "abyss", paperboats: "paperplanes", moonlit: "ranges", hush: "aura", veil: "pines", ember: "lanterns",
+    phosphor: "rainfall", dither: "halftone", scope: "constellations", topo: "contours", loom: "currents",
+    wind: "pollen", maze: "blueprint", ants: "halftone", pulsar: "starfield", ink: "aura", fern: "pines", sumi: "aura",
   };
   // Reading fonts. Bricolage Grotesque, Red Hat Mono, Geist and JetBrains Mono are bundled
   // (static/fonts); the rest load from Google Fonts only when chosen, and the
@@ -573,7 +588,7 @@
     if (btn) setBackdrop(btn.dataset.chatBackdrop);
   }
 
-  // The gallery around the cards: category chips, a search field, an empty
+  // The gallery around the cards: category and style chips, a search field, an empty
   // note and "Browse all". Built here so every page with the cards gets it.
   function ensureGallery(host) {
     if (host.parentElement?.classList.contains("ap-gallery")) return;
@@ -581,8 +596,11 @@
     gallery.className = "ap-gallery";
     const chips = [["all", "All"], ...Object.entries(BACKDROP_GROUPS)]
       .map(([id, label]) => `<button type="button" data-chat-backdrop-filter="${id}" aria-pressed="${id === backdropFilter}">${label}</button>`).join("");
+    const styles = [["all", "Any style"], ...Object.entries(BACKDROP_STYLES)]
+      .map(([id, label]) => `<button type="button" data-chat-backdrop-style="${id}" aria-pressed="${id === backdropStyle}">${label}</button>`).join("");
     gallery.innerHTML = '<div class="ap-gallery-bar">' +
-      `<div class="ap-filters" role="group" aria-label="Filter backdrops" data-chat-backdrop-filters>${chips}</div>` +
+      `<div class="ap-filters" role="group" aria-label="Filter backdrops by category" data-chat-backdrop-filters>${chips}</div>` +
+      `<div class="ap-filters" role="group" aria-label="Filter backdrops by style" data-chat-backdrop-styles>${styles}</div>` +
       '<input type="search" class="ap-search" data-chat-backdrop-search placeholder="Search backdrops" aria-label="Search backdrops" autocomplete="off" spellcheck="false"></div>' +
       '<p class="ap-note" data-chat-backdrop-empty hidden></p>' +
       '<button type="button" class="ap-more" data-chat-backdrop-more aria-expanded="false" hidden>Browse all</button>';
@@ -590,8 +608,12 @@
     gallery.querySelector(".ap-gallery-bar").after(host);
     gallery.addEventListener("click", (event) => {
       const chip = event.target.closest("[data-chat-backdrop-filter]");
+      const style = event.target.closest("[data-chat-backdrop-style]");
       if (chip) {
         backdropFilter = chip.dataset.chatBackdropFilter;
+        filterBackdrops();
+      } else if (style) {
+        backdropStyle = style.dataset.chatBackdropStyle;
         filterBackdrops();
       } else if (event.target.closest("[data-chat-backdrop-more]")) {
         backdropAll = !backdropAll;
@@ -622,9 +644,10 @@
     hint.textContent = spec.hint;
     btn.append(art, name, hint);
     const group = spec.group || "";
-    const find = `${spec.label} ${spec.hint} ${BACKDROP_GROUPS[group] || ""}`.toLowerCase();
+    const style = spec.style || "";
+    const find = `${spec.label} ${spec.hint} ${BACKDROP_GROUPS[group] || ""} ${BACKDROP_STYLES[style] || ""}`.toLowerCase();
     if (!spec.custom) {
-      Object.assign(btn.dataset, { group, find });
+      Object.assign(btn.dataset, { group, style, find });
       return btn;
     }
     const cell = document.createElement("div");
@@ -652,11 +675,12 @@
     const host = document.querySelector("[data-chat-backdrop-swatches]");
     if (!host) return;
     const query = backdropQuery.trim().toLowerCase();
-    const narrowed = backdropFilter !== "all" || Boolean(query);
+    const narrowed = backdropFilter !== "all" || backdropStyle !== "all" || Boolean(query);
     const current = shownBackdrop();
     const cards = [...host.children];
     const idOf = (el) => el.dataset.chatBackdrop || el.dataset.chatBackdropCell;
     const matches = cards.filter((el) => (backdropFilter === "all" || el.dataset.group === backdropFilter)
+      && (backdropStyle === "all" || el.dataset.style === backdropStyle)
       && (!query || el.dataset.find.includes(query)));
     const limit = Math.max(4, galleryColumns(host) * GALLERY_ROWS);
     const collapsed = !narrowed && !backdropAll && matches.length > limit;
@@ -671,6 +695,9 @@
     }
     document.querySelectorAll("[data-chat-backdrop-filter]").forEach((btn) => {
       btn.setAttribute("aria-pressed", String(btn.dataset.chatBackdropFilter === backdropFilter));
+    });
+    document.querySelectorAll("[data-chat-backdrop-style]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.chatBackdropStyle === backdropStyle));
     });
     const more = document.querySelector("[data-chat-backdrop-more]");
     if (more) {

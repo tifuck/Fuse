@@ -17,17 +17,30 @@ Because a wallpaper is an ordinary scene, the engine's runner, the picker
 previews, the hidden-tab pause and the reduced-motion still frame apply
 unchanged.
 
-## Landscape wallpapers
+## Built-in backdrops
 
-The built-in wallpapers are code scenes in the same tile language, too
-elaborate for the spec format: one `static/backdrops/scene-<key>.js` each,
-registered in `scenes.js`, built on `tiles.js` (a tile
-atlas filled on demand, every fill/ink/glyph combination painted once) and
-`tile-land.js` (tile pines and mountain ranges). Air, sky and fog are painted
-smooth; matter is tiles. Each sets `wallpaper: true` and `scheme`, so the
-engine, the /theme picker and the full-strength CSS treat it like a spec
-wallpaper. Static layers are painted once per resize; a frame redraws only
-what moves (swaying crowns, switching windows, aurora rays, reflections).
+The built-in backdrops are code scenes, one module per art style
+(`static/backdrops/style-<style>.js`, exporting its scenes by key),
+registered in `scenes.js` and listed in `BACKDROPS` (`chat-appearance.js`)
+with a category (`BACKDROP_GROUPS`: aurora, nature, sky, water, space,
+abstract, objects) and an art style (`BACKDROP_STYLES`). The gallery filters by both.
+
+| Style | Language |
+| --- | --- |
+| Soft | Painted light: gradients, haze and glows, no edges. |
+| Layered | Paper cut: flat silhouettes back to front, atmospheric depth, parallax. |
+| Line | Fine strokes on a flat ground, one ink at low alpha. |
+| Dots | Points, glow sprites or small glyphs in one hue. |
+
+Every scene keeps to the same rules: low contrast, one hue family, a calm
+middle with detail toward the edges, slow continuous motion, and a frame
+under about 1.5 ms at 1440x900 (dpr 1.5). Static layers and sprites are
+baked once per resize (`art.js` `layer`), soft light is painted into a
+small canvas and stretched (`art.js` `soft`), and positions are pure
+functions of time. Each sets `wallpaper: true` and `scheme`, so the engine,
+the /theme picker and the full-strength CSS treat it like a spec wallpaper.
+A retired key keeps working through `LEGACY_BACKDROPS`, which maps it to its
+nearest replacement.
 
 ## Validation
 

@@ -1,32 +1,49 @@
 // The scene registry. Engine and entry read it by key; the Appearance
-// catalog (BACKDROPS in chat-appearance.js) gives the order and labels.
+// catalog (BACKDROPS in chat-appearance.js) gives the order, labels,
+// category and art style.
 
-// A built-in scene's module loads when the scene is first shown (loadScene);
-// this table holds what the page asks before that. Every one is a wallpaper;
-// `scheme` repeats the scene module's own.
+// Built-in scenes live one module per art style (style-<style>.js), each
+// exporting its scenes by key. A module loads when one of its scenes is
+// first shown (loadScene); this table holds what the page asks before that.
+// Every one is a wallpaper; `scheme` repeats the scene's own.
+const soft = () => import("./style-soft.js");
+const layered = () => import("./style-layered.js");
+const line = () => import("./style-line.js");
+const dots = () => import("./style-dots.js");
+
 export const BUILTIN = {
-  fogpines: { scheme: "dark", load: () => import("./scene-fogpines.js") },
-  harbor: { scheme: "dark", load: () => import("./scene-harbor.js") },
-  auroralake: { scheme: "dark", load: () => import("./scene-aurora-lake.js") },
-  auroraveil: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  auroracorona: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  auroracrimson: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  aurorabands: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  auroraorbit: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  auroraridge: { scheme: "dark", load: () => import("./scene-aurora-sky.js") },
-  cliffs: { scheme: "dark", load: () => import("./scene-cliffs.js") },
-  deepsea: { scheme: "dark", load: () => import("./scene-deepsea.js") },
-  orbital: { scheme: "dark", load: () => import("./scene-orbital.js") },
-  rain: { scheme: "dark", load: () => import("./scene-rain.js") },
-  rooftops: { scheme: "dark", load: () => import("./scene-rooftops.js") },
-  circuit: { scheme: "dark", load: () => import("./scene-circuit.js") },
-  launch: { scheme: "dark", load: () => import("./scene-launch.js") },
-  bamboo: { scheme: "dark", load: () => import("./scene-bamboo.js") },
-  waterfall: { scheme: "dark", load: () => import("./scene-waterfall.js") },
-  desert: { scheme: "dark", load: () => import("./scene-desert.js") },
-  sakura: { scheme: "light", load: () => import("./scene-sakura.js") },
-  terraces: { scheme: "light", load: () => import("./scene-terraces.js") },
-  meadow: { scheme: "light", load: () => import("./scene-meadow.js") },
+  aurora: { scheme: "dark", load: soft },
+  auroracrimson: { scheme: "dark", load: soft },
+  auroracorona: { scheme: "dark", load: soft },
+  aurorabands: { scheme: "dark", load: soft },
+  auroraorbit: { scheme: "dark", load: soft },
+  auroralake: { scheme: "dark", load: layered },
+  auroraridge: { scheme: "dark", load: layered },
+  auroraveil: { scheme: "dark", load: line },
+  aurorastipple: { scheme: "dark", load: dots },
+  nebula: { scheme: "dark", load: soft },
+  abyss: { scheme: "dark", load: soft },
+  aura: { scheme: "dark", load: soft },
+  bloom: { scheme: "light", load: soft },
+  lanterns: { scheme: "dark", load: soft },
+  ranges: { scheme: "dark", load: layered },
+  pines: { scheme: "dark", load: layered },
+  dunes: { scheme: "light", load: layered },
+  tide: { scheme: "dark", load: layered },
+  ringplanet: { scheme: "dark", load: layered },
+  cloudscape: { scheme: "light", load: layered },
+  contours: { scheme: "dark", load: line },
+  currents: { scheme: "dark", load: line },
+  constellations: { scheme: "dark", load: line },
+  rainfall: { scheme: "dark", load: line },
+  blueprint: { scheme: "dark", load: line },
+  paperplanes: { scheme: "light", load: line },
+  halftone: { scheme: "dark", load: dots },
+  starfield: { scheme: "dark", load: dots },
+  fireflies: { scheme: "dark", load: dots },
+  snowfall: { scheme: "dark", load: dots },
+  glyphfield: { scheme: "dark", load: dots },
+  pollen: { scheme: "light", load: dots },
 };
 
 // Scenes ready to draw: built-ins once loaded, and registered wallpapers.

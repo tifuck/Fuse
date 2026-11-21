@@ -28,7 +28,7 @@ A backdrop is the animated picture behind the chat transcript. Built-in ones are
 
 ## House style
 
-Fuse's built-in scenes are dark and moody: deep night blues, violets, ink greens, ember reds; smooth painted skies, fog and soft light. A signature option is chunky ASCII glyphs (`* + . : # / \ ^`) on small coloured square tiles, used for land, trees, stars or rain. Stay tasteful and low-contrast unless the user asks for something loud.
+Fuse's built-in scenes are quiet and low-contrast, one hue family each, in four art styles: soft (painted gradients, haze and glows), layered (flat paper-cut silhouettes with atmospheric depth), line (fine strokes on a flat ground) and dots (points, glows or small glyphs in one hue). Most are dark (night blues, violets, ink greens); a few are pale and light. Pick one style and keep to it. Stay tasteful and low-contrast unless the user asks for something loud.
 
 ## Workflow
 
