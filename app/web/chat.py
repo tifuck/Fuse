@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
-from .. import artifacts, speech, chat_drafts, notices, model_favorites, chat_events, chat_images, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
+from .. import artifacts, changelog, speech, chat_drafts, notices, model_favorites, chat_events, chat_images, chat_queue, chat_runtime, chat_runs, chat_recaps, chat_store, chat_titles, chat_tools, chats, context_compact as ctxmod, db, hosts, model_caps, permissions as permissions_mod, skills, vault, context_meter
 from ..config import settings
 from ..security import limiter
 from ..sources import openrouter as openrouter_mod
@@ -122,6 +122,7 @@ async def chat_sync_snapshot(request: Request):
         data["projects"] = chats.list_sidebar_projects(user["id"])
         return data
 
+    await asyncio.to_thread(changelog.announce, user["id"])
     data = await asyncio.to_thread(_snapshot)
     await asyncio.to_thread(chat_runs.reap_orphans, user["id"])
     await chat_runs.resume_queued(user["id"])

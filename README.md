@@ -247,7 +247,8 @@ account with the one-time setup token (`docker compose exec fuse cat data/setup-
 or the `register?setup=` link in `docker compose logs fuse`).
 
 - Logs: `docker compose logs -f fuse`
-- Update: `git pull && docker compose up -d --build`
+- Update: `git pull && docker compose up -d --build`. The container reads the
+  checkout's `.git` (read-only) to show users what changed after an update.
 - Data lives in the `db`, `data`, and `certs` volumes.
 
 <details>

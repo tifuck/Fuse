@@ -77,6 +77,7 @@
   font-size: 0.8rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body span:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-body b:empty + span { color: var(--toast-ink); }

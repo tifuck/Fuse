@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse, Response
 from .config import ROOT, settings
 from . import static_assets
 from . import cron, stats
-from . import accounts, db, chat_store, chat_runs, chat_events, chat_recaps, chat_titles, host_events, retention, sources as sources_module
+from . import accounts, changelog, db, chat_store, chat_runs, chat_events, chat_recaps, chat_titles, host_events, retention, sources as sources_module
 from .api import http_errors, router as api_router
 from .web import router as web_router
 from .agent_http import router as agent_http_router
@@ -76,6 +76,17 @@ async def _maintenance_loop(app: FastAPI):
             raise
         except Exception:
             logger.exception("Chat retention sweep failed")
+
+
+async def _update_check_loop():
+    while True:
+        try:
+            await asyncio.to_thread(changelog.check_upstream)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Update check failed")
+        await asyncio.sleep(changelog.CHECK_INTERVAL)
 
 
 async def _run_refresh_job(name: str, job) -> str | None:
@@ -215,6 +226,7 @@ async def lifespan(app: FastAPI):
             except BlockingIOError:
                 raise RuntimeError("Dashboard runs require one Fuse worker per database.") from None
         db.connect()
+        changelog.record_deploy()
         accounts.validate_credential_encryption()
         setup_token = accounts.ensure_setup_token()
         if setup_token:
@@ -273,6 +285,7 @@ async def lifespan(app: FastAPI):
         app.state.maintenance_task = maint_task
         recap_task = asyncio.create_task(chat_recaps.loop(), name="fuse-recaps")
         title_task = asyncio.create_task(chat_titles.loop(), name="fuse-titles")
+        update_task = asyncio.create_task(_update_check_loop(), name="fuse-update-check")
         from .search.client import start_client
         from .search.engine import warn_if_unkeyed
 
@@ -286,6 +299,9 @@ async def lifespan(app: FastAPI):
             title_task.cancel()
             await asyncio.gather(title_task, return_exceptions=True)
         await chat_titles.drain()
+        if "update_task" in locals():
+            update_task.cancel()
+            await asyncio.gather(update_task, return_exceptions=True)
         if "recap_task" in locals():
             recap_task.cancel()
             await asyncio.gather(recap_task, return_exceptions=True)
