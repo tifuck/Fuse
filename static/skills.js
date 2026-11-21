@@ -106,7 +106,7 @@
     panel.setAttribute("data-skill-review", "");
     const note = document.createElement("p");
     note.className = "skills-review-note";
-    note.textContent = (data.source ? "From github.com/" + data.source + " · not made by Fuse. " : "")
+    note.textContent = (data.source ? "Not made by Fuse · github.com/" + data.source + ". " : "")
       + "It has scripts that can run on your machines. Read every file before you turn it on.";
     panel.append(note);
     (data.files || []).forEach((file) => {

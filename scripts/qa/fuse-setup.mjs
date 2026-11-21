@@ -32,7 +32,7 @@ const SKILL_ASKS = [
   { ...ASK, id: 'qa-perm-skill', perm_kind: 'skill', tool: 'load_skill', path: '/tmp/fuse/skills/qa-shot-3f2a9c1e', cwd: '',
     command: 'qa-shot', description: '1 file' },
   { ...ASK, id: 'qa-perm-skill-gh', perm_kind: 'skill', tool: 'load_skill', path: '/tmp/fuse/skills/pdf-tools-91c0d2aa', cwd: '',
-    command: 'pdf-tools', description: '3 files\nFrom github.com/acme/agent-skills · not made by Fuse' },
+    command: 'pdf-tools', description: '3 files\nNot made by Fuse · github.com/acme/agent-skills' },
 ];
 // The agents pane lists child runs; fixtures have none. These match the
 // child_ids in "QA · Subagents" and "QA · Live agents".

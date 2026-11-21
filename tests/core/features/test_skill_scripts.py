@@ -114,7 +114,7 @@ def test_third_party_scripts_stay_off_until_exactly_those_files_are_approved(fre
     assert row["enabled"] is True and row["review"] is False
     machine = Machine(monkeypatch)
     machine.sync(uid)
-    assert machine.asks[0]["description"] == "1 file\nFrom github.com/foo/bar · not made by Fuse"
+    assert machine.asks[0]["description"] == "1 file\nNot made by Fuse · github.com/foo/bar"
     # Changed files switch it off again; the same files keep their approval.
     row = install(uid, {"run.py": b"print(2)\n"}, origin="github", source="foo/bar", source_id="foo/bar/demo")
     assert row["enabled"] is False and skills.load(uid, "demo") == "Unknown skill."
