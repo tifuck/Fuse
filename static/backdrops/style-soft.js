@@ -174,31 +174,73 @@ function edgePoints(seed, n, yMax = 1) {
   return out;
 }
 
-// —— Aurora ——
+// —— Auroras ——
+// A vertical strip of light, top to bottom, from [offset, hex, alpha] stops.
+const strips = new Map();
+function strip(stops, wd = 2, ht = 128) {
+  const id = JSON.stringify(stops) + wd;
+  if (strips.has(id)) return strips.get(id);
+  const c = document.createElement("canvas");
+  c.width = wd;
+  c.height = ht;
+  const g = c.getContext("2d");
+  const lg = g.createLinearGradient(0, 0, 0, ht);
+  for (const [o, hex, a] of stops) lg.addColorStop(o, rgba(hex, a));
+  g.fillStyle = lg;
+  g.fillRect(0, 0, wd, ht);
+  strips.set(id, c);
+  return c;
+}
+
+const curtainCol = (low, high) => strip([[0, high, 0], [0.35, high, 0.18], [0.72, low, 0.55], [0.9, low, 1], [1, low, 0]]);
+
+// Hanging curtains: per column of the soft buffer, a strip whose lower edge
+// follows a slow wave, its brightness from drifting noise.
+function drapes(s, g, t, list, floor) {
+  const { w, h } = s;
+  const dx = w / s.cols;
+  list.forEach((c, k) => {
+    const col = c.img;
+    const breathe = 0.78 + 0.22 * Math.sin(t * 0.11 + c.ph);
+    for (let i = -1; i <= s.cols; i += 1) {
+      const x = (i + 0.5) * dx;
+      const u = (x / w - c.x0) / (c.x1 - c.x0);
+      if (u <= 0 || u >= 1) continue;
+      const env = Math.sin(u * Math.PI) ** 1.4 * sides(x / w, floor);
+      const n = noise(u * 4.5 + t * 0.025, k * 7.3 + t * 0.017);
+      const fine = noise(u * 26 - t * 0.04, k * 3.1 + t * 0.03);
+      const a = c.a * env * breathe * (0.3 + 0.7 * n * n) * (1 - (c.rays || 0.3) + (c.rays || 0.3) * fine);
+      if (a < 0.004) continue;
+      const base = h * (c.y + (c.amp || 0.035) * Math.sin(u * TAU * 1.1 + t * 0.045 + c.ph) + 0.014 * Math.sin(u * TAU * 2.9 - t * 0.07 + c.ph * 2));
+      const tall = h * c.hgt * (0.75 + 0.5 * n);
+      g.globalAlpha = a;
+      g.drawImage(col, x - dx, base - tall, dx * 2, tall * 1.08);
+    }
+  });
+  g.globalAlpha = 1;
+}
+
+function stars(g, s, seed, n, color, yMax, floor, bright = 0.32) {
+  const r = seeded(seed);
+  g.fillStyle = color;
+  for (let i = 0; i < n; i += 1) {
+    const x = r();
+    const y = r() ** 1.4 * yMax;
+    g.globalAlpha = (0.06 + r() ** 2.2 * bright) * sides(x, floor);
+    g.beginPath();
+    g.arc(x * s.w, y * s.h, 0.45 + r() * 0.55, 0, TAU);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+}
+
+const twinkles = (s, t, img, list, r) => list.map((p) => [img, p.x * s.w, p.y * s.h, r, 0.1 + 0.22 * (0.5 + 0.5 * Math.sin(t * (0.35 + p.a * 0.3) + p.ph)) ** 2]);
+
 const AURORA = [
   { y: 0.22, hgt: 0.2, x0: -0.15, x1: 0.62, low: "#2f8f86", high: "#3c7f9a", a: 0.62, ph: 0.3 },
   { y: 0.15, hgt: 0.18, x0: 0.38, x1: 1.15, low: "#2f8f86", high: "#3c7f9a", a: 0.55, ph: 2.1 },
   { y: 0.3, hgt: 0.13, x0: 0.05, x1: 0.95, low: "#3c7f9a", high: "#2f6f8a", a: 0.2, ph: 4.4 },
 ];
-const curtainCols = new Map();
-function curtainCol(low, high) {
-  const id = low + high;
-  if (curtainCols.has(id)) return curtainCols.get(id);
-  const c = document.createElement("canvas");
-  c.width = 2;
-  c.height = 128;
-  const g = c.getContext("2d");
-  const lg = g.createLinearGradient(0, 0, 0, 128);
-  lg.addColorStop(0, rgba(high, 0));
-  lg.addColorStop(0.35, rgba(high, 0.18));
-  lg.addColorStop(0.72, rgba(low, 0.55));
-  lg.addColorStop(0.9, rgba(low, 1));
-  lg.addColorStop(1, rgba(low, 0));
-  g.fillStyle = lg;
-  g.fillRect(0, 0, 2, 128);
-  curtainCols.set(id, c);
-  return c;
-}
 
 export const aurora = {
   fps: 20,
@@ -218,59 +260,366 @@ export const aurora = {
       ridge(g, s, 0.93, 0.03, 0.9, 2.6, rgba("#05090e", 0.95));
     });
     s.ground = ground(s, [[0, "#070b14"], [0.55, "#0a1520"], [1, "#0c1a24"]], (g) => {
-      const r = seeded(71);
-      const n = Math.round((w * h) / 6500);
-      g.fillStyle = "#cfdde6";
-      for (let i = 0; i < n; i += 1) {
-        const x = r();
-        const y = r() ** 1.4 * 0.62;
-        const a = (0.06 + r() ** 2.2 * 0.32) * sides(x, 0.35);
-        g.globalAlpha = a;
-        g.beginPath();
-        g.arc(x * w, y * h, 0.45 + r() * 0.55, 0, TAU);
-        g.fill();
-      }
-      g.globalAlpha = 1;
+      stars(g, s, 71, Math.round((w * h) / 6500), "#cfdde6", 0.62, 0.35);
       g.drawImage(hills, 0, 0, w, h);
     });
     s.buf = buffer(s);
     s.cols = Math.min(96, s.buf.c.width);
     s.twinkle = edgePoints(72, 7, 0.5);
+    s.curtains = AURORA.map((c) => ({ ...c, img: curtainCol(c.low, c.high) }));
     glow("#d6e6ee");
-    for (const c of AURORA) curtainCol(c.low, c.high);
     settle(s, [[s.ground, 0, 0, w, h], [s.buf.c, 0, 0, w, h]]);
   },
   draw(s, t) {
-    const { ctx, w, h } = s;
+    const { w, h } = s;
     const { g } = s.buf;
-    const dx = w / s.cols;
     if (due(s, 0, h * 0.5)) {
       g.clearRect(0, 0, w, h);
       g.globalCompositeOperation = "lighter";
-      AURORA.forEach((c, k) => {
-        const col = curtainCol(c.low, c.high);
-        const breathe = 0.78 + 0.22 * Math.sin(t * 0.11 + c.ph);
+      drapes(s, g, t, s.curtains, 0.45);
+      g.globalCompositeOperation = "source-over";
+    }
+    present(s, twinkles(s, t, glow("#d6e6ee"), s.twinkle, 3.2 * Math.max(0.6, unitOf(s))));
+  },
+};
+
+// A red storm: tall rose curtains reaching high, a green fringe where they end.
+const CRIMSON_STOPS = [[0, "#a04a5a", 0], [0.3, "#a04a5a", 0.3], [0.62, "#8a2a3c", 0.7], [0.84, "#8a2a3c", 0.85], [0.92, "#2f6f5a", 0.6], [1, "#2f6f5a", 0]];
+const CRIMSON = [
+  { y: 0.47, hgt: 0.42, amp: 0.045, x0: -0.2, x1: 0.48, a: 0.66, ph: 0.7, rays: 0.6 },
+  { y: 0.42, hgt: 0.38, amp: 0.04, x0: 0.52, x1: 1.2, a: 0.62, ph: 2.6, rays: 0.6 },
+  { y: 0.36, hgt: 0.26, amp: 0.03, x0: 0.15, x1: 0.85, a: 0.16, ph: 4.9, rays: 0.5 },
+];
+
+export const auroracrimson = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const land = blurred(s, Math.max(3, Math.min(16, Math.min(w, h) / 55)), (g) => {
+      const glowLow = g.createLinearGradient(0, h * 0.6, 0, h);
+      glowLow.addColorStop(0, rgba("#2a1220", 0));
+      glowLow.addColorStop(0.7, rgba("#2a1220", 0.4));
+      glowLow.addColorStop(1, rgba("#2a1220", 0.2));
+      g.fillStyle = glowLow;
+      g.fillRect(0, h * 0.6, w, h * 0.4);
+      ridge(g, s, 0.9, 0.035, 1.1, 1.9, rgba("#07050a", 0.97));
+    });
+    s.ground = ground(s, [[0, "#0b0710"], [0.6, "#100910"], [1, "#140a12"]], (g) => {
+      stars(g, s, 171, Math.round((w * h) / 9000), "#e6d8de", 0.7, 0.3, 0.28);
+      g.drawImage(land, 0, 0, w, h);
+    });
+    s.buf = buffer(s);
+    s.cols = Math.min(96, s.buf.c.width);
+    s.twinkle = edgePoints(172, 5, 0.45);
+    s.curtains = CRIMSON.map((c) => ({ ...c, img: strip(CRIMSON_STOPS) }));
+    glow("#ecdce0");
+    settle(s, [[s.ground, 0, 0, w, h], [s.buf.c, 0, 0, w, h]]);
+  },
+  draw(s, t) {
+    const { w, h } = s;
+    const { g } = s.buf;
+    if (due(s, 0, h * 0.6)) {
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = "lighter";
+      drapes(s, g, t * 0.8, s.curtains, 0.28);
+      g.globalCompositeOperation = "source-over";
+    }
+    present(s, twinkles(s, t, glow("#ecdce0"), s.twinkle, 3 * Math.max(0.6, unitOf(s))));
+  },
+};
+
+// The corona overhead: rays from a point above the top edge, fanning down
+// both sides, violet at the tips and green at the base.
+let coronaRay = null;
+function rayImg() {
+  if (coronaRay) return coronaRay;
+  const W = 32;
+  const H = 256;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const g = c.getContext("2d");
+  const line = document.createElement("canvas");
+  line.width = 64;
+  line.height = 1;
+  const lg0 = line.getContext("2d");
+  const pg = lg0.createLinearGradient(0, 0, 64, 0);
+  for (const [o, a] of [[0, 0], [0.2, 0.15], [0.38, 0.6], [0.5, 1], [0.62, 0.6], [0.8, 0.15], [1, 0]]) pg.addColorStop(o, rgba("#000000", a));
+  lg0.fillStyle = pg;
+  lg0.fillRect(0, 0, 64, 1);
+  for (let y = 0; y < H; y += 1) {
+    const wd = W * (0.25 + 0.75 * (y / H));
+    g.drawImage(line, (W - wd) / 2, y, wd, 1);
+  }
+  g.globalCompositeOperation = "source-in";
+  const vg = g.createLinearGradient(0, 0, 0, H);
+  for (const [o, hex, a] of [[0, "#5a4a8a", 0], [0.3, "#5a4a8a", 0.3], [0.55, "#4a6a8a", 0.55], [0.8, "#3a8f7a", 1], [0.93, "#3a8f7a", 0.45], [1, "#3a8f7a", 0]]) vg.addColorStop(o, rgba(hex, a));
+  g.fillStyle = vg;
+  g.fillRect(0, 0, W, H);
+  coronaRay = c;
+  return c;
+}
+
+export const auroracorona = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    s.ground = ground(s, [[0, "#060a14"], [0.6, "#070c16"], [1, "#08101a"]], (g) => {
+      stars(g, s, 271, Math.round((w * h) / 6000), "#d4dcec", 0.95, 0.3);
+    });
+    s.buf = buffer(s);
+    const r = seeded(272);
+    s.rays = [];
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 11; i += 1) {
+        s.rays.push({ side, u: -0.08 + 0.34 * ((i + r()) / 11), wd: 0.03 + r() * 0.05, a: 0.22 + r() * 0.3, z: r(), ph: r() * TAU, f: 0.1 + r() * 0.12 });
+      }
+    }
+    s.twinkle = edgePoints(273, 6);
+    rayImg();
+    glow("#dce4f0");
+    settle(s, [[s.ground, 0, 0, w, h], [s.buf.c, 0, 0, w, h]]);
+  },
+  draw(s, t) {
+    const { w, h } = s;
+    const { g } = s.buf;
+    const img = rayImg();
+    const px = w / 2;
+    const py = -h * 0.42;
+    const m = Math.min(w, h);
+    s.odd = !s.odd;
+    if (s.full || s.odd) {
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = "lighter";
+      for (const ray of s.rays) {
+        const u = ray.u + 0.018 * Math.sin(t * 0.025 + ray.ph);
+        const tx = w * (ray.side < 0 ? u : 1 - u);
+        const ty = h * (0.92 + 0.16 * ray.z);
+        const dx = tx - px;
+        const dy = ty - py;
+        const len = Math.hypot(dx, dy) * 1.04;
+        const pulse = 0.55 + 0.45 * Math.sin(t * ray.f + ray.ph) ** 2;
+        const a = ray.a * pulse * (0.5 + 0.5 * clamp01((0.3 - u) / 0.3));
+        if (a < 0.004) continue;
+        const wd = (w * 0.5 + m * 0.5) * ray.wd;
+        g.save();
+        g.translate(px, py);
+        g.rotate(Math.atan2(dy, dx) - Math.PI / 2);
+        g.globalAlpha = a;
+        g.drawImage(img, -wd / 2, 0, wd, len);
+        g.restore();
+    }
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "source-over";
+    }
+    present(s, twinkles(s, t, glow("#dce4f0"), s.twinkle, 3 * Math.max(0.6, unitOf(s))));
+  },
+};
+
+// Broad folded ribbons drifting across the upper sky over a faint Milky Way.
+const BAND_STOPS = [[0, "#9a5a8a", 0], [0.22, "#9a5a8a", 0.4], [0.45, "#6a4a9a", 0.8], [0.7, "#3a5aa0", 0.9], [1, "#3a5aa0", 0]];
+const BANDS = [
+  { y: 0.17, th: 0.11, amp: 0.06, f: 0.8, v: 0.012, a: 0.5, ph: 0.4 },
+  { y: 0.31, th: 0.08, amp: 0.05, f: 1.25, v: -0.009, a: 0.36, ph: 2.2 },
+  { y: 0.08, th: 0.06, amp: 0.035, f: 1.7, v: 0.015, a: 0.24, ph: 4.0 },
+];
+const bandY = (b, u, t) => b.y + b.amp * Math.sin(TAU * u * b.f - t * b.v * TAU + b.ph) + b.amp * 0.45 * Math.sin(TAU * u * b.f * 2.3 + t * 0.006 + b.ph * 2);
+
+export const aurorabands = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const at = (u) => [u * w, h * (0.95 - 0.85 * u)];
+    s.ground = ground(s, [[0, "#080a18"], [0.6, "#090b1a"], [1, "#0a0c1c"]], (g) => {
+      const rm = seeded(371);
+      const mm = Math.max(w, h);
+      for (let i = 0; i < 60; i += 1) {
+        const u = rm();
+        const [x0, y0] = at(u);
+        const off = (rm() - 0.5) * mm * 0.06;
+        const x = x0 + off;
+        const y = y0 + off;
+        const rad = mm * (0.06 + rm() * 0.06);
+        const a = (0.02 + 0.035 * noise(u * 5, 3.3)) * sides(x / w, 0.35);
+        const rg = g.createRadialGradient(x, y, 0, x, y, rad);
+        rg.addColorStop(0, rgba("#8a90b8", a));
+        rg.addColorStop(0.5, rgba("#8a90b8", a * 0.45));
+        rg.addColorStop(1, rgba("#8a90b8", 0));
+        g.fillStyle = rg;
+        g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      }
+      stars(g, s, 372, Math.round((w * h) / 7000), "#d8dcf0", 1, 0.35);
+      const r = seeded(373);
+      const m = Math.max(w, h);
+      g.fillStyle = "#e0e4f4";
+      for (let i = 0, n = Math.round((w * h) / 4000); i < n; i += 1) {
+        const [x, y] = at(r());
+        const off = (r() + r() + r() - 1.5) * m * 0.06;
+        const sx = x + off * 0.7;
+        g.globalAlpha = (0.05 + r() ** 2 * 0.25) * sides(sx / w, 0.4);
+        g.beginPath();
+        g.arc(sx, y + off * 0.7, 0.35 + r() * 0.45, 0, TAU);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    });
+    s.buf = buffer(s);
+    s.cols = Math.min(72, s.buf.c.width);
+    s.twinkle = edgePoints(374, 6, 0.6);
+    strip(BAND_STOPS);
+    glow("#e0e4f4");
+    settle(s, [[s.ground, 0, 0, w, h], [s.buf.c, 0, 0, w, h]]);
+  },
+  draw(s, t) {
+    const { w, h } = s;
+    const { g } = s.buf;
+    if (due(s, 0, h * 0.55)) {
+      const img = strip(BAND_STOPS);
+      const dx = w / s.cols;
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = "lighter";
+      BANDS.forEach((b, k) => {
+        const breathe = 0.8 + 0.2 * Math.sin(t * 0.09 + b.ph);
         for (let i = -1; i <= s.cols; i += 1) {
-          const x = (i + 0.5) * dx;
-          const u = (x / w - c.x0) / (c.x1 - c.x0);
-          if (u <= 0 || u >= 1) continue;
-          const env = Math.sin(u * Math.PI) ** 1.4 * sides(x / w, 0.45);
-          const n = noise(u * 4.5 + t * 0.025, k * 7.3 + t * 0.017);
-          const fine = noise(u * 26 - t * 0.04, k * 3.1 + t * 0.03);
-          const a = c.a * env * breathe * (0.3 + 0.7 * n * n) * (0.7 + 0.3 * fine);
+          const u = ((i + 0.5) * dx) / w;
+          const y = bandY(b, u, t);
+          const slope = Math.abs(bandY(b, u + 0.01, t) - y) / 0.01;
+          const fold = 1 + 1.6 * clamp01(slope * 1.2);
+          const n = noise(u * 3.5 - t * 0.02, k * 5.1 + t * 0.015);
+          const a = b.a * breathe * sides(u, 0.22) * (0.35 + 0.65 * n) * fold * 0.55;
           if (a < 0.004) continue;
-          const base = h * (c.y + 0.035 * Math.sin(u * TAU * 1.1 + t * 0.045 + c.ph) + 0.014 * Math.sin(u * TAU * 2.9 - t * 0.07 + c.ph * 2));
-          const tall = h * c.hgt * (0.75 + 0.5 * n);
-          g.globalAlpha = a;
-          g.drawImage(col, x - dx, base - tall, dx * 2, tall * 1.08);
+          const th = h * b.th * (0.7 + 0.6 * n) * (1 + 0.6 * clamp01(slope));
+          g.globalAlpha = Math.min(1, a);
+          g.drawImage(img, u * w - dx, y * h - th / 2, dx * 2, th);
         }
       });
       g.globalAlpha = 1;
       g.globalCompositeOperation = "source-over";
     }
-    const star = glow("#d6e6ee");
-    const r = 3.2 * Math.max(0.6, unitOf(s));
-    present(s, s.twinkle.map((p) => [star, p.x * w, p.y * h, r, 0.1 + 0.22 * (0.5 + 0.5 * Math.sin(t * (0.35 + p.a * 0.3) + p.ph)) ** 2]));
+    present(s, twinkles(s, t, glow("#e0e4f4"), s.twinkle, 3 * Math.max(0.6, unitOf(s))));
+  },
+};
+
+// From orbit: the night side's limb across the bottom, a thin blue
+// atmosphere, the auroral oval glowing along it.
+const ORBIT_STOPS = [[0, "#8a3a4a", 0], [0.22, "#8a3a4a", 0.28], [0.48, "#3a8f6a", 0.45], [0.8, "#4aa07a", 1], [0.93, "#4aa07a", 0.5], [1, "#4aa07a", 0]];
+function limb(s) {
+  const { w, h } = s;
+  const R = Math.max(w * 1.1, h * 0.9);
+  return { R, cx: w / 2, cy: h * 0.8 + R };
+}
+
+export const auroraorbit = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const L = limb(s);
+    s.limb = L;
+    const edgeY = L.cy - Math.sqrt(Math.max(0, L.R * L.R - (w / 2) ** 2));
+    s.top = edgeY - h * 0.16;
+    const haze = blurred(s, Math.max(3, Math.min(16, Math.min(w, h) / 55)), (g) => {
+      g.beginPath();
+      g.arc(L.cx, L.cy, L.R + h * 0.004, 0, TAU);
+      g.strokeStyle = rgba("#2a4a80", 0.4);
+      g.lineWidth = h * 0.03;
+      g.stroke();
+    });
+    s.ground = ground(s, [[0, "#05070c"], [0.7, "#060810"], [1, "#070912"]], (g) => {
+      const r = seeded(471);
+      g.fillStyle = "#d8dee8";
+      for (let i = 0, n = Math.round((w * h) / 5500); i < n; i += 1) {
+        const x = r() * w;
+        const y = r() * h;
+        const above = Math.hypot(x - L.cx, y - L.cy) - L.R;
+        g.globalAlpha = (0.05 + r() ** 2.2 * 0.32) * clamp01((above - h * 0.03) / (h * 0.12)) * sides(x / w, 0.35);
+        g.beginPath();
+        g.arc(x, y, 0.45 + r() * 0.55, 0, TAU);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+      const pg = g.createRadialGradient(L.cx, L.cy, L.R * 0.9, L.cx, L.cy, L.R);
+      pg.addColorStop(0, "#030407");
+      pg.addColorStop(0.85, "#05070b");
+      pg.addColorStop(1, "#0a0f18");
+      g.fillStyle = pg;
+      g.beginPath();
+      g.arc(L.cx, L.cy, L.R, 0, TAU);
+      g.fill();
+      g.fillStyle = "#d8a462";
+      for (let i = 0, n = Math.round((w * h) / 1500); i < n; i += 1) {
+        const x = r() * w;
+        const y = r() * h;
+        const depth = L.R - Math.hypot(x - L.cx, y - L.cy);
+        if (depth < h * 0.015) continue;
+        const k = noise(x / (w * 0.06), y / (h * 0.03) + 40);
+        if (k < 0.62) continue;
+        g.globalAlpha = (0.08 + r() * 0.22) * (k - 0.6) * 2.5 * clamp01(1 - depth / (h * 0.25));
+        g.beginPath();
+        g.arc(x, y, 0.4 + r() * 0.5, 0, TAU);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+      g.drawImage(haze, 0, 0, w, h);
+      g.beginPath();
+      g.arc(L.cx, L.cy, L.R + 0.5, 0, TAU);
+      g.strokeStyle = rgba("#5a8ac8", 0.12);
+      g.lineWidth = 3;
+      g.stroke();
+      g.strokeStyle = rgba("#6a9ad0", 0.3);
+      g.lineWidth = 1;
+      g.stroke();
+    });
+    s.buf = buffer(s);
+    const half = Math.asin(Math.min(1, (w / 2 + w * 0.05) / L.R));
+    s.span = half;
+    s.cols = Math.min(110, Math.max(24, s.buf.c.width));
+    s.twinkle = edgePoints(472, 5, 0.4);
+    strip(ORBIT_STOPS);
+    glow("#dce2ec");
+    settle(s, [[s.ground, 0, 0, w, h], [s.buf.c, 0, 0, w, h]]);
+  },
+  draw(s, t) {
+    const { w, h } = s;
+    const { g } = s.buf;
+    const L = s.limb;
+    if (due(s, s.top, h)) {
+      const img = strip(ORBIT_STOPS);
+      const step = (2 * s.span) / s.cols;
+      const cw = L.R * step * 2.2;
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = "lighter";
+      g.save();
+      g.translate(L.cx, L.cy);
+      for (let i = 0; i <= s.cols; i += 1) {
+        const phi = -s.span + i * step;
+        const x = L.cx + L.R * Math.sin(phi);
+        const env = 0.35 + 0.65 * noise(phi * 4 + t * 0.012, 9.1);
+        const n = noise(phi * 14 + t * 0.05, 3.7 + t * 0.03);
+        const a = 0.6 * env * (0.25 + 0.75 * n * n) * sides(x / w, 0.4) * (0.85 + 0.15 * Math.sin(t * 0.13 + phi * 5));
+        if (a < 0.004) continue;
+        const tall = h * (0.06 + 0.05 * n);
+        g.rotate(phi);
+        g.globalAlpha = a;
+        g.drawImage(img, -cw / 2, -L.R - h * 0.006 - tall, cw, tall);
+        g.rotate(-phi);
+      }
+      g.restore();
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = "source-over";
+    }
+    present(s, twinkles(s, t, glow("#dce2ec"), s.twinkle, 3 * Math.max(0.6, unitOf(s))));
   },
 };
 
