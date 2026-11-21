@@ -461,7 +461,8 @@ function updateAssistant(article, msg, live) {
     const turnLine = (!live) && hasOutput ? deps.ccTurnLineHtml(msg, msg === deps.messages[deps.messages.length - 1], usage) : "";
     if (turnLine) {
       foot.hidden = false;
-      meta.innerHTML = `<span class="chat-console-turn">${turnLine}</span>`;
+      // Focusable so a tap on it shows a touch screen its actions (column.css).
+      meta.innerHTML = `<span class="chat-console-turn" tabindex="-1">${turnLine}</span>`;
     } else if (!foot.hidden) {
       foot.hidden = true;
     }

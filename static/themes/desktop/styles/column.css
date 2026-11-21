@@ -288,26 +288,32 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-add { color: var(--dk-add, var(--ok)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-nline.is-del { color: var(--dk-del, var(--fault)); }
 
-/* The reply's line: what it took ("Done in 3m 53s"), when it ended
-   ("· 4m ago"), then the action icons, which show while the reply is
-   pointed at or focused. The recap sits under it at the same edge. Only an
-   outcome ("Interrupted", "Failed") is tinted.
+/* The reply's line: what it took ("done 3m 53s"), when it ended
+   ("4m ago"), then the action icons, which show while the reply is
+   pointed at or focused. The recap sits under it at the same edge. It reads
+   like the summary lines above it ("Searched for 4 patterns"): their type,
+   their muted words and counts; only an outcome ("interrupted", "failed")
+   is tinted, in the colours of their "1 stopped" and "1 failed".
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 calc(0.72rem * var(--chat-text-scale, 1))/1.4 var(--code, var(--mono)); letter-spacing: 0.01em; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 80%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 var(--console-type)/var(--console-leading) var(--mono); color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); outline: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead b { font-weight: 400; color: var(--dk-mute, var(--mute)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; height: 1lh; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; --dur-hover: 0s; }
-@media (hover: none) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; } }
+/* A touch screen has no pointer to show them: the latest reply keeps its
+   actions; an older one shows them while its line is tapped (focused). */
+@media (hover: none) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { opacity: 1; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn.is-assistant:has(~ .chat-turn.is-assistant .chat-console-turn):not(:focus-within) .dk-acts { opacity: 0; pointer-events: none; }
+}
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 55%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead + .dk-ago { margin-left: 0.6em; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 72%, var(--dk-canvas, var(--ink))); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: color-mix(in srgb, var(--dk-del, var(--fault)) 72%, var(--dk-canvas, var(--ink))); }
-html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: color-mix(in srgb, var(--dk-warn) 88%, var(--dk-canvas, var(--ink))); }
-html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: color-mix(in srgb, var(--dk-del, var(--fault)) 88%, var(--dk-canvas, var(--ink))); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: var(--dk-warn); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: var(--fault); }
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { width: 36px; height: 36px; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { margin-left: 0; }
