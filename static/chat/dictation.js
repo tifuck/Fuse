@@ -31,6 +31,8 @@ function clock(ms) {
 export function createDictation({ picker }) {
   const button = S.root.querySelector("[data-chat-mic]");
   // The theme's composer holds the overlay's markup: <template data-dictation>.
+  // The strip sits in the dock's flow, so the dock (and the transcript's room
+  // above it) grows while it shows: before [data-dictation-slot], else the box.
   const markup = S.form && S.form.querySelector("template[data-dictation]");
   if (!button || !S.chatBox || !markup) return null;
   const overlay = document.createElement("div");
@@ -41,7 +43,7 @@ export function createDictation({ picker }) {
   overlay.append(markup.content.cloneNode(true));
   overlay.querySelector(".dictation-bars").innerHTML = Array.from({ length: BANDS * 2 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
   overlay.querySelector("[data-dictation-done]").title += ` or ${HOTKEY_LABEL}`;
-  S.form.append(overlay);
+  (S.form.querySelector("[data-dictation-slot]") || S.chatBox).before(overlay);
   const bars = [...overlay.querySelectorAll(".dictation-bars i")];
   const timeEl = overlay.querySelector("[data-dictation-time]");
 

@@ -5,14 +5,15 @@
 html[data-chat-view="desktop"] .chat[data-view="desktop"] [data-chat-mic] { touch-action: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-tb[data-chat-mic].is-live { color: var(--brass); }
 
-/* Hangs above the composer and its open todo list (chat-todo.css stacks the
-   sync badge and "Jump to latest" above it); the composer's own popovers
-   (z-index 7 with the box) cover it. */
+/* Sits above the composer (and its stats strip) in the dock's flow, so the
+   dock grows by its height and the transcript, the open todo list, the sync
+   badge and "Jump to latest" all move up with it; the composer's own
+   popovers (z-index 7 with the box) cover it. */
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
-  position: absolute;
-  bottom: calc(100% + 0.7rem + var(--todo-lift, 0px));
-  left: 50%;
+  position: relative;
+  align-self: center;
   z-index: 6;
+  margin-bottom: 0.7rem;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -28,7 +29,6 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
   font-size: 12.5px;
   font-weight: 500;
   line-height: 1;
-  transform: translateX(-50%);
   animation: dictation-in-desktop var(--dur-2) var(--ease-snap);
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation[hidden] { display: none; }
@@ -113,7 +113,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn:focus-v
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishing .dictation-btn { pointer-events: none; opacity: 0.35; }
 
 @keyframes dictation-in-desktop {
-  from { opacity: 0; transform: translate(-50%, 4px); }
+  from { opacity: 0; transform: translateY(4px); }
 }
 @keyframes dictation-breathe-desktop {
   50% { opacity: 0.35; }
@@ -127,22 +127,16 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishin
    its left edge and Done at its right, 44px tall; between them what it is
    doing, the clock, and a meter as wide as the room that is left. */
 @media (max-width: 800px) {
-  html[data-chat-view="desktop"] .chat[data-view="desktop"]:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 5.1rem; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
-    right: 8px;
-    bottom: calc(100% + 4px + var(--todo-lift, 0px));
-    left: 8px;
+    width: min(26rem, 100% - 16px);
+    margin-bottom: 4px;
     display: grid;
     grid-template: "cancel dot label time done" auto "cancel bars bars bars done" auto / auto auto 1fr auto auto;
     gap: 7px 8px;
-    max-width: 26rem;
     height: auto;
-    margin-inline: auto;
     padding: 10px;
     border-radius: 16px;
-    background: var(--dk-raise);
     font-size: 14px;
-    transform: none;
     animation-name: dictation-up-desktop;
   }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation::before { grid-area: label; overflow: hidden; min-width: 0; font-weight: 600; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
