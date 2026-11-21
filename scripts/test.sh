@@ -2,7 +2,7 @@
 # Fuse test runner (see tests/README.md).
 #
 #   scripts/test.sh                 core suite (tests/core, parallel) + tests/js
-#   scripts/test.sh runs tools      only these areas (tests/core/<area>)
+#   scripts/test.sh runs tools      only these areas (tests/core/<area>; js = tests/js)
 #   scripts/test.sh changed [ref]   areas whose sources differ from ref (default dev),
 #                                   committed or not, mapped by tests/areas.txt
 #   scripts/test.sh legacy [path..] the frozen pre-redesign suite; never required
@@ -47,6 +47,13 @@ check_pytest_args() {  # what a caller may not hand to pytest
   return 0
 }
 
+js_tests() {
+  if compgen -G "tests/js/*.test.cjs" > /dev/null; then
+    if command -v node > /dev/null; then node --test tests/js/*.test.cjs
+    else echo "WARNING: node is not installed: tests/js was NOT run" >&2; fi
+  fi
+}
+
 pytest() { "$PYTHON" -m pytest -q -p no:cacheprovider -o timeout_func_only=true -W "ignore:The 'reconnect' argument:DeprecationWarning" "$@"; }
 parallel() { local jobs=${JOBS:-$1}; [ "$jobs" != 0 ] && echo "-n $jobs" || true; }
 
@@ -59,7 +66,7 @@ for path in sys.stdin.read().split():
     for glob, area in rules:
         if fnmatch.fnmatch(path, glob):
             area = path.split("/")[2] if area == "@dir" else area
-            if area not in found and os.path.isdir(f"tests/core/{area}"):
+            if area not in found and (area == "js" or os.path.isdir(f"tests/core/{area}")):
                 found.append(area)
             break
 print(" ".join(found))'
@@ -108,18 +115,17 @@ case "${args[0]:-}" in
   "")
     # shellcheck disable=SC2046
     pytest --timeout="${TEST_TIMEOUT:-30}" $(parallel auto) tests/core "${extra[@]}"
-    if compgen -G "tests/js/*.test.cjs" > /dev/null; then
-      if command -v node > /dev/null; then node --test tests/js/*.test.cjs
-      else echo "WARNING: node is not installed: tests/js was NOT run" >&2; fi
-    fi
+    js_tests
     ;;
   *)
-    dirs=()
+    dirs=() js=0
     for area in "${args[@]}"; do
+      if [ "$area" = js ]; then js=1; continue; fi
       [ -d "tests/core/$area" ] || { echo "no such area: tests/core/$area" >&2; exit 2; }
       dirs+=("tests/core/$area")
     done
     # shellcheck disable=SC2046
-    pytest --timeout="${TEST_TIMEOUT:-30}" $(parallel 0) "${dirs[@]}" "${extra[@]}"
+    if [ ${#dirs[@]} -gt 0 ]; then pytest --timeout="${TEST_TIMEOUT:-30}" $(parallel 0) "${dirs[@]}" "${extra[@]}"; fi
+    if [ "$js" = 1 ]; then js_tests; fi
     ;;
 esac

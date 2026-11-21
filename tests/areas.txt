@@ -12,6 +12,7 @@ app/db.py                        usage
 app/db_schema.py                 schema
 app/mysql_compat.py              infra
 app/database_errors.py           infra
+app/config.py                    infra
 scripts/sql/*                    schema
 scripts/init_db.py               schema
 scripts/check_schema.py          schema
@@ -70,6 +71,7 @@ app/code_mode.py                 tools
 app/code_worker.py               tools
 app/ssh_pool.py                  tools
 app/async_work.py                tools
+app/injection_probe.py           tools
 
 # usage, pricing, pools
 app/pricing.py                   usage
@@ -110,6 +112,7 @@ app/crypto.py                    auth
 app/web/*                        auth
 app/main.py                      auth
 app/static_assets.py             auth
+app/chat_themes.py               auth
 
 # schedules, memory, skills, artifacts, push, hosts
 app/schedules.py                 features
@@ -123,6 +126,12 @@ app/hosts.py                     features
 app/tool_failures.py             features
 app/speech.py                    features
 app/changelog.py                 features
+app/backdrops.py                 features
+app/notices.py                   features
 
 # web search and page reading
 app/search/*                     search
+
+# frontend logic with no DOM (tests/js, Node)
+static/*.js                      js
+tests/js/*                       js
