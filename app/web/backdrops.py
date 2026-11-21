@@ -30,7 +30,7 @@ async def backdrops_create(request: Request):
     raw = await _json_object(request)
     try:
         item = await asyncio.to_thread(
-            backdrops.create, user["id"], view=raw.get("view"), name=raw.get("name"), scheme=raw.get("scheme"), html=raw.get("html"))
+            backdrops.create, user["id"], name=raw.get("name"), scheme=raw.get("scheme"), html=raw.get("html"))
     except backdrops.BackdropError as exc:
         raise HTTPException(exc.status_code, exc.detail) from None
     return JSONResponse({"backdrop": item}, headers=_NO_STORE)

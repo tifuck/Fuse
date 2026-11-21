@@ -46,9 +46,8 @@
     launch: { label: "Launch Site", hint: "Rocket at dawn · launch cycle", group: "space" },
   };
   const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", city: "City", space: "Space", yours: "Yours" };
-  // A custom backdrop (GET /api/backdrops) is "u-" + its id; each theme has at
-  // most one (its `view`). A saved one draws on load; it is replaced or dropped
-  // only once the list has arrived without it.
+  // A custom backdrop (GET /api/backdrops) is "u-" + its id. A saved one
+  // draws on load; it is dropped only once the list has arrived without it.
   const CUSTOM_BACKDROP = /^u-[a-z0-9]{12}$/;
   let customState = "idle";
   // Collapsed, the gallery shows two rows: the current pick first.
@@ -517,7 +516,7 @@
     if (backHost) ensureGallery(backHost);
     if (backHost && !backHost.childElementCount) {
       const ids = Object.keys(BACKDROPS);
-      const custom = ids.filter((id) => BACKDROPS[id].custom && ownCustom(BACKDROPS[id]));
+      const custom = ids.filter((id) => BACKDROPS[id].custom);
       for (const id of ["none", ...custom, ...ids.filter((id) => id !== "none" && !BACKDROPS[id].custom)]) {
         backHost.append(backdropCard(id, BACKDROPS[id]));
       }
@@ -654,49 +653,32 @@
     }
   }
 
-  // This theme's custom backdrop, or one saved before they were per theme.
-  const ownCustom = (spec) => !spec.view || spec.view === view;
-  const customFor = (id) => Object.keys(BACKDROPS).find((key) => BACKDROPS[key].custom && BACKDROPS[key].view === id) || "";
-
   function addCustomBackdrop(raw) {
     const id = String(raw?.id || "");
     if (!/^[a-z0-9]{12}$/.test(id)) return "";
     const key = "u-" + id;
     const scheme = raw.scheme === "light" ? "light" : "dark";
-    const owner = VIEWS.includes(raw.view) ? raw.view : "";
-    BACKDROPS[key] = { label: String(raw.name || "Custom").slice(0, 40), hint: `Yours · ${scheme}`, group: "yours", scheme, custom: true, view: owner };
+    BACKDROPS[key] = { label: String(raw.name || "Custom").slice(0, 40), hint: `Yours · ${scheme}`, group: "yours", scheme, custom: true };
     return key;
   }
 
-  // A save for a theme replaced that theme's previous one and every one saved
-  // before backdrops were per theme (app/backdrops.py create): forget them too.
-  function replaceCustom(key) {
-    const owner = BACKDROPS[key]?.view;
-    if (!owner) return;
-    for (const other of Object.keys(BACKDROPS)) {
-      const spec = BACKDROPS[other];
-      if (other !== key && spec.custom && (!spec.view || spec.view === owner)) delete BACKDROPS[other];
-    }
-  }
-
-  // Any theme still showing a removed custom backdrop takes the theme's
-  // current one (saved since, maybe on another device) or goes back to None
-  // (and to the palette a light one replaced).
+  // Any theme still showing a removed custom backdrop goes back to None (and
+  // to the palette a light one replaced).
   function dropMissingCustom(gone) {
     const missing = (id) => id === gone || (CUSTOM_BACKDROP.test(id) && !knownBackdrop(id));
     let changed = false;
     for (const id of VIEWS) {
       const entry = views[id];
       if (id === view || !missing(entry.backdrop)) continue;
-      entry.backdrop = customFor(id) || "none";
-      if (entry.backdrop === "none" && entry.restore) {
+      entry.backdrop = "none";
+      if (entry.restore) {
         entry.palette = entry.restore;
         entry.restore = "";
       }
       changed = true;
     }
     if (changed) persistViews();
-    if (missing(backdrop)) setBackdrop(customFor(view) || "none");
+    if (missing(backdrop)) setBackdrop("none");
   }
 
   // The API may be missing (an older server): the gallery then just has no
@@ -972,7 +954,6 @@
     addCustomBackdrop(raw) {
       const key = addCustomBackdrop(raw);
       if (!key) return "";
-      replaceCustom(key);
       repaintBackdrops();
       syncSwatches();
       wallpapersChanged();
@@ -986,7 +967,7 @@
     // The data-only wallpapers (built-in presets and any added), for the /theme picker.
     get wallpapers() {
       return Object.entries(BACKDROPS)
-        .filter(([id, spec]) => (spec.custom ? ownCustom(spec) : window.FuseBackdrop?.isWallpaper?.(id)))
+        .filter(([id, spec]) => spec.custom || window.FuseBackdrop?.isWallpaper?.(id))
         .map(([id, spec]) => ({ id, label: spec.label, hint: spec.hint, scheme: wallpaperScheme(id) || "dark" }));
     },
     getComposerPrefs,
