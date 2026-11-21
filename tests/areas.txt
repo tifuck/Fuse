@@ -122,6 +122,7 @@ app/push.py                      features
 app/hosts.py                     features
 app/tool_failures.py             features
 app/speech.py                    features
+app/changelog.py                 features
 
 # web search and page reading
 app/search/*                     search
