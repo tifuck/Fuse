@@ -26,3 +26,5 @@
 @import url("dock.css");
 /* Last of all: the Tail layer over the Console foundation. */
 @import url("tail.css");
+@import url("tail-rows.css");
+@import url("tail-chrome.css");
