@@ -155,7 +155,7 @@ def test_the_library_is_clean_categorised_and_mostly_off():
         root = skills.BUNDLED_DIR / slug
         parsed = parse_skill_md((root / "SKILL.md").read_text(encoding="utf-8"), slug=slug)
         assert parsed["category"] and len(parsed["body"]) <= 10_000, slug
-        for path in root.rglob("*"):
+        for path in (p for p in root.rglob("*") if p.is_file()):
             text = path.read_text(encoding="utf-8")
             assert hidden_char(text) is None and "<!--" not in text, path
 
