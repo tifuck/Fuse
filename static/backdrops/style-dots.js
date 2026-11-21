@@ -139,12 +139,12 @@ export const starfield = {
       const y = ay + (by - ay) * p + off * 0.7;
       const r = m * rnd.range(0.08, 0.2);
       const blob = g.createRadialGradient(x, y, 0, x, y, r);
-      blob.addColorStop(0, rgba("#8c98b8", 0.022));
+      blob.addColorStop(0, rgba("#8c98b8", 0.032));
       blob.addColorStop(1, rgba("#8c98b8", 0));
       g.fillStyle = blob;
       g.fillRect(x - r, y - r, r * 2, r * 2);
     }
-    g.fillStyle = rgba("#b8c2d8", 0.16);
+    g.fillStyle = rgba("#b8c2d8", 0.22);
     for (let i = 0; i < (s.w * s.h) / 900; i += 1) {
       const p = rnd();
       const off = (rnd() + rnd() + rnd() - 1.5) * m * 0.1;
@@ -155,8 +155,8 @@ export const starfield = {
     g.restore();
     // Stars: three layers, each a few sizes; alpha set per star.
     const layers = [
-      { n: 320, r: [0.5, 0.8], a: 0.5, v: 0.0016 },
-      { n: 110, r: [0.7, 1.2], a: 0.62, v: 0.0032 },
+      { n: 420, r: [0.5, 0.8], a: 0.55, v: 0.0016 },
+      { n: 130, r: [0.7, 1.2], a: 0.66, v: 0.0032 },
       { n: 36, r: [1.1, 1.8], a: 0.7, v: 0.0055 },
     ];
     const scale = Math.max(0.25, (s.w * s.h) / (1440 * 900));
@@ -193,7 +193,10 @@ export const starfield = {
       for (const p of L.list) {
         const x = wrap(p.x * W + dx, W) - 4;
         const y = wrap(p.y * H + dy, H) - 4;
-        let a = p.a * (0.45 + 0.55 * smooth(0.2, 0.9, edge(s, x, y)));
+        // The chat column covers the middle: stars gather presence toward the sides.
+        let a = p.a * (0.35 + 0.5 * smooth(0.2, 0.9, edge(s, x, y)) + 0.35 * smooth(0.45, 0.85, Math.abs(x / s.w - 0.5) * 2));
+        if (a > 1) a = 1;
+        else if (a < 0.16) continue;
         if (p.tw) a *= 1 - p.tw * (0.5 + 0.5 * Math.sin(t * p.tw * 2.2 + p.ph));
         ctx.globalAlpha = a;
         if (L.sz) ctx.fillRect(x, y, L.sz[p.q], L.sz[p.q]);
@@ -250,7 +253,7 @@ export const fireflies = {
     }
     const sprites = [0.8, 1.1, 1.5].map((f) => {
       const r = 1.6 * f * u;
-      const halo = dot(s, r * 2, "#c8d880", 0.5, m * 0.02 * f + 4 * u, 0.2);
+      const halo = dot(s, r * 2, "#c8d880", 0.58, m * 0.02 * f + 4 * u, 0.2);
       const core = dot(s, r, "#dfe8a8", 0.9, r, 0.6);
       halo.c.getContext("2d").drawImage(core.c, halo.h - core.h, halo.h - core.h, core.h * 2, core.h * 2);
       return halo;
@@ -362,12 +365,6 @@ export const glyphfield = {
     const cell = Math.max(10, Math.min(s.w, s.h) / 36);
     const small = cell > Math.min(s.w, s.h) / 30;
     const size = Math.round(cell * (small ? 0.8 : 0.62));
-    const [bg, g] = layer(s);
-    const grad = g.createRadialGradient(s.w * 0.5, s.h * 0.45, 0, s.w * 0.5, s.h * 0.45, Math.hypot(s.w, s.h) * 0.6);
-    grad.addColorStop(0, "#0c1214");
-    grad.addColorStop(1, "#0a0e10");
-    g.fillStyle = grad;
-    g.fillRect(0, 0, s.w, s.h);
     const cells = [];
     const cols = Math.ceil(s.w / cell);
     const rows = Math.ceil(s.h / cell);
@@ -378,13 +375,14 @@ export const glyphfield = {
         const x = ox + i * cell;
         const y = oy + j * cell;
         const e = smooth(0.35, 1.3, edge(s, x, y));
-        if (hash(i, j, 3) > (small ? 0.08 + 0.6 * e * e : 0.02 + 0.42 * e * e)) continue;
+        const side = smooth(0.5, 0.92, Math.abs(x / s.w - 0.5) * 2);
+        if (hash(i, j, 3) > (small ? 0.08 + 0.6 * e * e : 0.02 + 0.42 * e * e + 0.16 * side)) continue;
         const snap = (v) => Math.round((v - size * 0.55) * s.dpr) / s.dpr;
-        cells.push({ x: snap(x), y: snap(y), i, j, e, p: 7 + hash(i, j, 5) * 9, ph: hash(i, j, 7) });
+        cells.push({ x: snap(x), y: snap(y), i, j, e: Math.min(1.3, e + 0.45 * side), p: 7 + hash(i, j, 5) * 9, ph: hash(i, j, 7) });
       }
     }
     // Tiny picker cards get a brighter ink so the few glyphs still read.
-    const d = { bg, cells, atlas: glyphAtlas(s, size), t: 50, boost: small ? 2.2 : 1 };
+    const d = { cells, atlas: glyphAtlas(s, size), t: 50, boost: small ? 2.2 : 1 };
     s.dots = d;
     // The bundled face may still be loading: redo the atlas once it is in.
     if (document.fonts && !document.fonts.check(size + 'px "Red Hat Mono"')) {
@@ -399,8 +397,10 @@ export const glyphfield = {
     const { ctx } = s;
     const d = s.dots;
     d.t = t;
-    const { bg, cells, atlas } = d;
-    ctx.drawImage(bg, 0, 0, s.w, s.h);
+    const { cells, atlas } = d;
+    // A flat ground: a full-screen fill is far cheaper than blitting a layer.
+    ctx.fillStyle = "#0b1012";
+    ctx.fillRect(0, 0, s.w, s.h);
     const { c, cw, px } = atlas;
     for (const k of cells) {
       // Visible for the first 60% of each cycle; the glyph changes in the dark.
