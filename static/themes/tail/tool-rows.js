@@ -184,10 +184,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       const line = deps.consoleCallHtml(trace, presentation, verbose) + (ownNote ? `<span class="chat-console-dim chat-console-trunc"> (${ownNote})</span>` : "");
       // Tail: the output opens in the pane, under a head naming its call.
       if (inner && !verbose) {
-        inner = `<div class="tail-pane-head"><span class="tail-pane-title">${line}</span>` +
-          `<button type="button" class="tail-pane-close" data-step-toggle aria-label="Close output" title="Close (Esc)">` +
-          `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div>` +
-          `<div class="tail-pane-body">${inner}</div>`;
+        inner = `<div class="tail-pane-head"><span class="tail-pane-title">${line}</span></div><div class="tail-pane-body">${inner}</div>`;
       }
       // Tail: a finished edit's line is its size, +added −removed.
       const counts = !failed && !running && !interrupted && ["search_replace", "write_file"].includes(trace.name) ? deps.consoleEditCounts(trace) : null;

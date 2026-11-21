@@ -39,5 +39,11 @@
         <span>Todos</span>
         <b class="chat-todo-badge" data-todo-badge aria-hidden="true"></b>
       </button>
+      {#- Tail: opens the pane (output, changes, agents); its badge counts what is running. -#}
+      <button type="button" class="chat-bar-btn tail-pane-toggle" data-tail-pane-toggle aria-expanded="false" aria-controls="tail-pane" aria-label="Output, changes and agents" title="Output, changes and agents">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><rect x="2.6" y="3.4" width="10.8" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.6 3.6v8.8" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+        <span>Details</span>
+        <b class="tail-pane-badge" data-tail-pane-badge hidden></b>
+      </button>
     </div>
   </header>

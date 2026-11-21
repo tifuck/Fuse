@@ -17,36 +17,6 @@ function consoleGroupOpenKeys(group, msg) {
     return keys;
   }
 
-// Tail: a call's output opens in the pane (a sheet on a phone), one call at
-// a time. The pane's own button, a tap on the sheet's backdrop and Escape
-// close it. A call inside another call's output opens in place.
-const paneCalls = () => [...document.querySelectorAll("li.chat-step.is-console-call.is-console-expanded")]
-    .filter((li) => !li.parentElement.closest(".chat-console-full"));
-function closePaneCall(li) {
-    li.classList.remove("is-console-expanded");
-    li.querySelector(":scope > .chat-step-main .chat-console-hang")?.classList.remove("is-expanded");
-    li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", "false"));
-    const owner = li.closest("article")?._message;
-    if (!owner) return;
-    (owner.stepOpen ||= {})[li.dataset.step] = false;
-    deps.saveDisclosures(owner);
-  }
-document.addEventListener("click", (event) => {
-    if (event.target.matches?.(".chat-console-hang.is-expanded")) {
-      const li = event.target.closest("li.chat-step.is-console-call");
-      if (li) closePaneCall(li);
-      return;
-    }
-    const li = event.target.closest?.("li.chat-step.is-console-call.is-console-expanded");
-    if (!li || li.parentElement.closest(".chat-console-full")) return;
-    paneCalls().forEach((other) => { if (other !== li) closePaneCall(other); });
-  });
-document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || event.defaultPrevented) return;
-    if (document.querySelector('[role="menu"]:not([hidden]), [role="listbox"]:not([hidden]), [role="dialog"]:not([hidden])')) return;
-    paneCalls().forEach(closePaneCall);
-  });
-
 function renderAssistant(msg, live) {
     deps.restoreDisclosures(msg);
     const article = document.createElement("article");

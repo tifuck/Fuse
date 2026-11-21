@@ -1,9 +1,5 @@
-{#- Tail theme: the work strip, the transcript and the subagent view with their live docks. Every data-* hook here is a runtime contract; the other
+{#- Tail theme: the transcript and the subagent view (the agents strip lives in the pane, _pane.html) with their live docks. Every data-* hook here is a runtime contract; the other
     themes' partials carry the same set (tests/chat_theme_markup.test.cjs). -#}
-  <section class="chat-work" data-work-strip hidden aria-label="Agents and background commands">
-    <div class="chat-work-agents" data-agents-list role="list" aria-label="Agents" hidden></div>
-    <div class="chat-work-jobs" data-jobs-list role="list" aria-label="Background commands" hidden></div>
-  </section>
   <div class="chat-thread" data-chat-thread role="region" aria-label="Conversation" tabindex="0">
     <div class="chat-log" data-chat-log hidden></div>
     <section class="chat-library" data-chat-library aria-label="Prompt library" hidden></section>
