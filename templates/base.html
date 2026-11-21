@@ -36,7 +36,7 @@
       settings page preloads what its theme draws with: the theme's own font
       (theme.json) and, where a transcript opens, Red Hat Mono for its code.
       A font picked in Appearance loads when chat-appearance.js applies it. -#}
-  {% set font_files = {'bricolage': 'bricolage-grotesque-latin', 'redhat': 'red-hat-mono-latin', 'geist': 'geist-latin'} %}
+  {% set font_files = {'bricolage': 'bricolage-grotesque-latin', 'redhat': 'red-hat-mono-latin', 'geist': 'geist-latin', 'jetbrains': 'jetbrains-mono-latin'} %}
   {% if is_chat or is_settings %}
   {% set page_fonts = (chat_themes() | selectattr('id', 'equalto', chat_view) | map(attribute='font') | list) + (['redhat'] if is_chat and request.query_params.get('t') else []) %}
   {% else %}
