@@ -34,11 +34,11 @@ function strip(s, top, bottom = s.h, period = 1.3) {
 }
 
 // A fixed rectangle of the screen (CSS px), for static overlays.
-function patch(s, x0, y0, x1, y1) {
+function patch(s, x0, y0, x1, y1, wide = false) {
   const { dpr } = s;
-  const X0 = Math.max(0, Math.floor(x0 * dpr));
+  const X0 = wide ? Math.floor(x0 * dpr) : Math.max(0, Math.floor(x0 * dpr));
   const Y0 = Math.max(0, Math.floor(y0 * dpr));
-  const X1 = Math.max(X0 + 1, Math.min(Math.round(s.w * dpr), Math.ceil(x1 * dpr)));
+  const X1 = Math.max(X0 + 1, wide ? Math.ceil(x1 * dpr) : Math.min(Math.round(s.w * dpr), Math.ceil(x1 * dpr)));
   const Y1 = Math.max(Y0 + 1, Math.min(Math.round(s.h * dpr), Math.ceil(y1 * dpr)));
   const c = canvas(X1 - X0, Y1 - Y0);
   const g = c.getContext("2d", { willReadFrequently: true });
@@ -127,7 +127,7 @@ function blit(s, L, off = 0, fillTo = 0, dy = 0) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (L.col) ctx.fillStyle = L.col;
   for (const tl of L.tiles) {
-    let x = L.X0 + tl.X;
+    let x = L.X0 + tl.X - (W ? 0 : Math.round(off * dpr));
     if (W) {
       x = (tl.X - ox) % W;
       if (x < 0) x += W;
@@ -137,6 +137,11 @@ function blit(s, L, off = 0, fillTo = 0, dy = 0) {
       if (k && !(W && x + tl.w > W)) break;
       if (xx >= SW || xx + tl.w <= 0) continue;
       if (tl.c) ctx.drawImage(tl.c, xx, L.Y0 + dy + tl.top);
+      if (L.up) {
+        // A reflection: its flat body is above the crop, up to the shore.
+        if (L.col && tl.top > 0) ctx.fillRect(xx, L.Y0 + dy, tl.w, tl.top);
+        continue;
+      }
       const yb = L.Y0 + dy + tl.bot;
       if (L.col && fillTo > yb) ctx.fillRect(xx, yb, tl.w, fillTo - yb);
     }
@@ -943,6 +948,287 @@ export const cloudscape = {
           ctx.fill();
         }
       }
+    });
+  },
+};
+
+// —— Aurora ——
+// Aurora bands: flat translucent colour stacked in steps from a crisp lower
+// edge, each step reaching less far up, so the curtain is bright at its foot
+// and fades upward in paper-thin layers. Baked per band into a patch a little
+// wider than the screen (it sways), dimmed through the reading column.
+function curtain(s, bands, shore = 0, steps = 4, dim = 1) {
+  const { w, h } = s;
+  const pad = Math.min(w, h) * 0.04;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const { edge, th } of bands) {
+    for (let x = -pad; x <= w + pad; x += 4) {
+      lo = Math.min(lo, edge(x) - th(x));
+      hi = Math.max(hi, edge(x));
+    }
+  }
+  lo = Math.max(0, lo - 2);
+  hi += 2;
+  // A reflection is the same band flipped about the shore line.
+  const L = shore ? patch(s, -pad, Math.max(shore, 2 * shore - hi), w + pad, Math.min(h, 2 * shore - lo), true) : patch(s, -pad, lo, w + pad, hi, true);
+  const g = L.g;
+  if (shore) {
+    g.translate(0, 2 * shore);
+    g.scale(1, -1);
+  }
+  for (const { edge, th, col, alpha } of bands) {
+    g.fillStyle = rgba(col, alpha * dim);
+    for (let i = 0; i < steps; i += 1) {
+      const k = 1 - i / steps;
+      g.beginPath();
+      g.moveTo(-pad, edge(-pad));
+      for (let x = -pad; x <= w + pad; x += 3) g.lineTo(x, edge(x));
+      for (let x = w + pad; x >= -pad; x -= 3) g.lineTo(x, edge(x) - th(x) * k);
+      g.fill();
+    }
+  }
+  // Nothing through the middle, where the reading column sits; a phone is
+  // all column, so there the middle only dims.
+  const floor = w < 700 ? 0.45 : 0;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = "destination-in";
+  const gr = g.createLinearGradient(0, 0, L.c.width, 0);
+  for (let i = 0; i <= 24; i += 1) {
+    const f = i / 24;
+    const d = Math.abs((-pad + f * (w + 2 * pad)) / w - 0.5);
+    const t = Math.max(0, Math.min(1, (d - 0.15) / 0.26));
+    gr.addColorStop(f, "rgba(0,0,0," + (floor + (1 - floor) * t * t * (3 - 2 * t)).toFixed(3) + ")");
+  }
+  g.fillStyle = gr;
+  g.fillRect(0, 0, L.c.width, L.c.height);
+  return crop(L);
+}
+
+// A band's motion: slow sway, bob and breathing, all pure functions of t.
+function sway(s, L, t, mo, flip) {
+  const { ctx } = s;
+  const m = Math.min(s.w, s.h);
+  const x = m * 0.025 * Math.sin(t * mo.ws + mo.ph);
+  const y = m * 0.012 * Math.sin(t * mo.wb + mo.ph * 1.7) * (flip ? -1 : 1);
+  if (mo.wa) ctx.globalAlpha = 0.72 + 0.28 * Math.sin(t * mo.wa + mo.ph * 2.3);
+  blit(s, L, x, 0, Math.round(y * s.dpr));
+  ctx.globalAlpha = 1;
+}
+
+const LAKE = {
+  sky: [[0, "#060c11"], [0.35, "#0a161c"], [0.62, "#112329"]],
+  aurora: [["#2f8f76", 0.055], ["#3c8f9a", 0.05], ["#2f8f76", 0.045]],
+  hills: ["#1a2b31", "#101e23"],
+  lake: "#060d10",
+};
+
+export const auroralake = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const m = Math.min(w, h);
+    const A = span(s);
+    const rng = seeded(10403);
+    const shore = Math.round(h * 0.64 * s.dpr) / s.dpr;
+    const st = { shore, hills: [] };
+    st.sky = sky(s, LAKE.sky, shore);
+    stars(s, st.sky, rng, 6000, shore * 0.8, "#cfe4de", 0.26);
+    // The lake mirrors the sky, darker toward the viewer.
+    const H = Math.round(h * s.dpr);
+    const S = Math.round(shore * s.dpr);
+    const above = sky(s, LAKE.sky, shore).runs;
+    st.water = [];
+    for (const [a, b, c] of above) {
+      const ya = 2 * S - b;
+      const yb = 2 * S - a;
+      if (yb <= S || ya >= H) continue;
+      const mid = ((ya + yb) / 2 - S) / (H - S);
+      const [r, g, bl] = c.slice(4, -1).split(",").map(Number);
+      const k = 0.62 - 0.3 * mid;
+      st.water.push([Math.max(S, ya), Math.min(H, yb), "rgb(" + [r, g, bl].map((v) => Math.round(v * k)).join(",") + ")"]);
+    }
+    const last = st.water.length ? st.water[st.water.length - 1][1] : S;
+    if (last < H) st.water.push([last, H, LAKE.lake]);
+    st.water.sort((a, b) => a[0] - b[0]);
+    const bands = LAKE.aurora.map(([col, alpha], i) => {
+      const br = seeded(10500 + i);
+      const f = harmonics(br, w * 3, [[w * 1.3, 1], [w * 0.55, 0.45], [w * 0.23, 0.18]]);
+      const g2 = harmonics(br, w * 3, [[w * 0.8, 1], [w * 0.3, 0.4]]);
+      const edge = (x) => h * (0.4 + 0.035 * i) - h * 0.1 * Math.sin((x / w) * Math.PI) * 0.6 + h * 0.035 * f(x);
+      const th = (x) => h * (0.16 - 0.025 * i) * (0.75 + 0.3 * g2(x));
+      return { edge, th, col, alpha };
+    });
+    // Two groups that sway apart, so the curtain shifts within itself.
+    st.bands = [[bands[0], bands[2]], [bands[1]]].map((group, i) => ({
+      L: curtain(s, group),
+      R: curtain(s, group, shore, 4, 0.42),
+      mo: { ws: [0.06, 0.085][i], wb: [0.1, 0.13][i], wa: [0, 0.17][i], ph: rng() * TAU },
+    }));
+    const P = strip(s, 0, 1).P;
+    const amp = [0.17, 0.09];
+    LAKE.hills.forEach((col, i) => {
+      const lr = seeded(10600 + i);
+      const wl = m * (0.8 + 0.4 * i) * (w > h ? 1.2 : 0.9);
+      const terms = [[wl, 1], [wl / 2.2, 0.45], [wl / 4.6, 0.2], [wl / 10, 0.08]].map(([l, a]) => ({ n: Math.max(1, Math.round(P / l)), a, ph: lr() * TAU }));
+      const n01 = normalise((x) => {
+        let v = 0;
+        for (const q of terms) {
+          const sn = Math.sin((Math.PI * q.n * x) / P + q.ph);
+          v += q.a * (1 - Math.sqrt(sn * sn + 0.02));
+        }
+        return v;
+      }, P);
+      const top = (x) => shore - A * amp[i] * (0.12 + 0.88 * n01(x));
+      const shade = { color: "rgba(0,4,6,0.5)", blur: m * 0.018, dy: -m * 0.003 };
+      const ext = shade.blur * 1.6 + Math.abs(shade.dy);
+      const hiY = highest(top, P);
+      const up = strip(s, hiY - ext, shore);
+      paper(s, up, (pg, x0, x1) => {
+        pg.fillStyle = col;
+        profile(pg, top, x0, x1, shore + 2);
+      }, shade);
+      const rcol = mixHex(col, LAKE.lake, 0.5);
+      const down = strip(s, shore, Math.min(h, 2 * shore - hiY + ext));
+      down.g.translate(0, 2 * shore);
+      down.g.scale(1, -1);
+      down.g.fillStyle = rcol;
+      profile(down.g, top, 0, down.P, shore + 2);
+      down.up = true;
+      const span2 = along(top);
+      st.hills.push({
+        L: crop(up, col, span2, ext, s.dpr),
+        R: crop(down, rcol, (x0, x1) => {
+          const [a, b] = span2(x0, x1);
+          return [2 * shore - b, 2 * shore - a];
+        }, 1, s.dpr),
+        v: speed(s, [0.6, 1.4][i]),
+      });
+    });
+    const n = Math.max(16, Math.min(48, Math.round((w * (h - shore)) / 8000)));
+    st.ripples = Array.from({ length: n }, () => {
+      const d = rng();
+      return {
+        y: shore + (h - shore) * (0.02 + 0.96 * d), x: rng() * w, len: w * rng.range(0.03, 0.16) * (0.5 + d),
+        light: rng() < 0.45, w: rng.range(0.3, 0.8), ph: rng() * TAU, v: speed(s, rng.range(-3, 3)),
+      };
+    });
+    s.st = st;
+  },
+  draw(s, t) {
+    const { ctx, w, dpr } = s;
+    const st = s.st;
+    drawSky(s, st.sky);
+    for (const b of st.bands) sway(s, b.L, t, b.mo, false);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const SW = Math.round(w * dpr);
+    for (const [a, b, c] of st.water) {
+      ctx.fillStyle = c;
+      ctx.fillRect(0, a, SW, b - a);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const b of st.bands) sway(s, b.R, t, { ...b.mo, wa: 0 }, true);
+    const S = Math.round(st.shore * dpr);
+    for (const hl of st.hills) {
+      blit(s, hl.L, t * hl.v, S);
+      blit(s, hl.R, t * hl.v);
+    }
+    for (const r of st.ripples) {
+      const sh = Math.sin(t * r.w + r.ph);
+      const x = wrapX(r.x + t * r.v, -r.len, w);
+      if (r.light) ctx.fillStyle = rgba("#9fd3c6", 0.02 + 0.06 * sh * sh);
+      else ctx.fillStyle = rgba(LAKE.lake, 0.45 + 0.25 * sh);
+      ctx.fillRect(x, r.y, r.len, Math.max(0.7, s.k));
+    }
+  },
+};
+
+const RIDGE = {
+  sky: [[0, "#070a14"], [0.45, "#0b1220"], [0.7, "#131d2c"]],
+  // Foot to crown: teal at the lower edge to violet at the top.
+  aurora: [["#3a9a8a", 0.05], ["#3c8098", 0.045], ["#4b6596", 0.04], ["#5a4a8a", 0.038]],
+  layers: ["#25334a", "#1b273a", "#131c2b", "#0b121d"],
+};
+
+export const auroraridge = {
+  fps: 20,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const m = Math.min(w, h);
+    const A = span(s);
+    const rng = seeded(11411);
+    const st = { layers: [], mists: [] };
+    const base = [0.66, 0.75, 0.85, 0.97];
+    const ridgeA = [0.1, 0.11, 0.1, 0.08];
+    const treeH = [0.045, 0.07, 0.1, 0.15];
+    const P = strip(s, 0, 1).P;
+    RIDGE.layers.forEach((col, i) => {
+      const lr = seeded(11500 + i);
+      const wl = m * (0.9 + 0.35 * i) * (w > h ? 1.2 : 0.9);
+      const roll = normalise(harmonics(lr, P, [[wl, 1], [wl / 2.4, 0.5], [wl / 5.5, 0.15]]), P);
+      const ground = (x) => h * base[i] - A * ridgeA[i] * Math.pow(roll(x), 1.4);
+      const H = A * treeH[i];
+      const trees = [];
+      for (let x = lr() * H; x < P; x += H * lr.range(0.22, 0.6)) {
+        // Trees gather on the crests and thin out in the hollows.
+        if (lr() > 0.25 + 0.75 * roll(x)) continue;
+        trees.push({ x, H: H * lr.range(0.5, 1.15), seed: Math.floor(lr() * 1e9) });
+      }
+      ridge(s, st, highest(ground, P) - H * 1.25, lowest(ground, P), col, { color: "rgba(0,3,10,0.4)", blur: m * 0.016, dy: -m * 0.003 }, (pg, x0, x1) => {
+        pg.fillStyle = col;
+        profile(pg, ground, x0, x1, h + 2);
+        for (const tr of trees) {
+          for (const k of [-1, 0, 1]) {
+            const x = tr.x + k * P;
+            if (x < x0 - H || x > x1 + H) continue;
+            pine(pg, x, ground(tr.x) + tr.H * 0.06, tr.H, seeded(tr.seed));
+          }
+        }
+      }, speed(s, [0.5, 1.1, 2, 3.4][i]), (x0, x1) => {
+        const r = along(ground)(x0, x1);
+        for (const tr of trees) {
+          for (let k = -1; k <= 1; k += 1) {
+            const x = tr.x + k * P;
+            if (x < x0 - tr.H * 0.22 || x > x1 + tr.H * 0.22) continue;
+            r[0] = Math.min(r[0], ground(tr.x) - tr.H * 0.99);
+          }
+        }
+        return r;
+      });
+    });
+    st.sky = sky(s, RIDGE.sky, st.layers[0].L.y1);
+    stars(s, st.sky, rng, 4800, h * 0.75, "#d6dcf0", 0.4);
+    // One broad arc around the top of the screen: high in the middle,
+    // sweeping down toward the sides.
+    const cy = h * 1.3;
+    const rx = w * 0.78;
+    const ry = h * 1.18;
+    const bands = RIDGE.aurora.map(([col, alpha], i) => {
+      const br = seeded(11600 + i);
+      const f = harmonics(br, w * 3, [[w * 0.9, 1], [w * 0.37, 0.4], [w * 0.15, 0.15]]);
+      const edge = (x) => {
+        const u = Math.min(1, Math.abs(x - w / 2) / rx);
+        return cy - ry * Math.sqrt(1 - u * u) - h * 0.075 * i + h * 0.02 * f(x);
+      };
+      const th = () => h * (0.085 + 0.01 * i);
+      return { edge, th, col, alpha };
+    });
+    st.bands = [[bands[0], bands[1]], [bands[2], bands[3]]].map((group, i) => ({
+      L: curtain(s, group),
+      mo: { ws: [0.05, 0.075][i], wb: [0.08, 0.11][i], wa: [0, 0.15][i], ph: rng() * TAU },
+    }));
+    s.st = st;
+  },
+  draw(s, t) {
+    const st = s.st;
+    stack(s, t, st, (i) => {
+      if (i === -1) for (const b of st.bands) sway(s, b.L, t, b.mo, false);
     });
   },
 };
