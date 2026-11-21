@@ -115,6 +115,122 @@ export const halftone = {
   },
 };
 
+// —— Aurora stipple ——
+// Curtains as a halftone: on a regular grid, dot size follows the curtain's
+// intensity and its colour runs from teal at the curtain's base to violet
+// above. Same incremental row redraw as Halftone.
+const AU_BUCKETS = 32;
+const AU_TONES = 6;
+const AU_GROUND = "#070b12";
+function auRow(s, d, j, t) {
+  const g = s.ctx;
+  const { rows, pts, sprites, curtains, stars } = d;
+  const R = rows[j];
+  g.fillStyle = AU_GROUND;
+  g.fillRect(0, R.y0, s.w, R.y1 - R.y0);
+  if (R.sa < R.sb) {
+    g.fillStyle = "#c8d0e0";
+    for (let i = R.sa; i < R.sb; i += 4) {
+      g.globalAlpha = stars[i + 3];
+      g.fillRect(stars[i], stars[i + 1], stars[i + 2], stars[i + 2]);
+    }
+    g.globalAlpha = 1;
+  }
+  for (let i = R.a; i < R.b; i += 3) {
+    const x = pts[i];
+    const y = pts[i + 1];
+    let best = 0;
+    let tone = 0;
+    for (const c of curtains) {
+      const base = c.y + c.a * Math.sin(x * c.k + t * c.w + c.p) + c.b * (noise(x * c.f + t * 0.03, c.s) - 0.5);
+      const up = base - y;
+      if (up < -c.fall * 3) continue;
+      let v = up >= 0 ? Math.exp(-up / c.H) : Math.exp(up / c.fall);
+      // Vertical rays: fine noise across x, drifting sideways.
+      const ray = noise(x * c.r + t * 0.05, c.s + 9.5);
+      v *= c.amp * (0.2 + 0.8 * ray * ray);
+      if (v > best) {
+        best = v;
+        tone = up > 0 ? up / (c.H * 0.9) : 0;
+      }
+    }
+    const b = Math.round(best * pts[i + 2] * AU_BUCKETS) - 1;
+    if (b < 0) continue;
+    const ti = Math.min(AU_TONES - 1, Math.floor(tone * AU_TONES));
+    stamp(g, sprites[ti * AU_BUCKETS + Math.min(AU_BUCKETS - 1, b)], x, y);
+  }
+}
+export const aurorastipple = {
+  fps: 15, wallpaper: true, scheme: "dark", previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const pitch = Math.max(3.2, Math.min(w, h) / 58);
+    const dy = pitch * 0.866;
+    const maxR = pitch * 0.42;
+    const sprites = [];
+    for (let k = 0; k < AU_TONES; k += 1) {
+      const col = mixHex("#3f9f8a", "#6a5aa0", k / (AU_TONES - 1));
+      for (let i = 1; i <= AU_BUCKETS; i += 1) {
+        const f = i / AU_BUCKETS;
+        sprites.push(dot(s, maxR * Math.sqrt(f), col, (0.28 + 0.55 * f) * (1 - 0.15 * (k / AU_TONES))));
+      }
+    }
+    // The app darkens a reading column ~816 px wide: the curtains keep their
+    // strength outside it (or outside the middle 60% of a narrow screen).
+    const col = Math.min(408, w * 0.3);
+    const fade = Math.max(40, w * 0.1);
+    const rnd = seeded(5150);
+    const starList = [];
+    const nStars = Math.round(Math.max(12, (w * h) / 16000));
+    for (let i = 0; i < nStars; i += 1) {
+      starList.push([rnd() * w, rnd() * h * 0.8, rnd.range(0.6, 1.1) * unit(s), rnd.range(0.25, 0.55)]);
+    }
+    starList.sort((a, b) => a[1] - b[1]);
+    const stars = [];
+    const pts = [];
+    const rows = [];
+    const cols = Math.ceil(w / pitch) + 2;
+    const nrows = Math.ceil(h / dy) + 2;
+    const snap = (v) => Math.round(v * s.dpr) / s.dpr;
+    let si = 0;
+    for (let j = 0; j < nrows; j += 1) {
+      const y = j * dy - pitch * 0.5;
+      const a = pts.length;
+      if (y < h * 0.66) {
+        for (let i = 0; i < cols; i += 1) {
+          const x = (i + (j & 1) * 0.5) * pitch - pitch * 0.5;
+          const side = smooth(col - fade, col + fade, Math.abs(x - w / 2));
+          const m = 0.12 + 0.88 * side;
+          pts.push(x, y, m);
+        }
+      }
+      const y0 = snap(y - dy / 2);
+      const y1 = snap(y + dy / 2);
+      const sa = stars.length;
+      while (si < starList.length && starList[si][1] < y1) {
+        const st = starList[si++];
+        if (st[1] >= y0 && st[1] + st[2] <= y1) stars.push(...st);
+      }
+      rows.push({ a, b: pts.length, y0, y1, sa, sb: stars.length });
+    }
+    const curtains = [
+      { y: h * 0.36, a: h * 0.08, k: TAU / (w * 0.9 + 200), w: 0.05, p: 0.4, b: h * 0.1, f: 2.4 / w, s: 3.1, H: h * 0.2, fall: h * 0.018, r: 1 / Math.max(6, w / 90), amp: 1 },
+      { y: h * 0.24, a: h * 0.06, k: TAU / (w * 0.6 + 150), w: -0.04, p: 2.1, b: h * 0.08, f: 3.1 / w, s: 7.7, H: h * 0.14, fall: h * 0.015, r: 1 / Math.max(5, w / 120), amp: 0.75 },
+    ];
+    s.dots = { pts, rows, sprites, curtains, stars, n: Math.max(1, Math.ceil(pts.length / 3 / 240)), next: 0, t: -1e9 };
+  },
+  draw(s, t) {
+    const d = s.dots;
+    if (Math.abs(t - d.t) > 1.5) {
+      for (let j = 0; j < d.rows.length; j += 1) auRow(s, d, j, t);
+    } else {
+      for (let j = d.next; j < d.rows.length; j += d.n) auRow(s, d, j, t);
+      d.next = (d.next + 1) % d.n;
+    }
+    d.t = t;
+  },
+};
+
 // —— Starfield ——
 export const starfield = {
   fps: 15, wallpaper: true, scheme: "dark", previewK: 0.4,
