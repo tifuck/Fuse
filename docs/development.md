@@ -15,11 +15,14 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `app/chat_generation/` | Dashboard generation loop pieces (parsing, streaming, resume policy, tool rounds, run inbox). |
 | `app/search/` | Fuse-hosted web search: one file per provider under `providers/`. |
 | `app/workspace_ops/` | Workspace tool families used by `app/workspace.py`. |
+| `app/bundled_skills/` | Skills shipped with Fuse, one folder per skill (`SKILL.md` plus its files). |
 | `agent/` | `fuse-agent` connector: C binary (`src/`, `make`) and Windows Go EXE (`windows/`). |
-| `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `tail`, `desktop`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. |
-| `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild). |
+| `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `tail`, `desktop`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. Wallpaper scenes: `static/backdrops/` (`docs/wallpapers.md`). |
+| `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild) and the test runners (`test.sh`, `test_sandbox.sh`). |
+| `scripts/qa/` | Dev-only QA harness, never released: the QA browser (`shot.mjs`), harness evals and the QA login's seeded chats (`dev_qa_account.py`). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
-| `tests/` | `tests/core` (pytest, one folder per area), `tests/js` (Node unit suites, `*.test.cjs`) and the frozen `tests/legacy`; see `tests/README.md`. The UI has no automated tests: it is checked with screenshots. |
+| `tests/` | `tests/core` (pytest, one folder per area), `tests/js` (Node unit suites, `*.test.cjs`); see `tests/README.md`. The UI has no automated tests: it is checked with screenshots. |
+| `docs/` | This guide, `wallpapers.md` (custom backdrops), `themes/` (Tail and Desktop view specs) and `screenshots/` (README images). |
 | `fuse-desktop/` | Electron wrapper around the site (no app logic). One build for every server: it asks for the server on first launch (Change server on the sign-in page) and updates from GitHub Releases. A new `package.json` version on `main` makes `.github/workflows/desktop.yml` build and publish release `vX.Y.Z`. `npm run dist` builds locally; `FUSE_URL` (or `site.json` `url`) opens a server first, `FUSE_APP_ID` (repository variable in CI) must stay the released app id. It renders on the GPU on every platform; Use hardware acceleration (Appearance, or right-click an empty spot; restart) turns that off in `<userData>/rendering.json`, as do repeated GPU process crashes, and `FUSE_DISABLE_GPU=1` or `--disable-gpu` for one launch. |
 
 ## Configuration
@@ -185,8 +188,7 @@ root the worker keeps the server's uid. `CODE_MODE=false`, or a missing
 The tests live on the `dev` branch only: releases on `main` leave out
 `tests/`, the test scripts and the connector's tests.
 
-Install the test tooling: `pip install -r requirements-dev.txt` (pytest,
-pytest-xdist, pytest-timeout).
+Install the test tooling: `pip install pytest pytest-xdist pytest-timeout`.
 
 - **`scripts/test.sh`** runs the core suite (`tests/core`); `scripts/test.sh
   <area>…` runs areas and `scripts/test.sh changed` the areas your change
@@ -198,16 +200,14 @@ pytest-xdist, pytest-timeout).
   `FUSE_FIXTURE_DB_SOCKET`). The fixture prints the provisioning SQL when the
   account is missing. `tests/conftest.py` refuses connections to real schemas.
   Tests mock httpx: never hit search providers or pooled models.
-- **Legacy:** the pre-redesign suite (pytest, Node and Playwright) is frozen
-  in `tests/legacy`, unmaintained and run only on demand (`tests/legacy/README.md`).
 - **Connector:** `make -C agent test`; Windows: `make -C agent/windows test`.
 
 ## Schema changes
 
 Write a dated, idempotent migration in `scripts/sql/`, apply it to each
 database, then regenerate `scripts/sql/schema.sql` with
-`scripts/dump_schema.sh` (`tests/legacy/test_init_db_mariadb.py` fails while it is
-stale). Delete the dated file once every deployment has it.
+`scripts/dump_schema.sh` (`tests/core/schema/test_fresh_install.py` fails while
+it is stale). Delete the dated file once every deployment has it.
 
 ## Connector releases
 

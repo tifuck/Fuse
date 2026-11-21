@@ -1,4 +1,4 @@
-/* console theme copy of static/spinner-next.css (removed; chat.html linked it last): the rules, gated to
+/* tail theme copy of static/spinner-next.css (removed; chat.html linked it last): the rules, gated to
    this theme's chat page. */
 /* Shared Collection 04 geometry. All motion remains legible in one ink. */
 :where(html.is-chat-root[data-chat-view="tail"]) .next-icon { fill: none; stroke: currentColor; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }

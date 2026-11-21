@@ -15,3 +15,11 @@ docs/
 **/__pycache__
 **/.pytest_cache
 node_modules/
+.github/
+AGENTS.md
+.gitleaks.toml
+requirements-dev.txt
+scripts/github.sh
+scripts/qa/
+scripts/test.sh
+scripts/test_sandbox.sh

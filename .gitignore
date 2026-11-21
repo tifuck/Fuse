@@ -45,8 +45,3 @@ docs/archive/
 /scripts/migrate_chat_metadata.py
 /scripts/migrate_projects.py
 /scripts/git-hooks/
-/tests/legacy/fixtures/
-/tests/legacy/page_fixtures.py
-/tests/legacy/test_page_extract.py
-/tests/legacy/test_real_fetch_pipeline.py
-/tests/legacy/test_real_pages_scrub.py

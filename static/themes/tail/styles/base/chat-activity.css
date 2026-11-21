@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-activity.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-activity.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Chat facelift: keep the conversation primary and operational detail quiet. */
 :where(html.is-chat-root[data-chat-view="tail"]) body.is-chat .topbar { flex-shrink: 0; }

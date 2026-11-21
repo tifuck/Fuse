@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/shell-responsive.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/shell-responsive.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Settings pages sit beside the rail: these follow the page box (settings.css). */
 @container page (max-width: 56rem) {

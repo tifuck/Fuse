@@ -8,6 +8,8 @@ directories:
   output: dist
   buildResources: build
 
+# build/icon.png is the same image as static/icon-512.png: change both together.
+
 afterPack: scripts/after-pack.js
 
 files:

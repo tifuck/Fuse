@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-spinner-faces.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-spinner-faces.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-activity-spin > svg,
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-activity-spin > span,

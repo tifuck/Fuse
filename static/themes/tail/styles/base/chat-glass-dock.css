@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-glass-dock.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-glass-dock.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Filled chats use an overlaid glass composer so the transcript can pass behind it. */
 :where(html.is-chat-root[data-chat-view="tail"]) .chat {

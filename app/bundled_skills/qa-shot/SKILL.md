@@ -1,6 +1,6 @@
 ---
 name: qa-shot
-description: Screenshot a running web app in headless Chromium and look at the PNG. Use to check a UI change, compare pages, viewports or builds side by side, find the selector of something on screen, or measure the page, on any codebase.
+description: Load before you screenshot, view, check or validate any web page (login, form, layout) or a UI change. Takes real screenshots of the running app to look at.
 metadata:
   category: Quality
 ---

@@ -1,4 +1,4 @@
-/* console theme copy of static/styles/pages/chat-sheet-motion.css: the rules that style /chat, gated to
+/* tail theme copy of static/styles/pages/chat-sheet-motion.css: the rules that style /chat, gated to
    this theme's chat page. The shared file keeps them for other pages only. */
 /* Mobile model picker: a full-screen sheet. It is portaled to the .chat root so
    the glass dock's transform and backdrop-filter cannot contain or clip it, and
