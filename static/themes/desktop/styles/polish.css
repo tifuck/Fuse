@@ -1,0 +1,188 @@
+/* Desktop polish: one type scale, one surface and one row shape for the
+   whole view. Imported last, after every layered file, so it settles what
+   they set. It resets the scale column.css declares and adds no new one. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  /* Three text sizes: what the model says, what it did, and code. The
+     status line and the turn line read at the work size, so a reply's last
+     line does not change size when it settles. */
+  --dk-prose: calc(0.9375rem * var(--chat-text-scale, 1));
+  --console-type: calc(0.8125rem * var(--chat-text-scale, 1));
+  --dk-status: var(--console-type);
+  --dk-meta: var(--console-type);
+  --dk-code: calc(0.75rem * var(--chat-text-scale, 1));
+  --dk-call-row: 22px;
+  /* Two greys under the text colour's own mute. */
+  --dk-soft: color-mix(in srgb, var(--dk-text, var(--mist)) 78%, var(--dk-mute, var(--mute)));
+  --dk-faint: color-mix(in srgb, var(--dk-mute, var(--mute)) 64%, var(--dk-canvas, var(--ink)));
+  --dk-call-quiet: var(--dk-faint);
+  /* The one tinted block (an opened call, a thought, an event's text):
+     translucent, so it sits the same on the plain canvas and on glass. */
+  --dk-fill: color-mix(in srgb, var(--dk-text, var(--mist)) 5%, transparent);
+  --dk-fill-r: 8px;
+}
+@media (max-width: 640px) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+    --dk-prose: calc(1rem * var(--chat-text-scale, 1));
+    --console-type: calc(0.875rem * var(--chat-text-scale, 1));
+    --dk-code: calc(0.8125rem * var(--chat-text-scale, 1));
+  }
+}
+@media (max-width: 480px), (pointer: coarse) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-call-row: 26px; }
+}
+
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  /* ---- Rhythm: a work line sits with the sentence above it. What it takes
+     from the gap above it gives to the gap below: no height is added. ---- */
+  & .chat-flow > .chat-activity:not(:first-child) { margin-top: -4px; margin-bottom: 4px; }
+
+  /* ---- The folded work line: a chevron, a step count, its tallies ---- */
+  & .chat-step.is-console-group > .chat-step-main > .chat-step-head > .chat-step-toggle { justify-content: flex-start; gap: 8px; }
+  & .chat-step.is-console-group:not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 6px;
+    color: var(--dk-mute, var(--mute));
+  }
+  & .chat-step.is-console-group:is(*, .is-console-expanded):not(.is-console-agents) > .chat-step-main > .chat-step-head .chat-step-label b { color: inherit; }
+  & .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label > .dk-row-chev {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    margin: 0 5px 0 -3px;
+    color: var(--dk-faint);
+    transition: transform var(--dur-hover, 120ms) ease;
+  }
+  & .chat-step.is-console-group > .chat-step-main > .chat-step-head .chat-step-label > .dk-row-chev svg { width: 12px; height: 12px; }
+  & .chat-step.is-console-group.is-console-expanded > .chat-step-main > .chat-step-head .dk-row-chev { transform: rotate(90deg); }
+  & .chat-step.is-console-group :is(.dk-diffstat, .dk-tallies) { margin-left: 0; padding-left: 0; }
+  @media (prefers-reduced-motion: reduce) { & .chat-step.is-console-group .dk-row-chev { transition: none; } }
+
+  /* One red and one green, wherever a count is tinted. */
+  & :is(.dk-tally.is-failed, .dk-minus) { color: var(--call-fail) !important; }
+  & .dk-plus { color: var(--ok) !important; }
+
+  /* ---- The opened group: a rail, one weight, the result beside its row ---- */
+  & .chat-step.is-console-group:not(.is-dk-single) > .chat-step-main > .chat-console-bundle { margin-left: 5px; padding-left: 13px; border-left: 1px solid var(--dk-card-line, var(--line)); }
+  & .chat-console-bundle .chat-console-val > .dk-base { font-weight: 400; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-call { margin-right: 0; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > :is(.chat-console-result-text, .chat-console-took) { padding-left: 10px; font-size: 1em; text-align: left; }
+  & .chat-console-bundle .chat-step.is-dk-thought .dk-think-first { color: var(--dk-soft); font-style: normal; }
+  & .chat-step.is-dk-thought .dk-think-first::before { content: none; }
+
+  /* ---- An opened call: one borderless block, the same for every tool ---- */
+  & .dk-call-box,
+  & .chat-console-bundle .chat-step.is-dk-thought .chat-console-thought {
+    border: 0;
+    border-radius: var(--dk-fill-r);
+    background: var(--dk-fill);
+    box-shadow: none;
+  }
+  & .dk-call-box { font-size: var(--dk-code); }
+  & .chat-console-bundle .chat-step.is-dk-thought .chat-console-thought { padding: 6px 12px; }
+  & .dk-call-head { padding: 5px 8px 0 12px; border-bottom: 0; color: var(--dk-mute, var(--mute)); }
+  & .dk-call-head:last-child { padding-bottom: 5px; }
+  & .dk-call-head > .dk-call-where { flex: 0 1 auto; margin-left: 0; color: var(--dk-faint); font-family: var(--sans); }
+  & .dk-call-box > :is(.chat-console-out, .chat-console-lines, pre) + :is(.chat-console-out, .chat-console-lines, pre),
+  & .dk-call-note { border-top: 0; }
+  & .dk-call-copy { color: var(--dk-faint); }
+
+  /* ---- Working, then done: one line, one size, one place. The clock
+     follows the words instead of sitting at the column's far edge. ---- */
+  & .chat-live-dock .chat-status-meta { margin-left: 10px; color: var(--dk-faint); }
+}
+
+/* ---- One block for everything that opens or stands apart: an agent's
+   report, a monitor's lines, a reply's code, a card. No frame, one fill. ---- */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  & :is(pre.chat-console-out:not(.dk-call-box *), .chat-step.is-dk-reports .dk-reports, .chat-skill-card, .chat-artifact-card, .chat-md .chat-code, .chat-dock .chat-ask-pay) {
+    border: 0;
+    border-radius: var(--dk-fill-r);
+    background: var(--dk-fill);
+    box-shadow: none;
+  }
+  & .chat-error { border: 0; border-radius: var(--dk-fill-r); }
+  & .chat-md-table { border-radius: var(--dk-fill-r); }
+  & .dk-call-box .dk-code-part + .dk-code-part { border-top: 0; }
+  /* Their text reads at the work size, in the work greys. */
+  & :is(.chat-step.is-dk-finish .dk-finish-line, .chat-step.is-dk-reports :is(.dk-report-name, .dk-report-side, .dk-report-side > .chat-step-open), .chat-error-continue, .chat-compact-mark, .chat-compact-banner) { font-size: var(--console-type); }
+  & .chat-step.is-dk-reports .dk-report-name { font-weight: 400; }
+  & .chat-console-notice-text { color: var(--dk-mute, var(--mute)); }
+  & .chat-step.is-dk-finish .dk-finish-side { margin-left: 2px; color: var(--dk-faint); font-size: inherit; }
+  & :is(.chat-compact-mark, .chat-compact-banner) { border-color: var(--dk-card-line, var(--line)); color: var(--dk-mute, var(--mute)); }
+  & :is(.chat-compact-mark, .chat-compact-banner) :is(b, strong, summary, .chat-compact-kicker) { color: var(--dk-soft); font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+  /* ---- What sits on the composer: one tray. The slash menu, a permission
+     ask, dictation, the wallpaper picker and the queue are the composer's
+     own card continued upward: its width, its surface, its edge. ---- */
+  --dk-tray-bg: color-mix(in srgb, var(--dk-comp) var(--dk-card-a), var(--dk-canvas));
+  --dk-tray-line: var(--dk-comp-line);
+  & .chat-dock { --ask-r: 12px; --ask-bg: var(--dk-tray-bg); --ask-edge: var(--dk-tray-line); }
+  & .chat-dock > :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation, .chat-queue) { box-sizing: border-box; align-self: stretch; width: auto; max-width: none; margin: 0 calc(-1 * var(--dk-card-out, 0px)); }
+  & .chat-dock > :is(.chat-slash, .chat-rewind, .chat-context-alert, .dk-wallpicker, .dictation, .chat-queue),
+  & .chat-dock > .chat-perm-queue .chat-ask {
+    border: 1px solid var(--dk-tray-line);
+    border-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    background: var(--dk-tray-bg);
+    box-shadow: none;
+    -webkit-backdrop-filter: var(--dk-glass);
+    backdrop-filter: var(--dk-glass);
+  }
+  /* A tray under another is its next section; the composer under any of
+     them is the card's foot. */
+  & .chat-dock > :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation, .chat-queue):not([hidden]) ~ :is(.chat-slash, .chat-rewind, .chat-context-alert, .dk-wallpicker, .dictation, .chat-queue),
+  & .chat-dock > :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation, .chat-queue):not([hidden]) ~ .chat-perm-queue .chat-ask,
+  & .chat-dock > :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation, .chat-queue):not([hidden]) ~ .dk-box::before { border-top-left-radius: 0; border-top-right-radius: 0; }
+  /* The machine's stats strip sits between them and the composer: then what
+     is above it stands on its own. */
+  & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > :is(.chat-slash, .chat-rewind, .chat-context-alert, .dk-wallpicker, .dictation),
+  & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .chat-perm-queue .chat-ask { border-bottom: 1px solid var(--dk-tray-line); border-radius: 12px; }
+  & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(> .chat-queue:not([hidden]))) > .dk-box::before { border-radius: 12px; }
+
+  /* Dictation is a tray row: what it hears on the left, its keys on the right. */
+  & .chat-dock > .dictation { justify-content: flex-start; height: 36px; animation: none; }
+  & .chat-dock > .dictation .dictation-time { margin-right: auto; }
+
+  /* One primary button: the send button's own ink on light. */
+  & .chat-dock .chat-ask-btn:is(.is-allow, .is-caret),
+  & .chat-skill-card .btn:not(.ghost) { border-color: var(--dk-text, var(--mist)); background: var(--dk-text, var(--mist)); color: var(--dk-canvas, var(--ink)); font-weight: 500; }
+  & .chat-dock .chat-ask-btn:is(.is-allow, .is-caret):hover,
+  & .chat-skill-card .btn:not(.ghost):hover { background: color-mix(in srgb, var(--dk-text, var(--mist)) 88%, var(--dk-canvas, var(--ink))); }
+  & .chat-dock .chat-ask-btn.is-caret { border-left-color: color-mix(in srgb, var(--dk-canvas, var(--ink)) 25%, var(--dk-text, var(--mist))); }
+}
+
+/* ---- The window around the transcript: the same fill and the same tints. ---- */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  /* The inspector's button says what is running; it does not shout it. */
+  & .dk-head .dk-runbtn:is(.is-live, .has-label) { border-color: transparent; background: var(--dk-fill); }
+  & .dk-insp .dk-grp { border: 0; background: var(--dk-fill); box-shadow: none; }
+  & .dk-insp .dk-thead { border-color: var(--dk-card-line, var(--line)); background: none; }
+  & .dk-insp .chat-agents-row.is-failed .chat-agents-sum { color: var(--call-fail); }
+  /* A skill draft's state: waiting on you, failed, or settled. */
+  & .chat-perm-status:not([data-status="pending"]) { color: var(--dk-mute, var(--mute)); }
+  & .chat-perm-status[data-status="error"] { color: var(--call-fail); }
+}
+
+/* ---- Strays snapped to the scale: small text is the code size, labels and
+   controls the work size, a reply's table its prose. ---- */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  & :is(.chat-console-more, .chat-web-domain, .dk-when, .dk-match-count, .dk-match-path, .dk-call-copy, .dk-kind, .dk-th, .dk-ar-sec, .chat-picker-thinking-label, .chat-picker-meta, .chat-todo-skip, .chat-console-bundle .chat-console-val, .chat-console-bundle .dk-pat, .chat-md th) { font-size: var(--dk-code); }
+  & :is(.chat-web-title, .dk-grp-sub, .dk-insp-count, .dk-insp-title, .dk-runbtn-label, .dk-title-btn, .dk-title-btn > span, .chat-perm-status, .chat-perm-head, .chat-skill-scope, .chat-skill-card :is(.btn, textarea, input), .chat-md .chat-code code) { font-size: var(--console-type); }
+  & .chat-md td { font-size: var(--dk-prose); }
+}
+
+/* ---- Over a wallpaper: one glass. Menus and sheets take the cards' blur,
+   tone and edge instead of a second, denser recipe. ---- */
+html[data-chat-view="desktop"][data-chat-backdrop]:not([data-chat-backdrop="none"]) body.is-chat .chat[data-view="desktop"] {
+  --dk-tray-bg: var(--dk-glass-bg);
+  --dk-tray-line: var(--dk-glass-edge);
+  --dk-pop-glass: var(--dk-glass);
+  --dk-pop-edge: var(--dk-glass-edge);
+  --dk-pop-rim: var(--dk-rim);
+  --dk-pop-sheen: none;
+  & :is(.dk-menu, .hs-pop, .chat-picker-menu:not(.is-sheet), .chat-perms-menu:not(.is-sheet), .chat-context-pop, .chat-pop, .dk-wp, .chat-latest) { background: var(--dk-glass-bg); }
+}

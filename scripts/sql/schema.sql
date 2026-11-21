@@ -736,6 +736,18 @@ CREATE TABLE `session_revocations` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `skill_host_approvals` (
+  `user_id` bigint(20) NOT NULL,
+  `host_id` bigint(20) NOT NULL,
+  `slug` varchar(64) NOT NULL,
+  `files_hash` char(64) NOT NULL,
+  `created_at` varchar(32) NOT NULL,
+  PRIMARY KEY (`user_id`,`host_id`,`slug`,`files_hash`),
+  CONSTRAINT `skill_host_approvals_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `skill_proposals` (
   `id` varchar(191) NOT NULL,
   `user_id` bigint(20) NOT NULL,
@@ -1008,6 +1020,7 @@ CREATE TABLE `user_skills` (
   `content_hash` longtext NOT NULL DEFAULT '',
   `installed_at` longtext NOT NULL,
   `updated_at` longtext NOT NULL,
+  `approved_hash` varchar(64) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_user_skills_1` (`user_id`,`slug`) USING HASH,
   KEY `user_skills_user` (`user_id`,`enabled`),

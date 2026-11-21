@@ -83,6 +83,82 @@
     if (skill.origin === "bundled" && skill.enabled) pinned.add(skill.slug);
   }
 
+  // A third-party skill with scripts turns on only from a review of its
+  // files: every file in full, then Turn on approves exactly that version.
+  let reviewing = null;
+
+  async function openReview(skill) {
+    showErr(pageError, "");
+    try {
+      reviewing = { slug: skill.slug, data: await api("/skills/" + encodeURIComponent(skill.slug) + "/review") };
+    } catch (err) {
+      showErr(pageError, err.message);
+      return;
+    }
+    renderList();
+    list.querySelector("[data-skill-review] summary")?.focus();
+  }
+
+  function reviewPanel(skill) {
+    const data = reviewing.data;
+    const panel = document.createElement("div");
+    panel.className = "skills-review";
+    panel.setAttribute("data-skill-review", "");
+    const note = document.createElement("p");
+    note.className = "skills-review-note";
+    note.textContent = (data.source ? "From github.com/" + data.source + " · not made by Fuse. " : "")
+      + "It has scripts that can run on your machines. Read every file before you turn it on.";
+    panel.append(note);
+    (data.files || []).forEach((file) => {
+      const item = document.createElement("details");
+      item.className = "skills-review-file";
+      const name = document.createElement("summary");
+      name.className = "mono";
+      name.textContent = file.path;
+      const pre = document.createElement("pre");
+      pre.className = "mono";
+      pre.textContent = file.text;
+      item.append(name, pre);
+      panel.append(item);
+    });
+    const foot = document.createElement("div");
+    foot.className = "skills-review-foot";
+    const hash = document.createElement("span");
+    hash.className = "skills-review-hash mono";
+    hash.textContent = "sha256 " + String(data.hash || "").slice(0, 12);
+    hash.title = data.hash || "";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn sm ghost";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+      reviewing = null;
+      renderList();
+    });
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "btn sm";
+    ok.textContent = "Turn on";
+    ok.addEventListener("click", async () => {
+      showErr(pageError, "");
+      ok.disabled = true;
+      try {
+        Object.assign(skill, await api("/skills/" + encodeURIComponent(skill.slug) + "/approve", {
+          method: "POST",
+          body: JSON.stringify({ hash: data.hash }),
+        }));
+        reviewing = null;
+        renderList();
+      } catch (err) {
+        ok.disabled = false;
+        showErr(pageError, err.message);
+      }
+    });
+    foot.append(hash, cancel, ok);
+    panel.append(foot);
+    return panel;
+  }
+
   // Optional page-only controls: an All / On / Off filter and a text filter.
   // The chat Skills sheet renders the same list without them.
   const filterTabs = Array.from(root.querySelectorAll("[data-skill-filter]"));
@@ -138,6 +214,11 @@
       box.checked = Boolean(skill.enabled);
       box.addEventListener("change", async () => {
         showErr(pageError, "");
+        if (box.checked && skill.review) {
+          box.checked = false;
+          openReview(skill);
+          return;
+        }
         try {
           await setEnabled(skill, box.checked);
           renderList();
@@ -175,10 +256,17 @@
       const meta = document.createElement("div");
       meta.className = "skills-row-meta";
       meta.append(slug, badge);
+      if (skill.review) {
+        const flag = document.createElement("span");
+        flag.className = "skills-origin is-review";
+        flag.textContent = "scripts · review to turn on";
+        meta.append(flag);
+      }
       const copy = document.createElement("div");
       copy.className = "skills-row-copy";
       copy.append(meta, desc);
       row.append(toggle, copy, actions);
+      if (reviewing && reviewing.slug === skill.slug) row.append(reviewPanel(skill));
       list.append(row);
     });
   }

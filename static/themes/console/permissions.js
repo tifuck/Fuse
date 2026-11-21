@@ -46,15 +46,15 @@ function permQueueCardHtml(rec) {
     const left = deps.permLeftS(expires);
     const frac = left == null ? 1 : Math.max(0, Math.min(1, left / deps.PERM_TOTAL_S));
     // The server clears grant_kind on shell asks no grant could ever cover;
-    // artifact asks are answered once per chat. Their caret stays, disabled,
+    // artifact and skill asks are answered once. Their caret stays, disabled,
     // so Allow keeps its width from one ask to the next.
-    const ungrantable = (shell && !rec.grant_kind) || copy.noun === "artifact";
+    const ungrantable = (shell && !rec.grant_kind) || copy.once;
     const menu = ungrantable ? "" : `
             <div class="chat-pop chat-perm-always-menu" data-perm-always-menu hidden>
               <button type="button" data-perm-decide="allow_session">Allow this ${esc(copy.noun)} in this chat</button>
               <button type="button" data-perm-decide="allow_host">Always allow this ${esc(copy.noun)}</button>
             </div>`;
-    return `<li class="chat-ask${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${esc(rec.id)}" data-perm-sig="${esc(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
+    return `<li class="chat-ask${rec.perm_kind === "skill" ? " is-skill" : ""}${left != null && left <= 15 ? " is-low" : ""}" data-perm-card="${esc(rec.id)}" data-perm-sig="${esc(deps.permCardSignature(rec))}" style="--perm-left:${frac}">
       <span class="chat-ask-track" aria-hidden="true"><span class="chat-ask-bar" data-perm-bar></span></span>
       <div class="chat-ask-head">
         <span class="chat-ask-dot" aria-hidden="true"></span>

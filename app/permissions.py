@@ -1559,6 +1559,47 @@ async def review_artifact(gate: Gate | None, *, tool: str, identifier: str, titl
     return ReviewResult(allowed=True)
 
 
+async def review_skill(gate: Gate | None, *, slug: str, host_alias: str, host_id: int, folder: str,
+                       count: int, source: str = "") -> ReviewResult:
+    """Ask before a skill's script files are copied to a machine. Never
+    auto-approved: Jev does not judge code the model has not read."""
+    where = f"skill `{slug}`'s files to {host_alias}"
+    if gate is None or gate.thread_id is None or gate.unattended:
+        return ReviewResult(allowed=False, kind="permission_denied",
+                            detail=f"Unattended run — permission cannot be requested to copy {where}. "
+                                   "Its scripts are not on that machine; continue without them.")
+    if await asyncio.to_thread(bypass_enabled, gate.user_id, gate.thread_id):
+        return ReviewResult(allowed=True)
+    payload = {
+        "kind": "tool_permission",
+        "perm_kind": "skill",
+        "tool": "load_skill",
+        "host": host_alias,
+        "host_id": host_id,
+        "path": folder[:400],
+        "cwd": "",
+        "command": slug,
+        "secret": False,
+        "reasons": [],
+        "requester": gate.requester,
+        "requester_label": _requester_label(gate.requester),
+        "grant_kind": "",
+        "grant_value": "",
+        # First line: how much is copied; second: who made it, when not Fuse or the user.
+        "description": "\n".join(filter(None, [f"{count} file{'' if count == 1 else 's'}", source])),
+    }
+    action = await _ask_and_wait(gate, payload)
+    if action == "cancelled":
+        return ReviewResult(allowed=False, detail="Tool interrupted.", kind="interrupted")
+    if action not in ("allow", "allow_session", "allow_host"):
+        why = {"timeout": "The permission request timed out (no user response)",
+               "deny_busy": "Too many pending permission requests in this chat"}.get(action, "The user denied it")
+        return ReviewResult(allowed=False, kind="permission_denied",
+                            detail=f"{why}: copying {where}. Its scripts are not on that machine; "
+                                   "do not retry unchanged, continue without them.")
+    return ReviewResult(allowed=True, resolved="asked")
+
+
 async def review(*, tool: str, args: dict, user_id: int,
                  host_id: int, host_alias: str, root: str, windows: bool,
                  gate: Gate | None, deny_reason: str = "", realpath=None) -> ReviewResult:

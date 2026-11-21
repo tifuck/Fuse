@@ -59,6 +59,22 @@ function permCardCopy(rec) {
       command: "",
       description: String(rec.description || "").replace(/\s+/g, " ").trim(),
       host: "",
+      once: true,
+    };
+  }
+  if (rec.perm_kind === "skill") {
+    // A skill's script files copied to a machine (permissions.review_skill):
+    // the description's first line is the file count, the second who made it.
+    const [count, ...source] = String(rec.description || "").split("\n");
+    return {
+      action: `Load skill ${String(rec.command || "").trim()}`,
+      noun: "skill",
+      path: String(rec.path || "").trim(),
+      why: count.trim(),
+      command: "",
+      description: source.join(" ").trim(),
+      host: rec.host || "",
+      once: true,
     };
   }
   const kind = permGrantKind(rec);

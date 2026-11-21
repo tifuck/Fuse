@@ -201,26 +201,22 @@ function stopNote(text) {
     return `${rest.charAt(0).toUpperCase()}${rest.slice(1)}.`;
   }
 
-// An opened call: one box, its slots always in this order. The header is the
-// exact input (the command, the path, the pattern) with a copy button, the
-// body only the output, a note when the call needs explaining (why it
-// stopped), and a one-line footer: how it ended and how long it took on the
-// left, the machine and its folder on the right. body and state are HTML.
+// An opened call: one block, the same for every tool. Its first line is the
+// exact input (the command, the path, the pattern) with where it ran and a
+// copy button, then only the output, and a note when the call needs
+// explaining (why it stopped). How it ended and how long it took stay on the
+// row above. body is HTML.
 // The prompt sits outside the input, so a multi-line command's later lines
 // line up under its first and a long one scrolls under a fixed "$".
-function callBoxHtml({ input = "", prompt = false, label = "input", body = "", note = "", state = "", bad = false, stop = false, time = "", host = "", cwd = "" }) {
-    const head = input ? `<div class="dk-call-head">${prompt ? '<span class="dk-call-pr" aria-hidden="true">$ </span>' : ""}<span class="dk-call-in">${deps.escapeHtml(input)}</span>` +
-      `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
-    const tone = bad ? " is-bad" : stop ? " is-stop" : "";
-    const noteHtml = note ? `<div class="dk-call-note${tone}">${deps.escapeHtml(note)}</div>` : "";
-    const end = [state ? `<span class="dk-call-state${tone}">${state}</span>` : "", time ? `<span class="dk-call-time">${deps.escapeHtml(time)}</span>` : ""]
-      .filter(Boolean).join('<span class="dk-call-sep" aria-hidden="true">·</span>');
+function callBoxHtml({ input = "", prompt = false, label = "input", body = "", note = "", bad = false, stop = false, host = "", cwd = "" }) {
     // The folder keeps its end when it is cut: the marks keep a leading "/" in
     // place inside the right-to-left box that cuts it from the start.
     const where = host || cwd ? `<span class="dk-call-where">${host ? `<span class="dk-call-host" title="${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : ""}` +
       `${cwd ? `<span class="dk-call-cwd" title="${deps.escapeHtml(cwd)}">&lrm;${deps.escapeHtml(cwd)}&lrm;</span>` : ""}</span>` : "";
-    const foot = end || where ? `<div class="dk-call-foot"><span class="dk-call-end">${end}</span>${where}</div>` : "";
-    return `<div class="dk-call-box">${head}${body}${noteHtml}${foot}</div>`;
+    const head = input ? `<div class="dk-call-head">${prompt ? '<span class="dk-call-pr" aria-hidden="true">$ </span>' : ""}<span class="dk-call-in">${deps.escapeHtml(input)}</span>${where}` +
+      `<button type="button" class="dk-call-copy" data-copy-tool data-copy-value="${deps.escapeHtml(input)}" aria-label="Copy ${label}">Copy</button></div>` : "";
+    const noteHtml = note ? `<div class="dk-call-note${bad ? " is-bad" : stop ? " is-stop" : ""}">${deps.escapeHtml(note)}</div>` : "";
+    return `<div class="dk-call-box">${head}${body}${noteHtml}</div>`;
   }
 
 function callInput(trace) {
@@ -298,19 +294,10 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // subject, result); its hang is only the body that opens under it.
       const lineResult = opts.oneLine ? result : "";
       if (boxed) {
-        // How it ended (a command's exit, any other call's result) and how long
-        // it took; where: the machine, plus a command's directory.
-        const shell = trace.name === "run_terminal_command" && !running;
-        const ms = Number(trace.execution_duration_ms ?? trace.call_duration_ms ?? trace.duration_ms ?? trace.latency_ms);
-        const time = Number.isFinite(ms) && ms > 0 ? deps.humanMs(ms) : "";
-        // The time has its own slot, so a result that names it ("1 search in 900ms") drops it.
-        // A failure's reason is on the row and in full in the box: the footer only says it failed.
-        const state = shell && !status ? (exit === 0 ? "Exit 0" : "")
-          : failed && exit === null && !stopText ? "Failed"
-          : resultHtml(time ? status.replace(/ in \d[\d.,]*\s?(?:ms|s|m)$/, "") : status);
+        // Where: the machine, plus a command's directory.
         inner = callBoxHtml({
-          ...input, body: inner, note: stopText ? stopNote(stopText) : "", state, bad: failed || dotState === "error", stop: Boolean(stopText),
-          time, host: trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",
+          ...input, body: inner, note: stopText ? stopNote(stopText) : "", bad: failed || dotState === "error", stop: Boolean(stopText),
+          host: trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",
         });
       }
       const line = deps.consoleCallHtml(trace, presentation, verbose) + lineResult;

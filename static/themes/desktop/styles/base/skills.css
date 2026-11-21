@@ -116,3 +116,45 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .skills-chip { height: 1.7rem; padding: 0 0.7rem; border-radius: 999px; font: 12px/1 var(--sans); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .skills-lib :is(.skills-find, .skills-lib-back) { border-radius: 8px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is(.skills-lib-item, .skills-actions, .skills-lib-import) .btn { border-radius: 7px; }
+
+/* Review of a third-party skill with scripts before it turns on: every file
+   in full under the row, then its hash and Turn on. */
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--ink);
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-note { margin: 0 0 0.2rem; color: var(--mist); font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file { min-width: 0; border-top: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file summary {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  color: var(--mist);
+  font-size: 0.76rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file summary::before { content: "▸"; width: 1rem; flex: none; color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file[open] > summary::before { content: "▾"; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-file pre {
+  max-height: 18rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.6rem;
+  overflow: auto;
+  background: var(--raise);
+  color: var(--mist);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-top: 0.45rem; border-top: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-review-hash { margin-right: auto; color: var(--mute); font-size: 0.7rem; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .skills-origin.is-review { color: var(--brass); }

@@ -41,6 +41,9 @@ services:
     volumes:
       - data:/app/data
       - certs:/app/certs
+      # The checkout's history, read-only: what's new after an update, and the
+      # admin notice when the branch has newer commits (app/changelog.py).
+      - ./.git:/app/.git:ro
 
 volumes:
   db:

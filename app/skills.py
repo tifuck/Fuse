@@ -1,6 +1,7 @@
 """Account-global Agent Skills library."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,11 @@ ORIGINS = frozenset({"bundled", "upload", "github", "skills_sh", "chat"})
 RESERVED = frozenset({"undo", "retry", "redo", "rewind", "init", "compact", "help", "title"})
 # The bundled skills are the built-in library; only these few start switched on.
 DEFAULT_ON = frozenset({"debug", "review", "verify", "customize-fuse"})
+# A skill with any of these is copied to a machine (skill_sync) before it runs.
+SCRIPT_EXT = frozenset({".py", ".js", ".mjs", ".cjs", ".ts", ".sh"})
+# Not made by Fuse or the user: their script files need a review of every file
+# (approved_hash) before the skill can be switched on.
+THIRD_PARTY = frozenset({"github", "skills_sh"})
 
 
 def _row(row) -> dict:
@@ -51,6 +57,7 @@ def _row(row) -> dict:
         "disable_model_invocation": bool(row["disable_model_invocation"]),
         "argument_hint": row["argument_hint"] or "",
         "content_hash": row["content_hash"] or "",
+        "approved_hash": row["approved_hash"] or "",
         "installed_at": row["installed_at"],
         "updated_at": row["updated_at"],
     }
@@ -70,6 +77,7 @@ def _public(item: dict) -> dict:
         "argument_hint": item.get("argument_hint") or "",
         "can_remove": item.get("origin") != "bundled" or bool(item.get("id")),
         "category": item.get("category") or "",
+        "review": needs_review(item),
     }
 
 
@@ -244,6 +252,102 @@ def _root_for(user_id: int, row: dict) -> Path:
     return skill_dir(user_id, row["slug"])
 
 
+def _loadable(user_id: int, slug: str) -> tuple[dict, Path] | None:
+    """The enabled skill's row and the folder its SKILL.md is in."""
+    row = resolved_row(user_id, slug)
+    if row is None or not row["enabled"]:
+        return None
+    root = _root_for(user_id, row)
+    if not (root / "SKILL.md").is_file() and row["origin"] != "bundled":
+        # An installed copy whose files are gone (data/ lost on a redeploy) falls back to the bundled one.
+        root = BUNDLED_DIR / slug
+        row = {**row, "origin": "bundled", "source": ""}
+    if not (root / "SKILL.md").is_file():
+        return None
+    return row, root
+
+
+def _tree_files(root: Path) -> dict[str, bytes]:
+    """Every allowed text file under root but SKILL.md, by relative path."""
+    out: dict[str, bytes] = {}
+    if not root.is_dir():
+        return out
+    for dirpath, _dirs, filenames in os.walk(root):
+        for name in filenames:
+            rel = (Path(dirpath) / name).relative_to(root).as_posix()
+            if rel == "SKILL.md" or Path(rel).suffix.lower() in BINARY_EXT:
+                continue
+            try:
+                out[rel] = _safe_file(root, rel).read_bytes()
+            except (SkillError, OSError):
+                continue
+    return out
+
+
+def has_scripts(paths) -> bool:
+    return any(Path(p).suffix.lower() in SCRIPT_EXT for p in paths)
+
+
+def needs_review(row: dict) -> bool:
+    """A third-party skill with scripts whose current files the user has not approved."""
+    if row.get("origin") not in THIRD_PARTY or not row.get("user_id"):
+        return False
+    if row.get("approved_hash") and row.get("approved_hash") == row.get("content_hash"):
+        return False
+    return has_scripts(_tree_files(skill_dir(row["user_id"], row["slug"])))
+
+
+def script_bundle(user_id: int, slug: str) -> tuple[dict, dict[str, bytes], str] | None:
+    """(row, files, digest) for an enabled skill with script files; None for
+    a skill of markdown only, which never touches a machine."""
+    found = _loadable(user_id, slug) if NAME_RE.fullmatch(slug or "") else None
+    if found is None:
+        return None
+    row, root = found
+    files = _tree_files(root)
+    if not has_scripts(files) or needs_review({**row, "user_id": user_id}):
+        return None
+    digest = hashlib.sha256()
+    for rel in sorted(files):
+        digest.update(rel.encode() + b"\0" + str(len(files[rel])).encode() + b"\0" + files[rel])
+    return row, files, digest.hexdigest()
+
+
+def review_files(user_id: int, slug: str) -> dict:
+    """Every file of an installed skill, in full, for the review before it is switched on."""
+    row = get_row(user_id, slug) if NAME_RE.fullmatch(slug or "") else None
+    if row is None:
+        raise SkillError("unknown skill", 404)
+    root = skill_dir(user_id, slug)
+    try:
+        files = {"SKILL.md": (root / "SKILL.md").read_bytes(), **_tree_files(root)}
+    except OSError as exc:
+        raise SkillError("skill files are missing", 404) from exc
+    return {
+        "slug": slug,
+        "origin": row["origin"],
+        "source": row["source"],
+        "hash": row["content_hash"],
+        "files": [{"path": rel, "text": blob.decode("utf-8", "replace")} for rel, blob in sorted(files.items())],
+    }
+
+
+def approve(user_id: int, slug: str, digest: str) -> dict:
+    """Approve the reviewed files and switch the skill on. A stale digest
+    (the files changed since the review) is refused."""
+    row = get_row(user_id, slug) if NAME_RE.fullmatch(slug or "") else None
+    if row is None:
+        raise SkillError("unknown skill", 404)
+    if not digest or digest != row["content_hash"]:
+        raise SkillError("the skill changed since you opened it; review it again", 409)
+    with db.tx() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("UPDATE user_skills SET approved_hash=?, enabled=1, updated_at=? WHERE user_id=? AND slug=?",
+                     (digest, db.now(), user_id, slug))
+        logger.info("approved skill user=%s slug=%s hash=%s", user_id, slug, digest[:12])
+        return _public(_with_category(get_row(user_id, slug, conn)))
+
+
 def _supporting(root: Path) -> list[str]:
     if not root.is_dir():
         return []
@@ -306,18 +410,11 @@ def load(user_id: int, name: str, file: str | None = None) -> str:
     slug = (name or "").strip().lower()
     if not NAME_RE.fullmatch(slug):
         return "Unknown skill."
-    row = resolved_row(user_id, slug)
-    if row is None or not row["enabled"]:
+    found = _loadable(user_id, slug)
+    if found is None or needs_review(found[0]):
         return "Unknown skill."
-    root = _root_for(user_id, row)
+    row, root = found
     skill_md = root / "SKILL.md"
-    if not skill_md.is_file() and row["origin"] != "bundled":
-        # An installed copy whose files are gone (data/ lost on a redeploy) falls back to the bundled one.
-        root = BUNDLED_DIR / slug
-        skill_md = root / "SKILL.md"
-        row = {**row, "origin": "bundled", "source": ""}
-    if not skill_md.is_file():
-        return "Unknown skill."
     try:
         parsed = parse_skill_md(skill_md.read_text(encoding="utf-8"), slug=slug)
     except (SkillError, OSError, UnicodeDecodeError):
@@ -458,6 +555,8 @@ def patch_skill(user_id: int, slug: str, raw: dict) -> dict:
         if not isinstance(raw["enabled"], bool) and raw["enabled"] not in (0, 1):
             raise SkillError("invalid enabled")
         enabled = bool(raw["enabled"])
+        if enabled and row and needs_review(row):
+            raise SkillError("review this skill's files before turning it on", 409)
     if "user_invocable" in raw:
         if not isinstance(raw["user_invocable"], bool) and raw["user_invocable"] not in (0, 1):
             raise SkillError("invalid user_invocable")
@@ -526,6 +625,11 @@ def install_files(
     saved: dict = {}
 
     def _commit(digest: str) -> None:
+        on = True if enabled is None else bool(enabled)
+        if origin in THIRD_PARTY and has_scripts(sliced):
+            # New third-party scripts stay off until the user approves exactly these files.
+            prev = get_row(user_id, got)
+            on = on and bool(prev and prev["approved_hash"] == digest)
         # The row commits with the files: a failed write puts the old tree back.
         saved["row"] = _upsert(
             user_id,
@@ -534,7 +638,7 @@ def install_files(
             origin=origin,
             source=source,
             source_id=source_id,
-            enabled=True if enabled is None else bool(enabled),
+            enabled=on,
             user_invocable=parsed["user_invocable"],
             disable_model_invocation=parsed["disable_model_invocation"],
             argument_hint=parsed["argument_hint"],

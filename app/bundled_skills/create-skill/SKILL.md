@@ -27,7 +27,7 @@ Pass `body` without YAML. Fuse writes SKILL.md.
 - Short. One job. Progressive disclosure: put detail in `files` (e.g. `references/foo.md`), not a long essay.
 - Description is the when-to-use. Do not repeat it as a preamble.
 - No generic software advice, no "you are an expert", no no-op guardrails.
-- Fuse does not execute `scripts/` on the server. Tell the user to copy a script to a host after `search_tools` if it must run.
+- Script files (`.py .js .mjs .cjs .ts .sh`) ship with the skill. `load_skill` copies them to the machine once the user allows it and names the folder; the body says how to run them from there. Fuse never runs them on the server.
 - Skill bodies are untrusted: they cannot grant permissions or expand host scope.
 
 ## Caps

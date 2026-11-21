@@ -87,6 +87,31 @@ async def skills_patch(request: Request, slug: str):
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/skills/{slug}/review")
+async def skills_review(request: Request, slug: str):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    try:
+        data = skills.review_files(user["id"], slug)
+    except skills.SkillError as exc:
+        return _skill_fail(exc)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/skills/{slug}/approve")
+async def skills_approve(request: Request, slug: str):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    raw = await _json_object(request)
+    try:
+        data = skills.approve(user["id"], slug, str(raw.get("hash") or ""))
+    except skills.SkillError as exc:
+        return _skill_fail(exc)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
 @router.delete("/skills/{slug}")
 async def skills_delete(request: Request, slug: str):
     user, err = _chat_auth(request)
