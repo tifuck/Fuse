@@ -1,1 +1,83 @@
 /* Tail: sheets, menus, the sidebar, the artifact viewer and the empty state, in the view's grammar. Loaded after tail-rows.css. */
+
+/* Layers drawn outside .chat (row menus, Appearance, toasts, the lightbox) get the view's tokens too. */
+html[data-chat-view="tail"] body.is-chat {
+  --tl-fs: calc(0.8125rem * var(--chat-text-scale, 1));
+  --tl-row: 1.75rem;
+  --tl-ac: var(--brass);
+  --tl-line2: color-mix(in srgb, var(--mist) 24%, transparent);
+  --tl-soft: color-mix(in srgb, var(--mist) 6%, transparent);
+  --tl-on: color-mix(in srgb, var(--mist) 11%, transparent);
+  --tl-dim: color-mix(in srgb, var(--mute) 78%, var(--ink));
+  --tl-r: 6px;
+  --tl-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-chat { --tl-row: 2.25rem; }
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+  --tl-on: color-mix(in srgb, var(--mist) 11%, transparent);
+  --tl-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+
+  /* ---- the top bar ---- */
+  & .chat-bar { gap: 0.25rem !important; padding-inline: 0.5rem !important; }
+  & .chat-bar :is(.chat-history-toggle, .chat-bar-btn) {
+    flex: none; width: 1.75rem !important; height: 1.75rem !important; min-width: 0 !important; min-height: 0 !important; padding: 0 !important;
+    border: 0 !important; border-radius: var(--tl-r) !important; background: none; color: var(--mute); box-shadow: none !important;
+  }
+  & .chat-bar :is(.chat-history-toggle, .chat-bar-btn):hover { background: var(--tl-soft) !important; color: var(--mist); }
+  & .chat-bar :is(.chat-history-toggle, .chat-bar-btn):active,
+  & .chat-bar .chat-bar-btn:is([aria-expanded="true"], [aria-pressed="true"]) { background: var(--tl-on) !important; color: var(--mist); }
+  & .chat-bar .chat-bar-btn[aria-pressed="true"] { color: var(--tl-ac); }
+  & .chat-bar :is(.chat-history-toggle, .chat-bar-btn):focus-visible { outline: 2px solid var(--tl-ac) !important; outline-offset: -2px; }
+  & .chat-bar .chat-bar-actions { gap: 2px !important; }
+  & .chat-bar .chat-bar-title { margin-left: 0.35rem; font-size: var(--tl-fs) !important; font-weight: 500; color: var(--mist); }
+  & .chat-bar .chat-project-chip {
+    height: 1.5rem !important; margin-left: 0.25rem; padding: 0 0.5rem !important; border: 1px solid var(--line) !important; border-radius: var(--tl-r) !important;
+    background: none !important; color: var(--mute); font-size: 0.75rem !important;
+  }
+  & .chat-bar .chat-project-name { color: var(--mist); }
+  & .chat-bar .chat-todo-badge { border-radius: 999px !important; }
+
+  /* ---- the sidebar ---- */
+  & .chat-history-head { border-bottom: 1px solid var(--line); }
+  & .chat-history :is(.chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-history-search-close) {
+    flex: none; width: 1.75rem !important; height: 1.75rem !important; padding: 0 !important; border: 0 !important; border-radius: var(--tl-r) !important;
+    background: none !important; color: var(--mute); box-shadow: none !important;
+  }
+  & .chat-history :is(.chat-history-collapse, .chat-new, .chat-history-iconbtn, .chat-history-search-close):hover { background: var(--tl-soft) !important; color: var(--mist); }
+  & .chat-history .chat-history-iconbtn[aria-expanded="true"] { background: var(--tl-on) !important; color: var(--mist); }
+  & .chat-history .chat-new { color: var(--tl-ac); }
+  & .chat-history-top { padding: 0.5rem !important; gap: 0.5rem !important; }
+  & .chat-history-tabs { padding: 2px !important; gap: 2px !important; border: 0 !important; border-radius: var(--tl-r) !important; background: var(--tl-soft) !important; }
+  & .chat-history-tab { height: 1.5rem !important; border: 0 !important; border-radius: 4px !important; background: none !important; color: var(--mute); font-size: var(--tl-fs) !important; }
+  & .chat-history-tab:hover { color: var(--mist); }
+  & .chat-history-tab.is-on { background: var(--raise) !important; color: var(--mist); box-shadow: 0 0 0 1px var(--line); }
+  & .chat-history-tab-unread { border-radius: 999px !important; }
+  & .chat-history-search { height: 1.75rem !important; border: 1px solid var(--line) !important; border-radius: var(--tl-r) !important; background: none !important; }
+  & .chat-history-search:focus-within { border-color: var(--tl-ac) !important; }
+  & .chat-history-search input { font-size: var(--tl-fs) !important; }
+  & .chat-history-search .chat-history-search-close { width: 1.25rem !important; height: 1.25rem !important; border-radius: 4px !important; }
+  & .chat-history-filters { margin: 0 !important; padding: 0 0.35rem !important; }
+  & .chat-history-filters select { height: 1.5rem !important; font-size: 0.75rem !important; color: var(--mute); }
+  & .chat-history-kicker { padding: 0.6rem 1.1rem 0.15rem !important; color: var(--mute); font: 0.75rem/1.75rem var(--mono) !important; text-transform: none !important; letter-spacing: 0 !important; }
+  & .chat-history-list { padding: 0 0.5rem 0.5rem !important; }
+  & .chat-history-item { min-height: var(--tl-row) !important; margin: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; }
+  & .chat-history-item::before, & .chat-history-item::after { content: none !important; }
+  & .chat-history-item:hover, & .chat-history-item:focus-within { background: var(--tl-soft) !important; }
+  & .chat-history-item.is-on { background: var(--tl-soft) !important; box-shadow: inset 2px 0 0 var(--tl-ac) !important; }
+  & .chat-history-item .open { min-height: var(--tl-row) !important; padding: 0 0.25rem 0 0.6rem !important; border-radius: var(--tl-r) !important; background: none !important; font-size: var(--tl-fs) !important; }
+  & .chat-history-item .open:focus-visible { outline: 2px solid var(--tl-ac) !important; outline-offset: -2px; }
+  & .chat-history-item .chat-history-age { color: var(--tl-dim); font-size: 0.6875rem !important; font-variant-numeric: tabular-nums; }
+  & .chat-history-item .chat-history-name { color: color-mix(in srgb, var(--mist) 84%, var(--ink)); }
+  & .chat-history-item:is(.is-on, :hover) .chat-history-name { color: var(--mist); }
+  & .chat-history-item .more { width: 1.5rem !important; height: 1.5rem !important; margin-right: 0.15rem; border: 0 !important; border-radius: 4px !important; background: none !important; color: var(--mute); }
+  & .chat-history-item .more:is(:hover, [aria-expanded="true"]) { background: var(--tl-on) !important; color: var(--mist); }
+  & .chat-history-footer { padding: 0.35rem 0.5rem !important; border-top: 1px solid var(--line) !important; }
+  & .chat-history-foot { min-height: var(--tl-row) !important; border: 0 !important; border-radius: var(--tl-r) !important; background: none !important; color: var(--mute); font-size: var(--tl-fs) !important; }
+  & .chat-history-foot:hover, & .chat-history-foot[aria-pressed="true"] { background: var(--tl-soft) !important; color: var(--mist); }
+  & .user-dock-btn { height: var(--tl-row) !important; padding: 0 0.5rem !important; border: 0 !important; border-radius: var(--tl-r) !important; background: none !important; font-size: var(--tl-fs) !important; }
+  & .user-dock-btn:hover, & .user-dock-btn[aria-expanded="true"] { background: var(--tl-soft) !important; }
+  & .user-dock-avatar { border-radius: 4px !important; }
+}
