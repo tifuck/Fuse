@@ -1,4 +1,5 @@
-"""Custom backdrops: validation at the save boundary, the 24-per-account cap,
+"""Custom backdrops: validation at the save boundary, the 8-per-account cap and
+replacing one when full,
 owner-only access over HTTP, the sandboxing headers of /backdrop/<id>, the
 account cascade, and the artifact bridge's setBackdrop."""
 import pytest
@@ -44,14 +45,20 @@ def test_save_validates_name_scheme_and_html(store):
     assert [b["name"] for b in backdrops.list_for_user(uid)] == ["n" * 40, "Night sky"]
 
 
-def test_an_account_holds_at_most_24(store):
+def test_a_full_account_saves_only_by_replacing_one_of_its_own(store):
     uid, other = quick_user(), quick_user("other@core.test")
     for n in range(backdrops.PER_USER):
         backdrops.create(uid, name=f"b{n}", scheme="dark", html=PAGE)
-    assert refused(uid).detail == "You have 24 custom backdrops; delete one first."
-    assert backdrops.create(other, name="mine", scheme="dark", html=PAGE)
-    backdrops.delete(uid, backdrops.list_for_user(uid)[0]["id"])
-    assert backdrops.create(uid, name="again", scheme="dark", html=PAGE)
+    full = refused(uid)
+    assert (full.status_code, full.detail) == (409, "You have 8 custom backdrops; choose one to replace.")
+    theirs = backdrops.create(other, name="mine", scheme="dark", html=PAGE)
+    assert refused(uid, replace=theirs["id"]).status_code == 409
+    assert backdrops.html_for(other, theirs["id"]) == PAGE
+    oldest = backdrops.list_for_user(uid)[-1]["id"]
+    new = backdrops.create(uid, name="again", scheme="dark", html=PAGE, replace=oldest)
+    names = [b["name"] for b in backdrops.list_for_user(uid)]
+    assert len(names) == 8 and names[0] == "again" and "b0" not in names
+    assert backdrops.html_for(uid, oldest) is None and backdrops.html_for(uid, new["id"]) == PAGE
 
 
 def test_only_the_owner_reads_or_deletes_and_the_document_is_sandboxed(store):

@@ -201,9 +201,13 @@ registered again.
 
 ## Custom backdrops
 
-Besides the built-in scenes, each account can save up to 24 backdrops of its
+Besides the built-in scenes, each account can keep up to 8 backdrops of its
 own, usually written by the model with the bundled `customize-fuse` skill.
-They show under "Yours" in Appearance > Backdrop and are removed there.
+They show on their own shelf, "Your backdrops", under the built-in gallery in
+Appearance > Backdrop (and in /theme), can be picked in every theme (each
+theme keeps its own pick) and are deleted there. Saving a 9th asks which one
+it replaces (a dialog listing them with previews, age and the themes using
+them on this device; the oldest is preselected).
 
 **Format.** One self-contained HTML document: HTML, inline CSS and optional
 inline JS (canvas or WebGL), filling the viewport with no scrollbars. Nothing
@@ -213,8 +217,10 @@ It must be a pure picture: the iframe gets no pointer events.
 **Limits** (app/backdrops.py, checked on save): `html` at most 131072 UTF-8
 bytes, no NUL and valid UTF-8; `name` 1-40 characters after control
 characters are stripped and whitespace collapsed; `scheme` `"dark"`
-(default) or `"light"`; 24 per account (the 25th save answers 422 "You have
-24 custom backdrops; delete one first."). Saves are rate-limited per account.
+(default) or `"light"`; 8 per account (a 9th save answers 409 "You have 8
+custom backdrops; choose one to replace." unless `replace` names one of the
+account's backdrops, deleted in the same transaction). Saves are rate-limited
+per account.
 
 **Storage.** Table `user_backdrops` (migration
 `scripts/sql/2026-11-20-user-backdrops.sql`): `public_id` (12 chars
@@ -237,7 +243,7 @@ owner can load it.
 like every dashboard write):
 
 - `GET /api/backdrops` → `{"backdrops": [{"id", "name", "scheme", "created"}]}`, newest first.
-- `POST /api/backdrops` with JSON `{name, scheme, html}` → `{"backdrop": {...}}`; 422 `{"detail": msg}` when invalid.
+- `POST /api/backdrops` with JSON `{name, scheme, html, replace?}` → `{"backdrop": {...}}`; 422 `{"detail": msg}` when invalid, 409 when full.
 - `DELETE /api/backdrops/<id>` → `{"ok": true}`; 404 when it is not the caller's.
 - `GET /backdrop/<id>` → the stored document (`text/html; charset=utf-8`) for its owner; 404 for anyone else signed in, 401 signed out.
 

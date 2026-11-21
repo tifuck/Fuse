@@ -45,10 +45,13 @@
     orbital: { label: "Orbital", hint: "Planet limb · station", group: "space" },
     launch: { label: "Launch Site", hint: "Rocket at dawn · launch cycle", group: "space" },
   };
-  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", city: "City", space: "Space", yours: "Yours" };
+  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", city: "City", space: "Space" };
   // A custom backdrop (GET /api/backdrops) is "u-" + its id. A saved one
   // draws on load; it is dropped only once the list has arrived without it.
   const CUSTOM_BACKDROP = /^u-[a-z0-9]{12}$/;
+  // A user keeps this many (app/backdrops.py PER_USER), on a shelf of their
+  // own under the gallery; any of them can be picked in every theme.
+  const CUSTOM_MAX = 8;
   let customState = "idle";
   // Collapsed, the gallery shows two rows: the current pick first.
   const GALLERY_ROWS = 2;
@@ -515,14 +518,59 @@
     const backHost = document.querySelector("[data-chat-backdrop-swatches]");
     if (backHost) ensureGallery(backHost);
     if (backHost && !backHost.childElementCount) {
-      const ids = Object.keys(BACKDROPS);
-      const custom = ids.filter((id) => BACKDROPS[id].custom);
-      for (const id of ["none", ...custom, ...ids.filter((id) => id !== "none" && !BACKDROPS[id].custom)]) {
+      for (const id of Object.keys(BACKDROPS).filter((id) => !BACKDROPS[id].custom)) {
         backHost.append(backdropCard(id, BACKDROPS[id]));
       }
       window.FuseBackdrop?.previews(backHost);
       filterBackdrops();
     }
+    paintYours(backHost);
+  }
+
+  // Newest first.
+  const customKeys = () => Object.keys(BACKDROPS).filter((key) => BACKDROPS[key].custom)
+    .sort((a, b) => String(BACKDROPS[b].created).localeCompare(String(BACKDROPS[a].created)));
+
+  // The user's own backdrops, apart from the built-in gallery.
+  function paintYours(backHost) {
+    const gallery = backHost?.closest(".ap-gallery");
+    if (!gallery) return;
+    let shelf = gallery.parentElement.querySelector("[data-chat-yours]");
+    if (!shelf) {
+      shelf = document.createElement("div");
+      shelf.className = "ap-yours";
+      shelf.dataset.chatYours = "";
+      shelf.innerHTML = '<div class="ap-yours-head"><p class="ap-scope">Your backdrops</p><small class="ap-scope" data-chat-yours-count></small></div>' +
+        '<p class="ap-note" data-chat-yours-empty hidden></p><div class="ap-backdrops" data-chat-yours-swatches></div>';
+      gallery.after(shelf);
+      shelf.addEventListener("click", onBackdropClick);
+    }
+    const keys = customKeys();
+    const host = shelf.querySelector("[data-chat-yours-swatches]");
+    if (!host.childElementCount && keys.length) {
+      for (const key of keys) host.append(backdropCard(key, BACKDROPS[key]));
+      window.FuseBackdrop?.previews(host);
+    }
+    shelf.querySelector("[data-chat-yours-count]").textContent = keys.length ? `${keys.length} of ${CUSTOM_MAX}` : "";
+    const empty = shelf.querySelector("[data-chat-yours-empty]");
+    empty.hidden = keys.length > 0;
+    empty.textContent = customState === "failed" ? "Your backdrops could not be loaded."
+      : `None yet. Ask the model to make you a backdrop; its page has a “Use this” button that saves it here. You can keep ${CUSTOM_MAX} and use any of them in every theme.`;
+  }
+
+  function repaintYours() {
+    document.querySelector("[data-chat-yours-swatches]")?.replaceChildren();
+    paintYours(document.querySelector("[data-chat-backdrop-swatches]"));
+  }
+
+  function onBackdropClick(event) {
+    const del = event.target.closest("[data-chat-backdrop-delete]");
+    if (del) {
+      deleteCustomBackdrop(del.dataset.chatBackdropDelete);
+      return;
+    }
+    const btn = event.target.closest("[data-chat-backdrop]");
+    if (btn) setBackdrop(btn.dataset.chatBackdrop);
   }
 
   // The gallery around the cards: category chips, a search field, an empty
@@ -633,9 +681,7 @@
     const empty = document.querySelector("[data-chat-backdrop-empty]");
     if (empty) {
       empty.hidden = matches.length > 0;
-      empty.textContent = query ? `No backdrop matches “${backdropQuery.trim()}”.`
-        : customState === "failed" ? "Your backdrops could not be loaded."
-        : "None yet. Ask the model for a custom backdrop; its page has a button that adds it here.";
+      empty.textContent = query ? `No backdrop matches “${backdropQuery.trim()}”.` : "No backdrops here.";
     }
   }
 
@@ -658,8 +704,73 @@
     if (!/^[a-z0-9]{12}$/.test(id)) return "";
     const key = "u-" + id;
     const scheme = raw.scheme === "light" ? "light" : "dark";
-    BACKDROPS[key] = { label: String(raw.name || "Custom").slice(0, 40), hint: `Yours · ${scheme}`, group: "yours", scheme, custom: true };
+    const created = String(raw.created || new Date().toISOString());
+    BACKDROPS[key] = { label: String(raw.name || "Custom").slice(0, 40), hint: `Yours · ${scheme}`, group: "yours", scheme, custom: true, created };
     return key;
+  }
+
+  function ago(iso) {
+    const mins = Math.max(0, (Date.now() - Date.parse(iso)) / 60000);
+    if (!Number.isFinite(mins)) return "";
+    if (mins < 60) return mins < 2 ? "just now" : `${Math.round(mins)} min ago`;
+    if (mins < 1440) return `${Math.round(mins / 60)} h ago`;
+    const days = Math.round(mins / 1440);
+    return days === 1 ? "yesterday" : `${days} days ago`;
+  }
+
+  // A full shelf: the user picks which backdrop the new one replaces (the
+  // oldest is preselected). Resolves its id, or null when cancelled.
+  function chooseReplacement(name) {
+    const keys = customKeys();
+    if (!keys.length || !document.body || typeof HTMLDialogElement !== "function") return Promise.resolve(null);
+    const dialog = document.createElement("dialog");
+    dialog.className = "modal ap-replace";
+    dialog.setAttribute("aria-labelledby", "ap-replace-title");
+    dialog.innerHTML = '<div class="modal-shell"><h2 id="ap-replace-title">Replace one of your backdrops</h2><p class="aside"></p>' +
+      '<fieldset class="ap-replace-list"><legend class="visually-hidden">Backdrop to replace</legend></fieldset>' +
+      '<div class="modal-actions"><button type="button" class="btn sm ghost" data-replace-no>Cancel</button>' +
+      '<button type="button" class="btn sm" data-replace-yes></button></div></div>';
+    dialog.querySelector(".aside").textContent =
+      `You can keep ${CUSTOM_MAX} backdrops. Choose one to make room for “${name}”; the oldest is selected.`;
+    const list = dialog.querySelector(".ap-replace-list");
+    const yes = dialog.querySelector("[data-replace-yes]");
+    const label = (key) => { yes.textContent = `Replace “${BACKDROPS[key].label}”`; };
+    keys.forEach((key, index) => {
+      const spec = BACKDROPS[key];
+      const row = document.createElement("label");
+      row.className = "ap-replace-item";
+      const radio = document.createElement("input");
+      Object.assign(radio, { type: "radio", name: "ap-replace", value: key, checked: index === keys.length - 1 });
+      radio.addEventListener("change", () => label(key));
+      const art = document.createElement("i");
+      art.className = "chat-backdrop-preview";
+      Object.assign(art.dataset, { kind: key, scheme: spec.scheme });
+      art.setAttribute("aria-hidden", "true");
+      const text = document.createElement("span");
+      const title = document.createElement("strong");
+      title.textContent = spec.label;
+      const meta = document.createElement("small");
+      const uses = VIEWS.filter((id) => views[id].backdrop === key).map((id) => VIEW_META[id].label || id);
+      meta.textContent = [`Added ${ago(spec.created)}`, uses.length ? `In use: ${uses.join(", ")}` : ""].filter(Boolean).join(" · ");
+      text.append(title, meta);
+      row.append(radio, art, text);
+      list.append(row);
+    });
+    label(keys[keys.length - 1]);
+    document.body.append(dialog);
+    window.FuseBackdrop?.previews(list);
+    return new Promise((resolve) => {
+      const finish = (value) => {
+        if (dialog.open) dialog.close();
+        dialog.remove();
+        resolve(value);
+      };
+      yes.addEventListener("click", () => finish(list.querySelector("input:checked")?.value.slice(2) || null));
+      dialog.querySelector("[data-replace-no]").addEventListener("click", () => finish(null));
+      dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(null); });
+      dialog.showModal();
+      list.querySelector("input:checked")?.focus();
+    });
   }
 
   // Any theme still showing a removed custom backdrop goes back to None (and
@@ -683,8 +794,8 @@
 
   // The API may be missing (an older server): the gallery then just has no
   // custom cards and a saved custom pick stays as it is.
-  async function loadCustomBackdrops() {
-    if (customState === "loading" || customState === "ready") return;
+  async function loadCustomBackdrops(force) {
+    if (customState === "loading" || (customState === "ready" && !force)) return;
     customState = "loading";
     try {
       const res = await fetch("/api/backdrops", { credentials: "same-origin", headers: { Accept: "application/json" } });
@@ -697,8 +808,7 @@
     } catch (_) {
       customState = "failed";
     }
-    repaintBackdrops();
-    filterBackdrops();
+    repaintYours();
     dropMissingCustom();
     apply();
     syncSwatches();
@@ -726,7 +836,7 @@
       return;
     }
     delete BACKDROPS[key];
-    repaintBackdrops();
+    repaintYours();
     dropMissingCustom(key);
     apply();
     syncSwatches();
@@ -778,7 +888,7 @@
       btn.setAttribute("aria-pressed", String(id === theme));
       btn.classList.toggle("is-on", id === theme);
     });
-    document.querySelectorAll("[data-chat-backdrop-swatches] [data-chat-backdrop]").forEach((btn) => {
+    document.querySelectorAll("[data-chat-backdrop-swatches] [data-chat-backdrop], [data-chat-yours-swatches] [data-chat-backdrop]").forEach((btn) => {
       const id = btn.dataset.chatBackdrop;
       btn.setAttribute("aria-pressed", String(id === shownBackdrop()));
       btn.classList.toggle("is-on", id === shownBackdrop());
@@ -949,17 +1059,25 @@
     setStrength,
     setScheme,
     addWallpaper,
-    // A custom backdrop the server just stored ({id, name, scheme}): listed
-    // under Yours and in /theme; returns its key ("u-" + id) or "".
-    addCustomBackdrop(raw) {
+    // A custom backdrop the server just stored ({id, name, scheme, created}),
+    // after the one it replaced (an id) if any: listed on the user's shelf
+    // and in /theme; returns its key ("u-" + id) or "".
+    addCustomBackdrop(raw, replaced) {
       const key = addCustomBackdrop(raw);
       if (!key) return "";
-      repaintBackdrops();
+      if (replaced && BACKDROPS["u-" + replaced]?.custom) {
+        delete BACKDROPS["u-" + replaced];
+        dropMissingCustom("u-" + replaced);
+      }
+      repaintYours();
       syncSwatches();
       wallpapersChanged();
       return key;
     },
     loadCustomBackdrops,
+    chooseReplacement,
+    get customCount() { return customKeys().length; },
+    customMax: CUSTOM_MAX,
     get themeId() { return view; },
     get palette() { return theme; },
     get scheme() { return specFor(theme).scheme; },
@@ -994,16 +1112,7 @@
       btn.addEventListener("click", () => setView(btn.dataset.chatViewChoice));
     });
     const backHost = document.querySelector("[data-chat-backdrop-swatches]");
-    backHost?.addEventListener("click", (event) => {
-      const del = event.target.closest("[data-chat-backdrop-delete]");
-      if (del) {
-        deleteCustomBackdrop(del.dataset.chatBackdropDelete);
-        return;
-      }
-      const btn = event.target.closest("[data-chat-backdrop]");
-      if (!btn) return;
-      setBackdrop(btn.dataset.chatBackdrop);
-    });
+    backHost?.addEventListener("click", onBackdropClick);
     // The collapsed gallery holds two rows, however many columns fit.
     if (backHost && typeof ResizeObserver === "function") {
       let columns = 0;

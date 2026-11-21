@@ -769,7 +769,8 @@ export function createArtifacts(ctx) {
   }
 
   // window.fuse.setBackdrop in the page: store it as one of the user's
-  // backdrops (POST /api/backdrops) and draw it behind this theme at once.
+  // backdrops (POST /api/backdrops) and draw it behind this theme at once. A
+  // full shelf first asks which of them it replaces.
   async function saveBackdrop(data) {
     const name = String(data.name || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) || "Custom backdrop";
     const scheme = data.scheme === "light" ? "light" : "dark";
@@ -779,11 +780,28 @@ export function createArtifacts(ctx) {
       showFailure("Could not save the backdrop", new Error("The backdrop is larger than 128 KB."));
       return;
     }
-    if (!(await window.fuseConfirm(`Use "${name}" as your backdrop?`, { confirmLabel: "Use backdrop" }))) return;
+    const appearance = window.FuseChatAppearance;
+    const post = (replace) => net.api("/api/backdrops", { method: "POST", body: JSON.stringify({ name, scheme, html, replace }) });
+    let replace = null;
+    if (appearance?.customCount >= appearance?.customMax) {
+      replace = await appearance.chooseReplacement(name);
+      if (!replace) return;
+    } else if (!(await window.fuseConfirm(`Use "${name}" as your backdrop?`, { confirmLabel: "Use backdrop" }))) {
+      return;
+    }
     try {
-      const saved = (await net.api("/api/backdrops", { method: "POST", body: JSON.stringify({ name, scheme, html }) })).backdrop;
-      const appearance = window.FuseChatAppearance;
-      const key = appearance?.addCustomBackdrop?.(saved);
+      let saved;
+      try {
+        saved = (await post(replace)).backdrop;
+      } catch (error) {
+        // Filled up elsewhere since this page loaded its list.
+        if (error.status !== 409 || replace) throw error;
+        await appearance?.loadCustomBackdrops?.(true);
+        replace = await appearance?.chooseReplacement?.(name);
+        if (!replace) return;
+        saved = (await post(replace)).backdrop;
+      }
+      const key = appearance?.addCustomBackdrop?.(saved, replace);
       if (!key) throw new Error("The server sent no backdrop.");
       appearance.setBackdrop(key);
       hint(`“${saved.name}” is now your backdrop.`);

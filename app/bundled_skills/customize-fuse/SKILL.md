@@ -7,7 +7,7 @@ metadata:
 
 # Customize Fuse: custom backdrops
 
-A backdrop is the animated picture behind the chat transcript. Built-in ones are picked in Appearance > Backdrop. A custom backdrop is one HTML document you write; the user saves it from an artifact with a "Use this" button, and Fuse draws it full-screen behind the chat in a sandboxed iframe (opaque origin, no network). It is saved to the user's account (at most 24) and listed under "Yours" in the backdrop picker.
+A backdrop is the animated picture behind the chat transcript. Built-in ones are picked in Appearance > Backdrop. A custom backdrop is one HTML document you write; the user saves it from an artifact with a "Use this" button, and Fuse draws it full-screen behind the chat in a sandboxed iframe (opaque origin, no network). It is saved to the user's account (they keep up to 8; when full, Fuse asks which one the new one replaces), listed under "Your backdrops" in Appearance > Backdrop, and can be picked in every chat theme.
 
 ## Compatibility rules (a backdrop that breaks one fails or looks wrong)
 
