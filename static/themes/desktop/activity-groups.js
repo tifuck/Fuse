@@ -13,7 +13,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
     if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> ${took}` : `done ${took}`;
+    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> <b>${took}</b>` : `done <b>${took}</b>`;
     const still = latest && !pendingAgents ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
     return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;

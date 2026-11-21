@@ -32,14 +32,15 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-mic-btn.is-live:
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box.is-dictating::before { color: var(--brass); }
 
-/* Hangs above the composer and its open todo list (chat-todo.css stacks the
-   sync badge and "Jump to latest" above it); the composer's own popovers
-   (z-index 7 with the box) cover it. */
+/* Sits on the composer in the dock's flow, so the dock grows by its height
+   and the transcript, the open todo list, the sync badge and "Jump to
+   latest" all move up with it; the composer's own popovers (z-index 7 with
+   the box) cover it. */
 html[data-chat-console="true"] .chat[data-view="console"] .dictation {
-  position: absolute;
-  bottom: calc(100% + 0.6rem + var(--todo-lift, 0px));
-  left: 50%;
+  position: relative;
+  align-self: center;
   z-index: 6;
+  margin-bottom: 0.6rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -50,7 +51,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation {
   background: var(--ink);
   color: var(--mist);
   font: 500 0.72rem/1 var(--mono);
-  transform: translateX(-50%);
 }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation[hidden] { display: none; }
 
@@ -141,11 +141,9 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
    their words (a phone has no esc); between them the mark, the clock, and
    meters as wide as the room that is left. */
 @media (max-width: 800px) {
-  html[data-chat-console="true"] .chat[data-view="console"]:has(.chat-dock > .dictation:not([hidden])) { --dictation-lift: 4.2rem; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation {
-    right: 0;
-    bottom: calc(100% + var(--todo-lift, 0px));
-    left: 0;
+    align-self: stretch;
+    margin-bottom: 0;
     display: grid;
     grid-template: "cancel rec time done" auto "cancel bars bars done" auto / auto 1fr auto auto;
     gap: 6px 12px;
@@ -153,7 +151,6 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
     padding: 8px 8px 8px 6px;
     border-width: 1px 0 0 2px;
     font-size: 0.8rem;
-    transform: none;
   }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec { grid-area: rec; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
