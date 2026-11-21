@@ -192,8 +192,10 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-pane .chat-agents-tree { display: inline-flex !important; flex: none; }
   & .tail-pane .chat-agents-tree i { width: 0.6rem; font-size: 0 !important; }
   & .tail-pane .chat-agents-dot { flex: none; width: 6px !important; height: 6px !important; margin: 0 !important; border-radius: 50% !important; }
+  & .tail-pane .chat-agents-dot::before { border-radius: 50% !important; }
   & .tail-pane :is(.chat-agents-name, .chat-jobs-cmd) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mist); font-weight: 500; }
-  & .tail-pane :is(.chat-agents-meta, .chat-agents-model) { display: flex !important; gap: 0.75rem; min-width: 0; margin: 0 !important; padding: 0 0 0 calc(6px + 0.5rem) !important; overflow: hidden; white-space: nowrap; color: var(--mute); font-size: 0.92em; line-height: 1.5; }
+  & .tail-pane :is(.chat-agents-meta, .chat-agents-model) { flex: none !important; display: flex !important; gap: 0.75rem; min-width: 0; height: auto !important; margin: 0 !important; padding: 0 0 0 calc(6px + 0.5rem) !important; overflow: hidden; white-space: nowrap; color: var(--mute); font-size: 0.92em; line-height: 1.5 !important; }
+  & .tail-pane .chat-agents-meta > * { height: auto !important; line-height: inherit !important; }
   & .tail-pane .chat-agents-row:not(.is-main) :is(.chat-agents-meta, .chat-agents-model) { padding-left: calc(6px + 1.1rem) !important; }
   & .tail-pane .chat-jobs-meta { flex: 1 1 100%; padding-left: calc(6px + 0.5rem); color: var(--mute); font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   & .tail-pane :is(.chat-agents-doing, .chat-agents-sum) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

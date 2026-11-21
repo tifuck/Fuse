@@ -61,7 +61,8 @@ export function create(deps) {
 
   function changeRowHtml(file) {
     const cut = file.label.lastIndexOf("/") + 1;
-    const stat = `<span class="tail-plus">+${file.added}</span>${file.removed ? ` <span class="tail-minus">−${file.removed}</span>` : ""}`;
+    const stat = file.added || file.removed
+      ? `<span class="tail-plus">+${file.added}</span>${file.removed ? ` <span class="tail-minus">−${file.removed}</span>` : ""}` : "written";
     return `<button type="button" class="tail-change" data-tail-change="${esc(file.step)}" title="${esc(file.path)}">` +
       `<span class="tail-change-path"><i>${esc(file.label.slice(0, cut))}</i>${esc(file.label.slice(cut))}</span>` +
       (file.edits > 1 ? `<span class="tail-change-edits">${file.edits} edits</span>` : "") +
@@ -134,7 +135,9 @@ export function create(deps) {
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || event.defaultPrevented || !shown()) return;
-    if (document.querySelector('[role="menu"]:not([hidden]), [role="listbox"]:not([hidden]), [role="dialog"]:not([hidden]), dialog[open]')) return;
+    // A menu or dialog on screen takes Escape first (their shells stay in the page, unsized, while closed).
+    const layers = document.querySelectorAll('[role="menu"]:not([hidden]), [role="listbox"]:not([hidden]), [role="dialog"]:not([hidden]), dialog[open]');
+    if ([...layers].some((layer) => layer.getBoundingClientRect().width > 0)) return;
     hide();
   });
 
