@@ -71,7 +71,7 @@
     dither: "sakura", scope: "orbital", topo: "terraces", loom: "sakura", wind: "meadow",
     maze: "bamboo", ants: "circuit", pulsar: "orbital", ink: "auroralake", fern: "bamboo", sumi: "deepsea",
   };
-  // Reading fonts. Bricolage Grotesque, Red Hat Mono and Geist are bundled
+  // Reading fonts. Bricolage Grotesque, Red Hat Mono, Geist and JetBrains Mono are bundled
   // (static/fonts); the rest load from Google Fonts only when chosen, and the
   // picker loads a tiny glyph subset of each so its cards render in their face.
   const SANS = '"Segoe UI", system-ui, sans-serif';
@@ -97,7 +97,7 @@
     garamond: { label: "EB Garamond", kind: "serif", spec: W3 },
     plexserif: { label: "IBM Plex Serif", kind: "serif", spec: W3 },
     redhat: { label: "Red Hat Mono", kind: "mono", spec: "", bundled: true },
-    jetbrains: { label: "JetBrains Mono", kind: "mono", spec: W3 },
+    jetbrains: { label: "JetBrains Mono", kind: "mono", spec: "", bundled: true },
     geistmono: { label: "Geist Mono", kind: "mono", spec: W3 },
     plexmono: { label: "IBM Plex Mono", kind: "mono", spec: W3 },
     firacode: { label: "Fira Code", kind: "mono", spec: W3 },
