@@ -2,7 +2,7 @@
 // flat or near-flat ground; strokes are batched into one path per alpha.
 
 import { seeded, noise, field, hash } from "./noise.js";
-import { TAU, layer, rgba } from "./art.js";
+import { TAU, clamp01, layer, rgba } from "./art.js";
 
 // One device pixel on a large canvas: hairlines rasterise ~10x faster than
 // wider strokes on a software canvas. Cards and phones draw 1 CSS px.
@@ -939,5 +939,127 @@ export const paperplanes = {
     ctx.stroke(fold);
     pen(ctx, L.body, lw);
     ctx.stroke(body);
+  },
+};
+
+// —— Aurora veil ——
+// A curtain of fine vertical rays: their feet follow slowly folding
+// curves, their lengths and alpha swell along the curtain, and their tips
+// cool toward violet. Strongest at the sides, faint behind the reading column.
+const VEIL = { ground: "#070c14", ink: "#6fbfae", tip: "#8a7fc0", star: "#9fb0c8" };
+const VSTEP = 0.05;
+
+export const auroraveil = {
+  fps: 15,
+  wallpaper: true,
+  scheme: "dark",
+  previewK: 0.4,
+  resize(s) {
+    const { w, h } = s;
+    const m = Math.min(w, h);
+    const rng = seeded(7310);
+    // Side weight: low behind the ~816 px reading column, full at the edges.
+    const e0 = w < 700 ? w * 0.1 : Math.min(w * 0.3, 300);
+    const e1 = w < 700 ? w * 0.5 : Math.min(w * 0.5, Math.max(w * 0.42, 430));
+    const side = (x) => {
+      const u = clamp01((Math.abs(x - w / 2) - e0) / (e1 - e0));
+      return (w < 700 ? 0.35 : 0.14) + (w < 700 ? 0.65 : 0.86) * u * u * (3 - 2 * u);
+    };
+    const gap = Math.max(2.2, w / 520);
+    const curtains = [
+      { y: 0.4, a1: 0.09, f1: 5.2, s1: 0.045, a2: 0.025, f2: 13, s2: 0.07, p: 0.6, n: 3.2, k: 1.7, len: 0.3, alpha: 0.5, every: 1 },
+      { y: 0.26, a1: 0.05, f1: 3.6, s1: -0.035, a2: 0.02, f2: 9, s2: -0.05, p: 2.9, n: 2.4, k: 6.1, len: 0.2, alpha: 0.32, every: 2 },
+    ].map((c) => {
+      const xs = [];
+      const sw = [];
+      const jit = [];
+      for (let x = gap * 0.5; x < w; x += gap * c.every) {
+        const xx = x + rng.range(-0.3, 0.3) * gap;
+        xs.push(xx);
+        sw.push(side(xx));
+        jit.push(rng.range(0.55, 1.25));
+      }
+      return { ...c, xs, sw, jit };
+    });
+    const stars = new Path2D();
+    const nStars = Math.round((w * h) / (m * m) * (s.k < 1 ? 30 : 45));
+    const dot = Math.max(0.5, m / 1300);
+    for (let i = 0; i < nStars; i += 1) {
+      const x = rng() * w;
+      const y = rng() * rng() * h * 0.7;
+      const r = dot * (rng() < 0.2 ? 1.3 : 0.8);
+      stars.moveTo(x + r, y);
+      stars.arc(x, y, r, 0, TAU);
+    }
+    // A low ridge contour near the bottom, with a fainter one behind it.
+    const ridges = [new Path2D(), new Path2D()];
+    const n = 48;
+    const px = new Float32Array(n + 1);
+    const py = new Float32Array(n + 1);
+    for (let r = 0; r < 2; r += 1) {
+      for (let i = 0; i <= n; i += 1) {
+        const x = (i / n) * (w + 20) - 10;
+        px[i] = x;
+        py[i] = h * (r ? 0.86 : 0.91) - m * (r ? 0.07 : 0.045) * noise(x / (m * (r ? 0.35 : 0.22)) + r * 9.1, 4.2 + r);
+      }
+      curve(ridges[r], px, py, n + 1);
+    }
+    s.L = {
+      curtains, stars, ridges,
+      levels: Math.round(0.5 / VSTEP) + 1,
+      ink: Array.from({ length: 12 }, (_, i) => rgba(VEIL.ink, i * VSTEP)),
+      tip: Array.from({ length: 12 }, (_, i) => rgba(VEIL.tip, i * VSTEP)),
+      starInk: rgba(VEIL.star, 0.4),
+      ridgeInk: [rgba(VEIL.ink, 0.26), rgba(VEIL.ink, 0.12)],
+    };
+  },
+  draw(s, t) {
+    const { ctx, w, h } = s;
+    const L = s.L;
+    ctx.fillStyle = VEIL.ground;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = L.starInk;
+    ctx.fill(L.stars);
+    const lw = lineW(s);
+    const nl = L.levels;
+    const ink = Array.from({ length: nl }, () => new Path2D());
+    const tip = Array.from({ length: nl }, () => new Path2D());
+    const seg = (paths, a, x, y0, y1) => {
+      const b = Math.min(nl - 1, Math.round(a / VSTEP));
+      if (b <= 0) return;
+      paths[b].moveTo(x, y0);
+      paths[b].lineTo(x, y1);
+    };
+    for (const c of L.curtains) {
+      const { xs, sw, jit } = c;
+      for (let i = 0; i < xs.length; i += 1) {
+        const x = xs[i];
+        const u = x / w;
+        const ph = u * c.f1 + t * c.s1 + c.p;
+        const base = h * (c.y + c.a1 * Math.sin(ph) + c.a2 * Math.sin(u * c.f2 - t * c.s2));
+        // Bright where the curtain folds (steep), and in slow travelling bands.
+        const fold = Math.abs(Math.cos(ph));
+        const band = 0.6 * noise(u * c.n + t * 0.035 + c.k, t * 0.02 + c.k) + 0.4 * noise(u * c.n * 2.7 - t * 0.05, c.k + 3.3);
+        const I = clamp01((band - 0.18) * 1.9) * (0.5 + 0.5 * fold);
+        const a = I * sw[i] * c.alpha;
+        if (a < VSTEP * 0.5) continue;
+        const len = h * c.len * (0.35 + 0.65 * I) * jit[i];
+        const y1 = base - len * 0.22;
+        const y2 = base - len * 0.62;
+        seg(ink, a, x, base, y1);
+        seg(ink, a * 0.6, x, y1, y2);
+        seg(tip, a * 0.45, x, y2, base - len);
+      }
+    }
+    for (let b = 1; b < nl; b += 1) {
+      pen(ctx, L.ink[b], lw);
+      ctx.stroke(ink[b]);
+      pen(ctx, L.tip[b], lw);
+      ctx.stroke(tip[b]);
+    }
+    for (let r = 0; r < 2; r += 1) {
+      pen(ctx, L.ridgeInk[r], lw);
+      ctx.stroke(L.ridges[r]);
+    }
   },
 };
