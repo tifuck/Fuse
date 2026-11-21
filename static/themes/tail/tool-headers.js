@@ -1,6 +1,13 @@
 // tool-headers presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
+// Tail: the verb column is one short lower-case word.
+const TAIL_VERBS = { Bash: "run", Update: "edit", "Web Search": "web", "Update Todos": "todos", "Stop Task": "stop", Monitor: "watch", Transcript: "history" };
 function consoleVerb(name, trace) {
+    const verb = baseVerb(name, trace);
+    return TAIL_VERBS[verb] || verb.toLowerCase();
+  }
+
+function baseVerb(name, trace) {
     if (name === "fuse-steer") return "Notice";
     {
       if (name === "grep" || name === "glob") return "Search";

@@ -298,7 +298,7 @@ function setConsoleSpin(el) {
 // shortcut: kept on the message in this page only, so a reload loses it;
 // store it with the turn if it should outlive the page.
 function keepHostPeak(msg) {
-    const card = deps.liveDock.querySelector("[data-host-stats]:not([hidden])");
+    const card = document.querySelector("[data-chat] [data-host-stats]:not([hidden])");
     if (!card || !card.dataset.cpu) return;
     const peak = (msg._hostPeak ||= { cpu: 0, ram: 0, cpuTone: "", ramTone: "" });
     for (const key of ["cpu", "ram"]) {

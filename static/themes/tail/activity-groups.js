@@ -3,7 +3,9 @@ export function create(deps) {
 function ccTurnLineHtml(msg, latest) {
     if (msg.elapsedMs == null) return "";
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
-    const head = `<span class="chat-console-turn-mark" aria-hidden="true">✻</span> `;
+    // Tail: the turn's receipt. What it cost and what it changed, on one line.
+    const tone = msg.stopped ? "stop" : msg.error ? "fail" : pendingAgents ? "wait" : "ok";
+    const head = `<span class="chat-console-turn-mark is-${tone}" aria-hidden="true">${{ ok: "✓", fail: "×", stop: "■", wait: "…" }[tone]}</span> `;
     if (pendingAgents) {
       return `${head}<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
@@ -13,9 +15,32 @@ function ccTurnLineHtml(msg, latest) {
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
     const speed = deps.ccGenSpeed(usage.gen_out, usage.gen_ms, usage.gen_est > 0);
-    return `${head}<span>${outcome ? `${outcome}, ` : ""}${deps.escapeHtml(outcome ? deps.ccTurnVerb(msg).toLowerCase() : deps.ccTurnVerb(msg))} for ${deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)))}` +
-      `${speed ? `, <span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : ""}` +
-      `${done ? `, done ${deps.escapeHtml(done)}` : ""}${still ? `, ${deps.escapeHtml(still)} still running` : ""}</span>` +
+    let plus = 0, minus = 0, failed = 0, calls = 0;
+    const files = new Set();
+    (msg.tools || []).forEach((trace) => {
+      if (!trace || deps.ccToolClass(trace)?.kind === "silent") return;
+      calls += 1;
+      const p = deps.toolPresentation(trace, false);
+      if (p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
+        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError)) failed += 1;
+      else if (trace.name === "search_replace" || trace.name === "write_file") {
+        const counts = deps.consoleEditCounts(trace);
+        files.add(String(trace.path || trace.id));
+        plus += counts.added;
+        minus += counts.removed;
+      }
+    });
+    const parts = [
+      `<b>${outcome ? outcome.toLowerCase() : "done"}</b>`,
+      deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0))),
+      calls ? `${calls} ${calls === 1 ? "call" : "calls"}` : "",
+      files.size ? `${files.size} ${files.size === 1 ? "file" : "files"} <span class="tail-plus">+${plus}</span>${minus ? ` <span class="tail-minus">−${minus}</span>` : ""}` : "",
+      failed ? `<span class="tail-fail">${failed} failed</span>` : "",
+      speed ? `<span class="chat-console-speed" title="${deps.escapeHtml(speed.title)}">${deps.escapeHtml(speed.text)}</span>` : "",
+      done ? deps.escapeHtml(done) : "",
+      still ? `${deps.escapeHtml(still)} still running` : "",
+    ].filter(Boolean);
+    return `${head}<span class="tail-receipt">${parts.map((part) => `<span>${part}</span>`).join("")}</span>` +
       ccPeakHtml(msg._hostPeak);
   }
 
@@ -326,28 +351,10 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
       if (group) rows.push(group);
       group = null;
     };
-    // Console: a running call (a background command too, for as long as its
-    // process runs), and while the block is live its newest call, print on
-    // their own row; a call folds into the line once it has ended and
-    // something newer (a thought, a call, text) has arrived. Claude Code
-    // folds both; Fuse never hides a command that is still running.
-    let newest = -1;
-    if ((blockLive)) {
-      for (let k = entries.length - 1; k >= 0 && newest < 0; k -= 1) {
-        if (!(entries[k].type === "tool" && deps.ccToolClass(entries[k].trace)?.kind === "silent")) newest = k;
-      }
-    }
-    // A silent call (search_tools) stays hidden unless it was cut short: an
-    // interrupted one prints on its own row, saying what the run was doing.
-    // A call that failed or was cut short prints on its own row too: "ran 3
-    // shell commands" must not hide that one of them did not finish.
-    const holds = (entry, at, cls) => {
-      const p = deps.toolPresentation(entry.trace, live);
-      if (cls.kind === "silent") return p.interrupted;
-      const bad = p.failed || p.interrupted || (entry.trace.name === "run_terminal_command" && p.state === "warning" &&
-        deps.ccExitMeaning(deps.displayCommand(entry.trace), deps.shellExitCode(entry.trace)).isError);
-      return at === newest || p.running || bad;
-    };
+    // Tail: the burst line above folds a block's calls, so every call prints
+    // on its own row. A silent call (search_tools) stays hidden unless it was
+    // cut short: then it says what the run was doing.
+    const holds = (entry, cls) => cls.kind !== "silent" || deps.toolPresentation(entry.trace, live).interrupted;
     let i = 0;
     while (i < entries.length) {
       const entry = entries[i];
@@ -403,7 +410,7 @@ function consoleActivityEntriesHtml(entries, msg, live, blockLive = false) {
         continue;
       }
       const cls = deps.ccToolClass(entry.trace);
-      if (cls && !holds(entry, i - 1, cls)) {
+      if (cls && !holds(entry, cls)) {
         (group ||= { items: [] }).items.push({ type: "tool", entry, cls, key });
         continue;
       }

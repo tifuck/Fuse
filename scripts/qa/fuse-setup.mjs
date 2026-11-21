@@ -191,7 +191,10 @@ function mapJson(text, kind) {
 }
 // Opens the folded work lines of a chat (and, for rows, every call row too).
 const toggles = (scope) => `(() => { const closed = [...document.querySelectorAll('${scope} > .chat-step-main > .chat-step-head > .chat-step-toggle[data-step-toggle][aria-expanded="false"]')]; closed.forEach((b) => b.click()); return closed.length; })()`;
+// Tail folds a whole burst of calls behind one line; open those first.
+const bursts = `(() => { const closed = [...document.querySelectorAll('button[data-activity-summary][aria-expanded="false"]')]; closed.forEach((b) => b.click()); return closed.length; })()`;
 async function openSteps(api, rows) {
+  await api.run(bursts);
   await api.run(toggles('.chat-step.is-console-group'));
   await api.sleep(250);
   if (rows) await api.run(toggles('.chat-step:not(.is-console-group)'));

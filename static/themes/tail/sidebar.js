@@ -94,14 +94,44 @@ export function create(deps) {
       case "group":
         return `<div class="chat-history-project-head" data-history-group data-project-color="${esc(block.color || "")}">${block.icon}<span class="chat-history-project" data-group-name>${esc(block.name)}</span>` +
           (block.host ? `<span class="chat-history-host-label">${esc(block.host)}</span>` : "") + "</div>";
+      case "machine":
+        return `<p class="chat-history-kicker tail-machine" data-history-section><span class="tail-machine-dot" aria-hidden="true"></span>${esc(block.host || "No machine")}</p>`;
       case "empty": return `<p class="chat-history-empty" data-history-empty>${esc(block.text)}</p>`;
       case "loading": return `<div class="chat-history-loading" data-history-loading role="img" aria-label="Loading chats">${"<span></span>".repeat(6)}</div>`;
       default: return "";
     }
   }
 
+  // Tail: rows that run on a machine sit under it. Within each stretch of
+  // rows (a section, or the whole list) the order stays the runtime's; a
+  // machine heads its rows where its first one stood. A list the runtime
+  // already grouped by project keeps that grouping.
+  const ROWS = new Set(["thread", "draft", "project"]);
+  const machineOf = (block) => (block.type === "project" ? block.item.host_alias : block.row?.meta?.host) || "";
+  function byMachine(blocks) {
+    if (blocks.some((block) => block.type === "group") || !blocks.some((block) => ROWS.has(block.type) && machineOf(block))) return blocks;
+    const out = [];
+    let run = [];
+    const flush = () => {
+      const groups = new Map();
+      run.forEach((block) => {
+        const host = machineOf(block);
+        if (!groups.has(host)) groups.set(host, []);
+        groups.get(host).push(block);
+      });
+      groups.forEach((rows, host) => out.push({ type: "machine", host }, ...rows));
+      run = [];
+    };
+    blocks.forEach((block) => {
+      if (ROWS.has(block.type)) run.push(block);
+      else { flush(); out.push(block); }
+    });
+    flush();
+    return out;
+  }
+
   function historyListHtml(blocks) {
-    return blocks.map(blockHtml).join("");
+    return byMachine(blocks).map(blockHtml).join("");
   }
 
   return { historyListHtml, runSpinHtml };

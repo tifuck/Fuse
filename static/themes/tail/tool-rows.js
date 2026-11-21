@@ -181,8 +181,20 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // A running command's output so far is its preview; opened, it follows the command.
       if (command) inner = command + (inner || (running ? preview : ""));
       const expandable = !verbose && Boolean(fold.full || command);
+      const line = deps.consoleCallHtml(trace, presentation, verbose) + (ownNote ? `<span class="chat-console-dim chat-console-trunc"> (${ownNote})</span>` : "");
+      // Tail: the output opens in the pane, under a head naming its call.
+      if (inner && !verbose) {
+        inner = `<div class="tail-pane-head"><span class="tail-pane-title">${line}</span>` +
+          `<button type="button" class="tail-pane-close" data-step-toggle aria-label="Close output" title="Close (Esc)">` +
+          `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div>` +
+          `<div class="tail-pane-body">${inner}</div>`;
+      }
+      // Tail: a finished edit's line is its size, +added −removed.
+      const counts = !failed && !running && !interrupted && ["search_replace", "write_file"].includes(trace.name) ? deps.consoleEditCounts(trace) : null;
+      const diffStat = counts && (counts.added || counts.removed)
+        ? `<span class="tail-plus">+${counts.added}</span>${counts.removed ? ` <span class="tail-minus">−${counts.removed}</span>` : ""}` : "";
       const head = deps.toolHeadHtml({
-        ...presentation, line: deps.consoleCallHtml(trace, presentation, verbose) + (ownNote ? `<span class="chat-console-dim chat-console-trunc"> (${ownNote})</span>` : ""), title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
+        ...presentation, line, title: trace.command || trace.path || trace.url || label, expandable, open: revealed, openKind, openId,
         contextHost: "",
       });
       const hangOpen = verbose ? Boolean(inner) : revealed && expandable;
@@ -210,7 +222,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
             `<div class="chat-console-hang${running ? " is-running" : ""}${failed ? " is-error" : ""}${fold.keep ? " is-kept" : ""}${bodyOnly ? " is-body-only" : ""}${hangOpen ? " is-expanded" : ""}">` +
             `<span class="chat-console-branch" aria-hidden="true">└</span>` +
             `<div class="chat-console-hang-body">` +
-            (status || timeout ? `<span class="chat-console-result-text">${fold.statusHtml ?? deps.consoleStatusHtml(status)}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
+            (status || timeout ? `<span class="chat-console-result-text">${diffStat || (fold.statusHtml ?? deps.consoleStatusHtml(status))}${status && timeout ? " " : ""}${timeout ? `<span class="chat-console-timeout">${deps.escapeHtml(timeout)}</span>` : ""}</span>` : "") +
             (preview ? `<div class="chat-console-preview">${preview}</div>` : "") +
             (inner ? `<div class="chat-console-full">${inner}</div>` : "") +
             `</div></div></div></div>`

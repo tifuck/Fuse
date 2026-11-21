@@ -46,6 +46,44 @@ function activityEntriesHtml(entries, msg, live, blockKey, blockLive = false) {
 
   }
 
+// Tail: one line per burst of work. A tick per call (tall: it changed a file,
+// failed or is running), how many there were, what they changed and how long
+// they took. The line opens the calls. A burst without calls prints bare.
+function burstHtml(traces, live, open, aid) {
+    const calls = traces.filter((trace) => deps.ccToolClass(trace)?.kind !== "silent");
+    if (!calls.length) return "";
+    let plus = 0, minus = 0, failed = 0, ms = 0, now = null;
+    const ticks = calls.map((trace) => {
+      const p = deps.toolPresentation(trace, live);
+      const bad = p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
+        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError);
+      const change = trace.name === "search_replace" || trace.name === "write_file";
+      if (bad) failed += 1;
+      else if (p.running) now = trace;
+      else if (change) {
+        const counts = deps.consoleEditCounts(trace);
+        plus += counts.added;
+        minus += counts.removed;
+      }
+      const took = Number(trace.latency_ms ?? trace.duration_ms);
+      if (Number.isFinite(took) && took > 0) ms += took;
+      return `<i class="${p.running ? "is-live" : bad ? "is-bad" : p.interrupted ? "is-stop" : change ? "is-change" : trace.name === "run_terminal_command" ? "is-run" : ""}"></i>`;
+    });
+    // A long burst keeps its newest ticks; the count still says how many ran.
+    const shown = ticks.slice(-40).join("");
+    const stat = [
+      plus || minus ? `<span><span class="tail-plus">+${plus}</span>${minus ? ` <span class="tail-minus">−${minus}</span>` : ""}</span>` : "",
+      failed ? `<span class="tail-fail">${failed} failed</span>` : "",
+      ms >= 1000 ? `<span>${deps.escapeHtml(deps.ccDuration(ms))}</span>` : "",
+    ].join("");
+    return `<button type="button" class="tail-burst" data-activity-summary aria-expanded="${open ? "true" : "false"}" aria-controls="${aid}">` +
+      `<span class="tail-burst-chev" aria-hidden="true">${deps.STEP_CHEVRON}</span>` +
+      `<span class="tail-ticks" aria-hidden="true">${shown}</span>` +
+      `<span class="tail-burst-count"><b>${calls.length}</b> ${calls.length === 1 ? "call" : "calls"}</span>` +
+      (now ? `<span class="tail-burst-now">${deps.escapeHtml(String(now.description || deps.displayCommand(now) || now.path || now.url || now.pattern || "working").split("\n")[0])}</span>` : "") +
+      `<span class="tail-burst-stat">${stat}</span></button>`;
+  }
+
 function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive = live) {
     const key = String(blockIndex);
     const aid = "chat-activity-" + ++deps.activitySeq;
@@ -56,23 +94,18 @@ function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive
     if (waiting) return "";
     const blockMsg = { ...msg, reasoning, content: "" };
     const kind = deps.activityKind(blockMsg, groups, live);
-    const defaultOpen = Boolean(live || true);
-    msg.activityOpenMap ||= {};
-    if (!(key in msg.activityOpenMap)) msg.activityOpenMap[key] = defaultOpen;
-    const open = msg.activityOpenMap?.[key] ?? defaultOpen;
-    const steps = activityEntriesHtml(entries, msg, turnLive || Boolean(msg.tools_live), key, live);
+    const stepLive = turnLive || Boolean(msg.tools_live);
+    const steps = activityEntriesHtml(entries, msg, stepLive, key, live);
+    // A burst is folded until its line is opened (assistant-disclosure.js).
+    const open = Boolean(msg.stepOpen?.["burst-" + key]);
+    const summary = burstHtml(traces, stepLive, open, aid);
     const classes = ["chat-activity"];
-    if (open || true) classes.push("is-open");
+    if (open || !summary) classes.push("is-open");
     // A model wait/background handoff must not hide already-rendered tools.
     if (kind) classes.push(kind === "waiting" ? "is-pending-phase" : `is-${kind}`);
-    classes.push("is-bare");
+    if (!summary) classes.push("is-bare");
     if (!live && msg.stopped) classes.push("is-stopped");
     if (!live && msg.error) classes.push("is-failed");
-    const label = deps.escapeHtml(deps.activityLabel(blockMsg, groups, live));
-    const elapsed = showElapsed && !live ? '<span data-activity-elapsed></span>' : "";
-    const summary = live
-      ? ""
-      : (`<p class="chat-cli-run" data-activity-summary aria-hidden="true"><span class="chat-activity-text"><span>${label}</span>${elapsed}</span></p>`);
     return (
       `<section class="${classes.join(" ")}" data-activity data-activity-block="${key}">` +
       summary +
