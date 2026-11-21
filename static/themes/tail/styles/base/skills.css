@@ -1,0 +1,150 @@
+/* console theme copy of static/styles/pages/skills.css: the rules that style /chat, gated to
+   this theme's chat page. The shared file keeps them for other pages only. */
+/* —— Skills ——
+   Rows are shared by the Skills page and the chat Skills sheet: a switch,
+   the /slug with where it came from and what it does, then Remove. The page
+   adds a filter bar above the list and a side column to find or upload. */
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.2rem 0.85rem;
+  align-items: start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row:last-child { border-bottom: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row-copy { min-width: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row-meta { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-slug {
+  color: var(--mist);
+  font: 600 0.84rem/1.4 var(--mono);
+  background: none;
+  padding: 0;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row.is-enabled .skills-slug { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-origin {
+  color: var(--mute);
+  font: 0.6rem/1.4 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-desc {
+  margin: 0.2rem 0 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row-actions { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-row-actions:empty { display: none; }
+/* Switch: a square Console toggle over a real checkbox. */
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 0.1rem;
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-switch {
+  position: relative;
+  display: block;
+  width: 2rem;
+  height: 1.1rem;
+  border: 1px solid var(--line);
+  background: var(--ink);
+  transition: background-color var(--dur-hover) var(--ease-snap), border-color var(--dur-hover) var(--ease-snap);
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  width: 0.62rem;
+  height: 0.62rem;
+  background: var(--mute);
+  transform: translateY(-50%);
+  transition: transform var(--dur-1) var(--ease-snap), background-color var(--dur-hover) var(--ease-snap);
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle input:checked + .skills-switch { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle input:checked + .skills-switch::after { background: var(--brass); transform: translate(0.88rem, -50%); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle input:focus-visible + .skills-switch { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-toggle:hover .skills-switch { border-color: color-mix(in srgb, var(--mist) 30%, var(--line)); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-search,
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-upload { display: flex; flex-direction: column; gap: 0.55rem; align-items: stretch; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-none,
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-empty { margin: 0; padding: 1.5rem 0; color: var(--mute); font-size: 0.8rem; text-align: center; }
+/* Search hits */
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit:last-child { border-bottom: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit-copy { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-width: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit strong { overflow: hidden; color: var(--mist); font: 600 0.8rem/1.35 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit-meta { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; color: var(--mute); font: 0.7rem/1.4 var(--mono); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit-meta .mono { overflow: hidden; max-width: 100%; font-size: inherit; text-overflow: ellipsis; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit-meta a { color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit-meta a:hover { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-hit .btn { flex-shrink: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-page > .callout { margin: 0; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-tab.is-on { color: var(--brass); background: color-mix(in srgb, var(--brass) 12%, transparent); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-page .skills-installed { padding: 0 1rem; }
+@media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="tail"]) .skills-row { grid-template-columns: auto minmax(0, 1fr); }
+  :where(html.is-chat-root[data-chat-view="tail"]) .skills-row-actions { grid-column: 2; }
+}
+
+/* Review of a third-party skill with scripts before it turns on: every file
+   in full under the row, then its hash and Turn on. */
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--ink);
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-note { margin: 0 0 0.2rem; color: var(--mist); font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file { min-width: 0; border-top: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file summary {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  color: var(--mist);
+  font-size: 0.76rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file summary::before { content: "▸"; width: 1rem; flex: none; color: var(--mute); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file[open] > summary::before { content: "▾"; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-file pre {
+  max-height: 18rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.6rem;
+  overflow: auto;
+  background: var(--raise);
+  color: var(--mist);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding-top: 0.45rem; border-top: 1px solid var(--line); }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-review-hash { margin-right: auto; color: var(--mute); font-size: 0.7rem; }
+:where(html.is-chat-root[data-chat-view="tail"]) .skills-origin.is-review { color: var(--brass); }

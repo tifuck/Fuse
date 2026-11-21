@@ -1,0 +1,267 @@
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice > .chat-step-node::after {
+  content: "" !important;
+  display: block;
+  width: var(--console-dot);
+  height: var(--console-dot);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mist) 45%, var(--ink));
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-red > .chat-step-node::after { background: var(--call-fail); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-gold > .chat-step-node::after { background: var(--call-idle); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice > .chat-step-main {
+  display: block;
+  min-width: 0;
+  color: var(--mist);
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice .chat-console-dim {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-progress {
+  display: grid;
+  min-width: 0;
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  /* Terminal-style wrap: a long unbroken argument fills the line after "$ "
+     instead of dropping below it and leaving the "$" alone. */
+  word-break: break-all;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-progress .chat-console-lines,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-progress .chat-console-stdout {
+  color: inherit;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-lines.is-error,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-lines.is-error .chat-console-stdout {
+  color: var(--fault);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-green > .chat-step-node::after { background: var(--call-done); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-agents.is-done > .chat-step-node::after,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-agents.is-error > .chat-step-node::after {
+  content: "" !important;
+  display: block;
+  width: var(--console-dot);
+  height: var(--console-dot);
+  border-radius: 50%;
+  background: var(--call-done);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-agents.is-error > .chat-step-node::after { background: var(--call-fail); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-group.is-console-agents .chat-step-label { color: var(--mist); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-group.is-console-agents .chat-console-agent .chat-console-branch {
+  color: color-mix(in srgb, var(--mist) 40%, var(--ink));
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent-tree {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--console-type)/var(--console-leading) var(--mono);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent {
+  min-width: 0;
+  cursor: pointer;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :is(.chat-console-agent-line, .chat-console-agent-sub) {
+  display: flex;
+  gap: 1ch;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-branch.is-blank {
+  visibility: hidden;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--mist);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent-name.is-dim,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent-sub .chat-console-dim {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent.is-error .chat-console-agent-sub .chat-console-dim { color: var(--fault); }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-agent:hover .chat-console-agent-name { color: var(--ink-strong, var(--mist)); text-decoration: underline; text-underline-offset: 2px; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: var(--console-type)/var(--console-leading) var(--mono);
+  letter-spacing: 0;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn {
+  display: grid;
+  grid-template-columns: var(--console-col) minmax(0, 1fr);
+  column-gap: 0.45rem;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn-mark { justify-self: center; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-console-turn b { font-weight: 700; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-turn.is-user.is-auto-steps {
+  padding: 0;
+  background: none;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-turn.is-auto-steps .chat-auto-steps { margin: 0; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-turn.is-auto-steps .chat-auto-steps .chat-timeline { padding: 0; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-group.is-console-expanded,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call.is-console-expanded:not(.is-console-verbose) {
+  background: var(--console-user);
+  padding-block: 0.2rem;
+}
+
+html body.is-chat .chat:is([data-view="tail"]) .chat-run-spin[data-run-spin] {
+  overflow: visible;
+}
+
+html body.is-chat .chat:is([data-view="tail"]) .chat-run-spin[data-run-spin] > .chat-console-spin {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font: 400 0.9rem/1 var(--mono);
+  font-style: normal;
+  text-align: center;
+  color: inherit;
+  text-shadow: 0 0 0.55em color-mix(in srgb, currentColor 40%, transparent);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-event .chat-step-head {
+  display: block;
+  min-height: 0;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-event .chat-step-toggle {
+  display: inline;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-event .is-event-more { cursor: pointer; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-event:has(> .chat-step-main > .chat-step-reveal.is-open) :is(.is-event-more, .is-event-preview) {
+  display: none;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+  --call-done: var(--mist);
+  --call-idle: var(--mist);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice > .chat-step-node::after {
+  background: var(--mist);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-call.is-interrupted > .chat-step-node::after,
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-console-notice.is-gold > .chat-step-node::after {
+  background: var(--call-fail);
+}
+
+/* The settled activity summary line: styled like a run head, but the
+   transcript never shows it — the status row and turn line carry the state. */
+.chat[data-view="tail"] .chat-cli-run {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.2rem;
+  min-height: 1.2rem;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: calc(0.68rem * var(--chat-text-scale, 1));
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.chat[data-view="tail"] .chat-cli-run::before {
+  content: "·";
+  color: var(--mute);
+  font-size: calc(0.9rem * var(--chat-text-scale, 1));
+}
+
+.chat[data-view="tail"] .chat-activity.is-live .chat-cli-run::before,
+.chat[data-view="tail"] .chat-activity.is-waiting .chat-cli-run::before { content: none; }
+
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-cli-run { display: none; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-cli-run {
+  display: none !important;
+}
+
+
+/* A subagent report handed to the main agent (a wake turn or a delivery
+   inside a reply): Claude Code's `Agent "…" finished` line, the report's
+   first lines under it, and a quiet link that opens the agent's pane. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-agent-report > .chat-step-main > .chat-step-head {
+  display: block;
+  min-height: 0;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-agent-report > .chat-step-main > .chat-step-head > .chat-step-open {
+  display: inline;
+  margin-left: 0.6rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  font: inherit;
+  max-width: none;
+  cursor: pointer;
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-agent-report > .chat-step-main > .chat-step-head > .chat-step-open:is(:hover, :focus-visible) {
+  color: var(--brass);
+}
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-step.is-agent-report .chat-console-report {
+  color: color-mix(in srgb, var(--mist) 58%, var(--ink));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Results delivered mid-reply use the wake turn's rows, in the reply's flow. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-auto-steps.is-delivery { margin: 0; }
+
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-auto-steps.is-delivery .chat-timeline { padding: 0; }

@@ -19,7 +19,7 @@
 //   --thread TEXT       open the QA chat whose title contains TEXT (any case)
 //   --page PATH[,PATH]  open another page: /usage, /settings, /admin/users ...
 //                       Default: /chat with no chat open
-//   --view V[,V] | all  combined | console | desktop (default). Chat and the
+//   --view V[,V] | all  console | tail | desktop (default). Chat and the
 //                       settings pages; sign-in and artifact pages are drawn
 //                       one way and shot once
 //   --tree DIR[,DIR]    serve /static from this checkout: a worktree's JS and
@@ -45,8 +45,8 @@
 //                                  machine: one made by Fuse, one from GitHub (with
 //                                  asks, the other three as well)
 //                         error    the last reply failed at the provider
-//                         agents   the agents pane (Desktop inspector, Combined
-//                                  rail) lists made-up subagents: running, done,
+//                         agents   the agents pane (Desktop inspector, the work
+//                                  strip elsewhere) lists made-up subagents: running, done,
 //                                  stopped, failed (use with --thread subagents
 //                                  or --thread "live agents")
 //                         stats    every chat is a project on the made-up machine

@@ -7,7 +7,7 @@
 // server can version them.
 const THEMES = {
   console: () => import('./console/index.js').then((theme) => theme.createConsoleTheme),
-  combined: () => import('./combined/index.js').then((theme) => theme.createCombinedTheme),
+  tail: () => import('./tail/index.js').then((theme) => theme.createTailTheme),
   desktop: () => import('./desktop/index.js').then((theme) => theme.createDesktopTheme),
 };
 let ids = [];

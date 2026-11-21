@@ -1,0 +1,169 @@
+/* Dictation: the composer mic and the live strip above the composer. A
+   terminal status line: a square rec mark, block meters, the clock and the
+   keys that end it. Everything live is the theme's accent. */
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--mute);
+  line-height: 0;
+  cursor: pointer;
+  touch-action: none;
+  transition: color var(--dur-hover) ease;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn:hover { color: var(--mist); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn svg { display: block; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn.is-live { color: var(--brass); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn.is-live::after {
+  content: "";
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 4px;
+  height: 4px;
+  background: var(--brass);
+  animation: dictation-blink-console 1s steps(1) infinite;
+}
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-box.is-dictating::before { color: var(--brass); }
+
+/* Sits on the composer in the dock's flow, so the dock grows by its height
+   and the transcript, the open todo list, the sync badge and "Jump to
+   latest" all move up with it; the composer's own popovers (z-index 7 with
+   the box) cover it. */
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation {
+  position: relative;
+  align-self: center;
+  z-index: 6;
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 2rem;
+  padding: 0 0.25rem 0 0.7rem;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--brass);
+  background: var(--ink);
+  color: var(--mist);
+  font: 500 0.72rem/1 var(--mono);
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation[hidden] { display: none; }
+
+/* The mark and its word: rec while it listens, wait while the microphone
+   starts and while the last words are written. */
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec {
+  min-width: 7ch;
+  color: var(--brass);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec::after { content: "rec"; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation:is(.is-starting, .is-finishing) .dictation-rec::after { content: "wait"; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec::before { content: "\25A0\00a0"; animation: dictation-blink-console 1s steps(1) infinite; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation.is-voiced .dictation-rec::before { animation: none; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation:is(.is-starting, .is-finishing) .dictation-rec { color: var(--mute); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation:is(.is-starting, .is-finishing) .dictation-rec::before { animation: none; }
+
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 1rem;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  background: var(--mist);
+  opacity: 0.45;
+  transform: scaleY(0.1);
+  will-change: transform;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation.is-voiced .dictation-bars i { opacity: 0.9; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation:is(.is-starting, .is-finishing) .dictation-bars i {
+  background: var(--mute);
+  animation: dictation-wait-console 1.1s steps(4) infinite;
+  animation-delay: calc(var(--i) * -40ms);
+}
+
+/* A rule after the clock parts what it reports from the keys that end it. */
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-time {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  min-width: 2.2rem;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--line);
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.5rem;
+  padding: 0 0.45rem;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--mute);
+  font: inherit;
+  cursor: pointer;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn kbd {
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--dictation-kbd, var(--line));
+  font: inherit;
+  line-height: 1;
+}
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn:hover { --dictation-kbd: var(--mute); color: var(--mist); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn.is-done { color: var(--brass); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn.is-done:hover { --dictation-kbd: currentColor; background: var(--brass); color: var(--on-brass, var(--ink)); }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+html[data-chat-view="tail"] .chat[data-view="tail"] .dictation.is-finishing .dictation-btn { pointer-events: none; opacity: 0.35; }
+
+@keyframes dictation-blink-console {
+  50% { opacity: 0; }
+}
+@keyframes dictation-wait-console {
+  0%, 100% { transform: scaleY(0.12); }
+  50% { transform: scaleY(0.4); }
+}
+
+/* A phone: the strip spans the screen and sits on the composer, made for
+   thumbs. Cancel at its left edge and done at its right are 44px keys with
+   their words (a phone has no esc); between them the mark, the clock, and
+   meters as wide as the room that is left. */
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation {
+    align-self: stretch;
+    margin-bottom: 0;
+    display: grid;
+    grid-template: "cancel rec time done" auto "cancel bars bars done" auto / auto 1fr auto auto;
+    gap: 6px 12px;
+    height: auto;
+    padding: 8px 8px 8px 6px;
+    border-width: 1px 0 0 2px;
+    font-size: 0.8rem;
+  }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec { grid-area: rec; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; max-width: 16rem; height: 1.25rem; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars i { width: 4px; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn { justify-content: center; min-width: 4.5rem; height: 44px; padding: 0 0.9rem; border: 1px solid var(--line); color: var(--mist); touch-action: manipulation; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn kbd { display: none; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn.is-done { border-color: var(--brass); background: var(--brass); color: var(--on-brass, var(--ink)); }
+  html[data-chat-view="tail"] .chat[data-view="tail"] [data-dictation-cancel] { grid-area: cancel; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] [data-dictation-done] { grid-area: done; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec::before,
+  html[data-chat-view="tail"] .chat[data-view="tail"] .chat-mic-btn.is-live::after { animation: none; }
+}

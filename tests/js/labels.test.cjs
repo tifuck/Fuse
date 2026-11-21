@@ -19,7 +19,7 @@ test('sub-second durations stay in ms and hand off above a second', () => {
 });
 
 test('byte sizes take the larger unit once they round up to it, in every theme', async () => {
-  for (const theme of ['console', 'combined', 'desktop']) {
+  for (const theme of ['console', 'tail', 'desktop']) {
     const { ccBytes } = (await import(`../../static/themes/${theme}/call-semantics.js`)).create({});
     const cases = [[1023, '1023 bytes'], [1536, '1.5KB'], [1_048_575, '1MB'], [5 * 1024 ** 2, '5MB'], [1024 ** 3 - 1, '1GB']];
     for (const [n, text] of cases) assert.equal(ccBytes(n), text, `${theme} ${n}`);
