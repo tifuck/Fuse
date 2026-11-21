@@ -336,6 +336,10 @@ function mist(s, rng, y, thick, color, alpha) {
   return crop(L, null, () => [0, s.h]);
 }
 
+// A moon's x: right of the centred reading column (about 816 px) on wide
+// screens, still on screen on phones.
+const moonX = (s, r) => Math.min(s.w - r * 2.2, Math.max(s.w * 0.88, s.w / 2 + 408 + r * 3.5));
+
 const speed = (s, v) => (v * Math.min(s.w, s.h)) / 900;
 const span = (s) => Math.min(s.h, s.w * 1.1);
 const wrapX = (x, lo, hi) => lo + ((((x - lo) % (hi - lo)) + (hi - lo)) % (hi - lo));
@@ -399,7 +403,7 @@ export const ranges = {
     });
     st.sky = sky(s, RANGES.sky, st.layers[0].L.y1);
     stars(s, st.sky, rng, 5200, h * 0.75);
-    orb(s, st.sky, w * 0.8, h * 0.2, m * 0.038, "rgba(205,214,232,0.55)", "#9fb2d4");
+    orb(s, st.sky, moonX(s, m * 0.038), h * 0.2, m * 0.038, "rgba(205,214,232,0.55)", "#9fb2d4");
     [[1, 0.74, 3.4, 0.045], [3, 0.88, -5, 0.035]].forEach(([after, y, v, th]) => {
       st.mists.push({ after, v: speed(s, v), L: mist(s, rng, h * y, h * th, "#3a4c68", 0.3) });
     });
@@ -686,13 +690,13 @@ export const tide = {
     });
     st.sky = sky(s, TIDE.sky, st.layers[0].L.y1 + 2);
     stars(s, st.sky, rng, 6500, hz * 0.9);
-    st.moon = { x: w * 0.79, y: h * 0.2 };
+    st.moon = { x: moonX(s, m * 0.036), y: h * 0.2 };
     orb(s, st.sky, st.moon.x, st.moon.y, m * 0.036, "rgba(206,216,236,0.55)", "#9fb3d8");
     const n = Math.max(18, Math.min(90, Math.round((w * h) / 16000)));
     st.glints = Array.from({ length: n }, () => {
       const d = Math.pow(rng(), 0.85);
       return {
-        d, y: hz + sea * (0.015 + d * 0.95), dx: (rng() - 0.5) * (0.04 + 0.3 * d) * m * 1.4, len: m * (0.008 + 0.035 * d) * rng.range(0.5, 1.3), w: rng.range(0.4, 1.1), ph: rng() * TAU,
+        d, y: hz + sea * (0.015 + d * 0.95), dx: (rng() - 0.5) * (0.04 + 0.18 * d) * m * 1.4, len: m * (0.008 + 0.035 * d) * rng.range(0.5, 1.3), w: rng.range(0.4, 1.1), ph: rng() * TAU,
       };
     });
     s.st = st;
@@ -782,7 +786,7 @@ export const ringplanet = {
       a2: R * rng.range(0.004, 0.01), k2: rng.range(9, 16) / R, w2: rng.range(0.08, 0.2) * (i % 2 ? -1 : 1),
     }));
     st.moons = [
-      { A: R * 2.4, r: R * 0.055, T: 320, ph: -0.68 },
+      { A: R * 2.75, r: R * 0.055, T: 320, ph: -0.68 },
       { A: R * 3.05, r: R * 0.04, T: 470, ph: -1.02 },
     ];
     s.st = st;
@@ -801,6 +805,9 @@ export const ringplanet = {
       const lx = mo.A * Math.cos(th);
       const x = p.x + lx * Math.cos(p.tilt) - ly * Math.sin(p.tilt);
       const y = p.y + lx * Math.sin(p.tilt) + ly * Math.cos(p.tilt);
+      // Fade through the middle of the screen, where the reading column sits.
+      const off = Math.abs(x / s.w - 0.5);
+      ctx.globalAlpha = 0.2 + 0.8 * Math.min(1, Math.max(0, (off - 0.22) / 0.1));
       ctx.fillStyle = "#2a2329";
       ctx.beginPath();
       ctx.arc(x, y, mo.r, 0, TAU);
@@ -812,6 +819,7 @@ export const ringplanet = {
       ctx.arc(x + mo.r * 0.4, y - mo.r * 0.35, mo.r, 0, TAU);
       ctx.fill();
       ctx.restore();
+      ctx.globalAlpha = 1;
     };
     for (const mo of st.moons) moon(mo, true);
     ctx.save();
