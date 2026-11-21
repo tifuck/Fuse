@@ -69,7 +69,8 @@
             </button>
           </div>
         </div>
-        {#- Tail: the machine's load reads in the status bar, between the two groups. -#}
+        {#- Tail: where the chat works (pane.js fills it from the project chip) and the machine's load, between the two groups. -#}
+        <span class="tail-where" data-tail-where hidden><i class="tail-machine-dot" aria-hidden="true"></i><b data-tail-host></b><span data-tail-path></span></span>
         <div class="chat-host-stats" data-host-stats hidden role="group" aria-label="Machine usage">
           <span class="hs-slice">cpu <b data-hs-cpu></b></span>
           <span class="hs-slice">ram <b data-hs-ram></b></span>
