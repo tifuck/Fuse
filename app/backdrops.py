@@ -2,7 +2,8 @@
 
 A backdrop is one self-contained HTML page (inline CSS/JS, canvas or WebGL)
 that a model writes in an artifact and the user saves with the artifact's
-"Use this" button (window.fuse.setBackdrop, app/artifacts.py). The chat draws
+"Use this" button (window.fuse.setBackdrop, app/artifacts.py). Each chat theme
+holds at most one: saving for a theme replaces its previous one. The chat draws
 it as <iframe src="/backdrop/<id>" sandbox="allow-scripts">. The HTML is
 opaque text: the CSP below and the sandbox (opaque origin, no network) are
 the safety, not any filtering of the markup. Rows never change once written,
@@ -15,11 +16,11 @@ import secrets
 import string
 
 from . import db
+from .chat_themes import chat_themes
 from .security import limiter
 
 HTML_MAX = 131072  # UTF-8 bytes
 NAME_MAX = 40
-PER_USER = 24
 SCHEMES = ("dark", "light")
 WRITES_PER_MIN = 20
 ID_RE = re.compile(r"[a-z0-9]{12}")
@@ -67,6 +68,12 @@ def _scheme(raw) -> str:
     return raw
 
 
+def _theme(raw) -> str:
+    if raw not in {theme["id"] for theme in chat_themes()}:
+        raise BackdropError("view must be a chat theme id")
+    return raw
+
+
 def _html(raw) -> str:
     if not isinstance(raw, str):
         raise BackdropError("html must be text")
@@ -84,26 +91,27 @@ def _html(raw) -> str:
 
 
 def _view(row) -> dict:
-    return {"id": row["public_id"], "name": row["name"], "scheme": row["scheme"], "created": row["created_at"]}
+    return {"id": row["public_id"], "view": row["view"], "name": row["name"], "scheme": row["scheme"],
+            "created": row["created_at"]}
 
 
 def list_for_user(user_id: int) -> list[dict]:
     rows = db.fetchall(
-        "SELECT public_id, name, scheme, created_at FROM user_backdrops WHERE user_id=? ORDER BY id DESC", (user_id,))
+        "SELECT public_id, view, name, scheme, created_at FROM user_backdrops WHERE user_id=? ORDER BY id DESC", (user_id,))
     return [_view(row) for row in rows]
 
 
-def create(user_id: int, *, name, scheme, html) -> dict:
+def create(user_id: int, *, view, name, scheme, html) -> dict:
+    """Store the backdrop of one chat theme, replacing the one it had and any
+    saved before backdrops were per theme (view NULL)."""
     if not limiter.allow(f"backdrop-write:{user_id}", WRITES_PER_MIN, 60):
         raise BackdropError("Too many backdrops saved. Try again shortly.", 429)
-    row = {"name": _name(name), "scheme": _scheme(scheme), "created_at": db.now()}
+    row = {"view": _theme(view), "name": _name(name), "scheme": _scheme(scheme), "created_at": db.now()}
     html = _html(html)
     with db.tx() as conn:
-        # The user's row lock serializes concurrent saves so the cap holds.
+        # The user's row lock serializes concurrent saves for one theme.
         conn.execute("SELECT id FROM users WHERE id=?" + db.for_update(conn), (user_id,)).fetchone()
-        count = conn.execute("SELECT COUNT(*) AS n FROM user_backdrops WHERE user_id=?", (user_id,)).fetchone()["n"]
-        if int(count) >= PER_USER:
-            raise BackdropError(f"You have {PER_USER} custom backdrops; delete one first.")
+        conn.execute("DELETE FROM user_backdrops WHERE user_id=? AND (view=? OR view IS NULL)", (user_id, row["view"]))
         for _ in range(8):
             public_id = "".join(secrets.choice(_ALPHABET) for _ in range(12))
             if not conn.execute("SELECT 1 AS ok FROM user_backdrops WHERE public_id=?", (public_id,)).fetchone():
@@ -111,8 +119,8 @@ def create(user_id: int, *, name, scheme, html) -> dict:
         else:
             raise BackdropError("could not allocate an identifier", 500)
         conn.execute(
-            "INSERT INTO user_backdrops (public_id, user_id, name, scheme, html, created_at) VALUES (?,?,?,?,?,?)",
-            (public_id, user_id, row["name"], row["scheme"], html, row["created_at"]),
+            "INSERT INTO user_backdrops (public_id, user_id, view, name, scheme, html, created_at) VALUES (?,?,?,?,?,?,?)",
+            (public_id, user_id, row["view"], row["name"], row["scheme"], html, row["created_at"]),
         )
     return _view({**row, "public_id": public_id})
 

@@ -201,9 +201,11 @@ registered again.
 
 ## Custom backdrops
 
-Besides the built-in scenes, each account can save up to 24 backdrops of its
-own, usually written by the model with the bundled `customize-fuse` skill.
-They show under "Yours" in Appearance > Backdrop and are removed there.
+Besides the built-in scenes, each account can save one backdrop of its own
+per chat theme (Console, Combined, Desktop), usually written by the model with
+the bundled `customize-fuse` skill. Saving one for a theme replaces and
+deletes that theme's previous one, so saves never pile up. A theme's own shows
+under "Yours" in Appearance > Backdrop (and in /theme) and can be removed there.
 
 **Format.** One self-contained HTML document: HTML, inline CSS and optional
 inline JS (canvas or WebGL), filling the viewport with no scrollbars. Nothing
@@ -213,13 +215,17 @@ It must be a pure picture: the iframe gets no pointer events.
 **Limits** (app/backdrops.py, checked on save): `html` at most 131072 UTF-8
 bytes, no NUL and valid UTF-8; `name` 1-40 characters after control
 characters are stripped and whitespace collapsed; `scheme` `"dark"`
-(default) or `"light"`; 24 per account (the 25th save answers 422 "You have
-24 custom backdrops; delete one first."). Saves are rate-limited per account.
+(default) or `"light"`; `view` a chat theme id. Saves are rate-limited per
+account.
 
 **Storage.** Table `user_backdrops` (migration
-`scripts/sql/2026-11-20-user-backdrops.sql`): `public_id` (12 chars
-`[a-z0-9]`), `user_id` (ON DELETE CASCADE, so deleting the account deletes
-them), `name`, `scheme`, `html`, `created_at`. Rows are never updated.
+`scripts/sql/2026-11-20-user-backdrops.sql`, `view` from
+`2026-11-21-backdrop-per-theme.sql`): `public_id` (12 chars `[a-z0-9]`),
+`user_id` (ON DELETE CASCADE, so deleting the account deletes them), `view`
+(unique per user), `name`, `scheme`, `html`, `created_at`. Rows are never
+updated; a save deletes the theme's old row and inserts a new one. Rows saved
+before backdrops were per theme have `view` NULL: they still list (in every
+theme) until the next save, which deletes them.
 
 **Security model.** The HTML is opaque text; nothing filters it. The safety is
 the frame: the chat draws it as
@@ -236,8 +242,8 @@ owner can load it.
 **API** (signed-in dashboard session; writes need the `x-csrf-token` header
 like every dashboard write):
 
-- `GET /api/backdrops` → `{"backdrops": [{"id", "name", "scheme", "created"}]}`, newest first.
-- `POST /api/backdrops` with JSON `{name, scheme, html}` → `{"backdrop": {...}}`; 422 `{"detail": msg}` when invalid.
+- `GET /api/backdrops` → `{"backdrops": [{"id", "view", "name", "scheme", "created"}]}`, newest first.
+- `POST /api/backdrops` with JSON `{view, name, scheme, html}` → `{"backdrop": {...}}`, replacing that theme's previous one; 422 `{"detail": msg}` when invalid.
 - `DELETE /api/backdrops/<id>` → `{"ok": true}`; 404 when it is not the caller's.
 - `GET /backdrop/<id>` → the stored document (`text/html; charset=utf-8`) for its owner; 404 for anyone else signed in, 401 signed out.
 
@@ -250,7 +256,9 @@ The frontend key of a custom backdrop is `"u-" + id`.
 artifact viewer; on a standalone or shared artifact page it only logs a
 console note. The viewer acts only on a message from the artifact frame that
 follows a recent click in it, asks the user to confirm, POSTs
-`/api/backdrops` and applies the new backdrop at once. An artifact can
+`/api/backdrops` for the current theme and applies the new backdrop at once.
+A device whose saved pick names a backdrop that was replaced elsewhere picks up
+that theme's new one when the list loads. An artifact can
 preview options in nested `<iframe sandbox="allow-scripts" srcdoc=...>`
 frames: srcdoc frames are not blocked by the artifact CSP's `frame-src 'none'`
 (checked in headless Chromium).

@@ -768,8 +768,8 @@ export function createArtifacts(ctx) {
     }
   }
 
-  // window.fuse.setBackdrop in the page: store it as one of the user's
-  // backdrops (POST /api/backdrops) and draw it behind this theme at once.
+  // window.fuse.setBackdrop in the page: store it as this theme's custom
+  // backdrop (POST /api/backdrops replaces the one it had) and draw it at once.
   async function saveBackdrop(data) {
     const name = String(data.name || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) || "Custom backdrop";
     const scheme = data.scheme === "light" ? "light" : "dark";
@@ -779,10 +779,10 @@ export function createArtifacts(ctx) {
       showFailure("Could not save the backdrop", new Error("The backdrop is larger than 128 KB."));
       return;
     }
-    if (!(await window.fuseConfirm(`Use "${name}" as your backdrop?`, { confirmLabel: "Use backdrop" }))) return;
+    if (!(await window.fuseConfirm(`Use "${name}" as this theme's backdrop? It replaces this theme's previous custom backdrop.`, { confirmLabel: "Use backdrop" }))) return;
+    const appearance = window.FuseChatAppearance;
     try {
-      const saved = (await net.api("/api/backdrops", { method: "POST", body: JSON.stringify({ name, scheme, html }) })).backdrop;
-      const appearance = window.FuseChatAppearance;
+      const saved = (await net.api("/api/backdrops", { method: "POST", body: JSON.stringify({ view: appearance?.themeId, name, scheme, html }) })).backdrop;
       const key = appearance?.addCustomBackdrop?.(saved);
       if (!key) throw new Error("The server sent no backdrop.");
       appearance.setBackdrop(key);

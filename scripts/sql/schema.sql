@@ -889,12 +889,14 @@ CREATE TABLE `user_backdrops` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `public_id` char(12) NOT NULL,
   `user_id` bigint(20) NOT NULL,
+  `view` varchar(16) DEFAULT NULL,
   `name` varchar(40) NOT NULL,
   `scheme` varchar(8) NOT NULL DEFAULT 'dark',
   `html` mediumtext NOT NULL,
   `created_at` varchar(32) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_backdrops_public_id` (`public_id`),
+  UNIQUE KEY `user_backdrops_user_view` (`user_id`,`view`),
   KEY `user_backdrops_user` (`user_id`),
   CONSTRAINT `user_backdrops_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
