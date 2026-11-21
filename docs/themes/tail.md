@@ -13,7 +13,8 @@ base.
 
 ## Global rules
 
-- **Type:** JetBrains Mono by default (Appearance › Font changes it; a
+- **Type:** JetBrains Mono by default, bundled in `static/fonts`
+  (Appearance › Font changes it; a
   non-mono choice keeps code and chrome in Red Hat Mono). 13px rows and
   prose, 12px status bar. Text is `--mist` or `--mute`; `--tl-dim` only for
   the verb column and marks.
@@ -43,27 +44,40 @@ base.
 - **The receipt** ends a turn: mark, `done` / `interrupted` / `failed`,
   duration, calls, files with `+N −M`, failures, speed, time.
 
-## Output pane
+## Pane
 
-- A click on a call opens its output in a pane on the right (28rem, 40vw at
-  most); the transcript keeps its place and gives up that width. One call at
-  a time: opening another replaces it. The pane's head names the call and
-  its host; the close button, Escape, or the same row closes it.
-- At ≤800px the pane is a sheet over a backdrop, 74% of the height; a tap on
-  the backdrop closes it.
-- A call inside another call's output (run_code) opens in place.
-- The pane is the call's own `.chat-console-full`, fixed in place by CSS, so
-  the runtime keeps patching a live call as before. The turn that owns it
-  drops `content-visibility` while it is open.
+- One pane on the right (28rem, 40vw at most; a sheet at ≤800px, 74% of the
+  height, over a backdrop). The transcript keeps its place and gives up that
+  width. `templates/themes/tail/_pane.html` is its markup,
+  `static/themes/tail/pane.js` its behaviour; `data-tail-pane` on the chat
+  root names the view on show.
+- It opens from the top bar's last button, from a click on a call, and by
+  itself when a subagent's transcript opens (its list is the way back to
+  main). The close button, the backdrop or Escape closes it. Escape goes to an
+  open menu or dialog first.
+- **output:** the open call. One call at a time: opening another replaces
+  it; closing the pane closes the call. A pane opened by a call closes when
+  that call does. The head names the call and its host. The body is the
+  call's own `.chat-console-full`, fixed over the pane by CSS, so the runtime
+  keeps patching a live call as before; the turn that owns it drops
+  `content-visibility` while it shows. A call inside another call's output
+  (run_code) opens in place.
+- **changes:** every file the chat's finished edits and writes touched,
+  newest first, with `+added −removed` summed over its edits. A row opens the
+  newest call that changed the file.
+- **agents:** the runtime's agents list and background commands
+  (`data-agents-list`, `data-jobs-list`), drawn as rows: name, state and what
+  it is doing, model, clock and one action. The tab counts them all; the
+  top-bar button's badge counts what is still running.
 
 ## Composer and status bar
 
 - The prompt line: accent `›`, the input, send (stop while running) at the
   right. Its top hairline takes the accent on focus.
 - Under it the status bar (26px, 36px on phones): the permission mode as an
-  accent chip, attach, the model, web search; on the right the machine's cpu
-  and ram while a project chat runs, then context use. Menus open over
-  their own control.
+  accent chip, attach, the model, web search; on the right the project's
+  machine and path, the machine's cpu and ram while it reports them, then
+  context use. Menus open over their own control.
 - A permission ask sits above the prompt line, inside the column's gutters.
 
 ## Top bar and sidebar
