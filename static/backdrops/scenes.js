@@ -13,6 +13,14 @@ const dots = () => import("./style-dots.js");
 
 export const BUILTIN = {
   aurora: { scheme: "dark", load: soft },
+  auroracrimson: { scheme: "dark", load: soft },
+  auroracorona: { scheme: "dark", load: soft },
+  aurorabands: { scheme: "dark", load: soft },
+  auroraorbit: { scheme: "dark", load: soft },
+  auroralake: { scheme: "dark", load: layered },
+  auroraridge: { scheme: "dark", load: layered },
+  auroraveil: { scheme: "dark", load: line },
+  aurorastipple: { scheme: "dark", load: dots },
   nebula: { scheme: "dark", load: soft },
   abyss: { scheme: "dark", load: soft },
   aura: { scheme: "dark", load: soft },

@@ -23,7 +23,15 @@
   // an empty preview and draws nothing.
   const BACKDROPS = {
     none: { label: "None", hint: "Solid" },
-    aurora: { label: "Aurora", hint: "Teal curtains · night sky", group: "sky", style: "soft" },
+    aurora: { label: "Aurora", hint: "Green curtains · night sky", group: "aurora", style: "soft" },
+    auroracrimson: { label: "Crimson Aurora", hint: "Red storm · high sky", group: "aurora", style: "soft" },
+    auroracorona: { label: "Aurora Corona", hint: "Overhead · converging rays", group: "aurora", style: "soft" },
+    aurorabands: { label: "Aurora Ribbons", hint: "Violet bands · Milky Way", group: "aurora", style: "soft" },
+    auroraorbit: { label: "Aurora from Orbit", hint: "Planet limb · auroral oval", group: "aurora", style: "soft" },
+    auroralake: { label: "Aurora Lake", hint: "Mountains · mirrored sky", group: "aurora", style: "layered" },
+    auroraridge: { label: "Aurora Ridge", hint: "Pine ridges · wide arc", group: "aurora", style: "layered" },
+    auroraveil: { label: "Aurora Veil", hint: "Fine rays · cyan", group: "aurora", style: "line" },
+    aurorastipple: { label: "Aurora Stipple", hint: "Dotted curtains · teal", group: "aurora", style: "dots" },
     nebula: { label: "Nebula", hint: "Violet dust · faint stars", group: "space", style: "soft" },
     abyss: { label: "Abyss", hint: "Deep water · light shafts", group: "water", style: "soft" },
     aura: { label: "Aura", hint: "Drifting colour · indigo", group: "abstract", style: "soft" },
@@ -48,7 +56,7 @@
     glyphfield: { label: "Glyph Field", hint: "Fading characters · mono", group: "abstract", style: "dots" },
     pollen: { label: "Pollen", hint: "Meadow light · drifting", group: "nature", style: "dots" },
   };
-  const BACKDROP_GROUPS = { nature: "Nature", sky: "Sky", water: "Water", space: "Space", abstract: "Abstract", objects: "Objects" };
+  const BACKDROP_GROUPS = { aurora: "Aurora", nature: "Nature", sky: "Sky", water: "Water", space: "Space", abstract: "Abstract", objects: "Objects" };
   const BACKDROP_STYLES = { soft: "Soft", layered: "Layered", line: "Line", dots: "Dots" };
   // A custom backdrop (GET /api/backdrops) is "u-" + its id. A saved one
   // draws on load; it is dropped only once the list has arrived without it.
@@ -66,8 +74,7 @@
   // Saved choices from retired backdrops map to their nearest replacement
   // instead of silently switching the wallpaper off.
   const LEGACY_BACKDROPS = {
-    auroralake: "aurora", auroraveil: "aurora", auroracorona: "aurora", auroracrimson: "aurora",
-    aurorabands: "aurora", auroraorbit: "aurora", auroraridge: "aurora", fogpines: "pines", bamboo: "pines",
+    fogpines: "pines", bamboo: "pines",
     waterfall: "ranges", sakura: "bloom", terraces: "dunes", meadow: "pollen", desert: "dunes", cliffs: "tide",
     deepsea: "abyss", harbor: "tide", rain: "rainfall", rooftops: "lanterns", circuit: "blueprint",
     orbital: "ringplanet", launch: "starfield",
