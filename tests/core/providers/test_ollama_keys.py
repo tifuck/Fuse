@@ -5,13 +5,14 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
 import app.sources as sources
-from app import db
+from app import api, chat_runs, db
 from app.sources import keyed, ollama, ollama_access
 from tests.core.helpers import quick_user
 
-from ._support import key, source
+from ._support import drain, events, key, route, source
 
 BASE = {"base_url": "https://ollama.test/api"}
 OK = {"message": {"role": "assistant", "content": "ok"}, "done": True}
@@ -63,6 +64,28 @@ def test_a_rejected_personal_key_falls_back_to_the_site_keys(fresh_db, upstream)
     result = _chat(sid, alice)
     assert result.status == 200 and [a["status"] for a in result.attempts] == [401]
     assert _bearers(upstream) == ["Bearer ollama-alice-key", "Bearer ollama-site-key"]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_a_rate_limited_site_key_is_recorded_beside_the_answer_from_the_next(fresh_db, upstream, stream):
+    sid = source("ollama", BASE)
+    uid = quick_user()
+    key(sid, "ollama-site-key-1")
+    key(sid, "ollama-site-key-2")
+    route("qwen3", sid, "qwen3")
+    upstream.on("POST", "ollama.test/api/chat", httpx.Response(429, json={"error": "too many requests"}),
+                httpx.Response(200, json=OK))
+    body = {"model": "qwen3", "stream": stream, "messages": [{"role": "user", "content": "x"}]}
+
+    async def go():
+        response = await api.dispatch_chat(chat_runs.internal_request(uid), {"id": uid}, body)
+        if stream:
+            await drain(response.body_iterator)
+        return response
+
+    assert asyncio.run(go()).status_code == 200
+    assert len(upstream.calls("ollama.test/api/chat")) == 2
+    assert [(r["request_status"], r["count_request"]) for r in events()] == [("failed", 0), ("success", 1)]
 
 
 def test_site_access_none_leaves_only_personal_keys(fresh_db, upstream):
