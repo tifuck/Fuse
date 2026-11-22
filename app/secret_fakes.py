@@ -47,7 +47,7 @@ _PUBLIC = frozenset({"AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAM
 # A real value with any of these is never placed into command text.
 _SHELL = re.compile(r"[$`\\'\"();|&<>{}\r\n]")
 LABELS = {kind: label for kind, label, _rx in _FORMATS} | {
-    "jwt": "JWT", "pem": "Private key", "url": "Password in a URL", "named": "Secret", "manual": "Added by you"}
+    "jwt": "JWT", "pem": "Private key", "url": "Password in a URL", "named": "Secret", "manual": "Secret"}
 
 
 def is_public(value: str) -> bool:
