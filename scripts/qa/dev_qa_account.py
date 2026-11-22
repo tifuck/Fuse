@@ -29,6 +29,7 @@ production or from a real session.
 from __future__ import annotations
 
 import json
+import math
 import os
 import secrets
 import sys
@@ -433,7 +434,7 @@ def artifacts_thread(ident: str) -> list[dict]:
 INLINE_LOGINS = {
     "type": "line", "x": "day", "y": "logins",
     "headline": {"value": 20934, "label": "logins", "delta": "▲ 12% vs the 30 days before", "good": True},
-    "data": [{"day": f"2026-{10 + (d + 22) // 31:02d}-{(d + 22) % 31 + 1:02d}", "logins": 520 + (d * 37) % 260 + d * 6}
+    "data": [{"day": f"2026-{10 + (d + 22) // 31:02d}-{(d + 22) % 31 + 1:02d}", "logins": round(640 + 110 * math.sin(d / 2.6) + d * 5 - (170 if d % 7 in (1, 2) else 0))}
              for d in range(30)],
 }
 INLINE_MODELS = {
