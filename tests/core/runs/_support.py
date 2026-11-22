@@ -77,8 +77,9 @@ def held_stream(text):
     from unittest.mock import AsyncMock
 
     held = HeldStream(text)
-    with patch("app.api.invoke_chat", new=held), patch("app.api._safe_record_usage"), \
+    with patch("app.api.invoke_chat", new=held), patch("app.api._safe_record_usage") as record_usage, \
             patch("app.chat_runtime.generate_thread_title", new_callable=AsyncMock, return_value=""):
+        held.record_usage = record_usage
         yield held
 
 

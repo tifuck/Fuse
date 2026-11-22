@@ -138,14 +138,16 @@ class FakeProvider:
 def fake_provider(*script):
     """Patch the provider boundary for the block; yields the FakeProvider.
 
-    Usage recording is stubbed (it needs real source/credential rows) and
-    title generation returns nothing, so a test sees only its own turn."""
+    Usage recording is stubbed (it needs real source/credential rows; the
+    mock is kept as ``provider.record_usage``) and title generation returns
+    nothing, so a test sees only its own turn."""
     from app import api, chat_runtime
 
     provider = FakeProvider(*script)
     with patch.object(api, "invoke_chat", new=provider), \
-            patch.object(api, "_safe_record_usage"), \
+            patch.object(api, "_safe_record_usage") as record_usage, \
             patch.object(chat_runtime, "generate_thread_title", new_callable=AsyncMock, return_value=""):
+        provider.record_usage = record_usage
         yield provider
 
 
