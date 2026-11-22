@@ -451,6 +451,37 @@ INLINE_WEEK = {
 }
 
 
+# Sloppy data as a model might send it: number-like strings, missing values,
+# nested values, long labels, negatives, too many rows and columns.
+INLINE_EDGES = (
+    ("table", "Machines, as reported", {"type": "table", "data": [
+        {"host": "demo-a", "cpu": "45%", "mem": 61.237894, "uptime": "12 days, 4:03:11", "status": "ok"},
+        {"host": "a-really-long-hostname-that-goes-on-and-on.internal.example.invalid", "cpu": 12, "mem": "n/a",
+         "notes": "Kernel updated, rebooted after the security patch on Tuesday night", "status": "degraded"},
+        {"host": "demo-c", "cpu": 1234567.891, "mem": -3, "notes": {"nested": [1, 2]}, "status": None},
+        {"cpu": 7, "host": "demo-d 🎮", "mem": 99.9, "status": "down", "extra_only_here": "surprise"},
+        {"host": "", "cpu": None, "mem": None, "status": "unknown"}]}),
+    ("bars", "Change by team", {"type": "bar", "x": "team", "y": "delta", "unit": "%", "data": [
+        {"team": t, "delta": v} for t, v in (("Sales and partnerships", 12.5), ("Operations", -8.25), ("Customer support", -31),
+                                             ("R&D", "4"), ("Legal", 0), ("Unassigned", None))]}),
+    ("weeks", "Tickets per week", {"type": "column", "x": "week", "y": "tickets", "data": [
+        {"week": f"2026-W{w:02d}", "tickets": (w * 53) % 400} for w in range(52, 0, -1)]}),
+    ("gaps", "Daily signups, with gaps", {"type": "line", "x": "day", "y": "signups",
+        "headline": {"value": "1,234", "label": "signups this month, the most since the instance was installed", "delta": "▲ 12% vs October", "good": True},
+        "data": [{"day": f"2026-11-{d:02d}", "signups": None if d % 6 == 0 else 30 + (d * 17) % 40} for d in range(1, 22)]}),
+)
+
+
+def inline_edges_thread(idents: dict) -> list[dict]:
+    """Inline charts fed sloppy data: each must fit its frame, wide or narrow."""
+    out = []
+    for key, title, _ in INLINE_EDGES:
+        out += [user(f"Show me {title.lower()}."),
+                reply(tool("create_artifact", version=1, visibility="private", display="inline", format="chart",
+                           identifier=idents[key], title=title, host="", project_root=""), f"{title}.", minutes_ago=20, elapsed_s=5)]
+    return out
+
+
 def inline_thread(idents: dict) -> list[dict]:
     """Inline artifacts (display inline): real chart rows the seed makes."""
     def art(key: str, title: str) -> dict:
@@ -674,6 +705,7 @@ THREADS = [
     ("QA · Notices and attachments", notices_thread),
     ("QA · Artifacts", artifacts_thread),
     ("QA · Inline artifacts", inline_thread),
+    ("QA · Inline edge cases", inline_edges_thread),
     ("QA · Planning and memory", planning_thread),
     ("QA · Background work", background_thread),
     ("QA · Subagents", agents_thread),
@@ -697,6 +729,9 @@ def _seed(uid: int) -> list[str]:
     for title, build in THREADS:
         if build is artifacts_thread:
             messages = build(art)
+        elif build is inline_edges_thread:
+            messages = build({key: artifacts.create(uid, title=title, html=json.dumps(spec), fmt="chart", display="inline")["identifier"]
+                              for key, title, spec in INLINE_EDGES})
         elif build is inline_thread:
             messages = build({key: artifacts.create(uid, title=title, html=json.dumps(spec), fmt="chart", display="inline")["identifier"]
                               for key, title, spec in (("logins", "Logins, last 30 days", INLINE_LOGINS),
