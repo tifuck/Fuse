@@ -5,6 +5,13 @@ services:
   db:
     image: mariadb:11.4
     restart: unless-stopped
+    # README: Database tuning. Raise the buffer pool to about a quarter of the
+    # host's RAM when it has more than 2 GB.
+    command:
+      - --innodb-flush-log-at-trx-commit=2
+      - --innodb-buffer-pool-size=512M
+      - --innodb-log-file-size=512M
+      - --innodb-log-buffer-size=64M
     environment:
       MARIADB_DATABASE: fuse
       MARIADB_USER: fuse

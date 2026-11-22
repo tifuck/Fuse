@@ -310,6 +310,30 @@ then installed as a systemd user unit.
 
 </details>
 
+<details>
+<summary><b>Database tuning</b></summary>
+
+MariaDB's defaults are sized for a tiny database. The installer (when it
+installs MariaDB itself) and the Docker setup apply the settings below; on a
+server you brought yourself, add them to its config (for example
+`/etc/mysql/mariadb.conf.d/90-fuse.cnf`) and restart MariaDB:
+
+```ini
+[mariadb]
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 512M
+innodb_log_buffer_size = 64M
+```
+
+| Setting | Default | Why |
+| --- | --- | --- |
+| `innodb_flush_log_at_trx_commit` | `1` | `1` syncs the disk on every commit, and a live chat commits several times a second. `2` syncs once a second instead: commits measured 17 ms → 0.06 ms on slow-sync storage. An OS crash or power loss can lose up to the last second of commits; a MariaDB crash loses nothing. Keep `1` if you cannot accept that. |
+| `innodb_buffer_pool_size` | `128M` | The cache for table data. Chat transcripts outgrow the default quickly; use about a quarter of the RAM when MariaDB shares the host with Fuse. |
+| `innodb_log_file_size`, `innodb_log_buffer_size` | `96M`, `16M` | Room for the multi-megabyte transcript rows a run rewrites. |
+
+</details>
+
 ### After installing
 
 - **The first account to register becomes the admin.** Until it exists,
