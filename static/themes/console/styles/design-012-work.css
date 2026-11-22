@@ -50,9 +50,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-age
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row):hover {
   background: color-mix(in srgb, var(--mist) 5%, transparent);
 }
-/* The transcript on screen: a tint and a brass bar on its row. */
+/* The transcript on screen: a brass bar on its row and a tint that fades out
+   behind the task, so the row reads as picked without a block of colour. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"] {
-  background: color-mix(in srgb, var(--brass) 9%, transparent);
+  --work-pick: linear-gradient(90deg, color-mix(in srgb, var(--brass) 22%, transparent), color-mix(in srgb, var(--brass) 6%, transparent) 50%, transparent 85%);
+  background: var(--work-pick);
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"]::before {
   content: "";
@@ -77,7 +79,25 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
   background: color-mix(in srgb, var(--mist) 5%, var(--work-bg));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents > .chat-agents-row.is-main[aria-current="true"] {
-  background: color-mix(in srgb, var(--brass) 9%, var(--work-bg));
+  background: var(--work-pick), var(--work-bg);
+}
+/* A running command: a faint band of the run colour sweeps across its row,
+   the strip's one moving thing besides the blinking squares. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row.is-running:not(.is-cancelling)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--status-run) 11%, transparent), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: chat-jobs-sweep 2.8s linear infinite;
+}
+@keyframes chat-jobs-sweep {
+  from { background-position: -67% 0; }
+  to { background-position: 167% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row.is-running::after { animation: none; background: none; }
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents::-webkit-scrollbar-track { margin-top: var(--work-main); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name {
