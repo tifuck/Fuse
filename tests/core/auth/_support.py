@@ -36,6 +36,14 @@ def read_session(cookie: str) -> dict:
     return json.loads(base64.b64decode(_signer().unsign(cookie)))
 
 
+def session_options() -> dict:
+    """The SessionMiddleware options app.main configures."""
+    from app import main
+
+    [options] = [m.kwargs for m in main.app.user_middleware if m.cls is SessionMiddleware]
+    return dict(options)
+
+
 def build_app():
     """app.main's routes and exception handler under the session middleware it
     uses, without its lifespan (no pools, loops or recovery)."""
@@ -44,10 +52,18 @@ def build_app():
     # No docs routes of its own, as in app.main: FastAPI's default /docs would
     # shadow the dashboard's.
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.add_middleware(SessionMiddleware, secret_key=settings.app_secret, https_only=True, same_site="lax")
+    app.add_middleware(SessionMiddleware, **session_options())
     app.router.routes.extend(main.app.routes)
     app.add_exception_handler(StarletteHTTPException, main.http_errors)
     return app
+
+
+def main_client():
+    """app.main itself, middleware included; without `with` no lifespan runs."""
+    from app import main
+
+    trusted = [h.strip() for h in settings.trusted_hosts.split(",") if h.strip()]
+    return TestClient(main.app, base_url=f"https://{trusted[0] if trusted else 'testserver'}")
 
 
 @contextmanager

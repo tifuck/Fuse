@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import accounts, artifacts, chat_store, chats, db, hosts, memory, permissions, schedules, vault
-from tests.core.auth._support import PASSWORD, http_routes, sign_in
+from tests.core.auth._support import PASSWORD, http_routes, main_client, sign_in
 from tests.core.helpers import make_user, quick_user
 
 
@@ -204,8 +204,11 @@ def test_artifacts_are_private_to_their_owner(web, alice, bob):
         answers[(method, path)] = res.status_code
         assert "secret sauce" not in res.text, path
     assert {k: v for k, v in answers.items() if v != 404} == {}
-    # A public artifact is viewable by design; it is the shared page only.
-    assert web.get(f"/a/{public}/content").status_code == 200
+    # A public artifact is viewable by design; it is the shared page only,
+    # served sandboxed.
+    shown = web.get(f"/a/{public}/content")
+    assert shown.status_code == 200 and "shared" in shown.text
+    assert "allow-scripts" in _sandbox(shown) and "allow-same-origin" not in _sandbox(shown)
     assert web.get(f"/a/{public}/meta").json()["owner"] is False
     # His own artifact cannot be filed into her chat.
     assert web.post(f"/a/{own}/attach", json={"thread_id": alice_thread}).status_code == 404
@@ -216,6 +219,39 @@ def test_artifacts_are_private_to_their_owner(web, alice, bob):
     for method, path, body in owner_ops(private, alice_thread)[:-3]:
         res = web.request(method, path, json=body, follow_redirects=False)
         assert res.status_code < 400, (method, path, res.status_code, res.text[:200])
+
+
+def _sandbox(res) -> list | None:
+    """The sandbox flags of a response's CSP; None without a sandbox directive."""
+    csp = res.headers.get("content-security-policy", "")
+    return next((d.split()[1:] for d in csp.split(";") if d.split()[:1] == ["sandbox"]), None)
+
+
+def test_artifact_pages_go_out_sandboxed_through_the_whole_app(alice):
+    private = artifacts.create(alice, title="Private", html="<p>secret sauce</p>")["identifier"]
+    share = artifacts.create(alice, title="Public", html="<p>shared</p>", visibility="public")["share_url"].rsplit("/", 1)[-1]
+    client = main_client()
+
+    framed = client.get(f"/a/{share}/content", headers={"sec-fetch-dest": "iframe"})
+    assert framed.status_code == 200 and "shared" in framed.text
+    assert "allow-scripts" in _sandbox(framed) and "allow-same-origin" not in _sandbox(framed)
+    assert "frame-ancestors 'self'" in framed.headers["content-security-policy"]
+    assert framed.headers["x-frame-options"] == "SAMEORIGIN"
+    # Opened as a page of its own it goes to the viewer, never bare on the origin.
+    for query, location in (("", f"/a/{share}"), ("?v=1", f"/a/{share}?v=1")):
+        page = client.get(f"/a/{share}/content{query}", headers={"sec-fetch-dest": "document"}, follow_redirects=False)
+        assert (page.status_code, page.headers["location"]) == (303, location)
+        assert "shared" not in page.text
+    for dest in ("iframe", "empty"):
+        hidden = client.get(f"/a/{private}/content", headers={"sec-fetch-dest": dest})
+        assert hidden.status_code == 404 and "secret sauce" not in hidden.text
+
+    sign_in(client, alice)
+    download = client.get(f"/a/{private}/download")
+    assert download.status_code == 200 and "secret sauce" in download.text
+    assert download.headers["content-security-policy"] == "default-src 'none'; sandbox; frame-ancestors 'none'"
+    assert _sandbox(download) == [] and download.headers["x-frame-options"] == "DENY"
+    assert download.headers["content-disposition"].startswith("attachment;")
 
 
 def test_schedules_are_private_to_their_owner(web, bob):

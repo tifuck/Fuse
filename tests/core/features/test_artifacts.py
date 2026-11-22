@@ -41,6 +41,18 @@ def test_framed_pages_may_connect_only_to_the_csp_hosts():
         assert f'"{host}/*"' in allow
 
 
+def test_pages_run_sandboxed_without_same_origin_and_plain_text_is_never_framed():
+    csp = artifacts.content_headers(framable=True)["Content-Security-Policy"]
+    directives = {d.split()[0]: d.split()[1:] for d in csp.split(";") if d.strip()}
+    assert directives["sandbox"] == artifacts.SANDBOX.split()
+    assert "allow-scripts" in directives["sandbox"]
+    assert not {"allow-same-origin", "allow-popups", "allow-top-navigation"} & set(directives["sandbox"])
+    assert directives["frame-ancestors"] == ["'self'"]
+    plain = artifacts.content_headers(framable=False)
+    assert plain["Content-Security-Policy"] == "default-src 'none'; sandbox; frame-ancestors 'none'"
+    assert plain["X-Frame-Options"] == "DENY"
+
+
 def test_create_is_private_v1_and_updates_add_versions(fresh_db):
     uid = quick_user()
     art = make(uid, title="  Sales   report ")
