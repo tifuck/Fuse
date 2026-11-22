@@ -303,51 +303,70 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
     return list(groups.values())[:MAX_TOOL_CALLS]
 
 
-# A turn that makes this many direct file calls without a run_code that
-# worked gets one tip, naming those calls, on its next tool result: a model
-# that gives up on code after one failed run is nudged back. It rides the
-# conversation, so the cached system prompt is untouched.
+# A turn that makes this many file calls one per step, without a run_code
+# that worked, gets one tip, naming those calls, on its next tool result: a
+# model that gives up on code after one failed run is nudged back. Calls made
+# together in one step do not count: they already share a round trip. It
+# rides the conversation, so the cached system prompt is untouched.
 CODE_TIP_AFTER = 3
 _CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
 
 
 def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collections.Counter | None:
-    """Direct file calls so far this turn, per tool; None once a run_code call has worked."""
+    """File calls so far this turn that had a step to themselves, per tool; None once a run_code call has worked."""
     if any(j.name == "run_code" and j.trace.get("status") == "done" for j in jobs):
         return None
-    return seen + collections.Counter(j.name for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS)
+    direct = [j.name for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS]
+    return seen + collections.Counter(direct) if len(direct) == 1 else seen
 
 
 def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
     calls = ", ".join(f"{n} {name}" for name, n in seen.most_common())
-    _add_tip(tool_msgs, f"[Fuse] Tip: you have made {sum(seen.values())} direct file calls this turn ({calls}). Switch "
-                        "to run_code for the rest of this task: one snippet does all of these in a single step and "
-                        "returns only what you need.")
+    add_tip(tool_msgs, f"[Fuse] You have made {sum(seen.values())} file calls one per step this turn ({calls}): each "
+                       "step is a round trip. Switch to run_code for the calls you can already name: one snippet makes "
+                       "all of them in a single step and returns only what you need.")
 
 
-# The other way round: this many run_code calls in a row that each made one
-# call get one tip. A lone call wrapped in code is a slower direct call that
-# hides a command's exit code.
+# The other way round. A run_code call that only passes one call's result
+# through (one call, WRAP_LINES lines of code or fewer) is a slower direct
+# call that hides a command's exit code, and a model that has made a few
+# copies its own history: in the tool-choice eval (scripts/qa/tool_choice.py)
+# nearly every step after three of them was another. WRAP_TIP_AFTER in a row
+# get a tip, and so does each one after it, WRAP_TIPS times a turn at most.
+# The tip is an order that names the direct call: advice ("when a step is one
+# call, ...") changed nothing in that eval.
 WRAP_TIP_AFTER = 3
+WRAP_TIPS = 3
+WRAP_LINES = 3
 
 
-def wrap_tip_count(jobs: list[ToolJob], streak: int) -> int:
-    """run_code calls in a row this turn that made exactly one call; a run that made several resets it, and
-    one that made none (or failed) leaves it."""
-    made = collections.Counter(j.parent for j in jobs if j.parent)
+def wrap_tip(jobs: list[ToolJob], state: tuple[int, int] = (0, 0)) -> tuple[tuple[int, int], str]:
+    """One step's jobs and the turn's (pass-through run_code calls in a row, tips given) so far: that pair
+    after this step, and the tip the step earns or "". A run that made several calls, or worked on its one
+    result, ends the row; a run that failed or made no call leaves it."""
+    streak, given = state
+    made: dict[str, list[str]] = {}
     for j in jobs:
-        if j.name == "run_code" and not j.parent and j.trace.get("status") == "done" and made[j.event_id]:
-            streak = streak + 1 if made[j.event_id] == 1 else 0
-    return streak
+        if j.parent:
+            made.setdefault(j.parent, []).append(j.name)
+    tool = ""
+    for j in jobs:
+        calls = made.get(j.event_id)
+        if j.name != "run_code" or j.parent or j.trace.get("status") != "done" or not calls:
+            continue
+        code = [line for line in str(j.trace.get("code") or "").splitlines() if line.strip()]
+        tool = calls[0] if len(calls) == 1 and len(code) <= WRAP_LINES else ""
+        streak = streak + 1 if tool else 0
+    if not tool or streak < WRAP_TIP_AFTER or given >= WRAP_TIPS:
+        return (streak, given), ""
+    hides = " and hides the command's exit code" if tool == "run_terminal_command" else ""
+    return (streak, given + 1), (
+        f"[Fuse] Your last {streak} run_code calls each wrapped one {tool} call and returned its result unchanged. "
+        f"That costs more than the call itself{hides}. Make your next call directly: {tool}({{...}}), not run_code. "
+        "Use run_code only when the code makes several calls or works on a result before returning it.")
 
 
-def add_wrap_tip(tool_msgs: list[dict], streak: int) -> None:
-    _add_tip(tool_msgs, f"[Fuse] Tip: your last {streak} run_code calls each made a single tool call. Call the tool "
-                        "directly when a step is one call: it is faster, and a direct run_terminal_command shows its "
-                        "exit code. Keep run_code for steps that make several calls or filter their results.")
-
-
-def _add_tip(tool_msgs: list[dict], tip: str) -> None:
+def add_tip(tool_msgs: list[dict], tip: str) -> None:
     last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
     if last is not None:
         last["content"] = f"{last['content']}\n\n{tip}"

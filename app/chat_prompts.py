@@ -281,9 +281,7 @@ _BATCH = (
     "steps only when one needs another's result.\n"
 )
 _BATCH_CODE = (
-    "- Several file or shell calls belong in one `run_code` snippet, not in one step of direct calls; a single "
-    "call goes directly to its tool. Other "
-    "independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
+    "- Independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
     "on the same host run in the order you issue them.\n"
 )
 _LOCATE = (
@@ -298,50 +296,59 @@ _PARALLEL = _BATCH + _LOCATE
 # Code mode's locate rule: the same search order, inside one snippet.
 _LOCATE_CODE = (
     "- Locate, then read, in one snippet: glob for file names, grep with output_mode files_with_matches for the "
-    "files that mention something, read just those files, and return the lines you need. `list_dir` with depth "
+    "files that mention something, read just those files, and return the lines you need. When a search hands "
+    "you several files to look at, read them in one step, not one file per step. `list_dir` with depth "
     "2-3 shows a project's layout."
 )
 
 
-def _code_mode(work: str, helpers: str, uses: str, exceptions: str) -> str:
-    """The run_code section: what it is, why, what for, when not, how. Short
-    and in that order, so a weak model can follow it; it comes before the
-    other tool rules, which models read as the default."""
+def _code_mode(helpers: str, single: str, uses: str) -> str:
+    """The run_code section: what it is, how to choose between a snippet and
+    direct calls, what a snippet suits, how to write one. The choice is stated
+    here and nowhere else: a rule repeated across the prompt reads as emphasis,
+    and models then wrap every call in code. It comes before the other tool
+    rules, which models read as the default."""
+    shell = "run_terminal_command" in helpers
+    whole = "the whole result and a command's exit code" if shell else "the whole result"
+    direct = "`run_terminal_command` call (say, `docker compose ps`)" if shell else "`grep` call (say, for `class Session`)"
     return (
-        f"Code mode (`run_code`): use it whenever one step of {work} needs two or more tool calls, or code to "
-        "filter, count or compare their results.\n"
+        "Code mode (`run_code`): one snippet that makes several tool calls in a single step.\n"
         f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
-        "arguments as the tools. Only what the snippet returns comes back to you.\n"
-        "- Why it is better: one call does the work of many tool calls; the files it reads stay out of your "
-        "context, so you stay fast and accurate in big projects; and you filter, count and compare in code "
-        "instead of by reading. Each call is still permission-checked and shown to the user. A snippet that makes "
-        "one call is only a slower direct call, and it hides a command's exit code.\n"
-        f"- Use it for: {uses}\n"
-        f"- When not to use it: {exceptions} Code also cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
+        "arguments as the tools. Only what the snippet returns comes back to you. Each call is still "
+        "permission-checked and shown to the user.\n"
+        "- Choosing, for each step, by what you need back:\n"
+        "  - You already know the next calls, because each follows from the one before (find the files, then read "
+        "each match), or you want only part of a large result: write one snippet. It saves a round trip per call "
+        "and keeps the bulk out of your context, so you stay fast and accurate in big projects.\n"
+        f"  - You must read a result before you can choose the next step ({single}): call that tool directly. You "
+        f"get {whole}, and a snippet around one call only adds cost.\n"
+        "  - You want several results whole and none depends on another: direct calls together in one step.\n"
+        f"- A snippet suits: {uses}\n"
+        "- Code cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
         "artifacts, todo_write, scratch, skills.\n"
         "- How: plain JavaScript, not Node.js (no require, import, fs, child_process or process). Write "
         "`await read_file(\"src/app.py\")`, run independent calls together with `await Promise.all(...)`, and "
         "end with `return`. Inside a backtick string `${x}` is JavaScript: write shell commands and edit text "
         "that contains `${` or backticks as '…' or \"…\" strings. Return findings with path:line (line numbers "
-        "come from grep, or are the index + 1 after splitting a file's text), not whole files. Example:\n"
+        "come from grep, or are the index + 1 after splitting a file's text), not whole files. Example (each read "
+        "follows from the glob, and only the matching lines come back):\n"
         "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter(Boolean);\n"
         "  const found = [];\n"
         "  for (const f of files) {\n"
         "    const lines = (await read_file(f)).split(\"\\n\");\n"
         "    lines.forEach((line, i) => { if (line.includes(\"fetchUser\")) found.push(`${f}:${i + 1}: ${line.trim()}`); });\n"
         "  }\n"
-        "  return found.join(\"\\n\");"
+        "  return found.join(\"\\n\");\n"
+        f"  Not a snippet: when what a call prints decides where you look next, make it one direct {direct}."
     )
 
 
 _CODE_MODE = _code_mode(
-    "file and shell work",
     "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command",
-    "finding where something is defined or used (grep, read the matches, return the lines); answering a question "
-    "about the code; reading or comparing several files; the same edit in several files (grep for them, then "
-    "search_replace each); running tests or a build and returning only the failures.",
-    "a step that is one call whose result you will read yourself (one command, one read, one grep, one edit): "
-    "call that tool directly, never wrapped in run_code.",
+    "one command, one read, one grep, one edit",
+    "finding where something is defined or used (grep, read the matches, return the lines); the same edit in "
+    "several files (grep for them, then search_replace each); comparing or counting across many files; running "
+    "tests or a build and returning only the failures.",
 )
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
@@ -381,9 +388,6 @@ _SHELL = (
     "- Quote paths that contain spaces. Chain dependent steps with `&&`; put independent commands in "
     "separate calls in the same step."
 )
-_SHELL_SPLIT = "put independent commands in separate calls in the same step."
-_SHELL_SPLIT_CODE = ("run independent commands together in one run_code with Promise.all (commands on the same "
-                     "host still run one at a time).")
 _WAIT = (
     "- Waiting: never sleep or poll. A command runs in the foreground (2 min unless you pass "
     "`timeout`, up to 10 min) and moves to the background on its own if it is still going, or "
@@ -753,7 +757,7 @@ _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 
 def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
-    use = "Use them inside `run_code` for steps of several calls, directly for a single call" if code else "Call them directly"
+    use = "Call them directly or inside `run_code` (see Code mode)" if code else "Call them directly"
     no_search = "; they need no `search_tools` call." if code else " without `search_tools`."
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
@@ -895,7 +899,6 @@ def build_system_prompt(
             "Answer helpfully. Prefer concise, sourced answers when you used search.",
         ]
     read_only = kind in ("explore", "plan")
-    shell = _SHELL.replace(_SHELL_SPLIT, _SHELL_SPLIT_CODE) if code_mode else _SHELL
     if coding and not read_only:
         parts.append("How to work:\n" + (_ACT_CHILD if subagent else _ACT_MAIN) + "\n" + _TASK_METHOD)
         if code_mode:
@@ -903,22 +906,20 @@ def build_system_prompt(
             parts.append("Tools:\n" + _FILE_TOOLS_IN_CODE + "\n" + _BATCH_CODE + _LOCATE_CODE + "\n" + _EDITS)
         else:
             parts.append("Tools:\n" + _FILE_TOOLS_OVER_SHELL + "\n" + _PARALLEL + "\n" + _EDITS)
-        parts.append(shell + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
+        parts.append(_SHELL + "\n" + (_WAIT_VS_HOOK_CHILD if subagent else _WAIT_VS_HOOK))
         parts.append(_RISKY_CHILD if subagent else _RISKY_MAIN)
     elif coding:
         if code_mode:
             helpers = "read_file, list_dir, grep, glob and run_terminal_command" if kind == "explore" \
                 else "read_file, list_dir, grep and glob"
-            parts.append(_code_mode("searching and reading", helpers,
+            parts.append(_code_mode(helpers, "one read, one grep",
                                     "finding where something is defined or used (grep, read the matches, return the "
-                                    "lines); answering a question about the code; reading or comparing several files.",
-                                    "a step that is one call whose result you will read yourself (one read, one "
-                                    "grep): call that tool directly, never wrapped in run_code."))
+                                    "lines); comparing or counting across many files."))
             parts.append("Tools:\n" + _BATCH_CODE + _LOCATE_CODE)
         else:
             parts.append("Tools:\n" + _PARALLEL)
         if kind == "explore":
-            parts.append(shell + "\n" + _WAIT + "\n" + _IDLE_CHILD)
+            parts.append(_SHELL + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:
         hosts = _HOSTS.replace(_PRINT_SECRETS, _PRINT_SECRETS_PROTECTED) if secrets_protected else _HOSTS
         parts.append(hosts if kind == "plan" else hosts + _HOSTS_SHELL + _env_secrets_line(env_secrets))

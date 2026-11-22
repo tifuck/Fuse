@@ -106,9 +106,8 @@ SCHEMA = {
     "function": {
         "name": "run_code",
         "description": (
-            "Use this when a step needs two or more file or shell calls, or code to filter their results; a single "
-            "call goes directly to its tool. A short JavaScript snippet whose calls below are real tool calls; only "
-            "what it returns comes back to you.\n"
+            "Several file and shell calls in one step: a short JavaScript snippet whose calls below are real "
+            "tool calls; only what it returns comes back to you.\n"
             "Plain JavaScript, not Node.js: no require, import, fs, child_process, process or timers. Await each "
             "call, use Promise.all for independent ones, and end with return. Write shell commands and code-heavy "
             "edit text as '…' or \"…\" strings: in a backtick string ${x} is JavaScript (or escape it as \\${x}); for text with literal backslashes use String.raw`...`, which keeps \\n as two "
