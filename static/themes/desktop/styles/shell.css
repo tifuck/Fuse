@@ -1207,8 +1207,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-stats-strip .hs-pop { left: 0; right: 0; translate: none; width: auto; font-size: 14px; }
   /* Read back, the chat would run through the strip: it steps aside. */
   &.dk-reading .dk-stats-strip .chat-host-stats { visibility: hidden; opacity: 0; translate: 0 4px; transition: opacity var(--dur-2, 200ms) ease, translate var(--dur-2, 200ms) ease, visibility 0s var(--dur-2, 200ms); }
-  /* Jump to latest takes its spot, unless something else sits above the strip. */
-  & .chat-latest:has(~ :where(.chat-dock) > .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(~ .chat-dock > :is(.chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open, .dictation):not([hidden]))) {
+  /* Jump to latest takes its spot, unless something else sits above the
+     strip; the spot is inside the dock, so it sits over the dock to be tapped. */
+  & .chat-latest:has(~ :where(.chat-dock) > .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(~ .chat-dock > :is(.chat-slash, .chat-rewind, .chat-queue, .chat-perm-queue, .chat-context-alert, .dk-wallpicker, .chat-live-todos.is-open, .dictation):not([hidden]))) {
+    z-index: 7;
     bottom: calc(var(--dock-h, 6rem) - 20px + var(--todo-lift, 0px) + var(--sync-lift, 0px));
   }
   @media (prefers-reduced-motion: reduce) { & .dk-stats-strip .chat-host-stats { transition: none; } }
