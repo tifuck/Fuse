@@ -281,7 +281,8 @@ _BATCH = (
     "steps only when one needs another's result.\n"
 )
 _BATCH_CODE = (
-    "- Several file or shell calls belong in one `run_code` snippet, not in one step of direct calls. Other "
+    "- Several file or shell calls belong in one `run_code` snippet, not in one step of direct calls; a single "
+    "call goes directly to its tool. Other "
     "independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
     "on the same host run in the order you issue them.\n"
 )
@@ -307,16 +308,16 @@ def _code_mode(work: str, helpers: str, uses: str, exceptions: str) -> str:
     and in that order, so a weak model can follow it; it comes before the
     other tool rules, which models read as the default."""
     return (
-        f"Code mode (`run_code`): use it for almost all {work}.\n"
+        f"Code mode (`run_code`): use it for {work} that takes two or more tool calls, or code to filter, count or "
+        "compare their results.\n"
         f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
         "arguments as the tools. Only what the snippet returns comes back to you.\n"
         "- Why it is better: one call does the work of many tool calls; the files it reads stay out of your "
         "context, so you stay fast and accurate in big projects; and you filter, count and compare in code "
-        "instead of by reading. Each call is still permission-checked and shown to the user. At worst it costs "
-        "about the same as calling the tools directly.\n"
+        "instead of by reading. Each call is still permission-checked and shown to the user. A snippet that makes "
+        "one call is only a slower direct call, and it hides a command's exit code.\n"
         f"- Use it for: {uses}\n"
-        f"- When not to use it: {exceptions} If you do not know how big the project is, treat it as large. Code "
-        "also cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
+        f"- When not to use it: {exceptions} Code also cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
         "artifacts, todo_write, scratch, skills.\n"
         "- How: plain JavaScript, not Node.js (no require, import, fs, child_process or process). Write "
         "`await read_file(\"src/app.py\")`, run independent calls together with `await Promise.all(...)`, and "
@@ -339,8 +340,8 @@ _CODE_MODE = _code_mode(
     "finding where something is defined or used (grep, read the matches, return the lines); answering a question "
     "about the code; reading or comparing several files; the same edit in several files (grep for them, then "
     "search_replace each); running tests or a build and returning only the failures.",
-    "call a tool directly only when the project is tiny (a handful of files), or for a single one-line edit when "
-    "you already know the file and the exact text to change.",
+    "a step that is one call whose result you will read yourself (one command, one read, one grep, one edit): "
+    "call that tool directly, never wrapped in run_code.",
 )
 _FILE_TOOLS_OVER_SHELL = (
     "- Use `list_dir`, `grep`, `glob`, `read_file`, `search_replace`, and `write_file` — not shell with "
@@ -381,7 +382,8 @@ _SHELL = (
     "separate calls in the same step."
 )
 _SHELL_SPLIT = "put independent commands in separate calls in the same step."
-_SHELL_SPLIT_CODE = "run independent commands together in one run_code with Promise.all."
+_SHELL_SPLIT_CODE = ("run independent commands together in one run_code with Promise.all (commands on the same "
+                     "host still run one at a time).")
 _WAIT = (
     "- Waiting: never sleep or poll. A command runs in the foreground (2 min unless you pass "
     "`timeout`, up to 10 min) and moves to the background on its own if it is still going, or "
@@ -751,7 +753,7 @@ _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 
 def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
-    use = "Use them inside `run_code` (directly only for the exceptions in Code mode)" if code else "Call them directly"
+    use = "Use them inside `run_code` for steps of several calls, directly for a single call" if code else "Call them directly"
     no_search = "; they need no `search_tools` call." if code else " without `search_tools`."
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
@@ -910,8 +912,8 @@ def build_system_prompt(
             parts.append(_code_mode("searching and reading", helpers,
                                     "finding where something is defined or used (grep, read the matches, return the "
                                     "lines); answering a question about the code; reading or comparing several files.",
-                                    "call a tool directly only when the project is tiny (a handful of files), or to "
-                                    "read one file you already know in full."))
+                                    "a step that is one call whose result you will read yourself (one read, one "
+                                    "grep): call that tool directly, never wrapped in run_code."))
             parts.append("Tools:\n" + _BATCH_CODE + _LOCATE_CODE)
         else:
             parts.append("Tools:\n" + _PARALLEL)

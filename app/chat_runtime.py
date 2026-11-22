@@ -87,6 +87,7 @@ from .chat_generation.consume import _add_usage, consume_round as _consume_round
 from .chat_generation.tool_jobs import (
     CODE_TIP_AFTER,
     CODING_UNLIMITED,
+    WRAP_TIP_AFTER,
     READ_RESULT_CHARS,
     SKILL_RESULT_CHARS,
     SUBAGENT_RESULT_CHARS,
@@ -102,10 +103,12 @@ from .chat_generation.tool_jobs import (
     _tool_result_clip,
     _tool_rounds_done,
     add_code_tip,
+    add_wrap_tip,
     apply_skill_preload,
     code_tip_count,
     fold_preload_skill,
     jobs_from_calls,
+    wrap_tip_count,
 )
 from .chat_generation.tool_runner import (
     MAX_CALLS_PER_ROUND,
@@ -1090,6 +1093,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         stall_fails = 0
         # Direct file calls this turn, until the one run_code tip is given.
         code_tip_seen = collections.Counter() if coding and CODE_MODE else None
+        # run_code calls in a row that made one call each, until the one wrap tip is given.
+        wrap_streak = 0 if coding and CODE_MODE else None
         idle_stalls = 0
         length_salvages = 0
         empty_retries = 0
@@ -1831,6 +1836,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     if code_tip_seen is not None and code_tip_seen.total() >= CODE_TIP_AFTER:
                         add_code_tip(tool_msgs, code_tip_seen)
                         code_tip_seen = None
+                if wrap_streak is not None:
+                    wrap_streak = wrap_tip_count(jobs, wrap_streak)
+                    if wrap_streak >= WRAP_TIP_AFTER:
+                        add_wrap_tip(tool_msgs, wrap_streak)
+                        wrap_streak = None
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:

@@ -320,9 +320,34 @@ def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collection
 
 def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
     calls = ", ".join(f"{n} {name}" for name, n in seen.most_common())
-    tip = (f"[Fuse] Tip: you have made {sum(seen.values())} direct file calls this turn ({calls}). Switch to "
-           "run_code for the rest of this task: one snippet does all of these in a single step and returns only "
-           "what you need.")
+    _add_tip(tool_msgs, f"[Fuse] Tip: you have made {sum(seen.values())} direct file calls this turn ({calls}). Switch "
+                        "to run_code for the rest of this task: one snippet does all of these in a single step and "
+                        "returns only what you need.")
+
+
+# The other way round: this many run_code calls in a row that each made one
+# call get one tip. A lone call wrapped in code is a slower direct call that
+# hides a command's exit code.
+WRAP_TIP_AFTER = 3
+
+
+def wrap_tip_count(jobs: list[ToolJob], streak: int) -> int:
+    """run_code calls in a row this turn that made exactly one call; a run that made several resets it, and
+    one that made none (or failed) leaves it."""
+    made = collections.Counter(j.parent for j in jobs if j.parent)
+    for j in jobs:
+        if j.name == "run_code" and not j.parent and j.trace.get("status") == "done" and made[j.event_id]:
+            streak = streak + 1 if made[j.event_id] == 1 else 0
+    return streak
+
+
+def add_wrap_tip(tool_msgs: list[dict], streak: int) -> None:
+    _add_tip(tool_msgs, f"[Fuse] Tip: your last {streak} run_code calls each made a single tool call. Call the tool "
+                        "directly when a step is one call: it is faster, and a direct run_terminal_command shows its "
+                        "exit code. Keep run_code for steps that make several calls or filter their results.")
+
+
+def _add_tip(tool_msgs: list[dict], tip: str) -> None:
     last = next((m for m in reversed(tool_msgs) if m.get("role") == "tool"), None)
     if last is not None:
         last["content"] = f"{last['content']}\n\n{tip}"

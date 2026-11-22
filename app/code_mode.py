@@ -39,8 +39,8 @@ ERROR_CHARS = 2_000
 # Text the helpers may hand one run (each result is also piped to the
 # worker): 16 whole 2 MB files, or hundreds of ordinary ones.
 RESULT_BUDGET = 32_000_000
-# Calls that change something run one at a time, like direct calls on a
-# host, so a run raises at most one permission card at a time.
+# Calls that change something keep their order per host, like direct calls
+# in one step: one at a time on a host, side by side across hosts.
 MUTATING = ("write_file", "search_replace", "run_terminal_command")
 # Each run is a process with its own V8 heap: a burst of runs across chats
 # must not start one per call, and a run must not queue for long.
@@ -106,8 +106,9 @@ SCHEMA = {
     "function": {
         "name": "run_code",
         "description": (
-            "Use this for almost all file and shell work: a short JavaScript snippet whose calls below are real "
-            "tool calls; only what it returns comes back to you.\n"
+            "Use this when a step needs two or more file or shell calls, or code to filter their results; a single "
+            "call goes directly to its tool. A short JavaScript snippet whose calls below are real tool calls; only "
+            "what it returns comes back to you.\n"
             "Plain JavaScript, not Node.js: no require, import, fs, child_process, process or timers. Await each "
             "call, use Promise.all for independent ones, and end with return. Write shell commands and code-heavy "
             "edit text as '…' or \"…\" strings: in a backtick string ${x} is JavaScript (or escape it as \\${x}); for text with literal backslashes use String.raw`...`, which keeps \\n as two "
@@ -364,7 +365,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     done: list[dict] = []
     tasks: set[asyncio.Task] = set()
     children = asyncio.Semaphore(CHILD_CONCURRENCY)
-    mutate = asyncio.Lock()
+    mutated: list[tuple[asyncio.Task, str]] = []
     crashed: list[BaseException] = []
     abort = asyncio.Event()
     started = messages = received = 0
@@ -384,15 +385,13 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             stderr_tail.extend(chunk)
             del stderr_tail[:-2000]
 
-    async def answer(n: int, name: str, call_args: dict) -> None:
+    async def answer(n: int, name: str, call_args: dict, after: list[asyncio.Task]) -> None:
         nonlocal received
         try:
+            if after:
+                await asyncio.gather(*after, return_exceptions=True)
             async with children:
-                if name in MUTATING:
-                    async with mutate:
-                        text, trace = await call(name, call_args)
-                else:
-                    text, trace = await call(name, call_args)
+                text, trace = await call(name, call_args)
         except Exception as exc:
             # The tool runner settles each call's own failures; what escapes
             # it stops the code before it changes anything more.
@@ -466,7 +465,15 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                           "you have and continue in another run_code call.")
             else:
                 started += 1
-                task = asyncio.ensure_future(answer(n, name, call_args))
+                after = []
+                if name in MUTATING:
+                    host = call_args.get("host")
+                    host = host.strip().lower() if isinstance(host, str) else ""
+                    # No host is the bound host, which a named host may also be.
+                    after = [t for t, h in mutated if not h or not host or h == host]
+                task = asyncio.ensure_future(answer(n, name, call_args, after))
+                if name in MUTATING:
+                    mutated.append((task, host))
                 task.set_name(" ".join(f"{name} {subject(call_args)}".split()))
                 tasks.add(task)
                 task.add_done_callback(tasks.discard)

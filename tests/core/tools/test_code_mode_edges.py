@@ -406,6 +406,33 @@ return "done";""", call)
     assert order == ["a", "b", "make c", "d"]
 
 
+def test_commands_on_different_hosts_overlap_and_each_host_keeps_its_order():
+    inflight, peak, order = collections.Counter(), collections.Counter(), []
+    both = asyncio.Event()
+
+    async def call(name, args):
+        host = args.get("host") or ""
+        inflight[host] += 1
+        peak[host] = max(peak[host], inflight[host])
+        order.append(args["command"])
+        if len(order) >= 2:
+            both.set()
+        # Guard only: commands that never overlap would otherwise wait forever.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(both.wait(), 2)
+        inflight[host] -= 1
+        return OK[0], {"name": name, **OK[1]}
+
+    text, _ = run_code("""
+await Promise.all([run_terminal_command({command: "a1", host: "a"}), run_terminal_command({command: "b1", host: "B"}),
+                   run_terminal_command({command: "a2", host: "A"}), run_terminal_command("bound")]);
+return "done";""", call)
+    assert text.startswith("done")
+    # a1 and b1 ran side by side; a2 waited for a1, and the bound host's command for all three.
+    assert order[:2] == ["a1", "b1"] and order[2:] == ["a2", "bound"]
+    assert peak["a"] == 1 and peak["A"] == 1
+
+
 def test_a_rejected_call_in_promise_all_stops_the_rest_and_says_how_many():
     runner = Blocking(blocked={"a", "b", "c"}, fail={"bad"})
     text, trace = run_code("return await Promise.all(['a', 'b', 'c', 'bad'].map((p) => read_file(p)));", runner)
