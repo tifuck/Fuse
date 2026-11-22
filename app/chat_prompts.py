@@ -308,8 +308,8 @@ def _code_mode(work: str, helpers: str, uses: str, exceptions: str) -> str:
     and in that order, so a weak model can follow it; it comes before the
     other tool rules, which models read as the default."""
     return (
-        f"Code mode (`run_code`): use it for {work} that takes two or more tool calls, or code to filter, count or "
-        "compare their results.\n"
+        f"Code mode (`run_code`): use it whenever one step of {work} needs two or more tool calls, or code to "
+        "filter, count or compare their results.\n"
         f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
         "arguments as the tools. Only what the snippet returns comes back to you.\n"
         "- Why it is better: one call does the work of many tool calls; the files it reads stay out of your "
