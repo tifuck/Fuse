@@ -520,9 +520,9 @@ def _confine(path: str, root: str, *, windows: bool = False) -> str:
 
 
 def _confine_win(path: str, root: str) -> str:
-    from .permissions import expand_temp, is_temp_path
+    from .permissions import _win_trim, expand_temp, is_temp_path
 
-    raw = expand_temp(path or ".", True).replace("/", "\\")
+    raw = _win_trim(expand_temp(path or ".", True))
     if raw.startswith("~"):
         rest = raw[1:]
         if rest and not rest.startswith("\\"):
@@ -736,14 +736,16 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
     # Read-only projects only gate tools that change something. One read of
     # the modes decides the root and every path a command names, in memory.
     scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id, mode=mode) if writes else None
-    if writes and hosts.permission_in(scope, root) == "read_only":
+    if writes and await _reaches_read_only(user_id, host_id, scope, [root or "~"], windows):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     from . import secret_guard, secret_scan
 
     # The tool door (app/secret_guard.py): stand-ins the model wrote become
     # the real values here, before the denylist and the permission review, so
-    # both judge (and the user is shown) the command that will run.
+    # both judge the command that will run. The user's card shows it as the
+    # model wrote it, and a protected value in it always asks.
+    masked_command = str(args.get("command") or "") if name in ("run_terminal_command", "monitor") else None
     refusal = await asyncio.to_thread(secret_guard.restore_tool_args, user_id, name, args)
     if refusal:
         return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
@@ -773,7 +775,7 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         from . import permissions as permissions_mod
 
         verdict = await permissions_mod.review_env(
-            gate, tool=name, names=env_names, command=str(args.get("command") or ""),
+            gate, tool=name, names=env_names, command=masked_command or "",
             cwd=str(args.get("cwd") or root), host_alias=alias, host_id=host_id,
             description=str(args.get("description") or "")[:200])
         if not verdict.allowed:
@@ -784,7 +786,7 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         verdict = await permissions_mod.review(
             tool=name, args=args, user_id=user_id, host_id=host_id, host_alias=alias,
             root=root, windows=windows, gate=gate, deny_reason=deny_reason,
-            realpath=lambda paths: _realpaths(user_id, host_id, paths),
+            realpath=lambda paths: _realpaths(user_id, host_id, paths), masked_command=masked_command,
         )
         if not verdict.allowed:
             return verdict.detail, _error_rec(name, verdict.detail, host=alias, kind="permission_denied")
@@ -792,9 +794,9 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
             # The review may have waited on the user: re-read the modes, which
             # can have changed meanwhile.
             scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id)
-        if name in ("write_file", "search_replace") and verdict.resolved and hosts.permission_in(
-            scope, verdict.resolved
-        ) == "read_only":
+        if name in ("write_file", "search_replace") and verdict.resolved and await _reaches_read_only(
+            user_id, host_id, scope, [verdict.resolved], windows
+        ):
             detail = "project is read-only"
             return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
         if verdict.root is not None:
@@ -803,7 +805,9 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         promote_path = verdict.resolved if verdict.promotable else ""
     else:
         promote_path = ""
-    if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(scope, args, root, windows):
+    if name in ("run_terminal_command", "monitor") and await _shell_reaches_read_only(
+        user_id, host_id, scope, args, root, windows
+    ):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     env = await asyncio.to_thread(secret_guard.env_values, user_id, env_names) if env_names else {}
@@ -959,10 +963,12 @@ async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_c
     return body, rec
 
 
-def _shell_reaches_read_only(scope, args: dict, root: str, windows: bool) -> bool:
+async def _shell_reaches_read_only(user_id, host_id, scope, args: dict, root: str, windows: bool) -> bool:
     """A shell command whose cwd or any named path lies in a read-only project
     (the working root itself is checked before the gate). scope is
-    hosts.permission_scope() for the call's host."""
+    hosts.permission_scope() for the call's host. A command whose paths
+    cannot be listed (sh -c '...') is judged by every spelling of a read-only
+    project in its text."""
     from .permissions import _resolve_for_scope, extract_shell_paths
 
     command = str(args.get("command") or "")
@@ -972,8 +978,43 @@ def _shell_reaches_read_only(scope, args: dict, root: str, windows: bool) -> boo
         cwd = _shell_cwd(args, root, windows=windows)
     except WorkspaceError:
         return False  # the shell refuses the cwd itself
-    targets = [cwd] + [path for path, _ in extract_shell_paths(command, cwd, windows) or []]
-    return any(hosts.permission_in(scope, _resolve_for_scope(t, cwd, windows)) == "read_only" for t in targets)
+    paths = extract_shell_paths(command, cwd, windows)
+    targets = [_resolve_for_scope(t, cwd, windows) for t in [cwd] + [path for path, _ in paths or []]]
+    return await _reaches_read_only(user_id, host_id, scope, targets, windows, command if paths is None else "")
+
+
+async def _reaches_read_only(user_id, host_id, scope, paths: list[str], windows: bool, opaque: str = "") -> bool:
+    """Whether any path lies in a read-only project. Paths are judged as
+    written and, on POSIX hosts, where the host resolves them, so //srv/docs,
+    ~/docs and a symlink all reach the project /srv/docs (or ~/docs). opaque
+    is the text of a command whose paths could not be listed: any spelling of
+    a read-only project in it counts."""
+    if scope is None:
+        return False
+    mode, read_only = scope
+    if any(hosts.permission_in(scope, path) == "read_only" for path in paths):
+        return True
+    if mode == "read_only" or not read_only:
+        return False
+    spellings = {p for p in read_only if p}
+    if not windows:
+        reals = await _realpaths(user_id, host_id, ["~", *paths, *read_only])
+        home, real_paths, real_ro = reals[0], reals[1:1 + len(paths)], [r for r in reals[1 + len(paths):] if r]
+        wide = (mode, tuple(read_only) + tuple(real_ro))
+        if any(real and hosts.permission_in(wide, real) == "read_only" for real in real_paths):
+            return True
+        spellings.update(real_ro)
+        if home and home != "/":
+            spellings.update("~" + r[len(home):] for r in real_ro if r == home or r.startswith(home + "/"))
+    if not opaque:
+        return False
+    text = opaque.replace("${HOME}", "~").replace("$HOME", "~")
+    text = re.sub(r"/(?:\./)+", "/", re.sub(r"/{2,}", "/", text))
+    for spelling in spellings:
+        norm = spelling.rstrip("/\\") or spelling
+        if re.search(r"(?<![\w.~$-])" + re.escape(norm) + r"(?![\w.-])", text, flags=re.I if windows else 0):
+            return True
+    return False
 
 
 def _shell_cwd(args: dict, root: str, *, windows: bool = False) -> str:

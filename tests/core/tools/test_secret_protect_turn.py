@@ -10,7 +10,7 @@ tests/core/secrets. The "model" answers with the stand-ins, as a model would.
 import asyncio
 import json
 
-from app import chats, hosts, secret_guard
+from app import chats, hosts, permissions, secret_guard
 from tests.core.helpers import fake_provider, run_async, run_turn, text_frames, tool_call_frames, wait_until_async
 from tests.core.secrets._values import ANTHROPIC, GITHUB, OPENAI, PASSWORD, SHELLY, STRIPE
 from tests.core.tools._support import make_project
@@ -43,6 +43,7 @@ def test_the_first_turn_offers_the_env_file_and_waits_then_runs_with_real_values
     command = f"./deploy.sh --key {OPENAI}"
     ssh_host.shell.on(command, out="deployed\n")
     sent_before_decision = []
+    cards = []
 
     def first(body):
         return tool_call_frames([("call-1", "run_terminal_command", {"command": f"./deploy.sh --key {fake_of(uid, OPENAI)}"})])
@@ -55,6 +56,10 @@ def test_the_first_turn_offers_the_env_file_and_waits_then_runs_with_real_values
             turn = asyncio.ensure_future(run_turn(uid, "deploy the app", thread=thread))
             offers = await decide_all(uid, pk)
             sent_before_decision.extend(provider.bodies)
+            # A command carrying a protected value asks its owner first.
+            await wait_until_async(lambda: permissions.pending_asks(uid, pk), message="the command never asked")
+            cards.extend(permissions.pending_asks(uid, pk))
+            await asyncio.to_thread(permissions.resolve, uid, pk, cards[0]["id"], "allow")
             _, run = await turn
         return run, offers, provider.bodies
 
@@ -63,6 +68,8 @@ def test_the_first_turn_offers_the_env_file_and_waits_then_runs_with_real_values
     # One row per real secret, with where it was found; the template file is not read.
     assert [(o["key"], o["value"], o["file"], o["line"], o["host"]) for o in offers] == [("OPENAI_API_KEY", OPENAI, ".env", 1, "box")]
     assert sent_before_decision == [], "a request left before the owner decided"
+    # The card shows the stand-in, never the real key.
+    assert [c["command"] for c in cards] == [f"./deploy.sh --key {fake_of(uid, OPENAI)}"]
     assert run["status"] == "completed"
     # The machine ran the real key; the user reads real values in the tool row and the reply.
     assert ssh_host.shell.reached == [command]

@@ -7,6 +7,7 @@ first read. "Would this ask?" is probed with an unattended gate, which denies
 exactly the calls that would raise a card.
 """
 import asyncio
+import posixpath
 import time
 from types import SimpleNamespace
 
@@ -108,7 +109,8 @@ def test_allow_once_runs_this_call_only(chat):
 def test_allow_for_the_session_covers_this_chat_and_that_directory(chat):
     review(chat, "read_file", path="/data/in/a.csv", answer="allow_session")
 
-    assert [(g["kind"], g["value"], g["thread_id"]) for g in grant_rows(chat)] == [("dir", "/data/in", chat.tid)]
+    # Granted from a read: it covers reads only.
+    assert [(g["kind"], g["value"], g["thread_id"]) for g in grant_rows(chat)] == [("dir_read", "/data/in", chat.tid)]
     assert not asks(chat, "read_file", path="/data/in/b.csv")
     assert not asks(chat, "grep", path="/data/in/deeper")
     assert asks(chat, "read_file", path="/data/inbox/x.csv")  # a sibling that shares the prefix
@@ -123,7 +125,7 @@ def test_allow_for_the_host_covers_every_chat_on_that_host_only(chat):
     second_host = make_host(chat.uid, "box2", default_cwd=ROOT)
 
     [grant] = grant_rows(chat)
-    assert grant["thread_id"] is None and grant["kind"] == "dir" and grant["value"] == "/opt/tools"
+    assert grant["thread_id"] is None and grant["kind"] == "dir_read" and grant["value"] == "/opt/tools"
     assert not asks(chat, "read_file", path="/opt/tools/bin/x", thread=other)
     assert asks(chat, "read_file", path="/opt/tools/bin/x", host=second_host)
     assert permissions.revoke_grant(chat.uid, grant["id"])
@@ -176,7 +178,7 @@ def test_secret_files_ask_only_outside_the_roots_and_grant_just_that_file(chat):
 
     verdict, user = review(chat, "read_file", path="/etc/app/.env.production", answer="allow_session")
     assert verdict.allowed and user.asks[0]["secret"] is True
-    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file", "/etc/app/.env.production")]
+    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file_read", "/etc/app/.env.production")]
     assert not asks(chat, "read_file", path="/etc/app/.env.production")
     assert asks(chat, "read_file", path="/etc/app/id_rsa")
     assert asks(chat, "read_file", path="/etc/app/settings.ini")
@@ -186,8 +188,28 @@ def test_a_named_secret_grep_outside_the_roots_grants_only_that_file(chat):
     verdict, user = review(chat, "grep", path="/etc/app/.env", pattern="KEY", answer="allow_session")
 
     assert verdict.allowed and user.asks[0]["secret"] is True
-    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file", "/etc/app/.env")]
+    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file_read", "/etc/app/.env")]
     assert asks(chat, "grep", path="/etc/app", pattern="KEY")
+
+
+def test_new_credential_file_kinds_are_secret_named():
+    for name in ("cert.p12", "cert.pfx", "store.jks", "app.keystore", "putty.ppk", "vault.kdbx", ".pypirc",
+                 ".vault-token", ".s3cfg", ".boto", "terraform.tfstate", "id_ed25519_sk", "id_ecdsa_sk"):
+        assert permissions.is_secret_name(name), name
+        assert permissions.is_secret_path(f"/srv/app/conf/{name}"), name
+    for name in (".env.example", "id_rsa.pub", "id_ed25519_sk.pub", "notes.txt", "tfstate.md"):
+        assert not permissions.is_secret_name(name), name
+
+
+def test_a_tree_read_of_a_home_asks_as_a_secret_read(chat):
+    for command in ('grep -r -A40 "PRIVATE KEY" ~', "tar czf /tmp/h.tgz ~", "zip -r /tmp/h.zip ~/",
+                    "cp -a ~ /tmp/backup", "rsync -a ~/ /tmp/b", "grep -R KEY .", "rg KEY", "grep -rA40 'PRIVATE KEY'"):
+        verdict, user = review(chat, "run_terminal_command", command=command, root="~", answer="allow")
+        assert verdict.allowed and user.asks[0]["secret"] is True, command
+    for command in ("grep -r KEY src", "rg -n KEY src", "tar czf /tmp/s.tgz src", "cat ~/notes.txt",
+                    "grep KEY ~/notes.txt", "grep KEY notes.txt"):
+        assert not asks(chat, "run_terminal_command", command=command, root="~"), command
+    assert asks(chat, "run_terminal_command", command="grep -r KEY /home")
 
 
 def test_credential_directories_ask_even_inside_the_root(chat):
@@ -267,7 +289,7 @@ def test_a_cd_moves_where_later_relative_paths_point(chat):
 
 
 def test_a_directory_grant_never_covers_a_compound_command(chat):
-    review(chat, "list_dir", path="/opt/x", answer="allow_session")
+    review(chat, "run_terminal_command", command="cat /opt/x/README", answer="allow_session")
 
     assert not asks(chat, "run_terminal_command", command="ls /opt/x/bin")
     assert asks(chat, "run_terminal_command", command="cd /opt/x && make")
@@ -275,8 +297,13 @@ def test_a_directory_grant_never_covers_a_compound_command(chat):
 
 
 def test_denylisted_commands_run_only_on_an_explicit_allow(chat):
-    review(chat, "list_dir", path="/", answer="allow_host")  # even a grant over everything
+    from app import workspace
+
+    permissions.add_grant(chat.uid, None, chat.host, "dir", "/")  # even a grant over everything
     assert asks(chat, "run_terminal_command", command="sudo ls", deny_reason="command blocked by denylist")
+    for command in (" sudo ls", "FOO=1 sudo ls", "env -i sudo ls", "timeout 5 sudo ls"):
+        reason = workspace.denied(command)
+        assert reason and asks(chat, "run_terminal_command", command=command, deny_reason=reason), command
 
     verdict, user = review(chat, "run_terminal_command", command="sudo ls", answer="allow",
                            deny_reason="command blocked by denylist")
@@ -284,6 +311,51 @@ def test_denylisted_commands_run_only_on_an_explicit_allow(chat):
     denied, _ = review(chat, "run_terminal_command", command="sudo ls", answer="deny",
                        deny_reason="command blocked by denylist")
     assert not denied.allowed and "did not run" in denied.detail
+
+
+def test_scripts_fed_to_a_shell_or_interpreter_on_stdin_ask(chat):
+    for command in ("echo x | sh", "echo id | bash", "cat steps | bash -s ci", 'bash <<< "id"',
+                    "python3 - <<'EOF'\nprint(1)\nEOF", "node <<EOF\nx\nEOF"):
+        assert asks(chat, "run_terminal_command", command=command), command
+    for command in ("ls | sort", "cat a | shasum", "python3 tool.py < src/in.txt", "make || true"):
+        assert not asks(chat, "run_terminal_command", command=command), command
+
+
+def test_a_device_is_harmless_only_as_a_redirect_target(chat):
+    for command in ("ls 2>/dev/null", "make >/dev/null 2>&1", "cat src/a </dev/null", "make &>/dev/null"):
+        assert not asks(chat, "run_terminal_command", command=command), command
+    for command in ("rm /dev/null", "mv build.log /dev/null", "cp /dev/zero big.img"):
+        assert asks(chat, "run_terminal_command", command=command), command
+
+
+# -- grants: what Allow-always remembers ------------------------------------
+
+def test_a_grant_from_a_read_covers_reads_only(chat):
+    review(chat, "list_dir", path="/etc", answer="allow_session")
+
+    assert [g["kind"] for g in grant_rows(chat)] == ["dir_read"]
+    assert not asks(chat, "read_file", path="/etc/hosts")
+    assert not asks(chat, "grep", path="/etc/nginx", pattern="x")
+    assert asks(chat, "write_file", path="/etc/sudoers.d/x", content="x")
+    assert asks(chat, "search_replace", path="/etc/hosts", old_string="a", new_string="b")
+    assert asks(chat, "run_terminal_command", command="cat /etc/hosts")
+    # A grant from before read-only grants existed keeps covering everything.
+    permissions.add_grant(chat.uid, chat.tid, chat.host, "dir", "/srv/old")
+    assert not asks(chat, "write_file", path="/srv/old/x", content="x")
+
+
+def test_allow_always_never_grants_a_filesystem_root(chat):
+    _, user = review(chat, "read_file", path="/notes.txt", answer="allow_session")
+    assert (user.asks[0]["grant_kind"], user.asks[0]["grant_value"]) == ("file", "/notes.txt")
+    _, user = review(chat, "run_terminal_command", command="cat /notes.txt", answer="allow")
+    assert user.asks[0]["grant_value"] == "/notes.txt"
+    _, user = review(chat, "list_dir", path="/", answer="allow_host")
+    assert user.asks[0]["grant_kind"] == ""
+    _, user = review(chat, "read_file", path="C:\\boot.ini", answer="allow", root=WIN_ROOT, windows=True)
+    assert user.asks[0]["grant_value"] == "C:\\boot.ini"
+
+    assert [(g["kind"], g["value"]) for g in grant_rows(chat)] == [("file_read", "/notes.txt")]
+    assert asks(chat, "read_file", path="/other.txt")
 
 
 # -- symlinks: judged by where they point ----------------------------------
@@ -297,6 +369,17 @@ def test_a_symlink_out_of_the_root_is_judged_by_its_target(chat):
     assert asks(chat, "read_file", path="link", realpath=realpath)
     assert asks(chat, "run_terminal_command", command="cat link", realpath=realpath)
     assert not asks(chat, "read_file", path="src/real.py", realpath=realpath)
+
+
+def test_an_unnormalized_path_the_host_resolves_inside_the_root_runs(chat):
+    def realpath(paths):
+        async def resolve():
+            return [posixpath.normpath(p) for p in paths]
+        return resolve()
+
+    assert not asks(chat, "run_terminal_command", command="cat ./src/../src/main.py", realpath=realpath)
+    assert not asks(chat, "run_terminal_command", command="cat src/./a.py", cwd="./src/..", realpath=realpath)
+    assert asks(chat, "run_terminal_command", command="cat ./src/../../etc/hosts", realpath=realpath)
 
 
 def test_an_unresolvable_target_fails_closed(chat):
@@ -341,8 +424,22 @@ def test_windows_commands_that_hide_their_targets_ask(chat):
         "ri -Recurse build",
         "del /s /q build",
         "rd /s build",
+        # No path in sight: they ask because the code they run is computed.
+        "iex ('Get-'+'Date')",
+        "Invoke-Expression 'Get-Date'",
+        "& ('Get-'+'Date')",
+        ". ('x'+'y')",
+        "Get-Content steps.txt | iex",
     ):
         assert asks(chat, "run_terminal_command", command=command, root=WIN_ROOT, windows=True), command
+
+
+def test_windows_trailing_dots_and_spaces_cannot_climb_out(chat):
+    for path in ("C:\\proj\\.. ", "C:\\proj\\.. \\secret.txt", "C:\\proj\\src\\... \\..\\..\\x.txt",
+                 "%TEMP%\\.. \\.. \\x.txt"):
+        assert asks(chat, "read_file", path=path, root=WIN_ROOT, windows=True), path
+        assert not permissions.scope_allows(path, WIN_ROOT, ["%TEMP%", WIN_ROOT], True)[0], path
+    assert not asks(chat, "read_file", path="C:\\proj\\src\\a.txt. ", root=WIN_ROOT, windows=True)
 
 
 def test_windows_paths_in_the_project_or_temp_do_not_ask(chat):
