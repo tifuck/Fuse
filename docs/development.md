@@ -261,6 +261,12 @@ database, then regenerate `scripts/sql/schema.sql` with
 `scripts/dump_schema.sh` (`tests/core/schema/test_fresh_install.py` fails while
 it is stale). Delete the dated file once every deployment has it.
 
+Within one file, additive statements (`CREATE`, `ADD COLUMN`) come before
+destructive ones (`DROP`, `RENAME`, `TRUNCATE`, `ALTER … DROP|CHANGE|MODIFY`).
+An updater holds the destructive ones back until the new code is healthy, so
+it refuses a file that adds after it drops. Drop only what no chat or user
+still needs.
+
 ## Connector releases
 
 Bump `agent/VERSION`, then `make -C agent dist` builds every SKU into

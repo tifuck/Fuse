@@ -4,17 +4,15 @@
 -- design). users.secret_protect switches masking, users.secret_offer the
 -- detection of candidates in env files; both default on, and nothing is
 -- replaced until the user accepts a value.
--- Also drops what the removed secret swap left behind (its stored pairs
--- included): secret_thread_uses, secret_tokens, users.chat_secret_swap,
--- chat_threads.secret_swap. Idempotent.
+-- Removes nothing: what the removed secret swap left behind
+-- (secret_thread_uses, secret_tokens, users.chat_secret_swap,
+-- chat_threads.secret_swap) stays, because its stored pairs are the only map
+-- from the stand-ins in chats that swapped back to their values.
+-- Additive, idempotent.
 -- Apply as root, fuse_dev first, then fuse_live as its own reviewed step
 -- (before promoting the code that reads it):
 --   mysql fuse_dev  < scripts/sql/2026-11-22-secret-protect.sql
 --   mysql fuse_live < scripts/sql/2026-11-22-secret-protect.sql
-DROP TABLE IF EXISTS secret_thread_uses;
-DROP TABLE IF EXISTS secret_tokens;
-ALTER TABLE users DROP COLUMN IF EXISTS chat_secret_swap;
-ALTER TABLE chat_threads DROP COLUMN IF EXISTS secret_swap;
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS secret_protect BIGINT(20) NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS secret_offer BIGINT(20) NOT NULL DEFAULT 1;
