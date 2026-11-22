@@ -632,7 +632,7 @@ html:where(.is-chat-root[data-chat-view="console"])[data-chat-backdrop]:not([dat
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-group-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-group-preview { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font: inherit; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-group-preview::before { content: "— "; opacity: 0.5; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-step-caret .chat-step-chevron { transition: transform var(--dur-2) ease; transform: rotate(-90deg); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-step-caret .chat-step-chevron { transform: rotate(-90deg); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-step-caret[aria-expanded="true"] .chat-step-chevron { transform: rotate(0); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-tool-children { gap: 0; padding: 0 0.45rem 0.2rem; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-tool-children > .chat-step { margin: 0; padding: 0; }

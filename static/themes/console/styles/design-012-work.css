@@ -204,6 +204,13 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { white-space: nowrap; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call wbr { display: none; }
+/* A phone wraps a long command like every other row, and drops the host. */
+@media (max-width: 480px) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label { flex-wrap: wrap; white-space: normal; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call,
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step-label .chat-tool-host { display: none; }
+}
 /* An opened shell row: the command over its output, "$ " before its first
    line and every wrapped or later line under the command's text. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-cmd { color: var(--mute); }
