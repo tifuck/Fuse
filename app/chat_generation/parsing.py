@@ -337,13 +337,22 @@ def calls_incomplete(calls: list) -> bool:
     return False
 
 
+def _canonical_arguments(raw: str) -> str:
+    """Arguments as sorted compact JSON, so spacing or key order alone never
+    makes a repeated call look new; unparsable ones compare as written."""
+    try:
+        return json.dumps(json.loads(raw), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    except (TypeError, ValueError, RecursionError):
+        return raw
+
+
 def round_signature(calls: list) -> tuple:
     sig = []
     for call in calls or []:
         if not isinstance(call, dict):
             continue
         fn = call.get("function") if isinstance(call.get("function"), dict) else {}
-        sig.append((str(fn.get("name") or ""), str(fn.get("arguments") or "")))
+        sig.append((str(fn.get("name") or ""), _canonical_arguments(str(fn.get("arguments") or ""))))
     return tuple(sorted(sig))
 
 

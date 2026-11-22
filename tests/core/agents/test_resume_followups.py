@@ -13,7 +13,7 @@ from tests.core.agents._support import (
     agent_of, bind_parent, child, coding_user, parent_and_thread, root_runs, routed_provider, set_running, start_root,
     tool_result,
 )
-from tests.core.helpers import run_async, run_turn, text_frames, tool_call_frames, wait_until_async
+from tests.core.helpers import run_async, run_turn, text_frames, tool_call_frames, wait_run, wait_until_async
 from tests.core.threads.test_lock_order import _race
 
 
@@ -73,7 +73,7 @@ def test_a_follow_up_reaches_a_live_child_at_its_next_tool_boundary(fresh_db):
     async def body():
         gate["release"] = asyncio.Event()
         _, run, task = await start_root(uid, "go")
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
         pk = run["thread_id"]
         await wait_until_async(lambda: [r["status"] for r in root_runs(uid, pk)] == ["completed", "completed"])
         return pk

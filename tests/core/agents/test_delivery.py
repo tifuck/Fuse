@@ -12,7 +12,7 @@ from app import chat_runs, chat_store, chats
 from tests.core.agents._support import (
     agent_of, child, coding_user, parent_and_thread, root_runs, routed_provider, start_root, tool_result,
 )
-from tests.core.helpers import run_async, run_turn, text_frames, tool_call_frames, wait_until_async
+from tests.core.helpers import run_async, run_turn, text_frames, tool_call_frames, wait_run, wait_until_async
 
 
 def _spawn(prompt, description="Inspect", call_id="c1", **extra):
@@ -59,7 +59,7 @@ def test_background_report_is_injected_into_the_live_parent_once(fresh_db):
         gate["release"] = asyncio.Event()
         thread, run, task = await start_root(uid, "go")
         gate["parent"] = run["id"]
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
         # The finished root may schedule a wake; nothing may be left to deliver.
         await chat_runs._wake_parent(uid, run["thread_id"])
         return run
@@ -88,7 +88,7 @@ def test_background_report_wakes_an_idle_parent_with_one_automated_turn(fresh_db
     async def body():
         gate["release"] = asyncio.Event()
         thread, run, task = await start_root(uid, "go")
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
         assert chat_store.get_run(uid, run["id"])["status"] == "completed"
         gate["release"].set()
         pk = run["thread_id"]

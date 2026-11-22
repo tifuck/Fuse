@@ -1570,18 +1570,24 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             # The prompt that just returned covers send["messages"], not the reply.
             _note_anchor(summary.get("usage"), send["messages"])
             round_meter = _live_meter(usage=summary.get("usage"), response=summary)
-            probe = None if is_child else cache_watch.probe(
-                summary.get("usage"), model=model, source=src_type or src_type_guess,
-                cred=getattr(result, "credential_id", None), prior=cache_prior, now=round_sent_at,
-                run=run_id, request=cache_watch.fingerprint(
-                    send["messages"], send.get("tools"), send.get("reasoning_effort")))
-            missed = None
-            if probe:
-                if not cache_warned:
-                    missed = cache_watch.miss(cache_prior, probe, settings_changed=prompt_refreshed and completion_i == start_i)
-                if missed:
-                    probe["warned"] = True
-                cache_prior = probe
+            probe = missed = None
+            try:
+                if not is_child:
+                    probe = cache_watch.probe(
+                        summary.get("usage"), model=model, source=src_type or src_type_guess,
+                        cred=getattr(result, "credential_id", None), prior=cache_prior, now=round_sent_at,
+                        run=run_id, request=cache_watch.fingerprint(
+                            send["messages"], send.get("tools"), send.get("reasoning_effort")))
+                if probe:
+                    if not cache_warned:
+                        missed = cache_watch.miss(cache_prior, probe, settings_changed=prompt_refreshed and completion_i == start_i)
+                    if missed:
+                        probe["warned"] = True
+                    cache_prior = probe
+            except Exception:
+                # Telemetry only: a bug here must not fail the turn.
+                logger.exception("Cache watch failed for run %s", run_id)
+                probe = missed = None
             # The page reads cache warmth from the round meter (no account id).
             yield _sse(context_meter.context_event({**round_meter, "cache": cache_watch.public(probe)} if probe else round_meter, phase="round"))
             if missed:

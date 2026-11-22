@@ -77,8 +77,9 @@ def held_stream(text):
     from unittest.mock import AsyncMock
 
     held = HeldStream(text)
-    with patch("app.api.invoke_chat", new=held), patch("app.api._safe_record_usage"), \
+    with patch("app.api.invoke_chat", new=held), patch("app.api._safe_record_usage") as record_usage, \
             patch("app.chat_runtime.generate_thread_title", new_callable=AsyncMock, return_value=""):
+        held.record_usage = record_usage
         yield held
 
 
@@ -142,6 +143,9 @@ async def settle(timeout=10.0):
 
     async def idle():
         while True:
+            # A wake scheduled from a worker thread (call_soon_threadsafe)
+            # registers only on the loop's next pass.
+            await asyncio.sleep(0)
             busy = [t for t in (*chat_runs._wake_tasks.values(), *chat_runs._tasks.values()) if not t.done()]
             if not busy:
                 return
