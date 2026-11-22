@@ -173,8 +173,8 @@
         {% endif %}
         <div>
           <strong>{{ name }}</strong>
-          {% if s.label %}<span>{{ s.kind }}</span>{% endif %}
-          {% if s.path %}<span class="set-secret-place" title="{{ s.host }} {{ s.path }}:{{ s.line }}">{{ s.host }} {{ s.path }}:{{ s.line }}</span>{% else %}<span class="set-secret-place">Added by you</span>{% endif %}
+          <span>{{ s.kind if s.label else "No name in its file" }}</span>
+          {% if s.path %}<span class="set-secret-place" title="{{ s.host }} {{ s.path }}:{{ s.line }}">{{ s.host }} <code>{{ s.path }}:{{ s.line }}</code></span>{% else %}<span class="set-secret-place">Added by you</span>{% endif %}
         </div>
       </div>
       <div class="set-secret-value">
