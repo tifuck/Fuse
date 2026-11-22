@@ -1643,6 +1643,8 @@ async def _pinned_public_sock(url: str):
     import socket
     from urllib.parse import urlparse
 
+    from .search.ssrf import _is_global
+
     parsed = urlparse(url)
     host = parsed.hostname or ""
     port = parsed.port or (443 if parsed.scheme == "wss" else 80)
@@ -1652,8 +1654,9 @@ async def _pinned_public_sock(url: str):
     for family, type_, proto, _canon, sockaddr in infos:
         addr = str(sockaddr[0]).split("%", 1)[0]
         ip = ipaddress.ip_address(addr)
-        # Unwrap ::ffff:a.b.c.d: Python 3.12 calls mapped CGNAT global.
-        if not (getattr(ip, "ipv4_mapped", None) or ip).is_global:
+        # The search door's rule: mapped, NAT64, 6to4 and IPv4-compatible
+        # addresses are judged by the IPv4 address they reach.
+        if not _is_global(ip):
             raise OSError(f"{host} resolves to the non-public address {addr}")
         if target is None:
             target = (family, type_, proto, sockaddr)
