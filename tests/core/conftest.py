@@ -59,15 +59,9 @@ def fresh_db(_core_schema):
 @pytest.fixture(scope="session")
 def _core_fk_schema(_core_schema):
     """A second persistent schema carrying every foreign key of the source."""
-    from app.mysql_compat import connect
-
     slot = os.environ.get("PYTEST_XDIST_WORKER", "main") + "_fk"
     with persistent_schema(slot, foreign_keys=True) as (url, schema):
-        pool = connect(url, max_connections=8)
-        try:
-            yield url, schema, pool
-        finally:
-            pool.close()
+        yield url, schema
 
 
 @pytest.fixture
@@ -76,8 +70,13 @@ def fresh_db_fk(_core_fk_schema):
     parent rows, and deletes cascade as in production."""
     from app import chat_runs, chat_store, chat_titles, db
     from app.config import settings
+    from app.mysql_compat import connect
 
-    url, schema, pool = _core_fk_schema
+    url, schema = _core_fk_schema
+    # A pool opens all its connections at once: one per test, not per worker,
+    # so workers that ran a cascade test do not each keep it open beside the
+    # main pool (the dev instance shares the server's max_connections).
+    pool = connect(url, max_connections=4)
     saved = db._conn, settings.database_url
     db._conn, settings.database_url = pool, url
     try:
@@ -90,3 +89,4 @@ def fresh_db_fk(_core_fk_schema):
     finally:
         chat_store.invalidate_committed_cursors()
         db._conn, settings.database_url = saved
+        pool.close()
