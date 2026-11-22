@@ -1065,9 +1065,17 @@
     return { ok: true, errors: [] };
   }
 
+  // The reading font for an inline artifact (app/artifacts.py _font_style):
+  // kind|family|Google Fonts weights. The bundled faces are its variable files.
+  function artifactFont() {
+    const font = FONTS[fontFor()];
+    return [font.kind, font.label, font.spec || "wght@400..700"].join("|");
+  }
+
   window.FuseChatAppearance = {
     syncUi,
     get artifactTheme() { return artifactTheme(); },
+    get artifactFont() { return artifactFont(); },
     get size() { return textScale; },
     get layout() { return chosenView; },
     setLayout: setView,

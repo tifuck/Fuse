@@ -391,6 +391,7 @@ export function createConsoleTheme(runtime) {
   }));
   Object.assign(theme, createTranscript({
     get STEP_ICONS() { return theme.STEP_ICONS; },
+    get artifactInline() { return runtime.artifactInline; },
     get parseProviderError() { return theme.parseProviderError; },
     get providerErrorHtml() { return theme.providerErrorHtml; },
     get activityKind() { return theme.activityKind; },

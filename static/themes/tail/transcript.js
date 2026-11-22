@@ -3,15 +3,20 @@ export function create(deps) {
 const ARTIFACT_VERBS = { create_artifact: "Created", update_artifact: "Updated", edit_artifact: "Edited" };
 
 // One card per artifact a reply made or changed, from its latest call there.
-// The call row says where it happened; the card is what the reader got.
+// The call row says where it happened; the card is what the reader got. An
+// inline artifact being written holds its place while it is drawn.
 function artifactCards(traces) {
     const byId = new Map();
     traces.forEach((trace) => {
+      if (trace && trace.status === "running" && trace.name === "create_artifact" && trace.display === "inline") {
+        byId.set("draft:" + trace.id, { id: "", draft: true, display: "inline", title: trace.title || "the chart" });
+        return;
+      }
       const verb = trace && trace.status === "done" && ARTIFACT_VERBS[trace.name];
       const id = verb ? String(trace.identifier || "") : "";
       if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return;
       byId.delete(id);
-      byId.set(id, { id, verb, title: trace.title || "Artifact", version: trace.version, format: trace.format || "", gone: trace.artifact_gone || "" });
+      byId.set(id, { id, verb, title: trace.title || "Artifact", version: trace.version, format: trace.format || "", gone: trace.artifact_gone || "", display: trace.display || "" });
     });
     return [...byId.values()];
   }
@@ -31,6 +36,22 @@ function artifactCardHtml(card) {
       `<span class="chat-artifact-card-copy"><span class="chat-artifact-card-title">${deps.escapeHtml(card.title)}</span>` +
       `<span class="chat-artifact-card-meta">${deps.escapeHtml(meta)}</span></span>` +
       `<span class="chat-artifact-card-open" aria-hidden="true">Open ↗</span></button>`;
+  }
+
+// An inline artifact: its page in the reply, as tall as it says (the
+// runtime sizes the frame from the page's size messages), and a caption.
+function inlineArtifactHtml(card) {
+    const title = deps.escapeHtml(card.title);
+    if (card.draft) return `<figure class="chat-artifact-inline is-drawing" aria-busy="true"><div class="chat-artifact-inline-wait">Drawing ${title}…</div></figure>`;
+    const inline = deps.artifactInline;
+    const id = deps.escapeHtml(card.id);
+    const version = deps.escapeHtml(String(card.version ?? ""));
+    const height = inline.height(card.id, card.version);
+    return `<figure class="chat-artifact-inline" data-artifact-inline="${id}">` +
+      `<iframe class="chat-artifact-inline-frame" data-artifact-inline-frame data-id="${id}" data-version="${version}" src="${deps.escapeHtml(inline.url(card.id, card.version))}" title="${title}" sandbox="allow-scripts allow-forms allow-modals allow-downloads" allow="clipboard-write" referrerpolicy="no-referrer" loading="lazy"${height ? ` style="height:${height}px"` : ""}></iframe>` +
+      `<figcaption class="chat-artifact-inline-cap"><span class="chat-artifact-inline-icon" aria-hidden="true">${deps.STEP_ICONS.artifact}</span>` +
+      `<span class="chat-artifact-inline-title">${title}</span><span class="chat-artifact-inline-note" data-artifact-inline-note hidden></span>` +
+      `<button type="button" class="chat-artifact-inline-open" data-open-artifact="${id}" aria-label="Open artifact ${title}">Open ↗</button></figcaption></figure>`;
   }
 
 // A line holding nothing but a link to an artifact that has a card here only
@@ -214,9 +235,22 @@ function updateAssistant(article, msg, live) {
       article.querySelector("[data-source-count]").textContent = `${sources.length} ${sources.length === 1 ? "source" : "sources"}`;
     }
     const catalog = sources.map((row) => row.url);
-    const cards = artifactCards(traces);
-    const cardIds = new Set(cards.map((card) => card.id));
+    const allCards = artifactCards(traces);
+    const cardIds = new Set(allCards.map((card) => card.id).filter(Boolean));
+    const isInline = (card) => card.display === "inline" && !card.gone;
+    const inlineCards = allCards.filter(isInline);
+    const cards = allCards.filter((card) => !isInline(card));
+    const inlineEl = article.querySelector("[data-artifact-inline-list]");
+    if (inlineEl) {
+      const inlineSig = JSON.stringify(inlineCards);
+      if (inlineEl._sig !== inlineSig) {
+        inlineEl._sig = inlineSig;
+        inlineEl.innerHTML = inlineCards.map(inlineArtifactHtml).join("");
+      }
+      if (inlineEl.hidden !== !inlineCards.length) inlineEl.hidden = !inlineCards.length;
+    }
     const cardsEl = article.querySelector("[data-artifact-cards]");
+
     if (cardsEl) {
       const cardSig = JSON.stringify(cards);
       if (cardsEl._sig !== cardSig) {

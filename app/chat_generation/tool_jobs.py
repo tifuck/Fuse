@@ -524,6 +524,8 @@ def _running_event(job: ToolJob) -> dict:
         vis = str(parsed.get("visibility") or "")
         if vis in ("private", "public"):
             event["visibility"] = vis
+        if parsed.get("display") == "inline":
+            event["display"] = "inline"
         # A host list reaching here was refused (valid ones are split per host).
         host = parsed.get("host") if isinstance(parsed.get("host"), str) else ""
         if host:

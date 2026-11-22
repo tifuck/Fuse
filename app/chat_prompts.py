@@ -235,7 +235,8 @@ _ARTIFACT_SAFETY = (
     "such a request the answer goes in the reply, as audits, reviews, reports and plans do. "
     "Artifacts start private and only the user shares them. Never put "
     "secrets, API keys, credentials, or other users' data in an artifact. The chat shows each artifact as a "
-    "card under the reply: do not link it or dump its source into the chat."
+    "card under the reply, or in full inside it with display 'inline' (for one chart, set of numbers or "
+    "visual the user asked for; pass data as chart): do not link it or dump its source into the chat."
 )
 # Coding-agent method. Shared by the main agent and general-purpose children;
 # the first bullet differs because a child cannot ask the user anything.

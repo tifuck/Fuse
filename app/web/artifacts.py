@@ -154,7 +154,10 @@ async def artifact_content(request: Request, public_id: str):
     except artifacts.ArtifactError as exc:
         raise _artifact_http_error(exc) from None
     theme = artifacts.theme_palette(request.query_params.get("theme"))
-    return artifacts.content_response(item["html"], item.get("format") or "html", item["title"], theme)
+    return artifacts.content_response(item["html"], item.get("format") or "html", item["title"], theme,
+                                      inline=request.query_params.get("inline") == "1",
+                                      font=str(request.query_params.get("font") or ""),
+                                      scale=request.query_params.get("scale") or 100)
 
 
 @router.get("/a/{public_id}/source")
