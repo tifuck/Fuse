@@ -199,9 +199,9 @@ SCHEMAS = {
                 "the user only wants to copy. "
                 "display 'inline' draws the artifact in full inside your reply, across the chat's width, with "
                 "nothing to open. Use it when the user asks for one specific visual: a chart or graph, a few key "
-                "numbers, a small table, a diagram or an image (e.g. 'chart my logins for the last 30 days'). Keep "
-                "the default panel for pages, documents, dashboards and tools. For data, pass chart, not html: "
-                "Fuse's kit draws it cleanly in the user's theme. chart is {type, x, y, data}: data is a list of row "
+                "numbers, a small table, a diagram or an image (e.g. 'chart my logins for the last 30 days'). Use "
+                "panel for pages, documents, dashboards and tools. For data, pass chart, not html: Fuse's kit draws "
+                "it cleanly in the user's theme, inline unless you pass display 'panel'. chart is {type, x, y, data}: data is a list of row "
                 "objects, x the label field, y a value field or a list of up to 4. Pick the type by the question: "
                 "line or area for change over time, bar to compare categories (sorted, horizontal), column for a "
                 "value per period (several y fields stack), stat for 1-8 key numbers (rows {label, value, delta, "
@@ -259,7 +259,7 @@ SCHEMAS = {
                     "display": {
                         "type": "string",
                         "enum": ["panel", "inline"],
-                        "description": "panel (default): a card that opens the page beside the chat. inline: drawn in full inside the reply.",
+                        "description": "inline: drawn in full inside the reply (the default for chart). panel: a card that opens the page beside the chat (the default for html and markdown).",
                     },
                     "icon": {"type": "string", "description": "One emoji for the tab and lists, e.g. \U0001f4ca."},
                     "note": {"type": "string", "description": "Optional one-line summary of this version."},
