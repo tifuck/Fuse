@@ -48,7 +48,7 @@ function renderAutoSteps(msg) {
       if (hang) {
         hang.classList.toggle("is-expanded", open);
         li.classList.toggle("is-console-expanded", open);
-      } else deps.setToolReveal(reveal, open);
+      } else reveal.classList.toggle("is-open", open);
       li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", String(open)));
       if (open) deps.tailConsoleOutput(li);
     });

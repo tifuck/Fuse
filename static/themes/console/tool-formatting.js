@@ -1,4 +1,7 @@
 // tool-formatting presentation. Dependencies are live getters supplied by index.js.
+// Tools that act on a machine: only their rows carry the @host badge.
+const HOST_TOOLS = new Set(["read_file", "write_file", "search_replace", "list_dir", "grep", "glob", "run_terminal_command", "get_command_output", "kill_command", "monitor", "run_code"]);
+
 export function create(deps) {
 function isSearchTool(name) {
     return name === "web_search" || name === "search";
@@ -286,7 +289,7 @@ function consoleArgText(value, cap = 90) {
 function consoleCallHtml(trace, presentation, full = false) {
     const name = trace && trace.name;
     const running = Boolean(presentation && presentation.running);
-    const host = trace.host || "";
+    const host = HOST_TOOLS.has(name) ? trace.host || "" : "";
     const hostHtml = host ? `<span class="chat-tool-host" title="Host ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
     const clock = (presentation) ? deps.ccCallClockHtml(trace, presentation) : "";
     // Console: a running call reads as Claude Code's live line, one row

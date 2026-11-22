@@ -177,8 +177,8 @@ function renderAssistant(msg, live) {
       } else if (isConsoleGroup) {
         li.classList.toggle("is-console-expanded", open);
       } else if (reveal) {
-        reveal.classList.toggle("is-revealing", open);
-        deps.setToolReveal(reveal, open);
+        // Tail snaps every fold open and shut, run_code's own calls too.
+        reveal.classList.toggle("is-open", open);
       }
       li.querySelectorAll(":scope > .chat-step-main > .chat-step-head [data-step-toggle]").forEach((el) => el.setAttribute("aria-expanded", String(open)));
       if (!msg.stepOpen) msg.stepOpen = {};

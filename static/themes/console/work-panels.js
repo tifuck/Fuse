@@ -1,5 +1,5 @@
 // work-panels presentation. Dependencies are live getters supplied by index.js.
-const TREE_GLYPHS = { pipe: "│", tee: "├─", elbow: "└─" };
+const TREE_GLYPHS = { pipe: "│", tee: "├", elbow: "└" };
 
 export function create(deps) {
 // The work strip under the header prints agents the way Claude Code's agent

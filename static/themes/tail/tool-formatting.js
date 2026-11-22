@@ -327,10 +327,10 @@ function consoleCallHtml(trace, presentation, full = false) {
     } else if (name === "monitor") {
       inner = consoleArgText(trace.description || trace.url || displayCommand(trace) || "watch", 100);
     } else if ((name === "grep" || name === "glob")) {
-      // Claude Code: Search(pattern: "x", path: "src")
+      // "x" in src, like the other bare subjects.
       const pattern = consoleArgText(trace.pattern || trace.query || "", 80);
-      const where = String(trace.path || "").trim();
-      inner = `pattern: "${pattern}"` + (where ? `, path: "${consoleArgText(compactPath(where, trace, 60), 60)}"` : "");
+      const where = String(trace.path || "").trim() && consoleArgText(compactPath(String(trace.path).trim(), trace, 60), 60);
+      inner = `"${pattern}"` + (where && where !== "." ? ` in ${where}` : "");
     } else if (name === "read_url") {
       inner = consoleArgText(trace.url || "page", 100);
     } else if (isSearchTool(name)) {
