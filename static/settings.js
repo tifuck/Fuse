@@ -119,6 +119,44 @@
     });
   });
 
+  const secrets = root.querySelector("[data-secrets]");
+  if (secrets) {
+    // Every change redraws the list from the server: reload onto this section.
+    const again = () => { location.hash = "secrets"; location.reload(); };
+    const act = async (out, work) => {
+      try { await work(); again(); } catch (err) { status(out, err.message, "fault"); }
+    };
+    secrets.querySelectorAll("[data-secrets-switch]").forEach((box) => box.addEventListener("change", () => {
+      const out = secrets.querySelector("[data-secrets-status]");
+      act(out, () => api("/settings/secrets", "POST", { [box.getAttribute("data-secrets-switch")]: box.checked }));
+    }));
+    const add = secrets.querySelector("[data-secrets-add]");
+    add.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const out = add.querySelector("[data-secrets-status]");
+      act(out, async () => {
+        await api("/settings/secrets", "POST", { label: add.elements.label.value, value: add.elements.value.value });
+        add.reset();
+      });
+    });
+    secrets.querySelector("[data-secrets-reset]")?.addEventListener("click", (event) => {
+      if (!window.confirm("Forget every saved value? Chats that hold a stand-in will no longer get the real value for it.")) return;
+      act(event.target, () => api("/settings/secrets", "DELETE"));
+    });
+    secrets.querySelectorAll("[data-secret-id]").forEach((row) => {
+      const id = Number(row.getAttribute("data-secret-id"));
+      const out = row.querySelector(".set-status");
+      row.querySelector("[data-secret-set]")?.addEventListener("click", (event) => {
+        act(out, () => api("/settings/secrets", "POST", { id, protected: event.target.getAttribute("data-secret-set") === "on" }));
+      });
+      row.querySelector("[data-secret-delete]").addEventListener("click", (event) => {
+        const forget = event.target.getAttribute("data-secret-delete") === "forget";
+        if (forget && !window.confirm("Delete this value? Chats that hold its stand-in will no longer get the real value.")) return;
+        act(out, () => api(`/settings/secrets/${id}`, "DELETE"));
+      });
+    });
+  }
+
   const agent = root.querySelector("[data-agent-form]");
   agent?.addEventListener("submit", (event) => {
     event.preventDefault();
