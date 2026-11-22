@@ -244,13 +244,17 @@ them), `name`, `scheme`, `html`, `created_at`. Rows are never updated.
 the frame: the chat draws it as
 `<iframe src="/backdrop/<id>" sandbox="allow-scripts" referrerpolicy="no-referrer">`,
 and `/backdrop/<id>` answers with
-`Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'`,
-`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+`Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; worker-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; webrtc 'block'`,
+`Connection-Allowlist: ()` (CSP does not cover WebRTC or the frame navigating
+itself to another Fuse page, and no browser ships `webrtc 'block'` yet; the
+empty allowlist blocks both in Chromium 152+), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
 `X-Frame-Options: SAMEORIGIN` and `Cache-Control: private, max-age=300`
 (an id's content never changes). The document runs with an opaque origin (no
 cookies, storage or same-origin access to Fuse), cannot fetch, navigate,
 submit or frame anything, and can be framed only by Fuse itself. Only the
-owner can load it.
+owner can load it. Names lose control and format characters (bidi
+overrides, zero-width) on save. `/chat?nobackdrop` is safe mode: it loads no
+custom document, so one that hangs the page can still be switched off.
 
 **API** (signed-in dashboard session; writes need the `x-csrf-token` header
 like every dashboard write):

@@ -32,6 +32,15 @@ def link(art):
     return art["share_url"].rsplit("/", 1)[-1]
 
 
+def test_framed_pages_may_connect_only_to_the_csp_hosts():
+    headers = artifacts.content_headers(framable=True)
+    allow = headers["Connection-Allowlist"]
+    assert allow.startswith("(") and allow.endswith("); redirects=allow") and "webrtc=allow" not in allow
+    assert "response-origin" not in allow and "webrtc 'block'" in headers["Content-Security-Policy"]
+    for host in ("https://cdn.jsdelivr.net", "https://unpkg.com", "https://fonts.gstatic.com"):
+        assert f'"{host}/*"' in allow
+
+
 def test_create_is_private_v1_and_updates_add_versions(fresh_db):
     uid = quick_user()
     art = make(uid, title="  Sales   report ")

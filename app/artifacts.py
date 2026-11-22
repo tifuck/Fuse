@@ -59,8 +59,15 @@ CONTENT_CSP = (
     "base-uri 'none'; "
     "form-action 'none'; "
     "frame-ancestors 'self'; "
+    "webrtc 'block'; "
     f"sandbox {SANDBOX}"
 )
+# CSP does not cover WebRTC or a page navigating itself to another Fuse page;
+# this does (Chromium 152+): only the hosts above, nothing else. Redirects stay
+# allowed for unpkg's version redirects.
+_ALLOWED_HOSTS = (*_CDN.split(), "https://cdn.tailwindcss.com", "https://code.jquery.com",
+                  "https://fonts.googleapis.com", "https://fonts.gstatic.com")
+CONNECTION_ALLOWLIST = "(" + " ".join(f'"{host}/*"' for host in _ALLOWED_HOSTS) + "); redirects=allow"
 
 # Injected at the top of every page. It reports errors and blocked loads to
 # the viewer, opens links in a new tab through the viewer, swaps the storage
@@ -1067,6 +1074,7 @@ def content_headers(*, framable: bool) -> dict[str, str]:
     }
     if framable:
         headers["Content-Security-Policy"] = CONTENT_CSP
+        headers["Connection-Allowlist"] = CONNECTION_ALLOWLIST
         headers["X-Frame-Options"] = "SAMEORIGIN"
     else:
         headers["Content-Security-Policy"] = "default-src 'none'; sandbox; frame-ancestors 'none'"

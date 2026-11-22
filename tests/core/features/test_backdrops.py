@@ -43,6 +43,8 @@ def test_save_validates_name_scheme_and_html(store):
     assert backdrops.ID_RE.fullmatch(saved["id"]) and saved["created"].endswith("Z")
     assert backdrops.create(uid, name="n" * 40, scheme="light", html=PAGE)["scheme"] == "light"
     assert [b["name"] for b in backdrops.list_for_user(uid)] == ["n" * 40, "Night sky"]
+    assert backdrops.create(uid, name="\u202eDusk\u200b\u2066", scheme="dark", html=PAGE)["name"] == "Dusk"
+    assert refused(uid, name="\u200b\u202e").status_code == 422
 
 
 def test_a_full_account_saves_only_by_replacing_one_of_its_own(store):
@@ -76,8 +78,9 @@ def test_only_the_owner_reads_or_deletes_and_the_document_is_sandboxed(store):
         assert doc.headers["content-type"] == "text/html; charset=utf-8"
         assert doc.headers["content-security-policy"] == (
             "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-            "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; "
-            "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'")
+            "img-src data: blob:; font-src data:; media-src data: blob:; worker-src 'none'; connect-src 'none'; "
+            "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; webrtc 'block'")
+        assert doc.headers["connection-allowlist"] == "()"
         assert doc.headers["x-content-type-options"] == "nosniff"
         assert doc.headers["cache-control"] == "private, max-age=300"
         assert doc.headers["referrer-policy"] == "no-referrer"

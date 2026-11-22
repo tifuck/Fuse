@@ -772,7 +772,7 @@ export function createArtifacts(ctx) {
   // backdrops (POST /api/backdrops) and draw it behind this theme at once. A
   // full shelf first asks which of them it replaces.
   async function saveBackdrop(data) {
-    const name = String(data.name || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) || "Custom backdrop";
+    const name = String(data.name || "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 40) || "Custom backdrop";
     const scheme = data.scheme === "light" ? "light" : "dark";
     const html = typeof data.html === "string" ? data.html : "";
     if (!html) return;

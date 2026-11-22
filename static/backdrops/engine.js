@@ -139,6 +139,9 @@ function listen() {
 // A user's own document ("u-" + id, GET /backdrop/<id>): a sandboxed frame
 // with an opaque origin, never focusable, never hit by the pointer.
 const CUSTOM = /^u-[a-z0-9]{12}$/;
+// Safe mode: /chat?nobackdrop loads no custom document, so one that hangs the
+// page can still be switched off in Appearance.
+const SAFE = new URLSearchParams(location.search).has("nobackdrop");
 export const isCustom = (kind) => CUSTOM.test(kind || "");
 
 function customFrame(kind) {
@@ -154,7 +157,7 @@ function customFrame(kind) {
 
 function syncFrame(scene, kind) {
   const frame = scene?.querySelector("iframe[data-chat-scene-frame]");
-  if (!kind) return frame?.remove();
+  if (!kind || SAFE) return frame?.remove();
   if (frame?.dataset.kind === kind) return;
   frame?.remove();
   const next = customFrame(kind);
@@ -167,7 +170,7 @@ function syncFrame(scene, kind) {
 let framed = null;
 function framePreview(el, on) {
   const frame = el.querySelector("iframe");
-  if (!on) return frame?.remove();
+  if (!on || SAFE) return frame?.remove();
   if (!frame) el.append(customFrame(el.dataset.kind));
 }
 
