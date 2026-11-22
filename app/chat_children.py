@@ -9,7 +9,7 @@ import time
 from uuid import uuid4
 import threading
 
-from . import db, chat_checkpoint, chat_images, chat_tx, chat_views, chat_run_state, run_inbox
+from . import db, chat_checkpoint, chat_images, chat_schema, chat_tx, chat_views, chat_run_state, run_inbox
 from .chat_scratch import _scratch_of, _stored_request
 from .database_errors import is_lock_conflict
 
@@ -880,7 +880,11 @@ def purge_orphan_subagents(conn, user_id: int, thread_id: int, kept_messages):
 
     A child run survives only if a kept message still references it via a
     spawn trace, or if its parent chain reaches such a child. Root runs whose
-    assistant message is gone go with their whole tree. Returns deleted ids.
+    assistant message is gone go with their whole tree. A missing trace is
+    evidence only when the message could have held it: a reply at the trace
+    cap dropped the traces after it, so its children stay. Runs still active
+    or owing the thread a report, and the parent chain above them, are never
+    deleted. Returns deleted ids.
     """
     kept_msg_ids = {
         str(m.get("id"))
@@ -894,17 +898,26 @@ def purge_orphan_subagents(conn, user_id: int, thread_id: int, kept_messages):
         for t in (m.get("tools") or [])
         if isinstance(t, dict) and t.get("name") == "spawn_subagent" and t.get("child_id")
     }
+    capped_msg_ids = {
+        str(m.get("id"))
+        for m in (kept_messages or [])
+        if isinstance(m, dict) and m.get("id") and len(m.get("tools") or []) >= chat_schema.TOOL_TRACE_MAX
+    }
+    # wake_pending (generated): a finished background child whose report is
+    # not delivered yet.
     rows = conn.execute(
-        "SELECT id, parent_run_id, message_id FROM chat_runs WHERE user_id=? AND thread_id=?",
+        "SELECT id, parent_run_id, message_id, status, wake_pending FROM chat_runs WHERE user_id=? AND thread_id=?",
         (user_id, thread_id),
     ).fetchall()
+    by_id = {r["id"]: r for r in rows}
     roots = [r for r in rows if not r["parent_run_id"]]
     children = [r for r in rows if r["parent_run_id"]]
     by_parent: dict[str, list] = {}
     for item in children:
         by_parent.setdefault(item["parent_run_id"], []).append(item)
     doomed = {r["id"] for r in roots if r["message_id"] not in kept_msg_ids}
-    keep = {c for c in kept_children if any(r["id"] == c for r in children)}
+    capped_roots = {r["id"] for r in roots if r["message_id"] in capped_msg_ids}
+    keep = {r["id"] for r in children if r["id"] in kept_children or r["parent_run_id"] in capped_roots}
     frontier = list(keep)
     while frontier:
         current = frontier.pop()
@@ -915,17 +928,17 @@ def purge_orphan_subagents(conn, user_id: int, thread_id: int, kept_messages):
     doomed.update(r["id"] for r in children if r["id"] not in keep)
     if not doomed:
         return []
-    # Defensive: never delete a run a worker may still own. Callers already
-    # block message replacement while any thread run is active, but keep the
-    # invariant local so future callers cannot rely on it.
-    active = {
-        r["id"]
-        for r in conn.execute(
-            f"SELECT id FROM chat_runs WHERE user_id=? AND id IN ({','.join('?' * len(doomed))}) AND status IN ('queued','running')",
-            (user_id, *doomed),
-        ).fetchall()
-    }
-    doomed -= active
+    # Never delete a run a worker may still own (callers already block
+    # message replacement while any thread run is active, but keep the
+    # invariant local) or a report the thread has not received, nor any run
+    # above one: deleting a parent takes its children with it.
+    protected = set()
+    for r in rows:
+        current = r if r["status"] in chat_tx.ACTIVE or r["wake_pending"] else None
+        while current is not None and current["id"] not in protected:
+            protected.add(current["id"])
+            current = by_id.get(current["parent_run_id"]) if current["parent_run_id"] else None
+    doomed -= protected
     if not doomed:
         return []
     placeholders = ",".join("?" * len(doomed))
