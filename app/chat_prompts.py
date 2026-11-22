@@ -519,6 +519,21 @@ _PRINT_SECRETS_PROTECTED = (
     "the value out."
 )
 assert _PRINT_SECRETS in _HOSTS
+
+
+def _env_secrets_line(names) -> str:
+    """The user's environment secrets (app/secret_guard.py), by name only."""
+    if not names:
+        return ""
+    first = names[0]
+    return (
+        f"\n- Environment secrets the user keeps on Fuse: {', '.join(names)}. To use one, name it in `env` on "
+        f"run_terminal_command or monitor (`env: [\"{first}\"]`): that command's process then has it as "
+        f"`${first}` (PowerShell: `$env:{first}`), and the user is asked to allow it. Never ask for a "
+        "value in chat, echo one, or write one to a file."
+    )
+
+
 # Plan children have no shell and write nothing: they get _HOSTS without these.
 _HOSTS_SHELL = (
     " To run a command elsewhere, set cwd (paths in the command are relative to it); cd does not "
@@ -817,6 +832,7 @@ def build_system_prompt(
     memory_project: bool = False,
     temp_dir: str = "",
     secrets_protected: bool = False,
+    env_secrets: list[str] | None = None,
     code_mode: bool = False,
 ) -> str:
     sources = ["User instructions", "profile notes", "this-chat notes"]
@@ -903,7 +919,7 @@ def build_system_prompt(
             parts.append(shell + "\n" + _WAIT + "\n" + _IDLE_CHILD)
     if coding:
         hosts = _HOSTS.replace(_PRINT_SECRETS, _PRINT_SECRETS_PROTECTED) if secrets_protected else _HOSTS
-        parts.append(hosts if kind == "plan" else hosts + _HOSTS_SHELL)
+        parts.append(hosts if kind == "plan" else hosts + _HOSTS_SHELL + _env_secrets_line(env_secrets))
     if "web_search" in tools:
         parts.append(_SEARCH_CORE if coding else _SEARCH_PLAYBOOK)
     else:

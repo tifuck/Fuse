@@ -77,6 +77,19 @@ function permCardCopy(rec) {
       once: true,
     };
   }
+  if (rec.perm_kind === "env") {
+    // A command that gets an environment secret (permissions.review_env):
+    // rec.path is the secret's name, the value is never sent here.
+    return {
+      action: `Use secret ${String(rec.path || "").trim()}`,
+      noun: "secret",
+      path: String(rec.cwd || "").trim(),
+      why: "Environment secret",
+      command: String(rec.command || "").trim(),
+      description: String(rec.description || "").replace(/\s+/g, " ").trim(),
+      host: rec.host || "",
+    };
+  }
   const kind = permGrantKind(rec);
   const path = permGrantPath(rec);
   const noun = kind === "file" ? "file" : "folder";

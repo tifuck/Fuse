@@ -44,6 +44,7 @@
 //                         skill    a skill's script files waiting to be copied to a
 //                                  machine: one made by Fuse, one from GitHub (with
 //                                  asks, the other three as well)
+//                         env      a command asking to use an environment secret
 //                         secrets  the Protect secrets window: detected values the
 //                                  turn waits on (use with --thread)
 //                         error    the last reply failed at the provider

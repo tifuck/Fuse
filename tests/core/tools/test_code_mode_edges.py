@@ -271,7 +271,7 @@ def test_every_documented_call_form_reaches_the_tool():
             return [{"old_string": "a", "new_string": "b"}]
         if kind.startswith('"'):
             return kind.split('"')[1]
-        return {"string": "x", "number": 1, "boolean": True}[kind.split()[0]]
+        return {"string": "x", "number": 1, "boolean": True, "string[]": ["x"]}[kind.split()[0]]
 
     full = [(name, {k: sample(kind) for k, (kind, _) in params.items()}) for name, params in _declared().items()]
     forms = [

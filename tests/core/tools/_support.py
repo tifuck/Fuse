@@ -478,6 +478,8 @@ class FakeProcess:
         self.exit_status = None
         self.buffers = {"out": b"", "err": b""}
         self.stdout, self.stderr = _Reader(self, "out"), _Reader(self, "err")
+        self.fed: list[str] = []  # what was written to its stdin
+        self.stdin = SimpleNamespace(write=self.fed.append)
         self._done = False
         if reply.hold is None:
             self._finish()

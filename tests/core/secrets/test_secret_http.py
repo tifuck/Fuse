@@ -50,6 +50,25 @@ def test_an_offer_is_shown_only_to_its_owner_while_the_turn_waits(web):
         secret_guard._waits.pop(pk, None)
 
 
+def test_an_environment_secret_is_added_by_name_and_its_grants_go_with_it(web):
+    from app import permissions
+
+    uid = quick_user()
+    sign_in(web, uid)
+    assert web.post("/settings/secrets", json={"label": "bad name", "value": GITHUB, "env": True}).status_code == 422
+    assert web.post("/settings/secrets", json={"label": "API_KEY", "value": GITHUB, "env": "yes"}).status_code == 422
+    made = web.post("/settings/secrets", json={"label": "API_KEY", "value": GITHUB, "env": True})
+    [item] = made.json()["items"]
+    assert item["env"] and item["label"] == "API_KEY" and GITHUB not in made.text
+    permissions.add_grant(uid, None, 1, "env", "API_KEY")
+    permissions.add_grant(uid, None, 1, "dir", "/data")
+    assert permissions.env_granted(uid, None, 1, "API_KEY")
+
+    assert web.delete(f"/settings/secrets/{item['id']}").status_code == 200
+    assert not permissions.env_granted(uid, None, 1, "API_KEY")
+    assert len(permissions._grant_rows(uid, None, 1)) == 1   # other grants stay
+
+
 def test_a_decision_protects_the_ticked_values_and_wakes_the_turn(web):
     uid = quick_user()
     tid, pk, woken = waiting_chat(uid)

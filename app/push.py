@@ -368,6 +368,8 @@ async def notify_permission(user_id: int, thread_id, ask: dict) -> int:
     title, public = ref
     if ask.get("perm_kind") == "skill":
         what = f"load skill {ask.get('command') or ''}"
+    elif ask.get("perm_kind") == "env":
+        what = f"use secret {ask.get('path') or ''}"
     else:
         what = " ".join(str(ask.get("description") or ask.get("command") or ask.get("path") or ask.get("tool") or "").split())
     host = str(ask.get("host") or "").strip()

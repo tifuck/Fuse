@@ -33,6 +33,31 @@ def fake_of(m, real):
     return next(it.fake for it in m.items if it.real == real)
 
 
+def test_an_environment_secret_has_a_usable_name_one_value_and_is_always_masked(fresh_db):
+    uid = quick_user()
+    for bad in ("", "1KEY", "MY-KEY", "PATH", "ld_preload", "A" * 65):
+        with pytest.raises(ValueError):
+            secret_guard.add_manual(uid, bad, OPENAI, env=True)
+    with pytest.raises(ValueError):
+        secret_guard.add_manual(uid, "API_KEY", OPENAI + "\nmore", env=True)
+    kept = secret_guard.add_manual(uid, "API_KEY", OPENAI, env=True)
+    secret_guard.add_manual(uid, "API_KEY", GITHUB, env=True)   # a new value replaces the old one
+    secret_guard.add_manual(uid, "plain", STRIPE)
+
+    assert secret_guard.env_names(uid) == ["API_KEY"]
+    assert secret_guard.env_values(uid, ["API_KEY", "plain", "NOPE"]) == {"API_KEY": GITHUB}
+    assert secret_guard.reveal(uid, kept) is None
+    assert secret_guard.env_request(uid, ["API_KEY", "API_KEY"]) == (["API_KEY"], "")
+    assert secret_guard.env_request(uid, "plain")[1] and secret_guard.env_request(uid, [1])[1]
+
+    # Switching protection off, or unticking, never sends an environment secret in clear.
+    secret_guard.set_switches(uid, protect=False)
+    env_id = next(i["id"] for i in secret_guard.overview(uid)["items"] if i["env"])
+    assert not secret_guard.set_status(uid, env_id, False)
+    m = secret_guard.map_for(uid)
+    assert secret_guard.mask_text(m, f"token {GITHUB} and {STRIPE}") == f"token {fake_of(m, GITHUB)} and {STRIPE}"
+
+
 def test_ordinary_text_is_byte_identical_through_both_doors(owner):
     """The regression test for the removed feature: with a realistic registry,
     no file of this repository changes on its way to a provider or a machine."""

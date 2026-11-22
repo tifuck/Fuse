@@ -130,7 +130,7 @@ SCHEMA = {
             "replace_all?: boolean, edits?: {old_string: string, new_string: string, replace_all?: boolean}[], "
             "host?: string}): Promise<string>; // receipt with the edited lines\n"
             "declare function run_terminal_command(a: {command: string, cwd?: string, timeout?: number, "
-            "description?: string, host?: string} | string): Promise<{status: string, exit_code: number | null, "
+            "description?: string, host?: string, env?: string[]} | string): Promise<{status: string, exit_code: number | null, "
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
             "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "

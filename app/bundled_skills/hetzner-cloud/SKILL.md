@@ -8,7 +8,8 @@ metadata:
 Script: `scripts/hcloud.py` (Python 3.8+, stdlib, plus the system `ssh`/`scp`/`ssh-keygen`). Run it from the folder `load_skill` names; below, `H` = `python3 <folder>/scripts/hcloud.py`. No Python? Use the curl recipes in `references/api.md` (load with file=).
 
 ## Token
-- The user runs `H login` once, in their own terminal. It hides input, checks the token, and saves it to `~/.config/hcloud-fuse/token` (mode 0600). `HCLOUD_TOKEN` in the env overrides the file.
+- Preferred: the user keeps the token on Fuse as the environment secret `HCLOUD_TOKEN` (Settings > Secrets, ticked as an environment secret). Pass `env: ["HCLOUD_TOKEN"]` on every `H` call: Fuse sets it for that command only and nothing is stored on the machine. If Fuse answers that no such secret is set, tell the user to add it there, or to use `H login`.
+- Otherwise the user runs `H login` once, in their own terminal. It hides input, checks the token, and saves it to `~/.config/hcloud-fuse/token` (mode 0600). `HCLOUD_TOKEN` in the env overrides the file.
 - Never ask for the token in chat. If the user pastes one anyway, use it only as an env var for that command, never write it to disk, and tell them to rotate it.
 - Never `cat` the token file or echo `$HCLOUD_TOKEN`. Use `H check` to test the token.
 

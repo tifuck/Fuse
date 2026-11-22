@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from .. import chats, hosts, memory, retention, secret_guard
+from .. import chats, hosts, memory, permissions, retention, secret_guard
 from ..security import limiter
 from .deps import _chat_auth, _json_object, render, require_user
 
@@ -45,21 +45,22 @@ async def secrets_get(request: Request):
 
 @router.post("/settings/secrets")
 async def secrets_set(request: Request):
-    """Switches, a typed value to protect, or a change to one kept value."""
+    """Switches, a typed value to protect (with env: as an environment
+    secret under that name), or a change to one kept value."""
     user, err = _chat_auth(request)
     if err:
         return err
     raw = await _json_object(request)
-    if set(raw) - {"protect", "offer", "label", "value", "id", "protected"}:
+    if set(raw) - {"protect", "offer", "label", "value", "env", "id", "protected"}:
         raise HTTPException(422, "Unsupported fields")
-    for key in ("protect", "offer", "protected"):
+    for key in ("protect", "offer", "protected", "env"):
         if key in raw and not isinstance(raw[key], bool):
             raise HTTPException(422, f"{key} must be true or false")
     if "value" in raw:
         if not isinstance(raw["value"], str) or not isinstance(raw.get("label", ""), str):
             raise HTTPException(422, "Invalid value")
         try:
-            secret_guard.add_manual(user["id"], raw.get("label", ""), raw["value"])
+            secret_guard.add_manual(user["id"], raw.get("label", ""), raw["value"], env=raw.get("env", False))
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
     elif "id" in raw:
@@ -94,6 +95,7 @@ async def secrets_reset(request: Request):
     if err:
         return err
     secret_guard.delete(user["id"])
+    permissions.prune_env_grants(user["id"], ())
     return _secrets_json(user["id"])
 
 
@@ -104,6 +106,7 @@ async def secrets_delete(request: Request, secret_id: int):
         return err
     if not secret_guard.delete(user["id"], secret_id):
         raise HTTPException(404, "Not found")
+    permissions.prune_env_grants(user["id"], secret_guard.env_names(user["id"]))
     return _secrets_json(user["id"])
 
 

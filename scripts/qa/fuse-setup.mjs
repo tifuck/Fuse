@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'skill', 'secrets', 'error', 'agents', 'stats', 'dictation'];
+const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation'];
 const SESSION = join(ROOT, 'data', 'dev-qa-session.json');
 
 // --fake: states no fixture can hold, made by rewriting what the page reads
@@ -46,6 +46,10 @@ const SKILL_ASKS = [
   { ...ASK, id: 'qa-perm-skill-gh', perm_kind: 'skill', tool: 'load_skill', path: '/tmp/fuse/skills/pdf-tools-91c0d2aa', cwd: '',
     command: 'pdf-tools', description: '3 files\nFrom github.com/acme/agent-skills · not made by Fuse' },
 ];
+// A command that gets an environment secret (permissions.review_env).
+const ENV_ASK = { ...ASK, id: 'qa-perm-env', perm_kind: 'env', path: 'HCLOUD_TOKEN',
+  command: 'python3 /tmp/fuse/skills/hetzner-cloud-1a2b3c4d/scripts/hcloud.py list', grant_kind: 'env', grant_value: 'HCLOUD_TOKEN',
+  description: 'List the Hetzner servers' };
 // The agents pane lists child runs; fixtures have none. These match the
 // child_ids in "QA · Subagents" and "QA · Live agents".
 const agentRow = (id, status, description, extra = {}) => ({
@@ -188,7 +192,8 @@ const FIXES = {
     if (!fake.has('ask')) return data;
     const pending = [];
     if (fake.has('skill')) pending.push(...SKILL_ASKS.map((ask, i) => ({ ...ask, expires_at: iso(startedAt + 240000 - i * 60000) })));
-    if (!fake.has('skill') || fake.has('asks')) pending.push({ ...ASK, expires_at: iso(startedAt + 240000) });
+    if (fake.has('env')) pending.push({ ...ENV_ASK, expires_at: iso(startedAt + 240000) });
+    if (!(fake.has('skill') || fake.has('env')) || fake.has('asks')) pending.push({ ...ASK, expires_at: iso(startedAt + 240000) });
     if (fake.has('asks')) pending.push(...MORE_ASKS.map((ask, i) => ({ ...ask, expires_at: iso(startedAt + 180000 - i * 60000) })));
     return { ...data, bypass: false, auto: false, pending };
   },
@@ -236,7 +241,7 @@ export default {
     if (opts.page === undefined) api.pages.splice(0, api.pages.length, '/chat');
     fake = new Set(list(opts.fake || ''));
     fake.forEach((name) => FAKES.includes(name) || bad(`--fake ${name}: use ${FAKES.join(', ')}`));
-    if (fake.has('asks') || fake.has('skill')) fake.add('ask');
+    if (fake.has('asks') || fake.has('skill') || fake.has('env')) fake.add('ask');
     if (opts.trace !== undefined) {
       if (!fake.has('running')) bad('--trace needs --fake running');
       try { trace = [JSON.parse(opts.trace)].flat(); } catch (error) { bad(`--trace: ${error.message}`); }
