@@ -419,7 +419,7 @@ def record_usage(
         )
         hour = ts[:13] + ":00:00Z"
         event = {"total_tokens": total, "prompt_tokens": pt, "output_tokens": output,
-                 "reported_cost_micros": reported_cost, "count_request": request_inc}
+                 "reported_cost_micros": reported_cost, "count_request": request_inc, "usage_status": usage_status}
         ok = request_inc and request_status == "success"
         conn.execute(
             f"""INSERT INTO usage_rollup_hourly ({", ".join(_ROLLUP_KEY + ROLLUP_SUMS)}, first_at, last_at)
@@ -692,7 +692,7 @@ REPRICE_WINDOW = 5000
 # row), so the statement text is the same every time and is translated once.
 REPRICE_CHUNK = 250
 _REPRICE_COLUMNS = """id, user_id, api_key_id, credential_id, reported_cost_micros, estimated_cost_micros,
-                      pricing_known, count_request, prompt_tokens, completion_tokens, output_tokens,
+                      pricing_known, count_request, usage_status, prompt_tokens, completion_tokens, output_tokens,
                       visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
                       created_at"""
 
@@ -718,14 +718,18 @@ def _price_measures(row, estimate: int, known: int) -> tuple[int, int, int, int,
     priced, priced_tokens and unpriced_events (stats._EVENT_SUMS)."""
     total, prompt, output = int(row["total_tokens"] or 0), int(row["prompt_tokens"] or 0), int(row["output_tokens"] or 0)
     reported = row["reported_cost_micros"]
-    priced = reported is not None or bool(known)
     tokens = total if total > 0 else prompt + output
+    counted = int(row["count_request"] or 0) == 1
+    # A counted request that reported no usage (a stream without a usage
+    # frame) cost something unknown, not a known $0 at the model's price.
+    no_usage = counted and tokens <= 0 and row["usage_status"] == "unknown"
+    priced = reported is not None or (bool(known) and not no_usage)
     return (
         int(reported) if reported is not None else estimate,
         estimate,
-        1 if priced and int(row["count_request"] or 0) == 1 else 0,
+        1 if priced and counted else 0,
         tokens if priced else 0,
-        1 if tokens > 0 and not priced else 0,
+        1 if (tokens > 0 or no_usage) and not priced else 0,
     )
 
 

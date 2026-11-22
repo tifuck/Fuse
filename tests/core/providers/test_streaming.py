@@ -9,7 +9,7 @@ import json
 import httpx
 import pytest
 
-from app import api, db
+from app import api, db, stats
 from app.proxy import openai_chat
 from app.sources import http_pool
 from tests.core.helpers import quick_user, wait_until
@@ -132,9 +132,18 @@ def test_the_tap_records_the_final_usage_frame_once_for_the_key(owner):
 
 def test_a_stream_without_usage_is_recorded_as_unknown_not_as_free(owner):
     uid, sid = owner
+    db.save_model_price("openai", "m-up", 1_000_000, None, 2_000_000, None)
     _tap(_chunks(sse(delta("a"))), uid, sid)
     (row,) = events()
     assert (row["usage_status"], row["total_tokens"], row["request_status"]) == ("unknown", 0, "success")
+
+    # The model has a price, but nothing says what this request used.
+    (model,) = stats.usage_analytics(uid, range_id="24h")["models"]
+    assert (model["requests"], model["cost_known"]) == (1, False)
+    for _ in range(2):  # recorded, then repriced
+        hour = db.fetchone("SELECT priced, priced_tokens, unpriced_events, cost FROM usage_rollup_hourly")
+        assert (hour["priced"], hour["priced_tokens"], hour["unpriced_events"], hour["cost"]) == (0, 0, 1, 0)
+        db.save_model_price("openai", "m-up", 3_000_000, None, 6_000_000, None)
 
 
 def test_a_stream_cut_before_done_gets_an_error_frame_and_a_failed_row(owner):
