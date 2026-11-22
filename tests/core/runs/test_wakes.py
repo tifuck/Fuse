@@ -84,6 +84,42 @@ def test_report_after_the_turn_ended_starts_one_wake_turn(fresh_db):
     assert messages[-1]["content"] == "Noted the report."
 
 
+def test_concurrent_wake_triggers_in_one_tick_start_one_wake_turn(fresh_db):
+    uid = quick_user()
+    thread, root, child = _idle_root_with_report(uid, "REPORT-3307")
+    pk = thread_pk(uid, thread["id"])
+
+    async def body():
+        # A sweep, a child finish and a command finish all land in one tick.
+        for _ in range(3):
+            chat_runs.schedule_wake(uid, pk)
+        await settle()
+
+    with fake_provider(text_frames("Noted once."), text_frames("again?")) as provider:
+        run_async(body())
+
+    roots = root_runs(uid, thread["id"])
+    assert len(roots) == 2 and roots[1]["status"] == "completed"
+    assert len(provider.bodies) == 1
+    assert _mentions(provider.bodies[0], "REPORT-3307") == 1
+
+
+def test_settle_waits_for_a_wake_scheduled_from_a_worker_thread(fresh_db):
+    uid = quick_user()
+    thread, root, child = _idle_root_with_report(uid, "REPORT-6120")
+
+    async def body():
+        # How a finishing command job or a reaper thread asks for a wake.
+        asyncio.get_running_loop().call_soon_threadsafe(chat_runs.schedule_wake, uid, thread_pk(uid, thread["id"]))
+        await settle()
+
+    with fake_provider(text_frames("Noted.")) as provider:
+        run_async(body())
+
+    assert len(provider.bodies) == 1
+    assert [r["status"] for r in root_runs(uid, thread["id"])] == ["completed", "completed"]
+
+
 def test_a_stopped_thread_holds_the_report_for_the_users_next_message(fresh_db):
     uid = quick_user()
     thread, root, child = _idle_root_with_report(uid, "REPORT-9902")

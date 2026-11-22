@@ -2,7 +2,7 @@
 stored reply, the reasoning, and the tool calls the executor receives."""
 from app import chat_output, chats
 from app.chat_generation import parsing
-from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, split_frames, tool_thread
 
@@ -72,13 +72,17 @@ def test_tool_call_deltas_split_across_frames_reach_the_executor_intact(fresh_db
 
 def test_cumulative_usage_is_recorded_on_the_reply(fresh_db):
     uid = quick_user()
-    usage = {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
-    with fake_provider(text_frames("ok", usage=usage)):
-        thread_id, run = run_async(run_turn(uid, "count"))
+    first = {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
+    second = {"prompt_tokens": 140, "completion_tokens": 30, "total_tokens": 170}
+    tool_round = [*tool_call_frames([("c1", "web_search", {"query": "x"})])[:-1],
+                  frame({"choices": [], "usage": first}), b"data: [DONE]\n\n"]
+    with fake_tools(), fake_provider(tool_round, text_frames("ok", usage=second)):
+        thread_id, run = run_async(run_turn(uid, "count", thread=tool_thread(uid)))
 
+    # The turn's usage sums both rounds; the last round alone is not the total.
     reply = chats.get_thread(uid, thread_id)["messages"][-1]
-    assert reply["usage"]["prompt_tokens"] == 120
-    assert reply["usage"]["completion_tokens"] == 30
+    assert reply["usage"]["prompt_tokens"] == 240
+    assert reply["usage"]["completion_tokens"] == 50
 
 
 def test_special_tokens_never_reach_the_stored_reply(fresh_db):

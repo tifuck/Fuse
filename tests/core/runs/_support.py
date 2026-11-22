@@ -143,6 +143,9 @@ async def settle(timeout=10.0):
 
     async def idle():
         while True:
+            # A wake scheduled from a worker thread (call_soon_threadsafe)
+            # registers only on the loop's next pass.
+            await asyncio.sleep(0)
             busy = [t for t in (*chat_runs._wake_tasks.values(), *chat_runs._tasks.values()) if not t.done()]
             if not busy:
                 return
