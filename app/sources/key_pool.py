@@ -3,6 +3,7 @@ import email.utils
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import threading
@@ -306,9 +307,12 @@ def parse_retry_after(header_value: Optional[str]) -> Optional[float]:
     v = header_value.strip()
     # Try integer seconds first
     try:
-        return max(0.0, float(v))
+        seconds = float(v)
     except ValueError:
         pass
+    else:
+        # "inf" or "1e400" would park the key for the longest tier.
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     # Try HTTP-date
     try:
         dt = email.utils.parsedate_to_datetime(v)
