@@ -50,20 +50,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-age
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row):hover {
   background: color-mix(in srgb, var(--mist) 5%, transparent);
 }
-/* The transcript on screen: a brass bar on its row and a tint that fades out
-   behind the task, so the row reads as picked without a block of colour. */
+/* The transcript on screen: a tint that fades out behind the task, so the
+   row reads as picked without a bar or a block of colour. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"] {
   --work-pick: linear-gradient(90deg, color-mix(in srgb, var(--brass) 22%, transparent), color-mix(in srgb, var(--brass) 6%, transparent) 50%, transparent 85%);
   background: var(--work-pick);
-}
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--brass);
 }
 /* Main stays pinned while its subagents scroll under it, and the scrollbar
    starts below it instead of running beside it. Its fills are opaque so no
