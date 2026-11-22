@@ -826,16 +826,17 @@ async def chat_secret_decide(request: Request, thread_id: str):
     if not limiter.allow(f"chat-secrets:{user['id']}", 30, 60):
         raise HTTPException(429, "Too many decisions")
     raw = await _json_object(request)
-    protect = raw.get("protect", [])
-    if (set(raw) - {"protect", "never"} or not isinstance(protect, list) or len(protect) > 500
-            or any(not isinstance(i, int) or isinstance(i, bool) for i in protect)
-            or not isinstance(raw.get("never", False), bool)):
+    protect, shown = raw.get("protect", []), raw.get("shown")
+    ids = [protect] if shown is None else [protect, shown]
+    if (set(raw) - {"protect", "shown", "never"} or not isinstance(raw.get("never", False), bool)
+            or any(not isinstance(one, list) or len(one) > 500
+                   or any(not isinstance(i, int) or isinstance(i, bool) for i in one) for one in ids)):
         raise HTTPException(422, "Invalid decision")
     if chats.resolve_thread_pk(user["id"], thread_id) is None:
         raise HTTPException(404, "Chat not found")
     from .. import secret_guard
 
-    done = await asyncio.to_thread(secret_guard.decide, user["id"], protect, never=bool(raw.get("never")))
+    done = await asyncio.to_thread(secret_guard.decide, user["id"], protect, shown=shown, never=bool(raw.get("never")))
     return JSONResponse({"ok": True, "protected": done}, headers={"Cache-Control": "no-store"})
 
 
