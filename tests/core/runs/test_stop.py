@@ -8,7 +8,9 @@ import pytest
 
 from app import chat_runs, chat_store, chats, db
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_until_async
+from tests.core.helpers import (
+    fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_run, wait_until_async,
+)
 
 from ._support import fake_tools, held_stream, provider_messages, run_row, settle, start_run, tool_thread
 
@@ -25,7 +27,7 @@ def test_stop_while_a_tool_runs_cancels_the_turn_and_interrupts_the_tool(fresh_d
         thread, run, task = await start_run(uid, "search", thread=tool_thread(uid))
         await asyncio.wait_for(tools.started.wait(), 5)
         await chat_runs.cancel_wait(uid, run["id"])
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         return thread, run
 
     with fake_tools() as tools, fake_provider(tool_call_frames([("c1", "web_search", {"query": "x"})])) as provider:
@@ -46,7 +48,7 @@ def test_stop_mid_reply_keeps_the_text_already_streamed(fresh_db):
         thread, run, task = await start_run(uid, "write a story")
         await asyncio.wait_for(provider.sent.wait(), 5)
         await chat_runs.cancel_wait(uid, run["id"])
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         return thread, run
 
     with held_stream("Once upon a time") as provider:
@@ -117,7 +119,7 @@ def test_stop_ends_foreground_subagents_but_send_now_keeps_them(fresh_db):
             chat_store.start_child_run, user_id=uid, thread_id=thread["id"], parent_run_id=run["id"],
             prompt="sub task", description="helper")
         await action(uid, run["id"])
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         return run, child
 
     for action, child_survives in ((chat_runs.cancel_wait, False), (chat_runs.interrupt_wait, True)):

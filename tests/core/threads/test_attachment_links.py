@@ -1,7 +1,6 @@
 """User attachment images in what the page receives and sends back: a thread
 view links an image the thread stores instead of repeating its bytes, the link
 serves only its owner, and every way back in gets the stored bytes again."""
-import asyncio
 import base64
 import hashlib
 from unittest.mock import AsyncMock, patch
@@ -10,7 +9,7 @@ import pytest
 
 from app import chat_images, chat_queue, chat_runs, chat_store, chats, db
 from tests.core.auth._support import anonymous, refused, sign_in, web_client
-from tests.core.helpers import fake_provider, make_user, quick_user, run_async, text_frames
+from tests.core.helpers import fake_provider, make_user, quick_user, run_async, text_frames, wait_run
 
 from ._support import image_attachment, image_url, pk
 
@@ -175,7 +174,7 @@ def test_a_resent_linked_image_reaches_the_model_as_its_bytes(web):
     async def generate():
         run = chat_store.get_run(uid, sent.json()["run"]["id"])
         task = await chat_runs.start(chat_runs.internal_request(uid), {"id": uid}, run)
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
 
     with fake_provider(text_frames("still a cat")) as provider:
         run_async(generate())

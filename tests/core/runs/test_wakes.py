@@ -6,7 +6,7 @@ import asyncio
 from unittest.mock import patch
 
 from app import chat_runs, chat_store, chats
-from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_run
 
 from ._support import fake_tools, root_runs, settle, start_run, thread_pk, tool_thread
 
@@ -44,7 +44,7 @@ def test_report_landing_mid_run_is_delivered_at_the_next_tool_boundary_once(fres
         await asyncio.wait_for(tools.started.wait(), 5)
         child = await asyncio.to_thread(_background_child, uid, thread["id"], run["id"], "REPORT-4410")
         tools.gate.set()
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         await settle()
         return thread, run, child
 

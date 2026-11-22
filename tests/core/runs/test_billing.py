@@ -5,7 +5,7 @@ import asyncio
 import httpx
 
 from app import chat_runs
-from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, wait_run
 
 from ._support import held_stream, no_backoff, start_run
 
@@ -49,7 +49,7 @@ def test_stop_mid_stream_records_the_request_as_cancelled(fresh_db):
         _, run, task = await start_run(uid, "write a story")
         await asyncio.wait_for(provider.sent.wait(), 5)
         await chat_runs.cancel_wait(uid, run["id"])
-        await asyncio.wait({task}, timeout=5)
+        await wait_run(task, 5)
 
     with held_stream("Once upon a time") as provider:
         run_async(body())

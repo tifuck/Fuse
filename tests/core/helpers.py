@@ -151,6 +151,19 @@ def fake_provider(*script):
         yield provider
 
 
+async def wait_run(task, timeout=10.0):
+    """Wait for a chat run task and return its result.
+
+    Not asyncio.wait_for: on timeout it cancels the run, which swallows the
+    cancel and settles "interrupted", so the test failed later on a
+    misleading status. Here the timeout itself is the failure."""
+    done, _ = await asyncio.wait({task}, timeout=timeout)
+    if not done:
+        task.cancel()
+        raise TimeoutError(f"run did not settle within {timeout}s")
+    return task.result()
+
+
 async def run_turn(user_id, text, *, thread=None, model="offline", timeout=30.0):
     """Start a real durable root turn and wait for it to settle.
 
@@ -161,10 +174,5 @@ async def run_turn(user_id, text, *, thread=None, model="offline", timeout=30.0)
         thread = chats.create_thread(user_id, model=model, tools=[])
     run = chat_store.start_turn(user_id, thread["id"], text, thread["revision"], None)["run"]
     task = await chat_runs.start(chat_runs.internal_request(user_id), {"id": user_id}, run)
-    # Not wait_for: a run swallows the cancel and settles "interrupted", hiding the timeout.
-    done, _ = await asyncio.wait({task}, timeout=timeout)
-    if not done:
-        task.cancel()
-        raise TimeoutError(f"turn did not settle within {timeout}s")
-    task.result()
+    await wait_run(task, timeout)
     return thread["id"], chat_store.get_run(user_id, run["id"])
