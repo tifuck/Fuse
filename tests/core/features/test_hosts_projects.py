@@ -191,6 +191,15 @@ def test_read_only_covers_the_project_folder_and_below(uid):
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs") == "read_only"
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs/sub") == "read_only"
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs-other") == "project"
+    # Other spellings of the same folder.
+    for cwd in ("//srv/docs/x", "///srv/docs", "/srv/./docs/x", "/srv/api/../docs/x", "/srv/docs/./"):
+        assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd=cwd) == "read_only", cwd
+    for cwd in ("//srv/docs-other", "/srv/./docsx", "/srv/docs/../api"):
+        assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd=cwd) == "project", cwd
+    hosts.add_project(uid, host, {"name": "notes", "remote_path": "~/notes", "permission_mode": "read_only"})
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="~/notes/x") == "read_only"
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="$HOME/./notes") == "read_only"
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="~/notes-x") == "project"
 
 
 def test_projects_get_a_palette_color_and_keep_an_edit(uid):

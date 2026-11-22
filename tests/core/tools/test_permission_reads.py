@@ -107,6 +107,27 @@ def test_a_command_runs_silently_only_when_grants_cover_every_path(chat):
         assert permissions.grant_covers(chat.uid, chat.tid, chat.host, kind, value, False) is covered, (kind, value)
 
 
+def test_home_and_absolute_grants_cover_only_their_own_spelling(chat):
+    permissions.add_grant(chat.uid, chat.tid, chat.host, "dir", "~/notes")
+    permissions.add_grant(chat.uid, chat.tid, chat.host, "dir", "//data/abs")
+    permissions.add_grant(chat.uid, chat.tid, chat.host, "dir_read", "/data/ro")
+
+    assert not asks(chat, "run_terminal_command", command="diff ~/notes/a.txt //data/abs/b.txt")
+    assert not asks(chat, "run_terminal_command", command="cat ~/notes/./sub/../b.txt")
+    assert not asks(chat, "read_file", path="/data/abs/./x")
+    assert asks(chat, "run_terminal_command", command="cat ~/notes-x/a.txt")
+    assert asks(chat, "run_terminal_command", command="cat /notes/a.txt")  # not the home's notes
+    assert asks(chat, "read_file", path="~/data/abs/x")
+    # A read-only grant covers reads, never a write or a command.
+    assert not asks(chat, "read_file", path="/data/ro/x")
+    assert asks(chat, "write_file", path="/data/ro/x", content="x")
+    assert asks(chat, "run_terminal_command", command="cat /data/ro/x")
+    for kind, value, reads, covered in (("dir", "~/notes/deep", False, True), ("dir", "/notes", False, False),
+                                        ("dir", "/data/abs/x", False, True), ("dir", "/data/ro/x", True, True),
+                                        ("dir", "/data/ro/x", False, False)):
+        assert permissions.grant_covers(chat.uid, chat.tid, chat.host, kind, value, False, reads) is covered, (kind, value)
+
+
 def test_the_per_path_read_only_decision_matches_effective_permission(fresh_db):
     uid = quick_user()
     box, win = make_host(uid, "box"), make_host(uid, "win", agent_os="windows")
