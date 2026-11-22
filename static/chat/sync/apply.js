@@ -8,7 +8,7 @@ import { deltaParts, messageRunLive, splitThink, untimed } from '../core.js';
 const SERVER_OPTIONAL = ["notice", "elapsedMs", "endedAt", "stopped", "auto", "usage", "model", "tools", "permissions", "segments", "attachments"];
 
 export function createApply(ctx) {
-  const { agents, artifacts, composer, context, net, panels, perms, persist, picker, sidebar, status, traces, transcript, turns, ui } = ctx;
+  const { agents, artifacts, composer, context, net, panels, perms, persist, picker, secrets, sidebar, status, traces, transcript, turns, ui } = ctx;
   // Patches are suffixes of the last published text. One that does not fit
   // means events between this view's snapshot and the patch were never
   // applied; sync/stream.js replays them from the snapshot cursor.
@@ -86,6 +86,7 @@ export function createApply(ctx) {
     transcript.setPartialTranscript(false);
     S.lastRunReceiptAt = Date.now();
     perms.acceptPermThread(data);
+    secrets.acceptThread(data);
     S.acceptedQueueCommands = new Set(data.accepted_queue_ids || []);
     turns.retireAcceptedQueue();
     const viewport = transcript.captureThreadViewport();
@@ -438,6 +439,10 @@ export function createApply(ctx) {
       // marker segments placed by the run worker (chat_runs.Output.apply) and
       // arrive in the message.patch ahead of this event; mirroring them here
       // would fork the segment list from the server's.
+      return;
+    }
+    if (event.event === "secrets") {
+      secrets.onEvent(event, passive);
       return;
     }
     if (event.event === "permission") {
