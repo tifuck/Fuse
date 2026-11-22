@@ -31,6 +31,8 @@ FRESH_CAP = 20
 CONTINUITY_KEEP = 5
 GRACE_CAP = 6 * 3600
 RETRY_COOLDOWN_S = 60
+# How far in the past a new or changed one-time once_at may be (clock skew, form latency).
+ONCE_PAST_SLACK_S = 60
 RECONCILE_SECONDS = 60
 # Per-schedule count of in-flight _fire coroutines (tick claims + run_now).
 # Keyed by schedule id; tick never claims a schedule with a nonzero count.
@@ -417,6 +419,10 @@ def _normalize(user_id: int, raw: dict, *, existing: dict | None = None, conn=No
         if not parse_iso_utc(str(once_at), tz):
             raise ScheduleError("once_at must be an ISO date and time")
         once_at = iso_utc(parse_iso_utc(str(once_at), tz))
+        # A past instant would fire at once or be dropped as a missed catch-up.
+        if once_at != (existing or {}).get("once_at") and \
+                parse_iso_utc(once_at) < utcnow() - timedelta(seconds=ONCE_PAST_SLACK_S):
+            raise ScheduleError("once_at must be in the future")
     allow_coding = _flag(raw.get("allow_coding") if "allow_coding" in raw else (existing or {}).get("allow_coding", 0), "allow_coding")
     if target == "project":
         allow_coding = True

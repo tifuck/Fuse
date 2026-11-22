@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from .config import settings
 from .hosts import HostError, secret_plain, set_host_status, set_pin
-from .search.ssrf import is_blocked_host
+from .search.ssrf import _is_global, is_blocked_host
 from .vault import VaultLocked
 
 _BLOCK_NETS = (
@@ -55,7 +55,8 @@ def _ip_forbidden(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
         return True
     # is_global, not is_private: CGNAT 100.64/10 (Tailscale) is neither.
-    if not settings.allow_private_hosts and (not ip.is_global or ip.is_reserved):
+    # _is_global also refuses NAT64 and IPv4-compatible forms of private v4.
+    if not settings.allow_private_hosts and (not _is_global(ip) or ip.is_reserved):
         return True
     return False
 

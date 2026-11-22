@@ -120,3 +120,13 @@ def test_third_party_scripts_stay_off_until_exactly_those_files_are_approved(fre
     assert row["enabled"] is False and skills.load(uid, "demo") == "Unknown skill."
     # A third-party skill of markdown only needs no review.
     assert install(uid, {}, origin="github", source="foo/bar", slug="plain")["enabled"] is True
+
+def test_files_that_are_not_utf8_stay_on_the_server_and_are_not_counted_as_copied(fresh_db, skills_dir, monkeypatch):
+    uid = quick_user()
+    install(uid, {"scripts/run.py": b"print('hi')\n", "notes.txt": b"caf\xe9 in latin-1\n"})
+    machine = Machine(monkeypatch)
+    note = machine.sync(uid)
+    folder = machine.asks[0]["path"]
+    assert machine.asks[0]["description"] == "1 file"
+    assert machine.writes == {("blk", folder + "/scripts/run.py"): b"print('hi')\n"}
+    assert "(1 file, sha256" in note

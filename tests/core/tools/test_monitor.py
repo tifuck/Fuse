@@ -247,7 +247,8 @@ def test_an_older_event_receipt_never_rewinds_the_acknowledgement(fresh_db):
 
 
 def test_websocket_monitors_reach_only_public_web_ports(monkeypatch):
-    answers = {"feed.example.com": "93.184.216.34", "inside.example.com": "10.1.2.3"}
+    answers = {"feed.example.com": "93.184.216.34", "inside.example.com": "10.1.2.3",
+               "nat64.example.com": "64:ff9b::7f00:1", "compat.example.com": "::a00:1"}
 
     def getaddrinfo(host, port, *args, **kwargs):
         if host not in answers:
@@ -257,7 +258,8 @@ def test_websocket_monitors_reach_only_public_web_ports(monkeypatch):
     monkeypatch.setattr(monitor.socket, "getaddrinfo", getaddrinfo)
     assert monitor.public_ws_url("wss://feed.example.com/live?x=1") == "wss://feed.example.com/live?x=1"
     for url in ("wss://feed.example.com:8443/live", "ws://feed.example.com:22/", "wss://user:pw@feed.example.com/",
-                "wss://inside.example.com/", "https://feed.example.com/", "ws://127.0.0.1/", "wss://nowhere.example/"):
+                "wss://inside.example.com/", "https://feed.example.com/", "ws://127.0.0.1/", "wss://nowhere.example/",
+                "wss://nat64.example.com/", "wss://compat.example.com/"):
         assert monitor.public_ws_url(url) == "", url
 
 
