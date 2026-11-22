@@ -54,13 +54,19 @@ _SQLITE_ONLY = (exp.Glob, exp.Collate, exp.Typeof)
 _SQLITE_ONLY_FUNCTIONS = frozenset(("datetime", "julianday", "unixepoch"))
 
 
+def _non_integer(node) -> bool:
+    return (isinstance(node, exp.Cast) and not node.to.is_type(*exp.DataType.INTEGER_TYPES)) or (
+        isinstance(node, exp.Literal) and node.is_number and not node.is_int)
+
+
 def _node(node):
     if isinstance(node, _SQLITE_ONLY) or (
             isinstance(node, exp.Anonymous) and node.name.lower() in _SQLITE_ONLY_FUNCTIONS):
         raise ValueError(f"Unported SQLite syntax: {node.sql(dialect='sqlite')}")
     if isinstance(node, exp.Is) and isinstance(node.expression, exp.Placeholder):
         return exp.NullSafeEQ(this=node.this, expression=exp.Var(this="__fuse_parameter__"))
-    if isinstance(node, exp.Div) and isinstance(node.this, exp.Cast):
+    if (isinstance(node, exp.Div) and isinstance(node.this, exp.Cast)
+            and node.this.to.is_type(*exp.DataType.INTEGER_TYPES) and not _non_integer(node.expression)):
         # SQLite integer division truncates toward zero; sqlglot's IntDiv
         # renders as CAST(a / b AS SIGNED), which MariaDB rounds.
         quotient = exp.Div(this=node.this.transform(_node), expression=node.expression.transform(_node))
