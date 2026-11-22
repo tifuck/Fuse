@@ -140,6 +140,7 @@ def test_bundled_skills_default_and_a_user_copy_overrides_them(fresh_db, skills_
     uid, other = quick_user(), quick_user("other@core.test")
     default_on = {s["slug"]: s["enabled"] for s in skills.list_bundle(uid)["skills"]}
     assert default_on["debug"] is True and default_on["ponytail"] is False
+    assert default_on["hetzner-cloud"] is False  # spends money: each user opts in
     assert skills.load(uid, "ponytail") == "Unknown skill."
     assert skills.patch_skill(uid, "ponytail", {"enabled": True})["category"] == "Build"
     assert "Ponytail" in skills.load(uid, "ponytail")
