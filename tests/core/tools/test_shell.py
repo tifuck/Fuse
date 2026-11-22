@@ -102,15 +102,29 @@ def test_the_denylist_matches_catastrophic_commands():
 DENY_BYPASSES = ("\\sudo ls", '"sudo" ls', "s\\udo ls", "'reboot'", "/sbin/reboot", "systemctl reboot",
                  "systemctl --no-wall poweroff", "systemctl halt", "systemctl kexec", "systemctl suspend",
                  "systemctl hibernate", "init 0", "x && init 6", "telinit 1", "kill -9 -1", "kill -s KILL -1",
-                 "doas ls", "pkexec ls")
+                 "doas ls", "pkexec ls",
+                 # Leading blanks, assignments, ! and wrappers with their own options.
+                 " sudo ls", "\tsudo ls", "cd x\n  sudo ls", "FOO=1 sudo ls",
+                 "DEBIAN_FRONTEND=noninteractive sudo apt-get install -y jq", "env -i sudo ls", "env -u PATH sudo ls",
+                 "timeout 5 sudo ls", "timeout -s KILL 5 sudo ls", "nice -n 5 sudo ls", "ionice -c 3 sudo ls",
+                 "stdbuf -oL sudo ls", "command -p sudo ls", "! sudo ls", 'bash --norc -c "sudo ls"', "sh -e -c 'reboot'",
+                 "FOO=1 ssh other true", " rm -rf /", "x; LANG=C reboot",
+                 "loginctl reboot", "loginctl poweroff", "systemctl start reboot.target", "systemctl isolate poweroff.target",
+                 "systemctl --no-block start halt.target")
+WINDOWS_DENY_BYPASSES = (" shutdown -r -t 0", "dir;  shutdown /s", "& ('Stop-'+'Computer')", "& (\"Restart-\" + \"Computer\")")
 
 
 def test_the_denylist_sees_through_quoting_and_covers_power_and_privilege_commands():
     for command in DENY_BYPASSES:
         assert workspace.denied(command), command
     for command in ("systemctl status nginx", "kill -9 1234", "echo init 0", "git commit -m 'docs: sudo usage'",
-                    "grep -r reboot docs"):
+                    "grep -r reboot docs", " make test", "FOO=1 make", "env -i make", "timeout 5 make test",
+                    "nice -n 5 make", "systemctl start nginx", "loginctl list-sessions", "FOO=sudo make", "echo sudo"):
         assert workspace.denied(command) is None, command
+    for command in WINDOWS_DENY_BYPASSES:
+        assert workspace.denied(command, windows=True), command
+    for command in ("Get-Date", " Get-ChildItem", "Write-Output ('Get-'+'Date')"):
+        assert workspace.denied(command, windows=True) is None, command
 
 
 def test_denylisted_commands_are_never_sent_to_a_host(ssh_host):

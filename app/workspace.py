@@ -127,7 +127,17 @@ logger = logging.getLogger(__name__)
 # catastrophic forms only; it is not a sandbox (the permission gate is).
 # With a gate these forms always raise the ask card (never Jev, never a grant)
 # and run on the user's own Allow or on bypass; gateless callers are blocked.
-_CMD_START = r"(?:^|[;&|(`{]\s*|\$\(\s*|\b(?:then|do|else|exec|command|builtin|xargs|env|nohup|time|nice|ionice|eval|setsid|busybox)\s+['\"]?|\b(?:(?:ba|z|k|c|da|fi|tc|a)?sh(?:\.exe)?|pwsh|powershell(?:\.exe)?)\s+-c\s+['\"]?)"
+# Before the command itself may come assignments (FOO=1 sudo), a ! and
+# wrappers with their options and plain values (env -i, nice -n 5,
+# timeout -s KILL 5, stdbuf -oL); a shell's -c may follow other options.
+_CMD_ASSIGN = r"(?:[A-Za-z_]\w*=\S*\s+)*"
+_CMD_WRAP_ARG = r"(?:-\S*|\d\S*|(?-i:[A-Z][A-Z0-9_]*))"
+_CMD_START = (
+    r"(?:(?:^|[;&|(`{]|\$\()\s*(?:!\s*)?" + _CMD_ASSIGN
+    + r"|\b(?:then|do|else|exec|command|builtin|xargs|env|nohup|time|nice|ionice|eval|setsid|busybox"
+    r"|timeout|stdbuf|chrt|taskset|watch|unbuffer)(?:\s+" + _CMD_WRAP_ARG + r")*\s+" + _CMD_ASSIGN + r"['\"]?"
+    r"|\b(?:(?:ba|z|k|c|da|fi|tc|a)?sh(?:\.exe)?|pwsh|powershell(?:\.exe)?)\s+(?:-\S+\s+)*-[a-z]*c(?:ommand)?\s+['\"]?)"
+)
 _DENY = re.compile(
     _CMD_START
     # /sbin/reboot, ./bin/sudo: a command named by its path is the same command
@@ -140,6 +150,8 @@ _DENY = re.compile(
     r"|(?:shutdown|reboot|poweroff|halt)\b"
     r"|(?:sudo|doas|pkexec)\b"
     r"|systemctl\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec|suspend|hibernate|hybrid-sleep|suspend-then-hibernate)\b"
+    r"|systemctl\s+(?:-\S+\s+)*(?:start|isolate)\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec)(?:\.target)?\b"
+    r"|loginctl\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec|suspend|hibernate)\b"
     r"|telinit\b"
     r"|init\s+[06](?=\s|$|[;&|)])"
     # pid -1 signals every process the caller may signal
@@ -158,7 +170,7 @@ RESERVED = frozenset({"local", "localhost", "127.0.0.1", ""})
 _GLOB_BAD = re.compile(r"[|;<>`$\"\\]")
 _GLOB_BAD_WIN = re.compile(r"[|;<>`$\"]")
 _DENY_WIN = re.compile(
-    r"(?:Stop-Computer|Restart-Computer|(?:^|[;&|(]\s*)shutdown(?:\.exe)?\b|Format-Volume|Clear-Disk)",
+    r"(?:Stop-Computer|Restart-Computer|(?:^|[;&|(])\s*shutdown(?:\.exe)?\b|Format-Volume|Clear-Disk)",
     re.I | re.M,
 )
 _exec_times: dict[tuple[int, int], list[float]] = {}
@@ -572,8 +584,12 @@ def _command_too_long(command: str) -> str:
 
 def _unquoted(text: str, windows: bool) -> str:
     """The words as the shell reads them: \\sudo, s\\udo, "sudo" and 'sudo' all
-    run sudo (PowerShell escapes with a backtick, and keeps backslashes)."""
-    text = text.replace("`", "") if windows else re.sub(r"\\(.)", r"\1", text, flags=re.S)
+    run sudo (PowerShell escapes with a backtick, keeps backslashes, and joins
+    strings with +: 'Stop-'+'Computer')."""
+    if windows:
+        text = re.sub(r"['\"]\s*\+\s*['\"]", "", text.replace("`", ""))
+    else:
+        text = re.sub(r"\\(.)", r"\1", text, flags=re.S)
     return re.sub(r"[\"']", "", text)
 
 
