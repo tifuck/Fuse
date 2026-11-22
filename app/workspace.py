@@ -865,17 +865,21 @@ async def read_text_file(path: str, *, host: str | None, user_id: int, bound_hos
     return body, f"{alias}:{rec.get('path') or path}"
 
 
-async def read_env_files(user_id, host_id, root: str, *, pick, depth: int, max_chars: int) -> tuple[str, list[tuple[str, str]]]:
+async def read_env_files(user_id, host_id, root: str, *, pick, depth: int, max_chars: int,
+                         known: list[str] | None = None) -> tuple[str, list[tuple[str, str]]]:
     """(host alias, [(path under root, text)]) for the files pick() chooses
-    from the folder's listing (app/secret_scan.py picks env files only). The
-    text is for Fuse's own scan: it never goes to a model."""
+    from the folder's listing (app/secret_scan.py picks env files only), or
+    for `known` paths without listing again. The text is for Fuse's own scan:
+    it never goes to a model."""
     row = await asyncio.to_thread(hosts.host_row, user_id, host_id)
     if row is None:
         raise WorkspaceError("unknown host")
     alias, windows = _row_alias(row), _is_windows_row(row)
-    names, _more = await _list_tree(user_id, host_id, root, depth, windows=windows)
+    if known is None:
+        names, _more = await _list_tree(user_id, host_id, root, depth, windows=windows)
+        known = pick(names)
     out = []
-    for name in pick(names):
+    for name in known:
         try:
             body, _rec = await _read_raw(user_id, host_id, alias, {"path": name}, root, windows=windows, max_chars=max_chars)
         except (WorkspaceError, VaultLocked):
