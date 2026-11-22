@@ -357,7 +357,7 @@ async def _tap(
         # Only frames that carry a usage dict update the counts; a later
         # delta frame must not zero what an earlier usage frame reported.
         if isinstance(obj.get("usage"), dict) and obj["usage"]:
-            usage = usage_from_obj(obj, reasoning_separate=(provider == "grok"))
+            usage = merge_usage(usage, usage_from_obj(obj, reasoning_separate=(provider == "grok")))
         if obj.get("error"):
             request_status = "failed"
             saw_error = True

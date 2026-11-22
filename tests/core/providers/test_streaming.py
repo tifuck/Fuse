@@ -19,6 +19,9 @@ from ._support import completion, delta, drain, events, frames_of, source, sse, 
 URL = "https://up.test/v1/chat/completions"
 USAGE = {"prompt_tokens": 100, "completion_tokens": 7, "total_tokens": 107,
          "prompt_tokens_details": {"cached_tokens": 40}}
+# The same usage split across two frames, as some compatible providers send it.
+SPLIT = ({"choices": [], "usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 40}}},
+         {"choices": [], "usage": {"completion_tokens": 7}})
 
 
 def _call(body, **kwargs):
@@ -31,7 +34,8 @@ def _call(body, **kwargs):
 
 
 def test_a_stream_asks_for_usage_and_keeps_the_final_frame_past_later_deltas(upstream):
-    upstream.on("POST", "/chat/completions", sse_response(delta("hi"), {"choices": [], "usage": USAGE}, delta("")))
+    upstream.on("POST", "/chat/completions",
+                sse_response(delta("hi"), {"choices": [], "usage": USAGE}, {**delta(""), "usage": None}))
 
     status, _obj, raw, usage, _h = _call({"model": "m", "stream": True, "stream_options": {"x": 1}, "messages": []})
 
@@ -39,6 +43,16 @@ def test_a_stream_asks_for_usage_and_keeps_the_final_frame_past_later_deltas(ups
     assert upstream.sent("/chat/completions")[0]["stream_options"] == {"x": 1, "include_usage": True}
     assert (usage["prompt_tokens"], usage["completion_tokens"], usage["cached_tokens"]) == (100, 7, 40)
     assert usage["stream_status"] == "complete"
+
+
+def test_split_usage_frames_merge_even_after_done(upstream):
+    after_done = sse(delta("hi"), SPLIT[0], {**delta(""), "usage": None}) + b"data: " + json.dumps(SPLIT[1]).encode() + b"\n\n"
+    upstream.on("POST", "/chat/completions", httpx.Response(200, content=after_done))
+
+    _s, _o, _raw, usage, _h = _call({"model": "m", "stream": True, "messages": []})
+
+    assert (usage["prompt_tokens"], usage["completion_tokens"], usage["cached_tokens"]) == (100, 7, 40)
+    assert (usage["usage_status"], usage["stream_status"]) == ("complete", "complete")
 
 
 def test_a_stream_without_done_or_with_malformed_json_is_failed(upstream):
@@ -144,6 +158,19 @@ def test_a_stream_without_usage_is_recorded_as_unknown_not_as_free(owner):
         hour = db.fetchone("SELECT priced, priced_tokens, unpriced_events, cost FROM usage_rollup_hourly")
         assert (hour["priced"], hour["priced_tokens"], hour["unpriced_events"], hour["cost"]) == (0, 0, 1, 0)
         db.save_model_price("openai", "m-up", 3_000_000, None, 6_000_000, None)
+
+
+def test_split_usage_frames_and_a_frame_after_done_are_all_recorded(owner):
+    uid, sid = owner
+    body = sse(delta("a"), SPLIT[0], {**delta(""), "usage": None}, SPLIT[1], {"choices": [], "usage": USAGE})
+    body += b"data: " + json.dumps(SPLIT[1]).encode() + b"\n\n"
+
+    _tap(_chunks(body), uid, sid)
+
+    (row,) = events()
+    # Cumulative snapshots: repeated frames never add up.
+    assert (row["prompt_tokens"], row["completion_tokens"], row["cached_tokens"], row["total_tokens"]) == (100, 7, 40, 107)
+    assert (row["usage_status"], row["request_status"]) == ("complete", "success")
 
 
 def test_a_stream_cut_before_done_gets_an_error_frame_and_a_failed_row(owner):

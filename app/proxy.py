@@ -396,7 +396,7 @@ async def openai_chat(
                 # later delta frame must not zero what an earlier usage frame
                 # reported.
                 if isinstance(obj.get("usage"), dict) and obj["usage"]:
-                    collected.update(usage_from_obj(obj, reasoning_separate=reasoning_separate))
+                    collected.update(merge_usage(collected, usage_from_obj(obj, reasoning_separate=reasoning_separate)))
 
             try:
                 async for chunk in resp.aiter_bytes():
