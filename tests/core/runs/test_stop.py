@@ -40,6 +40,28 @@ def test_stop_while_a_tool_runs_cancels_the_turn_and_interrupts_the_tool(fresh_d
     assert [t["status"] for t in reply["tools"]] == ["interrupted"]
 
 
+def test_another_users_stop_leaves_the_run_running(fresh_db):
+    uid, other = quick_user(), quick_user("other@core.test")
+
+    async def body():
+        tools.hold()
+        thread, run, task = await start_run(uid, "search", thread=tool_thread(uid))
+        await asyncio.wait_for(tools.started.wait(), 5)
+        await chat_runs.cancel_wait(other, run["id"])
+        stopped = task.done() or run_row(run["id"])["cancel_requested"]
+        tools.gate.set()
+        await wait_run(task, 5)
+        return run, stopped
+
+    with fake_tools() as tools, fake_provider(
+        tool_call_frames([("c1", "web_search", {"query": "x"})]), text_frames("done"),
+    ):
+        run, stopped = run_async(body())
+
+    assert not stopped
+    assert run_row(run["id"])["status"] == "completed"
+
+
 def test_stop_mid_reply_keeps_the_text_already_streamed(fresh_db):
     uid = quick_user()
 
@@ -371,3 +393,33 @@ def test_reaper_interrupts_a_live_worker_that_stopped_making_progress(fresh_db):
 
     assert run_row(run["id"])["status"] == "interrupted"
     assert chat_store.STALL_NOTICE in _reply(uid, thread["id"])["notice"]
+
+
+def test_a_stalled_parent_hands_its_foreground_child_a_report_path(fresh_db):
+    uid = quick_user()
+
+    async def body():
+        tools.hold()
+        thread, run, task = await start_run(uid, "go", thread=tool_thread(uid))
+        await asyncio.wait_for(tools.started.wait(), 5)
+        child = await asyncio.to_thread(
+            chat_store.start_child_run, user_id=uid, thread_id=thread["id"], parent_run_id=run["id"],
+            prompt="sub task", description="helper")
+        with patch.object(chat_runs, "STALL_IDLE_SECONDS", 0):
+            await asyncio.to_thread(chat_runs.reap_orphans)
+        await wait_until_async(lambda: task.done())
+        await asyncio.to_thread(chat_runs.sweep_wakes)
+        await settle()
+        return thread, run, child
+
+    with fake_tools() as tools, fake_provider(
+        tool_call_frames([("c1", "web_search", {"query": "x"})]), text_frames("Got the helper's report."),
+    ) as provider:
+        thread, run, child = run_async(body())
+
+    assert run_row(run["id"])["status"] == "interrupted"
+    agent = chat_store.get_run(uid, child["id"])["request"]["agent"]
+    assert agent["background"] is True, "a stall is not a user Stop: the killed child still reports"
+    assert agent.get("wake_sent") is True
+    assert len(provider.bodies) == 2
+    assert child["id"] in str(provider.bodies[1]["messages"][-1]["content"])

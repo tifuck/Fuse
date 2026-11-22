@@ -287,12 +287,14 @@ def _schedule_aclose(iterator):
     loop.create_task(_close())
 
 
-def cancel(run_id, jobs=True):
+def cancel(run_id, jobs=True, stalled=False):
     """Wake a local run after the HTTP handler persists request_cancel.
 
     If no live worker owns the run, finish it immediately so Stop cannot hang
     on a phantom queued/running row. jobs=False (Send now) leaves the run's
-    background commands running.
+    background commands running. stalled (the reaper, which settles the row
+    itself) is not a user cancel: the worker ends interrupted, so the
+    foreground children it kills still owe the thread a report.
     """
     task = _tasks.get(run_id)
     if task is not None and not task.done():
@@ -302,10 +304,11 @@ def cancel(run_id, jobs=True):
         except RuntimeError:
             current_loop = None
         if current_loop is not loop:
-            loop.call_soon_threadsafe(cancel, run_id, jobs)
+            loop.call_soon_threadsafe(cancel, run_id, jobs, stalled)
             return
-    _cancelled.add(run_id)
-    _signal_cancel(run_id)
+    if not stalled:
+        _cancelled.add(run_id)
+        _signal_cancel(run_id)
     if jobs:
         try:
             from . import workspace
@@ -321,6 +324,8 @@ def cancel(run_id, jobs=True):
         # A not-yet-entered coroutine must get a chance to install its finally.
         if getattr(task, "_fuse_started", False):
             task.cancel()
+        return
+    if stalled:
         return
     chat_store.abort_active(run_id, "cancelled")
     if task is None:
@@ -352,7 +357,8 @@ async def cancel_wait(user_id, run_id, *, tree=True, force=False, by_user=False,
     its own so its report never wakes the main agent.
     """
     if tree:
-        await durable_call(chat_store.request_cancel, user_id, run_id)
+        if not await durable_call(chat_store.request_cancel, user_id, run_id):
+            return
         foreground = await durable_call(chat_store.request_cancel_descendants, user_id, run_id, skip_background=True)
         live = set(await asyncio.to_thread(chat_store.descendant_ids, run_id)) if foreground else set()
         ids = [run_id, *(ident for ident in foreground if ident in live)]
@@ -498,7 +504,7 @@ def _reap_one(row):
             stamp = row["updated_at"]
         quiet = _iso_age(stamp or row["created_at"])
         if quiet >= STALL_IDLE_SECONDS:
-            cancel(ident)
+            cancel(ident, stalled=True)
             chat_store.abort_active(ident, "interrupted", chat_store.STALL_NOTICE)
             _wake_stalled_child(row)
         return
@@ -1005,7 +1011,10 @@ async def _run(request, user, run):
                     logger.warning("Chat run status poll failed for %s", ident, exc_info=True)
                 else:
                     if row is None or row["cancel_requested"] or row["status"] not in chat_store.ACTIVE:
-                        _cancelled.add(ident)
+                        # A row settled without a Stop (the reaper's stall
+                        # abort) was not cancelled by the user.
+                        if row is None or row["cancel_requested"]:
+                            _cancelled.add(ident)
                         task.cancel()
                         return
             if cancel_signal is not None and cancel_signal.is_set():
