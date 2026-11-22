@@ -23,8 +23,8 @@ base.
   lines and failures, `--status-live` waiting and stopped.
 - **Grid:** one 1.5rem gutter. The prompt mark, the burst chevron and the
   receipt mark sit in it; prose, verbs and counts start after it. The
-  transcript column is 64rem at most, centred; with the pane open it keeps
-  the left.
+  transcript column spans the full width, from the left; with the pane open
+  it gives up the pane's width.
 - **Rows:** 1.75rem (2.25rem at ≤800px), radius 6px, hover and selection a
   6% wash.
 
@@ -38,7 +38,7 @@ base.
   for a failure, amber for a stopped call, pulsing while running. A running
   burst names its running call after the count. The line opens the calls
   and stays folded until opened, live or not (`msg.stepOpen["burst-<block>"]`).
-- **A call** is one row: verb (lower case, 8ch), subject, dotted leader,
+- **A call** is one row: verb (lower case, 9ch, so an 8-letter verb keeps a gap), subject, dotted leader,
   result. Edits read `+N −M`; failures are red. No host tag (the pane's head
   has it). A running command prints its newest output line under the row.
 - **The receipt** ends a turn: mark, `done` / `interrupted` / `failed`,

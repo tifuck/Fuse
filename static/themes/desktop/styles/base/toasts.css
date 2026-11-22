@@ -91,7 +91,7 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-act:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link .fuse-toast-body { cursor: pointer; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link:hover { border-color: var(--mute); border-left-color: var(--toast-tone); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link .fuse-toast-body:focus-visible { outline: 2px solid var(--focus, var(--mist)); outline-offset: 3px; border-radius: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast.is-link .fuse-toast-body:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 3px; border-radius: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .fuse-toast-x {
   flex: 0 0 auto;
   display: grid;

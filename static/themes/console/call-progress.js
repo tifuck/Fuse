@@ -453,7 +453,7 @@ function ccAgentsGroupHtml(agents, live) {
         `<div class="chat-console-agent-sub"><span class="chat-console-branch${last ? " is-blank" : ""}" aria-hidden="true">│</span><span class="chat-console-dim"><span aria-hidden="true">└ </span>${deps.escapeHtml(status)}</span></div>`;
       return (
         `<li class="chat-console-agent${presentation.running ? " is-running" : ""}${presentation.failed ? " is-error" : ""}" data-open-agent="${deps.escapeHtml(trace.child_id || "")}">` +
-        `<div class="chat-console-agent-line"><span class="chat-console-branch" aria-hidden="true">${last ? "└─" : "├─"}</span>` +
+        `<div class="chat-console-agent-line"><span class="chat-console-branch" aria-hidden="true">${last ? "└" : "├"}</span>` +
         `<span class="chat-console-agent-name${presentation.running ? " is-dim" : ""}">${label}${stats}</span></div>${sub}</li>`
       );
     }).join("");

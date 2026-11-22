@@ -171,6 +171,10 @@ async def evaluate(user_id: int, state: dict, questions: dict | None = None, tim
         _cred, _extra, key, _via = picked
         if not key:
             return None
+        from . import secret_guard
+
+        # Jev is a provider too, reached outside api._run_chat.
+        state = await asyncio.to_thread(lambda: secret_guard.mask_value(secret_guard.map_for(user_id), state))
         body = {
             "model": MODEL,
             "state": state,

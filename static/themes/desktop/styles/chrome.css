@@ -78,7 +78,7 @@ html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[typ
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { z-index: 1; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--mist); }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::before { border-color: var(--mist); background: var(--mist); }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::after { background: var(--ink); transform: translate(16px, -50%); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--steel); outline-offset: 0; border-radius: 12px; }
+html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 0; border-radius: 12px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-filters button { min-height: 28px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-range { height: 28px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-step { min-width: 28px; min-height: 28px; }

@@ -153,6 +153,10 @@ async def _record_failure(
             "reasoning": str(diag.get("reasoning") or ""),
             "user_text": str(diag.get("user_text") or ""),
         }
+        from .. import secret_guard
+
+        # Every admin reads this log: protected values go in as stand-ins.
+        logged = await asyncio.to_thread(lambda: secret_guard.mask_value(secret_guard.map_for(user_id), logged))
         await asyncio.to_thread(
             tool_failures.record,
             tool_name=name or "unknown",
@@ -436,9 +440,14 @@ async def run_tools(
                 text = injection_probe.annotate(text or "")
             job.text, job.trace = text, {**job.trace, **trace, "id": job.event_id,
                                       "duration_ms": trace.get("duration_ms", latency_ms), "call_duration_ms": latency_ms}
-            if job.name == "run_code" and not job.parent and len(text or "") > TOOL_RESULT_CHARS:
-                # The model gets the head; the whole (swapped) text stays readable for a while.
-                job.result_id = code_mode.keep((user_id, thread_id), text)
+            if job.name == "run_code" and not job.parent:
+                if len(text or "") > TOOL_RESULT_CHARS:
+                    # The model gets the head; the whole text stays readable for a while.
+                    job.result_id = code_mode.keep((user_id, thread_id), text)
+                from .. import secret_guard
+
+                # The code held stand-ins (app/code_mode.py); the user and the stored chat get real values.
+                job.text = await asyncio.to_thread(lambda: secret_guard.restore_text(secret_guard.map_for(user_id), text or ""))
             job.done = True
             if trace.get("status") in ("error", "interrupted"):
                 await _record_failure(

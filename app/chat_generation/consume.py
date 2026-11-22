@@ -185,6 +185,20 @@ def _add_usage(total: dict, extra: dict | None) -> dict:
     return merged
 
 
+def _with_content(obj: dict, text: str) -> dict:
+    """A stream frame with its reply text replaced."""
+    choices = obj.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return obj
+    choice = dict(choices[0])
+    for key in ("delta", "message"):
+        part = choice.get(key)
+        if isinstance(part, dict) and part.get("content"):
+            choice[key] = {**part, "content": text}
+            break
+    return {**obj, "choices": [choice, *choices[1:]]}
+
+
 async def consume_round(result, user, src, upstream: str, requested: str, *, coding: bool = False):
     from .. import api
 
@@ -196,6 +210,13 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
     details: list[dict] = []
     usage = {}
     error = None
+    from .. import secret_guard
+
+    # The user door (app/secret_guard.py): stand-ins in a reply become the
+    # real values before the text is streamed or stored. Tool calls are taken
+    # from the raw text and keep their stand-ins for the tool door.
+    secrets = await asyncio.to_thread(secret_guard.map_for, user.get("id"))
+    restorer = secret_guard.StreamRestorer(secrets) if secrets.restores else None
     if result.stream is None:
         usage = result.usage or {}
         await asyncio.to_thread(
@@ -225,6 +246,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
         content, reasoning, native, finish = _finalize_assistant_payload(
             content, reasoning, [calls[i] for i in sorted(calls)], finish, coding=coding
         )
+        content = secret_guard.restore_text(secrets, content)
         if isinstance(body, dict) and body.get("error"):
             error = body
         elif not native and (
@@ -309,6 +331,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                 if isinstance(obj.get("timings"), dict):
                     clock.timings = obj["timings"]
                 choice = (obj.get("choices") or [{}])[0] if isinstance(obj.get("choices"), list) else {}
+                spoken = ""
                 if isinstance(choice, dict):
                     delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
                     message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
@@ -321,6 +344,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                         else ""
                     )
                     content += text
+                    spoken = text
                     reasoning += thought
                     clock.frame(now, text + _call_text(delta.get("tool_calls") or message.get("tool_calls")), thought)
                     _take_calls(calls, delta.get("tool_calls") or message.get("tool_calls"))
@@ -330,6 +354,8 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
                     if choice.get("finish_reason"):
                         finish = choice.get("finish_reason")
                 safe = _client_obj(obj, hide_tool_calls=False)
+                if safe and restorer is not None and spoken:
+                    safe = _with_content(safe, restorer.push(spoken))
                 if safe:
                     candidate = (content or "").strip()
                     if not calls and candidate and _provider_error_content(candidate):
@@ -399,5 +425,10 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
         for pending in held_out:
             yield ("out", pending)
         held_out.clear()
+    if restorer is not None:
+        held = restorer.flush()
+        if held and content:
+            yield ("out", {"choices": [{"index": 0, "delta": {"content": held}}]})
+        content = secret_guard.restore_text(secrets, content)
     yield ("done", {"calls": native, "finish": finish, "content": content, "reasoning": reasoning, "thinking": thinking, "usage": usage, "error": error,
                     "gen": None if error else clock.result(usage)})

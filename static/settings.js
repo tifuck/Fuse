@@ -119,6 +119,68 @@
     });
   });
 
+  const secrets = root.querySelector("[data-secrets]");
+  if (secrets) {
+    // Every change redraws the list from the server: reload onto this section.
+    const again = () => { location.hash = "secrets"; location.reload(); };
+    const act = async (out, work) => {
+      try { await work(); again(); } catch (err) { status(out, err.message, "fault"); }
+    };
+    secrets.querySelectorAll("[data-secrets-switch]").forEach((box) => box.addEventListener("change", () => {
+      const out = secrets.querySelector("[data-secrets-status]");
+      act(out, () => api("/settings/secrets", "POST", { [box.getAttribute("data-secrets-switch")]: box.checked }));
+    }));
+    const add = secrets.querySelector("[data-secrets-add]");
+    add.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const out = add.querySelector("[data-secrets-status]");
+      act(out, async () => {
+        await api("/settings/secrets", "POST", { label: add.elements.label.value, value: add.elements.value.value });
+        add.reset();
+      });
+    });
+    secrets.querySelector("[data-secrets-reset]")?.addEventListener("click", (event) => {
+      if (!window.confirm("Forget every saved value? Chats that hold a stand-in will no longer get the real value for it.")) return;
+      act(event.target, () => api("/settings/secrets", "DELETE"));
+    });
+    secrets.querySelectorAll("[data-secret-id]").forEach((row) => {
+      const id = Number(row.getAttribute("data-secret-id"));
+      const out = row.querySelector(".set-status");
+      row.querySelector("[data-secret-set]")?.addEventListener("change", (event) => {
+        act(out, () => api("/settings/secrets", "POST", { id, protected: event.target.checked }));
+      });
+      const show = row.querySelector("[data-secret-show]");
+      const field = row.querySelector("[data-secret-value]");
+      const dots = field?.value;
+      show?.addEventListener("click", async () => {
+        const label = show.getAttribute("aria-label").replace(/^(Show|Hide)/, "");
+        const set = (open, value) => {
+          // The field keeps its size whatever it holds; a long value scrolls inside it.
+          field.value = value;
+          field.scrollLeft = 0;
+          show.setAttribute("aria-pressed", String(open));
+          show.setAttribute("aria-label", (open ? "Hide" : "Show") + label);
+          show.title = open ? "Hide value" : "Show value";
+        };
+        if (show.getAttribute("aria-pressed") === "true") return set(false, dots); // the value leaves the page
+        show.disabled = true;
+        try {
+          set(true, (await api(`/settings/secrets/${id}/reveal`, "POST", {})).value);
+          status(out, "");
+        } catch (err) {
+          status(out, err.message, "fault");
+        } finally {
+          show.disabled = false;
+        }
+      });
+      row.querySelector("[data-secret-delete]").addEventListener("click", (event) => {
+        const forget = event.target.getAttribute("data-secret-delete") === "forget";
+        if (forget && !window.confirm("Delete this value? Chats that hold its stand-in will no longer get the real value.")) return;
+        act(out, () => api(`/settings/secrets/${id}`, "DELETE"));
+      });
+    });
+  }
+
   const agent = root.querySelector("[data-agent-form]");
   agent?.addEventListener("submit", (event) => {
     event.preventDefault();

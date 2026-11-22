@@ -155,6 +155,37 @@ also gives each worker its own empty network namespace and uid 65534; without
 root the worker keeps the server's uid. `CODE_MODE=false`, or a missing
 `mini-racer`, turns it off.
 
+## Secret protection
+
+`app/secret_guard.py` keeps a user's protected values (table `user_secrets`,
+encrypted with `APP_SECRET`, one stand-in each from `app/secret_fakes.py`) and
+is the only code that swaps them. Nothing is detected in free text: a value
+is replaced only after the user accepted it, by exact match. Three doors:
+
+- **Provider:** `api._run_chat` masks every request (also `jev.evaluate`, a
+  run_code call's nested results, and the tool-failure log). On by default;
+  only `/v1` opts out, so a new caller cannot skip it.
+- **Tool:** `workspace._execute` restores whole stand-ins in command text,
+  file content, edit strings and grep patterns, before the denylist and the
+  permission review. Paths and other tools are never touched. A cut
+  stand-in, or a value with shell characters bound for a command, refuses
+  the call with the reason.
+- **User:** `chat_generation.consume.consume_round` restores reply text as
+  it streams (`StreamRestorer`) and before it is stored. Reasoning and the
+  arguments of tools that never reach a machine keep their stand-ins.
+
+So Fuse's own records hold real values; stand-ins exist on the wire to a
+provider. Both directions are pure functions of the user's registry: there
+is no per-chat state. `app/secret_scan.py` reads a project's env files when a
+turn starts and after a tool round changed the machine, and offers what is
+clearly a secret. The owner is asked once per secret: a known value is never
+offered again, and a new value under a name already decided in that file
+follows the decision unasked (`secret_guard.offer`). For a new one the turn
+waits (`secret_guard.wait_for_decision`, the
+`secrets` run event, `/chat/threads/{id}/secrets/offer`) until the owner
+decides. `tests/core/secrets/` holds the invariants: with a realistic
+registry no file of this repository changes through either door.
+
 ## Stored transcripts
 
 - Large inline images in `chat_runs.provider_messages`/`request` and

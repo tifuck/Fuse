@@ -70,11 +70,19 @@ const AGENT_ACTIVITY_LABELS = {
   read_transcript: "transcript",
 };
 
+// "2 files", "3 searches", "1 memory": a label already plural ("tools") stays.
+function countLabel(n, label) {
+  if (Number(n) === 1 || label.endsWith("s")) return `${n} ${label}`;
+  if (/(ch|sh|x)$/.test(label)) return `${n} ${label}es`;
+  if (/[^aeiou]y$/.test(label)) return `${n} ${label.slice(0, -1)}ies`;
+  return `${n} ${label}s`;
+}
+
 function agentActivitySummary(row) {
   const entries = row.tool_counts && typeof row.tool_counts === "object" ? Object.entries(row.tool_counts) : [];
   const counts = entries
     .filter(([, n]) => Number(n) > 0)
-    .map(([name, n]) => `${n} ${AGENT_ACTIVITY_LABELS[name] || name}`)
+    .map(([name, n]) => countLabel(n, AGENT_ACTIVITY_LABELS[name] || name))
     .join(", ");
   // The state column already says stalled or waiting on model.
   if (agentIsStalled(row)) return counts;

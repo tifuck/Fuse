@@ -405,6 +405,13 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             body = {"ok": False, "error": _call_error(name, call_args, _unlabel(text, trace))}
         else:
             body = {"ok": True, "value": _value(name, text, trace)}
+        if owner:
+            from . import secret_guard
+
+            # The code only ever holds stand-ins, so it cannot encode or
+            # split a real value on its way back to the model.
+            secrets = await asyncio.to_thread(secret_guard.map_for, owner[0])
+            body = secret_guard.mask_value(secrets, body)
         send({"reply": n, "body": json.dumps(body)})
         # A large reply waits for the pipe here, in this call's own task.
         with contextlib.suppress(ConnectionError):

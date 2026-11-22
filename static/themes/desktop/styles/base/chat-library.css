@@ -50,7 +50,7 @@
 @media (hover: hover) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-tile:hover { border-color: color-mix(in srgb, var(--brass) 55%, var(--line)); background: var(--raise); }
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-tile:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-tile:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 /* A category: back button, name and count on one line, then one
    single-line row per prompt in a narrower column than the tiles. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-body.is-category { width: min(100%, 38rem); margin-inline: auto; }
@@ -109,7 +109,7 @@
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-prompt:hover { border-color: color-mix(in srgb, var(--brass) 55%, var(--line)); background: var(--raise); }
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-back:focus-visible,
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-prompt:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-library-prompt:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 @media (max-width: 800px) {
   /* Phones: two columns of tiles, centered with a margin around them. */
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat.is-empty:not(.is-composing) .chat-library:not([hidden]) { padding-block: 0.5rem; }
@@ -269,7 +269,7 @@
   text-align: left;
   cursor: pointer;
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-row:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-row:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-row[aria-disabled="true"] { opacity: 0.5; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-row-title { font: 500 0.85rem/1.35 var(--mono); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-row-blurb { color: var(--mute); font: 0.75rem/1.4 var(--mono); }

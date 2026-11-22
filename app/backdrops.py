@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import secrets
 import string
+import unicodedata
 
 from . import db
 from .security import limiter
@@ -24,12 +25,11 @@ SCHEMES = ("dark", "light")
 WRITES_PER_MIN = 20
 ID_RE = re.compile(r"[a-z0-9]{12}")
 _ALPHABET = string.ascii_lowercase + string.digits
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 CSP = (
     "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-    "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; "
-    "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'"
+    "img-src data: blob:; font-src data:; media-src data: blob:; worker-src 'none'; connect-src 'none'; "
+    "frame-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; webrtc 'block'"
 )
 HEADERS = {
     "Content-Security-Policy": CSP,
@@ -38,6 +38,10 @@ HEADERS = {
     "Referrer-Policy": "no-referrer",
     # The middleware's default is DENY; the chat page frames these.
     "X-Frame-Options": "SAMEORIGIN",
+    # CSP does not cover WebRTC (no browser ships its webrtc directive yet) or
+    # the frame navigating itself to another same-origin page. An empty
+    # allowlist blocks both, and every other connection (Chromium 152+).
+    "Connection-Allowlist": "()",
 }
 
 
@@ -51,7 +55,9 @@ class BackdropError(ValueError):
 def _name(raw) -> str:
     if not isinstance(raw, str):
         raise BackdropError("name must be text")
-    name = _CONTROL.sub("", re.sub(r"\s+", " ", raw)).strip()
+    # Control and format characters (bidi overrides, zero-width) go: a name must
+    # read as what it is in the confirm dialog.
+    name = "".join(c for c in re.sub(r"\s+", " ", raw) if unicodedata.category(c) not in ("Cc", "Cf")).strip()
     if not name:
         raise BackdropError("name is required")
     if len(name) > NAME_MAX:

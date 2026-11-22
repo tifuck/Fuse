@@ -28,7 +28,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
 }
 @media (max-width: 480px), (pointer: coarse) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-call-row: 26px; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] { --dk-call-row: 32px; }
 }
 
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {

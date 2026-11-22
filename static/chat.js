@@ -8,6 +8,7 @@ import { createContext } from './chat/context.js';
 import { createPicker } from './chat/picker.js';
 import { createPanels } from './chat/panels.js';
 import { createPerms } from './chat/perms.js';
+import { createSecrets } from './chat/secrets.js';
 import { createArtifacts } from './chat/artifacts.js';
 import { createTranscript } from './chat/transcript.js';
 import { createSidebar } from './chat/sidebar.js';
@@ -60,6 +61,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     renderAssistant,
     renderUser,
     rewindListHtml,
+    secretsWindowHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -102,6 +104,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     get agentStatusText() { return agents.agentStatusText; },
     get agentsRows() { return S.agentsRows; },
     get applySpinEl() { return sidebar.applySpinEl; },
+    get artifactInline() { return artifacts.inline; },
     get assistantSegments() { return transcript.assistantSegments; },
     get autoEventLabel() { return traces.autoEventLabel; },
     get consoleSpinFrame() { return S.consoleSpinFrame; },
@@ -223,6 +226,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     renderAssistant,
     renderUser,
     rewindListHtml,
+    secretsWindowHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -312,6 +316,13 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     ui,
   });
 
+  const secrets = createSecrets({
+    net,
+    sync: { showFailure: (...args) => sync.showFailure(...args) },
+    turns: { requestStop: (...args) => turns.requestStop(...args) },
+    ui,
+  });
+
   const artifacts = createArtifacts({
     agents: { setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },
     composer: { scheduleFitChatBar: (...args) => composer.scheduleFitChatBar(...args) },
@@ -344,6 +355,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     overlays,
     panels,
     perms,
+    secrets,
     picker,
     sync: { acceptThread: (...args) => sync.acceptThread(...args), flushPending: (...args) => sync.flushPending(...args), healStuckRun: (...args) => sync.healStuckRun(...args), reconcileThread: (...args) => sync.reconcileThread(...args), setRunning: (...args) => sync.setRunning(...args), setThreadUrl: (...args) => sync.setThreadUrl(...args), showFailure: (...args) => sync.showFailure(...args), syncFailure: (...args) => sync.syncFailure(...args), syncStatus: (...args) => sync.syncStatus(...args) },
     traces,
@@ -361,6 +373,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     overlays,
     panels,
     perms,
+    secrets,
     picker,
     sidebar,
     traces,
@@ -1009,6 +1022,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     sync.setRunning();
     S.permCards.clear();
     perms.renderPermQueue();
+    secrets.close();
     perms.threadPermData = null;
     perms.permsFilter = "";
     S.navigation += 1;

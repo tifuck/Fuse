@@ -19,7 +19,7 @@ function renderAutoSteps(msg) {
       const hang = li.classList.contains("is-console-call") && li.querySelector(":scope > .chat-step-main .chat-console-hang");
       const open = hang ? !li.classList.contains("is-console-expanded") : !reveal.classList.contains("is-open");
       if (hang) {
-        deps.foldInPlace(li, reveal, open, () => {
+        deps.foldInPlace(li, hang, open, () => {
           if (open) hang.classList.add("is-expanded");
           li.classList.toggle("is-console-expanded", open);
         }, () => { if (!open) hang.classList.remove("is-expanded"); });

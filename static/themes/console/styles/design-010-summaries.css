@@ -195,9 +195,12 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
   background: var(--mist);
 }
 
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-interrupted > .chat-step-node::after,
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-notice.is-gold > .chat-step-node::after {
   background: var(--call-fail);
+}
+
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call.is-interrupted > .chat-step-node::after {
+  background: var(--status-live);
 }
 
 /* The settled activity summary line: styled like a run head, but the

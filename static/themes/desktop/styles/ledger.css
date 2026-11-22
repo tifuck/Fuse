@@ -297,6 +297,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-sep { margin: 0 5px; opacity: 0.6; }
   & .dk-call-where { display: flex; flex: 1 1 auto; justify-content: flex-end; gap: 6px; min-width: 0; margin-left: auto; overflow: hidden; }
   & .dk-call-host { flex: 0 0 auto; max-width: 60%; overflow: hidden; color: var(--dk-mute, var(--mute)); text-overflow: ellipsis; }
+  & .dk-call-host:only-child { max-width: none; }
+  & .dk-call-where:has(> .dk-call-host:only-child) { flex: none; }
   & .dk-call-cwd { flex: 0 1 auto; min-width: 0; overflow: hidden; direction: rtl; text-align: left; text-overflow: ellipsis; }
   @media (max-width: 480px) {
     & .dk-call-cwd { display: none; }

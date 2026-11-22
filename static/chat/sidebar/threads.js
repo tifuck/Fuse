@@ -49,7 +49,7 @@ function snapshotWork(data) {
 }
 
 export function createThreads(ctx) {
-  const { agents, artifacts, chatApi, composer, context, drawer, hostStats, net, overlays, panels, perms, picker, projects, render, spinners, sync, traces, transcript, turns, undo } = ctx;
+  const { agents, artifacts, chatApi, composer, context, drawer, hostStats, net, overlays, panels, perms, picker, projects, render, secrets, spinners, sync, traces, transcript, turns, undo } = ctx;
     function upsertLocal(thread) {
     if (!thread || !thread.id) return;
     const bucket = thread.archived ? S.archivedThreads : S.threads;
@@ -370,6 +370,8 @@ export function createThreads(ctx) {
     // Restore any live permission asks (parent or subagent) the event stream
     // cannot replay after a reload — child asks never touch the transcript.
     if (snapshotWork(data).live) perms.seedPendingFromServer(S.currentId);
+    // So is a turn waiting on the Protect secrets window; another chat's closes.
+    secrets.acceptThread(data);
     // Never carry the previous thread's meter into this one.
     S.liveMeter = null;
     S.compacting = false;

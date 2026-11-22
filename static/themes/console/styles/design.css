@@ -24,3 +24,5 @@
 @import url("design-013-polish.css");
 /* Last: the permission ask and the queue above the composer. */
 @import url("dock.css");
+/* The Protect secrets window. */
+@import url("secrets.css");

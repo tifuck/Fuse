@@ -34,9 +34,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
   max-height: calc(var(--work-main) + 9 * var(--work-row));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
+/* Commands follow the agents at the same pitch: the hairline between the
+   groups adds no room of its own, so every row sits one row from the next. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
-  margin-top: 0.15rem;
-  padding-top: 0.15rem;
+  margin-top: 0;
+  padding-top: 0;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
   height: var(--work-row);
@@ -48,18 +50,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-age
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row):hover {
   background: color-mix(in srgb, var(--mist) 5%, transparent);
 }
-/* The transcript on screen: a tint and a brass bar on its row. */
+/* The transcript on screen: a tint that fades out behind the task, so the
+   row reads as picked without a bar or a block of colour. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"] {
-  background: color-mix(in srgb, var(--brass) 9%, transparent);
-}
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-row[aria-current="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--brass);
+  --work-pick: linear-gradient(90deg, color-mix(in srgb, var(--brass) 22%, transparent), color-mix(in srgb, var(--brass) 6%, transparent) 50%, transparent 85%);
+  background: var(--work-pick);
 }
 /* Main stays pinned while its subagents scroll under it, and the scrollbar
    starts below it instead of running beside it. Its fills are opaque so no
@@ -75,7 +70,25 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
   background: color-mix(in srgb, var(--mist) 5%, var(--work-bg));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents > .chat-agents-row.is-main[aria-current="true"] {
-  background: color-mix(in srgb, var(--brass) 9%, var(--work-bg));
+  background: var(--work-pick), var(--work-bg);
+}
+/* A running command: a faint band of the run colour sweeps across its row,
+   the strip's one moving thing besides the blinking squares. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row.is-running:not(.is-cancelling)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--status-run) 11%, transparent), transparent) no-repeat;
+  background-size: 40% 100%;
+  animation: chat-jobs-sweep 2.8s linear infinite;
+}
+@keyframes chat-jobs-sweep {
+  from { background-position: -67% 0; }
+  to { background-position: 167% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-jobs-row.is-running::after { animation: none; background: none; }
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents::-webkit-scrollbar-track { margin-top: var(--work-main); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-agents-name {
@@ -204,6 +217,13 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-ste
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { white-space: nowrap; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call wbr { display: none; }
+/* A phone wraps a long command like every other row, and drops the host. */
+@media (max-width: 480px) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label { flex-wrap: wrap; white-space: normal; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call,
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step.is-console-call[data-tool="run_terminal_command"] > .chat-step-main > .chat-step-head > .chat-step-toggle > .chat-step-label > .chat-console-call * { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step-label .chat-tool-host { display: none; }
+}
 /* An opened shell row: the command over its output, "$ " before its first
    line and every wrapped or later line under the command's text. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-cmd { color: var(--mute); }

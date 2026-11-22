@@ -8,6 +8,7 @@
   <a href="#account">Account</a>
   <a href="#chat">Chat defaults</a>
   <a href="#memory">Memory</a>
+  <a href="#secrets">Secrets</a>
   <a href="#alerts">Alerts</a>
   <a href="#agents">Coding agents</a>
   <a href="#cleanup">Cleanup</a>
@@ -121,6 +122,84 @@
   {% endfor %}
   {% else %}
   <p class="set-row set-note">No memories saved yet.{% if not context.memory %} Turn on Memory in Chat defaults first.{% endif %}</p>
+  {% endif %}
+</section>
+
+<section class="panel set" id="secrets" aria-labelledby="set-secrets-title" data-secrets>
+  <header class="set-head">
+    <h2 id="set-secrets-title">Secret protection</h2>
+    <p>Model providers get same-format stand-ins for the values you protect. Fuse puts the real value back when a tool runs on your machines and in the replies you read. Protected values are kept encrypted on this server and apply to all your chats. Not covered: values not listed here, values a command encodes or transforms, images, and the /v1 API.</p>
+  </header>
+  {% if secrets.broken %}
+  <div class="set-row">
+    <div class="set-label"><strong>Saved values can't be read</strong><span>The server key changed, so chats are paused until you reset. Fuse will offer the values again when it next reads a project's env files.</span></div>
+    <div class="set-control"><button type="button" class="btn sm" data-secrets-reset>Reset secret protection</button></div>
+  </div>
+  {% endif %}
+  <div class="set-row">
+    <div class="set-label"><strong>Protect</strong><span>Off sends the real values again. Chats that already hold stand-ins keep working.</span></div>
+    <div class="set-control">
+      <label class="check"><input type="checkbox" data-secrets-switch="protect"{% if secrets.protect %} checked{% endif %}> Send stand-ins for protected values</label>
+    </div>
+  </div>
+  <div class="set-row">
+    <div class="set-label"><strong>Detect</strong><span>When a turn starts in a project, Fuse reads its env files (.env, .env.*, *.env, .envrc, .npmrc, .pypirc) and asks which values to protect. The turn waits for your answer.</span></div>
+    <div class="set-control">
+      <label class="check"><input type="checkbox" data-secrets-switch="offer"{% if secrets.offer %} checked{% endif %}> Offer to protect secrets found in env files</label>
+    </div>
+  </div>
+  <form class="set-row" data-secrets-add>
+    <div class="set-label"><strong>Add a value</strong><span>Protect a value Fuse did not find. It is not shown again after you save it.</span></div>
+    <div class="set-control">
+      <label><span>Name</span> <input name="label" maxlength="120" placeholder="MY_API_KEY" autocomplete="off" spellcheck="false"></label>
+      <label><span>Value</span> <input name="value" type="password" maxlength="8192" autocomplete="new-password" required></label>
+      <div class="set-inline">
+        <button type="submit" class="btn sm">Protect</button>
+        <span class="set-status" role="status" data-secrets-status></span>
+      </div>
+    </div>
+  </form>
+  {% if secrets["items"] %}
+  <div class="set-secrets">
+    <div class="set-secrets-head"><strong>Managed secrets</strong><span>Ticked values are protected in every chat. The eye shows a value to you; models only ever get the stand-in under it.</span></div>
+    {% for s in secrets["items"] %}
+    {% set name = s.label or s.kind %}
+    <div class="set-secret" data-secret-id="{{ s.id }}">
+      <div class="set-secret-name">
+        {% if s.status != "ignored" %}
+        <input type="checkbox" data-secret-set{% if s.status == "protected" %} checked{% endif %} aria-label="Protect {{ name }}" title="Protect {{ name }}">
+        {% else %}
+        <span></span>
+        {% endif %}
+        <div>
+          <strong>{{ name }}</strong>
+          <span>{{ s.kind if s.label else "No name in its file" }}</span>
+          {% if s.path %}<span class="set-secret-place" title="{{ s.host }} {{ s.path }}:{{ s.line }}">{{ s.host }} <code>{{ s.path }}:{{ s.line }}</code></span>{% else %}<span class="set-secret-place">Added by you</span>{% endif %}
+        </div>
+      </div>
+      <div class="set-secret-value">
+        {% if s.status != "ignored" %}
+        <div class="set-secret-field">
+          <input type="text" readonly value="{{ "•" * 24 }}" data-secret-value aria-label="Value of {{ name }}" spellcheck="false" autocomplete="off">
+          <button type="button" class="set-secret-eye" data-secret-show aria-pressed="false" aria-label="Show the value of {{ name }}" title="Show value"><svg class="is-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="is-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1c.5-.1.9-.1 1.4-.1 6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7c1.7 0 3.2-.4 4.5-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
+        </div>
+        {% if s.status == "protected" %}<p class="set-secret-model">Models see <code>{{ s.stand_in }}</code></p>
+        {% elif s.status == "offered" %}<p class="set-secret-model">Waiting for your answer in its chat. Tick it to protect it now.</p>
+        {% else %}<p class="set-secret-model">Not protected: models get the real value.</p>{% endif %}
+        {% else %}
+        <div class="set-secret-field"><input type="text" readonly disabled value="Not kept" aria-label="Value of {{ name }}"></div>
+        <p class="set-secret-model">You declined this one, so Fuse does not keep it.</p>
+        {% endif %}
+      </div>
+      <div class="set-secret-actions">
+        <button type="button" class="btn ghost sm" data-secret-delete="{{ 'ask' if s.status == 'ignored' else 'forget' }}">{{ "Ask again" if s.status == "ignored" else "Delete" }}</button>
+        <span class="set-status" role="status"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="set-row set-note">No values yet. Fuse asks the first time a chat's project has secrets in its env files.</p>
   {% endif %}
 </section>
 

@@ -16,7 +16,7 @@ function cue(name) {
 }
 
 export function createStream(ctx) {
-  const { agents, apply, composer, context, net, notices, perms, persist, picker, sidebar, status, traces, transcript, turns, ui } = ctx;
+  const { agents, apply, composer, context, net, notices, perms, persist, picker, secrets, sidebar, status, traces, transcript, turns, ui } = ctx;
     async function receiveEvent(event) {
     if (event.id <= S.cursor) return;
     // A gap replay (replayGap) resends events this view already handled. Only
@@ -254,6 +254,8 @@ export function createStream(ctx) {
           S.stoppingRunId = "";
           S.activeRun = null;
           status.setRunning();
+          // A turn that ended or was stopped waits on nothing.
+          secrets.close();
         }
         status.notifyTurnDone(event.thread_id, payload, event.type);
         if (payload.revision != null) S.serverRevision = payload.revision;

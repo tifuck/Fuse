@@ -424,6 +424,39 @@ function consoleDurationLabel(trace) {
     return deps.formatActivityClock(s);
   }
 
+// What a todo_write changed, against the newest landed todo_write before it
+// in the chat (the model re-sends the whole list every call): "Finished
+// “Run checks”, started “Bump version”", a count when several moved at
+// once. "" when nothing changed, or for a call that is not in the chat's own
+// messages (a subagent's), which has no list before it to compare with.
+function todoChange(trace) {
+    let before = [];
+    let found = false;
+    for (const msg of deps.messages || []) {
+      for (const other of Array.isArray(msg?.tools) ? msg.tools : []) {
+        if (other === trace) { found = true; break; }
+        if (other?.name === "todo_write" && other.status !== "error" && !other.error && Array.isArray(other.todos)) before = other.todos;
+      }
+      if (found) break;
+    }
+    if (!found) return "";
+    const was = new Map(deps.normalizeTodos(before).map((item) => [item.id, item]));
+    const now = deps.normalizeTodos(trace.todos);
+    const moved = { added: [], completed: [], in_progress: [], cancelled: [] };
+    for (const item of now) {
+      const old = was.get(item.id);
+      if (!old) moved.added.push(item);
+      else if (old.status !== item.status && item.status in moved) moved[item.status].push(item);
+    }
+    const kept = new Set(now.map((item) => item.id));
+    const removed = [...was.values()].filter((item) => !kept.has(item.id));
+    const text = [["added", moved.added], ["finished", moved.completed], ["started", moved.in_progress], ["cancelled", moved.cancelled], ["removed", removed]]
+      .filter(([, items]) => items.length)
+      .map(([verb, items]) => `${verb} ${items.length === 1 ? `“${deps.shortToolText(items[0].content, 48)}”` : `${items.length} todos`}`)
+      .join(", ");
+    return text && text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
 function consoleResultLine(trace, presentation) {
     const { running, failed, interrupted } = presentation;
     const name = trace && trace.name;
@@ -451,7 +484,7 @@ function consoleResultLine(trace, presentation) {
     if (name === "read_url") {
       const host = deps.pageHost(trace.url);
       if (preview && preview !== "still running" && preview.length < 72) return preview;
-      return host || "done";
+      return host || "Done";
     }
     if (name === "read_file") {
       const n = deps.consoleLineCount(trace);
@@ -484,7 +517,8 @@ function consoleResultLine(trace, presentation) {
       const todos = deps.normalizeTodos(trace.todos);
       if (todos.length) {
         const done = todos.filter((item) => item.status === "completed").length;
-        return `${todos.length} ${todos.length === 1 ? "todo" : "todos"}, ${done}/${todos.length} done`;
+        const change = todoChange(trace);
+        return `${change || `${todos.length} ${todos.length === 1 ? "todo" : "todos"}`}, ${done}/${todos.length} done`;
       }
       return "no todos";
     }
@@ -496,7 +530,7 @@ function consoleResultLine(trace, presentation) {
       }
       const exit = deps.shellExitCode(trace);
       if (exit !== null && exit !== 0) return `exit ${exit}`;
-      return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : (deps.displayCommand(trace) || "done");
+      return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : (deps.displayCommand(trace) || "Done");
     }
     if (name === "kill_command") {
       // The header names the target; this says what the stop found.
@@ -514,7 +548,7 @@ function consoleResultLine(trace, presentation) {
       if (read) return `Read ${read[1]} (${Number(read[2]).toLocaleString()} chars)`;
       const slots = preview.match(/^(\d+) slots$/);
       if (slots) return `Pad holds ${slots[1]} ${slots[1] === "1" ? "slot" : "slots"}`;
-      return preview || "done";
+      return preview || "Done";
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
@@ -577,9 +611,10 @@ function consoleResultLine(trace, presentation) {
       if (hits) return `${hits} ${hits === 1 ? "result" : "results"}`;
       const queries = deps.searchQueries(trace);
       if (queries.length) return queries.length === 1 ? "1 query" : `${queries.length} queries`;
-      return "done";
+      return "Done";
     }
-    return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
+    // A one-word server receipt ("done", "saved", "forgotten") reads capitalised.
+    return preview && preview !== "still running" ? deps.shortToolText(preview.replace(/^[a-z]+$/, (word) => word[0].toUpperCase() + word.slice(1)), 80) : "Done";
   }
 
   return { consoleCommandHtml, consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };

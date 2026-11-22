@@ -13,6 +13,7 @@ import { create as createToolRows } from './tool-rows.js';
 import { create as createAssistantDisclosure } from './assistant-disclosure.js';
 import { create as createFoldMotion } from './fold-motion.js';
 import { create as createPermissions } from './permissions.js';
+import { create as createSecrets } from './secrets.js';
 import { create as createVerbLexicon } from './verb-lexicon.js';
 import { create as createShellSemantics } from './shell-semantics.js';
 import { create as createCallSemantics } from './call-semantics.js';
@@ -425,6 +426,7 @@ export function createDesktopTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createTranscript({
+    get artifactInline() { return runtime.artifactInline; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get parseProviderError() { return theme.parseProviderError; },
     get providerErrorHtml() { return theme.providerErrorHtml; },
@@ -502,6 +504,9 @@ export function createDesktopTheme(runtime) {
   Object.assign(theme, createWallpaperPicker({
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createSecrets({
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   Object.assign(theme, createTurnExtras({
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -558,6 +563,7 @@ export function createDesktopTheme(runtime) {
     renderAssistant: theme.renderAssistant,
     renderUser: theme.renderUser,
     rewindListHtml: theme.rewindListHtml,
+    secretsWindowHtml: theme.secretsWindowHtml,
     setConsoleSpin: theme.setConsoleSpin,
     setLiveLabelText: theme.setLiveLabelText,
     setLivePhase: theme.setLivePhase,

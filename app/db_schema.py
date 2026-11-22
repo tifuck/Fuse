@@ -454,6 +454,8 @@ def _ensure_chat_columns(conn: sqlite3.Connection) -> None:
     retention.init_schema(conn)
     from . import memory
     memory.init_schema(conn)
+    from . import secret_guard
+    secret_guard.init_schema(conn)
     from . import notices
     notices.init_schema(conn)
     from . import command_jobs
@@ -700,6 +702,7 @@ def _ensure_artifact_tables(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "artifacts", "icon", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "artifacts", "viewed_at", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "artifacts", "expired_at", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "artifacts", "display", "TEXT NOT NULL DEFAULT 'panel'")
     _ensure_column(conn, "artifact_versions", "doc_format", "TEXT NOT NULL DEFAULT 'html'")
     _ensure_column(conn, "artifact_versions", "note", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "users", "chat_artifacts", "INTEGER NOT NULL DEFAULT 1")

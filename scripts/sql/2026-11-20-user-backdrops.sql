@@ -1,6 +1,6 @@
 -- Custom backdrops (app/backdrops.py): per-user HTML documents the chat draws
 -- as a wallpaper in a sandboxed iframe (GET /backdrop/<public_id>). At most
--- 24 per user, each at most 128 KB; rows never change once written. They go
+-- 8 per user, each at most 128 KB; rows never change once written. They go
 -- with their account (ON DELETE CASCADE). Additive.
 -- Apply as root, fuse_dev first, then fuse_live as its own reviewed step
 -- (before promoting the code that reads it):

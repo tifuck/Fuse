@@ -16,6 +16,7 @@ _THINK = re.compile(r"</?(?:think|thinking|thought|reasoning)>", re.I)
 # before the call runs (the page itself can take minutes to stream).
 _DRAFT_TOOLS = ("create_artifact", "update_artifact", "edit_artifact")
 _DRAFT_TITLE = re.compile(r'"title"\s*:\s*"((?:[^"\\]|\\.){1,160})"')
+_DRAFT_DISPLAY = re.compile(r'"display"\s*:\s*"inline"')
 _DRAFT_IDENT = re.compile(r'"identifier"\s*:\s*"([A-Za-z0-9_\-/:.]{8,200})"')
 
 
@@ -313,6 +314,8 @@ class Output:
         title = _DRAFT_TITLE.search(head)
         ident = _DRAFT_IDENT.search(head)
         out = {"tool": draft["tool"], "chars": draft["chars"]}
+        if _DRAFT_DISPLAY.search(head):
+            out["display"] = "inline"
         if title:
             try:
                 out["title"] = json.loads('"' + title.group(1) + '"')[:80]

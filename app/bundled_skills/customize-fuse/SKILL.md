@@ -11,7 +11,7 @@ A backdrop is the animated picture behind the chat transcript. Built-in ones are
 
 ## Compatibility rules (a backdrop that breaks one fails or looks wrong)
 
-- One self-contained HTML document: `<!doctype html>`, inline `<style>` and `<script>` only. Canvas 2D or WebGL is fine.
+- One self-contained HTML document: `<!doctype html>`, inline `<style>` and `<script>` only. Canvas 2D or WebGL is fine; workers and WebRTC are blocked.
 - No network at all: no external scripts, stylesheets, fonts, images or fetches. Only `data:` URIs for images or fonts. The sandbox blocks everything else, so it would just be missing.
 - Pure picture: no text, buttons, links, forms or anything interactive. It never receives clicks or keys.
 - Fills the viewport with no scrollbars: `html,body{margin:0;height:100%;overflow:hidden}` and a full-size canvas or element.
@@ -37,7 +37,7 @@ Fuse's built-in scenes are quiet and low-contrast, one hue family each, in four 
 3. Tell the user to click "Use this" under the one they like (Fuse asks to confirm, then applies it at once). It only works when the artifact is open inside the Fuse chat.
 4. On feedback, change the artifact with `edit_artifact` (do not create a new one), then ask them to try again.
 
-Reverting: choose another backdrop or None in Appearance > Backdrop. Custom backdrops are deleted from the "Yours" group there.
+Reverting: choose another backdrop or None in Appearance > Backdrop. Custom backdrops are deleted from the "Yours" group there. If a backdrop hangs the page, open `/chat?nobackdrop`: it loads no custom backdrop, so Appearance still works.
 
 ## Template artifact
 

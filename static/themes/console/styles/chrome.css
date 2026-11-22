@@ -57,6 +57,12 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-bra
    and unread marks share one centre. In a tab it sits on the label's line. */
 html body.is-chat .chat:is([data-view="console"]) .chat-history-item .chat-run-spin[data-run-spin] > .chat-console-spin { width: 0.82rem; }
 html body.is-chat .chat:is([data-view="console"]) .chat-history-tab .chat-run-spin[data-run-spin] { translate: 0 -0.1rem; }
+/* The other tab's spinner and unread count lead its label as one tight
+   cluster, with a clear gap before the word. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-tab { gap: 0.4rem; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-tab .chat-run-spin { order: -2; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-tab .chat-history-tab-unread { order: -1; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-tab .chat-run-spin:not([hidden]) + .chat-history-tab-unread { margin-left: -0.25rem; }
 
 /* Kickers inside the list line up with the one above it. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-history-list > .chat-history-kicker { padding-inline: 0.625rem; }
