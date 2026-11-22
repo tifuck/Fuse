@@ -41,7 +41,9 @@ def build_app():
     uses, without its lifespan (no pools, loops or recovery)."""
     from app import main
 
-    app = FastAPI()
+    # No docs routes of its own, as in app.main: FastAPI's default /docs would
+    # shadow the dashboard's.
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SessionMiddleware, secret_key=settings.app_secret, https_only=True, same_site="lax")
     app.router.routes.extend(main.app.routes)
     app.add_exception_handler(StarletteHTTPException, main.http_errors)
