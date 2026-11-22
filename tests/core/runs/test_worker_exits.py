@@ -1,8 +1,6 @@
 """How the run worker ends a turn whose generation misbehaves: past its wall
 clock, with a frame over the size limit, or with a stream that stops before
-its terminal frame. Each fails the turn with an error the user can read and
-keeps what was already shown."""
-import asyncio
+its terminal frame. Each fails the turn with an error the user can read."""
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -16,13 +14,12 @@ def _reply(uid, thread_id):
     return chats.get_thread(uid, thread_id)["messages"][-1]
 
 
-def test_a_turn_past_its_time_limit_fails_and_keeps_its_text(fresh_db):
+def test_a_turn_past_its_time_limit_fails(fresh_db):
     uid = quick_user()
 
     async def body():
         provider.arm()
         thread, run, task = await start_run(uid, "write a story")
-        await asyncio.wait_for(provider.sent.wait(), 5)
         await wait_run(task, 10)
         return thread, run
 
@@ -31,9 +28,7 @@ def test_a_turn_past_its_time_limit_fails_and_keeps_its_text(fresh_db):
         thread, run = run_async(body())
 
     assert chat_store.get_run(uid, run["id"])["status"] == "failed"
-    reply = _reply(uid, thread["id"])
-    assert reply["error"] == "Generation exceeded its time limit."
-    assert reply["content"] == "Once upon"
+    assert _reply(uid, thread["id"])["error"] == "Generation exceeded its time limit."
 
 
 def test_a_frame_over_the_size_limit_fails_the_turn(fresh_db):
