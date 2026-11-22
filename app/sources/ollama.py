@@ -673,6 +673,7 @@ class OllamaSource:
                 return result
             if shared:
                 ollama_access.note(self.source_id, model, ollama_access.FREE, status=200)
+            attempts = own_attempts + (response.extensions.get("fuse_attempts") or [])
             sticky = bool(self.cfg.get("sticky_sessions", True) and session_id)
             if stream:
                 stream_returned = True
@@ -696,7 +697,7 @@ class OllamaSource:
                     stream=gen,
                     credential_id=cid,
                     model=model,
-                    attempts=own_attempts,
+                    attempts=attempts,
                 )
             try:
                 await response.aread()
@@ -745,7 +746,7 @@ class OllamaSource:
             usage = usage_from_obj(obj)
             if sticky:
                 bind(self.pin_kind, session_id, cid)
-            return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model, attempts=own_attempts)
+            return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model, attempts=attempts)
         finally:
             if not stream_returned:
                 await response.aclose()

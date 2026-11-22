@@ -52,6 +52,10 @@ def resumed_after_stop(agent, stopped_at: str) -> bool:
 # (agents pane Stop). 1 is every other cancellation: a root Stop cascade, the
 # parent's kill_subagent, a finishing parent killing its foreground children.
 USER_STOPPED = 2
+# chat_runs.cancel_requested value for a root stopped by Send now: its reply
+# ends but its background commands keep running, whoever finalizes the row
+# (its worker, the grace-window abort, the reaper, boot recovery).
+KEEP_JOBS = 3
 
 
 def user_stopped(status, cancel_requested) -> bool:
@@ -1285,8 +1289,8 @@ def request_interrupt(user_id, run_id):
             return None
         ts = db.now()
         if conn.execute(
-            "UPDATE chat_runs SET cancel_requested=1,cancel_requested_at=?,updated_at=? WHERE id=? AND cancel_requested=0",
-            (ts, ts, run_id),
+            "UPDATE chat_runs SET cancel_requested=?,cancel_requested_at=?,updated_at=? WHERE id=? AND cancel_requested=0",
+            (KEEP_JOBS, ts, ts, run_id),
         ).rowcount:
             chat_tx.event(conn, user_id, "run.cancel_requested", row["thread_id"], _cancel_event_payload(row))
         return [item["id"] for item in conn.execute(

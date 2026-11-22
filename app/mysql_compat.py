@@ -54,13 +54,19 @@ _SQLITE_ONLY = (exp.Glob, exp.Collate, exp.Typeof)
 _SQLITE_ONLY_FUNCTIONS = frozenset(("datetime", "julianday", "unixepoch"))
 
 
+def _non_integer(node) -> bool:
+    return (isinstance(node, exp.Cast) and not node.to.is_type(*exp.DataType.INTEGER_TYPES)) or (
+        isinstance(node, exp.Literal) and node.is_number and not node.is_int)
+
+
 def _node(node):
     if isinstance(node, _SQLITE_ONLY) or (
             isinstance(node, exp.Anonymous) and node.name.lower() in _SQLITE_ONLY_FUNCTIONS):
         raise ValueError(f"Unported SQLite syntax: {node.sql(dialect='sqlite')}")
     if isinstance(node, exp.Is) and isinstance(node.expression, exp.Placeholder):
         return exp.NullSafeEQ(this=node.this, expression=exp.Var(this="__fuse_parameter__"))
-    if isinstance(node, exp.Div) and isinstance(node.this, exp.Cast):
+    if (isinstance(node, exp.Div) and isinstance(node.this, exp.Cast)
+            and node.this.to.is_type(*exp.DataType.INTEGER_TYPES) and not _non_integer(node.expression)):
         # SQLite integer division truncates toward zero; sqlglot's IntDiv
         # renders as CAST(a / b AS SIGNED), which MariaDB rounds.
         quotient = exp.Div(this=node.this.transform(_node), expression=node.expression.transform(_node))
@@ -97,7 +103,12 @@ def _rewrite(sql: str, lock_rows: bool = False) -> str:
         # retain SQLite's writer exclusion. Do not also lock preliminary
         # thread/user lookups: that would invert finalization's run->thread
         # write order and introduce deadlocks with a concurrent turn submit.
-        if any(table.name.lower() == "chat_runs" for table in statement.find_all(exp.Table)):
+        # Only when the outer query reads chat_runs itself: FOR UPDATE locks
+        # every table the outer query reads, and a thread view that mentions
+        # chat_runs in a subquery would lock its project, host and schedule.
+        # A caller that needs another row locked says FOR UPDATE itself.
+        source = statement.args.get("from_")
+        if source is not None and isinstance(source.this, exp.Table) and source.this.name.lower() == "chat_runs":
             statement.set("locks", [exp.Lock(update=True)])
     statement = statement.transform(_node)
     conflict = statement.args.get("conflict") if isinstance(statement, exp.Insert) else None

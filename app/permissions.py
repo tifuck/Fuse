@@ -13,8 +13,9 @@ read at gate time, so toggling it applies instantly to running subagents.
 Auto-approve (Jev) sits next to bypass, also read live: every call that would
 ask, shell commands included, goes to Jev first when the user has an
 OpenRouter key, and only a dangerous or unanswered verdict shows the card.
-Secret-named targets and regex-destructive shells always ask. Turning Auto on
-while a card waits sends that ask to Jev too.
+Denylist hits and commands carrying a protected value (secret_guard) never go
+to Jev: they wait for the user. Turning Auto on while a card waits sends that
+ask to Jev too.
 
 A call the gate allows outside the working root (temp, a grant, an approval)
 returns root_override="" so workspace confinement does not reject it. A
@@ -57,8 +58,9 @@ _SECRET_EXACT = frozenset({
     "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
     "shadow", "gshadow", ".pgpass", ".my.cnf", ".git-credentials",
     "credentials", "secrets.json", "token.json", "kubeconfig", ".envrc",
+    "id_ecdsa_sk", "id_ed25519_sk", ".pypirc", ".vault-token", ".s3cfg", ".boto",
 })
-_SECRET_SUFFIX = (".pem", ".key", ".keystore", ".env")
+_SECRET_SUFFIX = (".pem", ".key", ".keystore", ".env", ".p12", ".pfx", ".jks", ".ppk", ".kdbx", ".tfstate")
 _SECRET_DOTENV = re.compile(r"^\.env([._-]|$)")
 _TEMPLATE_OK = frozenset({".env.example", ".env.sample", ".env.template"})
 
@@ -67,6 +69,9 @@ _HOME_PREFIXES = ("~", "$HOME", "%USERPROFILE%")
 _DIR_TOOLS = frozenset({"list_dir", "grep", "glob"})
 _FILE_TOOLS = frozenset({"read_file", "write_file", "search_replace"})
 _WRITE_TOOLS = frozenset({"write_file", "search_replace"})
+# Allow-always on one of these stores a read-only grant (kind dir_read or
+# file_read): it never covers a write or a shell command in that place.
+_READ_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob"})
 # spawn_subagent's cwd becomes the child's working root, so it is reviewed
 # like a directory the parent itself wants to enter.
 _GATED_TOOLS = _DIR_TOOLS | _FILE_TOOLS | {"run_terminal_command", "monitor", "spawn_subagent"}
@@ -105,6 +110,12 @@ _HARMLESS_DEVICES = frozenset({
     "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/tty",
 })
 _DEV_FD = re.compile(r"^/dev/fd/\d+$")
+# Verbs that change what they name: a harmless device among their operands is
+# a target to approve (rm /dev/null). cp and install change only their last
+# operand, dd only its of=.
+_MUTATING_VERBS = frozenset({
+    "rm", "mv", "ln", "chmod", "chown", "chgrp", "truncate", "shred", "unlink", "mknod", "rmdir",
+})
 # A heredoc fed to one of these is a script for another shell, so its body
 # is globbed and expanded like the command line itself.
 _HEREDOC_SHELLS = frozenset({
@@ -142,6 +153,18 @@ _INTERPRETER_SHELL = re.compile(
     r"|\b(?:start-process|saps)\b|(?:^|[;&|(\n])\s*start(?=\s)"
     r"|(?-i:(?<![^\s;&|(])(?:[^\s;&|()]*[/\\])?(?:python[\d.]*|pypy[\d.]*|node|nodejs|bun|perl|ruby|php|lua(?:jit)?|Rscript)"
     r"(?:\.exe)?(?:\s+-\S*)*?\s+(?:-[A-Za-z]*[ceE]|-r|-p|--eval|--print)(?![^\s'\"=]))"
+    # PowerShell runs a computed string or name: iex, the call operator on an
+    # expression (& ('Get-'+'Date'), & $x) and dot-sourcing one.
+    r"|(?:^|[;&|(\n{])\s*(?:iex|invoke-expression)\b"
+    r"|(?:^|[;|(\n{])\s*[&.]\s*[('\"$]"
+    # A script read from stdin: piped into a shell or interpreter (echo x | sh,
+    # | bash -s), a here-string for a shell, a heredoc or `-` for an interpreter.
+    r"|(?<!\|)\|(?!\|)\s*(?:sudo\s+(?:-\S+\s+)*)?(?:[^\s;&|()]*[/\\])?"
+    r"(?:(?:ba|z|da|k|a|c|tc|fi|mk)?sh|pwsh|powershell|python[\d.]*|pypy[\d.]*|node|nodejs|bun|deno|perl|ruby|php|lua(?:jit)?)"
+    r"(?:\.exe)?(?![\w.-])(?:(?:\s+-\S*)*\s*(?=$|[;&|)\n])|(?:\s+-\S*)*?\s+-s(?=\s))"
+    r"|(?<![\w.-])(?:ba|z|da|k|a|c|tc|fi|mk)?sh(?:\.exe)?(?:\s+-\S*)*\s*<<<"
+    r"|(?-i:(?<![\w.-])(?:python[\d.]*|pypy[\d.]*|node|nodejs|bun|deno|perl|ruby|php|lua(?:jit)?)(?:\.exe)?"
+    r"(?:\s+-\S*)*?\s*(?:<<|\s-(?=\s|$)))"
 )
 _FETCH_EXEC_SHELL = re.compile(
     r"(?is)\b(?:curl|wget|fetch|aria2c)\b[^\n;]*\|\s*(?:sudo\s+)?(?:ba|z|k|fi|a|c|tc|da)?sh\b"
@@ -162,6 +185,37 @@ _NETWORK_SEND_SHELL = re.compile(
     rf"|{_CMD_AT}(?:nc|ncat|netcat|socat|telnet|scp|sftp|ssh)(?=\s|$)"
     rf"|{_CMD_AT}rsync\b[^\n;&|]*\s[^\s:/'\"-][^\s:'\"]*:(?!//)"
 )
+# Commands that read a whole tree. Aimed at a home, /home, /root or / they
+# read every credential directory under it (~/.ssh, ~/.aws) though no path
+# they name is one.
+_TREE_READ_SHELL = re.compile(
+    rf"(?s){_CMD_AT}(?:e|f)?grep\b[^\n;&|]*\s(?:-[a-zA-Z]*[rR]|--recursive|--dereference-recursive|--directories=recurse)"
+    rf"|{_CMD_AT}(?:rg|ag)(?=\s)"
+    rf"|{_CMD_AT}tar\s+(?:-?[a-zA-Z]*c|[^\n;&|]*\s(?:-[a-zA-Z]*c|--create))"
+    rf"|{_CMD_AT}zip\b[^\n;&|]*\s(?:-[a-zA-Z]*r|--recurse-paths)"
+    rf"|{_CMD_AT}(?:cp|rsync)\b[^\n;&|]*\s(?:-[a-zA-Z]*[rRa]|--recursive|--archive)"
+    rf"|{_CMD_AT}find\b[^\n;&|]*\s-exec(?:dir)?\b"
+)
+# Searches that walk the working directory when they name no path (grep -r x).
+_TREE_SEARCH_SHELL = re.compile(rf"(?s){_CMD_AT}(?:(?:e|f)?grep\b[^\n;&|]*\s(?:-[a-zA-Z]*[rR]|--recursive)|rg\s|ag\s)")
+
+
+def _searches_cwd(command: str, windows: bool) -> bool:
+    """A lone recursive search naming at most its pattern walks the cwd."""
+    if _COMPOUND_SHELL.search(command) or not _TREE_SEARCH_SHELL.search(command):
+        return False
+    words = [t for t in _shell_tokens(command, windows)[1:] if not t.startswith("-")]
+    return len(words) <= 1
+
+
+def _holds_credential_dirs(path: str, windows: bool) -> bool:
+    """A home or a directory above homes, where ~/.ssh and ~/.aws live."""
+    norm = _norm(path, windows)
+    if windows:
+        return norm == "~" or _fs_root(norm) or bool(re.fullmatch(r"[a-z]:\\users(?:\\[^\\]+)?", norm))
+    return norm in ("~", "/", "/root", "/home", "/Users") or bool(re.fullmatch(r"/(?:home|Users)/[^/]+", norm))
+
+
 # A download followed, in the same command, by something that runs a file.
 _DOWNLOAD_SHELL = re.compile(rf"(?s){_CMD_AT}(?:curl|wget|fetch|aria2c)\b")
 _RUN_FILE_SHELL = re.compile(
@@ -292,14 +346,29 @@ def secret_dir_in_path(path: str) -> bool:
     return any(_secret_dir_at(parts, i) for i in range(len(parts) - 1))
 
 
+def _win_trim(path: str) -> str:
+    """Each name as Win32 opens it: trailing dots and spaces are dropped, so
+    `.. ` climbs like `..` (a name of only dots and spaces is judged as `..`
+    when it holds two dots, else `.`)."""
+    parts = str(path or "").replace("/", "\\").split("\\")
+    out = []
+    for part in parts:
+        if part and part[-1] in ". ":
+            part = part.rstrip(". ") or (".." if ".." in part else ".")
+        out.append(part)
+    return "\\".join(out)
+
+
 def _norm(path: str, windows: bool) -> str:
     text = str(path or "")
     home = r"^\$HOME(?=$|[/\\])" if windows else r"^\$HOME(?=$|/)"
     text = re.sub(home, "~", text)
     if windows:
         text = re.sub(r"^%USERPROFILE%(?=$|[/\\])", "~", text, flags=re.I)
-        return ntpath.normcase(ntpath.normpath(text.replace("/", "\\")))
-    return posixpath.normpath(text)
+        return ntpath.normcase(ntpath.normpath(_win_trim(text)))
+    text = posixpath.normpath(text)
+    # POSIX leaves a leading // to the system; Linux reads it as /.
+    return "/" + text.lstrip("/") if text.startswith("//") else text
 
 
 def _is_home_marker(root: str) -> bool:
@@ -336,7 +405,7 @@ def is_temp_path(path: str, windows: bool) -> bool:
     if not raw:
         return False
     if windows:
-        low = ntpath.normpath(expand_temp(raw, True).replace("/", "\\")).lower()
+        low = ntpath.normpath(_win_trim(expand_temp(raw, True))).lower()
         home_tmp = WIN_TEMP_HOME.lower()
         return low == home_tmp or low.startswith(home_tmp + "\\") or bool(_WIN_TEMP_ABS.match(low))
     n = posixpath.normpath(raw)
@@ -349,7 +418,7 @@ def in_fuse_temp(path: str, windows: bool) -> bool:
     if not raw:
         return False
     if windows:
-        low = ntpath.normpath(expand_temp(raw, True).replace("/", "\\")).lower()
+        low = ntpath.normpath(_win_trim(expand_temp(raw, True))).lower()
         home_tmp = WIN_TEMP_HOME.lower()
         if low == home_tmp or low.startswith(home_tmp + "\\"):
             rest = low[len(home_tmp):]
@@ -409,7 +478,7 @@ def _resolve_for_scope(target: str, base: str, windows: bool, *, normalize: bool
     if raw.startswith("%USERPROFILE%"):
         raw = "~" + raw[13:]
     if windows:
-        raw = raw.replace("/", "\\")
+        raw = _win_trim(raw)
         base2 = base.replace("/", "\\") if base else "~"
         if _is_home_marker(base2):
             base2 = "~"
@@ -467,6 +536,23 @@ def _grant_dir_for(tool: str, target: str, windows: bool) -> str:
         return raw
     head = (ntpath.split(raw.replace("/", "\\")) if windows else posixpath.split(raw))[0]
     return head or raw
+
+
+def _fs_root(path: str) -> bool:
+    """/ or a drive root (C:\\, \\): a grant there would cover the whole machine."""
+    text = posixpath.normpath(str(path or "").replace("\\", "/"))
+    return bool(re.fullmatch(r"/+|[A-Za-z]:/*", text))
+
+
+def _path_grant(tool: str, target: str, windows: bool) -> tuple[str, str]:
+    """(kind, value) Allow-always offers for a path ask: its directory, but
+    never a filesystem root; there the exact file, or nothing for the root."""
+    value = _grant_dir_for(tool, target, windows)
+    if not _fs_root(value):
+        return "dir", value
+    if _fs_root(target):
+        return "", ""
+    return "file", target
 
 
 # --- shell path extraction (opaque commands require approval) ---
@@ -618,8 +704,11 @@ def _opaque_reason(command: str) -> str:
 def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str, bool]] | None:
     """Path-looking tokens as (path, is_dir). None = opaque command.
     is_dir marks cd/pushd targets (a directory by construction); everything
-    else is treated as a file-ish target. Device sinks such as /dev/null are
-    left out: discarding output reaches nothing outside the project."""
+    else is treated as a file-ish target. A harmless device (/dev/null,
+    /dev/urandom) is left out where it is only read or written through
+    (2>/dev/null, head -c 32 /dev/urandom): that reaches nothing outside the
+    project. As what a mutating verb changes (rm /dev/null, mv a /dev/null,
+    dd of=/dev/null) it is a target like any other."""
     text = str(command or "").strip()
     if not text or _OPAQUE_SHELL.search(text) or _INTERPRETER_SHELL.search(text):
         return None
@@ -627,13 +716,26 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
         tokens = _shell_tokens(text, windows)
     except ValueError:
         return None
-    # (path, is_dir, the directory a relative path is resolved in): a cd moves
-    # where later relative operands point.
-    out: list[tuple[str, bool, str]] = []
+    # (path, is_dir, the directory a relative path is resolved in, changed by
+    # a mutating verb): a cd moves where later relative operands point.
+    out: list[tuple[str, bool, str, bool]] = []
     base = cwd or "~"
     prev = ""
     expect_target = False
+    verb, at_start = "", True
+    copy_dest: list[int] = []  # entries of a cp/install's latest operand: its destination so far
+
+    def end_command():
+        for i in copy_dest:
+            out[i] = out[i][:3] + (True,)
+        copy_dest.clear()
+
     for tok in tokens:
+        if set(tok) <= set(_SHELL_SEPARATORS):
+            end_command()
+            verb, at_start = "", True
+        elif at_start and not (_ASSIGNED_VALUE.match(tok) or tok in ("sudo", "nohup", "time", "command", "exec")):
+            verb, at_start = re.split(r"[\\/]", tok.strip("'\""))[-1].lower(), False
         # shlex keeps redirect operators glued to operands (echo x>/f), so
         # split them out; the piece after > or < is a path target.
         for piece in _REDIR_TOKENS.split(tok):
@@ -650,7 +752,7 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
                 # Inside a quoted script the rest of the script follows the
                 # operator: judge its words, not the whole piece as one name.
                 if not re.search(r"\s", stripped):
-                    out.append((stripped, False, base))
+                    out.append((stripped, False, base, False))
                     prev = ""
                     continue
             if stripped in (">", ">>", "2>", "2>>", "<", "&>", "&>>", "1>", "1>>", "0<"):
@@ -670,22 +772,27 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
                 if stripped in ("&&", ";", "||", "&", "|"):
                     base = "~"  # a bare cd goes home
                     continue
-                out.append((stripped, True, base))
+                out.append((stripped, True, base, False))
                 base = _resolve_for_scope(stripped, base, windows)
                 continue
+            writes = verb in _MUTATING_VERBS or (verb == "dd" and stripped.startswith("of="))
             if _ASSIGNED_VALUE.match(stripped):
                 # --file=/etc/x, if=/dev/sda, awk -v f=/etc/x: the value is the
                 # target, not a cwd-relative name.
                 stripped = stripped.split("=", 1)[1]
-            out.extend((path, False, base) for path in _token_paths(stripped, windows))
+            start = len(out)
+            out.extend((path, False, base, writes) for path in _token_paths(stripped, windows))
+            if verb in ("cp", "install") and not piece.startswith("-"):
+                copy_dest[:] = range(start, len(out))
+    end_command()
     resolved: list[tuple[str, bool]] = []
     seen: list[str] = []
-    for item, is_dir, base in out:
+    for item, is_dir, base, writes in out:
         cand = item
         if not (cand.startswith(("/", "~")) or cand.startswith("$HOME") or cand.startswith("%")
                 or _WIN_DRIVE.match(cand) or cand.startswith("\\\\") or (windows and _PS_PROVIDER.match(cand))):
             cand = (ntpath.join(base, cand) if windows else posixpath.join(base, cand)) if not _is_home_marker(base) else "~/{}".format(cand)
-        if _harmless_device(cand, windows):
+        if not writes and _harmless_device(cand, windows):
             continue
         if cand and cand not in seen:
             seen.append(cand)
@@ -840,20 +947,23 @@ def _grant_rows(user_id: int, thread_id: int | None, host_id: int):
     return rows
 
 
-def grant_covers(user_id: int, thread_id: int | None, host_id: int, kind: str, value: str, windows: bool) -> bool:
+def grant_covers(user_id: int, thread_id: int | None, host_id: int, kind: str, value: str, windows: bool,
+                 reads: bool = False) -> bool:
+    """reads: the call only reads (_READ_TOOLS), so read-only grants count too."""
     v = _norm(value, windows) if value else ""
     if not v:
         return False
-    return _rows_cover(_grant_rows(user_id, thread_id, host_id), kind, value, windows)
+    return _rows_cover(_grant_rows(user_id, thread_id, host_id), kind, value, windows, reads)
 
 
-def _rows_cover(rows, kind: str, value: str, windows: bool) -> bool:
+def _rows_cover(rows, kind: str, value: str, windows: bool, reads: bool = False) -> bool:
     """grant_covers over grant rows already read (_grant_rows)."""
     v = _norm(value, windows) if value else ""
     if not v:
         return False
+    kinds = (kind, kind + "_read") if reads else (kind,)
     for row in rows:
-        if row["kind"] != kind:
+        if row["kind"] not in kinds:
             continue
         g = _norm(row["value"] or "", windows)
         if not g:
@@ -896,7 +1006,8 @@ def grants_for(user_id: int, thread_id: int) -> list[dict]:
             "scope": "session" if row["thread_id"] is not None else "host",
             "host_id": int(row["host_id"]),
             "host": row["host_alias"] or "",
-            "kind": row["kind"],
+            "kind": row["kind"].removesuffix("_read"),
+            "reads_only": row["kind"].endswith("_read"),
             "value": row["value"],
             "created_at": row["created_at"],
         })
@@ -1107,12 +1218,17 @@ def _resolve(user_id: int, thread_id: int, ask_id: str, action: str) -> dict:
             # instead of resurrecting a finished ask or minting a grant.
             row = conn.execute("SELECT * FROM chat_permission_asks WHERE id=?", (ask_id,)).fetchone()
             return _public_payload(row)
+        kind = row["grant_kind"]
+        if kind in ("dir", "file") and row["tool"] in _READ_TOOLS:
+            kind += "_read"
+        if kind in ("dir", "file", "dir_read", "file_read") and _fs_root(row["grant_value"]):
+            kind = ""
         if action == "allow_session":
-            if row["grant_kind"] and row["host_id"]:
-                add_grant(user_id, int(row["thread_id"]), int(row["host_id"]), row["grant_kind"], row["grant_value"], conn=conn)
+            if kind and row["host_id"]:
+                add_grant(user_id, int(row["thread_id"]), int(row["host_id"]), kind, row["grant_value"], conn=conn)
         elif action == "allow_host":
-            if row["grant_kind"] and row["host_id"]:
-                add_grant(user_id, None, int(row["host_id"]), row["grant_kind"], row["grant_value"], conn=conn)
+            if kind and row["host_id"]:
+                add_grant(user_id, None, int(row["host_id"]), kind, row["grant_value"], conn=conn)
         return _public_payload(conn.execute("SELECT * FROM chat_permission_asks WHERE id=?", (ask_id,)).fetchone())
 
 
@@ -1669,12 +1785,17 @@ async def review_env(gate: Gate | None, *, tool: str, names: list[str], command:
 
 async def review(*, tool: str, args: dict, user_id: int,
                  host_id: int, host_alias: str, root: str, windows: bool,
-                 gate: Gate | None, deny_reason: str = "", realpath=None) -> ReviewResult:
+                 gate: Gate | None, deny_reason: str = "", realpath=None,
+                 masked_command: str | None = None) -> ReviewResult:
     """Decide whether a workspace tool call may run. Pure verdict + ask flow.
 
     deny_reason (workspace denylist hit): the command may only run on the
-    user's own Allow, bypass, or Auto's Jev verdict (it rides along as an
-    advisory) — never a grant or Allow-always.
+    user's own Allow or bypass — never Auto's Jev, a grant or Allow-always.
+
+    masked_command: the command as the model wrote it, before secret_guard
+    put the real values in. When they differ the command carries a protected
+    value: it is handled like a denylist hit, and the card, the ask row and
+    Jev only ever see this masked form.
 
     realpath (async, list of paths -> list of host-resolved paths or None):
     lexical scope alone lets a symlink inside a root reach outside it, so an
@@ -1704,6 +1825,8 @@ async def review(*, tool: str, args: dict, user_id: int,
     # Why a shell command needs approval regardless of the paths it names.
     restricted_why: list[str] = []
     secret_target = ""
+    protected = False
+    shown_command = ""
 
     if tool == "spawn_subagent" and not target:
         return ReviewResult(allowed=True)
@@ -1712,6 +1835,8 @@ async def review(*, tool: str, args: dict, user_id: int,
         command = str(args.get("command") or "")
         if tool == "monitor" and not command and str(args.get("url") or "").strip():
             return ReviewResult(allowed=True)
+        shown_command = command if masked_command is None else str(masked_command)
+        protected = shown_command != command
         raw_cwd = str(args.get("cwd") or "")
         cwd = raw_cwd or (root if root and not _is_home_marker(root) else "~")
         cwd_ok, resolved_cwd = scope_allows(raw_cwd or cwd, root or "~", roots, windows)
@@ -1720,7 +1845,7 @@ async def review(*, tool: str, args: dict, user_id: int,
         if not cwd_in:
             reasons.append(f"working directory {cwd} is outside the allowed roots")
             out_of_root = True
-            grant_kind, grant_value = "dir", resolved_cwd
+            grant_kind, grant_value = _path_grant("list_dir", resolved_cwd, windows)
             shell_grants.append((grant_kind, grant_value))
         base = resolved_cwd if resolved_cwd and not _is_home_marker(resolved_cwd) else "~"
         paths = extract_shell_paths(command, base, windows)
@@ -1742,6 +1867,8 @@ async def review(*, tool: str, args: dict, user_id: int,
             restricted_why.append("it sends data from this machine over the network")
         if deny_reason:
             restricted_why.append(deny_reason)
+        if protected:
+            restricted_why.append("it contains a protected value")
         restricted_shell = bool(restricted_why)
         compound = _COMPOUND_SHELL.search(command) is not None
         if restricted_shell:
@@ -1779,11 +1906,21 @@ async def review(*, tool: str, args: dict, user_id: int,
                     # directory (which would silently cover siblings).
                     need = (
                         ("file", resolved_cand) if is_secret_path(resolved_cand) else
-                        ("dir", resolved_cand if is_dir else _grant_dir_for("read_file", resolved_cand, windows))
+                        _path_grant("list_dir" if is_dir else "read_file", resolved_cand, windows)
                     )
                     shell_grants.append(need)
                     if not grant_value:
                         grant_kind, grant_value = need
+            if _TREE_READ_SHELL.search(command):
+                trees = [scope_allows(cand, base, roots, windows)[1] for cand, _ in paths]
+                if any(tok in (".", "./") for tok in _shell_tokens(command, windows)) or _searches_cwd(command, windows):
+                    trees.append(base)
+                tree = next((t for t in trees if _holds_credential_dirs(t, windows)), "")
+                if tree:
+                    # grep -r KEY ~, tar c / | ...: every key under it is read.
+                    secret = True
+                    secret_target = secret_target or tree
+                    reasons.append("reads a tree holding credential directories")
         unresolved: list[str] = []
         # `cat link` names no path, yet link may be a symlink out of the roots.
         # A plain word that does not resolve (`status`) is no file: it never asks.
@@ -1805,7 +1942,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                 if not real:
                     unresolved.append(lexical)
                     reasons.append(f"cannot resolve where {lexical} points")
-                    need = ("dir", lexical if is_dir else _grant_dir_for("read_file", lexical, windows))
+                    need = _path_grant("list_dir" if is_dir else "read_file", lexical, windows)
                 elif real == lexical:
                     continue
                 else:
@@ -1819,7 +1956,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                     reasons.append(f"{real} is outside the allowed roots (symlink {lexical})")
                     need = (
                         ("file", real) if is_secret_path(real) else
-                        ("dir", real if is_dir else _grant_dir_for("read_file", real, windows))
+                        _path_grant("list_dir" if is_dir else "read_file", real, windows)
                     )
                 out_of_root = True
                 shell_grants.append(need)
@@ -1857,14 +1994,14 @@ async def review(*, tool: str, args: dict, user_id: int,
                 in_roots = False
                 out_of_root = True
                 reasons.append(f"cannot resolve where {resolved} points")
-                grant_kind, grant_value = "dir", _grant_dir_for(tool, resolved, windows)
+                grant_kind, grant_value = _path_grant(tool, resolved, windows)
             elif real != resolved:
                 if not _in_roots(real, real_roots, windows):
                     in_roots = False
                     out_of_root = True
                     display = real
                     reasons.append(f"symlink target {real} is outside the allowed roots")
-                    grant_kind, grant_value = "dir", _grant_dir_for(tool, real, windows)
+                    grant_kind, grant_value = _path_grant(tool, real, windows)
                 if (not secret and secret_tool and is_secret_path(real)
                         and (secret_dir_in_path(real) or not in_roots)):
                     secret = True
@@ -1874,7 +2011,7 @@ async def review(*, tool: str, args: dict, user_id: int,
             out_of_root = True
             reasons.append("outside the allowed roots")
             if not grant_value:
-                grant_kind, grant_value = "dir", _grant_dir_for(tool, resolved, windows)
+                grant_kind, grant_value = _path_grant(tool, resolved, windows)
 
     relax = "" if (out_of_root or outside_work) else None
     if not reasons:
@@ -1889,7 +2026,7 @@ async def review(*, tool: str, args: dict, user_id: int,
     covered = False
     if paths_resolved and grant_value and not (perm_kind == "shell" and (restricted_shell or secret or compound)):
         grants = await asyncio.to_thread(_grant_rows, gate.user_id, gate.thread_id, host_id)
-        covered = all(_rows_cover(grants, kind, value, windows) for kind, value in needed)
+        covered = all(_rows_cover(grants, kind, value, windows, tool in _READ_TOOLS) for kind, value in needed)
     if covered:
         return ReviewResult(allowed=True, root_override=relax, resolved=resolved)
 
@@ -1909,7 +2046,7 @@ async def review(*, tool: str, args: dict, user_id: int,
         "host_id": int(host_id),
         "path": "" if perm_kind == "shell" else str(display or target)[:400],
         "cwd": cwd[:400] if perm_kind == "shell" else "",
-        "command": command[:8000],
+        "command": shown_command[:8000],
         "secret": secret,
         "reasons": reasons[:4],
         "requester": gate.requester,
@@ -1923,10 +2060,11 @@ async def review(*, tool: str, args: dict, user_id: int,
         description = clean_description(args.get("description"))
         if description:
             payload["description"] = description
-    # Auto: every call that would ask goes to Jev, destructive forms, denylist
-    # hits, and out-of-scope secret files included. Jev gets the regex hits as
+    # Auto: every call that would ask goes to Jev, destructive forms and
+    # out-of-scope secret files included. Jev gets the regex hits as
     # advisories and decides; the card appears only when Jev says dangerous
-    # (or is unavailable — judge() fails closed).
+    # (or is unavailable — judge() fails closed). Denylist hits and commands
+    # carrying a protected value are never Jev's call: only the user's.
     advisory = [r for r in reasons if r != _SHELL_APPROVAL]
     if _destructive_command(command):
         advisory.append("matches a destructive command pattern")
@@ -1935,7 +2073,7 @@ async def review(*, tool: str, args: dict, user_id: int,
         "host": host_alias,
         "path": payload["path"],
         "cwd": payload["cwd"],
-        "command": command,
+        "command": shown_command,
         # "requires approval" is the gate's policy, not a harm signal. The
         # advisory reasons (out of roots, secret file, denylist, destructive
         # pattern) are what Jev weighs.
@@ -1945,7 +2083,9 @@ async def review(*, tool: str, args: dict, user_id: int,
     async def auto_judge():
         return await _auto_verdict(gate, tool, jev_action, roots)
 
-    if await asyncio.to_thread(auto_enabled, gate.user_id, gate.thread_id):
+    if deny_reason or protected:
+        auto_judge = None
+    elif await asyncio.to_thread(auto_enabled, gate.user_id, gate.thread_id):
         verdict = await auto_judge()
         if verdict:
             return ReviewResult(allowed=True, root_override=relax, resolved=resolved)

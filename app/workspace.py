@@ -127,7 +127,17 @@ logger = logging.getLogger(__name__)
 # catastrophic forms only; it is not a sandbox (the permission gate is).
 # With a gate these forms always raise the ask card (never Jev, never a grant)
 # and run on the user's own Allow or on bypass; gateless callers are blocked.
-_CMD_START = r"(?:^|[;&|(`{]\s*|\$\(\s*|\b(?:then|do|else|exec|command|builtin|xargs|env|nohup|time|nice|ionice|eval|setsid|busybox)\s+['\"]?|\b(?:(?:ba|z|k|c|da|fi|tc|a)?sh(?:\.exe)?|pwsh|powershell(?:\.exe)?)\s+-c\s+['\"]?)"
+# Before the command itself may come assignments (FOO=1 sudo), a ! and
+# wrappers with their options and plain values (env -i, nice -n 5,
+# timeout -s KILL 5, stdbuf -oL); a shell's -c may follow other options.
+_CMD_ASSIGN = r"(?:[A-Za-z_]\w*=\S*\s+)*"
+_CMD_WRAP_ARG = r"(?:-\S*|\d\S*|(?-i:[A-Z][A-Z0-9_]*))"
+_CMD_START = (
+    r"(?:(?:^|[;&|(`{]|\$\()\s*(?:!\s*)?" + _CMD_ASSIGN
+    + r"|\b(?:then|do|else|exec|command|builtin|xargs|env|nohup|time|nice|ionice|eval|setsid|busybox"
+    r"|timeout|stdbuf|chrt|taskset|watch|unbuffer)(?:\s+" + _CMD_WRAP_ARG + r")*\s+" + _CMD_ASSIGN + r"['\"]?"
+    r"|\b(?:(?:ba|z|k|c|da|fi|tc|a)?sh(?:\.exe)?|pwsh|powershell(?:\.exe)?)\s+(?:-\S+\s+)*-[a-z]*c(?:ommand)?\s+['\"]?)"
+)
 _DENY = re.compile(
     _CMD_START
     # /sbin/reboot, ./bin/sudo: a command named by its path is the same command
@@ -140,6 +150,8 @@ _DENY = re.compile(
     r"|(?:shutdown|reboot|poweroff|halt)\b"
     r"|(?:sudo|doas|pkexec)\b"
     r"|systemctl\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec|suspend|hibernate|hybrid-sleep|suspend-then-hibernate)\b"
+    r"|systemctl\s+(?:-\S+\s+)*(?:start|isolate)\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec)(?:\.target)?\b"
+    r"|loginctl\s+(?:-\S+\s+)*(?:reboot|poweroff|halt|kexec|suspend|hibernate)\b"
     r"|telinit\b"
     r"|init\s+[06](?=\s|$|[;&|)])"
     # pid -1 signals every process the caller may signal
@@ -158,7 +170,7 @@ RESERVED = frozenset({"local", "localhost", "127.0.0.1", ""})
 _GLOB_BAD = re.compile(r"[|;<>`$\"\\]")
 _GLOB_BAD_WIN = re.compile(r"[|;<>`$\"]")
 _DENY_WIN = re.compile(
-    r"(?:Stop-Computer|Restart-Computer|(?:^|[;&|(]\s*)shutdown(?:\.exe)?\b|Format-Volume|Clear-Disk)",
+    r"(?:Stop-Computer|Restart-Computer|(?:^|[;&|(])\s*shutdown(?:\.exe)?\b|Format-Volume|Clear-Disk)",
     re.I | re.M,
 )
 _exec_times: dict[tuple[int, int], list[float]] = {}
@@ -508,9 +520,9 @@ def _confine(path: str, root: str, *, windows: bool = False) -> str:
 
 
 def _confine_win(path: str, root: str) -> str:
-    from .permissions import expand_temp, is_temp_path
+    from .permissions import _win_trim, expand_temp, is_temp_path
 
-    raw = expand_temp(path or ".", True).replace("/", "\\")
+    raw = _win_trim(expand_temp(path or ".", True))
     if raw.startswith("~"):
         rest = raw[1:]
         if rest and not rest.startswith("\\"):
@@ -572,8 +584,12 @@ def _command_too_long(command: str) -> str:
 
 def _unquoted(text: str, windows: bool) -> str:
     """The words as the shell reads them: \\sudo, s\\udo, "sudo" and 'sudo' all
-    run sudo (PowerShell escapes with a backtick, and keeps backslashes)."""
-    text = text.replace("`", "") if windows else re.sub(r"\\(.)", r"\1", text, flags=re.S)
+    run sudo (PowerShell escapes with a backtick, keeps backslashes, and joins
+    strings with +: 'Stop-'+'Computer')."""
+    if windows:
+        text = re.sub(r"['\"]\s*\+\s*['\"]", "", text.replace("`", ""))
+    else:
+        text = re.sub(r"\\(.)", r"\1", text, flags=re.S)
     return re.sub(r"[\"']", "", text)
 
 
@@ -720,14 +736,16 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
     # Read-only projects only gate tools that change something. One read of
     # the modes decides the root and every path a command names, in memory.
     scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id, mode=mode) if writes else None
-    if writes and hosts.permission_in(scope, root) == "read_only":
+    if writes and await _reaches_read_only(user_id, host_id, scope, [root or "~"], windows):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     from . import secret_guard, secret_scan
 
     # The tool door (app/secret_guard.py): stand-ins the model wrote become
     # the real values here, before the denylist and the permission review, so
-    # both judge (and the user is shown) the command that will run.
+    # both judge the command that will run. The user's card shows it as the
+    # model wrote it, and a protected value in it always asks.
+    masked_command = str(args.get("command") or "") if name in ("run_terminal_command", "monitor") else None
     refusal = await asyncio.to_thread(secret_guard.restore_tool_args, user_id, name, args)
     if refusal:
         return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
@@ -757,7 +775,7 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         from . import permissions as permissions_mod
 
         verdict = await permissions_mod.review_env(
-            gate, tool=name, names=env_names, command=str(args.get("command") or ""),
+            gate, tool=name, names=env_names, command=masked_command or "",
             cwd=str(args.get("cwd") or root), host_alias=alias, host_id=host_id,
             description=str(args.get("description") or "")[:200])
         if not verdict.allowed:
@@ -768,7 +786,7 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         verdict = await permissions_mod.review(
             tool=name, args=args, user_id=user_id, host_id=host_id, host_alias=alias,
             root=root, windows=windows, gate=gate, deny_reason=deny_reason,
-            realpath=lambda paths: _realpaths(user_id, host_id, paths),
+            realpath=lambda paths: _realpaths(user_id, host_id, paths), masked_command=masked_command,
         )
         if not verdict.allowed:
             return verdict.detail, _error_rec(name, verdict.detail, host=alias, kind="permission_denied")
@@ -776,9 +794,9 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
             # The review may have waited on the user: re-read the modes, which
             # can have changed meanwhile.
             scope = await asyncio.to_thread(hosts.permission_scope, user_id, host_id)
-        if name in ("write_file", "search_replace") and verdict.resolved and hosts.permission_in(
-            scope, verdict.resolved
-        ) == "read_only":
+        if name in ("write_file", "search_replace") and verdict.resolved and await _reaches_read_only(
+            user_id, host_id, scope, [verdict.resolved], windows
+        ):
             detail = "project is read-only"
             return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
         if verdict.root is not None:
@@ -787,7 +805,9 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         promote_path = verdict.resolved if verdict.promotable else ""
     else:
         promote_path = ""
-    if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(scope, args, root, windows):
+    if name in ("run_terminal_command", "monitor") and await _shell_reaches_read_only(
+        user_id, host_id, scope, args, root, windows
+    ):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
     env = await asyncio.to_thread(secret_guard.env_values, user_id, env_names) if env_names else {}
@@ -943,10 +963,12 @@ async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_c
     return body, rec
 
 
-def _shell_reaches_read_only(scope, args: dict, root: str, windows: bool) -> bool:
+async def _shell_reaches_read_only(user_id, host_id, scope, args: dict, root: str, windows: bool) -> bool:
     """A shell command whose cwd or any named path lies in a read-only project
     (the working root itself is checked before the gate). scope is
-    hosts.permission_scope() for the call's host."""
+    hosts.permission_scope() for the call's host. A command whose paths
+    cannot be listed (sh -c '...') is judged by every spelling of a read-only
+    project in its text."""
     from .permissions import _resolve_for_scope, extract_shell_paths
 
     command = str(args.get("command") or "")
@@ -956,8 +978,43 @@ def _shell_reaches_read_only(scope, args: dict, root: str, windows: bool) -> boo
         cwd = _shell_cwd(args, root, windows=windows)
     except WorkspaceError:
         return False  # the shell refuses the cwd itself
-    targets = [cwd] + [path for path, _ in extract_shell_paths(command, cwd, windows) or []]
-    return any(hosts.permission_in(scope, _resolve_for_scope(t, cwd, windows)) == "read_only" for t in targets)
+    paths = extract_shell_paths(command, cwd, windows)
+    targets = [_resolve_for_scope(t, cwd, windows) for t in [cwd] + [path for path, _ in paths or []]]
+    return await _reaches_read_only(user_id, host_id, scope, targets, windows, command if paths is None else "")
+
+
+async def _reaches_read_only(user_id, host_id, scope, paths: list[str], windows: bool, opaque: str = "") -> bool:
+    """Whether any path lies in a read-only project. Paths are judged as
+    written and, on POSIX hosts, where the host resolves them, so //srv/docs,
+    ~/docs and a symlink all reach the project /srv/docs (or ~/docs). opaque
+    is the text of a command whose paths could not be listed: any spelling of
+    a read-only project in it counts."""
+    if scope is None:
+        return False
+    mode, read_only = scope
+    if any(hosts.permission_in(scope, path) == "read_only" for path in paths):
+        return True
+    if mode == "read_only" or not read_only:
+        return False
+    spellings = {p for p in read_only if p}
+    if not windows:
+        reals = await _realpaths(user_id, host_id, ["~", *paths, *read_only])
+        home, real_paths, real_ro = reals[0], reals[1:1 + len(paths)], [r for r in reals[1 + len(paths):] if r]
+        wide = (mode, tuple(read_only) + tuple(real_ro))
+        if any(real and hosts.permission_in(wide, real) == "read_only" for real in real_paths):
+            return True
+        spellings.update(real_ro)
+        if home and home != "/":
+            spellings.update("~" + r[len(home):] for r in real_ro if r == home or r.startswith(home + "/"))
+    if not opaque:
+        return False
+    text = opaque.replace("${HOME}", "~").replace("$HOME", "~")
+    text = re.sub(r"/(?:\./)+", "/", re.sub(r"/{2,}", "/", text))
+    for spelling in spellings:
+        norm = spelling.rstrip("/\\") or spelling
+        if re.search(r"(?<![\w.~$-])" + re.escape(norm) + r"(?![\w.-])", text, flags=re.I if windows else 0):
+            return True
+    return False
 
 
 def _shell_cwd(args: dict, root: str, *, windows: bool = False) -> str:
@@ -1643,6 +1700,8 @@ async def _pinned_public_sock(url: str):
     import socket
     from urllib.parse import urlparse
 
+    from .search.ssrf import _is_global
+
     parsed = urlparse(url)
     host = parsed.hostname or ""
     port = parsed.port or (443 if parsed.scheme == "wss" else 80)
@@ -1652,8 +1711,9 @@ async def _pinned_public_sock(url: str):
     for family, type_, proto, _canon, sockaddr in infos:
         addr = str(sockaddr[0]).split("%", 1)[0]
         ip = ipaddress.ip_address(addr)
-        # Unwrap ::ffff:a.b.c.d: Python 3.12 calls mapped CGNAT global.
-        if not (getattr(ip, "ipv4_mapped", None) or ip).is_global:
+        # The search door's rule: mapped, NAT64, 6to4 and IPv4-compatible
+        # addresses are judged by the IPv4 address they reach.
+        if not _is_global(ip):
             raise OSError(f"{host} resolves to the non-public address {addr}")
         if target is None:
             target = (family, type_, proto, sockaddr)

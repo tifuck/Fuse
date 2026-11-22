@@ -52,12 +52,17 @@ _THREAD_RUNNING_SQL = (
 )
 # Without "running": list_threads fills it from _THREAD_RUNNING_IDS_SQL, one
 # query per list instead of two dependent subqueries per row.
-_THREAD_LIST_BASE_COLS = (
+# The thread's own list columns; chat_tx.thread_event reads them under the row
+# lock without the joins below, so it never locks a project, host or schedule.
+_THREAD_ROW_COLS = (
     "t.id, t.public_id, t.title, t.model, t.archived, t.created_at, t.updated_at, t.revision, "
     "t.kind, t.host_id, t.project_id, t.schedule_id, t.bypass_permissions, t.auto_permissions, "
-    "t.pinned, t.pin_order, t.unread, "
+    "t.pinned, t.pin_order, t.unread, t.archived_at"
+)
+_THREAD_LIST_BASE_COLS = (
+    f"{_THREAD_ROW_COLS}, "
     "h.alias AS host_alias, p.name AS project_name, "
-    "p.color AS project_color, p.logo_rev AS project_logo_rev, p.archived AS project_archived, t.archived_at, "
+    "p.color AS project_color, p.logo_rev AS project_logo_rev, p.archived AS project_archived, "
     "s.name AS schedule_name"
 )
 _THREAD_LIST_COLS = f"{_THREAD_LIST_BASE_COLS}, {_THREAD_RUNNING_SQL} AS running"
@@ -497,10 +502,23 @@ def _head_snippet(head: str, needle: str) -> str | None:
 # the window if users miss older hits before then.
 _SEARCH_MESSAGE_WINDOW = 500
 def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict]:
+    from . import chat_tx
+
     needle = q.strip()
     if not needle:
         return []
-    like = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+    def pattern(text):
+        return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+    like = pattern(needle)
+    lower = needle.lower()
+    # Transcripts are stored with ensure_ascii: quotes and backslashes are
+    # escaped and non-ASCII letters are \uXXXX escapes LOWER() cannot fold,
+    # so the patterns are the escaped needle with only its ASCII lowercased.
+    # shortcut: non-ASCII matches only as typed, lowercased or capitalized;
+    # full case folding needs an unescaped search column (schema change).
+    bodies = list(dict.fromkeys(pattern(chat_tx._json_needle(text)).lower() for text in (needle, lower, needle.capitalize())))
     rows = db.fetchall(
         f"""SELECT {_THREAD_LIST_COLS}, SUBSTRING(t.messages, 1, {_SNIPPET_HEAD + 1}) AS messages_head
            FROM chat_threads t
@@ -508,17 +526,16 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
            LEFT JOIN user_projects p ON p.id=t.project_id
            LEFT JOIN chat_schedules s ON s.id=t.schedule_id
            WHERE t.user_id=? AND t.archived=? AND (
-                t.title LIKE ? ESCAPE '\\' OR IFNULL(p.name,'') LIKE ? ESCAPE '\\'
-                OR IFNULL(h.alias,'') LIKE ? ESCAPE '\\'
+                LOWER(t.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(p.name,'')) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(IFNULL(h.alias,'')) LIKE LOWER(?) ESCAPE '\\'
                 OR (t.id IN (SELECT id FROM (SELECT id FROM chat_threads WHERE user_id=? AND archived=?
                              ORDER BY updated_at DESC, id DESC LIMIT ?) recent)
-                    AND t.messages LIKE ? ESCAPE '\\')
+                    AND ({" OR ".join("LOWER(t.messages) LIKE ? ESCAPE '\\'" for _ in bodies)}))
            )
            ORDER BY t.updated_at DESC, t.id DESC LIMIT 50""",
         (user_id, 1 if archived else 0, like, like, like,
-         user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, like),
+         user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, *bodies),
     )
-    lower = needle.lower()
     snippets = {}
     for row in rows:
         head = row["messages_head"] or ""
@@ -812,7 +829,10 @@ def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
         # cursor (finalizers hold their thread row and wait for the cursor).
         # Ascending ids so two reorders lock the rows in one order.
         for pk, index in sorted((pk, index) for index, pk in enumerate(pks)):
-            chat_tx.lock_thread_id(conn, pk, user_id)
+            if chat_tx.lock_thread_id(conn, pk, user_id) is None:
+                # Deleted since it resolved: no row, event or list entry.
+                pks.remove(pk)
+                continue
             conn.execute(
                 "UPDATE chat_threads SET pin_order=? WHERE id=? AND user_id=? AND pinned=1",
                 (index, pk, user_id),
@@ -1588,6 +1608,9 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
         # would change its permission scope under it.
         if conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
             raise ChatValidationError("Wait for the running turn and its subagents to finish, or stop them, before moving this chat.", 409)
+        # After the chat_runs read: run, then thread, the order finalizers use.
+        if expected_revision is not None:
+            _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
         ts = db.now()
         conn.execute(
             """UPDATE chat_threads

@@ -2,6 +2,7 @@ import json
 import math
 import re
 from collections.abc import AsyncIterator
+from decimal import ROUND_HALF_UP, Decimal
 
 import httpx
 
@@ -37,12 +38,18 @@ def _int(v) -> int:
         return 0
 
 
+def _half_up(value: Decimal) -> int:
+    # Money rounds half up: round() on floats goes to the even neighbour and
+    # misses halves that binary floats cannot hold (2.5e-06 USD is 2 micros).
+    return int(value.to_integral_value(rounding=ROUND_HALF_UP))
+
+
 def _cost_micros(u: dict) -> int | None:
     # xAI public responses use either nanodollars or 10 billion ticks/USD.
     if u.get("cost_in_nano_usd") is not None:
-        return max(0, int(round(_int(u.get("cost_in_nano_usd")) / 1_000)))
+        return max(0, _half_up(Decimal(_int(u.get("cost_in_nano_usd"))) / 1_000))
     if u.get("cost_in_usd_ticks") is not None:
-        return max(0, int(round(_int(u.get("cost_in_usd_ticks")) / 10_000)))
+        return max(0, _half_up(Decimal(_int(u.get("cost_in_usd_ticks"))) / 10_000))
     if "cost_micros" in u and u.get("cost_micros") is not None:
         return max(0, _int(u.get("cost_micros")))
     for key in ("cost", "total_cost", "cost_usd"):
@@ -54,18 +61,21 @@ def _cost_micros(u: dict) -> int | None:
         if isinstance(v, (int, float)):
             amount = float(v)
             if math.isfinite(amount) and 0 <= amount <= _MAX_USAGE_VALUE / 1_000_000:
-                return int(round(amount * 1_000_000))
+                return _half_up(Decimal(str(amount)) * 1_000_000)
             continue
         if isinstance(v, str):
             try:
                 amount = float(v)
                 if math.isfinite(amount) and 0 <= amount <= _MAX_USAGE_VALUE / 1_000_000:
-                    return int(round(amount * 1_000_000))
+                    return _half_up(Decimal(str(amount)) * 1_000_000)
             except (ValueError, OverflowError):
                 continue
         if not isinstance(v, dict):
             continue
         unit = str(v.get("currency") or v.get("unit") or "").lower()
+        if unit not in ("", "usd", "cent", "cents"):
+            # Another currency is not dollars: leave the cost unknown.
+            continue
         for k2 in ("total", "amount", "usd", "total_cost", "value", "val"):
             v2 = v.get(k2)
             if isinstance(v2, bool) or not isinstance(v2, (int, float)):
@@ -75,8 +85,8 @@ def _cost_micros(u: dict) -> int | None:
             if float(v2) > _MAX_USAGE_VALUE / 10_000:
                 continue
             if unit in ("cent", "cents"):
-                return int(round(float(v2) * 10_000))
-            return int(round(float(v2) * 1_000_000))
+                return _half_up(Decimal(str(float(v2))) * 10_000)
+            return _half_up(Decimal(str(float(v2))) * 1_000_000)
     return None
 
 
@@ -396,7 +406,7 @@ async def openai_chat(
                 # later delta frame must not zero what an earlier usage frame
                 # reported.
                 if isinstance(obj.get("usage"), dict) and obj["usage"]:
-                    collected.update(usage_from_obj(obj, reasoning_separate=reasoning_separate))
+                    collected.update(merge_usage(collected, usage_from_obj(obj, reasoning_separate=reasoning_separate)))
 
             try:
                 async for chunk in resp.aiter_bytes():

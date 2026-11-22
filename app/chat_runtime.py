@@ -102,10 +102,12 @@ from .chat_generation.tool_jobs import (
     _tool_result_clip,
     _tool_rounds_done,
     add_code_tip,
+    add_tip,
     apply_skill_preload,
     code_tip_count,
     fold_preload_skill,
     jobs_from_calls,
+    wrap_tip,
 )
 from .chat_generation.tool_runner import (
     MAX_CALLS_PER_ROUND,
@@ -1088,8 +1090,10 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         event_base = max(event_base, trace_next["round"] - start_i)
         resumes_left = MAX_RESUME_RETRIES
         stall_fails = 0
-        # Direct file calls this turn, until the one run_code tip is given.
+        # File calls made one per step this turn, until the one run_code tip is given.
         code_tip_seen = collections.Counter() if coding and CODE_MODE else None
+        # run_code calls in a row that passed one call through, and the wrap tips given for them.
+        wrap_state = (0, 0) if coding and CODE_MODE else None
         idle_stalls = 0
         length_salvages = 0
         empty_retries = 0
@@ -1565,18 +1569,24 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             # The prompt that just returned covers send["messages"], not the reply.
             _note_anchor(summary.get("usage"), send["messages"])
             round_meter = _live_meter(usage=summary.get("usage"), response=summary)
-            probe = None if is_child else cache_watch.probe(
-                summary.get("usage"), model=model, source=src_type or src_type_guess,
-                cred=getattr(result, "credential_id", None), prior=cache_prior, now=round_sent_at,
-                run=run_id, request=cache_watch.fingerprint(
-                    send["messages"], send.get("tools"), send.get("reasoning_effort")))
-            missed = None
-            if probe:
-                if not cache_warned:
-                    missed = cache_watch.miss(cache_prior, probe, settings_changed=prompt_refreshed and completion_i == start_i)
-                if missed:
-                    probe["warned"] = True
-                cache_prior = probe
+            probe = missed = None
+            try:
+                if not is_child:
+                    probe = cache_watch.probe(
+                        summary.get("usage"), model=model, source=src_type or src_type_guess,
+                        cred=getattr(result, "credential_id", None), prior=cache_prior, now=round_sent_at,
+                        run=run_id, request=cache_watch.fingerprint(
+                            send["messages"], send.get("tools"), send.get("reasoning_effort")))
+                if probe:
+                    if not cache_warned:
+                        missed = cache_watch.miss(cache_prior, probe, settings_changed=prompt_refreshed and completion_i == start_i)
+                    if missed:
+                        probe["warned"] = True
+                    cache_prior = probe
+            except Exception:
+                # Telemetry only: a bug here must not fail the turn.
+                logger.exception("Cache watch failed for run %s", run_id)
+                probe = missed = None
             # The page reads cache warmth from the round meter (no account id).
             yield _sse(context_meter.context_event({**round_meter, "cache": cache_watch.public(probe)} if probe else round_meter, phase="round"))
             if missed:
@@ -1831,6 +1841,10 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     if code_tip_seen is not None and code_tip_seen.total() >= CODE_TIP_AFTER:
                         add_code_tip(tool_msgs, code_tip_seen)
                         code_tip_seen = None
+                if wrap_state is not None:
+                    wrap_state, tip = wrap_tip(jobs, wrap_state)
+                    if tip:
+                        add_tip(tool_msgs, tip)
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:

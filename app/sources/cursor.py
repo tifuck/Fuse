@@ -973,6 +973,7 @@ async def _stream(rnd: _Round, collected: dict, model: str):
     except TurnError as exc:
         collected["stream_status"] = "failed"
         yield _sse({"error": {"message": exc.message, "code": exc.status, "type": exc.code}})
+        yield b"data: [DONE]\n\n"
     except Exception:
         collected["stream_status"] = "failed"
         raise
