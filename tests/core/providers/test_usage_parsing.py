@@ -59,6 +59,15 @@ def test_every_usage_shape_normalizes_to_the_same_fields(usage, expected):
     ({"cost_in_usd_ticks": 31_000}, {}, 3),  # 10 billion ticks per USD, rounded
     ({"cost_micros": 77}, {}, 77),
     ({"cost": {"amount": 12, "currency": "cents"}}, {}, 120_000),
+    # Half a micro rounds up, never to the even neighbour (float round gives 2).
+    ({"cost": 0.0000025}, {}, 3),
+    ({"cost": "0.0000025"}, {}, 3),
+    ({"cost": {"amount": 0.00025, "currency": "cents"}}, {}, 3),
+    ({"cost_in_nano_usd": 2_500}, {}, 3),
+    ({"cost": {"amount": 1, "currency": "USD"}}, {}, 1_000_000),
+    # Another currency is not dollars: the cost is unknown, not 1 USD.
+    ({"cost": {"amount": 1, "currency": "eur"}}, {}, None),
+    ({"cost": {"amount": 1, "currency": "eur"}, "cost_usd": 1.08}, {}, 1_080_000),
     ({}, {"cost": 0.01}, 10_000),  # top-level cost beside the usage dict
     ({"cost": -1}, {}, None),
     ({"cost": float("inf")}, {}, None),
