@@ -97,6 +97,12 @@ test('untitled threads hide their title', () => {
   assert.equal(isUntitledThread({ project_name: 'Fuse', title: 'Fuse' }), false, 'only project threads borrow the project name');
 });
 
+test('agent activity counts are plural past one', () => {
+  const { agentActivitySummary } = require('../../static/chat/agents/live.js');
+  const row = { tool_counts: { read_file: 6, search_replace: 1, web_search: 2, recall: 3, search_tools: 1 } };
+  assert.equal(agentActivitySummary(row), '6 files, 1 edit, 2 searches, 3 memories, 1 tools');
+});
+
 test('agent rows say stopping only while the stopped agent is still live', () => {
   const live = createLive({ ui: { formatActivityClock: (secs) => `${Math.round(secs)}s` } });
   const ago = (secs) => new Date(Date.now() - secs * 1000).toISOString();

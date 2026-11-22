@@ -34,9 +34,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-wor
   max-height: calc(var(--work-main) + 9 * var(--work-row));
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-jobs { max-height: calc(5 * var(--work-row)); }
+/* Commands follow the agents at the same pitch: the hairline between the
+   groups adds no room of its own, so every row sits one row from the next. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-work-agents:not([hidden]) + .chat-work-jobs:not([hidden]) {
-  margin-top: 0.15rem;
-  padding-top: 0.15rem;
+  margin-top: 0;
+  padding-top: 0;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-agents-row, .chat-jobs-row) {
   height: var(--work-row);
