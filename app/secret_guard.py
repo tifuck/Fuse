@@ -522,7 +522,11 @@ def noted(user_id: int) -> bool:
 
 
 def has_offers(user_id: int) -> bool:
-    return bool(db.fetchone("SELECT 1 FROM user_secrets WHERE user_id=? AND status='offered' LIMIT 1", (int(user_id),)))
+    """Is there something for the owner to decide? Not while detection is
+    switched off: a turn never waits on offers the user asked not to get."""
+    return bool(db.fetchone(
+        "SELECT 1 FROM user_secrets s JOIN users u ON u.id=s.user_id "
+        "WHERE s.user_id=? AND s.status='offered' AND u.secret_offer=1 LIMIT 1", (int(user_id),)))
 
 
 def decide(user_id: int, protect, *, shown=None, never: bool = False) -> int:

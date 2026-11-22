@@ -271,3 +271,7 @@ def test_a_waiting_turn_resumes_when_the_owner_decides(fresh_db):
     assert run_async(secret_guard.wait_for_decision(uid, 42, timeout=0.05)) == "decided"  # nothing left to decide
     secret_guard.offer(uid, 1, "box", secret_scan.find(".env", f"OTHER_TOKEN={OPENAI}\n"))
     assert run_async(secret_guard.wait_for_decision(uid, 42, timeout=0.05)) == "timeout"
+    # With detection switched off no turn waits, whatever is still undecided.
+    secret_guard.set_switches(uid, offer_on=False)
+    assert not secret_guard.has_offers(uid)
+    assert run_async(secret_guard.wait_for_decision(uid, 42, timeout=0.05)) == "decided"
