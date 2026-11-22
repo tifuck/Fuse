@@ -1,6 +1,7 @@
 """5-field cron: parsing, builder presets, and next-fire times across time
-zones and DST (a spring-forward gap never fires, a fall-back fold fires at
-both real occurrences). Pure functions: no database."""
+zones and DST (a fixed-time slot in a spring-forward gap fires once right
+after the gap, a fall-back fold fires at both real occurrences). Pure
+functions: no database."""
 from datetime import datetime, timezone
 
 import pytest
@@ -73,9 +74,24 @@ def test_local_wall_clock_follows_the_zone_offset_through_the_year():
         cron.next_fire("0 9 * * *", "Mars/Olympus", utc(2026, 1, 1))
 
 
-def test_a_slot_inside_the_spring_forward_gap_does_not_fire_that_day():
-    # 2026-03-08 02:30 never appears on the America/New_York clock.
-    assert cron.next_fire("30 2 * * *", "America/New_York", utc(2026, 3, 8)) == utc(2026, 3, 9, 6, 30)
+def test_a_fixed_slot_inside_the_spring_forward_gap_fires_once_right_after_it():
+    # 2026-03-08 02:30 never appears on the America/New_York clock: it fires at 03:00 EDT.
+    assert cron.next_n("30 2 * * *", "America/New_York", utc(2026, 3, 8), 2) == [
+        utc(2026, 3, 8, 7, 0), utc(2026, 3, 9, 6, 30),
+    ]
+    # Havana springs forward at midnight: a daily 00:00 run fires at 01:00 CDT, not a day late.
+    assert cron.next_n("0 0 * * *", "America/Havana", utc(2026, 3, 7, 6, 0), 2) == [
+        utc(2026, 3, 8, 5, 0), utc(2026, 3, 9, 4, 0),
+    ]
+    # Several slots in one gap fire once; an hour-wildcard slot is not caught up.
+    assert cron.next_n("0,30 2,3 * * *", "America/New_York", utc(2026, 3, 8), 3) == [
+        utc(2026, 3, 8, 7, 0), utc(2026, 3, 8, 7, 30), utc(2026, 3, 9, 6, 0),
+    ]
+    assert cron.next_n("30 * * * *", "America/New_York", utc(2026, 3, 8, 6, 0), 2) == [
+        utc(2026, 3, 8, 6, 30), utc(2026, 3, 8, 7, 30),
+    ]
+    # The projected spacing counts the moved fire: 02:30 EST the day before to 03:00 EDT.
+    assert cron.implied_min_gap("30 2 * * *", "America/New_York", utc(2026, 11, 18)) == 23 * 3600 + 1800
 
 
 def test_a_slot_in_the_fall_back_fold_fires_at_both_occurrences():
