@@ -10,6 +10,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   --tl-soft: color-mix(in srgb, var(--mist) 6%, transparent);
   --tl-dim: color-mix(in srgb, var(--mute) 78%, var(--ink));
   --tl-leader: color-mix(in srgb, var(--mute) 60%, transparent);
+  --tl-verb: 9ch;
   --tl-pane: min(28rem, 40vw);
   --tl-r: 6px;
   --tty: var(--tl-fs);
@@ -23,7 +24,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-turn.is-user { margin: 0.9rem 0 0.5rem; padding: 0.3rem 0.5rem 0.3rem 0; border-radius: var(--tl-r); background: var(--raise); }
   & .chat-turn.is-user:first-child { margin-top: 0; }
   & .chat-turn.is-user .chat-bubble { grid-template-columns: var(--tl-g) minmax(0, 1fr) !important; column-gap: 0 !important; color: var(--mist); font-weight: 600; }
-  & .chat-turn.is-user .chat-bubble::before { justify-self: center; color: var(--tl-ac); font-weight: 700; }
+  & .chat-turn.is-user .chat-bubble::before { justify-self: center !important; margin: 0 !important; color: var(--tl-ac); font-weight: 700; }
   & .chat-flow > .chat-md, & .chat-console-turn { grid-template-columns: var(--tl-g) minmax(0, 1fr) !important; column-gap: 0 !important; }
   & .chat-flow > .chat-md { margin: 0.2rem 0 0.35rem; max-width: 92ch; }
   & .chat-flow > .chat-md::before { background: none !important; }
@@ -36,8 +37,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-slash { margin-inline: 0.75rem !important; }
   & .chat-console-turn { align-items: baseline; color: var(--mute); }
   & .chat-console-turn-mark { justify-self: center; color: var(--ok); }
-  & .chat-console-turn-mark:is(.is-fail, .is-stop) { color: var(--fault); }
-  & .chat-console-turn-mark.is-wait { color: var(--status-live); }
+  & .chat-console-turn-mark.is-fail { color: var(--fault); }
+  & .chat-console-turn-mark:is(.is-wait, .is-stop) { color: var(--status-live); }
 
   /* ---- a burst of work: the tick line ---- */
   & .chat-activity:not(.is-bare) { margin: 0.15rem 0 0.55rem; }
@@ -74,9 +75,11 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & li.chat-step.is-console-call > .chat-step-node { display: none !important; }
   & li.chat-step.is-console-call > .chat-step-main {
     display: flex !important; flex-flow: row wrap !important; align-items: center; min-width: 0; min-height: var(--tl-row);
-    margin: 0; padding: 0 0.5rem 0 var(--tl-g); border-radius: var(--tl-r); color: var(--mute); cursor: pointer;
+    margin: 0; padding: 0 0.5rem 0 var(--tl-g); border-radius: var(--tl-r); color: var(--mute);
   }
-  & li.chat-step.is-console-call > .chat-step-main:hover { background: var(--tl-soft); }
+  /* Only a row that opens looks like it does. */
+  & li.chat-step.is-console-call > .chat-step-main:has(> .chat-step-head > [data-step-toggle]) { cursor: pointer; }
+  & li.chat-step.is-console-call > .chat-step-main:has(> .chat-step-head > [data-step-toggle]):hover { background: var(--tl-soft); }
   & li.chat-step.is-console-call.is-console-expanded > .chat-step-main { background: var(--tl-soft); box-shadow: inset 2px 0 0 var(--tl-ac); }
   & li.chat-step.is-console-call > .chat-step-main > .chat-step-head { flex: 1 1 0 !important; min-width: 54% !important; display: flex !important; align-items: center; min-width: 0; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
   & li.chat-step.is-console-call > .chat-step-main > .chat-step-head::after { content: ""; flex: 1 1 1rem; min-width: 0.75rem; margin: 0 0.75rem; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
@@ -90,9 +93,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & li.chat-step.is-console-call .chat-step-head .chat-console-trunc { display: none; }
   & li.chat-step.is-console-call .chat-console-call { display: flex; align-items: baseline; min-width: 0; overflow: hidden; }
   & li.chat-step.is-console-call .chat-console-paren { display: none; }
-  & li.chat-step.is-console-call .chat-tool-action { flex: none; min-width: 8ch; margin-right: 1ch; color: var(--tl-dim); font-weight: 400; text-transform: lowercase; }
+  & li.chat-step.is-console-call .chat-tool-action { flex: none; min-width: var(--tl-verb); margin-right: 1ch; color: var(--tl-dim); font-weight: 400; text-transform: lowercase; }
   & li.chat-step.is-console-call .chat-console-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mist); font-weight: 400; }
-  & li.chat-step.is-console-call:is(.is-file, .is-list, .is-grep, .is-glob, .is-read, .is-search) .chat-console-val { color: color-mix(in srgb, var(--mist) 78%, var(--ink)); }
   & li.chat-step.is-console-call .chat-tool-host { display: none; }
   & li.chat-step.is-console-call:is(.is-edit, .is-write) .chat-tool-action { color: var(--tl-ac); }
   & li.chat-step.is-console-call.is-error .chat-tool-action { color: var(--fault); }
@@ -110,7 +112,10 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & li.chat-step.is-console-call .chat-console-result-text b { font-weight: 400; color: inherit; }
   & li.chat-step.is-console-call .chat-console-hang-body > .chat-console-result-text * { display: inline !important; }
   & li.chat-step.is-console-call.is-error .chat-console-hang-body > .chat-console-result-text { color: var(--fault); }
-  & li.chat-step.is-console-call .chat-console-hang-body > .chat-console-preview { flex: 1 1 100%; min-width: 0; margin: 0; padding: 0 0 0.3rem 8ch; color: var(--mute); }
+  & li.chat-step.is-console-call.is-interrupted .chat-console-hang-body > .chat-console-result-text { color: var(--status-live); }
+  /* Open in the pane, the row keeps its result: the output is over there. */
+  & li.chat-step.is-console-call > .chat-step-main > .chat-step-reveal > .chat-step-reveal-inner > .chat-console-hang.is-expanded > .chat-console-hang-body > .chat-console-result-text { display: block; }
+  & li.chat-step.is-console-call .chat-console-hang-body > .chat-console-preview { flex: 1 1 100%; min-width: 0; margin: 0; padding: 0 0 0.3rem calc(var(--tl-verb) + 1ch); color: var(--mute); }
   & li.chat-step.is-console-call:not(.is-running) .chat-console-hang-body > .chat-console-preview { display: none; }
 
   /* ---- the pane: a call's output, changed files, agents ---- */

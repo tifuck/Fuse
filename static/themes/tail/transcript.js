@@ -90,8 +90,11 @@ function burstHtml(traces, live, open, aid) {
       if (Number.isFinite(took) && took > 0) ms += took;
       return `<i class="${p.running ? "is-live" : bad ? "is-bad" : p.interrupted ? "is-stop" : change ? "is-change" : trace.name === "run_terminal_command" ? "is-run" : ""}"></i>`;
     });
-    // A long burst keeps its newest ticks; the count still says how many ran.
-    const shown = ticks.slice(-40).join("");
+    // A long burst keeps its newest ticks and every failed or stopped one;
+    // the count still says how many ran.
+    const marked = (tick) => /"is-(?:bad|stop)"/.test(tick);
+    let room = Math.max(0, 40 - ticks.filter(marked).length);
+    const shown = ticks.reduceRight((kept, tick) => (marked(tick) || room-- > 0 ? [tick, ...kept] : kept), []).join("");
     const stat = [
       plus || minus ? `<span><span class="tail-plus">+${plus}</span>${minus ? ` <span class="tail-minus">−${minus}</span>` : ""}</span>` : "",
       failed ? `<span class="tail-fail">${failed} failed</span>` : "",
