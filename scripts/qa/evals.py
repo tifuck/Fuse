@@ -41,10 +41,17 @@ def _primes_below_20(reply: str) -> bool:
     return len(lines) == 3 and len(set(lines)) == 3 and all(line in primes for line in lines)
 
 
+def _inline_chart(run: dict) -> bool:
+    tools = (run.get("message") or {}).get("tools") or []
+    return any(t.get("name") == "create_artifact" and t.get("status") == "done" and t.get("display") == "inline"
+               and t.get("format") == "chart" for t in tools)
+
+
 # A task: turns are sent in order ("/compact" compacts the chat instead; the
 # last context_keep_tail messages, 6 by default, are never compacted), then
-# the last reply is graded. `want` regexes must match, `avoid` must not, and
-# `check` is an extra predicate on the reply.
+# the last reply is graded. `want` regexes must match, `avoid` must not,
+# `check` is an extra predicate on the reply and `run_check` one on the last run
+# (its message's tool traces).
 TASKS = {
     "recall": {
         "about": "a fact from the first turn survives later turns (history, pruning)",
@@ -92,6 +99,11 @@ TASKS = {
         ],
         "want": [r"(?<![\d.])4(?![\d.])"],
         "avoid": [r"(?<![\d.])(16|20|36)(?![\d.])"],
+    },
+    "inline-chart": {
+        "about": "a direct ask for one chart is drawn inline by the chart kit",
+        "turns": ["Chart these daily signups for me: Mon 12, Tue 18, Wed 15, Thu 22, Fri 30, Sat 9, Sun 7."],
+        "run_check": _inline_chart,
     },
 }
 
@@ -178,6 +190,8 @@ def run_task(dev: Dev, name: str, task: dict, model: str) -> tuple[bool, str]:
         problems += [f"has /{p}/" for p in task.get("avoid", []) if re.search(p, reply, re.I)]
         if task.get("check") and not task["check"](reply):
             problems.append("check failed")
+        if task.get("run_check") and not task["run_check"](run):
+            problems.append("run check failed")
         return not problems, "; ".join(problems) or "ok"
     finally:
         try:

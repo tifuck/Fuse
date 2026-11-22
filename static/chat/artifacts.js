@@ -10,13 +10,24 @@ const WRITES = new Set(["create_artifact", "update_artifact", "edit_artifact"]);
 const AUTO_KEY = "fuse.artifact.autoOpen";
 const WIDTH_KEY = "fuse.artifact.width";
 const POLL_MS = 8000;
+// An inline artifact's frame: as tall as its page says, within these.
+const INLINE_MIN = 48;
+const INLINE_MAX = 640;
 const GLYPH = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2.8" y="3.6" width="10.4" height="8.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 9.1l1.6-1.9 1.5 1.6 2.1-2.6 2.1 2.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
-function artifactContentUrl(id, version) {
+function artifactContentUrl(id, version, inline = false) {
   const params = new URLSearchParams();
   if (version) params.set("v", version);
   const theme = window.FuseChatAppearance?.artifactTheme;
   if (theme) params.set("theme", theme);
+  if (inline) {
+    // The chat's reading font and text size, so the page matches the reply.
+    params.set("inline", "1");
+    const font = window.FuseChatAppearance?.artifactFont;
+    if (font) params.set("font", font);
+    const scale = window.FuseChatAppearance?.size;
+    if (scale) params.set("scale", scale);
+  }
   const query = params.toString();
   return "/a/" + encodeURIComponent(id) + "/content" + (query ? "?" + query : "");
 }
@@ -27,6 +38,10 @@ function normalizeId(raw) {
   if (/^[A-Za-z0-9_-]{1,64}$/.test(text)) return text;
   const match = text.match(/(?:^|\/)a\/([A-Za-z0-9_-]{8,64})(?=$|[/?#])/);
   return match ? match[1] : "";
+}
+
+function isInline(trace) {
+  return Boolean(trace) && trace.display === "inline";
 }
 
 function autoOpenOn() {
@@ -81,6 +96,8 @@ export function createArtifacts(ctx) {
   let follow = false;
   // What rememberLatestArtifact last read from the chat's artifact calls.
   let streamedSig = "";
+  // Each inline artifact's last reported height, so a repaint starts there.
+  const inlineHeights = new Map();
 
   function showFailure(title, error) {
     if (ctx.sync && ctx.sync.showFailure) ctx.sync.showFailure(title, error);
@@ -195,7 +212,8 @@ export function createArtifacts(ctx) {
     if (streamed && sig === streamedSig) return;
     streamedSig = sig;
     settleActivity();
-    const all = artifactsInThread();
+    // Inline artifacts show in the reply: the pane never follows them.
+    const all = artifactsInThread().filter((trace) => !isInline(trace));
     const last = all.length ? all[all.length - 1] : null;
     if (follow) {
       if (last) {
@@ -470,7 +488,7 @@ export function createArtifacts(ctx) {
   }
 
   function noteDrafting(info) {
-    if (!info || !WRITES.has(info.tool)) return;
+    if (!info || !WRITES.has(info.tool) || isInline(info)) return;
     const same = activity && activity.phase === "writing" && activity.tool === info.tool;
     activity = {
       phase: "writing",
@@ -504,7 +522,7 @@ export function createArtifacts(ctx) {
   // The call started running (its arguments are complete).
   function startArtifactBuild(event) {
     const info = typeof event === "string" ? { name: "create_artifact", title: event } : event || {};
-    if (!WRITES.has(info.name)) return;
+    if (!WRITES.has(info.name) || isInline(info)) return;
     const id = normalizeId(info.identifier);
     activity = { phase: "saving", tool: info.name, title: info.title || (activity && activity.title) || "", identifier: id, chars: activity ? activity.chars : 0, id: info.id || "" };
     clearTimeout(activityTimer);
@@ -535,6 +553,10 @@ export function createArtifacts(ctx) {
     if (rec.name === "create_artifact" && S.syncState === "live") window.fuseSound?.play("artifact", { event: true });
     const cur = S.currentArtifact;
     const current = Number(rec.version) || null;
+    if (isInline(rec) && !(S.artifactOpen && cur && cur.identifier === id)) {
+      syncArtifactUi();
+      return;
+    }
     if (S.artifactOpen && (!cur || !cur.identifier || cur.building || cur.identifier === id)) {
       showArtifact(id, rec, { keepMode: true, current }).catch(() => {});
       return;
@@ -739,8 +761,63 @@ export function createArtifacts(ctx) {
       .then((ok) => ok && window.open(url.href, "_blank", "noopener,noreferrer"));
   }
 
+  // Inline artifacts: frames the themes draw in the reply
+  // (iframe[data-artifact-inline-frame], data-id and data-version on each).
+  const inline = {
+    url: (id, version) => artifactContentUrl(id, version, true),
+    height: (id, version) => inlineHeights.get(`${id}:${version}`) || 0,
+  };
+
+  function inlineFrame(source) {
+    if (!source) return null;
+    for (const frame of document.querySelectorAll("iframe[data-artifact-inline-frame]")) {
+      if (frame.contentWindow === source) return frame;
+    }
+    return null;
+  }
+
+  function onInlineMessage(event) {
+    const data = event.data;
+    if (!data || data.fuseArtifact !== 1 || typeof data.type !== "string") return;
+    const frame = inlineFrame(event.source);
+    if (!frame) return;
+    const clicked = !navigator.userActivation || navigator.userActivation.isActive;
+    if (data.type === "size") {
+      const h = Math.max(INLINE_MIN, Math.min(INLINE_MAX, Math.round(Number(data.h) || 0)));
+      inlineHeights.set(`${frame.dataset.id}:${frame.dataset.version}`, h);
+      if (frame.style.height === h + "px") return;
+      frame.style.height = h + "px";
+      if (S.stickToBottom && S.thread) S.thread.scrollTop = S.thread.scrollHeight - S.thread.clientHeight;
+    } else if (data.type === "error") {
+      const note = frame.closest("[data-artifact-inline]")?.querySelector("[data-artifact-inline-note]");
+      if (note) {
+        note.textContent = "Page error";
+        note.title = String(data.message || "Error").slice(0, 600);
+        note.hidden = false;
+      }
+    } else if (data.type === "open") {
+      openExternal(String(data.url || ""));
+    } else if (data.type === "copy" && clicked) {
+      copyText(String(data.text || "").slice(0, 200000), "Copied from the artifact.");
+    } else if (data.type === "compose" && clicked) {
+      compose(String(data.text || "").slice(0, 20000));
+      hint("Added from the artifact to your message.");
+    }
+  }
+
+  // The theme changed: inline pages load again in it.
+  function restyleInline() {
+    document.querySelectorAll("iframe[data-artifact-inline-frame]").forEach((frame) => {
+      const url = inline.url(frame.dataset.id, frame.dataset.version);
+      if (frame.getAttribute("src") !== url) frame.src = url;
+    });
+  }
+
   function onFrameMessage(event) {
-    if (!S.artifactFrame || event.source !== S.artifactFrame.contentWindow) return;
+    if (!S.artifactFrame || event.source !== S.artifactFrame.contentWindow) {
+      onInlineMessage(event);
+      return;
+    }
     const data = event.data;
     if (!data || data.fuseArtifact !== 1 || typeof data.type !== "string") return;
     const cur = S.currentArtifact;
@@ -1124,7 +1201,7 @@ export function createArtifacts(ctx) {
       }
     }, true);
     document.addEventListener("visibilitychange", syncPoll);
-    document.addEventListener("fuse-appearance", () => loadFrame(false));
+    document.addEventListener("fuse-appearance", () => { loadFrame(false); restyleInline(); });
     window.addEventListener("message", onFrameMessage);
     bindResize();
   }
@@ -1134,6 +1211,7 @@ export function createArtifacts(ctx) {
     bind,
     distinctArtifacts,
     followThread,
+    inline,
     latestArtifact,
     loadArtifactSource,
     noteArtifactResult,

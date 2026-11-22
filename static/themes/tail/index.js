@@ -394,6 +394,7 @@ export function createTailTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createTranscript({
+    get artifactInline() { return runtime.artifactInline; },
     get consoleEditCounts() { return theme.consoleEditCounts; },
     get ccToolClass() { return theme.ccToolClass; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
