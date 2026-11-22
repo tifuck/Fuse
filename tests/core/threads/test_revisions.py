@@ -5,8 +5,9 @@ assertion on what is stored afterwards, not on internal calls.
 """
 import pytest
 
-from app import chat_store, chat_tx, chats
+from app import chat_store, chat_tx, chats, hosts
 from app.chats import ChatValidationError
+from tests.core.features._support import make_host, make_project
 from tests.core.helpers import make_user
 from tests.core.threads.test_lock_order import _race
 
@@ -43,6 +44,33 @@ def test_two_saves_from_one_revision_racing_lose_exactly_one(fresh_db):
 
     assert sorted(outcomes, key=str) == [409, "First"]
     assert chats.get_thread(uid, thread["id"])["title"] == "First"
+
+
+def test_two_moves_from_one_revision_racing_lose_exactly_one(fresh_db):
+    uid = make_user()
+    host = make_host(uid)
+    first, second = make_project(uid, host, "api"), make_project(uid, host, "web")
+    thread = chats.create_thread(uid, model="offline")
+    outcomes = []
+
+    def move(project):
+        def go():
+            try:
+                chats.move_thread_to_project(uid, thread["id"], host, project, expected_revision=thread["revision"])
+                outcomes.append(project)
+            except ChatValidationError as exc:
+                outcomes.append(exc.status_code)
+        return go
+
+    def moves_the_thread(info):
+        return info.startswith("UPDATE") and "chat_threads" in info
+
+    # The first holds the thread row it moved; the second waits on it, then
+    # must see the revision the first committed instead of moving it again.
+    _race(move(first), (hosts, "projects_changed"), move(second), after=True, waiting=moves_the_thread)
+
+    assert sorted(outcomes) == sorted([409, first])
+    assert chats.get_thread(uid, thread["id"])["project_id"] == first
 
 
 def test_a_retried_command_applies_once_and_returns_the_first_result(fresh_db):

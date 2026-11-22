@@ -1600,6 +1600,9 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
         # would change its permission scope under it.
         if conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
             raise ChatValidationError("Wait for the running turn and its subagents to finish, or stop them, before moving this chat.", 409)
+        # After the chat_runs read: run, then thread, the order finalizers use.
+        if expected_revision is not None:
+            _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
         ts = db.now()
         conn.execute(
             """UPDATE chat_threads
