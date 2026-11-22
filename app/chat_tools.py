@@ -202,7 +202,9 @@ SCHEMAS = {
                 "numbers, a small table, a diagram or an image (e.g. 'chart my logins for the last 30 days'). Use "
                 "panel for pages, documents, dashboards and tools. For data, pass chart, not html: Fuse's kit draws "
                 "it cleanly in the user's theme, inline unless you pass display 'panel'. chart is {type, x, y, data}: data is a list of row "
-                "objects, x the label field, y a value field or a list of up to 4. Pick the type by the question: "
+                "objects, x the label field, y a value field or a list of up to 4, e.g. {\"type\": \"bar\", \"x\": "
+                "\"day\", \"y\": \"signups\", \"data\": [{\"day\": \"Mon\", \"signups\": 12}, {\"day\": \"Tue\", "
+                "\"signups\": 18}]}. Pick the type by the question: "
                 "line or area for change over time, bar to compare categories (sorted, horizontal), column for a "
                 "value per period (several y fields stack), stat for 1-8 key numbers (rows {label, value, delta, "
                 "good}), table for up to 20 rows (columns from the row keys, or columns [{key, label, kind: "
@@ -258,7 +260,7 @@ SCHEMAS = {
                     "chart": {"type": "object", "description": "A chart for Fuse's kit, instead of html: {type, x, y, data, ...}."},
                     "display": {
                         "type": "string",
-                        "enum": ["panel", "inline"],
+                        "enum": ["inline", "panel"],
                         "description": "inline: drawn in full inside the reply (the default for chart). panel: a card that opens the page beside the chat (the default for html and markdown).",
                     },
                     "icon": {"type": "string", "description": "One emoji for the tab and lists, e.g. \U0001f4ca."},
@@ -295,7 +297,7 @@ SCHEMAS = {
                     "html": {"type": "string", "description": "Replacement HTML document."},
                     "markdown": {"type": "string", "description": "Replacement Markdown document, instead of html."},
                     "chart": {"type": "object", "description": "Replacement chart spec, instead of html."},
-                    "display": {"type": "string", "enum": ["panel", "inline"], "description": "Move it into the reply (inline) or back to a card (panel)."},
+                    "display": {"type": "string", "enum": ["inline", "panel"], "description": "Move it into the reply (inline) or back to a card (panel)."},
                     "title": {"type": "string"},
                     "icon": {"type": "string", "description": "One emoji."},
                     "note": {"type": "string", "description": "One-line summary of what changed."},
