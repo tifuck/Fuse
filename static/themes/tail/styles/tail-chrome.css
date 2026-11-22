@@ -342,11 +342,11 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-todo-row.is-cancelled .chat-todo-box::before { height: 2px !important; border: 0 !important; border-radius: 1px !important; background: var(--tl-dim) !important; }
 
   /* ---- the empty chat: the library and the greeting sit on the column, over the prompt ---- */
-  &.is-empty :is(.chat-welcome-kicker, .chat-welcome, .chat-welcome-note) { width: 100%; max-width: 64rem; margin-inline: auto !important; padding-inline: calc(1rem + var(--tl-g)) 1rem !important; }
+  &.is-empty :is(.chat-welcome-kicker, .chat-welcome, .chat-welcome-note) { width: 100%; max-width: none; margin-inline: 0 !important; padding-inline: calc(1rem + var(--tl-g)) 1rem !important; }
   &.is-empty [data-chat-thread] { scrollbar-gutter: auto; }
   &.is-empty .chat-welcome { font: 600 0.875rem/1.5 var(--mono) !important; }
   &.is-empty .chat-welcome-note { font-size: var(--tl-fs) !important; }
-  & .chat-library { width: 100% !important; max-width: 64rem !important; margin: 0 auto !important; padding: 1rem 1rem 0.9rem !important; justify-content: flex-end; }
+  & .chat-library { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 1rem 1rem 0.9rem !important; justify-content: flex-end; }
   & .chat-library-body { width: 100% !important; max-width: none !important; margin: auto 0 0 !important; }
   & .chat-library-tiles { display: grid !important; grid-template-columns: repeat(2, minmax(0, 21rem)) !important; gap: 0 1.5rem !important; }
   & .chat-library-tiles::before { content: "Prompt library"; grid-column: 1 / -1; padding-left: var(--tl-g); color: var(--mute); font-size: 0.75rem; line-height: 1.75rem; }
@@ -533,7 +533,7 @@ html[data-chat-view="tail"] body.is-chat {
 /* ---- the greeting over the prompt library; the phone bar's More menu; the phone status bar ---- */
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-welcome { display: none; }
-  &.is-empty .tail-welcome { display: block; flex: none; width: 100%; max-width: 64rem; margin: auto auto 0 !important; padding: 1rem 1rem 0 calc(1rem + var(--tl-g)); }
+  &.is-empty .tail-welcome { display: block; flex: none; width: 100%; max-width: none; margin: auto 0 0 !important; padding: 1rem 1rem 0 calc(1rem + var(--tl-g)); }
   &.is-empty .tail-welcome > * { display: block; max-width: none; margin: 0 !important; padding: 0 !important; }
   &.is-empty .tail-welcome > .chat-welcome-kicker { display: none; }
   &.is-empty .tail-welcome ~ .chat-library { flex: none !important; min-height: 0 !important; margin-top: 0 !important; padding-top: 0.6rem !important; }
