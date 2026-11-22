@@ -130,8 +130,9 @@ class _Translator:
             except (TypeError, ValueError, OverflowError):
                 return prior
 
-        if raw.get("input_tokens") is not None:
-            self.input_tokens = count(raw.get("input_tokens"), self.input_tokens)
+        # A running-total message_delta may report input as 0; like the cache
+        # fields, keep the count message_start gave.
+        self.input_tokens = count(raw.get("input_tokens") or self.input_tokens, self.input_tokens)
         if raw.get("output_tokens") is not None:
             self.output_tokens = count(raw.get("output_tokens"), self.output_tokens)
         self.cache_read = count(raw.get("cache_read_input_tokens") or self.cache_read, self.cache_read)
@@ -277,7 +278,7 @@ class _Translator:
             return "length"
         if self.stop_reason == "refusal":
             return "content_filter"
-        if self.tool_order or self.stop_reason == "tool_use":
+        if self.tool_calls():
             return "tool_calls"
         return "stop"
 

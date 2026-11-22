@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.sources import claude, claude_catalog, claude_payload, pool_policy
+from app.sources import claude, claude_catalog, claude_payload, pool_pick, pool_policy, pool_session
 from app.web.source_routes import claude as claude_routes
 from tests.core.subscriptions._support import (
     account, drain, extra_of, finish_of, http, iso, reasoning_of, row, run, set_extra, sse, text_of, tool_calls_of,
@@ -179,11 +179,39 @@ def test_the_stream_translates_thinking_text_tools_and_cache_usage_across_crlf_s
 
 
 @pytest.mark.parametrize("stop,finish", [("max_tokens", "length"), ("model_context_window_exceeded", "length"),
-                                         ("refusal", "content_filter"), ("end_turn", "stop")])
+                                         ("refusal", "content_filter"), ("end_turn", "stop"),
+                                         ("tool_use", "stop")])  # tool_use with no tool block has nothing to run
 def test_stop_reasons_map_to_openai_finish_reasons(pool, monkeypatch, stop, finish):
     with http(lambda request: ok(*message(stop=stop)), monkeypatch):
         _result, frames = chat(pool, {"messages": [{"role": "user", "content": "go"}]})
     assert finish_of(frames) == [finish]
+
+
+def test_a_running_total_message_delta_with_zero_input_keeps_the_prompt_count(pool, monkeypatch):
+    events = message(usage={"input_tokens": 40, "cache_read_input_tokens": 900, "cache_creation_input_tokens": 60})
+    events[4] = {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+                 "usage": {"input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 25}}
+    with http(lambda request: ok(*events), monkeypatch):
+        _result, frames = chat(pool, {"messages": [{"role": "user", "content": "go"}]})
+    usage = usage_of(frames)
+    assert (usage["prompt_tokens"], usage["completion_tokens"]) == (1000, 25)
+    assert usage["prompt_tokens_details"] == {"cached_tokens": 900, "cache_write_tokens": 60}
+
+
+def test_a_client_disconnect_is_cancelled_and_neither_cools_nor_pins_the_account(pool, monkeypatch):
+    owner, cred, source = pool
+
+    async def go():
+        result = await source.chat({"model": "claude/claude-sonnet-5-5", "stream": True,
+                                    "messages": [{"role": "user", "content": "go"}]}, user_id=owner, session_id="sess")
+        await result.stream.__anext__()
+        await result.stream.aclose()
+        return result
+
+    with http(lambda request: ok(), monkeypatch):
+        result = run(go())
+    assert result.stream.usage["stream_status"] == "cancelled"
+    assert not pool_pick.cooling_down(cred) and pool_session.lookup("claude", "sess") is None
 
 
 def test_a_thread_sends_only_the_new_turn_and_anything_it_does_not_hold_creates_a_new_one(pool, monkeypatch):

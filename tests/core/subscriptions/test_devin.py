@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.sources import devin, devin_catalog, pool_pick, pool_policy
+from app.sources import devin, devin_catalog, pool_pick, pool_policy, pool_session
 from app.sources import devin_proto as proto
 from tests.core.subscriptions._support import account, drain, finish_of, http, reasoning_of, run, text_of, tool_calls_of, user
 
@@ -123,15 +123,66 @@ def test_frames_split_anywhere_assemble_text_thinking_tools_and_folded_usage(poo
     assert result.stream.usage["stream_status"] == "complete"
 
 
+A, B = '{"path":"a"}', '{"path":"b"}'
+
+
+@pytest.mark.parametrize("parts,args", [
+    # One id for every call of a tool, whole arguments in each frame.
+    ([{"id": "t1", "name": "read", "args": A}, {"id": "t1", "name": "read", "args": B}], [A, B]),
+    # The next call opens with partial arguments.
+    ([{"id": "t1", "name": "read", "args": A}, {"id": "t1", "name": "read", "args": '{"path":'},
+      {"id": "t1", "args": '"b"}'}], [A, B]),
+    # No ids at all.
+    ([{"name": "read", "args": A}, {"name": "read", "args": B}], [A, B]),
+    # The same complete arguments again are a redelivery, not a second call.
+    ([{"id": "t1", "name": "read", "args": A}, {"id": "t1", "name": "read", "args": A}], [A]),
+])
+def test_parallel_calls_of_one_tool_stay_separate_calls(pool, monkeypatch, parts, args):
+    with http(Upstream(b"".join(msg(tool=p) for p in parts) + trailer()), monkeypatch):
+        _result, frames = chat(pool)
+    calls = tool_calls_of(frames)
+    assert [c["arguments"] for c in calls] == args
+    assert {c["name"] for c in calls} == {"read"} and len({c["id"] for c in calls}) == len(args)
+    assert finish_of(frames) == ["tool_calls"]
+
+
 @pytest.mark.parametrize("parts,finish", [
     ([msg("done", stop=proto.STOP_MAX_TOKENS)], "stop"),  # a terminal max_tokens is a normal end on Devin
-    ([msg("x"), msg(stop=proto.STOP_FUNCTION_CALL)], "tool_calls"),
+    ([msg("x"), msg(stop=proto.STOP_FUNCTION_CALL)], "stop"),  # a function-call stop with no call has nothing to run
+    ([msg(tool={"id": "t1", "name": "run", "args": "{}"}, stop=proto.STOP_FUNCTION_CALL)], "tool_calls"),
     ([msg("x", stop=proto.STOP_FUNCTION_CALL), msg("more")], "stop"),
 ])
-def test_only_a_terminal_function_call_stop_means_tool_calls(pool, monkeypatch, parts, finish):
-    with http(Upstream(b"".join(parts) + trailer()), monkeypatch):
+def test_only_assembled_tool_calls_finish_as_tool_calls(pool, monkeypatch, parts, finish):
+    body = b"".join(parts) + trailer()
+    with http(Upstream(body, body), monkeypatch):
         _result, frames = chat(pool)
+        result, _frames = chat(pool, stream=False)
     assert finish_of(frames) == [finish]
+    assert result.body["choices"][0]["finish_reason"] == finish
+
+
+def test_an_undecodable_frame_ends_the_stream_with_an_error_frame(pool, monkeypatch):
+    with http(Upstream(msg("partial") + proto.connect_frame(b"\x0a\xff") + trailer()), monkeypatch):
+        result, frames = chat(pool)
+    assert text_of(frames) == "partial" and finish_of(frames) == []
+    assert frames[-1]["error"]["message"] == "upstream stream failed (ValueError)"
+    assert result.stream.usage["stream_status"] == "failed"
+
+
+def test_a_client_disconnect_neither_cools_nor_pins_the_account(pool, monkeypatch):
+    owner, cred, source = pool
+
+    async def go():
+        result = await source.chat({"model": "devin/swe-2", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
+                                   user_id=owner, session_id="sess")
+        await result.stream.__anext__()
+        await result.stream.aclose()
+        return result
+
+    with http(Upstream(msg("a") + msg("b") + trailer()), monkeypatch):
+        result = run(go())
+    assert result.stream.usage.get("stream_status") is None
+    assert not pool_pick.cooling_down(cred) and pool_session.lookup("devin", "sess") is None
 
 
 def test_a_stream_without_its_end_frame_is_incomplete_and_never_releases_tools(pool, monkeypatch):

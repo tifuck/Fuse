@@ -801,7 +801,7 @@ async def _refresh_one_unlocked(cred) -> bool:
             note_failure(row["id"], cooldown_seconds=60 if r.status_code == 429 else 30)
         return False
     extra["access_token"] = data["access_token"]
-    extra["refresh_token"] = data.get("refresh_token", rt)
+    extra["refresh_token"] = data.get("refresh_token") or rt
     extra["expires_at"] = expires_at(data.get("expires_in"), 21600)
     extra["auth_kind"] = "oauth"
     return await durable_call(
@@ -813,7 +813,7 @@ async def _refresh_one_unlocked(cred) -> bool:
         extra,
         {
             "access_token": data["access_token"],
-            "refresh_token": data.get("refresh_token", rt),
+            "refresh_token": data.get("refresh_token") or rt,
             "expires_at": extra["expires_at"],
             "auth_kind": "oauth",
         },

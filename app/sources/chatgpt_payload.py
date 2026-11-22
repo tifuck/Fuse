@@ -14,6 +14,9 @@ from .chatgpt_catalog import FAST_SERVICE_TIER, base_slug, catalog_efforts, is_f
 
 # Assistant message phases the Responses API takes back on input.
 _PHASES = ("commentary", "final_answer")
+# Opens the user item that carries images from tool results (a function call
+# output holds only text); chatgpt._turn_key does not count it as a new turn.
+TOOL_RESULT_IMAGES = "[Fuse: images from tool result"
 
 
 def _text_of(content) -> str:
@@ -62,11 +65,15 @@ def _input_content(content) -> list:
 def build_responses_payload(body: dict, model: str, session_id: str | None = None) -> dict:
     instructions: list[str] = []
     input_items: list[dict] = []
+    tool_images: list[dict] = []
     for msg in body.get("messages") or []:
         if not isinstance(msg, dict):
             continue
         role = msg.get("role")
         content = msg.get("content")
+        if role != "tool" and tool_images:
+            input_items.append({"role": "user", "content": tool_images})
+            tool_images = []
         if role in ("system", "developer"):
             text = _text_of(content)
             if text:
@@ -113,13 +120,20 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
                     }
                 )
         elif role == "tool":
+            call_id = str(msg.get("tool_call_id") or "")
             input_items.append(
                 {
                     "type": "function_call_output",
-                    "call_id": str(msg.get("tool_call_id") or ""),
+                    "call_id": call_id,
                     "output": _text_of(content),
                 }
             )
+            images = [p for p in _input_content(content) if p["type"] == "input_image"] if isinstance(content, list) else []
+            if images:
+                # After the run of outputs, so parallel outputs stay together.
+                tool_images += [{"type": "input_text", "text": f"{TOOL_RESULT_IMAGES} {call_id}]"}, *images]
+    if tool_images:
+        input_items.append({"role": "user", "content": tool_images})
     payload: dict = {
         "model": base_slug(model),
         "input": input_items,
@@ -179,6 +193,11 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
     if isinstance(reasoning, dict):
         payload["reasoning"] = dict(reasoning)
     effort = body.get("reasoning_effort")
+    # A client's reasoning.effort takes the same mapping as reasoning_effort:
+    # copied as-is, an effort of none reached Codex, which rejects it.
+    nested = payload["reasoning"].pop("effort", None) if "reasoning" in payload else None
+    if not isinstance(effort, str):
+        effort = nested
     levels = catalog_efforts(model)
     if isinstance(effort, str) and levels is not None:
         # Only levels the model lists (Codex answered none with a 400): a chat
@@ -197,6 +216,8 @@ def build_responses_payload(body: dict, model: str, session_id: str | None = Non
         payload["reasoning"].pop("summary", None)
     if reasoning_all_turns(model):
         payload.setdefault("reasoning", {}).setdefault("context", "all_turns")
+    if payload.get("reasoning") == {}:
+        del payload["reasoning"]
     return payload
 
 
