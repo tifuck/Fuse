@@ -161,13 +161,21 @@
   </form>
   {% if secrets["items"] %}
   <div class="set-secrets">
-    <div class="set-secrets-head"><strong>Managed secrets</strong><span>Every value Fuse keeps for you. The eye shows one to you; models only ever get the stand-in under it.</span></div>
+    <div class="set-secrets-head"><strong>Managed secrets</strong><span>Ticked values are protected in every chat. The eye shows a value to you; models only ever get the stand-in under it.</span></div>
     {% for s in secrets["items"] %}
     {% set name = s.label or s.kind %}
     <div class="set-secret" data-secret-id="{{ s.id }}">
       <div class="set-secret-name">
-        <strong>{{ name }}</strong>
-        <span>{% if s.label %}{{ s.kind }}, {% endif %}{{ s.where }}{% if s.line %}:{{ s.line }}{% endif %}</span>
+        {% if s.status != "ignored" %}
+        <input type="checkbox" data-secret-set{% if s.status == "protected" %} checked{% endif %} aria-label="Protect {{ name }}" title="Protect {{ name }}">
+        {% else %}
+        <span></span>
+        {% endif %}
+        <div>
+          <strong>{{ name }}</strong>
+          {% if s.label %}<span>{{ s.kind }}</span>{% endif %}
+          {% if s.path %}<span class="set-secret-place" title="{{ s.host }} {{ s.path }}:{{ s.line }}">{{ s.host }} {{ s.path }}:{{ s.line }}</span>{% else %}<span class="set-secret-place">Added by you</span>{% endif %}
+        </div>
       </div>
       <div class="set-secret-value">
         {% if s.status != "ignored" %}
@@ -175,20 +183,15 @@
           <input type="text" readonly value="{{ "•" * 24 }}" data-secret-value aria-label="Value of {{ name }}" spellcheck="false" autocomplete="off">
           <button type="button" class="set-secret-eye" data-secret-show aria-pressed="false" aria-label="Show the value of {{ name }}" title="Show value"><svg class="is-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="is-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1c.5-.1.9-.1 1.4-.1 6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7c1.7 0 3.2-.4 4.5-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
         </div>
-        <p class="set-secret-model">Models see <code>{{ s.stand_in }}</code></p>
+        {% if s.status == "protected" %}<p class="set-secret-model">Models see <code>{{ s.stand_in }}</code></p>
+        {% elif s.status == "offered" %}<p class="set-secret-model">Waiting for your answer in its chat. Tick it to protect it now.</p>
+        {% else %}<p class="set-secret-model">Not protected: models get the real value.</p>{% endif %}
         {% else %}
         <div class="set-secret-field"><input type="text" readonly disabled value="Not kept" aria-label="Value of {{ name }}"></div>
         <p class="set-secret-model">You declined this one, so Fuse does not keep it.</p>
         {% endif %}
       </div>
       <div class="set-secret-actions">
-        {% if s.status == "protected" %}<span class="badge set-secret-state">Protected</span>
-        <button type="button" class="btn ghost sm" data-secret-set="off">Stop protecting</button>
-        {% elif s.status == "retired" %}<span class="badge set-secret-state">Off</span>
-        <button type="button" class="btn sm" data-secret-set="on">Protect</button>
-        {% elif s.status == "offered" %}<span class="badge set-secret-state">Waiting</span>
-        <button type="button" class="btn sm" data-secret-set="on">Protect</button>
-        {% else %}<span class="badge set-secret-state">Declined</span>{% endif %}
         <button type="button" class="btn ghost sm" data-secret-delete="{{ 'ask' if s.status == 'ignored' else 'forget' }}">{{ "Ask again" if s.status == "ignored" else "Delete" }}</button>
         <span class="set-status" role="status"></span>
       </div>

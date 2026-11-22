@@ -200,10 +200,10 @@ body.is-settings .panel.set { padding: 0; }
 .set-link { display: inline-flex; align-items: center; gap: 0.35rem; }
 /* A details element's content sits in one anonymous box, so a memory row is
    a block, not the two-column grid of other rows. */
-/* Managed secrets: every row is the same three tracks (name, value field,
-   state and actions), and the first two match .set-row and its inputs, so
-   the fields line up with the form above and with each other. The field has
-   one size whatever it holds: a shown value scrolls inside it. */
+/* Managed secrets: every row is the same three tracks (tick and name, value
+   field, action), and the first two match .set-row and its inputs, so the
+   fields line up with the form above and with each other. The field has one
+   size whatever it holds: a shown value scrolls inside it. */
 .set-secrets { border-top: 1px solid var(--line); }
 .set-secrets-head { padding: 0.9rem 1.1rem 0.75rem; }
 .set-secrets-head strong { display: block; color: var(--mist); font-size: 0.86rem; font-weight: 500; }
@@ -216,22 +216,26 @@ body.is-settings .panel.set { padding: 0; }
   padding: 0.75rem 1.1rem;
   border-top: 1px solid var(--line);
 }
-.set-secret-name { min-width: 0; padding-top: 0.45rem; }
+.set-secret-name { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); gap: 0.65rem; align-items: start; min-width: 0; padding-top: 0.45rem; }
+.set-secret-name > input { margin: 0.1rem 0 0; }
 .set-secret-name strong { display: block; color: var(--mist); font: 500 0.82rem/1.3 var(--mono); overflow-wrap: anywhere; }
-.set-secret-name span { display: block; margin-top: 0.2rem; color: var(--mute); font-size: 0.78rem; line-height: 1.45; overflow-wrap: anywhere; }
+.set-secret-name span { display: block; margin-top: 0.2rem; color: var(--mute); font-size: 0.78rem; line-height: 1.4; }
+.set-secret-name .set-secret-place { overflow: hidden; font-family: var(--mono); font-size: 0.74rem; white-space: nowrap; text-overflow: ellipsis; }
 .set-secret-value { min-width: 0; }
 .set-secret-field { position: relative; }
-:where(html:not(.is-chat-root)) .set-secret-field input {
+/* As specific as a theme's own input rule (its pages.css), so the value never runs under the eye. */
+html body.is-settings .settings-shell .set-secret-field input[type="text"] {
   display: block;
   width: 100%;
+  max-width: none;
   height: 2.25rem;
   margin: 0;
-  padding-right: 2.6rem;
+  padding-right: 2.7rem;
   font-family: var(--mono);
   font-size: 0.8rem;
   text-overflow: ellipsis;
 }
-:where(html:not(.is-chat-root)) .set-secret-field input:disabled { padding-right: 0.75rem; color: var(--mute); opacity: 1; }
+html body.is-settings .settings-shell .set-secret-field input[type="text"]:disabled { padding-right: 0.75rem; color: var(--mute); opacity: 1; }
 .set-secret-eye {
   position: absolute;
   inset: 0 0 0 auto;
@@ -252,18 +256,12 @@ body.is-settings .panel.set { padding: 0; }
 .set-secret-eye[aria-pressed="true"] .is-hide { display: block; }
 .set-secret-model { margin: 0.35rem 0 0; overflow: hidden; color: var(--mute); font-size: 0.76rem; line-height: 1.4; white-space: nowrap; text-overflow: ellipsis; }
 .set-secret-model code { padding: 0; border: 0; background: none; color: inherit; font-family: var(--mono); font-size: inherit; }
-.set-secret-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; min-width: 0; min-height: 2.25rem; }
-:where(html:not(.is-chat-root)) .set-secret-actions .set-secret-state { min-width: 5.6rem; text-align: center; justify-content: center; }
-@media (max-width: 1100px) {
-  .set-secret { grid-template-columns: minmax(12rem, 19rem) minmax(0, 1fr); }
-  .set-secret-actions { grid-column: 2; }
-}
+.set-secret-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; min-width: 0; min-height: 2.25rem; }
 @media (max-width: 720px) {
   .set-secret { grid-template-columns: minmax(0, 1fr); padding-left: 0.9rem; padding-right: 0.9rem; }
   .set-secret-name { padding-top: 0; }
-  .set-secret-actions { grid-column: 1; }
   .set-secret-eye { width: 2.75rem; }
-  :where(html:not(.is-chat-root)) .set-secret-field input { height: 2.75rem; padding-right: 2.9rem; }
+  html body.is-settings .settings-shell .set-secret-field input[type="text"] { height: 2.75rem; padding-right: 2.95rem; }
   .set-secrets-head { padding-left: 0.9rem; padding-right: 0.9rem; }
 }
 .set-mem { display: block; }

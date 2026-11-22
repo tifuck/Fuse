@@ -657,6 +657,7 @@ def overview(user_id: int) -> dict:
                       "status": row["status"], "length": int(row["length"] or 0), "strong": bool(row["strong"]),
                       "origin": row["origin"], "where": where if row["origin"] == "scan" else "Added by you",
                       "stand_in": row["fake"] or "",
+                      "host": (src.get("host", "") if src else ""), "path": (src.get("path", "") if src else ""),
                       "line": int(src.get("line") or 0) if src else 0})
     return {"protect": protect, "offer": offer_on, "items": items, "broken": map_for(user_id).broken}
 

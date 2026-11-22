@@ -146,8 +146,8 @@
     secrets.querySelectorAll("[data-secret-id]").forEach((row) => {
       const id = Number(row.getAttribute("data-secret-id"));
       const out = row.querySelector(".set-status");
-      row.querySelector("[data-secret-set]")?.addEventListener("click", (event) => {
-        act(out, () => api("/settings/secrets", "POST", { id, protected: event.target.getAttribute("data-secret-set") === "on" }));
+      row.querySelector("[data-secret-set]")?.addEventListener("change", (event) => {
+        act(out, () => api("/settings/secrets", "POST", { id, protected: event.target.checked }));
       });
       const show = row.querySelector("[data-secret-show]");
       const field = row.querySelector("[data-secret-value]");
