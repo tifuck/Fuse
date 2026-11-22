@@ -41,6 +41,11 @@ def test_integer_division_truncates_toward_zero_like_sqlite(fresh_db, value, quo
     assert db.fetchone("SELECT CAST(? AS INTEGER)/2 AS q", (value,))["q"] == quotient
 
 
+@pytest.mark.parametrize("sql", ["SELECT CAST(? AS REAL)/2 AS q", "SELECT CAST(? AS INTEGER)/2.0 AS q"])
+def test_division_with_a_real_operand_keeps_its_fraction_like_sqlite(fresh_db, sql):
+    assert db.fetchone(sql, (7,))["q"] == 3.5
+
+
 UPSERT = """INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at) VALUES (?,?,?,?,?)
             ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth
             WHERE push_subscriptions.p256dh <> excluded.p256dh"""

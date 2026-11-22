@@ -497,10 +497,23 @@ def _head_snippet(head: str, needle: str) -> str | None:
 # the window if users miss older hits before then.
 _SEARCH_MESSAGE_WINDOW = 500
 def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict]:
+    from . import chat_tx
+
     needle = q.strip()
     if not needle:
         return []
-    like = "%" + needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+    def pattern(text):
+        return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+    like = pattern(needle)
+    lower = needle.lower()
+    # Transcripts are stored with ensure_ascii: quotes and backslashes are
+    # escaped and non-ASCII letters are \uXXXX escapes LOWER() cannot fold,
+    # so the patterns are the escaped needle with only its ASCII lowercased.
+    # shortcut: non-ASCII matches only as typed, lowercased or capitalized;
+    # full case folding needs an unescaped search column (schema change).
+    bodies = list(dict.fromkeys(pattern(chat_tx._json_needle(text)).lower() for text in (needle, lower, needle.capitalize())))
     rows = db.fetchall(
         f"""SELECT {_THREAD_LIST_COLS}, SUBSTRING(t.messages, 1, {_SNIPPET_HEAD + 1}) AS messages_head
            FROM chat_threads t
@@ -508,17 +521,16 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
            LEFT JOIN user_projects p ON p.id=t.project_id
            LEFT JOIN chat_schedules s ON s.id=t.schedule_id
            WHERE t.user_id=? AND t.archived=? AND (
-                t.title LIKE ? ESCAPE '\\' OR IFNULL(p.name,'') LIKE ? ESCAPE '\\'
-                OR IFNULL(h.alias,'') LIKE ? ESCAPE '\\'
+                LOWER(t.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(p.name,'')) LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(IFNULL(h.alias,'')) LIKE LOWER(?) ESCAPE '\\'
                 OR (t.id IN (SELECT id FROM (SELECT id FROM chat_threads WHERE user_id=? AND archived=?
                              ORDER BY updated_at DESC, id DESC LIMIT ?) recent)
-                    AND t.messages LIKE ? ESCAPE '\\')
+                    AND ({" OR ".join("LOWER(t.messages) LIKE ? ESCAPE '\\'" for _ in bodies)}))
            )
            ORDER BY t.updated_at DESC, t.id DESC LIMIT 50""",
         (user_id, 1 if archived else 0, like, like, like,
-         user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, like),
+         user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, *bodies),
     )
-    lower = needle.lower()
     snippets = {}
     for row in rows:
         head = row["messages_head"] or ""
@@ -1588,6 +1600,9 @@ def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expe
         # would change its permission scope under it.
         if conn.execute("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')", (pk,)).fetchone():
             raise ChatValidationError("Wait for the running turn and its subagents to finish, or stop them, before moving this chat.", 409)
+        # After the chat_runs read: run, then thread, the order finalizers use.
+        if expected_revision is not None:
+            _lock_revision(conn, "chat_threads", "revision", row["revision"], "id=? AND user_id=?", (pk, user_id))
         ts = db.now()
         conn.execute(
             """UPDATE chat_threads

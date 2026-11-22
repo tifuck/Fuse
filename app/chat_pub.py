@@ -110,6 +110,7 @@ def _fail_stranded() -> None:
 
 def _commit_publications(batch, attempts=3):
     eids = []
+    committing = False
     try:
         with chat_tx.transaction() as conn:
             # Phase 1: every run guard BEFORE any cursor upsert. Holding run
@@ -129,7 +130,13 @@ def _commit_publications(batch, attempts=3):
                     eids.append(None)
                     continue
                 eids.append(chat_tx.event(conn, user_id, type, thread_id, payload))
+            committing = True
     except Exception as exc:
+        if committing:
+            # It failed at or after COMMIT (a connection lost mid-commit), so
+            # the batch may have landed: a retry would publish it again under
+            # new ids, which clients cannot tell from new events.
+            raise
         # MariaDB may pick the batch as a deadlock victim (1213) or time out a
         # lock wait (1205) even under a disciplined lock order; the whole
         # transaction rolled back, so the batch can retry after a short,
