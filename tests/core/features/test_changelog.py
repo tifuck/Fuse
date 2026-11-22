@@ -8,6 +8,7 @@ from tests.core.helpers import quick_user
 LOG = (
     "Release dev abc1234\x1fdef5678 Add the changelog\n0123abc Merge branch 'x' into dev\n9876fed Fix a toast\n\n"
     "Migrations production needs: none\x1e"
+    "Add the changelog\x1f\x1e"
     "Merge branch 'y'\x1f\x1e"
     "Tidy the sidebar\x1f\x1e"
 )
