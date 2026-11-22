@@ -355,6 +355,9 @@ def test_inline_display_is_stored_traced_and_switchable(fresh_db):
     _, bad = artifacts.execute_from_tool("create_artifact", {"title": "x", "html": PAGE.format(1), "display": "sidebar"},
                                          user_id=uid, thread_id=None)
     assert bad["status"] == "error" and "display" in bad["error"]
+    _, chart = artifacts.execute_from_tool("create_artifact", {"title": "c", "chart": spec}, user_id=uid, thread_id=None)
+    _, page = artifacts.execute_from_tool("create_artifact", {"title": "p", "html": PAGE.format(1)}, user_id=uid, thread_id=None)
+    assert (chart["display"], page["display"]) == ("inline", "panel")
 
 
 def test_chart_specs_are_checked_before_they_are_stored(fresh_db):

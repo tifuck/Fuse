@@ -1061,7 +1061,8 @@ def execute_from_tool(name: str, args: dict, *, user_id: int, thread_id: int | N
                 icon=str(icon or ""),
                 note=note,
                 thread_id=thread_id,
-                display=str(display or "panel"),
+                # A chart is one visual: it goes in the reply unless asked otherwise.
+                display=str(display or ("inline" if fmt == "chart" else "panel")),
             )
             action = "created"
     except ArtifactError as exc:
