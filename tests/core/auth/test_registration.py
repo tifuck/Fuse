@@ -146,3 +146,47 @@ def test_a_lost_first_admin_claim_makes_an_invited_member(fresh_db, closed):
     db.execute("INSERT INTO schema_meta(key, value) VALUES('first_user_claimed', ?)", (db.now(),))
     _email, token = accounts.add_whitelist("late@core.test")
     assert accounts.create_user("late@core.test", "password12", require_invite=True, invite=token)["is_admin"] == 0
+
+
+def test_the_setup_token_still_works_after_the_users_table_was_emptied(web, closed, monkeypatch):
+    # A manual wipe or partial restore keeps schema_meta: the first-admin claim
+    # outlives the account that made it, and the boot still hands out a token.
+    db.execute("INSERT INTO schema_meta(key, value) VALUES('first_user_claimed', ?)", (db.now(),))
+    token = accounts.ensure_setup_token()
+    assert token and accounts.needs_setup()
+
+    for wrong in ("", "guess", token + "x"):
+        assert _register(web, "admin@core.test", setup=wrong).status_code == 403, wrong
+    # Open registration does not let a walk-in take the empty install either.
+    monkeypatch.setattr(settings, "allow_register", True)
+    assert _register(web, "walk-in@core.test").status_code == 403
+    assert _accounts() == 0
+
+    made = _register(web, "admin@core.test", setup=token)
+    assert made.status_code == 303 and made.headers["location"] == "/chat"
+    assert accounts.user_by_email("admin@core.test")["is_admin"] == 1
+    assert not accounts.SETUP_TOKEN_FILE.exists()
+    assert _register(web, "second@core.test", setup=token).status_code == 303
+    assert accounts.user_by_email("second@core.test")["is_admin"] == 0
+
+
+def test_concurrent_setup_token_claims_after_a_wipe_make_exactly_one_admin(fresh_db, closed):
+    db.execute("INSERT INTO schema_meta(key, value) VALUES('first_user_claimed', ?)", (db.now(),))
+    token = accounts.ensure_setup_token()
+    start = threading.Barrier(2)
+    outcomes = []
+
+    def register(email):
+        start.wait()
+        try:
+            outcomes.append(accounts.create_user(email, "password12", require_invite=True, setup=token)["is_admin"])
+        except ValueError as exc:
+            outcomes.append(str(exc))
+
+    threads = [threading.Thread(target=register, args=(f"first{n}@core.test",)) for n in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(outcomes, key=str) == [1, "closed"]
+    assert accounts.admin_count() == 1 and _accounts() == 1
