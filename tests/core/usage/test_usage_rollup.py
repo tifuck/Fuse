@@ -24,7 +24,8 @@ _RAW = """SELECT COALESCE(SUM(CASE WHEN total_tokens>0 THEN total_tokens ELSE pr
                  COALESCE(SUM(COALESCE(reported_cost_micros, estimated_cost_micros)),0) AS cost,
                  COALESCE(SUM(estimated_cost_micros),0) AS estimated_cost,
                  COALESCE(SUM(CASE WHEN count_request=1 AND (reported_cost_micros IS NOT NULL OR (pricing_known=1
-                                   AND NOT (usage_status='unknown' AND total_tokens<=0 AND prompt_tokens+output_tokens<=0)))
+                                   AND NOT (usage_status='unknown' AND request_status<>'failed'
+                                            AND total_tokens<=0 AND prompt_tokens+output_tokens<=0)))
                                    THEN 1 ELSE 0 END),0) AS priced,
                  COALESCE(SUM(CASE WHEN count_request=1 AND source_type='openrouter' THEN 1 ELSE 0 END),0) AS untracked
           FROM usage_events WHERE created_at>=? AND created_at<?"""

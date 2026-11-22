@@ -344,9 +344,10 @@ def _scope_filters(user_id: int, provider: str, all_users: bool, subject_id: int
 # then 'unknown'; scripts/sql/2026-11-20-usage-rollups.sql backfilled old rows).
 _PROVIDER_SQL = "e.source_type"
 _TOKENS_SQL = "CASE WHEN e.total_tokens>0 THEN e.total_tokens ELSE e.prompt_tokens+e.output_tokens END"
-# A counted request that reported no usage has an unknown cost even on a
-# priced model (db._price_measures).
-_NO_USAGE_SQL = f"(e.count_request=1 AND e.usage_status='unknown' AND {_TOKENS_SQL}<=0)"
+# A counted request that did not fail and reported no usage has an unknown
+# cost even on a priced model (db._price_measures).
+_NO_USAGE_SQL = (f"(e.count_request=1 AND e.usage_status='unknown' AND e.request_status<>'failed'"
+                 f" AND {_TOKENS_SQL}<=0)")
 _PRICED_SQL = f"(e.reported_cost_micros IS NOT NULL OR (e.pricing_known=1 AND NOT {_NO_USAGE_SQL}))"
 _EVENT_SUMS = f"""COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
                    COALESCE(SUM(e.count_request), 0) AS requests,

@@ -419,7 +419,8 @@ def record_usage(
         )
         hour = ts[:13] + ":00:00Z"
         event = {"total_tokens": total, "prompt_tokens": pt, "output_tokens": output,
-                 "reported_cost_micros": reported_cost, "count_request": request_inc, "usage_status": usage_status}
+                 "reported_cost_micros": reported_cost, "count_request": request_inc, "usage_status": usage_status,
+                 "request_status": request_status}
         ok = request_inc and request_status == "success"
         conn.execute(
             f"""INSERT INTO usage_rollup_hourly ({", ".join(_ROLLUP_KEY + ROLLUP_SUMS)}, first_at, last_at)
@@ -692,7 +693,7 @@ REPRICE_WINDOW = 5000
 # row), so the statement text is the same every time and is translated once.
 REPRICE_CHUNK = 250
 _REPRICE_COLUMNS = """id, user_id, api_key_id, credential_id, reported_cost_micros, estimated_cost_micros,
-                      pricing_known, count_request, usage_status, prompt_tokens, completion_tokens, output_tokens,
+                      pricing_known, count_request, usage_status, request_status, prompt_tokens, completion_tokens, output_tokens,
                       visible_tokens, reasoning_tokens, cached_tokens, cache_write_tokens, total_tokens,
                       created_at"""
 
@@ -722,7 +723,8 @@ def _price_measures(row, estimate: int, known: int) -> tuple[int, int, int, int,
     counted = int(row["count_request"] or 0) == 1
     # A counted request that reported no usage (a stream without a usage
     # frame) cost something unknown, not a known $0 at the model's price.
-    no_usage = counted and tokens <= 0 and row["usage_status"] == "unknown"
+    # A failed one (a 429) generated nothing and stays a known $0.
+    no_usage = counted and tokens <= 0 and row["usage_status"] == "unknown" and row["request_status"] != "failed"
     priced = reported is not None or (bool(known) and not no_usage)
     return (
         int(reported) if reported is not None else estimate,

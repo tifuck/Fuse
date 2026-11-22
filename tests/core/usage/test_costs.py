@@ -5,7 +5,7 @@ Sample for the money pattern: assert exact integer micros computed by hand
 from the published rates, and the invariant that every rollup equals the sum
 of its events. Rates are micros per million tokens: 1_000_000 is $1/M.
 """
-from app import accounts, db
+from app import accounts, db, stats
 from tests.core.usage._support import api_key, cost_sums, rollup_drift, source, user
 
 # $1 per million input tokens, $2 per million output tokens (micros per million).
@@ -189,6 +189,26 @@ def test_a_reported_cost_wins_over_the_estimate_and_survives_reprices(fresh_db):
     db.delete_model_price("zai", "glm-x")
     assert set(cost_sums().values()) == {12_345}
     assert rollup_drift() == {}
+
+
+def test_a_request_without_usage_is_unpriced_unless_it_failed(fresh_db):
+    uid = user()
+    source_id, cred = _pool_credential(uid)
+    for model in ("silent", "refused"):
+        db.save_model_price("zai", model, INPUT, None, OUTPUT, None)
+    db.record_usage(uid, source_id, cred, "silent", {}, provider="zai")
+    db.record_usage(uid, source_id, cred, "refused", {}, provider="zai", request_status="failed")
+
+    for rate in (INPUT, INPUT * 2):  # recorded, then repriced
+        db.save_model_price("zai", "silent", rate, None, OUTPUT, None)
+        db.save_model_price("zai", "refused", rate, None, OUTPUT, None)
+        models = {m["name"]: m for m in stats.usage_analytics(uid, range_id="24h")["models"]}
+        # Nothing says what the success used; a failed request with no usage cost nothing.
+        assert (models["silent"]["cost_known"], models["refused"]["cost_known"]) == (False, True)
+        hours = {r["model"]: (r["priced"], r["unpriced_events"]) for r in db.fetchall(
+            "SELECT model, priced, unpriced_events FROM usage_rollup_hourly")}
+        assert hours == {"silent": (0, 1), "refused": (1, 0)}
+        assert rollup_drift() == {}
 
 
 def test_openrouter_usage_counts_tokens_but_never_cost(fresh_db):
