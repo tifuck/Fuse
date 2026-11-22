@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.sources import chatgpt, chatgpt_catalog, pool_pick, pool_policy
+from app.sources import chatgpt, chatgpt_catalog, pool_pick, pool_policy, pool_session
 from tests.core.subscriptions._support import (
     account, drain, events, extra_of, finish_of, http, iso, reasoning_of, run, set_extra, sse, text_of,
     tool_calls_of, usage_of, user,
@@ -103,6 +103,65 @@ def test_effort_off_sends_no_effort_where_the_model_lists_no_none_level(pool, mo
     with http(lambda request: ok_stream(), monkeypatch) as calls:
         chat_frames(pool, {"messages": HISTORY[:2], "reasoning_effort": "none"})
     assert "reasoning" not in json.loads(calls.requests[0].content)
+
+
+@pytest.mark.parametrize("body,reasoning", [
+    ({"reasoning": {"effort": "none"}}, None),
+    ({"reasoning": {"effort": "none"}, "reasoning_effort": "none"}, None),
+    ({"reasoning": {"effort": "xhigh", "summary": "detailed"}}, {"effort": "high", "summary": "detailed"}),
+])
+def test_a_client_reasoning_effort_maps_to_a_listed_level(pool, monkeypatch, body, reasoning):
+    owner, _source = pool
+    account("chatgpt", owner, linked())
+    with http(lambda request: ok_stream(), monkeypatch) as calls:
+        chat_frames(pool, {"messages": HISTORY[:2], **body})
+    assert json.loads(calls.requests[0].content).get("reasoning") == reasoning
+
+
+def test_images_in_tool_results_follow_the_outputs_in_a_user_item_of_the_same_turn(pool, monkeypatch):
+    owner, _source = pool
+    account("chatgpt", owner, linked())
+    turn = [{"role": "user", "content": "look"}]
+    shots = turn + [
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "c1", "type": "function", "function": {"name": "shot", "arguments": "{}"}},
+            {"id": "c2", "type": "function", "function": {"name": "shot", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": [
+            {"type": "text", "text": "one"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}}]},
+        {"role": "tool", "tool_call_id": "c2", "content": [{"type": "image_url", "image_url": "data:image/png;base64,BBB"}]},
+    ]
+    with http(lambda request: ok_stream(headers={"x-codex-turn-state": "ts-1"}), monkeypatch) as calls:
+        chat_frames(pool, {"messages": turn}, session_id="sess")
+        chat_frames(pool, {"messages": shots}, session_id="sess")
+    items = json.loads(calls.requests[1].content)["input"]
+    assert items[-3:] == [
+        {"type": "function_call_output", "call_id": "c1", "output": "one"},
+        {"type": "function_call_output", "call_id": "c2", "output": ""},
+        {"role": "user", "content": [
+            {"type": "input_text", "text": "[Fuse: images from tool result c1]"},
+            {"type": "input_image", "image_url": "data:image/png;base64,AAA"},
+            {"type": "input_text", "text": "[Fuse: images from tool result c2]"},
+            {"type": "input_image", "image_url": "data:image/png;base64,BBB"}]},
+    ]
+    # The image item is part of the turn: the turn state is echoed.
+    assert calls.requests[1].headers.get("x-codex-turn-state") == "ts-1"
+
+
+def test_a_client_disconnect_is_cancelled_and_neither_cools_nor_pins_the_account(pool, monkeypatch):
+    owner, source = pool
+    cred = account("chatgpt", owner, linked())
+
+    async def go():
+        result = await source.chat({"model": "gpt-6.1-sol", "stream": True, "messages": HISTORY[:2]},
+                                   user_id=owner, session_id="sess")
+        await result.stream.__anext__()
+        await result.stream.aclose()
+        return result
+
+    with http(lambda request: ok_stream(), monkeypatch):
+        result = run(go())
+    assert result.stream.usage["stream_status"] == "cancelled"
+    assert not pool_pick.cooling_down(cred) and pool_session.lookup("chatgpt", "sess") is None
 
 
 def test_the_stream_translates_text_reasoning_tool_calls_and_cached_usage(pool, monkeypatch):

@@ -59,6 +59,7 @@ from .chatgpt_catalog import (
     parse_catalog_payload,
 )
 from .chatgpt_payload import (
+    TOOL_RESULT_IMAGES,
     _input_content,
     _text_of,
     build_responses_payload,
@@ -96,7 +97,7 @@ def _human_item(item) -> bool:
         return False
     content = item.get("content")
     first = content[0] if isinstance(content, list) and content else None
-    return not (isinstance(first, dict) and str(first.get("text") or "").startswith(_TOOL_IMAGE_MARK))
+    return not (isinstance(first, dict) and str(first.get("text") or "").startswith((_TOOL_IMAGE_MARK, TOOL_RESULT_IMAGES)))
 
 
 def _turn_key(session_id: str | None, payload: dict) -> str | None:
