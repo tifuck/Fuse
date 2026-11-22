@@ -524,7 +524,8 @@ def _running_event(job: ToolJob) -> dict:
         vis = str(parsed.get("visibility") or "")
         if vis in ("private", "public"):
             event["visibility"] = vis
-        if parsed.get("display") == "inline":
+        # A chart is inline unless the call says panel (artifacts.execute_from_tool).
+        if parsed.get("display") == "inline" or (parsed.get("chart") is not None and parsed.get("display") != "panel"):
             event["display"] = "inline"
         # A host list reaching here was refused (valid ones are split per host).
         host = parsed.get("host") if isinstance(parsed.get("host"), str) else ""

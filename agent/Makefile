@@ -1,7 +1,13 @@
 VERSION := $(shell cat VERSION)
 CC ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=c11 -D_GNU_SOURCE
-CPPFLAGS += -Ithird_party -Isrc -DFUSE_AGENT_VERSION=\"$(VERSION)\"
+CPPFLAGS += -Ithird_party -Isrc -DFUSE_AGENT_VERSION=\"$(VERSION)\" -include src/glibc_floor.h
+# Oldest glibc the Linux binaries may need: RHEL 9, Ubuntu 22.04, Debian 12.
+GLIBC_FLOOR := 2.34
+# Fails, and keeps the last good binary, if the build needs a newer glibc.
+glibc_check = max=$$(objdump -T $(1) | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1); \
+  if [ "$$(printf '%s\n%s\n' "$$max" $(GLIBC_FLOOR) | sort -V | tail -1)" != $(GLIBC_FLOOR) ]; then \
+    echo "$(1) needs glibc $$max, floor is $(GLIBC_FLOOR)" >&2; rm -f $(1); exit 1; fi
 # Explicit, not the distro gcc's defaults: a binary that runs as root must
 # not lose these on another toolchain.
 HARDEN := -fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fPIE -pie \
@@ -38,17 +44,21 @@ all: $(BIN)
 
 $(BIN): $(SRC) $(HDRS) VERSION
 	mkdir -p dist
-	$(CC) $(CFLAGS) $(HARDEN) $(CPPFLAGS) -o $@ $(SRC) $(LIBS)
-	chmod 755 $@
+	$(CC) $(CFLAGS) $(HARDEN) $(CPPFLAGS) -o $@.tmp $(SRC) $(LIBS)
+	@$(call glibc_check,$@.tmp)
+	chmod 755 $@.tmp
+	mv -f $@.tmp $@
 
 dist: all linux-arm64 windows
 
 linux-arm64:
 	mkdir -p dist
 	$(ARM64_CC) $(CFLAGS) $(HARDEN) $(CPPFLAGS) -I$(OPENSSL_ARM64)/include \
-	  -o dist/fuse-agent-linux-arm64 $(SRC) \
+	  -o dist/fuse-agent-linux-arm64.tmp $(SRC) \
 	  $(OPENSSL_ARM64)/lib/libssl.a $(OPENSSL_ARM64)/lib/libcrypto.a -lpthread -ldl
-	chmod 755 dist/fuse-agent-linux-arm64
+	@$(call glibc_check,dist/fuse-agent-linux-arm64.tmp)
+	chmod 755 dist/fuse-agent-linux-arm64.tmp
+	mv -f dist/fuse-agent-linux-arm64.tmp dist/fuse-agent-linux-arm64
 
 windows:
 	$(MAKE) -C windows dist

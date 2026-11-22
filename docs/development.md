@@ -273,4 +273,6 @@ Bump `agent/VERSION`, then `make -C agent dist` builds every SKU into
 `agent/dist`, which Fuse serves: Linux amd64, Linux arm64 (needs
 `gcc-aarch64-linux-gnu` and a static aarch64 OpenSSL via `OPENSSL_ARM64`) and
 Windows (needs Go 1.25+). Agents update when the served version is newer than
-theirs.
+theirs. A Linux build fails if it needs a glibc newer than `GLIBC_FLOOR` in
+`agent/Makefile` (2.34: RHEL 9, Ubuntu 22.04, Debian 12) and keeps the last
+good binary.
