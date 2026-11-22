@@ -321,11 +321,17 @@ def test_scripts_fed_to_a_shell_or_interpreter_on_stdin_ask(chat):
         assert not asks(chat, "run_terminal_command", command=command), command
 
 
-def test_a_device_is_harmless_only_as_a_redirect_target(chat):
-    for command in ("ls 2>/dev/null", "make >/dev/null 2>&1", "cat src/a </dev/null", "make &>/dev/null"):
+def test_a_device_is_a_target_only_for_a_verb_that_changes_it(chat):
+    for command in ("ls 2>/dev/null", "make >/dev/null 2>&1", "cat src/a </dev/null", "make &>/dev/null",
+                    "head -c 32 /dev/urandom", "cat /dev/stdin", "od -An -N4 /dev/zero", "base64 /dev/urandom",
+                    "tee /dev/null", "cp /dev/zero big.img", "cat /dev/urandom; rm build.log"):
         assert not asks(chat, "run_terminal_command", command=command), command
-    for command in ("rm /dev/null", "mv build.log /dev/null", "cp /dev/zero big.img"):
+    # dd itself asks (destructive pattern); reading a device with it names no target.
+    assert permissions.extract_shell_paths("dd if=/dev/urandom of=out.bin bs=1 count=8", ROOT, False) == []
+    for command in ("rm /dev/null", "mv build.log /dev/null", "cp build.log /dev/null", "chmod 600 /dev/null",
+                    "FOO=1 ln -sf x /dev/null", "cat a.txt; rm /dev/null"):
         assert asks(chat, "run_terminal_command", command=command), command
+    assert ("/dev/null", False) in permissions.extract_shell_paths("dd if=a of=/dev/null", ROOT, False)
 
 
 # -- grants: what Allow-always remembers ------------------------------------

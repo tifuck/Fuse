@@ -110,6 +110,12 @@ _HARMLESS_DEVICES = frozenset({
     "/dev/stdin", "/dev/stdout", "/dev/stderr", "/dev/tty",
 })
 _DEV_FD = re.compile(r"^/dev/fd/\d+$")
+# Verbs that change what they name: a harmless device among their operands is
+# a target to approve (rm /dev/null). cp and install change only their last
+# operand, dd only its of=.
+_MUTATING_VERBS = frozenset({
+    "rm", "mv", "ln", "chmod", "chown", "chgrp", "truncate", "shred", "unlink", "mknod", "rmdir",
+})
 # A heredoc fed to one of these is a script for another shell, so its body
 # is globbed and expanded like the command line itself.
 _HEREDOC_SHELLS = frozenset({
@@ -698,9 +704,11 @@ def _opaque_reason(command: str) -> str:
 def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str, bool]] | None:
     """Path-looking tokens as (path, is_dir). None = opaque command.
     is_dir marks cd/pushd targets (a directory by construction); everything
-    else is treated as a file-ish target. A device sink redirected to (2>/dev/null,
-    </dev/null) is left out: discarding output reaches nothing outside the
-    project. As an operand (rm /dev/null) it is a target like any other."""
+    else is treated as a file-ish target. A harmless device (/dev/null,
+    /dev/urandom) is left out where it is only read or written through
+    (2>/dev/null, head -c 32 /dev/urandom): that reaches nothing outside the
+    project. As what a mutating verb changes (rm /dev/null, mv a /dev/null,
+    dd of=/dev/null) it is a target like any other."""
     text = str(command or "").strip()
     if not text or _OPAQUE_SHELL.search(text) or _INTERPRETER_SHELL.search(text):
         return None
@@ -708,13 +716,26 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
         tokens = _shell_tokens(text, windows)
     except ValueError:
         return None
-    # (path, is_dir, the directory a relative path is resolved in, redirect
-    # target): a cd moves where later relative operands point.
+    # (path, is_dir, the directory a relative path is resolved in, changed by
+    # a mutating verb): a cd moves where later relative operands point.
     out: list[tuple[str, bool, str, bool]] = []
     base = cwd or "~"
     prev = ""
     expect_target = False
+    verb, at_start = "", True
+    copy_dest: list[int] = []  # entries of a cp/install's latest operand: its destination so far
+
+    def end_command():
+        for i in copy_dest:
+            out[i] = out[i][:3] + (True,)
+        copy_dest.clear()
+
     for tok in tokens:
+        if set(tok) <= set(_SHELL_SEPARATORS):
+            end_command()
+            verb, at_start = "", True
+        elif at_start and not (_ASSIGNED_VALUE.match(tok) or tok in ("sudo", "nohup", "time", "command", "exec")):
+            verb, at_start = re.split(r"[\\/]", tok.strip("'\""))[-1].lower(), False
         # shlex keeps redirect operators glued to operands (echo x>/f), so
         # split them out; the piece after > or < is a path target.
         for piece in _REDIR_TOKENS.split(tok):
@@ -731,7 +752,7 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
                 # Inside a quoted script the rest of the script follows the
                 # operator: judge its words, not the whole piece as one name.
                 if not re.search(r"\s", stripped):
-                    out.append((stripped, False, base, True))
+                    out.append((stripped, False, base, False))
                     prev = ""
                     continue
             if stripped in (">", ">>", "2>", "2>>", "<", "&>", "&>>", "1>", "1>>", "0<"):
@@ -754,19 +775,24 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
                 out.append((stripped, True, base, False))
                 base = _resolve_for_scope(stripped, base, windows)
                 continue
+            writes = verb in _MUTATING_VERBS or (verb == "dd" and stripped.startswith("of="))
             if _ASSIGNED_VALUE.match(stripped):
                 # --file=/etc/x, if=/dev/sda, awk -v f=/etc/x: the value is the
                 # target, not a cwd-relative name.
                 stripped = stripped.split("=", 1)[1]
-            out.extend((path, False, base, False) for path in _token_paths(stripped, windows))
+            start = len(out)
+            out.extend((path, False, base, writes) for path in _token_paths(stripped, windows))
+            if verb in ("cp", "install") and not piece.startswith("-"):
+                copy_dest[:] = range(start, len(out))
+    end_command()
     resolved: list[tuple[str, bool]] = []
     seen: list[str] = []
-    for item, is_dir, base, redirect in out:
+    for item, is_dir, base, writes in out:
         cand = item
         if not (cand.startswith(("/", "~")) or cand.startswith("$HOME") or cand.startswith("%")
                 or _WIN_DRIVE.match(cand) or cand.startswith("\\\\") or (windows and _PS_PROVIDER.match(cand))):
             cand = (ntpath.join(base, cand) if windows else posixpath.join(base, cand)) if not _is_home_marker(base) else "~/{}".format(cand)
-        if redirect and _harmless_device(cand, windows):
+        if not writes and _harmless_device(cand, windows):
             continue
         if cand and cand not in seen:
             seen.append(cand)
