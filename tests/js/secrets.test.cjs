@@ -1,5 +1,6 @@
 // Protect secrets window (static/chat/secrets-core.js): the row model, the
-// primary button's label, the header checkbox and the decision that is sent.
+// primary button's label, the header checkbox and the decision that is sent
+// (the ticked ids, and every id the window showed).
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -35,9 +36,14 @@ test('the header checkbox is all, none or mixed', async () => {
   assert.equal(allState(2, 3), 'mixed');
 });
 
+test('a decision names the ticked ids and every id that was shown', async () => {
+  const { decision } = await core();
+  assert.deepEqual(decision([1, 2], [1, 2, 3]), { protect: [1, 2], shown: [1, 2, 3], never: false });
+  // "Protect none" declines what was shown, and only that.
+  assert.deepEqual(decision([], [1, 2, 3]), { protect: [], shown: [1, 2, 3], never: false });
+});
+
 test('turning detection off protects nothing', async () => {
   const { decision } = await core();
-  assert.deepEqual(decision([1, 2]), { protect: [1, 2], never: false });
-  assert.deepEqual(decision([]), { protect: [], never: false });
-  assert.deepEqual(decision([1, 2], true), { protect: [], never: true });
+  assert.deepEqual(decision([1, 2], [1, 2, 3], true), { protect: [], shown: [1, 2, 3], never: true });
 });

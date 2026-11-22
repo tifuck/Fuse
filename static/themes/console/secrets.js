@@ -37,7 +37,7 @@ function secretsWindowHtml(rows) {
       <p class="chat-secrets-error" data-secrets-error role="alert" hidden></p>
       <div class="chat-secrets-actions">
         <button type="button" class="chat-secrets-never" data-secrets-never>Turn off detection</button>
-        <button type="button" class="btn ghost" data-secrets-skip>Skip</button>
+        <button type="button" class="btn ghost" data-secrets-later>Not now</button>
         <button type="button" class="btn" data-secrets-protect></button>
       </div>
     </dialog>`;

@@ -2,20 +2,41 @@
 // project's env files waits until the owner picks which of them to protect.
 // One modal over the open chat; the theme draws it (ui.secretsWindowHtml).
 import { S } from './state.js';
+import { runIsStopping } from './core.js';
 import { snapshotWork } from './sidebar/threads.js';
 import { allState, decision, protectLabel, secretRows } from './secrets-core.js';
 
 export function createSecrets(ctx) {
-  const { net, ui } = ctx;
+  const { net, sync, turns, ui } = ctx;
   // The open window. The values live only in its DOM text: nothing here, in
   // storage or in a log keeps them, and closing removes the DOM.
   let win = null;
   // Moved by every read and every close: an older read never opens a window.
   let asked = 0;
+  // The chat whose turn just said it started waiting: the window that opens
+  // for it alerts the user, whichever read gets there first.
+  let fresh = "";
 
   const offerUrl = (id) => "/chat/threads/" + encodeURIComponent(id) + "/secrets/offer";
   const part = (name) => win.el.querySelector("[data-secrets-" + name + "]");
   const boxes = () => [...win.el.querySelectorAll("[data-secrets-row] [data-secrets-check]")];
+  const rowId = (box) => Number(box.closest("[data-secrets-row]").getAttribute("data-secrets-row"));
+
+  // The values this chat's turn waits on; none when it waits on nothing.
+  async function offered(id) {
+    const data = await net.api(offerUrl(id));
+    return data && data.pending && Array.isArray(data.items) ? data.items : [];
+  }
+
+  // A turn that just started waiting, like a new permission card (perms/queue.js speakPerm).
+  function alertUser() {
+    globalThis.fuseSound?.play("permission", { event: true });
+    globalThis.fuseAnnounce?.("Fuse found secrets in this project. Choose which to protect.", true);
+    // Without Web Push (desktop app) a window nobody is looking at times out unseen.
+    if (!(document.visibilityState === "visible" && document.hasFocus())) {
+      globalThis.fusePush?.show(S.currentId, "Fuse · Secrets found", "Choose which detected secrets to protect", () => {});
+    }
+  }
 
   function paint() {
     const list = boxes();
@@ -29,7 +50,7 @@ export function createSecrets(ctx) {
 
   function setBusy(on) {
     win.busy = on;
-    ["protect", "skip", "never"].forEach((name) => { part(name).disabled = on; });
+    ["protect", "later", "never"].forEach((name) => { part(name).disabled = on; });
   }
 
   function showError(text) {
@@ -38,13 +59,16 @@ export function createSecrets(ctx) {
     el.hidden = !text;
   }
 
-  async function decide(ids, never) {
+  // Settles the rows on show: the ticked ones are protected, the rest declined.
+  async function decide(never) {
     const mine = win;
     if (mine.busy) return;
+    const list = boxes();
+    const body = decision(list.filter((box) => box.checked).map(rowId), list.map(rowId), never);
     setBusy(true);
     showError("");
     try {
-      await net.api(offerUrl(mine.thread), { method: "POST", body: JSON.stringify(decision(ids, never)) });
+      await net.api(offerUrl(mine.thread), { method: "POST", body: JSON.stringify(body) });
     } catch (error) {
       if (win !== mine) return;
       setBusy(false);
@@ -52,15 +76,29 @@ export function createSecrets(ctx) {
       part("protect").focus({ preventScroll: true });
       return;
     }
-    if (win === mine) close();
+    // Values found after the window was drawn are still open and the turn
+    // still waits on them: they get a window of their own.
+    const items = await offered(mine.thread).catch(() => []);
+    if (win !== mine) return;
+    close();
+    if (items.length && mine.thread === S.currentId) open(mine.thread, items);
+  }
+
+  // Not now decides nothing: it stops this turn, as the chat's Stop does, and
+  // the offer stays open for the next one.
+  async function notNow() {
+    const id = win.thread;
+    close();
+    await turns.requestStop().catch((error) => sync.showFailure("Could not stop", error));
+    // Stop was called off (it asks first while subagents run): the turn still waits.
+    if (S.activeRun) check(id);
   }
 
   function onClick(event) {
     const hit = (name) => event.target.closest("[data-secrets-" + name + "]");
-    if (hit("protect")) {
-      decide(boxes().filter((box) => box.checked).map((box) => Number(box.closest("[data-secrets-row]").getAttribute("data-secrets-row"))), false);
-    } else if (hit("skip")) decide([], false);
-    else if (hit("never")) decide([], true);
+    if (hit("protect")) decide(false);
+    else if (hit("never")) decide(true);
+    else if (hit("later")) notNow();
     else {
       // A checkbox toggles itself, and a drag that selected text is not a click on its row.
       const row = hit("row");
@@ -116,17 +154,20 @@ export function createSecrets(ctx) {
   }
 
   // Reads what this chat's turn waits on and shows or drops the window to
-  // match. An open window keeps its ticks.
+  // match. An open window keeps its ticks; a turn being stopped gets none.
   async function check(id = S.currentId) {
     if (!id) return;
     const ticket = ++asked;
-    let data;
-    try { data = await net.api(offerUrl(id)); }
+    let items;
+    try { items = await offered(id); }
     catch (_) { return; } // best effort: the next snapshot or event asks again
     if (ticket !== asked || id !== S.currentId) return;
-    const items = data && data.pending && Array.isArray(data.items) ? data.items : [];
     if (!items.length) close();
-    else if (!win) open(id, items);
+    else if (!win && !runIsStopping(S.activeRun)) {
+      open(id, items);
+      if (fresh === id) alertUser();
+    }
+    fresh = "";
   }
 
   // A snapshot of the open chat (opened, reloaded or reconciled). Only a
@@ -140,8 +181,9 @@ export function createSecrets(ctx) {
 
   // The run stream: the turn started waiting ("pending") or stopped
   // ("decided" on any device, "timeout"). A replayed event is old news, so
-  // the server is asked instead.
+  // the server is asked instead. Only a live "pending" alerts the user.
   function onEvent(event, passive) {
+    if (event.status === "pending" && !passive && !win) fresh = S.currentId;
     if (event.status === "pending" || passive) check();
     else close();
   }

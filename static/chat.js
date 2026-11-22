@@ -316,7 +316,12 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     ui,
   });
 
-  const secrets = createSecrets({ net, ui });
+  const secrets = createSecrets({
+    net,
+    sync: { showFailure: (...args) => sync.showFailure(...args) },
+    turns: { requestStop: (...args) => turns.requestStop(...args) },
+    ui,
+  });
 
   const artifacts = createArtifacts({
     agents: { setAgentsOpen: (...args) => agents.setAgentsOpen(...args) },

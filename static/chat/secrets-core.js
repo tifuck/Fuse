@@ -28,7 +28,9 @@ export function allState(ticked, total) {
   return ticked < total ? "mixed" : "all";
 }
 
-// What the decision POSTs. Turning detection off protects nothing.
-export function decision(ids, never = false) {
-  return { protect: never ? [] : ids, never: Boolean(never) };
+// What the decision POSTs: the server settles only the ids the window
+// showed, so a value found later is not declined unseen. Turning detection
+// off protects nothing.
+export function decision(ticked, shown, never = false) {
+  return { protect: never ? [] : ticked, shown, never: Boolean(never) };
 }
