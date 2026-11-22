@@ -87,6 +87,14 @@
   -webkit-line-clamp: 3;
   overflow: hidden;
 }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast.is-wide { align-self: flex-end; width: min(40rem, calc(100vw - 2rem)); }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows { max-height: min(24rem, 50vh); margin-top: 0.3rem; overflow-y: auto; overscroll-behavior: contain; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows:empty { display: none; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows table { width: 100%; border-collapse: collapse; font-size: 0.8rem; line-height: 1.4; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows :is(th, td) { padding: 0.3rem 0; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows tr:first-child > * { border-top: 0; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows th { width: 1%; padding-right: 1rem; color: var(--mute); font-weight: 500; white-space: nowrap; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows td { color: var(--mist); overflow-wrap: anywhere; }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-act { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-act:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast.is-link .fuse-toast-body { cursor: pointer; }
@@ -134,6 +142,10 @@
   to { opacity: 0; }
 }
 @media (max-width: 800px) {
+  :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast.is-wide { align-self: stretch; width: auto; }
+  :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows :is(th, td) { display: block; width: auto; }
+  :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows th { padding-bottom: 0; white-space: normal; }
+  :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-rows th + td { padding-top: 0.1rem; border-top: 0; }
   :where(html.is-chat-root[data-chat-view="console"]) .fuse-toasts { left: max(0.75rem, env(safe-area-inset-left, 0px)); right: max(0.75rem, env(safe-area-inset-right, 0px)); width: auto; }
   :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-x { width: 2.25rem; height: 2.25rem; margin: -0.3rem -0.1rem -0.3rem 0; }
   :where(html.is-chat-root[data-chat-view="console"]) .fuse-toast-act .btn { min-height: 2.25rem; }

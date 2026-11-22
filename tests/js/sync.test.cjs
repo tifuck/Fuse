@@ -13,6 +13,7 @@ const { createSend } = require('../../static/chat/turns/send.js');
 const { createRender, longestRun } = require('../../static/chat/sidebar/render.js');
 const { runIsActive } = require('../../static/chat/traces/semantics.js');
 const { readQueue } = require('../../static/chat/turns/queue-store.js');
+const { changeRows } = require('../../static/chat/sync/notices.js');
 
 const noop = () => {};
 const stub = (named = {}) => new Proxy(named, { get: (t, k) => (k in t ? t[k] : k === 'then' ? undefined : noop) });
@@ -394,4 +395,16 @@ test('a history repaint keeps the longest run of rows already in order and moves
   // New rows (-1) are always inserted.
   assert.deepEqual(kept([-1, 0, -1, 1]), [1, 3]);
   assert.deepEqual(kept([]), []);
+});
+
+test('the what\'s-new notice splits each change into its area and the change', () => {
+  const body = "• Connector 1.10.0: exec takes env\n• Fix a toast: and more\n• What's new: a: b\n• No area here\n…and 3 more";
+  assert.deepEqual(changeRows(body), [
+    { label: 'Connector 1.10.0', text: 'exec takes env' },
+    { label: 'Fix a toast', text: 'and more' },
+    { label: "What's new", text: 'a: b' },
+    { text: 'No area here' },
+    { text: '…and 3 more' },
+  ]);
+  assert.deepEqual(changeRows(''), []);
 });

@@ -1256,7 +1256,8 @@ document.querySelectorAll(".probe").forEach((btn) => {
   // finished, a secret was swapped). It adds "source" (the chat it is about,
   // shown over the title) and "onOpen" (the whole card opens it), and may
   // carry "actions" [{label, run, keep}]: each runs and closes the card
-  // unless keep is set. "onDismiss" runs when the user closes it (the X, a
+  // unless keep is set. "rows" [{label, text}] draws a table in place of msg
+  // on a wider card; a row with no label spans both columns. "onDismiss" runs when the user closes it (the X, a
   // swipe, Escape on the card), never when code closes it.
   //
   // The clock only runs while the page is visible and the card is not
@@ -1319,12 +1320,13 @@ document.querySelectorAll(".probe").forEach((btn) => {
     const el = document.createElement("div");
     el.className = "fuse-toast is-idle";
     if (key) el.dataset.toastKey = key;
-    el.innerHTML = '<div class="fuse-toast-body"><small></small><b></b><span></span><div class="fuse-toast-act"></div></div>' +
+    el.innerHTML = '<div class="fuse-toast-body"><small></small><b></b><span></span><div class="fuse-toast-rows"></div><div class="fuse-toast-act"></div></div>' +
       '<button type="button" class="fuse-toast-x" aria-label="Dismiss">' + X_ICON + '</button>';
     const body = el.querySelector(".fuse-toast-body");
     const source = body.querySelector("small");
     const title = body.querySelector("b");
     const msg = body.querySelector("span");
+    const rows = body.querySelector(".fuse-toast-rows");
     const act = body.querySelector(".fuse-toast-act");
     let timer = 0;
     let due = 0;
@@ -1363,10 +1365,28 @@ document.querySelectorAll(".probe").forEach((btn) => {
         const k = next.kind || "idle";
         if (k !== kind && k === "err") window.fuseSound?.play("errorSoft");
         kind = k;
-        el.className = "fuse-toast is-" + k + (next.onOpen ? " is-link" : "") + (next.source ? " is-note" : "");
+        const table = (next.rows || []).length > 0;
+        el.className = "fuse-toast is-" + k + (next.onOpen ? " is-link" : "") + (next.source ? " is-note" : "") + (table ? " is-wide" : "");
         source.textContent = next.source || "";
         title.textContent = next.title || "";
-        msg.textContent = next.msg || "";
+        msg.textContent = table ? "" : next.msg || "";
+        rows.replaceChildren();
+        if (table) {
+          const tbl = document.createElement("table");
+          for (const row of next.rows) {
+            const tr = tbl.insertRow();
+            if (row.label) {
+              const th = document.createElement("th");
+              th.scope = "row";
+              th.textContent = row.label;
+              tr.append(th);
+            }
+            const td = tr.insertCell();
+            td.textContent = row.text || "";
+            if (!row.label) td.colSpan = 2;
+          }
+          rows.append(tbl);
+        }
         const actions = (next.actions || []).slice();
         if (next.actionLabel) actions.push({ label: next.actionLabel, run: next.onAction, keep: true });
         act.replaceChildren(...actions.map((action, i) => {
