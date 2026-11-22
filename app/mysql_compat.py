@@ -103,7 +103,12 @@ def _rewrite(sql: str, lock_rows: bool = False) -> str:
         # retain SQLite's writer exclusion. Do not also lock preliminary
         # thread/user lookups: that would invert finalization's run->thread
         # write order and introduce deadlocks with a concurrent turn submit.
-        if any(table.name.lower() == "chat_runs" for table in statement.find_all(exp.Table)):
+        # Only when the outer query reads chat_runs itself: FOR UPDATE locks
+        # every table the outer query reads, and a thread view that mentions
+        # chat_runs in a subquery would lock its project, host and schedule.
+        # A caller that needs another row locked says FOR UPDATE itself.
+        source = statement.args.get("from_")
+        if source is not None and isinstance(source.this, exp.Table) and source.this.name.lower() == "chat_runs":
             statement.set("locks", [exp.Lock(update=True)])
     statement = statement.transform(_node)
     conflict = statement.args.get("conflict") if isinstance(statement, exp.Insert) else None

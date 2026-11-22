@@ -214,6 +214,46 @@ def test_retention_project_archive_does_not_deadlock_with_a_finishing_session(fr
     assert db.fetchone("SELECT archived FROM user_projects WHERE id=?", (project,))["archived"] == 1
 
 
+def test_a_thread_event_after_a_concurrent_delete_publishes_nothing(fresh_db):
+    """This transaction's snapshot still holds the thread when it publishes;
+    the delete committed in between. The event reads the current row."""
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    numeric = chats.resolve_thread_pk(uid, thread["id"])
+    cursor = chat_store.cursor(uid)
+
+    with chat_tx.transaction() as conn:
+        assert conn.execute("SELECT id FROM chat_threads WHERE id=?", (numeric,)).fetchone()
+        deleter, out = _in_thread(chats.delete_thread, uid, thread["id"])
+        deleter.join(10)
+        assert out.get("result") is True
+        assert chat_tx.thread_event(conn, uid, numeric) is None
+
+    assert [e["type"] for e in chat_store.events_after(uid, cursor)] == ["thread.deleted"]
+
+
+def test_a_session_event_does_not_lock_its_project(fresh_db):
+    """Archiving a project holds the project row and waits for its sessions'
+    rows; a finalizer publishing a session's thread.updated holds that row,
+    so it must not wait for the project row in turn."""
+    uid = make_user()
+    host = make_host(uid)
+    project = make_project(uid, host)
+    thread = chats.create_thread(uid, model="offline", kind="project", host_id=host, project_id=project)
+    numeric = chats.resolve_thread_pk(uid, thread["id"])
+    cursor = chat_store.cursor(uid)
+
+    with chat_tx.transaction() as conn:
+        assert chat_tx.thread_event(conn, uid, numeric) is not None
+        renamer, out = _in_thread(db.execute, "UPDATE user_projects SET name='renamed' WHERE id=?", (project,))
+        wait_until(lambda: out["done"].is_set(), message="the project update waited on the thread event's locks")
+    renamer.join(10)
+
+    assert "error" not in out
+    published = chat_store.events_after(uid, cursor)[-1]["payload"]
+    assert (published["project_id"], published["project_name"], published["host_alias"]) == (project, "api", "box")
+
+
 def test_root_and_subagent_finishing_together_both_commit(fresh_db):
     """The root holds its run and the thread row (paused after merging its
     reply) while a subagent of the same thread finishes into it."""

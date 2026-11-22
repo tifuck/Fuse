@@ -2,7 +2,7 @@
 each rewrite, and on the fixture the semantics SQLite gives that SQL."""
 import pytest
 
-from app import db
+from app import chats, db
 from app.mysql_compat import _rewrite
 from tests.core.helpers import quick_user
 
@@ -22,6 +22,30 @@ from tests.core.helpers import quick_user
 ])
 def test_rewrites(sql, lock_rows, rendered):
     assert _rewrite(sql, lock_rows) == rendered
+
+
+# A thread view as the writers build it: chat_runs only in a subquery.
+THREAD_VIEW = f"""SELECT {chats._THREAD_LIST_COLS}
+    FROM chat_threads t
+    LEFT JOIN user_hosts h ON h.id=t.host_id
+    LEFT JOIN user_projects p ON p.id=t.project_id
+    LEFT JOIN chat_schedules s ON s.id=t.schedule_id
+    WHERE t.id=? AND t.user_id=?"""
+
+
+@pytest.mark.parametrize("sql, locked", [
+    (THREAD_VIEW, False),
+    ("""WITH RECURSIVE up(id, parent_run_id) AS (
+            SELECT id, parent_run_id FROM chat_runs WHERE id=?
+            UNION SELECT r.id, r.parent_run_id FROM chat_runs r JOIN up u ON r.id=u.parent_run_id
+        ) SELECT 1 FROM up WHERE id=?""", False),
+    ("SELECT 1 FROM chat_runs r JOIN chat_threads t ON t.id=r.thread_id WHERE t.user_id=? AND r.status='running'", True),
+    (f"SELECT t.id, {chats._THREAD_RUNNING_SQL} AS running FROM chat_threads t WHERE t.id=? FOR UPDATE", True),
+])
+def test_a_write_transaction_locks_only_reads_of_the_runs_themselves(sql, locked):
+    # FOR UPDATE locks every table the outer query reads: on a thread view it
+    # took the project, host and schedule rows too. Other locks are explicit.
+    assert _rewrite(sql, True).endswith(" FOR UPDATE") is locked
 
 
 @pytest.mark.parametrize("sql", [
