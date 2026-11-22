@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, provider_errors
 from .config import settings
+from .database_errors import is_lock_conflict
 from .providers.access import Access
 from .proxy import merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
@@ -125,7 +126,16 @@ def _safe_record_usage(*args, **kwargs) -> bool:
         if provider == "devin" and len(args) >= 4 and isinstance(args[3], str):
             args = list(args)
             args[3] = devin_mod.canonical_upstream(args[3]) or args[3]
-        db.record_usage(*args, **kwargs)
+        try:
+            db.record_usage(*args, **kwargs)
+        except Exception as exc:
+            # A deadlock victim or lock wait timeout rolled the whole write
+            # back, so one more try keeps the usage. Anything else may have
+            # committed (a lost connection) and is never replayed.
+            if not is_lock_conflict(exc):
+                raise
+            logger.warning("Usage write hit lock contention; retrying once")
+            db.record_usage(*args, **kwargs)
         return True
     except Exception:
         logger.exception("Usage accounting degraded after an upstream result")

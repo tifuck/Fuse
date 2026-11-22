@@ -7,6 +7,7 @@ import asyncio
 import json
 
 import httpx
+import pymysql
 import pytest
 
 from app import api, db, stats
@@ -227,6 +228,30 @@ def test_a_client_disconnect_still_records_what_was_used_as_cancelled(owner):
     row = wait_until(lambda: (events() or [None])[0])
     assert (row["request_status"], row["prompt_tokens"]) == ("cancelled", 100)
     assert json.loads(json.dumps(row["usage_status"])) == "complete"
+
+
+def test_a_usage_write_that_loses_a_lock_conflict_is_retried_once(owner, monkeypatch):
+    uid, sid = owner
+    real, calls = db.record_usage, []
+
+    def flaky(*args, **kwargs):
+        calls.append(kwargs["request_status"])
+        if len(calls) == 1:
+            raise pymysql.err.OperationalError(1213, "Deadlock found when trying to get lock")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(db, "record_usage", flaky)
+    _tap(_chunks(sse({"choices": [], "usage": USAGE})), uid, sid)
+    assert len(calls) == 2 and [r["prompt_tokens"] for r in events()] == [100]
+
+    # Anything else may have half-applied: never replayed, never raised into the stream.
+    def broken(*args, **kwargs):
+        calls.append(kwargs["request_status"])
+        raise pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
+
+    monkeypatch.setattr(db, "record_usage", broken)
+    out = _tap(_chunks(sse({"choices": [], "usage": USAGE})), uid, sid)
+    assert out.endswith(b"data: [DONE]\n\n") and len(calls) == 3 and len(events()) == 1
 
 
 # -- failover on the OpenAI-compatible source ----------------------------------
