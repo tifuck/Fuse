@@ -224,6 +224,13 @@ provision_local_mariadb() {
     mkdir -p /etc/systemd/system/mariadb.service.d
     printf '[Service]\nEnvironment=GLIBC_TUNABLES=glibc.malloc.arena_max=2:glibc.malloc.mmap_threshold=1048576\n' \
       > /etc/systemd/system/mariadb.service.d/malloc.conf
+    # MariaDB's defaults suit a tiny database (README: Database tuning). Only
+    # for a server this script installed; an existing one keeps its config.
+    if [ -d /etc/mysql/mariadb.conf.d ]; then
+      pool_mb=$(awk '/^MemTotal:/ { mb = int($2 / 4096); print (mb < 128 ? 128 : mb) }' /proc/meminfo)
+      printf '[mariadb]\ninnodb_flush_log_at_trx_commit = 2\ninnodb_buffer_pool_size = %sM\ninnodb_log_file_size = 512M\ninnodb_log_buffer_size = 64M\n' \
+        "$pool_mb" > /etc/mysql/mariadb.conf.d/90-fuse.cnf
+    fi
     systemctl daemon-reload
     systemctl restart mariadb >/dev/null 2>&1 || true
     systemctl enable --now mariadb >/dev/null 2>&1 || true
