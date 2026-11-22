@@ -126,7 +126,7 @@ _CHART_SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8"><me
 <style>
 :root{{color-scheme:{scheme}}}
 body{{margin:0;padding:{pad};background:var(--fuse-bg);color:var(--fuse-text);font:calc(14px * var(--fuse-scale))/1.45 var(--fuse-font)}}
-#chart{{position:relative;max-width:60rem;margin:0 auto}}
+#chart{{position:relative;max-width:{width};margin:0 auto}}
 </style>
 </head><body><div id="chart"></div>
 <script>window.FUSE_CHART={spec};</script>
@@ -1167,6 +1167,7 @@ def render_document(text: str, fmt: str = "html", title: str = "", theme: tuple[
             head=snippet,
             scheme=theme[0],
             pad="0" if inline else "1.5rem 1.25rem",
+            width="none" if inline else "60rem",
             spec=text.replace("<", "\\u003c"),
             kit=_CHART_KIT,
         )
