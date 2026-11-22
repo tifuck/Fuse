@@ -269,7 +269,7 @@
   {% set hours = cleanup.archive_hours %}
   {% set in_days = hours and hours % 24 == 0 %}
   <div class="set-row">
-    <div class="set-label"><strong>Auto-archive</strong><span>Archive after this long without activity. Restore any time.</span></div>
+    <div class="set-label"><strong>Auto-archive</strong><span>Archive after this long without activity. Archived chats lose their images and attached files. Restore any time.</span></div>
     <div class="set-control">
       <label class="check"><input type="checkbox" name="archive_on" data-cleanup-toggle="archive"{% if hours %} checked{% endif %}> Archive inactive items</label>
       <div class="set-inline" data-cleanup-group="archive">

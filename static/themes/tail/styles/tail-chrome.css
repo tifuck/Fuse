@@ -445,6 +445,7 @@ html[data-chat-view="tail"] body.is-chat {
   & .fuse-toast.is-warn { --toast-tone: var(--status-live); --toast-ink: var(--status-live); }
   & .fuse-toast-body b { font-size: var(--tl-fs) !important; letter-spacing: 0 !important; }
   & .fuse-toast-body span { font-size: var(--tl-fs) !important; }
+  & .fuse-toast-rows table { font-size: var(--tl-fs); }
   & .fuse-toast-body small { font-size: 0.75rem !important; }
   & .fuse-toast-x { border-radius: var(--tl-r) !important; }
   & .fuse-toast-x:hover { background: var(--tl-soft) !important; }

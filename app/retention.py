@@ -13,13 +13,14 @@ deletes any chat idle that long, archived or not, pinned or not, whatever the
 user chose. Artifacts expire on their own clock (artifacts.expire_idle).
 
 Media and run transcripts have shorter clocks of their own, for every chat
-whatever its user chose: a chat idle CHAT_MEDIA_IDLE_DAYS loses its images and
-attached files (each becomes a short note), and a finished run's stored
-provider transcript goes CHAT_AGENT_TRANSCRIPT_DAYS after a subagent ended, or
+whatever its user chose: an archived chat, and one idle CHAT_MEDIA_IDLE_DAYS,
+loses its images and attached files (each becomes a short note), and a
+finished run's stored provider transcript goes CHAT_AGENT_TRANSCRIPT_DAYS after a subagent ended, or
 CHAT_RUN_TRANSCRIPT_DAYS after a newer turn replaced a root run. The chat, its
 model history (retained_history) and each run's final message stay.
 Deleting a chat or project deletes its media with it (chat_images cascades
-from chat_threads; attachments live in the thread row).
+from chat_threads; attachments live in the thread row), and its runs, command
+jobs and events (chat_threads.forget_thread_rows).
 """
 from __future__ import annotations
 
@@ -471,7 +472,7 @@ def _strip_history(raw: str, old_messages: list, new_messages: list) -> str | No
 
 
 def _purge_thread_media(user_id: int, thread: dict) -> int | None:
-    """One idle thread's media, gone. The number of stored images deleted, or
+    """One archived or idle thread's media, gone. The number of stored images deleted, or
     None when the thread moved since the sweep read it."""
     from . import chat_images, chat_tx
 
@@ -555,14 +556,13 @@ def _strip_runs(user_id: int, thread_id: int) -> None:
 
 def purge_idle_media(*, now: datetime | None = None) -> dict:
     """Delete the images and attached files of every chat or project session
-    idle CHAT_MEDIA_IDLE_DAYS, pinned ones included; a busy one is in use.
-    A thread purged since its last activity is skipped; used again, it is
-    purged again once idle."""
+    that is archived, or idle CHAT_MEDIA_IDLE_DAYS (0 = archived ones only),
+    pinned ones included; a busy one is in use. A thread purged since its
+    last activity is skipped; used again, it is purged again once archived
+    or idle."""
     days = _days("chat_media_idle_days")
     counts = {"threads": 0, "images": 0}
-    if not days:
-        return counts
-    cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=days))
+    cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=days)) if days else ""
     for user in db.fetchall("SELECT DISTINCT user_id FROM chat_threads"):
         if counts["threads"] >= _PURGE_MAX:
             break
@@ -576,7 +576,7 @@ def purge_idle_media(*, now: datetime | None = None) -> dict:
         for t in threads:
             if counts["threads"] >= _PURGE_MAX:
                 break
-            if t["id"] in busy or not t["last_active"] or t["last_active"] >= cutoff:
+            if t["id"] in busy or not (t["archived"] or "" < t["last_active"] < cutoff):
                 continue
             # Strictly after: activity in the purge's own second may follow it.
             if purged.get(t["id"], "") > t["last_active"]:

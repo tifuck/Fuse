@@ -59,7 +59,9 @@ def record_deploy() -> str:
 
 
 def changes(base: str, head: str) -> list[str]:
-    """Commit subjects in base..head, newest first, without merges."""
+    """Commit subjects in base..head, newest first, without merges. A release
+    has its dev commit as a second parent, so a release's commits show up both
+    in its body and as themselves: each subject is listed once."""
     lines = []
     for commit in (_git("log", "--format=%s%x1f%b%x1e", f"{base}..{head}") or "").split("\x1e"):
         subject, _, body = commit.strip().partition("\x1f")
@@ -68,7 +70,7 @@ def changes(base: str, head: str) -> list[str]:
         else:
             found = [subject]
         lines += [s.strip() for s in found if s.strip() and not s.startswith("Merge ")]
-    return lines
+    return list(dict.fromkeys(lines))
 
 
 def _body(lines: list[str]) -> str:

@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     artifact_max_idle_days: int = 7
     # Media retention (0 = off). Delete a chat's images and attached files
     # once nothing happened in it for this many days, pinned ones included.
+    # An archived chat loses them whatever this says.
     chat_media_idle_days: int = 3
     # Drop the stored provider transcript of a finished subagent run, and of a
     # finished root run a newer turn has replaced, this many days after it

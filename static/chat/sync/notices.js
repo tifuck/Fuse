@@ -16,6 +16,16 @@ import { S } from '../state.js';
 const TURN_TTL_MS = 10000;
 const SNIPPET_MAX = 140;
 
+// The what's-new body (app/changelog.py) is "• Area: change" lines and maybe
+// "…and N more": drawn as a table of area and change. A line with no short
+// area before a colon spans both columns.
+export function changeRows(body) {
+  return String(body || "").split("\n").map((line) => line.replace(/^•\s*/, "").trim()).filter(Boolean).map((line) => {
+    const m = /^([^:]{1,32}): (.+)$/.exec(line);
+    return m ? { label: m[1], text: m[2] } : { text: line };
+  });
+}
+
 export function createNotices(ctx) {
   const { net, sidebar } = ctx;
   const open = new Map(); // notice id -> view
@@ -53,6 +63,7 @@ export function createNotices(ctx) {
       source: elsewhere ? chatTitle(notice.thread_id) : "",
       title: notice.title,
       msg: notice.body,
+      rows: notice.key === "whats-new" ? changeRows(notice.body) : undefined,
       ttl: 0,
       onOpen: elsewhere ? () => openChat(notice.thread_id) : undefined,
       onDismiss: () => dismiss(notice.id),
