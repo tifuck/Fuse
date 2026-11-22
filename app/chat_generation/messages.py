@@ -51,6 +51,8 @@ def _artifact_lines(items: list[dict]) -> list[str]:
         ident = str(item.get("identifier") or "")
         title = str(item.get("title") or "Artifact")
         vis = str(item.get("visibility") or "private")
+        if item.get("display") == "inline":
+            vis += ", inline"
         url = str(item.get("url") or "")
         ver = item.get("version") or 1
         lines.append(f"- {ident}: {title} ({vis}, v{ver}) {url}")

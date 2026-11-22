@@ -189,15 +189,33 @@ SCHEMAS = {
         "function": {
             "name": "create_artifact",
             "description": (
-                "Publish a self-contained page as an artifact: a live page beside the chat the user can open, "
-                "come back to and share. Create one only when the user asks for an artifact or page, or "
+                "Publish an artifact: one chart or visual drawn in full inside your reply (display inline, the "
+                "default for chart), or a self-contained page beside the chat the user can open, come back to and "
+                "share (display panel). Create one only when the user asks for an artifact or page, or "
                 "explicitly asks for something to look at: a chart, a diagram, a mockup, visual samples or "
                 "options to compare, a dashboard, an interactive tool. Do not create one on your own initiative "
                 "because a visual might be nicer or the answer is long: without such a request the answer goes "
                 "in the reply as markdown, and so do audits, reviews, reports, findings, plans and summaries "
                 "unless the user asks for a page. When unsure, answer in the chat. Not for short answers or code "
                 "the user only wants to copy. "
-                "Design mobile-first: the chat pane is a tall, narrow viewport (about 360-600 px wide, full window "
+                "display 'inline' draws the artifact in full inside your reply, across the chat's width, with "
+                "nothing to open. Use it when the user asks for one specific visual: a chart or graph, a few key "
+                "numbers, a small table, a diagram or an image (e.g. 'chart my logins for the last 30 days'). Use "
+                "panel for pages, documents, dashboards and tools. For data, pass chart, not html: Fuse's kit draws "
+                "it cleanly in the user's theme, inline unless you pass display 'panel'. chart is {type, x, y, data}: data is a list of row "
+                "objects, x the label field, y a value field or a list of up to 4, e.g. {\"type\": \"bar\", \"x\": "
+                "\"day\", \"y\": \"signups\", \"data\": [{\"day\": \"Mon\", \"signups\": 12}, {\"day\": \"Tue\", "
+                "\"signups\": 18}]}. Pick the type by the question: "
+                "line or area for change over time, bar to compare categories (sorted, horizontal), column for a "
+                "value per period (several y fields stack), stat for 1-8 key numbers (rows {label, value, delta, "
+                "good}), table for up to 20 rows (columns from the row keys, or columns [{key, label, kind: "
+                "text|number|bar|spark|status}]; a list of numbers draws a sparkline), heatmap for an x-by-y grid "
+                "(value names the field). Optional: unit ('%', ' ms'), prefix ('$'), headline {value, label, delta, "
+                "good}. Aggregate first and keep labels short. Write inline html only when the kit cannot show it: "
+                "no title and no page background (the chat shows the title; leave the page transparent), text in "
+                "var(--fuse-font), content sized to the column (360-1000 px wide, at most about 400 px tall, never "
+                "scrolling), images as inline SVG. "
+                "Design a panel page mobile-first: the chat pane is a tall, narrow viewport (about 360-600 px wide, full window "
                 "height), and the same page also opens wide and full-window. Use one column that stacks, fluid "
                 "widths (%, auto-fit/minmax grids) instead of fixed pixel widths or many side-by-side columns, "
                 "charts sized to their container, and wide tables inside their own overflow-x box; never make the "
@@ -226,8 +244,9 @@ SCHEMAS = {
                 "window.fuse.sendToChat(text) puts text in the user's message box, for a 'send this back' button. "
                 "A design system in the project instructions overrides these defaults. It starts private and only the user can share it. Never put secrets, "
                 "API keys, credentials, or other users' data in it. Encode content as a valid JSON string. "
-                "After this returns, say in a sentence or two what you made: the chat shows the artifact as a card "
-                "under your reply, so do not link it or paste its source. "
+                "After this returns, say in a sentence or two what you made (one short sentence for inline): the chat "
+                "shows a panel artifact as a card under your reply and an inline one in full, so do not link it or "
+                "paste its source. "
                 "Change it later with edit_artifact or update_artifact instead of creating another."
             ),
             "parameters": {
@@ -239,6 +258,12 @@ SCHEMAS = {
                         "description": "Complete HTML document (doctype, html, head, body).",
                     },
                     "markdown": {"type": "string", "description": "A Markdown document, instead of html."},
+                    "chart": {"type": "object", "description": "A chart for Fuse's kit, instead of html: {type, x, y, data, ...}."},
+                    "display": {
+                        "type": "string",
+                        "enum": ["inline", "panel"],
+                        "description": "inline (the default for chart): drawn in full inside the reply; use it for any one chart, set of numbers or small table the user asked to see. panel (the default for html and markdown): a card that opens a full page beside the chat.",
+                    },
                     "icon": {"type": "string", "description": "One emoji for the tab and lists, e.g. \U0001f4ca."},
                     "note": {"type": "string", "description": "Optional one-line summary of this version."},
                     "identifier": {
@@ -272,6 +297,8 @@ SCHEMAS = {
                     },
                     "html": {"type": "string", "description": "Replacement HTML document."},
                     "markdown": {"type": "string", "description": "Replacement Markdown document, instead of html."},
+                    "chart": {"type": "object", "description": "Replacement chart spec, instead of html."},
+                    "display": {"type": "string", "enum": ["inline", "panel"], "description": "Move it into the reply (inline) or back to a card (panel)."},
                     "title": {"type": "string"},
                     "icon": {"type": "string", "description": "One emoji."},
                     "note": {"type": "string", "description": "One-line summary of what changed."},

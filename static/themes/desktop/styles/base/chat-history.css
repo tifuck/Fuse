@@ -115,7 +115,7 @@
   transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-collapse:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 7%, transparent); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-collapse:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-collapse:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
 @media (min-width: 801px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.history-collapsed) .chat-history-collapse { display: grid; }
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat:not(.history-collapsed) .chat-bar .chat-history-toggle { display: none; }
@@ -190,7 +190,7 @@
   html:where(.is-chat-root[data-chat-view="desktop"])[data-desktop-app="true"] .chat .chat-history-bar .chat-history-dock-toggle { display: grid; }
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-bar :is(.chat-new, .chat-history-iconbtn):focus-visible,
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-tab:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-tab:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-search {
   display: flex;
   align-items: center;
@@ -248,7 +248,7 @@
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-filters select:hover,
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-filters select:has(option:not(:first-child):checked) { color: var(--mist); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-filters select:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-filters select:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-filters option { color: var(--mist); }
 /* List. Rows are one line (title) or two (title + snippet/project meta). */
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-history-list {

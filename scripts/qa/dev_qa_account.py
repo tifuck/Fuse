@@ -29,6 +29,7 @@ production or from a real session.
 from __future__ import annotations
 
 import json
+import math
 import os
 import secrets
 import sys
@@ -429,6 +430,76 @@ def artifacts_thread(ident: str) -> list[dict]:
     ]
 
 
+# Inline artifacts: charts drawn by the kit (app/artifact_chart.js) in the reply.
+INLINE_LOGINS = {
+    "type": "line", "x": "day", "y": "logins",
+    "headline": {"value": 20934, "label": "logins", "delta": "▲ 12% vs the 30 days before", "good": True},
+    "data": [{"day": f"2026-{10 + (d + 22) // 31:02d}-{(d + 22) % 31 + 1:02d}", "logins": round(640 + 110 * math.sin(d / 2.6) + d * 5 - (170 if d % 7 in (1, 2) else 0))}
+             for d in range(30)],
+}
+INLINE_MODELS = {
+    "type": "bar", "x": "model", "y": "requests",
+    "data": [{"model": m, "requests": n} for m, n in (("Demo model A", 48210), ("Demo model B", 31877), ("Demo model C", 27455),
+                                                      ("Demo model D", 14980), ("Demo model E", 6044))],
+}
+INLINE_WEEK = {
+    "type": "stat",
+    "data": [{"label": "Requests", "value": "182.4k", "delta": "▲ 8.1%", "good": True, "note": "vs last week"},
+             {"label": "Tokens", "value": "41.2M", "delta": "▲ 14.0%", "good": True, "note": "vs last week"},
+             {"label": "Error rate", "value": "0.42%", "delta": "▼ 0.10 pt", "good": True, "note": "vs last week"},
+             {"label": "p95 latency", "value": "1.8 s", "delta": "▲ 0.2 s", "good": False, "note": "vs last week"}],
+}
+
+
+# Sloppy data as a model might send it: number-like strings, missing values,
+# nested values, long labels, negatives, too many rows and columns.
+INLINE_EDGES = (
+    ("table", "Machines, as reported", {"type": "table", "data": [
+        {"host": "demo-a", "cpu": "45%", "mem": 61.237894, "uptime": "12 days, 4:03:11", "status": "ok"},
+        {"host": "a-really-long-hostname-that-goes-on-and-on.internal.example.invalid", "cpu": 12, "mem": "n/a",
+         "notes": "Kernel updated, rebooted after the security patch on Tuesday night", "status": "degraded"},
+        {"host": "demo-c", "cpu": 1234567.891, "mem": -3, "notes": {"nested": [1, 2]}, "status": None},
+        {"cpu": 7, "host": "demo-d 🎮", "mem": 99.9, "status": "down", "extra_only_here": "surprise"},
+        {"host": "", "cpu": None, "mem": None, "status": "unknown"}]}),
+    ("bars", "Change by team", {"type": "bar", "x": "team", "y": "delta", "unit": "%", "data": [
+        {"team": t, "delta": v} for t, v in (("Sales and partnerships", 12.5), ("Operations", -8.25), ("Customer support", -31),
+                                             ("R&D", "4"), ("Legal", 0), ("Unassigned", None))]}),
+    ("weeks", "Tickets per week", {"type": "column", "x": "week", "y": "tickets", "data": [
+        {"week": f"2026-W{w:02d}", "tickets": (w * 53) % 400} for w in range(52, 0, -1)]}),
+    ("gaps", "Daily signups, with gaps", {"type": "line", "x": "day", "y": "signups",
+        "headline": {"value": "1,234", "label": "signups this month, the most since the instance was installed", "delta": "▲ 12% vs October", "good": True},
+        "data": [{"day": f"2026-11-{d:02d}", "signups": None if d % 6 == 0 else 30 + (d * 17) % 40} for d in range(1, 22)]}),
+)
+
+
+def inline_edges_thread(idents: dict) -> list[dict]:
+    """Inline charts fed sloppy data: each must fit its frame, wide or narrow."""
+    out = []
+    for key, title, _ in INLINE_EDGES:
+        out += [user(f"Show me {title.lower()}."),
+                reply(tool("create_artifact", version=1, visibility="private", display="inline", format="chart",
+                           identifier=idents[key], title=title, host="", project_root=""), f"{title}.", minutes_ago=20, elapsed_s=5)]
+    return out
+
+
+def inline_thread(idents: dict) -> list[dict]:
+    """Inline artifacts (display inline): real chart rows the seed makes."""
+    def art(key: str, title: str) -> dict:
+        return tool("create_artifact", version=1, visibility="private", display="inline", format="chart",
+                    identifier=idents[key], title=title, host="", project_root="")
+    return [
+        user("Show me logins over the last 30 days."),
+        reply(art("logins", "Logins, last 30 days"), "Logins for the last 30 days, up 12% on the 30 days before.",
+              minutes_ago=50, elapsed_s=9),
+        user("How did this week compare to last week?"),
+        reply(art("week", "This week vs last week"), "Requests and tokens are up, errors are down, and p95 latency rose a little.",
+              minutes_ago=40, elapsed_s=7),
+        user("Which models got the most requests this month?"),
+        reply(art("models", "Requests by model, November"), "Model A took 34% of requests; the top three made up 76%.",
+              minutes_ago=30, elapsed_s=8),
+    ]
+
+
 def _png(width: int, height: int) -> str:
     """A small made-up gradient as a PNG data URI."""
     import base64
@@ -633,6 +704,8 @@ THREADS = [
     ("QA · Live agents", live_agents_thread),
     ("QA · Notices and attachments", notices_thread),
     ("QA · Artifacts", artifacts_thread),
+    ("QA · Inline artifacts", inline_thread),
+    ("QA · Inline edge cases", inline_edges_thread),
     ("QA · Planning and memory", planning_thread),
     ("QA · Background work", background_thread),
     ("QA · Subagents", agents_thread),
@@ -656,6 +729,14 @@ def _seed(uid: int) -> list[str]:
     for title, build in THREADS:
         if build is artifacts_thread:
             messages = build(art)
+        elif build is inline_edges_thread:
+            messages = build({key: artifacts.create(uid, title=title, html=json.dumps(spec), fmt="chart", display="inline")["identifier"]
+                              for key, title, spec in INLINE_EDGES})
+        elif build is inline_thread:
+            messages = build({key: artifacts.create(uid, title=title, html=json.dumps(spec), fmt="chart", display="inline")["identifier"]
+                              for key, title, spec in (("logins", "Logins, last 30 days", INLINE_LOGINS),
+                                                       ("week", "This week vs last week", INLINE_WEEK),
+                                                       ("models", "Requests by model, November", INLINE_MODELS))})
         elif build is planning_thread:
             messages = build(skill_proposals.create(uid, thread_id=pk, name="release-checklist", body=SKILL_BODY,
                                                     description="Steps to cut a release of the demo project.",

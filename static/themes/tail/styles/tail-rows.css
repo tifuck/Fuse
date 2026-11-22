@@ -1,7 +1,5 @@
 /* Tail: the transcript's other rows (agents, notices, thoughts, todos, asks), in the view's grammar. Loaded after tail.css. */
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
-  --tl-verb: 8ch;
-
   /* ---- a notice: verb, subject, leader, result (an agent's report, a monitor's event or end) ---- */
   & li.chat-step:is(.is-console-notice, .is-console-agents, .is-console-thought),
   & li.chat-step.is-console-group:not(.is-console-agents) { display: block !important; margin: 0 !important; padding: 0 !important; background: none !important; }
@@ -23,7 +21,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-note-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--mist); }
   & .tail-note-meta { flex: 0 100 auto; min-width: 0; margin-left: 2ch; overflow: hidden; text-overflow: ellipsis; color: var(--tl-dim); font-variant-numeric: tabular-nums; }
   /* The burst rows' leader: a short run of dots just before the result. */
-  & .tail-note-leader { flex: 0 1 1.3rem; min-width: 0.75rem; margin: 0 0.75rem 0 auto; border-bottom: 1px dotted var(--tl-line2); transform: translateY(0.25em); }
+  & .tail-note-leader { flex: 0 1 1.3rem; min-width: 0.75rem; margin: 0 0.75rem 0 auto; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
   & .tail-note-call { flex-shrink: 100 !important; margin-right: 0.75rem !important; }
   & .tail-note-result { flex: none; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font-variant-numeric: tabular-nums; text-align: right; }
   & .tail-note-result .chat-console-dim { color: var(--tl-dim) !important; }
@@ -196,16 +194,15 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-console-codecall > .chat-step-main > .chat-step-head > button.chat-step-toggle:hover,
   & .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle[aria-expanded="true"] { background: var(--tl-soft); }
   & .chat-console-codecall > .chat-step-main > .chat-step-head > .chat-step-toggle:focus-visible { outline: 2px solid var(--tl-ac); outline-offset: -2px; }
-  & .chat-console-codecall .chat-step-toggle > .chat-console-call { flex: 0 1 auto !important; display: flex !important; align-items: baseline; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: color-mix(in srgb, var(--mist) 78%, var(--ink)); }
+  & .chat-console-codecall .chat-step-toggle > .chat-console-call { flex: 0 1 auto !important; display: flex !important; align-items: baseline; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mist); }
   & .chat-console-codecall .chat-step-toggle .chat-console-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap !important; color: inherit; }
   & .chat-console-codecall .chat-step-toggle .chat-console-val wbr { display: none; }
-  & .chat-console-codecall .chat-step-toggle > .chat-console-call.is-described .chat-console-val { color: var(--mist); }
   /* A row whose subject is plain text (a group of reads, the source) cuts with an ellipsis too. */
   & .chat-console-codecall .chat-step-toggle > .chat-console-call:not(:has(> .chat-console-val)) { display: block !important; }
   & .chat-console-codecall .chat-step-toggle > .chat-console-call:not(:has(> .chat-console-val)) > .chat-tool-action { display: inline-block !important; vertical-align: top; }
   & .chat-console-codecall .chat-step-toggle > .chat-console-call:not(:has(> .chat-console-val)) > b { margin: 0 !important; }
   & .chat-console-codecall .chat-step-toggle > .chat-console-call > b { margin: 0 1ch 0 0; font-weight: 400; color: inherit; }
-  & .chat-console-codecall .chat-tool-action { flex: none; min-width: 7ch !important; margin-right: 1ch; color: var(--tl-dim) !important; font-weight: 400 !important; text-transform: lowercase; }
+  & .chat-console-codecall .chat-tool-action { flex: none; min-width: var(--tl-verb) !important; margin-right: 1ch; color: var(--tl-dim) !important; font-weight: 400 !important; text-transform: lowercase; }
   & .chat-console-codecall.is-error > .chat-step-main > .chat-step-head .chat-tool-action { color: var(--fault) !important; }
   & .chat-console-codecall.is-running > .chat-step-main > .chat-step-head .chat-tool-action { color: var(--tl-ac) !important; }
   & .chat-console-codecall:is([data-tool="search_replace"], [data-tool="write_file"]) > .chat-step-main > .chat-step-head .chat-tool-action { color: var(--tl-ac) !important; }
@@ -214,7 +211,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     flex: 0 0 auto !important; display: block !important; width: auto !important; max-width: 50% !important; margin: 0 0 0 auto !important; padding: 0 0 0 0.75rem !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--mute) !important; font-variant-numeric: tabular-nums; text-align: right;
   }
-  & .chat-console-codecall .chat-step-toggle > .chat-console-codemeta::before { content: ""; display: inline-block; width: 1.3rem; margin-right: 0.75rem; border-bottom: 1px dotted var(--tl-line2); vertical-align: 0.1em; }
+  & .chat-console-codecall .chat-step-toggle > .chat-console-codemeta::before { content: ""; display: inline-block; width: 1.3rem; margin-right: 0.75rem; border-bottom: 1px dotted var(--tl-leader); vertical-align: 0.1em; }
   & .chat-console-codecall .chat-console-codemeta b { font-weight: 400; color: inherit; }
   & .chat-console-codecall.is-error > .chat-step-main > .chat-step-head .chat-console-codemeta { color: var(--fault) !important; }
   & .chat-console-codecall > .chat-step-main > .chat-step-reveal:not(.is-open) { display: none !important; }
@@ -345,6 +342,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   /* ---- in the reply: artifact cards, sources, skill proposals, on the text column ---- */
   & .chat-artifact-cards { display: flex !important; flex-wrap: wrap; gap: 0.4rem !important; margin: 0.4rem 0 0.5rem var(--tl-g) !important; padding: 0 !important; }
   & .chat-artifact-cards[hidden] { display: none !important; }
+  & .chat-artifact-inline-list { margin: 0.5rem 0 0.5rem var(--tl-g) !important; }
   & .chat-artifact-card {
     display: flex !important; align-items: center; gap: 0.75rem !important; box-sizing: border-box; width: min(26rem, 100%) !important; min-height: 3rem; margin: 0 !important; padding: 0.4rem 0.8rem 0.4rem 0.5rem !important;
     border: 1px solid var(--line) !important; border-radius: var(--tl-r) !important; background: var(--panel) !important; box-shadow: none !important; color: var(--mist); font: var(--tl-fs)/1.5 var(--mono) !important; text-align: left;
@@ -385,7 +383,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-source-domain { flex: none; width: 18ch; margin-right: 1ch; overflow: hidden; text-overflow: ellipsis; color: var(--tl-dim) !important; font: inherit !important; }
   & .chat-source-title { display: block !important; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mist) !important; font: inherit !important; }
   & .chat-source-state { flex: none; display: flex !important; align-items: center; margin: 0 0 0 auto !important; padding: 0 0 0 0.75rem !important; border: 0 !important; background: none !important; color: var(--mute) !important; font: inherit !important; text-transform: none !important; letter-spacing: 0 !important; }
-  & .chat-source-state::before { content: ""; width: 1.3rem; margin-right: 0.75rem; border-bottom: 1px dotted var(--tl-line2); transform: translateY(0.25em); }
+  & .chat-source-state::before { content: ""; width: 1.3rem; margin-right: 0.75rem; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
   & .chat-source-state.is-cited { color: var(--ok) !important; }
 
   & .chat-skill-card {
@@ -458,6 +456,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .chat-user-file-x { width: 2rem !important; height: 2rem !important; }
     & .chat-source-domain { width: 12ch; }
     & .chat-skill-field input, & .chat-skill-check { min-height: 2.25rem; }
-    & .chat-console-codecall .chat-tool-action { min-width: 6ch !important; }
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-notice.is-live .chat-notice-line.is-current::before { animation: none !important; }
 }

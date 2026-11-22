@@ -201,6 +201,18 @@ test('an open artifact pane keeps the reader\'s pick; a closed one follows the n
   assert.equal(S.currentArtifact.identifier, 'new');
 });
 
+test('the pane never follows an inline artifact: the reply shows it', () => {
+  S.messages = [{ id: 'a', role: 'assistant', tools: [
+    { name: 'create_artifact', identifier: 'page', status: 'done', version: 1 },
+    { name: 'create_artifact', identifier: 'chart', status: 'done', version: 1, display: 'inline' },
+  ] }];
+  const artifacts = createArtifacts(deps());
+  S.artifactOpen = false;
+  S.currentArtifact = null;
+  artifacts.rememberLatestArtifact();
+  assert.equal(S.currentArtifact.identifier, 'page');
+});
+
 test('a compaction that finishes after its chat was left leaves the open chat alone', async () => {
   const reply = deferred();
   const accepted = [];

@@ -452,7 +452,7 @@
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x svg { display: block; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x:hover { color: var(--fault); background: color-mix(in srgb, var(--fault) 12%, transparent); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x.is-fixed { cursor: default; opacity: 0.4; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x.is-fixed:hover { color: var(--mute); background: transparent; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-empty {
@@ -508,7 +508,7 @@
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-modes button.is-on { color: var(--on-brass, var(--ink)); background: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-modes button:disabled { opacity: 0.45; cursor: not-allowed; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-modes button:focus-visible { outline: 2px solid var(--steel); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-modes button:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-hint { margin: 0; color: var(--mute); font-size: 0.7rem; line-height: 1.4; }
 /* Phones: a bottom sheet with the model picker's head, motion and
    swipe-to-close, as tall as its few rows (the model list needs the whole

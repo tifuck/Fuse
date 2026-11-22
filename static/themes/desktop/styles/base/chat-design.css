@@ -608,7 +608,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([dat
 /* Keep live reasoning bounded while exposing the newest paragraph. Expanding
    increases reading room without allowing every token to move the composer. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action:disabled { opacity: 0.45; cursor: default; }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-queue-action:focus-visible { outline: 1px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error { padding: 0.75rem 1rem; color: var(--fault); border-bottom: 1px solid var(--line); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error[hidden] { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-agent-error p { margin: 0 0 0.5rem; overflow-wrap: anywhere; }
@@ -699,7 +699,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-backdrop]:not([dat
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown :is(td,th) { padding: calc(0.1rem * var(--chat-text-scale, 1)) calc(0.35rem * var(--chat-text-scale, 1)); border: 1px solid var(--line); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-markdown hr { margin: 0.25em 0; border: 0; border-top: 1px solid var(--line); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-preview:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-think-preview:focus-visible { outline: 1px solid var(--dk-link, var(--steel)); outline-offset: -1px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-thread,
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-agent-scroll { overflow-anchor: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat .chat-thread { scrollbar-gutter: stable; }
@@ -822,7 +822,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   transition: border-color var(--dur-hover) ease, background-color var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):hover { background: var(--ap-hover); border-color: color-mix(in srgb, var(--mist) 22%, var(--line)); }
-:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme, .ap-backdrop, .ap-font):focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is( .ap-theme[aria-pressed="true"], .ap-backdrop[aria-pressed="true"], .ap-font[aria-checked="true"]) {
   border-color: var(--brass);
   box-shadow: inset 0 0 0 1px var(--brass);
@@ -900,7 +900,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   font: 0.8125rem/1.3 var(--ap-ui);
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-search::placeholder { color: var(--mute); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .ap-search:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-search:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrops > [hidden] { display: none; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop :is(span, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop[aria-pressed="true"]::after {
@@ -935,7 +935,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del:hover { border-color: var(--fault); color: var(--fault); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrop-del:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
 /* A custom card: its scheme's ground until its frame (a third-size document
    scaled down) mounts while the card is on screen. */
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-backdrop-preview[data-kind^="u-"] { position: relative; background: linear-gradient(135deg, color-mix(in srgb, var(--brass) 26%, #0b0d12), #05060a); }
@@ -962,7 +962,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-more:hover { background: var(--ap-hover); border-color: color-mix(in srgb, var(--mist) 22%, var(--line)); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .ap-more:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-more:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is(.ap-more, .ap-note)[hidden] { display: none; }
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .ap-backdrops { grid-template-columns: repeat(auto-fill, minmax(6.6rem, 1fr)); }
@@ -1044,7 +1044,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button:hover { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button[aria-pressed="true"] { background: var(--raise); color: var(--mist); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-filters button:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-sample {
   position: relative;
   margin: 0;
@@ -1121,7 +1121,7 @@ html:where(.is-chat-root[data-chat-view="desktop"])[data-chat-scheme="light"] .p
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:checked { border-color: var(--brass); background: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:checked::after { background: var(--on-brass, var(--ink)); transform: translate(0.88rem, -50%); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu { width: auto; max-height: none; }
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-view-menu .chat-view-sheet-body.ap { padding: 0 1rem 1.5rem; }

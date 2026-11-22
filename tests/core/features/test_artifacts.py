@@ -337,3 +337,53 @@ def test_a_real_turn_creates_an_artifact_linked_to_its_chat(fresh_db):
     with fake_provider(text_frames("ok")) as provider:
         run_async(run_turn(uid, "again", thread=chats.get_thread(uid, thread_id)))
     assert not any("artifact" in t["function"]["name"] for t in provider.bodies[0].get("tools") or [])
+
+
+def test_inline_display_is_stored_traced_and_switchable(fresh_db):
+    uid = quick_user()
+    spec = {"type": "line", "x": "day", "y": "n", "data": [{"day": "2026-11-01", "n": 3}]}
+    text, made = artifacts.execute_from_tool("create_artifact", {"title": "Logins", "display": "inline", "chart": spec},
+                                             user_id=uid, thread_id=None)
+    assert (made["status"], made["display"], made["format"]) == ("done", "inline", "chart")
+    assert "in full inside your reply" in text
+    ident = made["identifier"]
+    _, edited = artifacts.execute_from_tool("edit_artifact", {"identifier": ident, "edits": [{"old_string": '"n": 3', "new_string": '"n": 4'}]},
+                                            user_id=uid, thread_id=None)
+    assert (edited["display"], edited["version"]) == ("inline", 2)
+    _, moved = artifacts.execute_from_tool("update_artifact", {"identifier": ident, "display": "panel"}, user_id=uid, thread_id=None)
+    assert (moved["display"], moved["version"]) == ("panel", 2)
+    _, bad = artifacts.execute_from_tool("create_artifact", {"title": "x", "html": PAGE.format(1), "display": "sidebar"},
+                                         user_id=uid, thread_id=None)
+    assert bad["status"] == "error" and "display" in bad["error"]
+    _, chart = artifacts.execute_from_tool("create_artifact", {"title": "c", "chart": spec}, user_id=uid, thread_id=None)
+    _, page = artifacts.execute_from_tool("create_artifact", {"title": "p", "html": PAGE.format(1)}, user_id=uid, thread_id=None)
+    assert (chart["display"], page["display"]) == ("inline", "panel")
+
+
+def test_chart_specs_are_checked_before_they_are_stored(fresh_db):
+    uid = quick_user()
+    for spec, problem in (({"type": "pie", "data": [{"a": 1}]}, "chart type"), ({"type": "bar", "data": []}, "non-empty"),
+                          ({"type": "bar", "data": [1, 2]}, "objects"), ("not json", "JSON object")):
+        with pytest.raises(ArtifactError, match=problem):
+            artifacts.create(uid, title="c", html=spec if isinstance(spec, str) else json.dumps(spec), fmt="chart")
+    assert artifacts.list_for_user(uid) == []
+
+
+def test_charts_written_by_columns_are_stored_as_rows():
+    columns = {"type": "bar", "x": ["Mon", "Tue"], "y": [{"label": "Signups", "values": [12, 18]}]}
+    chartjs = {"chart": {"type": "line", "labels": ["Mon", "Tue"], "datasets": [{"label": "Signups", "data": [12, 18]}]}}
+    for spec in (columns, chartjs):
+        stored = json.loads(artifacts._chart_text(json.dumps(spec)))
+        assert (stored["x"], stored["y"]) == ("label", ["Signups"])
+        assert stored["data"] == [{"label": "Mon", "Signups": 12}, {"label": "Tue", "Signups": 18}]
+
+
+def test_inline_pages_are_transparent_sized_and_in_the_chat_font():
+    page = artifacts.render_document(PAGE.format("x"), inline=True, font="mono|Red Hat Mono|wght@400..700", scale="115")
+    assert "background:transparent!important" in page and 'type:"size"' in page
+    assert "family=Red+Hat+Mono:wght@400..700" in page and '--fuse-font:"Red Hat Mono"' in page and "--fuse-scale:1.15" in page
+    hostile = artifacts.render_document(PAGE.format("x"), inline=True, font='mono|x" onload="|wght@400', scale="9999")
+    assert "onload" not in hostile and "fonts.googleapis.com/css2" not in hostile and "--fuse-scale:1.6" in hostile
+    assert 'type:"size"' not in artifacts.render_document(PAGE.format("x"))
+    chart = artifacts.render_document(artifacts._chart_text(json.dumps({"type": "bar", "data": [{"a": "</script><b>"}]})), "chart")
+    assert "window.FUSE_CHART=" in chart and "</script><b>" not in chart

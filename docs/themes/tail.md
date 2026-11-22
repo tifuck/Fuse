@@ -38,7 +38,7 @@ base.
   for a failure, amber for a stopped call, pulsing while running. A running
   burst names its running call after the count. The line opens the calls
   and stays folded until opened, live or not (`msg.stepOpen["burst-<block>"]`).
-- **A call** is one row: verb (lower case, 8ch), subject, dotted leader,
+- **A call** is one row: verb (lower case, 9ch, so an 8-letter verb keeps a gap), subject, dotted leader,
   result. Edits read `+N −M`; failures are red. No host tag (the pane's head
   has it). A running command prints its newest output line under the row.
 - **The receipt** ends a turn: mark, `done` / `interrupted` / `failed`,

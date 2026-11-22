@@ -96,18 +96,9 @@ html[data-chat-console="true"] .chat[data-view="console"]:not(.is-empty) :is(.ch
   padding-bottom: 1rem;
 }
 
-@keyframes console-output-reveal {
-  from { opacity: 0; transform: translateY(-3px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes console-running-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
-}
-
-html[data-chat-console="true"] .chat[data-view="console"] .chat-step-reveal.is-revealing > .chat-step-reveal-inner {
-  animation: console-output-reveal var(--dur-1) ease-out;
 }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-step-chevron { transition: transform var(--dur-1) ease, color var(--dur-hover) ease; }

@@ -102,6 +102,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     get agentStatusText() { return agents.agentStatusText; },
     get agentsRows() { return S.agentsRows; },
     get applySpinEl() { return sidebar.applySpinEl; },
+    get artifactInline() { return artifacts.inline; },
     get assistantSegments() { return transcript.assistantSegments; },
     get autoEventLabel() { return traces.autoEventLabel; },
     get consoleSpinFrame() { return S.consoleSpinFrame; },

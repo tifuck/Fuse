@@ -425,6 +425,7 @@ export function createDesktopTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createTranscript({
+    get artifactInline() { return runtime.artifactInline; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get parseProviderError() { return theme.parseProviderError; },
     get providerErrorHtml() { return theme.providerErrorHtml; },
