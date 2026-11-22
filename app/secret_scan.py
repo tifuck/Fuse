@@ -207,6 +207,7 @@ def pick_files(names: list[str]) -> list[str]:
 # -- scanning a working folder ------------------------------------------------
 
 _last: dict[tuple[int, int, str], float] = {}
+_files: dict[tuple[int, int, str], list[str]] = {}
 _dirty: set[tuple[int, int]] = set()
 _locks: dict[tuple[int, int, str], asyncio.Lock] = {}
 
@@ -219,25 +220,35 @@ def mark_dirty(user_id: int, host_id: int) -> None:
 
 async def ensure(user_id: int, host_id: int, root: str, *, force: bool = False) -> int:
     """Scan the folder if it is due. Returns how many new candidates were
-    offered. Never raises: a host that cannot be read is skipped."""
+    offered. Never raises: a host that cannot be read is skipped. The folder
+    is listed at most every _RESCAN_AFTER_S; between listings a tool round
+    only re-reads the env files already found."""
     from . import secret_guard, workspace
 
     key = (int(user_id), int(host_id), str(root or ""))
     dirty = key[:2] in _dirty
-    if not force and not dirty and time.monotonic() - _last.get(key, -1e9) < _RESCAN_AFTER_S:
+    listed_recently = time.monotonic() - _last.get(key, -1e9) < _RESCAN_AFTER_S
+    if not force and not dirty and listed_recently:
+        return 0
+    known = _files.get(key) if listed_recently and not force else None
+    if known == []:
+        _dirty.discard(key[:2])
         return 0
     if not await asyncio.to_thread(secret_guard.offers_enabled, user_id):
         return 0
     lock = _locks.setdefault(key, asyncio.Lock())
     async with lock:
         _dirty.discard(key[:2])
-        _last[key] = time.monotonic()
+        if known is None:
+            _last[key] = time.monotonic()
         try:
             alias, files = await workspace.read_env_files(
-                user_id, host_id, root, pick=pick_files, depth=SCAN_DEPTH, max_chars=MAX_FILE_CHARS)
+                user_id, host_id, root, pick=pick_files, depth=SCAN_DEPTH, max_chars=MAX_FILE_CHARS, known=known)
         except Exception as exc:
             logger.info("Secret scan skipped for host %s: %s", host_id, str(exc)[:200])
             return 0
+        if known is None:
+            _files[key] = [path for path, _text in files]
         found: list[Found] = []
         for path, text in files:
             found += find(path, text)

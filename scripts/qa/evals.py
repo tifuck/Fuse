@@ -48,7 +48,7 @@ def _inline_chart(run: dict) -> bool:
 
 
 # Shaped like a key, built in pieces (a literal one is rejected when pushed). It opens nothing.
-_EVAL_KEY = "sk-" + "proj-" + "Eq7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0Ga" + "Tz4Kc9Rm8Wx1Yb5Q"
+_EVAL_KEY = "sk-" + "proj-" + "Hd4Ws8Kp2Nx6Tb1Rv9Mq3Zc7Yf5Jg0La" + "Ue2Ow8Bn4Xt6Pk1S"
 
 
 # A task: turns are sent in order ("/compact" compacts the chat instead; the
