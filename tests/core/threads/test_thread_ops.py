@@ -206,6 +206,21 @@ def test_other_accounts_cannot_see_or_change_a_thread(fresh_db):
     assert events(other) == []
 
 
+def test_search_ignores_case_and_matches_escaped_and_non_ascii_text(fresh_db):
+    uid = quick_user()
+    greeting = chats.create_thread(uid, model="offline", title="Greeting")
+    chat_store.start_turn(uid, greeting["id"], "Привет мир", greeting["revision"], None)
+    chats.create_thread(uid, model="offline", title="Docker setup")
+    quoted = chats.create_thread(uid, model="offline", title="Quote")
+    chat_store.start_turn(uid, quoted["id"], 'please say "hi" back', quoted["revision"], None)
+
+    # Transcripts are stored with ensure_ascii: Cyrillic as \u escapes, quotes escaped.
+    assert {t["title"]: t["snippet"] for t in chats.search_threads(uid, "мир")} == {"Greeting": "Привет мир"}
+    assert [t["title"] for t in chats.search_threads(uid, "привет")] == ["Greeting"]
+    assert [t["title"] for t in chats.search_threads(uid, "docker")] == ["Docker setup"]
+    assert {t["title"]: t["snippet"] for t in chats.search_threads(uid, 'SAY "HI"')} == {"Quote": 'please say "hi" back'}
+
+
 def test_list_and_search_report_running_and_escape_wildcards(fresh_db):
     uid = make_user()
     busy = chats.create_thread(uid, model="offline", title="100% done")
