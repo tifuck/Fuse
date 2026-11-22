@@ -18,7 +18,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   --mono: var(--code, "JetBrains Mono", ui-monospace, monospace);
 
   /* ---- the transcript column ---- */
-  & [data-chat-log], & .chat-live-dock { width: 100%; max-width: 64rem; margin-inline: auto; }
+  & [data-chat-log], & .chat-live-dock { width: 100%; max-width: none; margin-inline: 0; }
   & [data-chat-log] { padding: 0.75rem 1rem 1.25rem; }
   & .chat-turn.is-user { margin: 0.9rem 0 0.5rem; padding: 0.3rem 0.5rem 0.3rem 0; border-radius: var(--tl-r); background: var(--raise); }
   & .chat-turn.is-user:first-child { margin-top: 0; }
