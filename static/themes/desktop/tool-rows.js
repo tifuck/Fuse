@@ -181,7 +181,7 @@ const ROW_ICON_KIND = {
   };
 // Kinds the row draws with the step glyphs the theme already has.
 const ROW_STEP_ICON = {
-    scratch: "scratch", remember: "memory", recall: "memory", forget: "memory", load_skill: "skill", propose_skill: "skill", search_models: "model",
+    todo_write: "todo", scratch: "scratch", remember: "memory", recall: "memory", forget: "memory", load_skill: "skill", propose_skill: "skill", search_models: "model",
   };
 function rowIconHtml(trace) {
     const step = trace && ROW_STEP_ICON[trace.name];
