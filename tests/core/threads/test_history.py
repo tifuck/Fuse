@@ -3,7 +3,7 @@ really sent, whatever the page re-serializes, while explicit edits and
 deletions stay effective and runs never leak across accounts."""
 import copy
 
-from app import chats
+from app import chat_history, chats
 from tests.core.helpers import fake_provider, make_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools
@@ -82,3 +82,42 @@ def test_copied_message_ids_do_not_recover_another_accounts_runs(fresh_db):
 
     assert not any(RESULT == m.get("content") for m in _tool_rows(sent))
     assert not any(RESULT in str(m.get("content")) and RECOVERED not in str(m.get("content")) for m in sent)
+
+
+def _grep_call(ident):
+    return {"id": ident, "type": "function", "function": {"name": "grep", "arguments": "{}"}}
+
+
+def test_a_call_id_recycled_in_a_later_round_is_renamed_with_its_result():
+    rows = [
+        {"role": "user", "content": "one"},
+        {"role": "assistant", "content": "", "tool_calls": [_grep_call("call_1")]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "first"},
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "two"},
+        {"role": "assistant", "content": "", "tool_calls": [_grep_call("call_1")]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "second"},
+    ]
+
+    out = chat_history.for_model(rows, "offline")
+
+    renamed = out[5]["tool_calls"][0]["id"]
+    assert out[1]["tool_calls"][0]["id"] == out[2]["tool_call_id"] == "call_1"
+    assert renamed.startswith("fuse_") and out[6]["tool_call_id"] == renamed
+    assert rows[5]["tool_calls"][0]["id"] == "call_1"
+
+
+def test_a_duplicate_call_id_with_one_result_answers_the_other_call_before_the_next_row():
+    rows = [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": "", "tool_calls": [_grep_call("dup"), _grep_call("dup")]},
+        {"role": "tool", "tool_call_id": "dup", "content": "only one"},
+        {"role": "user", "content": "next"},
+    ]
+
+    out = chat_history.for_model(rows, "offline")
+
+    first, second = (call["id"] for call in out[1]["tool_calls"])
+    assert first == "dup" and second.startswith("fuse_")
+    assert [(m["role"], m.get("tool_call_id"), m["content"]) for m in out[2:]] == [
+        ("tool", "dup", "only one"), ("tool", second, chat_history.NO_RESULT), ("user", None, "next")]

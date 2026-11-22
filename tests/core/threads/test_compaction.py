@@ -1,6 +1,7 @@
 """Manual compaction: a checkpoint applies once, the next turn sends the
 summary plus the rows after it, edits before the boundary drop it; and the
 context meter's arithmetic."""
+import json
 import threading
 from unittest.mock import AsyncMock, patch
 
@@ -236,5 +237,41 @@ def test_standing_meter_counts_retained_tool_results(meter_settings):
             {"role": "tool", "tool_call_id": "c", "content": "y" * 40_000}]
     with_tools = context_meter.standing_meter(rows, model="offline", override=100_000)
     without = context_meter.standing_meter(rows[:1], model="offline", override=100_000)
-    assert with_tools["used"] - without["used"] >= 10_000
+    # Exactly once: the call row plus its 10_000-token result.
+    assert with_tools["used"] - without["used"] == context_meter.estimate_messages(rows[1:])
     assert with_tools["limit"] == 100_000 and with_tools["estimated"] is True
+
+
+def _skill_call(ident, name):
+    return {"id": ident, "type": "function", "function": {"name": "load_skill", "arguments": json.dumps({"name": name})}}
+
+
+def test_compaction_keeps_the_newest_load_skill_result_per_skill():
+    rows = [
+        {"role": "user", "content": "start"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            _skill_call("a", "ponytail"), {"id": "b", "type": "function", "function": {"name": "grep", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "a", "content": "ponytail v1"},
+        {"role": "tool", "tool_call_id": "b", "content": "grep output"},
+        {"role": "assistant", "content": "", "tool_calls": [_skill_call("c", "ponytail")]},
+        {"role": "tool", "tool_call_id": "c", "content": "ponytail v2"},
+        {"role": "assistant", "content": "done"},
+    ]
+
+    assert context_compact.retained_skill_rows(rows) == [
+        {"role": "assistant", "content": "", "tool_calls": [_skill_call("skill_keep_0", "ponytail")]},
+        {"role": "tool", "tool_call_id": "skill_keep_0", "content": "ponytail v2"},
+    ]
+
+
+def test_trailing_requests_stay_verbatim_only_while_they_fit(meter_settings):
+    head = [{"role": "user", "content": "inspect"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "function": {"name": "grep", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "c", "content": "found"},
+            {"role": "assistant", "content": "done"}]
+    budget = context_compact.preserve_budget(100_000)
+    short = [{"role": "user", "content": "next"}]
+    long = [{"role": "user", "content": "abcd" * budget}, {"role": "user", "content": "and this"}]
+
+    assert context_compact.split_trailing_users(head + short, 100_000) == (head, short)
+    assert context_compact.split_trailing_users(head + long, 100_000) == (head + long, [])

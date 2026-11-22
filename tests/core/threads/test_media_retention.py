@@ -204,3 +204,22 @@ def test_deleting_a_chat_or_project_deletes_its_media(fresh_db_fk):
     assert hosts.delete_project(uid, host, project) is True
     assert images() == 0
     assert db.fetchone("SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=?", (uid,))["n"] == 0
+
+
+def test_purging_an_archived_chat_keeps_its_forks_and_other_accounts_images(fresh_db_fk, monkeypatch):
+    uid, stranger = make_user("ada@core.test"), make_user("bob@core.test")
+    source = chats.create_thread(uid, model="offline")
+    _turn(uid, source, seed=1)
+    fork = chats.fork_thread(uid, source["id"])
+    theirs = chats.create_thread(stranger, model="offline")
+    _turn(stranger, theirs, seed=1)
+    chats.update_thread(uid, source["id"], archived=True)
+    monkeypatch.setattr(retention.settings, "chat_media_idle_days", 0)
+
+    assert retention.purge_idle_media() == {"threads": 1, "images": 1}
+
+    assert (_images(uid, source), _images(uid, fork), _images(stranger, theirs)) == (0, 1, 1)
+    sha = hashlib.sha256(image_url(1).encode()).hexdigest()
+    ref = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": chat_images.PREFIX + sha}}]}]
+    for owner in (uid, stranger):
+        assert chat_images.rehydrate(owner, ref)[0]["content"][0]["image_url"]["url"] == image_url(1)
