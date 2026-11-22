@@ -136,6 +136,24 @@ def test_a_stop_pending_at_boot_finishes_cancelled(fresh_db):
     assert run_row(run["id"])["status"] == "cancelled"
 
 
+def test_a_send_now_pending_at_boot_keeps_the_runs_background_commands(fresh_db):
+    from app import command_jobs
+
+    uid = quick_user()
+    jobs = {}
+    for flag in (chat_store.KEEP_JOBS, 1):
+        _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "partial"}))
+        db.execute("UPDATE chat_runs SET cancel_requested=? WHERE id=?", (flag, run["id"]))
+        jobs[flag] = {"id": f"job-{run['id']}", "run_id": run["id"], "user_id": uid, "kind": "command", "status": "running"}
+
+    with patch.dict(command_jobs._live, {job["id"]: job for job in jobs.values()}), \
+            patch.object(command_jobs, "_kill_from_anywhere") as kill:
+        chat_recovery.recover_runs()
+
+    assert [call.args[0]["id"] for call in kill.call_args_list] == [jobs[1]["id"]], "only a Stop ends its commands"
+    assert {run_row(job["run_id"])["status"] for job in jobs.values()} == {"cancelled"}
+
+
 def test_boot_requeues_a_bounded_batch_and_the_reaper_drains_the_rest(fresh_db):
     uid = quick_user()
     batch = chat_recovery.BOOT_RESUME_BATCH
