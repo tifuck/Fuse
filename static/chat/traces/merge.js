@@ -203,7 +203,8 @@ export function createMerge(ctx) {
     if (trace.visibility === "public" || trace.visibility === "private") rec.visibility = trace.visibility;
     if (trace.version != null && Number.isFinite(Number(trace.version))) rec.version = Number(trace.version);
     if (trace.icon) rec.icon = String(trace.icon).slice(0, 16);
-    if (trace.format === "html" || trace.format === "markdown") rec.format = trace.format;
+    if (trace.format === "html" || trace.format === "markdown" || trace.format === "chart") rec.format = trace.format;
+    if (trace.display === "inline" || trace.display === "panel") rec.display = trace.display;
     if (trace.host) rec.host = String(trace.host).slice(0, 40);
     if (trace.path) rec.path = String(trace.path).slice(0, 400);
     if (trace.cwd) rec.cwd = String(trace.cwd).slice(0, 400);
@@ -264,6 +265,7 @@ export function createMerge(ctx) {
       "visibility",
       "icon",
       "format",
+      "display",
       "error",
       "host",
       "path",

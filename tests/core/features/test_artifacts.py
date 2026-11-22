@@ -387,3 +387,21 @@ def test_inline_pages_are_transparent_sized_and_in_the_chat_font():
     assert 'type:"size"' not in artifacts.render_document(PAGE.format("x"))
     chart = artifacts.render_document(artifacts._chart_text(json.dumps({"type": "bar", "data": [{"a": "</script><b>"}]})), "chart")
     assert "window.FUSE_CHART=" in chart and "</script><b>" not in chart
+
+
+def test_a_chart_call_is_inline_while_it_streams_and_runs():
+    from app.chat_generation.tool_jobs import ToolJob, _running_event
+    from app.chat_output import Output
+
+    def running(args):
+        return _running_event(ToolJob(0, "c", "create_artifact", json.dumps(args), "ts_0_0")).get("display")
+
+    chart = {"type": "bar", "data": [{"a": 1}]}
+    assert running({"title": "t", "chart": chart}) == "inline"
+    assert running({"title": "t", "chart": chart, "display": "panel"}) is None
+    assert running({"title": "t", "html": "<p>x</p>"}) is None
+    out = Output.__new__(Output)
+    out._draft = {"tool": "create_artifact", "chars": 40, "head": '{"title": "t", "chart": {"type": "bar"'}
+    assert out.drafting()["display"] == "inline"
+    out._draft["head"] = '{"title": "t", "display": "panel", "chart": {'
+    assert "display" not in out.drafting()

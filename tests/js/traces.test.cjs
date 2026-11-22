@@ -409,3 +409,12 @@ test('a live tool event keeps the fields a stored trace has: a script and the ca
   const call = m.mergeToolEvent(null, { id: 'r_c1', name: 'grep', parent: 'r', pattern: 'x' }, 'running');
   assert.equal(m.mergeToolEvent(call, { id: 'r_c1', name: 'grep' }, 'done').parent, 'r');
 });
+
+test('a live artifact event keeps where it is shown, so an inline chart never opens the pane', () => {
+  reset();
+  const m = merge();
+  const art = m.mergeToolEvent(m.mergeToolEvent(null, { id: 'a', name: 'create_artifact', title: 'Logins' }, 'running'),
+    { id: 'a', name: 'create_artifact', identifier: 'abcdefgh', version: 1, format: 'chart', display: 'inline' }, 'done');
+  assert.equal(art.display, 'inline');
+  assert.equal(art.format, 'chart');
+});
