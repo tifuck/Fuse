@@ -193,6 +193,7 @@ export function createTailTheme(runtime) {
     get isCodeOutputTool() { return runtime.isCodeOutputTool; },
     get isSearchTool() { return theme.isSearchTool; },
     get looksLikeDiff() { return theme.looksLikeDiff; },
+    get messages() { return runtime.messages; },
     get normalizeTodos() { return runtime.normalizeTodos; },
     get pageHost() { return theme.pageHost; },
     get renderAnsi() { return theme.renderAnsi; },

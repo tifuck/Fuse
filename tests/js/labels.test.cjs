@@ -191,6 +191,24 @@ test('desktop rows read as sentences: a described command in the past tense once
   assert.equal(text({ name: 'list_dir', ...root }), 'Listeddemo', 'it reads by its name');
 });
 
+test('a Console or Tail todo row says what the call changed, naming a single todo', async () => {
+  const list = (...statuses) => statuses.map((status, index) => ({ id: String(index + 1), content: `todo ${index + 1}`, status }));
+  const first = { name: 'todo_write', todos: list('pending', 'pending', 'pending') };
+  const second = { name: 'todo_write', todos: list('completed', 'in_progress', 'pending') };
+  const third = { name: 'todo_write', todos: [...list('completed', 'completed'), { id: '4', content: 'todo 4', status: 'pending' }] };
+  const orphan = { name: 'todo_write', todos: list('pending') };
+  const deps = { messages: [{ tools: [first, { name: 'read_file' }] }, { tools: [second, third] }], normalizeTodos: (items) => items, shortToolText: String };
+  const lines = {};
+  for (const theme of ['console', 'tail']) {
+    const { consoleResultLine } = (await import(`../../static/themes/${theme}/tool-results.js`)).create(deps);
+    lines[theme] = [first, second, third, orphan].map((trace) => consoleResultLine(trace, {}));
+  }
+  assert.deepEqual(lines.console, ['Added 3 todos, 0/3 done', 'Finished “todo 1”, started “todo 2”, 1/3 done',
+    'Added “todo 4”, finished “todo 2”, removed “todo 3”, 2/3 done', '1 todo, 0/1 done']);
+  assert.deepEqual(lines.tail, ['0/3 done, added 3 todos', '1/3 done, finished “todo 1”, started “todo 2”',
+    '2/3 done, added “todo 4”, finished “todo 2”, removed “todo 3”', '0/1 done']);
+});
+
 test('desktop agents table: what a subagent did, in words; how a finished one ended', async () => {
   const panels = (await import('../../static/themes/desktop/work-panels.js')).create({
     agentLive: (status) => status === 'running', agentDurationSeconds: () => 30, ccAgentLastCall: () => '',
