@@ -653,6 +653,8 @@ def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dic
     # A chat transaction: archive/restore emits thread events, and only this
     # one wakes other tabs and moves the watermarks after commit.
     with store.transaction() as conn:
+        if "archived" in raw or raw.get("host_id") is not None:
+            _lock_project_sessions(conn, user_id, project_id)
         # Row-locked: the archive decision below compares against this read,
         # and a retention sweep may archive the project concurrently.
         row = conn.execute(
@@ -712,8 +714,8 @@ def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dic
             ).fetchall()]
             if moved:
                 conn.execute(
-                    f"UPDATE chat_threads SET host_id=?, revision=revision+1 WHERE user_id=? AND id IN ({','.join('?' * len(moved))})",
-                    (new_host, user_id, *moved),
+                    f"UPDATE chat_threads SET host_id=?, revision=revision+1 WHERE id IN ({','.join('?' * len(moved))})",
+                    (new_host, *moved),
                 )
             for tid in moved:
                 store.thread_event(conn, user_id, tid)
@@ -722,6 +724,22 @@ def patch_project(user_id: int, host_id: int, project_id: int, raw: dict) -> dic
         projects_changed(conn, user_id)
         row = conn.execute("SELECT * FROM user_projects WHERE id=?", (project_id,)).fetchone()
         return _project_view(row)
+
+
+def _lock_project_sessions(conn, user_id: int, project_id: int) -> None:
+    """Lock a project's session rows by primary key, in id order, before its
+    project row. A finishing run locks its run, then its thread, then (the
+    thread event) the project: holding the project while waiting on a
+    session closes a cycle, and so does a session UPDATE that scans the
+    user's index and holds its entries while it waits."""
+    ids = [int(r["id"]) for r in conn.execute(
+        "SELECT id FROM chat_threads WHERE user_id=? AND project_id=?", (user_id, project_id)
+    ).fetchall()]
+    if ids:
+        conn.execute(
+            f"SELECT id FROM chat_threads WHERE id IN ({','.join('?' * len(ids))}) ORDER BY id" + db.for_update(conn),
+            ids,
+        ).fetchall()
 
 
 def projects_changed(conn, user_id: int) -> None:
@@ -759,10 +777,13 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
             ids = [i for i in ids if i not in busy]
         if ids:
             # Archiving is not activity: updated_at (the list's age) stays put.
+            # By primary key: ids are this user's, and a scan of the user's
+            # index would lock entries other writers need (see
+            # _lock_project_sessions).
             conn.execute(
                 f"""UPDATE chat_threads SET archived=1, archived_at=?, archived_by_project=1, revision=revision+1
-                    WHERE user_id=? AND id IN ({','.join('?' * len(ids))})""",
-                (ts, user_id, *ids),
+                    WHERE id IN ({','.join('?' * len(ids))})""",
+                (ts, *ids),
             )
     else:
         conn.execute(
@@ -777,8 +798,8 @@ def set_project_archived(conn, user_id: int, project_id: int, archived: bool, *,
         if ids:
             conn.execute(
                 f"""UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=?, revision=revision+1
-                    WHERE user_id=? AND id IN ({','.join('?' * len(ids))})""",
-                (ts, user_id, *ids),
+                    WHERE id IN ({','.join('?' * len(ids))})""",
+                (ts, *ids),
             )
     for tid in ids:
         store.thread_event(conn, user_id, tid)

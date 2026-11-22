@@ -228,9 +228,11 @@ def _enter_dir_sh(target: str, include: str = "") -> str:
     relative to the searched path on every host (the Windows connector's
     rule) and results print as ./rel. A literal include naming a file right
     there narrows the search to that one file. A symlink is not narrowed to:
-    the gate reviewed the directory, and the walk never follows symlinks."""
+    the gate reviewed the directory, and the walk never follows symlinks.
+    Neither is a name under a subdirectory (sub/x): `test -L` sees only the
+    last name, and a symlinked sub would lead out of the directory."""
     literal = ""
-    if include and _literal_glob(include):
+    if include and _literal_glob(include) and "/" not in include:
         lit = shlex.quote('./' + include)
         literal = f"if [ -f {lit} ] && [ ! -L {lit} ]; then TGT={lit}; fi; "
     return (

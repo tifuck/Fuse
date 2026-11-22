@@ -133,19 +133,44 @@ def _date_ok(local, dom: set[int], dow: set[int], date_or: bool) -> bool:
     return (day_ok or dow_ok) if date_or else (day_ok and dow_ok)
 
 
+def _fixed_time(expr: str) -> bool:
+    """Minute and hour both fixed (neither starts with `*`). As in Vixie cron
+    and cronie, only such a job catches up a slot lost to a spring-forward gap."""
+    parts = (expr or "").strip().split()
+    return not parts[0].startswith("*") and not parts[1].startswith("*")
+
+
+def _gap_had_slot(cursor: datetime, local: datetime, tz: ZoneInfo, fields, date_or: bool) -> bool:
+    """cursor is the first instant after a spring-forward gap, and a wall
+    minute the gap skipped matches the expression."""
+    minute, hour, dom, month, dow = fields
+    wall = (cursor - timedelta(minutes=1)).astimezone(tz).replace(tzinfo=None) + timedelta(minutes=1)
+    end = local.replace(tzinfo=None)
+    while wall < end:
+        if wall.month in month and _date_ok(wall, dom, dow, date_or) and wall.hour in hour and wall.minute in minute:
+            return True
+        wall += timedelta(minutes=1)
+    return False
+
+
 def next_fire(expr: str, tz_name: str, after_utc: datetime) -> datetime | None:
     """Next UTC instant strictly after after_utc where the local clock in tz_name matches expr.
 
     Walks real time and re-reads local wall fields per candidate, so a slot
-    that occurs twice (DST fall-back) fires at both real occurrences, while a
-    slot inside a spring-forward gap never appears on the local clock and does
-    not fire. dom/dow follow POSIX: when both fields are restricted, a match
-    in either is enough. As in Vixie cron and cronie, a field that starts with
-    `*` (`*/2`) is not restricted, so `0 0 */2 * 1` is odd-dated Mondays.
+    that occurs twice (DST fall-back) fires at both real occurrences. A slot
+    inside a spring-forward gap never appears on the local clock: when minute
+    and hour are both fixed (`0 0 * * *`, not `30 * * * *`) it fires once at
+    the first instant after the gap, so a daily run is never lost; otherwise
+    it does not fire. dom/dow follow POSIX: when both fields are restricted, a
+    match in either is enough. As in Vixie cron and cronie, a field that
+    starts with `*` (`*/2`) is not restricted, so `0 0 */2 * 1` is
+    odd-dated Mondays.
     """
-    minute, hour, dom, month, dow = parse_cron(expr)
+    fields = parse_cron(expr)
+    minute, hour, dom, month, dow = fields
     tz = parse_tz(tz_name)
     date_or = _date_or(expr)
+    fixed = _fixed_time(expr)
     if after_utc.tzinfo is None:
         after_utc = after_utc.replace(tzinfo=timezone.utc)
     cursor = (after_utc.replace(second=0, microsecond=0) + timedelta(minutes=1))
@@ -153,6 +178,8 @@ def next_fire(expr: str, tz_name: str, after_utc: datetime) -> datetime | None:
     limit = after_utc + timedelta(days=366 * 8)
     while cursor <= limit:
         local = cursor.astimezone(tz)
+        if fixed and _gap_had_slot(cursor, local, tz, fields, date_or):
+            return cursor
         if local.month not in month or not _date_ok(local, dom, dow, date_or):
             wall = datetime(local.year, local.month, local.day) + timedelta(days=1)
         elif local.hour not in hour:
@@ -205,6 +232,7 @@ def _min_gap(expr: str, tz_name: str, year: int) -> int | None:
     minute, hour, dom, month, dow = parse_cron(expr)
     tz = parse_tz(tz_name)
     date_or = _date_or(expr)
+    fixed = _fixed_time(expr)
     slots = [timedelta(hours=h, minutes=m) for h in sorted(hour) for m in sorted(minute)]
     same_day = min((b - a for a, b in zip(slots, slots[1:])), default=None)
     one_day = timedelta(days=1)
@@ -233,8 +261,9 @@ def _min_gap(expr: str, tz_name: str, year: int) -> int | None:
             gap = same_day
         else:
             # One shift today: find the first wall minute on the new offset.
-            # Slots in the window before it fall in a spring-forward gap and
-            # never fire, or in a fall-back fold and fire at both occurrences.
+            # Slots in the window before it fall in a spring-forward gap (a
+            # fixed-time job fires them once at the gap's end, others never),
+            # or in a fall-back fold and fire at both occurrences.
             lo, hi = 0, 1440
             while hi - lo > 1:
                 mid = (lo + hi) // 2
@@ -252,6 +281,8 @@ def _min_gap(expr: str, tz_name: str, year: int) -> int | None:
                     fires.add(midnight + t - off)
                 elif next_off < off:
                     fires.update((midnight + t - off, midnight + t - next_off))
+                elif fixed:
+                    fires.add(midnight + shift - next_off)
             fires = sorted(fires)
             if not fires:
                 midnight += one_day

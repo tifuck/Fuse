@@ -9,12 +9,12 @@ import httpx
 from pytest import fixture
 
 import app.sources as sources
-from app import db
+from app import api, chat_runs, db
 from app.providers.protocols import anthropic_messages
 from app.sources import keyed
 from tests.core.helpers import quick_user
 
-from ._support import completion, drain, frames_of, key
+from ._support import completion, drain, events, frames_of, key
 
 MSG = [{"role": "user", "content": "hi"}]
 
@@ -199,6 +199,28 @@ def test_anthropic_errors_keep_the_reason_and_a_rejected_key_fails_over(fresh_db
     assert result.status == 200 and result.body["choices"][0]["message"]["content"] == "hello"
     assert result.body["model"] == "anthropic/claude-x"
     assert [a["status"] for a in result.attempts] == [401]
+
+
+def test_a_translated_anthropic_stream_records_one_row_with_the_cache_inside_the_prompt(fresh_db, upstream):
+    uid = quick_user()
+    sid = keyed.ensure_source("anthropic")
+    key(sid, "sk-ant-personal-1", owner=uid)
+    upstream.on("GET", "api.anthropic.com/v1/models", httpx.Response(200, json={"data": [{"id": "claude-x"}]}))
+    start = {"type": "message_start", "message": {"id": "msg_1", "usage": {
+        "input_tokens": 12, "output_tokens": 1, "cache_read_input_tokens": 900, "cache_creation_input_tokens": 50}}}
+    upstream.on("POST", "api.anthropic.com/v1/messages", _anthropic_sse(start, *REPLY[1:]))
+    body = {"model": "anthropic/claude-x", "stream": True, "messages": MSG}
+
+    async def go():
+        response = await api.dispatch_chat(chat_runs.internal_request(uid), {"id": uid}, body)
+        return response.status_code, await drain(response.body_iterator)
+
+    status, raw = asyncio.run(go())
+
+    assert status == 200 and b"hello" in raw
+    (row,) = events()
+    assert (row["prompt_tokens"], row["cached_tokens"], row["cache_write_tokens"]) == (12 + 900 + 50, 900, 50)
+    assert (row["output_tokens"], row["usage_status"], row["request_status"]) == (3, "complete", "success")
 
 
 def test_the_anthropic_payload_has_no_subscription_shaping():

@@ -13,7 +13,7 @@ import pytest
 
 from app.sources.key_pool import (
     ACTIVE, COOLING, DISABLED, DISABLED_AUTH, DISABLED_UNAVAILABLE, DISABLED_WEEKLY, RESTING, KeyPool,
-    NoAvailableKeyError,
+    NoAvailableKeyError, parse_retry_after,
 )
 
 URL = "https://ollama.com/api/chat"
@@ -167,6 +167,17 @@ def test_retry_after_extends_a_cooldown_but_is_capped_at_the_longest_tier(make_p
     assert pool.states["short"].available_at == NOW + pool.account_unavailable
     bogus = pool.states["bogus"]
     assert (bogus.disabled_reason, bogus.available_at) == (DISABLED_WEEKLY, NOW + pool.weekly_quota)
+
+
+def test_a_non_finite_retry_after_is_ignored_and_never_disables_a_key(make_pool):
+    assert [parse_retry_after(v) for v in ("inf", "1e400", "-inf", "nan", "30")] == [None, None, None, None, 30.0]
+    pool = make_pool("keyA")
+    with patch("app.sources.key_pool.time.time", return_value=NOW):
+        _fail(pool, "keyA", 429, "slow down", {"retry-after": "inf"})
+
+    state = pool.states["keyA"]
+    assert (state.state, state.disabled_reason, state.last_error_type) == (COOLING, None, "rate_limit")
+    assert state.available_at == NOW + pool.transient_429
 
 
 def test_state_is_saved_by_key_hash_and_a_rebuild_keeps_live_cooldowns(make_pool, tmp_path):

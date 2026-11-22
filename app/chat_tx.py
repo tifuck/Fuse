@@ -443,20 +443,36 @@ def prune_command_receipts(now: datetime | None = None) -> int:
 
 
 def thread_event(conn, user_id, thread_id, transcript_changed=False):
-    from . import chats
+    from . import chat_threads, chats
 
+    # The thread row by a locking read: a plain one is this transaction's
+    # snapshot and can still show a row a concurrent delete removed. The
+    # display names are plain reads, so publishing never locks the project,
+    # host or schedule row (archiving a project holds it and waits for its
+    # sessions' rows).
     row = conn.execute(
-        f"""SELECT {chats._THREAD_LIST_COLS}
-           FROM chat_threads t
-           LEFT JOIN user_hosts h ON h.id=t.host_id
-           LEFT JOIN user_projects p ON p.id=t.project_id
-           LEFT JOIN chat_schedules s ON s.id=t.schedule_id
-           WHERE t.id=? AND t.user_id=?""",
+        f"""SELECT {chat_threads._THREAD_ROW_COLS}, {chat_threads._THREAD_RUNNING_SQL} AS running
+           FROM chat_threads t WHERE t.id=? AND t.user_id=?""" + db.for_update(conn),
         (thread_id, user_id),
     ).fetchone()
-    if row:
-        payload = chats._view(row)
-        if transcript_changed:
-            payload["transcript_changed"] = True
-        return event(conn, user_id, "thread.updated", thread_id, payload)
-    return None
+    if row is None:
+        return None
+    row = dict(row)
+    host = row["host_id"] is not None and conn.execute(
+        "SELECT alias FROM user_hosts WHERE id=?", (row["host_id"],)).fetchone()
+    project = row["project_id"] is not None and conn.execute(
+        "SELECT name, color, logo_rev, archived FROM user_projects WHERE id=?", (row["project_id"],)).fetchone()
+    schedule = row["schedule_id"] is not None and conn.execute(
+        "SELECT name FROM chat_schedules WHERE id=?", (row["schedule_id"],)).fetchone()
+    row.update(
+        host_alias=host["alias"] if host else None,
+        project_name=project["name"] if project else None,
+        project_color=project["color"] if project else None,
+        project_logo_rev=project["logo_rev"] if project else None,
+        project_archived=project["archived"] if project else None,
+        schedule_name=schedule["name"] if schedule else None,
+    )
+    payload = chats._view(row)
+    if transcript_changed:
+        payload["transcript_changed"] = True
+    return event(conn, user_id, "thread.updated", thread_id, payload)

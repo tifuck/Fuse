@@ -11,6 +11,22 @@ test('turn durations', () => {
   for (const [ms, text] of cases) assert.equal(core.formatTurnDuration(ms), text, String(ms));
 });
 
+test('safeUrl keeps web, mail and artifact links and refuses everything else', () => {
+  const kept = [['https://x', 'https://x'], [' https://x ', 'https://x'], ['HTTP://x.test/p?q=1', 'HTTP://x.test/p?q=1'],
+    ['mailto:a@b.test', 'mailto:a@b.test'], ['/a/Ab_9-x', '/a/Ab_9-x'], ['/a/Ab_9-x/content', '/a/Ab_9-x/content'],
+    ['/a/Ab_9-x/download', '/a/Ab_9-x/download'], ['/artifacts', '/artifacts']];
+  for (const [raw, url] of kept) assert.equal(core.safeUrl(raw), url, raw);
+  const refused = ['javascript:alert(1)', ' JavaScript:alert(1)', 'data:text/html,<script>1</script>', 'vbscript:x',
+    '//evil.test/x', '/a/x/../y', '/a/x/source', '/a/x/content?x=1', '/a/', '/chat', '/artifacts/x', 'x https://y', '', null, undefined];
+  for (const raw of refused) assert.equal(core.safeUrl(raw), '', String(raw));
+});
+
+test('escapeHtml escapes every character that can open markup or end an attribute', () => {
+  assert.equal(core.escapeHtml(`<a href="x" title='y'>&amp;</a>`), '&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;amp;&lt;/a&gt;');
+  assert.equal(core.escapeHtml(null), '');
+  assert.equal(core.escapeHtml(42), '42');
+});
+
 test('sub-second durations stay in ms and hand off above a second', () => {
   const cases = [[0, '0ms'], [450, '450ms'], [999, '999ms'], [999.6, '1.0s'], [1000, '1.0s'], [9500, '9.5s'],
     [10_000, '10s'], [25_000, '25s'], [65_000, '1m 5s'], [-5, ''], [NaN, ''], ['x', ''],

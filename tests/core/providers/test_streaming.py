@@ -7,9 +7,10 @@ import asyncio
 import json
 
 import httpx
+import pymysql
 import pytest
 
-from app import api, db
+from app import api, db, stats
 from app.proxy import openai_chat
 from app.sources import http_pool
 from tests.core.helpers import quick_user, wait_until
@@ -19,6 +20,9 @@ from ._support import completion, delta, drain, events, frames_of, source, sse, 
 URL = "https://up.test/v1/chat/completions"
 USAGE = {"prompt_tokens": 100, "completion_tokens": 7, "total_tokens": 107,
          "prompt_tokens_details": {"cached_tokens": 40}}
+# The same usage split across two frames, as some compatible providers send it.
+SPLIT = ({"choices": [], "usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 40}}},
+         {"choices": [], "usage": {"completion_tokens": 7}})
 
 
 def _call(body, **kwargs):
@@ -31,7 +35,8 @@ def _call(body, **kwargs):
 
 
 def test_a_stream_asks_for_usage_and_keeps_the_final_frame_past_later_deltas(upstream):
-    upstream.on("POST", "/chat/completions", sse_response(delta("hi"), {"choices": [], "usage": USAGE}, delta("")))
+    upstream.on("POST", "/chat/completions",
+                sse_response(delta("hi"), {"choices": [], "usage": USAGE}, {**delta(""), "usage": None}))
 
     status, _obj, raw, usage, _h = _call({"model": "m", "stream": True, "stream_options": {"x": 1}, "messages": []})
 
@@ -39,6 +44,16 @@ def test_a_stream_asks_for_usage_and_keeps_the_final_frame_past_later_deltas(ups
     assert upstream.sent("/chat/completions")[0]["stream_options"] == {"x": 1, "include_usage": True}
     assert (usage["prompt_tokens"], usage["completion_tokens"], usage["cached_tokens"]) == (100, 7, 40)
     assert usage["stream_status"] == "complete"
+
+
+def test_split_usage_frames_merge_even_after_done(upstream):
+    after_done = sse(delta("hi"), SPLIT[0], {**delta(""), "usage": None}) + b"data: " + json.dumps(SPLIT[1]).encode() + b"\n\n"
+    upstream.on("POST", "/chat/completions", httpx.Response(200, content=after_done))
+
+    _s, _o, _raw, usage, _h = _call({"model": "m", "stream": True, "messages": []})
+
+    assert (usage["prompt_tokens"], usage["completion_tokens"], usage["cached_tokens"]) == (100, 7, 40)
+    assert (usage["usage_status"], usage["stream_status"]) == ("complete", "complete")
 
 
 def test_a_stream_without_done_or_with_malformed_json_is_failed(upstream):
@@ -132,9 +147,31 @@ def test_the_tap_records_the_final_usage_frame_once_for_the_key(owner):
 
 def test_a_stream_without_usage_is_recorded_as_unknown_not_as_free(owner):
     uid, sid = owner
+    db.save_model_price("openai", "m-up", 1_000_000, None, 2_000_000, None)
     _tap(_chunks(sse(delta("a"))), uid, sid)
     (row,) = events()
     assert (row["usage_status"], row["total_tokens"], row["request_status"]) == ("unknown", 0, "success")
+
+    # The model has a price, but nothing says what this request used.
+    (model,) = stats.usage_analytics(uid, range_id="24h")["models"]
+    assert (model["requests"], model["cost_known"]) == (1, False)
+    for _ in range(2):  # recorded, then repriced
+        hour = db.fetchone("SELECT priced, priced_tokens, unpriced_events, cost FROM usage_rollup_hourly")
+        assert (hour["priced"], hour["priced_tokens"], hour["unpriced_events"], hour["cost"]) == (0, 0, 1, 0)
+        db.save_model_price("openai", "m-up", 3_000_000, None, 6_000_000, None)
+
+
+def test_split_usage_frames_and_a_frame_after_done_are_all_recorded(owner):
+    uid, sid = owner
+    body = sse(delta("a"), SPLIT[0], {**delta(""), "usage": None}, SPLIT[1], {"choices": [], "usage": USAGE})
+    body += b"data: " + json.dumps(SPLIT[1]).encode() + b"\n\n"
+
+    _tap(_chunks(body), uid, sid)
+
+    (row,) = events()
+    # Cumulative snapshots: repeated frames never add up.
+    assert (row["prompt_tokens"], row["completion_tokens"], row["cached_tokens"], row["total_tokens"]) == (100, 7, 40, 107)
+    assert (row["usage_status"], row["request_status"]) == ("complete", "success")
 
 
 def test_a_stream_cut_before_done_gets_an_error_frame_and_a_failed_row(owner):
@@ -191,6 +228,30 @@ def test_a_client_disconnect_still_records_what_was_used_as_cancelled(owner):
     row = wait_until(lambda: (events() or [None])[0])
     assert (row["request_status"], row["prompt_tokens"]) == ("cancelled", 100)
     assert json.loads(json.dumps(row["usage_status"])) == "complete"
+
+
+def test_a_usage_write_that_loses_a_lock_conflict_is_retried_once(owner, monkeypatch):
+    uid, sid = owner
+    real, calls = db.record_usage, []
+
+    def flaky(*args, **kwargs):
+        calls.append(kwargs["request_status"])
+        if len(calls) == 1:
+            raise pymysql.err.OperationalError(1213, "Deadlock found when trying to get lock")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(db, "record_usage", flaky)
+    _tap(_chunks(sse({"choices": [], "usage": USAGE})), uid, sid)
+    assert len(calls) == 2 and [r["prompt_tokens"] for r in events()] == [100]
+
+    # Anything else may have half-applied: never replayed, never raised into the stream.
+    def broken(*args, **kwargs):
+        calls.append(kwargs["request_status"])
+        raise pymysql.err.OperationalError(2013, "Lost connection to MySQL server during query")
+
+    monkeypatch.setattr(db, "record_usage", broken)
+    out = _tap(_chunks(sse({"choices": [], "usage": USAGE})), uid, sid)
+    assert out.endswith(b"data: [DONE]\n\n") and len(calls) == 3 and len(events()) == 1
 
 
 # -- failover on the OpenAI-compatible source ----------------------------------

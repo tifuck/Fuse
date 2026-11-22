@@ -48,13 +48,14 @@ _HIDDEN = re.compile(
 _CACHE: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 45.0
 _CACHE_MAX = 200
+# A folder named after the skill id. A repo-root SKILL.md says nothing about
+# which skill it is: it counts only when its frontmatter name is the id.
 LAYOUTS = (
     "skills/{id}/SKILL.md",
     "{id}/SKILL.md",
     ".claude/skills/{id}/SKILL.md",
     ".agents/skills/{id}/SKILL.md",
     ".opencode/skills/{id}/SKILL.md",
-    "SKILL.md",
 )
 
 
@@ -668,7 +669,7 @@ async def _contents_file(owner: str, repo: str, path: str, branch: str) -> bytes
 
 async def _fallback_contents(owner: str, repo: str, skill_id: str, branch: str) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
-    for layout in LAYOUTS:
+    for layout in (*LAYOUTS, "SKILL.md"):
         path = layout.format(id=skill_id)
         blob = await _contents_file(owner, repo, path, branch)
         if blob is None:

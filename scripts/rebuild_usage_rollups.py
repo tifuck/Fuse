@@ -44,7 +44,11 @@ PROVIDER_AGG = (f"SELECT e.user_id, {PROVIDER} AS provider, {_sums(KEY_COLS)} "
                 f"FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id GROUP BY e.user_id, {PROVIDER}")
 HOUR = "CONCAT(LEFT(e.created_at, 13), ':00:00Z')"
 TOKENS = "CASE WHEN e.total_tokens > 0 THEN e.total_tokens ELSE e.prompt_tokens + e.output_tokens END"
-PRICED = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known = 1)"
+# A counted request that did not fail and reported no usage is unpriced even
+# on a priced model (db._price_measures).
+NO_USAGE = (f"(e.count_request = 1 AND e.usage_status = 'unknown' AND e.request_status <> 'failed'"
+            f" AND {TOKENS} <= 0)")
+PRICED = f"(e.reported_cost_micros IS NOT NULL OR (e.pricing_known = 1 AND NOT {NO_USAGE}))"
 # usage_rollup_hourly columns as sums over their events (stats._EVENT_SUMS).
 ROLLUP_SUMS = {
     "tokens": TOKENS,
@@ -62,7 +66,7 @@ ROLLUP_SUMS = {
     "estimated_cost": "e.estimated_cost_micros",
     "priced": f"CASE WHEN e.count_request = 1 AND {PRICED} THEN 1 ELSE 0 END",
     "priced_tokens": f"CASE WHEN {PRICED} THEN {TOKENS} ELSE 0 END",
-    "unpriced_events": f"CASE WHEN {TOKENS} > 0 AND NOT {PRICED} THEN 1 ELSE 0 END",
+    "unpriced_events": f"CASE WHEN ({TOKENS} > 0 OR {NO_USAGE}) AND NOT {PRICED} THEN 1 ELSE 0 END",
 }
 assert tuple(ROLLUP_SUMS) == db.ROLLUP_SUMS
 ROLLUP_KEY = ("user_id", "hour", "api_key_id", "source_type", "model")

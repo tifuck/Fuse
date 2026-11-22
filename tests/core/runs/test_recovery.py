@@ -136,6 +136,24 @@ def test_a_stop_pending_at_boot_finishes_cancelled(fresh_db):
     assert run_row(run["id"])["status"] == "cancelled"
 
 
+def test_a_send_now_pending_at_boot_keeps_the_runs_background_commands(fresh_db):
+    from app import command_jobs
+
+    uid = quick_user()
+    jobs = {}
+    for flag in (chat_store.KEEP_JOBS, 1):
+        _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "partial"}))
+        db.execute("UPDATE chat_runs SET cancel_requested=? WHERE id=?", (flag, run["id"]))
+        jobs[flag] = {"id": f"job-{run['id']}", "run_id": run["id"], "user_id": uid, "kind": "command", "status": "running"}
+
+    with patch.dict(command_jobs._live, {job["id"]: job for job in jobs.values()}), \
+            patch.object(command_jobs, "_kill_from_anywhere") as kill:
+        chat_recovery.recover_runs()
+
+    assert [call.args[0]["id"] for call in kill.call_args_list] == [jobs[1]["id"]], "only a Stop ends its commands"
+    assert {run_row(job["run_id"])["status"] for job in jobs.values()} == {"cancelled"}
+
+
 def test_boot_requeues_a_bounded_batch_and_the_reaper_drains_the_rest(fresh_db):
     uid = quick_user()
     batch = chat_recovery.BOOT_RESUME_BATCH
@@ -211,6 +229,35 @@ def test_continue_resumes_a_stopped_turn_without_claiming_a_restart(fresh_db):
     assert len(_notes(saved, chat_recovery.USER_RESUME_NOTE_HEAD)) == 1
     assert not _notes(saved)
     assert run_row(run["id"])["cancel_requested"] == 0
+
+
+def test_a_double_continue_resumes_once_and_refuses_the_other(fresh_db):
+    import threading
+
+    uid = quick_user()
+    thread, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "half done"}))
+    chat_store.abort_active(run["id"], "cancelled")
+    both_read = threading.Barrier(2, timeout=5)
+    real_fetchone = db.fetchone
+
+    def read_together(sql, *args, **kwargs):
+        row = real_fetchone(sql, *args, **kwargs)
+        if sql.startswith("SELECT * FROM chat_runs WHERE id=? AND user_id=?"):
+            both_read.wait()  # both clicks read the stopped row before either requeues
+        return row
+
+    async def body():
+        return await asyncio.gather(*(asyncio.to_thread(chat_recovery.resume_run, uid, run["id"]) for _ in range(2)),
+                                    return_exceptions=True)
+
+    with patch.object(db, "fetchone", side_effect=read_together):
+        outcomes = run_async(body())
+
+    refused = [o for o in outcomes if isinstance(o, ChatValidationError)]
+    assert len(refused) == 1 and refused[0].status_code == 409, outcomes
+    assert [o["status"] for o in outcomes if isinstance(o, dict)] == ["queued"]
+    assert run_row(run["id"])["resume_count"] == 1
+    assert len(_notes(provider_messages(run["id"]), chat_recovery.USER_RESUME_NOTE_HEAD)) == 1
 
 
 def test_continue_after_stop_tells_the_model_the_user_stopped_its_unanswered_spawn(fresh_db):

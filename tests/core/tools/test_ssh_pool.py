@@ -120,5 +120,14 @@ def test_hosts_on_private_or_local_addresses_are_never_dialed_by_default(monkeyp
             ssh_pool.resolve_public(address, 22)
 
 
+@pytest.mark.parametrize("ip", ["64:ff9b::7f00:1", "::a00:1", "::7f00:1"])
+def test_names_resolving_to_v6_forms_of_private_v4_are_refused(monkeypatch, ip):
+    """NAT64 and IPv4-compatible addresses reach the IPv4 host they embed."""
+    monkeypatch.setattr(ssh_pool.settings, "allow_private_hosts", False)
+    monkeypatch.setattr(ssh_pool.socket, "getaddrinfo", lambda host, port, *a, **kw: [(10, 1, 6, "", (ip, port, 0, 0))])
+    with pytest.raises(ssh_pool.SshError, match="blocked address"):
+        ssh_pool.resolve_public("sneaky.example.com", 22)
+
+
 def test_a_public_address_is_dialable():
     assert ssh_pool.resolve_public("93.184.216.34", 22) == ["93.184.216.34"]

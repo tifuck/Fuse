@@ -7,9 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
-from app import chat_store, chat_threads, chats, db, hosts, vault
+from app import chat_store, chat_threads, chat_tx, chats, db, hosts, vault
 from app.hosts import HostError
 from tests.core.helpers import quick_user, wait_until
+from tests.core.threads.test_lock_order import _finish, _race
 
 from ._support import make_host, unlock_vault, waiting_on
 
@@ -191,6 +192,36 @@ def test_read_only_covers_the_project_folder_and_below(uid):
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs") == "read_only"
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs/sub") == "read_only"
     assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="/srv/docs-other") == "project"
+    # Other spellings of the same folder.
+    for cwd in ("//srv/docs/x", "///srv/docs", "/srv/./docs/x", "/srv/api/../docs/x", "/srv/docs/./"):
+        assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd=cwd) == "read_only", cwd
+    for cwd in ("//srv/docs-other", "/srv/./docsx", "/srv/docs/../api"):
+        assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd=cwd) == "project", cwd
+    hosts.add_project(uid, host, {"name": "notes", "remote_path": "~/notes", "permission_mode": "read_only"})
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="~/notes/x") == "read_only"
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="$HOME/./notes") == "read_only"
+    assert hosts.effective_permission(uid, bound_host_id=host, bound_cwd="~/notes-x") == "project"
+
+
+def test_archiving_a_project_does_not_deadlock_with_a_finishing_session(uid):
+    """The session's run finishes, paused holding its run and thread rows
+    (run, then thread, then the project the thread event shows), while the
+    project is archived, which writes the project row and its sessions."""
+    host = make_host(uid)
+    project = hosts.add_project(uid, host, {"name": "api", "remote_path": "/srv/api"})
+    thread = session(uid, host, project)
+    root = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], None)["run"]
+
+    def writes_sessions(info):
+        return "chat_threads" in info and (info.startswith("UPDATE") or "FOR UPDATE" in info)
+
+    view = _race(_finish(root["id"]), (chat_tx, "lock_thread"),
+                 lambda: hosts.patch_project(uid, host, project["id"], {"archived": True}), after=True,
+                 waiting=writes_sessions)
+
+    assert view["archived"]
+    assert chat_store.get_run(uid, root["id"])["status"] == "completed"
+    assert chats.get_thread(uid, thread["id"])["archived"] is True
 
 
 def test_projects_get_a_palette_color_and_keep_an_edit(uid):

@@ -5,7 +5,6 @@ turn shows what the model gets and that its remember call is stored or refused).
 Project-delete cascades ride on foreign keys the core schema does not carry:
 see test_cascades.py.
 """
-import asyncio
 import json
 from unittest.mock import patch
 
@@ -13,7 +12,7 @@ import pytest
 
 from app import chat_runs, chat_store, chats, db, memory
 from app.config import settings
-from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_run
 
 from ._support import make_host, make_project
 
@@ -199,7 +198,7 @@ def test_an_unattended_turn_cannot_plant_a_memory(fresh_db):
     async def scheduled_turn():
         run = chat_store.start_turn(uid, thread["id"], "Check the news", None, None, auto=True, scheduled=True)["run"]
         task = await chat_runs.start(chat_runs.internal_request(uid), {"id": uid}, run)
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
         return chat_store.get_run(uid, run["id"])
 
     with patch.object(settings, "memory_enabled", True), \

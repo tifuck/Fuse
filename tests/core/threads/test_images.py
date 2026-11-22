@@ -1,7 +1,6 @@
 """Transcript images: stored once per thread as a reference, back inline only
 for their owner, copied on fork, and gone with the thread."""
 import json
-from pathlib import Path
 
 import pytest
 
@@ -12,15 +11,18 @@ from tests.core.helpers import make_user
 from ._support import image_attachment, image_url, pk
 
 
+def _drop_image_cache():
+    chat_images._cache.clear()
+    chat_images._cache_bytes = 0
+
+
 @pytest.fixture(autouse=True)
 def _cold_image_cache():
     # Rehydration caches per (user, sha) for the process; a warm entry would
     # hide a row that is gone.
-    chat_images._cache.clear()
-    chat_images._cache_bytes = 0
+    _drop_image_cache()
     yield
-    chat_images._cache.clear()
-    chat_images._cache_bytes = 0
+    _drop_image_cache()
 
 
 def _image_rows(thread_pk):
@@ -68,16 +70,20 @@ def test_references_resolve_only_for_the_owner(fresh_db):
     assert chat_images.resolve(owner, ref) == image_url(1)
 
 
-def test_a_fork_keeps_its_images_after_the_source_is_deleted(fresh_db):
+def test_a_fork_keeps_its_images_after_the_source_is_deleted(fresh_db_fk):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
     run = _turn_with_image(uid, thread)
     chat_store.finish_run(run["id"], {"content": "a cat"}, "completed")
     source = chats.get_thread(uid, thread["id"])
+    source_pk = pk(uid, source["id"])
     fork = chats.fork_thread(uid, source["id"])
 
     assert chats.delete_thread(uid, source["id"]) is True
+    _drop_image_cache()
 
+    # The source's rows went with it, so every lookup below reads the fork's copy.
+    assert _image_rows(source_pk) == []
     assert len(_image_rows(pk(uid, fork["id"]))) == 1
     # The fork's retained provider history replays the picture, not a gap.
     retained = json.loads(db.fetchone("SELECT retained_history FROM chat_threads WHERE id=?",
@@ -87,11 +93,19 @@ def test_a_fork_keeps_its_images_after_the_source_is_deleted(fresh_db):
     assert image_url(1) in back and chat_images.MISSING not in back
 
 
-def test_deleting_the_thread_deletes_its_images():
-    """Thread deletion relies on the chat_images foreign key cascade; the core
-    fixture schema is built with CREATE TABLE ... LIKE, which drops foreign
-    keys, so check the schema fresh installs load declares it."""
-    schema = (Path(__file__).resolve().parents[3] / "scripts/sql/schema.sql").read_text()
-    table = schema[schema.index("CREATE TABLE `chat_images`"):]
-    table = table[:table.index(";")]
-    assert "FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE" in table
+def test_deleting_the_thread_deletes_its_images(fresh_db_fk):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    run = _turn_with_image(uid, thread)
+    thread_pk = pk(uid, thread["id"])
+    ref = next(p["image_url"]["url"] for m in _stored_request(run["id"])["messages"] if isinstance(m.get("content"), list)
+               for p in m["content"] if p.get("type") == "image_url")
+    chat_store.finish_run(run["id"], {"content": "a cat"}, "completed")
+    assert len(_image_rows(thread_pk)) == 1 and chat_images.resolve(uid, ref) == image_url(1)
+
+    assert chats.delete_thread(uid, thread["id"]) is True
+    _drop_image_cache()
+
+    assert _image_rows(thread_pk) == []
+    assert db.fetchone("SELECT COUNT(*) AS n FROM chat_images WHERE user_id=?", (uid,))["n"] == 0
+    assert chat_images.resolve(uid, ref) is None

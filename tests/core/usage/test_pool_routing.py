@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app import db
+from app.proxy import usage_from_obj
 from app.sources import grok, kimi, mimo, pool_policy, pool_session, zai
 from tests.core.usage._support import grok_extra, pool_account, user
 
@@ -17,7 +18,9 @@ USAGE = {"prompt_tokens": 1, "completion_tokens": 1, "cached_tokens": 0}
 
 
 def reply(status):
-    return (status, {"id": "c", "usage": USAGE} if status == 200 else {"error": "x"}, None, dict(USAGE), {})
+    # openai_chat's shape: the usage it returns is already normalized.
+    return (status, {"id": "c", "usage": USAGE} if status == 200 else {"error": "x"}, None,
+            usage_from_obj({"usage": USAGE}), {})
 
 
 class Pool:
@@ -72,6 +75,11 @@ def test_own_account_first_then_the_pool_and_never_a_private_donor(pools):
     result = pool.chat(user_id=alice)
     assert (result.status, result.credential_id, pool.upstream.await_count) == (200, theirs, 4)
     assert [a["credential_id"] for a in result.attempts] == [mine]
+    # The donor's account carries the request's usage and its complete status.
+    db.record_usage(alice, pool.source.source_id, result.credential_id, "grok-4.6", result.usage, provider="grok")
+    row = db.fetchone("SELECT * FROM usage_events")
+    assert (row["credential_id"], row["prompt_tokens"], row["output_tokens"], row["usage_status"]) == (theirs, 1, 1, "complete")
+    assert int(db.fetchone("SELECT requests FROM credentials WHERE id=?", (theirs,))["requests"]) == 1
 
 
 def test_a_left_out_own_account_is_never_used_even_as_the_last_resort(pools):
@@ -102,6 +110,19 @@ def test_a_warm_conversation_keeps_its_account_across_a_restart_and_a_new_own_ac
     assert db.fetchone("SELECT credential_id FROM pool_sessions WHERE session_id=?", (convo,))["credential_id"] == cool
     # Own-first decides only new conversations.
     assert pool.chat(user_id=alice, session_id=_session("thread:2", alice)).credential_id == mine
+
+
+def test_a_pinned_conversation_leaves_a_donor_who_turns_private(pools):
+    alice, donor, other = (user(f"{n}@core.test") for n in ("alice", "donor", "other"))
+    pinned = pool_account("grok", donor, grok_extra(5))
+    spare = pool_account("grok", other, grok_extra(40))
+    convo = _session("thread:1", alice)
+    pool = pools()
+    assert pool.chat(user_id=alice, session_id=convo).credential_id == pinned
+
+    pool_policy.set_user_pref(donor, "grok", share="private")
+
+    assert pool.chat(user_id=alice, session_id=convo).credential_id == spare
 
 
 def test_a_subagent_starts_on_its_parents_account_then_keeps_its_own_pin(pools):

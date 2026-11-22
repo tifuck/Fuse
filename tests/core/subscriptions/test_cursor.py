@@ -18,7 +18,7 @@ from app.config import settings
 from app.sources import cursor, cursor_agent as agent, pool_pick, pool_policy
 from app.sources.devin_proto import ProtoDecoder, ProtoEncoder
 from tests.core.helpers import wait_until_async
-from tests.core.subscriptions._support import _RealClient, extra_of, http, jwt, row, run, user
+from tests.core.subscriptions._support import _RealClient, extra_of, http, jwt, row, run, tool_calls_of, user
 
 
 def _wrap(field, payload):
@@ -307,6 +307,75 @@ def test_the_free_plan_gate_is_a_403_without_cooldown_and_free_users_list_only_a
     assert not pool_pick.cooling_down(cred)
     result, _frames = run(chat(pool, [{"role": "user", "content": "hi"}]))
     assert result.status == 200
+
+
+def _mcp_exec(num, call_id, path):
+    call = _enc(lambda e: (e.string(1, "mcp_fuse_read_file"),
+                           e.blob(2, _enc(lambda p: (p.string(1, "path"), p.blob(2, _text(3, path))))),
+                           e.string(3, call_id), e.string(5, "read_file")))
+    return _frame(_wrap(2, _enc(lambda e: (e.uint32(1, num), e.string(15, f"x{num}"), e.blob(11, call)))))
+
+
+@pytest.fixture
+def live_pool(fresh_db, monkeypatch):
+    """The pool with the real CursorRun and translator over a routed RunSSE."""
+    owner = user()
+    sid = pool_policy.source_id("cursor")
+    cred = cursor.store_tokens(sid, jwt({"sub": "auth0|user_1"}), "refresh-token-1234", owner)
+    monkeypatch.setattr(cursor, "refresh_due", AsyncMock())
+    monkeypatch.setattr(cursor, "refresh_pool_quota", AsyncMock())
+    monkeypatch.setattr(agent, "TOOL_GRACE_S", 0.05)
+    monkeypatch.setattr(agent, "HEARTBEAT_S", 60)
+    return owner, cred, cursor.CursorSource({"id": sid, "name": "Cursor"}, {}, [])
+
+
+def live_chat(live_pool, monkeypatch, server):
+    """One streamed request; returns its raw SSE body and the stream's usage."""
+    routed(monkeypatch, lambda request: httpx.Response(200, content=server()) if request.url.path.endswith("/RunSSE")
+           else httpx.Response(200, json={}))
+    owner, _cred, source = live_pool
+
+    async def go():
+        result = await source.chat({"model": "auto", "stream": True, "messages": [{"role": "user", "content": "read"}],
+                                    "tools": [{"type": "function", "function": {"name": "read_file"}}]}, user_id=owner)
+        body = b"".join([c async for c in result.stream]).decode()
+        for conv in list(agent._conversations.values()):
+            if conv.run is not None:
+                await conv.run.aclose()
+        return body, result.stream.usage
+
+    return run(asyncio.wait_for(go(), 10))
+
+
+def _frames(body):
+    return [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: {")]
+
+
+def test_two_parallel_tool_calls_decode_into_two_calls_and_park_the_run(live_pool, monkeypatch):
+    async def server():
+        yield _mcp_exec(1, "call-a", "a")
+        yield _mcp_exec(2, "call-b", "b")
+        await asyncio.Event().wait()  # the run stays open, parked for the results
+
+    body, usage = live_chat(live_pool, monkeypatch, server)
+    frames = _frames(body)
+    calls = tool_calls_of(frames)
+    assert [(c["id"], c["name"], json.loads(c["arguments"])) for c in calls] == [
+        ("call-a", "read_file", {"path": "a"}), ("call-b", "read_file", {"path": "b"})]
+    assert frames[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert usage["stream_status"] == "complete"
+
+
+def test_a_mid_stream_failure_sends_an_error_frame_then_done(live_pool, monkeypatch):
+    async def server():
+        yield _update(1, _text(1, "partial"))
+        yield _frame(b"\x0a\xff")  # undecodable
+
+    body, usage = live_chat(live_pool, monkeypatch, server)
+    frames = _frames(body)
+    assert frames[-1]["error"]["code"] == 502
+    assert body.rstrip().endswith("data: [DONE]")
+    assert usage["stream_status"] == "failed"
 
 
 OPUS = {"name": "claude-opus-5", "clientDisplayName": "Opus 5", "contextTokenLimit": 200000,

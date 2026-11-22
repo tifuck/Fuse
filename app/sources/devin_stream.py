@@ -2,15 +2,18 @@
 
 Splits Connect frames into decoded messages, assembles token-delta tool calls
 (`_ToolBook`), folds streamed usage frames, and emits OpenAI-style SSE. The
-stop_reason handling follows the live backend: several internal segments can
-share one completion, so only a stop with no output after it is terminal, and
-STOP_MAX_TOKENS is a normal end of turn (never `length`).
+finish reason follows the calls actually assembled, never stop_reason alone:
+several internal segments can share one completion (a stop followed by more
+output is a segment boundary), and STOP_MAX_TOKENS is a normal end of turn
+(never `length`).
 """
 from __future__ import annotations
 
 import json
 import time
 import uuid
+
+import httpx
 
 from ..config import ROOT, settings
 from ..proxy import usage_from_obj
@@ -132,7 +135,7 @@ class _ToolBook:
         self.alias: dict[str, str] = {}
 
     def _new(self, tid: str, name: str, incoming: str) -> dict:
-        key = tid or name or f"call_{len(self.order)}"
+        key = self._next_key(tid or name or f"call_{len(self.order)}")
         rec = {
             "id": tid or key,
             "name": name,
@@ -168,10 +171,11 @@ class _ToolBook:
         if tid and current in self.calls:
             existing = self.calls[current]
             # The server reuses one tool_call id for every call of that tool.
-            # A tid'd frame with empty args after a COMPLETED record is the
-            # opening frame of the NEXT call — not a redelivery of this one.
-            if not incoming and _json_object(existing["arguments"]) is not None:
-                rec = self._new(self._next_key(tid), name, incoming)
+            # Once a record holds complete JSON, a frame that opens empty or
+            # brings other arguments (whole or partial) is the NEXT call; only
+            # the same complete arguments again are a redelivery.
+            if _json_object(existing["arguments"]) is not None and incoming != existing["arguments"]:
+                rec = self._new(self._next_key(tid), name or existing["name"], incoming)
                 # Later argument frames carrying this id belong to the new call.
                 self.alias[tid] = rec["key"]
                 if _devin_debug():
@@ -185,7 +189,8 @@ class _ToolBook:
             last = self.calls[self.order[-1]]
             last_done = _json_object(last["arguments"]) is not None
             same_name = bool(name) and bool(last["name"]) and name == last["name"]
-            can_fill = (not last["name"] or not name or same_name) and not last_done
+            redelivered = last_done and incoming == last["arguments"]
+            can_fill = (not last["name"] or not name or same_name) and (not last_done or redelivered)
             if can_fill:
                 rec, delta = self._merge_into(last, tid, name, incoming)
                 if _devin_debug():
@@ -314,8 +319,6 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
     signature_type = ""
     output_id = ""
     book = _ToolBook()
-    stop = 0
-    stop_terminal = False
     ended = False
     raw_usage: dict = {}
     try:
@@ -345,12 +348,6 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
                     continue
                 msg = proto.decode_get_chat_message(payload)
                 if msg.get("delta_thinking"):
-                    if stop:
-                        # Devin streams several internal message segments
-                        # per completion; a stop_reason that is followed
-                        # by more output was a segment boundary, not the
-                        # end of the response.
-                        stop_terminal = False
                     thinking += msg["delta_thinking"]
                     yield _chunk(
                         cid, created, model, {"reasoning_content": msg["delta_thinking"]}
@@ -362,12 +359,8 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
                 if msg.get("output_id"):
                     output_id = msg["output_id"]
                 if msg.get("delta_text"):
-                    if stop:
-                        stop_terminal = False
                     yield _chunk(cid, created, model, {"content": msg["delta_text"]})
                 for tc in msg.get("tool_calls") or []:
-                    if stop:
-                        stop_terminal = False
                     if _devin_debug():
                         _debug_tool_call(cid, msg, tc)
                     rec, _ = book.add(tc)
@@ -380,9 +373,6 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
                 if msg.get("usage"):
                     raw_usage = _merge_usage_frame(raw_usage, msg["usage"])
                     collected.update(_openai_usage(raw_usage))
-                if msg.get("stop_reason"):
-                    stop = msg["stop_reason"]
-                    stop_terminal = True
         # Connect always ends a stream with an end-stream frame; a stop_reason
         # alone may be an internal segment boundary of a truncated body.
         if pending or not ended:
@@ -390,16 +380,11 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
             yield _sse({"error": {"message": "incomplete Devin Connect response"}})
             return
         calls = book.openai_calls()
-        terminal_stop = stop if stop_terminal else 0
         # STOP_MAX_TOKENS is NOT a truncation signal on this backend:
         # production turns end terminally with stop=3 at 98-3000
-        # completion tokens and complete content. Only a function-call
-        # stop carries meaning; everything else is a normal stop.
-        finish = (
-            "tool_calls"
-            if calls or terminal_stop == proto.STOP_FUNCTION_CALL
-            else "stop"
-        )
+        # completion tokens and complete content. A function-call stop
+        # with no call assembled has nothing to run: a normal stop too.
+        finish = "tool_calls" if calls else "stop"
         if calls:
             yield _chunk(
                 cid,
@@ -453,6 +438,12 @@ async def _stream_sse(resp, collected: dict, model: str, uid: str = "", hints: d
             }
         )
         yield b"data: [DONE]\n\n"
+    except (httpx.HTTPError, OSError, EOFError, ValueError) as exc:
+        # A frame that fails to decode (strict protobuf, gunzip, oversize) or
+        # a broken body ends the stream with an error frame, like the other
+        # translators, instead of raising out of the generator.
+        collected["stream_status"] = "failed"
+        yield _sse({"error": {"message": f"upstream stream failed ({type(exc).__name__})"}})
     except Exception:
         collected["stream_status"] = "failed"
         raise
@@ -468,8 +459,6 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
     signature_type = ""
     output_id = ""
     book = _ToolBook()
-    stop = 0
-    stop_terminal = False
     ended = False
     usage: dict = {}
     raw_usage: dict = {}
@@ -498,13 +487,8 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
                 continue
             msg = proto.decode_get_chat_message(payload)
             if msg.get("delta_text"):
-                if stop:
-                    # Intermediate segment stop — see _stream_sse.
-                    stop_terminal = False
                 text += msg["delta_text"]
             if msg.get("delta_thinking"):
-                if stop:
-                    stop_terminal = False
                 thinking += msg["delta_thinking"]
             signature += msg.get("delta_signature") or ""
             if msg.get("delta_signature_type"):
@@ -512,27 +496,18 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
             if msg.get("output_id"):
                 output_id = msg["output_id"]
             for tc in msg.get("tool_calls") or []:
-                if stop:
-                    stop_terminal = False
                 book.add(tc)
             if msg.get("usage"):
                 raw_usage = _merge_usage_frame(raw_usage, msg["usage"])
                 usage = _openai_usage(raw_usage)
-            if msg.get("stop_reason"):
-                stop = msg["stop_reason"]
-                stop_terminal = True
     if pending or not ended:
         trailer_error = trailer_error or "incomplete Devin Connect response"
     if trailer_error:
         frame = trailer_frame or {"message": trailer_error}
         return {"error": {k: v for k, v in frame.items() if v}}, usage, trailer_error
-    terminal_stop = stop if stop_terminal else 0
-    # See _stream_sse: STOP_MAX_TOKENS terminally is a normal end of turn.
-    finish = (
-        "tool_calls"
-        if book.order or terminal_stop == proto.STOP_FUNCTION_CALL
-        else "stop"
-    )
+    calls = book.openai_calls()
+    # See _stream_sse: only assembled calls make tool_calls.
+    finish = "tool_calls" if calls else "stop"
     message = {"role": "assistant", "content": text or None}
     if thinking:
         message["reasoning_content"] = thinking
@@ -542,7 +517,6 @@ async def _collect_completion(resp, model: str, uid: str = "") -> tuple[dict, di
         message["devin_signature_type"] = signature_type
     if output_id:
         message["devin_output_id"] = output_id
-    calls = book.openai_calls()
     if calls:
         message["tool_calls"] = calls
     obj = {

@@ -8,7 +8,7 @@ import pytest
 
 from app import chat_run_state, chat_store, chats, db, run_inbox
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames
+from tests.core.helpers import fake_provider, quick_user, run_async, run_turn, text_frames, tool_call_frames, wait_run
 
 from ._support import fake_tools, run_row, settle, start_run, tool_thread
 
@@ -33,7 +33,7 @@ def test_steer_during_a_tool_reaches_the_model_once_and_is_acknowledged(fresh_db
         again = await asyncio.to_thread(chat_store.steer_turn, uid, thread["id"], "also check pricing", "steer-1")
         assert again["idempotent"] is True
         tools.gate.set()
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         return thread, run
 
     with fake_tools() as tools, fake_provider(
@@ -63,7 +63,7 @@ def test_steer_accepted_during_the_final_text_reply_gets_its_own_round(fresh_db)
     async def body():
         thread, run, task = await start_run(uid, "hello")
         sent["thread"] = thread["id"]
-        await asyncio.wait_for(task, 5)
+        await wait_run(task, 5)
         await settle()
         return thread, run
 

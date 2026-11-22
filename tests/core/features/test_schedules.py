@@ -179,3 +179,18 @@ def test_a_once_schedule_stores_a_normalized_utc_instant(fresh_db):
     with clock("2026-10-20T06:00:00Z") as now:
         item = make_schedule(uid, recur_kind="once", once_at=iso_utc(now + timedelta(hours=2)).replace("Z", "+00:00"))
     assert item["once_at"] == item["next_fire_at"] == "2026-10-20T08:00:00Z"
+
+def test_a_once_schedule_refuses_a_past_instant_but_keeps_its_own_on_edit(fresh_db):
+    uid = quick_user()
+    with clock("2026-10-20T06:00:00Z") as now:
+        with pytest.raises(ScheduleError, match="future"):
+            make_schedule(uid, recur_kind="once", once_at=iso_utc(now - timedelta(hours=2)))
+        assert schedules.list_schedules(uid) == []
+        # Clock skew and form latency: a few seconds late is still accepted.
+        item = make_schedule(uid, recur_kind="once", once_at=iso_utc(now - timedelta(seconds=30)))
+        with pytest.raises(ScheduleError, match="future"):
+            schedules.patch_schedule(uid, item["public_id"], {"once_at": iso_utc(now - timedelta(hours=1))})
+    # Hours after it fired, the schedule can still be renamed with its stored instant.
+    with clock("2026-10-21T06:00:00Z"):
+        renamed = schedules.patch_schedule(uid, item["public_id"], {"name": "renamed", "once_at": item["once_at"]})
+    assert (renamed["name"], renamed["once_at"]) == ("renamed", "2026-10-20T05:59:30Z")

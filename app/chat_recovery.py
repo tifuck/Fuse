@@ -10,6 +10,7 @@ from . import db, chat_images, chat_schema, chat_tx, chat_views, chat_checkpoint
 from .chat_run_state import (
     DEFAULT_REMAINING_SECONDS,
     INTERRUPT_NOTICE,
+    KEEP_JOBS,
     MAX_RESUME_ATTEMPTS,
     RESUME_NOTICE,
     STOP_NOTICE,
@@ -41,9 +42,10 @@ def abort_active(run_id, status="cancelled", notice=None):
         # Before the row turns terminal: from then on a resume may requeue it.
         chat_runs.disown(run_id)
         try:
-            from . import workspace
+            if int(row["cancel_requested"] or 0) != KEEP_JOBS:
+                from . import workspace
 
-            workspace.cancel_run_jobs(run_id)
+                workspace.cancel_run_jobs(run_id)
         except Exception:
             logger.exception("Failed to cancel workspace jobs for %s", run_id)
         chat_checkpoint._request_cache.pop(run_id, None)
@@ -295,6 +297,7 @@ def _with_resume_note(messages: list[dict], run_id: str, resume_count: int, by_u
 
 
 def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
+    """Requeue row with a resume note; True when it was requeued."""
     from . import chats
 
     allowed = allowed or chat_tx.ACTIVE
@@ -382,15 +385,15 @@ def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
         )[0]
     except Exception:
         _interrupt_abandoned(row)
-        return
+        return False
     ts = db.now()
     with chat_tx.transaction() as conn:
         current = conn.execute("SELECT status,request,message,cancel_requested FROM chat_runs WHERE id=?", (row["id"],)).fetchone()
         if current is None or current["status"] not in allowed:
-            return
+            return False
         if any(current[key] != row[key] for key in ("request", "message", "cancel_requested")):
-            # A concurrent acceptance/checkpoint/Stop wins over stale recovery.
-            return
+            # A concurrent acceptance/checkpoint/Stop (or Continue) wins over stale recovery.
+            return False
         from . import chat_history
         sealed = chat_history.upgrade_legacy_run(conn, row, req, sealed)
         req["messages"] = sealed
@@ -423,6 +426,7 @@ def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
         )
         if row["parent_run_id"]:
             chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
+    return True
 
 
 BOOT_RESUME_BATCH = 8
@@ -502,7 +506,8 @@ def resume_run(user_id, run_id):
     # concurrent resumes cannot all pass the cap before any is counted.
     with (chat_children._child_admission_lock if is_child else _root_admission_lock):
         _check_resume_admission(row, user_id, is_child)
-        _requeue_for_resume(row, messages, allowed=set(chat_tx.ACTIVE) | {"interrupted", "cancelled"}, by_user=True)
+        if not _requeue_for_resume(row, messages, allowed=set(chat_tx.ACTIVE) | {"interrupted", "cancelled"}, by_user=True):
+            raise chats.ChatValidationError("this run changed or was already resumed; reload the chat", 409)
     if not is_child:
         with chat_tx.transaction() as conn:
             thread = conn.execute("SELECT * FROM chat_threads WHERE id=? AND user_id=?", (row["thread_id"], user_id)).fetchone()

@@ -105,7 +105,17 @@ def create_user(email: str, password: str, *, admin: bool | None = None, require
     raw = mint_api_key()
     with db.tx() as conn:
         n = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
-        if n == 0:
+        if n == 0 and conn.execute("SELECT 1 AS one FROM schema_meta WHERE key='first_user_claimed'").fetchone():
+            # The claim outlived its account (users emptied by hand, a partial
+            # restore). Only a setup-token registration may claim it again: the
+            # row lock serializes those, and the locking count reads past this
+            # transaction's snapshot.
+            if setup is None:
+                n = 1
+            else:
+                conn.execute("SELECT value FROM schema_meta WHERE key='first_user_claimed' FOR UPDATE")
+                n = conn.execute("SELECT COUNT(*) AS n FROM users FOR UPDATE").fetchone()["n"]
+        elif n == 0:
             # Snapshot reads let two concurrent first registrations both see an
             # empty users table; the sentinel insert serializes the claim so
             # only one wins first-admin/open-registration.

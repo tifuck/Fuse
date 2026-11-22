@@ -106,6 +106,8 @@ def _resolves_public(host: str, port: int | None) -> bool:
     Name-based checks alone let a hostname pointing at a private address
     reach internal services from the server; the answers must be checked too.
     """
+    from .search.ssrf import _is_global
+
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
@@ -118,8 +120,7 @@ def _resolves_public(host: str, port: int | None) -> bool:
         except ValueError:
             return False
         seen = True
-        # Unwrap ::ffff:a.b.c.d: Python 3.12 calls mapped CGNAT global.
-        if not (getattr(ip, "ipv4_mapped", None) or ip).is_global:
+        if not _is_global(ip):
             return False
     return seen
 

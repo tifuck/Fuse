@@ -5,13 +5,15 @@ serving until its access token expires, is never re-posted, then disables.
 Ownership itself is pinned in tests/core/usage/test_credentials.py."""
 import asyncio
 import json
+from types import SimpleNamespace
 from urllib.parse import parse_qs
 
 import httpx
 import pytest
 
 from app.config import settings
-from app.sources import chatgpt, claude, cursor, grok, kimi, pool_pick
+from app.sources import chatgpt, claude, cursor, grok, kimi, pool_pick, token_store
+from tests.core.helpers import wait_until_async
 from tests.core.subscriptions._support import account, extra_of, http, iso, jwt, row, run, set_extra, user
 
 BACKENDS = {"grok": grok, "kimi": kimi, "chatgpt": chatgpt, "claude": claude}
@@ -107,6 +109,77 @@ def test_a_transient_refresh_failure_only_cools_the_account(fresh_db, monkeypatc
         assert run(mod.refresh_one(row(cred))) is False
     assert row(cred)["disabled"] == 0 and extra_of(cred)["refresh_token"] == "rt-0"
     assert pool_pick.cooling_down(cred)
+
+
+@pytest.mark.parametrize("kind", list(BACKENDS))
+def test_an_answer_with_a_null_refresh_token_keeps_the_stored_one(fresh_db, monkeypatch, kind):
+    cred = linked(kind)
+    answer = httpx.Response(200, json={"access_token": "at-1", "refresh_token": None, "expires_in": 3600})
+    with http(lambda request: answer, monkeypatch):
+        assert run(BACKENDS[kind].refresh_one(row(cred))) is True
+    assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-1", "rt-0")
+
+
+@pytest.mark.parametrize("kind", list(BACKENDS))
+def test_a_caller_cancelled_after_the_token_post_still_persists_the_rotated_pair(fresh_db, monkeypatch, kind):
+    cred = linked(kind)
+
+    async def go():
+        landed, release = asyncio.Event(), asyncio.Event()
+
+        async def token(request):
+            landed.set()
+            await release.wait()
+            return httpx.Response(200, json={"access_token": "at-1", "refresh_token": "rt-1", "expires_in": 3600})
+
+        with http(token, monkeypatch):
+            task = asyncio.create_task(BACKENDS[kind].refresh_one(row(cred)))
+            await landed.wait()
+            task.cancel()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await wait_until_async(lambda: extra_of(cred)["refresh_token"] == "rt-1")
+
+    run(go())
+    assert extra_of(cred)["access_token"] == "at-1"
+
+
+def test_grok_cancelled_during_its_profile_lookup_still_persists_the_rotated_pair(fresh_db, monkeypatch):
+    # No email: the refresh looks up the profile after the token POST. Ending
+    # the loop then (a shutdown) cancels every task, the shielded refresh too.
+    cred = account("grok", user(), {"access_token": "at-0", "refresh_token": "rt-0", "expires_at": iso(60)})
+
+    async def handler(request):
+        if "userinfo" in request.url.path:
+            await asyncio.Event().wait()
+        return httpx.Response(200, json={"access_token": "at-1", "refresh_token": "rt-1", "expires_in": 3600})
+
+    with http(handler, monkeypatch) as calls:
+        async def go():
+            asyncio.create_task(grok.refresh_one(row(cred)))
+            await wait_until_async(lambda: any("userinfo" in r.url.path for r in calls.requests))
+
+        run(go())
+    assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-1", "rt-1")
+
+
+def test_a_failed_save_of_the_rotated_pair_is_retried_until_it_lands(fresh_db, monkeypatch):
+    cred = linked("kimi")
+    real, failures, sleeps = kimi._cas_update_tokens, [RuntimeError("database went away")], []
+
+    def flaky(*args, **kwargs):
+        if failures:
+            raise failures.pop()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(kimi, "_cas_update_tokens", flaky)
+    monkeypatch.setattr(token_store, "time", SimpleNamespace(sleep=sleeps.append))
+    with http(lambda request: httpx.Response(200, json={"access_token": "at-1", "refresh_token": "rt-1",
+                                                        "expires_in": 3600}), monkeypatch):
+        assert run(kimi.refresh_one(row(cred))) is True
+    assert sleeps == [token_store.PERSIST_BACKOFF[0]]
+    assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-1", "rt-1")
 
 
 def test_cursor_renews_with_its_non_rotating_refresh_token_and_logs_out_when_told(fresh_db, monkeypatch):

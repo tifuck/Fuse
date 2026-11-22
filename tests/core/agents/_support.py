@@ -78,8 +78,9 @@ def routed_provider(**routes):
 
     provider = RoutedProvider(routes)
     with patch.object(api, "invoke_chat", new=provider), \
-            patch.object(api, "_safe_record_usage"), \
+            patch.object(api, "_safe_record_usage") as record_usage, \
             patch.object(chat_runtime, "generate_thread_title", new_callable=AsyncMock, return_value=""):
+        provider.record_usage = record_usage
         yield provider
 
 

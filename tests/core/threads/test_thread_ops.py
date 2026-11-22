@@ -2,9 +2,9 @@
 threads, on real store functions and real runs (provider faked)."""
 import pytest
 
-from app import chat_store, chats, command_jobs, db, hosts
+from app import chat_recaps, chat_store, chats, command_jobs, db, hosts
 from app.chats import ChatValidationError
-from tests.core.features._support import make_host, make_project
+from tests.core.features._support import make_host, make_project, make_schedule
 from tests.core.helpers import fake_provider, make_user, quick_user, run_async, run_turn, text_frames
 
 from ._support import events, pk, runs_of
@@ -204,6 +204,70 @@ def test_other_accounts_cannot_see_or_change_a_thread(fresh_db):
         chat_store.start_turn(other, thread["id"], "hi", None, None)
     assert chats.get_thread(owner, thread["id"])["title"] == "Private"
     assert events(other) == []
+
+
+def test_other_accounts_cannot_pin_read_move_or_inspect_a_thread(fresh_db):
+    owner, other = make_user("owner@core.test"), make_user("other@core.test")
+    thread = chats.create_thread(owner, model="offline", title="Private")
+    chats.update_thread(owner, thread["id"], pinned=True)
+    run = chat_store.start_turn(owner, thread["id"], "secret", chats.get_thread(owner, thread["id"])["revision"], None)["run"]
+    numeric = pk(owner, thread["id"])
+    db.execute("UPDATE chat_threads SET unread=1 WHERE id=?", (numeric,))
+    host = make_host(owner)
+    project = make_project(owner, host)
+    stored = "SELECT kind, host_id, project_id, pinned, pin_order, unread, revision FROM chat_threads WHERE id=?"
+    before = dict(db.fetchone(stored, (numeric,)))
+    cursor = chat_store.cursor(owner)
+
+    assert chats.set_pin_order(other, [thread["id"]]) == {"threads": []}
+    assert chats.mark_thread_read(other, thread["id"]) is False
+    assert chats.move_thread_to_project(other, thread["id"], host, project) is None
+    assert chats.promote_working_session(other, thread["id"], host_id=host, cwd="/srv/api", tool="write_file") is None
+    assert chat_store.get_run_snapshot(other, run["id"]) is None
+    assert chat_store.historical_command_jobs(other, numeric) == []
+    with pytest.raises(ChatValidationError) as refused:
+        chat_recaps.request_manual(other, numeric)
+    assert refused.value.status_code == 404
+
+    assert dict(db.fetchone(stored, (numeric,))) == before
+    assert chat_store.get_run_snapshot(owner, run["id"])["id"] == run["id"]
+    assert events(owner, cursor) == [] and events(other) == []
+
+
+def test_a_schedule_deletes_only_its_own_finished_threads(fresh_db):
+    uid = make_user()
+    schedule = make_schedule(uid)["id"]
+    user_chat = chats.create_thread(uid, model="offline")
+    busy, done = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    for thread in (busy, done):
+        db.execute("UPDATE chat_threads SET schedule_id=? WHERE id=?", (schedule, pk(uid, thread["id"])))
+    chat_store.start_turn(uid, busy["id"], "working", busy["revision"], None)
+    run = chat_store.start_turn(uid, done["id"], "finished", done["revision"], None)["run"]
+    chat_store.finish_run(run["id"], {"content": "done"}, "completed")
+    cursor = chat_store.cursor(uid)
+
+    assert chats.delete_schedule_owned_thread(uid, pk(uid, user_chat["id"])) is False
+    assert chats.delete_schedule_owned_thread(uid, pk(uid, busy["id"])) is False
+    assert chats.delete_schedule_owned_thread(uid, pk(uid, done["id"])) is True
+
+    assert chats.get_thread(uid, done["id"]) is None and chat_store.get_run(uid, run["id"]) is None
+    assert chats.get_thread(uid, user_chat["id"]) is not None and runs_of(uid, busy["id"])
+    assert [(e["type"], e["thread_id"]) for e in events(uid, cursor)] == [("thread.deleted", done["id"])]
+
+
+def test_search_ignores_case_and_matches_escaped_and_non_ascii_text(fresh_db):
+    uid = quick_user()
+    greeting = chats.create_thread(uid, model="offline", title="Greeting")
+    chat_store.start_turn(uid, greeting["id"], "Привет мир", greeting["revision"], None)
+    chats.create_thread(uid, model="offline", title="Docker setup")
+    quoted = chats.create_thread(uid, model="offline", title="Quote")
+    chat_store.start_turn(uid, quoted["id"], 'please say "hi" back', quoted["revision"], None)
+
+    # Transcripts are stored with ensure_ascii: Cyrillic as \u escapes, quotes escaped.
+    assert {t["title"]: t["snippet"] for t in chats.search_threads(uid, "мир")} == {"Greeting": "Привет мир"}
+    assert [t["title"] for t in chats.search_threads(uid, "привет")] == ["Greeting"]
+    assert [t["title"] for t in chats.search_threads(uid, "docker")] == ["Docker setup"]
+    assert {t["title"]: t["snippet"] for t in chats.search_threads(uid, 'SAY "HI"')} == {"Quote": 'please say "hi" back'}
 
 
 def test_list_and_search_report_running_and_escape_wildcards(fresh_db):

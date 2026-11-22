@@ -12,7 +12,7 @@ from tests.core.agents._support import (
     agent_of, child, children, coding_user, parent_and_thread, root_runs, routed_provider, set_running, start_root,
     tool_result,
 )
-from tests.core.helpers import run_async, text_frames, tool_call_frames, wait_until, wait_until_async
+from tests.core.helpers import run_async, text_frames, tool_call_frames, wait_run, wait_until, wait_until_async
 
 
 def _ago(seconds):
@@ -41,7 +41,7 @@ def test_killing_a_running_child_interrupts_only_that_child(fresh_db):
         child_id = children(uid, run["thread_id"])[0]["id"]
         text, rec = await agents.kill(user_id=uid, arguments=json.dumps({"id": child_id}), thread_id=run["thread_id"])
         assert rec["status"] == "done" and text == "cancelled"
-        await asyncio.wait_for(task, 10)
+        await wait_run(task, 10)
         return run, child_id
 
     spawn = tool_call_frames([("c1", "spawn_subagent", {"prompt": "slow work", "description": "Slow"})])

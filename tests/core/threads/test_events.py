@@ -2,10 +2,12 @@
 event for rolled-back writes, after-commit observers, retention floors and the
 group-commit publisher."""
 import asyncio
+from unittest.mock import patch
 
+import pymysql
 import pytest
 
-from app import chat_events, chat_pub, chat_store, chat_tx, chats, db
+from app import chat_events, chat_pub, chat_store, chat_tx, chats, db, mysql_compat
 from tests.core.helpers import make_user, run_async
 
 from ._support import events, pk
@@ -156,4 +158,36 @@ def test_group_commit_keeps_fifo_order_and_isolates_a_bad_payload(fresh_db):
     assert isinstance(bad, RuntimeError)
     assert stale is None  # its run finalized first: dropped, not failed
     assert first < last
+    assert [e["type"] for e in events(uid, cursor)] == ["test.a", "test.b"]
+
+
+def test_a_batch_whose_commit_may_have_landed_is_not_published_again(fresh_db):
+    """The connection drops during COMMIT after the server applied it: the
+    publisher cannot know, and committing the items again would publish them
+    twice under new ids."""
+    uid = make_user()
+    cursor = chat_store.cursor(uid)
+    real = mysql_compat.Conn.commit
+    lost = []
+
+    def commit_then_lose_the_connection(conn):
+        real(conn)
+        if not lost:
+            lost.append(True)
+            raise pymysql.err.OperationalError(2013, "Lost connection to server during query")
+
+    async def body():
+        chat_pub.start_publisher()
+        loop = asyncio.get_running_loop()
+        futures = [loop.create_future() for _ in range(2)]
+        with patch.object(mysql_compat.Conn, "commit", new=commit_then_lose_the_connection):
+            chat_pub.publish(uid, "test.a", None, {"n": 0}, future=futures[0])
+            chat_pub.publish(uid, "test.b", None, {"n": 1}, future=futures[1])
+            results = await asyncio.gather(*futures, return_exceptions=True)
+        await chat_pub.stop_publisher()
+        return results
+
+    results = run_async(body())
+
+    assert lost and all(isinstance(result, RuntimeError) for result in results)
     assert [e["type"] for e in events(uid, cursor)] == ["test.a", "test.b"]

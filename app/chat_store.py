@@ -172,6 +172,7 @@ from .chat_scratch import (
 from .chat_run_state import (
     DEFAULT_REMAINING_SECONDS,
     INTERRUPT_NOTICE,
+    KEEP_JOBS,
     MAX_RESUME_ATTEMPTS,
     RESUME_NOTICE,
     USER_RESUME_NOTICE,

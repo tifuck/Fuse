@@ -164,7 +164,7 @@ test('permissions: owner state mirrors the menu module; a read for another chat 
   await reading;
   assert.equal(S.threadAuto, false, 'the other chat\'s mode is not applied');
   assert.equal(S.permCards.size, 0, 'its pending asks are not seeded here');
-  assert.notEqual(late.threadPermData?.auto, true);
+  assert.equal(late.threadPermData, null, 'the other chat\'s permissions are not kept');
 });
 
 test('a stopping reply repaints as live when its agents and jobs settle', () => {

@@ -344,7 +344,11 @@ def _scope_filters(user_id: int, provider: str, all_users: bool, subject_id: int
 # then 'unknown'; scripts/sql/2026-11-20-usage-rollups.sql backfilled old rows).
 _PROVIDER_SQL = "e.source_type"
 _TOKENS_SQL = "CASE WHEN e.total_tokens>0 THEN e.total_tokens ELSE e.prompt_tokens+e.output_tokens END"
-_PRICED_SQL = "(e.reported_cost_micros IS NOT NULL OR e.pricing_known=1)"
+# A counted request that did not fail and reported no usage has an unknown
+# cost even on a priced model (db._price_measures).
+_NO_USAGE_SQL = (f"(e.count_request=1 AND e.usage_status='unknown' AND e.request_status<>'failed'"
+                 f" AND {_TOKENS_SQL}<=0)")
+_PRICED_SQL = f"(e.reported_cost_micros IS NOT NULL OR (e.pricing_known=1 AND NOT {_NO_USAGE_SQL}))"
 _EVENT_SUMS = f"""COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
                    COALESCE(SUM(e.count_request), 0) AS requests,
                    COALESCE(SUM(e.prompt_tokens), 0) AS prompt,
@@ -362,8 +366,7 @@ _EVENT_SUMS = f"""COALESCE(SUM({_TOKENS_SQL}), 0) AS tokens,
                    COALESCE(SUM(CASE WHEN {_PRICED_SQL} THEN {_TOKENS_SQL} ELSE 0 END), 0) AS priced_tokens,
                    COALESCE(SUM(CASE WHEN e.count_request=1 AND {_PROVIDER_SQL}='openrouter'
                                      THEN 1 ELSE 0 END), 0) AS untracked,
-                   COALESCE(SUM(CASE WHEN (e.total_tokens>0 OR e.prompt_tokens+e.output_tokens>0)
-                                          AND e.reported_cost_micros IS NULL AND e.pricing_known=0
+                   COALESCE(SUM(CASE WHEN ({_TOKENS_SQL}>0 OR {_NO_USAGE_SQL}) AND NOT {_PRICED_SQL}
                                      THEN 1 ELSE 0 END), 0) AS unpriced_events"""
 _SUMMARY_KEYS = ("tokens", "requests", "prompt", "completion", "output", "reasoning", "cached", "cache_write",
                  "ok_requests", "failed", "cancelled", "cost", "estimated_cost", "priced", "priced_tokens",
@@ -560,7 +563,7 @@ def _recent_events(
                        k.name AS key_name,
                        e.prompt_tokens, e.cached_tokens, e.output_tokens, e.reasoning_tokens, e.total_tokens,
                        COALESCE(e.reported_cost_micros, e.estimated_cost_micros, 0) AS cost,
-                       e.pricing_known, e.reported_cost_micros,
+                       CASE WHEN {_PRICED_SQL} THEN 1 ELSE 0 END AS priced,
                        e.request_status
                 FROM usage_events e
                 LEFT JOIN api_keys k ON k.id=e.api_key_id
@@ -818,7 +821,7 @@ def usage_analytics(
             "reasoning": int(row["reasoning_tokens"] or 0),
             "tokens": int(row["total_tokens"] or 0),
             "cost": int(row["cost"] or 0),
-            "cost_known": bool(row["pricing_known"]) or row["reported_cost_micros"] is not None,
+            "cost_known": bool(row["priced"]),
             "status": row["request_status"] or "success",
         }
         for row in recent_job.result()

@@ -81,6 +81,20 @@ def test_include_cannot_reach_outside_the_searched_path(ssh_host):
     assert ssh_host.shell.raw == []
 
 
+def test_a_literal_include_narrows_only_to_a_file_right_in_the_searched_dir(ssh_host):
+    ssh_host.fs.symlink("/etc", f"{ssh_host.root}/link")
+    ssh_host.fs.write("/etc/sudoers", "root ALL=(ALL) ALL\n")
+    answer(ssh_host, "")
+    call(ssh_host, "grep", pattern="root", path=".", include="link/sudoers")
+    answer(ssh_host, "")
+    call(ssh_host, "grep", pattern="root", path=".", include="notes.txt")
+
+    through_link, plain = ssh_host.shell.asked
+    # test -L sees only the last name: link/sudoers would be read through the link.
+    assert "TGT=./link/sudoers" not in through_link and "--glob link/sudoers" in through_link
+    assert "TGT=./notes.txt" in plain
+
+
 def test_grep_content_lines_carry_file_and_line_number(ssh_host):
     answer(ssh_host, "./web/main.py:1:needle web\n./web/ui.js:1:needle js\n")
     body = call(ssh_host, "grep", pattern="needle (web|js)", path="app")
