@@ -660,6 +660,20 @@ def overview(user_id: int) -> dict:
     return {"protect": protect, "offer": offer_on, "items": items, "broken": map_for(user_id).broken}
 
 
+def reveal(user_id: int, secret_id: int) -> dict | None:
+    """One kept value and the stand-in models get for it, for its owner's
+    Settings page. None when there is nothing to show (not theirs, declined
+    so not kept, or unreadable)."""
+    row = db.fetchone("SELECT fake, cipher FROM user_secrets WHERE id=? AND user_id=? AND cipher<>''",
+                      (int(secret_id), int(user_id)))
+    if row is None:
+        return None
+    try:
+        return {"value": decrypt(row["cipher"]), "stand_in": row["fake"]}
+    except (DecryptionError, ValueError, TypeError):
+        return None
+
+
 def set_switches(user_id: int, *, protect=None, offer_on=None) -> None:
     with db.tx() as conn:
         if protect is not None:

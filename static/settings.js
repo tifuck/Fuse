@@ -149,6 +149,34 @@
       row.querySelector("[data-secret-set]")?.addEventListener("click", (event) => {
         act(out, () => api("/settings/secrets", "POST", { id, protected: event.target.getAttribute("data-secret-set") === "on" }));
       });
+      const show = row.querySelector("[data-secret-show]");
+      show?.addEventListener("click", async () => {
+        const value = row.querySelector("[data-secret-value]");
+        const model = row.querySelector("[data-secret-model]");
+        if (show.getAttribute("aria-pressed") === "true") {
+          // Hidden again: the value leaves the page.
+          value.textContent = "\u2022".repeat(12);
+          model.hidden = true;
+          model.querySelector("[data-secret-stand-in]").textContent = "";
+          show.textContent = "Show";
+          show.setAttribute("aria-pressed", "false");
+          return;
+        }
+        show.disabled = true;
+        try {
+          const shown = await api(`/settings/secrets/${id}/reveal`, "POST", {});
+          value.textContent = shown.value;
+          model.querySelector("[data-secret-stand-in]").textContent = shown.stand_in;
+          model.hidden = false;
+          show.textContent = "Hide";
+          show.setAttribute("aria-pressed", "true");
+          status(out, "");
+        } catch (err) {
+          status(out, err.message, "fault");
+        } finally {
+          show.disabled = false;
+        }
+      });
       row.querySelector("[data-secret-delete]").addEventListener("click", (event) => {
         const forget = event.target.getAttribute("data-secret-delete") === "forget";
         if (forget && !window.confirm("Delete this value? Chats that hold its stand-in will no longer get the real value.")) return;

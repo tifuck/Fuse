@@ -128,7 +128,7 @@
 <section class="panel set" id="secrets" aria-labelledby="set-secrets-title" data-secrets>
   <header class="set-head">
     <h2 id="set-secrets-title">Secret protection</h2>
-    <p>Model providers get same-format stand-ins for the values you protect. Fuse puts the real value back when a tool runs on your machines and in the replies you read. Protected values are kept encrypted on this server and apply to all your chats. Not covered: values not listed here, values a command encodes or transforms, images, and the /v1 API.</p>
+    <p>Model providers get same-format stand-ins for the values you protect. Fuse puts the real value back when a tool runs on your machines and in the replies you read. Protected values are kept encrypted on this server and apply to all your chats. Every value Fuse manages is listed below; Show reveals one to you. Not covered: values not listed here, values a command encodes or transforms, images, and the /v1 API.</p>
   </header>
   {% if secrets.broken %}
   <div class="set-row">
@@ -163,6 +163,13 @@
   <div class="set-row" data-secret-id="{{ s.id }}">
     <div class="set-label"><strong>{{ s.label or s.kind }}</strong><span>{{ s.kind }}{% if s.length %} · {{ s.length }} characters{% endif %} · {{ s.where }}{% if s.line %}:{{ s.line }}{% endif %}</span></div>
     <div class="set-control">
+      {% if s.status != "ignored" %}
+      <div class="set-secret">
+        <code data-secret-value>{{ "•" * 12 }}</code>
+        <button type="button" class="btn ghost sm" data-secret-show aria-pressed="false">Show</button>
+      </div>
+      <p class="set-secret set-secret-model" data-secret-model hidden>Models see <code data-secret-stand-in></code></p>
+      {% endif %}
       <div class="set-inline">
         {% if s.status == "protected" %}<span class="badge">Protected</span>
         <button type="button" class="btn ghost sm" data-secret-set="off">Stop protecting</button>

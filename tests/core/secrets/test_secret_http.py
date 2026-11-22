@@ -83,11 +83,21 @@ def test_settings_never_return_a_value(web):
     (item,) = kept["items"]
     assert (item["label"], item["status"], item["length"], item["where"]) == ("GITHUB_TOKEN", "protected", len(GITHUB), "Added by you")
     assert GITHUB not in web.get("/settings/secrets").text and GITHUB not in web.get("/settings").text
+    # The owner can look at a kept value, one at a time, by asking for it.
+    shown = web.post(f"/settings/secrets/{item['id']}/reveal", json={})
+    assert shown.headers["cache-control"] == "no-store" and shown.json()["value"] == GITHUB
+    stand_in = shown.json()["stand_in"]
+    assert stand_in != GITHUB and stand_in.startswith("ghp_") and len(stand_in) == len(GITHUB)
+    assert web.get(f"/settings/secrets/{item['id']}/reveal").status_code == 405
     assert web.post("/settings/secrets", json={"label": "X", "value": "short"}).status_code == 422
     assert web.post("/settings/secrets", json={"id": item["id"], "protected": False}).json()["items"][0]["status"] == "retired"
     assert web.post("/settings/secrets", json={"protect": False, "offer": False}).json()["offer"] is False
     assert not secret_guard.offers_enabled(uid)
     # Another account cannot touch it.
+    sign_in(web, other)
+    assert web.post(f"/settings/secrets/{item['id']}/reveal", json={}).status_code == 404
+    anonymous(web)
+    assert refused(web.post(f"/settings/secrets/{item['id']}/reveal", json={}))
     sign_in(web, other)
     assert web.delete(f"/settings/secrets/{item['id']}").status_code == 404
     assert web.post("/settings/secrets", json={"id": item["id"], "protected": True}).status_code == 404

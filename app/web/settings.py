@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .. import chats, hosts, memory, retention, secret_guard
+from ..security import limiter
 from .deps import _chat_auth, _json_object, render, require_user
 
 router = APIRouter()
@@ -69,6 +70,22 @@ async def secrets_set(request: Request):
     else:
         secret_guard.set_switches(user["id"], protect=raw.get("protect"), offer_on=raw.get("offer"))
     return _secrets_json(user["id"])
+
+
+@router.post("/settings/secrets/{secret_id}/reveal")
+async def secrets_reveal(request: Request, secret_id: int):
+    """A kept value, shown to its owner when they ask for it. A POST, so it
+    needs the session's CSRF token and is never cached, linked or prefetched;
+    the page and the list never carry values."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    if not limiter.allow(f"secret-reveal:{user['id']}", 30, 60):
+        raise HTTPException(429, "Too many requests")
+    shown = secret_guard.reveal(user["id"], secret_id)
+    if shown is None:
+        raise HTTPException(404, "Not found")
+    return JSONResponse(shown, headers={"Cache-Control": "no-store"})
 
 
 @router.delete("/settings/secrets")
