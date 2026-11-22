@@ -9,6 +9,7 @@ until the user accepts it (app/secret_guard.py).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import re
@@ -30,7 +31,7 @@ _SKIP_DIRS = frozenset({"node_modules", ".git", "venv", ".venv", "vendor", "dist
                         "__pycache__", ".tox", "site-packages", ".next", ".cache"})
 _SECRET_NAME = re.compile(
     r"(?i)pass(?:word|wd|phrase)?|pwd|secret|token|api[_.-]?key|apikey|access[_.-]?key|private[_.-]?key"
-    r"|auth|credential|signing|encryption|session[_.-]?key|dsn|salt|webhook")
+    r"|auth|credential|signing|encryption|session[_.-]?key|dsn|salt|webhook|(?:^|[_.-])key$")
 _PLAIN_NAME = re.compile(
     r"(?i)(?:^|[_.-])(?:file|path|dir|url|uri|ttl|expir\w*|len|length|size|enabled?|mode|name|id|type|header"
     r"|prefix|suffix|alg|algorithm|version|endpoint|host|port|region|user|username|email|timeout|max|min|limit"
@@ -41,11 +42,10 @@ _PLACEHOLDER = re.compile(
     r"|replace[_-]?me|todo|fixme|<|>|\{\{|^op://|^vault:")
 _INTERPOLATED = re.compile(r"\$\{|\$\(|`")
 _URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]{1,20}://")
-_URL_CRED = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]{1,20}://[^\s/:@]{1,128}:(?P<v>[^\s@/]{1,256})@")
+_URL_CRED = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]{1,20}://[^\s/:@]{0,128}:(?P<v>[^\s@/]{1,256})@")
 _HOSTLIKE = re.compile(r"^(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?$|^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
 _NAMED_BEFORE = re.compile(r"(?:^|\s)([A-Za-z_][A-Za-z0-9_.-]{0,80})\s*=\s*[\"']?$")
-_WORD = re.compile(r"(?:[a-z]+|[A-Z]+|[A-Z][a-z]+)?[0-9]{0,4}")
 # Values people leave as they came: guessable, and common words elsewhere, so
 # swapping them would replace ordinary text. Never offered.
 _GUESSABLE = frozenset("""
@@ -135,10 +135,6 @@ def _bits(value: str) -> float:
     return len(value) * math.log2(size) if size else 0.0
 
 
-def _wordy(value: str) -> bool:
-    return all(_WORD.fullmatch(piece) for piece in re.split(r"[-_.]+", value) if piece)
-
-
 def _plausible(key: str, value: str) -> bool:
     if len(value) < 8 or len(value) > 8192 or sum(c.isascii() and c.isalnum() for c in value) < 6:
         return False
@@ -151,7 +147,7 @@ def _plausible(key: str, value: str) -> bool:
         return False
     if _URL.match(value) or _EMAIL.match(value) or _HOSTLIKE.match(value) or len(set(value)) < 4:
         return False
-    if _wordy(value) and not _PASSWORD_NAME.search(key):
+    if secret_fakes.wordy(value) and not _PASSWORD_NAME.search(key):
         return False  # a passphrase may be words; a token or key never is
     classes = sum(bool(re.search(rx, value)) for rx in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]"))
     if classes < 2 and len(value) < 16:
@@ -252,4 +248,18 @@ async def ensure(user_id: int, host_id: int, root: str, *, force: bool = False) 
         found: list[Found] = []
         for path, text in files:
             found += find(path, text)
-        return await asyncio.to_thread(secret_guard.offer, user_id, host_id, alias, found[:MAX_PER_SCAN])
+        return await asyncio.to_thread(secret_guard.offer, user_id, host_id, alias, found[:MAX_PER_SCAN], key[2])
+
+
+_scans: set[asyncio.Task] = set()
+
+
+async def ensure_within(user_id: int, host_id: int, root: str, timeout: float = 6.0, *, force: bool = False) -> None:
+    """ensure(), waited on for at most timeout. A slow host does not hold the
+    turn, and its scan still finishes: what it finds is offered before the
+    next request."""
+    task = asyncio.ensure_future(ensure(user_id, host_id, root, force=force))
+    _scans.add(task)
+    task.add_done_callback(_scans.discard)
+    with contextlib.suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(asyncio.shield(task), timeout)

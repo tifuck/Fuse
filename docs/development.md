@@ -176,15 +176,25 @@ is replaced only after the user accepted it, by exact match. Three doors:
 
 So Fuse's own records hold real values; stand-ins exist on the wire to a
 provider. Both directions are pure functions of the user's registry: there
-is no per-chat state. `app/secret_scan.py` reads a project's env files when a
-turn starts and after a tool round changed the machine, and offers what is
-clearly a secret. The owner is asked once per secret: a known value is never
-offered again, and a new value under a name already decided in that file
-follows the decision unasked (`secret_guard.offer`). For a new one the turn
-waits (`secret_guard.wait_for_decision`, the
-`secrets` run event, `/chat/threads/{id}/secrets/offer`) until the owner
-decides. `tests/core/secrets/` holds the invariants: with a realistic
-registry no file of this repository changes through either door.
+is no per-chat state. A value that reads like ordinary text (words, or a
+number: `secret_fakes.plain`) is swapped only as a whole word; any other
+value wherever it stands, also right behind a flag (`-pPASSWORD`).
+
+`app/secret_scan.py` reads a project's env files when a turn starts (a
+chat's first turn always lists the folder again) and after a tool round that
+may have changed or printed them, and offers what is clearly a secret. The
+owner is asked once per value: a known value is never offered again. A new
+value under a name the owner protects in that file of that project is
+protected at once, unasked, and the chat is told; any other new value is
+offered, also under a name declined before (`secret_guard.offer`). For an
+offer the turn waits (`secret_guard.wait_for_decision`, the `secrets` run
+event, `/chat/threads/{id}/secrets/offer`) until the owner decides; a value
+that reads like text is offered unticked, with a warning. A scan slower than
+its wait (`secret_scan.ensure_within`) still finishes, and what it finds is
+offered before the next request. Subagents and unattended turns (schedules,
+automated wakes) never wait: an undecided value leaves in clear there.
+`tests/core/secrets/` holds the invariants: with a realistic registry no
+file of this repository changes through either door.
 
 ### Environment secrets
 

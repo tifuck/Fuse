@@ -10,11 +10,15 @@ function secretsWindowHtml(rows) {
       const name = row.keyed
         ? `<span class="chat-secrets-key" id="${nameId}">${esc(row.name)}</span><span class="chat-secrets-kind">${esc(row.kind)}</span>`
         : `<span class="chat-secrets-key is-kind" id="${nameId}">${esc(row.name)}</span>`;
+      // Words or a number: protecting it also swaps that text wherever else it appears.
+      const warn = row.plain
+        ? `<p class="chat-secrets-warn">Reads like ordinary text. If you protect it, models get a stand-in wherever this exact text appears, also in code and names.</p>`
+        : "";
       const host = row.host ? `<span class="chat-secrets-host">${esc(row.host)}</span> ` : "";
       return `<tr data-secrets-row="${row.id}">
-        <td class="chat-secrets-tick"><input type="checkbox" data-secrets-check checked aria-labelledby="${nameId}"></td>
+        <td class="chat-secrets-tick"><input type="checkbox" data-secrets-check${row.plain ? "" : " checked"} aria-labelledby="${nameId}"></td>
         <td class="chat-secrets-name">${name}</td>
-        <td class="chat-secrets-value"><div>${esc(row.value)}</div></td>
+        <td class="chat-secrets-value"><div>${esc(row.value)}</div>${warn}</td>
         <td class="chat-secrets-where">${host}<span>${esc(row.place)}</span></td>
       </tr>`;
     }).join("");

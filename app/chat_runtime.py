@@ -668,9 +668,12 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
 
         if bound_host_id and bound_cwd and not is_child:
             # Find this folder's env files before the first request, so their
-            # values can be offered for protection (never raises).
+            # values can be offered for protection (never raises). A chat's
+            # first turn always looks: the files may have changed since
+            # another chat listed them.
+            first_turn = not any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages)
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
+                await secret_scan_mod.ensure_within(user["id"], bound_host_id, bound_cwd, force=first_turn)
         secrets_noted = await asyncio.to_thread(secret_guard_mod.noted, user["id"])
         env_secrets = await asyncio.to_thread(secret_guard_mod.env_names, user["id"])
     ssh_any = False
@@ -1217,8 +1220,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     # until the user settles the offers (app/secret_guard.py).
                     if bound_host_id and bound_cwd:
                         with contextlib.suppress(Exception):
-                            await asyncio.wait_for(
-                                secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
+                            await secret_scan_mod.ensure_within(user["id"], bound_host_id, bound_cwd)
                     for note in secret_guard_mod.take_notes(user["id"]):
                         # A protected key was rotated on disk: said once, nothing to decide.
                         yield _sse({"fuse": {"event": "notice", "message": note}})

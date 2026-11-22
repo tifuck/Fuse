@@ -1,7 +1,8 @@
 // Protect secrets window: its row model, labels and request body. No DOM.
 
 // One row per offered value. A value found on a line with no NAME= in front
-// of it is named by its kind.
+// of it is named by its kind. A plain value reads like ordinary text (the
+// server says so): its row warns and starts unticked.
 export function secretRows(items) {
   return (Array.isArray(items) ? items : []).filter((item) => item && Number.isSafeInteger(item.id)).map((item) => {
     const key = String(item.key || "");
@@ -12,6 +13,7 @@ export function secretRows(items) {
       keyed: Boolean(key),
       kind,
       value: String(item.value ?? ""),
+      plain: Boolean(item.plain),
       host: String(item.host || ""),
       place: String(item.file || "") + (item.line > 0 ? ":" + item.line : ""),
     };
