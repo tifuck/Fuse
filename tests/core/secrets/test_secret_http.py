@@ -61,9 +61,15 @@ def test_a_decision_protects_the_ticked_values_and_wakes_the_turn(web):
                     {"protect": [first], "extra": 1}):
             assert web.post(url, json=bad).status_code == 422
         assert secret_guard.has_offers(uid)
-        assert web.post(url, json={"protect": [first]}).json() == {"ok": True, "protected": 1}
-        assert woken and not secret_guard.has_offers(uid)
+        # An offer that arrived after the window was drawn is not declined unseen.
+        secret_guard.offer(uid, 1, "box", secret_scan.find(".env", f"GITHUB_TOKEN={GITHUB}\n"))
+        shown = [i["id"] for i in web.get(url).json()["items"]][:2]
+        assert web.post(url, json={"protect": [first], "shown": "all"}).status_code == 422
+        assert web.post(url, json={"protect": [first], "shown": shown}).json() == {"ok": True, "protected": 1}
+        assert woken and [o["value"] for o in secret_guard.offers(uid)] == [GITHUB]
         assert [it.real for it in secret_guard.map_for(uid).items] == [OPENAI]
+        assert web.post(url, json={"protect": []}).json() == {"ok": True, "protected": 0}
+        assert not secret_guard.has_offers(uid)
     finally:
         secret_guard._waits.pop(pk, None)
 

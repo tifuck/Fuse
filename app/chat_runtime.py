@@ -1218,6 +1218,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                                 secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
                     if await asyncio.to_thread(secret_guard_mod.has_offers, user["id"]):
                         yield _sse({"fuse": {"event": "secrets", "status": "pending", "run_id": run_id}})
+                        from . import push
+
+                        # Like a permission card, the answer comes only from someone looking.
+                        asyncio.create_task(push.notify_permission(
+                            user["id"], thread_id, {"description": "choose which detected secrets to protect"}))
                         settled = "decided"
                         async with contextlib.aclosing(_with_beats(
                             secret_guard_mod.wait_for_decision(user["id"], thread_id))) as offer_wait:

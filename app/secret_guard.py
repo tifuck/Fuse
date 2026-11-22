@@ -525,15 +525,20 @@ def has_offers(user_id: int) -> bool:
     return bool(db.fetchone("SELECT 1 FROM user_secrets WHERE user_id=? AND status='offered' LIMIT 1", (int(user_id),)))
 
 
-def decide(user_id: int, protect, *, never: bool = False) -> int:
-    """Settle every open offer: the listed ids are protected for good, in
-    every chat; the rest are declined and their values dropped (the keyed
-    fingerprint stays, so they are not offered again)."""
+def decide(user_id: int, protect, *, shown=None, never: bool = False) -> int:
+    """Settle the open offers the owner was shown (all of them when `shown`
+    is None): the ids in `protect` are protected for good, in every chat; the
+    rest are declined and their values dropped (the keyed fingerprint stays,
+    so they are not offered again). An offer that arrived after the window
+    was drawn stays open, so nothing is declined unseen."""
     user_id = int(user_id)
-    keep = {int(i) for i in protect or [] if isinstance(i, int) or (isinstance(i, str) and i.isdigit())}
+    keep = {int(i) for i in protect or []}
+    seen = None if shown is None else {int(i) for i in shown}
     now, done = db.now(), 0
     with db.tx() as conn:
         for row in conn.execute("SELECT id FROM user_secrets WHERE user_id=? AND status='offered'", (user_id,)).fetchall():
+            if seen is not None and int(row["id"]) not in seen:
+                continue
             if int(row["id"]) in keep:
                 conn.execute("UPDATE user_secrets SET status='protected', updated_at=? WHERE id=?", (now, row["id"]))
                 done += 1
