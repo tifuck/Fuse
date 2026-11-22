@@ -661,6 +661,16 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             project_agents_name, project_agents = workspace_mod.last_project_agents(
                 user["id"], bound_host_id, bound_cwd
             )
+    secrets_noted = False
+    if coding:
+        from . import secret_guard as secret_guard_mod, secret_scan as secret_scan_mod
+
+        if bound_host_id and bound_cwd and not is_child:
+            # Find this folder's env files before the first request, so their
+            # values can be offered for protection (never raises).
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
+        secrets_noted = await asyncio.to_thread(secret_guard_mod.noted, user["id"])
     ssh_any = False
     if coding:
         ssh_any = any(
@@ -693,6 +703,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_index=memory_index,
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
+        secrets_protected=secrets_noted,
         code_mode=CODE_MODE,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None
@@ -1198,6 +1209,33 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 if src_type == "ollama":
                     send.pop("parallel_tool_calls", None)
                     send.pop("tool_choice", None)
+                if coding and not is_child and not agent.get("auto") and not agent.get("scheduled"):
+                    # No detected value leaves undecided: the turn waits here
+                    # until the user settles the offers (app/secret_guard.py).
+                    if bound_host_id and bound_cwd:
+                        with contextlib.suppress(Exception):
+                            await asyncio.wait_for(
+                                secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
+                    if await asyncio.to_thread(secret_guard_mod.has_offers, user["id"]):
+                        yield _sse({"fuse": {"event": "secrets", "status": "pending", "run_id": run_id}})
+                        settled = "decided"
+                        async with contextlib.aclosing(_with_beats(
+                            secret_guard_mod.wait_for_decision(user["id"], thread_id))) as offer_wait:
+                            async for wait_kind, wait_value in offer_wait:
+                                if wait_kind == "beat":
+                                    yield _sse({"fuse": {"event": "heartbeat"}})
+                                elif wait_kind == "err":
+                                    raise wait_value
+                                else:
+                                    settled = wait_value
+                        yield _sse({"fuse": {"event": "secrets", "status": settled, "run_id": run_id}})
+                        if settled != "decided":
+                            yield _sse(_error_obj(408, {"error": {"message": (
+                                "Stopped: detected secrets are still waiting for your decision. "
+                                "Choose which to protect, then send your message again.")}}))
+                            _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                            yield b"data: [DONE]\n\n"
+                            return
                 yield _sse({"fuse": {"event": "activity", "phase": "model", "run_id": run_id}})
                 send["messages"] = chat_history.for_model(send["messages"], model)
                 request_meter = context_meter.meter_from_messages(send["messages"], model=model,

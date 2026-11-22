@@ -802,6 +802,43 @@ async def chat_thread_job_kill(request: Request, thread_id: str, job_id: str):
     return JSONResponse({"ok": True, "status": trace.get("status")}, headers={"Cache-Control": "no-store"})
 
 
+@router.get("/chat/threads/{thread_id}/secrets/offer")
+async def chat_secret_offer(request: Request, thread_id: str):
+    """Detected values a turn of this chat is waiting on, with their values:
+    the owner decides which to protect (app/secret_guard.py)."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    pk = chats.resolve_thread_pk(user["id"], thread_id)
+    if pk is None:
+        raise HTTPException(404, "Chat not found")
+    from .. import secret_guard
+
+    items = await asyncio.to_thread(secret_guard.offers, user["id"]) if secret_guard.waiting(user["id"], pk) else []
+    return JSONResponse({"pending": bool(items), "items": items}, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/chat/threads/{thread_id}/secrets/offer")
+async def chat_secret_decide(request: Request, thread_id: str):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    if not limiter.allow(f"chat-secrets:{user['id']}", 30, 60):
+        raise HTTPException(429, "Too many decisions")
+    raw = await _json_object(request)
+    protect = raw.get("protect", [])
+    if (set(raw) - {"protect", "never"} or not isinstance(protect, list) or len(protect) > 500
+            or any(not isinstance(i, int) or isinstance(i, bool) for i in protect)
+            or not isinstance(raw.get("never", False), bool)):
+        raise HTTPException(422, "Invalid decision")
+    if chats.resolve_thread_pk(user["id"], thread_id) is None:
+        raise HTTPException(404, "Chat not found")
+    from .. import secret_guard
+
+    done = await asyncio.to_thread(secret_guard.decide, user["id"], protect, never=bool(raw.get("never")))
+    return JSONResponse({"ok": True, "protected": done}, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/chat/threads/{thread_id}/permissions")
 async def chat_thread_permissions(request: Request, thread_id: str):
     user, err = _chat_auth(request)

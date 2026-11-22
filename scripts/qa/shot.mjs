@@ -44,6 +44,8 @@
 //                         skill    a skill's script files waiting to be copied to a
 //                                  machine: one made by Fuse, one from GitHub (with
 //                                  asks, the other three as well)
+//                         secrets  the Protect secrets window: detected values the
+//                                  turn waits on (use with --thread)
 //                         error    the last reply failed at the provider
 //                         agents   the agents pane (Desktop inspector, the work
 //                                  strip elsewhere) lists made-up subagents: running, done,

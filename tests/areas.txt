@@ -18,6 +18,11 @@ scripts/init_db.py               schema
 scripts/check_schema.py          schema
 scripts/dump_schema.sh           schema
 
+# secret protection
+app/secret_guard.py              secrets
+app/secret_fakes.py              secrets
+app/secret_scan.py               secrets
+
 # runs and recovery
 app/chat_runs.py                 runs
 app/chat_runtime.py              runs

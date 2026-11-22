@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'skill', 'error', 'agents', 'stats', 'dictation'];
+const FAKES = ['running', 'ask', 'asks', 'skill', 'secrets', 'error', 'agents', 'stats', 'dictation'];
 const SESSION = join(ROOT, 'data', 'dev-qa-session.json');
 
 // --fake: states no fixture can hold, made by rewriting what the page reads
@@ -20,6 +20,18 @@ const ASK = {
   cwd: '/srv/demo', command: 'rm -rf build && make release VERSION=2.4.0', secret: false, requester: 'Main agent', decision: '',
   grant_scope: '', grant_kind: '', grant_value: '', description: 'Deletes the build directory, then builds and tags the release.',
 };
+// Detected values a turn waits on (app/secret_guard.py). Invented, and built
+// in pieces: a literal shaped like a real key is rejected when pushed.
+const rnd = (seed, n) => Array.from({ length: n }, (_, i) => 'Qx7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0Ga'[(i * seed + seed) % 32]).join('');
+const SECRET_OFFER = [
+  { key: 'OPENAI_API_KEY', value: 'sk-' + 'proj-' + rnd(3, 48), kind: 'OpenAI key', file: '.env', line: 3 },
+  { key: 'DATABASE_URL', value: 'Tr0ub4dor' + '&3xq', kind: 'Password in a URL', file: '.env', line: 7 },
+  { key: 'SESSION_SECRET', value: rnd(5, 64).toLowerCase(), kind: 'Secret', file: '.env', line: 9 },
+  { key: 'STRIPE_SECRET_KEY', value: 'sk_' + 'live_' + rnd(7, 24), kind: 'Stripe key', file: 'apps/api/.env.production', line: 12 },
+  { key: '', value: 'npm_' + rnd(9, 36), kind: 'npm token', file: '.npmrc', line: 1 },
+  { key: 'GITHUB_TOKEN', value: 'ghp_' + rnd(11, 36), kind: 'GitHub token', file: '.envrc', line: 4 },
+  { key: 'JWT_SIGNING_KEY', value: ['eyJ' + rnd(13, 33), 'eyJ' + rnd(15, 120), rnd(17, 43)].join('.'), kind: 'JWT', file: 'config/prod.env', line: 2 },
+].map((row, i) => ({ id: i + 1, host: 'qa-box', ...row }));
 const MORE_ASKS = [
   { ...ASK, id: 'qa-perm-2', perm_kind: 'file', tool: 'write_file', path: '/srv/demo/notes/findings.md', cwd: '', command: '', requester: 'researcher',
     grant_kind: 'file', description: '', reasons: ['outside allowed folders'] },
@@ -159,6 +171,8 @@ const FIXES = {
     }
     // An ask only waits inside a run, and the page reads asks only for a thread that is running.
     if (fake.has('ask')) Object.assign(data, { bypass_permissions: false, auto_permissions: false, running: true });
+    // The page asks for an offer only for a chat whose turn is running.
+    if (fake.has('secrets')) data.running = true;
     if (fake.has('error') && last) last.error = 'Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)';
     return data;
   },
@@ -166,6 +180,9 @@ const FIXES = {
     if (!fake.has('running')) return data;
     return { ...data, status: 'running', created_at: iso(startedAt - 47000), updated_at: iso(startedAt), cancel_requested: false,
       compaction: { ...(data.compaction || {}), meter: { used: 18400, limit: 128000, run_id: data.id } } };
+  },
+  secrets() {
+    return { pending: true, items: SECRET_OFFER };
   },
   perms(data) {
     if (!fake.has('ask')) return data;
@@ -246,7 +263,8 @@ export default {
     if (!fake.size || request.method !== 'GET') return '';
     const has = (...names) => names.some((name) => fake.has(name));
     if (has('agents') && /^\/chat\/threads\/[^/]+\/agents$/.test(path)) return 'agents';
-    if (has('running', 'ask', 'error') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
+    if (has('secrets') && /^\/chat\/threads\/[^/]+\/secrets\/offer$/.test(path)) return 'secrets';
+    if (has('running', 'ask', 'secrets', 'error') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
     if (has('ask') && /^\/chat\/threads\/[^/]+\/permissions$/.test(path)) return 'perms';
     return has('running') && /^\/chat\/runs\/[^/]+$/.test(path) ? 'run' : '';
   },

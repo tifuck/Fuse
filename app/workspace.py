@@ -723,6 +723,16 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
     if writes and hosts.permission_in(scope, root) == "read_only":
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
+    from . import secret_guard, secret_scan
+
+    # The tool door (app/secret_guard.py): stand-ins the model wrote become
+    # the real values here, before the denylist and the permission review, so
+    # both judge (and the user is shown) the command that will run.
+    refusal = await asyncio.to_thread(secret_guard.restore_tool_args, user_id, name, args)
+    if refusal:
+        return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
+    if writes or (name == "read_file" and secret_scan.is_env_name(str(args.get("path") or ""))):
+        secret_scan.mark_dirty(user_id, host_id)
     deny_reason = ""
     if name in ("run_terminal_command", "monitor"):
         command = str(args.get("command") or "")
@@ -853,6 +863,26 @@ async def read_text_file(path: str, *, host: str | None, user_id: int, bound_hos
     if len(body) > max_chars:
         raise WorkspaceError(f"file is too large to publish (max {max_chars} bytes)")
     return body, f"{alias}:{rec.get('path') or path}"
+
+
+async def read_env_files(user_id, host_id, root: str, *, pick, depth: int, max_chars: int) -> tuple[str, list[tuple[str, str]]]:
+    """(host alias, [(path under root, text)]) for the files pick() chooses
+    from the folder's listing (app/secret_scan.py picks env files only). The
+    text is for Fuse's own scan: it never goes to a model."""
+    row = await asyncio.to_thread(hosts.host_row, user_id, host_id)
+    if row is None:
+        raise WorkspaceError("unknown host")
+    alias, windows = _row_alias(row), _is_windows_row(row)
+    names, _more = await _list_tree(user_id, host_id, root, depth, windows=windows)
+    out = []
+    for name in pick(names):
+        try:
+            body, _rec = await _read_raw(user_id, host_id, alias, {"path": name}, root, windows=windows, max_chars=max_chars)
+        except (WorkspaceError, VaultLocked):
+            continue
+        if len(body) <= max_chars:
+            out.append((name.replace("\\", "/"), body))
+    return alias, out
 
 
 async def _read_raw(user_id, host_id, alias, args, root, *, windows: bool, max_chars: int) -> tuple[str, dict]:

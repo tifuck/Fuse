@@ -454,6 +454,8 @@ def _ensure_chat_columns(conn: sqlite3.Connection) -> None:
     retention.init_schema(conn)
     from . import memory
     memory.init_schema(conn)
+    from . import secret_guard
+    secret_guard.init_schema(conn)
     from . import notices
     notices.init_schema(conn)
     from . import command_jobs

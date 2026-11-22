@@ -282,7 +282,14 @@ def _validate_reasoning(body: dict) -> None:
         raise HTTPException(400, "thinking.clear_thinking must be a boolean")
 
 
-async def _run_chat(src, body: dict, user_id: int, session_id: str | None = None, affinity_id: str | None = None):
+async def _run_chat(src, body: dict, user_id: int, session_id: str | None = None, affinity_id: str | None = None,
+                    *, mask: bool = True):
+    if mask:
+        # The provider door (app/secret_guard.py): every attempt and retry
+        # passes here last, so no caller can send a protected value in clear.
+        from . import secret_guard
+
+        body = await secret_guard.outbound(user_id, body)
     return await src.chat(body, session_id=session_id, user_id=user_id, affinity_id=affinity_id)
 
 
@@ -588,6 +595,12 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     # work below, so one large transcript does not stall every other stream.
     await asyncio.to_thread(_validate_messages, body.get("messages"),
                             retained=bool(request.scope.get("fuse_retained_history")))
+    if not request.scope.get("fuse_secret_exempt"):
+        from . import secret_guard
+
+        if (await asyncio.to_thread(secret_guard.map_for, user["id"])).broken:
+            # Fail closed: values that cannot be read cannot be kept out.
+            raise HTTPException(409, secret_guard.BROKEN)
     body = dict(body)
     body.pop("prompt_snapshot", None)
     body.pop("image_snapshot", None)
@@ -666,7 +679,8 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
             affinity_id = related_session_id(request.scope.get("fuse_cache_parent"), user_id=user["id"], model=scope_model)
     while True:
         try:
-            result = await _run_chat(src, body, user["id"], session_id=session_id, affinity_id=affinity_id)
+            result = await _run_chat(src, body, user["id"], session_id=session_id, affinity_id=affinity_id,
+                                     mask=not request.scope.get("fuse_secret_exempt"))
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -801,6 +815,9 @@ async def chat_completions(request: Request):
     from .web.deps import _json_object
 
     user = await asyncio.to_thread(require_key, request)
+    # API clients get their bodies as sent: Fuse cannot restore a stand-in on
+    # their side (app/secret_guard.py).
+    request.scope["fuse_secret_exempt"] = True
     token = _admit(user["id"])
     if token is None:
         raise HTTPException(429, "Too many concurrent requests")

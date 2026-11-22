@@ -159,7 +159,7 @@ def test_a_client_gone_before_the_first_byte_still_releases_its_slots_and_record
         started.append(True)
         yield sse(delta("x"))
 
-    async def pooled(src, body, user_id, session_id=None, affinity_id=None):
+    async def pooled(src, body, user_id, session_id=None, affinity_id=None, mask=True):
         pool_pick.reserve(77)
         stream = UsageStream(never_read(), {}, on_close=lambda: pool_pick.release(77))
         return ChatResult(status=200, stream=stream, credential_id=None)
