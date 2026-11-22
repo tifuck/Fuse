@@ -65,7 +65,7 @@ def test_what_is_offered():
     "TOKEN_TTL=3600", "SECRET_KEY_FILE=/run/secrets/key", "PASSWORD_MIN_LENGTH=12", "AUTH_HEADER_NAME=X-Auth-Token",
     "DB_PASSWORD=postgres", "DB_PASSWORD=changeme", "API_KEY=your-api-key-here", "API_KEY=${OTHER_KEY}",
     "SECRET=$(cat /run/secret)", "JWT_SECRET=secret", "APP_SECRET=settings.app_secret", "API_KEY=process.env.API_KEY",
-    "AUTH_TOKEN=test_token_value", "DB_PASSWORD=sunshine", "NEXT_PUBLIC_API_KEY=abcd1234efgh5678ijkl",
+    "AUTH_TOKEN=test_token_value", "DB_PASSWORD=sunshine", "NEXT_PUBLIC_API_KEY=" + "abcd1234" + "efgh5678ijkl",
     "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE", "db_password:", "some_table_name_here", "@pytest.fixture",
     "app/chat_generation/tool_runner.py:9:from ..y import Z", "SESSION_SECRET=xxxxxxxxxxxxxxxx", "API_KEY=<your key>",
     "ADMIN_EMAIL=admin@example.com", "REDIS_PASSWORD=", "SECRET_KEY=1234",

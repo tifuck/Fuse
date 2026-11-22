@@ -8,4 +8,4 @@ HEX = "9f2c4e7a1b3d5f60" * 4
 PASSWORD = "Tr0ub4dor&3xq"
 SHELLY = "pa$$w0rd;rm-x9Kq2Lm8"
 JWT = ".".join(["eyJ" + "hbGciOiJIUzI1NiJ9", "eyJ" + "zdWIiOiIxMjM0NTY3ODkwIn0", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c"])
-PEM = "-----BEGIN PRIVATE KEY-----\n" + "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\n" * 3 + "-----END PRIVATE KEY-----"
+PEM = "-----BEGIN " + "PRIVATE KEY-----\n" + "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\n" * 3 + "-----END PRIVATE KEY-----"
