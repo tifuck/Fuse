@@ -369,6 +369,15 @@ def test_chart_specs_are_checked_before_they_are_stored(fresh_db):
     assert artifacts.list_for_user(uid) == []
 
 
+def test_charts_written_by_columns_are_stored_as_rows():
+    columns = {"type": "bar", "x": ["Mon", "Tue"], "y": [{"label": "Signups", "values": [12, 18]}]}
+    chartjs = {"chart": {"type": "line", "labels": ["Mon", "Tue"], "datasets": [{"label": "Signups", "data": [12, 18]}]}}
+    for spec in (columns, chartjs):
+        stored = json.loads(artifacts._chart_text(json.dumps(spec)))
+        assert (stored["x"], stored["y"]) == ("label", ["Signups"])
+        assert stored["data"] == [{"label": "Mon", "Signups": 12}, {"label": "Tue", "Signups": 18}]
+
+
 def test_inline_pages_are_transparent_sized_and_in_the_chat_font():
     page = artifacts.render_document(PAGE.format("x"), inline=True, font="mono|Red Hat Mono|wght@400..700", scale="115")
     assert "background:transparent!important" in page and 'type:"size"' in page

@@ -207,6 +207,38 @@ def _display(raw) -> str:
     return value
 
 
+def _chart_rows(spec: dict) -> dict:
+    """The data as rows. Models often write a chart by columns instead:
+    {x: [labels], y: [{label, values}]} or Chart.js's {labels, datasets:
+    [{label, data}]}, sometimes wrapped in one more {chart: ...}."""
+    if "type" not in spec and isinstance(spec.get("chart"), dict):
+        spec = spec["chart"]
+    labels, series = spec.get("x"), spec.get("y")
+    if isinstance(spec.get("labels"), list) and isinstance(spec.get("datasets"), list):
+        labels, series = spec["labels"], spec["datasets"]
+    if spec.get("data") or not isinstance(labels, list):
+        return spec
+    series = [series] if isinstance(series, dict) else series
+    if not isinstance(series, list) or not series:
+        return spec
+    columns = []
+    for i, item in enumerate(series):
+        if isinstance(item, list):
+            name, values = f"value {i + 1}" if len(series) > 1 else "value", item
+        elif isinstance(item, dict):
+            name = str(item.get("label") or item.get("name") or (f"value {i + 1}" if len(series) > 1 else "value"))
+            values = next((item[k] for k in ("values", "value", "data") if isinstance(item.get(k), list)), None)
+        else:
+            return spec
+        if values is None:
+            return spec
+        columns.append((name, values))
+    rows = [{"label": label, **{name: values[i] if i < len(values) else None for name, values in columns}}
+            for i, label in enumerate(labels)]
+    rest = {k: v for k, v in spec.items() if k not in ("x", "y", "labels", "datasets")}
+    return {**rest, "x": "label", "y": [name for name, _ in columns], "data": rows}
+
+
 def _chart_text(text: str) -> str:
     """A chart spec for the built-in kit (artifact_chart.js), checked and
     stored as indented JSON so edit_artifact can change it line by line."""
@@ -216,6 +248,7 @@ def _chart_text(text: str) -> str:
         raise ArtifactError("chart must be a JSON object: {type, x, y, data}") from None
     if not isinstance(spec, dict):
         raise ArtifactError("chart must be a JSON object: {type, x, y, data}")
+    spec = _chart_rows(spec)
     if spec.get("type") not in CHART_TYPES:
         raise ArtifactError(f"chart type must be one of: {', '.join(CHART_TYPES)}")
     data = spec.get("data")
