@@ -106,5 +106,14 @@ int main(void) {
     assert(run_exec("/tmp", "cat", 5000, out, sizeof(out), err, sizeof(err),
                     &code, NULL, &timed_out, 0, NULL, &clipped, &out_len, &err_len) == 0);
     assert(code == 0 && !timed_out && out_len == 0);
+
+    /* Extra environment reaches that one child, replaces a name the agent
+     * has, and leaves the rest (and the agent's own environment) alone. */
+    setenv("FUSE_T_OLD", "agent", 1);
+    char *const env[] = {"FUSE_T_NEW=a b'\"$c", "FUSE_T_OLD=job", NULL};
+    assert(run_exec_env("/tmp", "printf '%s|%s|%s' \"$FUSE_T_NEW\" \"$FUSE_T_OLD\" \"${PATH:+path}\"", 5000, out, sizeof(out),
+                        err, sizeof(err), &code, NULL, &timed_out, 0, NULL, &clipped, &out_len, &err_len, env) == 0);
+    assert(code == 0 && !strcmp(out, "a b'\"$c|job|path"));
+    assert(!strcmp(getenv("FUSE_T_OLD"), "agent") && !getenv("FUSE_T_NEW"));
     return 0;
 }

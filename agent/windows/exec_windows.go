@@ -70,12 +70,16 @@ type psProc struct {
 	job      windows.Handle
 }
 
-func spawnPS(dir string) (*psProc, error) {
+// env ("NAME=value") is added to the agent's environment for this process.
+func spawnPS(dir string, env []string) (*psProc, error) {
 	ps := exec.Command(powershellPath(),
 		"-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
 		"-ExecutionPolicy", "Bypass",
 		"-Command", "-")
 	ps.Dir = dir
+	if len(env) > 0 {
+		ps.Env = append(os.Environ(), env...)
+	}
 	// A background process (Start-Process, start /b) may keep the inherited
 	// output pipes open: report the shell's result shortly after it exits.
 	ps.WaitDelay = 250 * time.Millisecond
@@ -156,7 +160,7 @@ func takeWarmPS() *psProc {
 	warm.Unlock()
 	if fill {
 		go func() {
-			q, err := spawnPS(userHome())
+			q, err := spawnPS(userHome(), nil)
 			warm.Lock()
 			warm.filling = false
 			if err == nil && warm.p == nil {
@@ -175,17 +179,22 @@ func takeWarmPS() *psProc {
 	return p
 }
 
-func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill func(func()), onOut, onErr func([]byte)) (string, string, int, error, bool, bool) {
+func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill func(func()), onOut, onErr func([]byte), env []string) (string, string, int, error, bool, bool) {
 	if timeoutMS <= 0 {
 		timeoutMS = 30000
 	}
 	if _, err := os.Stat(cwd); err != nil {
 		return "", fmt.Sprintf("fuse-agent: chdir %s: %v\n", cwd, err), 127, nil, false, true
 	}
-	p := takeWarmPS()
+	// A warm shell was started with the agent's environment: a command that
+	// carries its own gets a fresh one.
+	var p *psProc
+	if len(env) == 0 {
+		p = takeWarmPS()
+	}
 	if p == nil {
 		var err error
-		if p, err = spawnPS(cwd); err != nil {
+		if p, err = spawnPS(cwd, env); err != nil {
 			return "", "", 1, err, false, true
 		}
 	}

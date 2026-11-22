@@ -40,14 +40,44 @@ static int send_utf8_chunk(const char *id, const char *stream, char *carry, size
     return send_chunk(id, stream, buf, total - tail);
 }
 
+extern char **environ;
+
+/* The agent's environment plus extra. Built before fork, so the child only
+ * execs. NULL when out of memory. */
+static char **env_with(char *const *extra) {
+    size_t n = 0, m = 0, k = 0;
+    while (environ && environ[n]) n++;
+    while (extra[m]) m++;
+    char **envp = calloc(n + m + 1, sizeof(*envp));
+    if (!envp) return NULL;
+    for (size_t i = 0; i < n; i++) {
+        int replaced = 0;
+        for (size_t j = 0; j < m && !replaced; j++)
+            replaced = strncmp(environ[i], extra[j], strcspn(extra[j], "=") + 1) == 0;
+        if (!replaced) envp[k++] = environ[i];
+    }
+    for (size_t j = 0; j < m; j++) envp[k++] = extra[j];
+    return envp;
+}
+
 int run_exec(const char *cwd, const char *cmd, int timeout_ms, char *out, size_t ocap, char *errb, size_t ecap, int *code, struct job *job, int *timed_out, int stream, const char *job_id, int *clipped, size_t *out_len, size_t *err_len) {
+    return run_exec_env(cwd, cmd, timeout_ms, out, ocap, errb, ecap, code, job, timed_out, stream, job_id, clipped, out_len, err_len, NULL);
+}
+
+int run_exec_env(const char *cwd, const char *cmd, int timeout_ms, char *out, size_t ocap, char *errb, size_t ecap, int *code, struct job *job, int *timed_out, int stream, const char *job_id, int *clipped, size_t *out_len, size_t *err_len, char *const *env) {
+    char **envp = NULL;
+    if (env && env[0] && !(envp = env_with(env))) return -1;
     int outp[2], errp[2];
     /* O_CLOEXEC: exec'd commands (and daemons they spawn) must not inherit
      * job pipe fds. dup2() in the child clears CLOEXEC on stdout/stderr. */
-    if (pipe2(outp, O_CLOEXEC) != 0) return -1;
+    if (pipe2(outp, O_CLOEXEC) != 0) {
+        free(envp);
+        return -1;
+    }
     if (pipe2(errp, O_CLOEXEC) != 0) {
         close(outp[0]);
         close(outp[1]);
+        free(envp);
         return -1;
     }
     pid_t pid = fork();
@@ -56,6 +86,7 @@ int run_exec(const char *cwd, const char *cmd, int timeout_ms, char *out, size_t
         close(outp[1]);
         close(errp[0]);
         close(errp[1]);
+        free(envp);
         return -1;
     }
     if (pid == 0) {
@@ -82,10 +113,16 @@ int run_exec(const char *cwd, const char *cmd, int timeout_ms, char *out, size_t
             dprintf(2, "fuse-agent: chdir %s: %s\n", cwd, strerror(chdir_err));
             _exit(127);
         }
-        execl("/bin/bash", "bash", "--noprofile", "--norc", "-c", cmd ? cmd : "", (char *)NULL);
+        if (envp) {
+            char *const argv[] = {"bash", "--noprofile", "--norc", "-c", (char *)(cmd ? cmd : ""), NULL};
+            execve("/bin/bash", argv, envp);
+        } else {
+            execl("/bin/bash", "bash", "--noprofile", "--norc", "-c", cmd ? cmd : "", (char *)NULL);
+        }
         dprintf(2, "fuse-agent: exec bash: %s\n", strerror(errno));
         _exit(127);
     }
+    free(envp);
     setpgid(pid, pid);
     if (job) {
         pthread_mutex_lock(&g_job_mu);

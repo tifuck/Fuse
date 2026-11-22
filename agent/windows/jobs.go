@@ -249,7 +249,19 @@ func (h *jobHub) run(s *session, msg map[string]any) {
 			onOut = func(p []byte) { s.sendChunk(id, "out", string(p), cancel, until) }
 			onErr = func(p []byte) { s.sendChunk(id, "err", string(p), cancel, until) }
 		}
-		out, errb, code, runErr, timedOut, confirmed := runExec(expandHome(cwd), cmd, timeout, cancel, nil, onOut, onErr)
+		// "env": {"NAME": "value"} is set for this one command only.
+		var env []string
+		if raw, ok := msg["env"].(map[string]any); ok {
+			for k, v := range raw {
+				val, isStr := v.(string)
+				if !isStr || k == "" || strings.ContainsAny(k, "=\x00") || strings.Contains(val, "\x00") || len(raw) > 16 {
+					s.sendRes(id, false, 1, "", "", "invalid env")
+					return
+				}
+				env = append(env, k+"="+val)
+			}
+		}
+		out, errb, code, runErr, timedOut, confirmed := runExec(expandHome(cwd), cmd, timeout, cancel, nil, onOut, onErr, env)
 		if runErr != nil {
 			s.sendRes(id, false, 1, "", "", "exec failed")
 			return

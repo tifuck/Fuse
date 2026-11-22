@@ -26,6 +26,7 @@
  * this much stdout and stderr each, then flags the result truncated. It
  * was 8 KB, which cut a 200-match grep; the read frame is 64 KB too. */
 #define EXEC_CAP OUT_CAP
+#define EXEC_ENV_MAX 16 /* environment secrets one command may carry */
 /* Whole-file edit ceiling for the replace op. Only old/new travel over the
  * socket (never the file), so this is a RAM guard, not a transport limit.
  * Keep in sync with _REPLACE_FILE_MAX in app/workspace.py and editFileMax in
