@@ -14,7 +14,7 @@ import pytest
 from app import api, db, secret_guard, secret_scan
 from tests.core.helpers import quick_user, run_async
 
-from ._values import ANTHROPIC, GITHUB, HEX, OPENAI, PASSWORD, PEM, SHELLY, STRIPE
+from ._values import ANTHROPIC, CUSTOM, GITHUB, HEX, NUMBER, OPENAI, PASSWORD, PEM, SHELLY, SLASHY, STRIPE, WORDS
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 ALL = {"OPENAI_API_KEY": OPENAI, "GITHUB_TOKEN": GITHUB, "STRIPE_KEY": STRIPE, "SESSION_SECRET": HEX,
@@ -92,11 +92,9 @@ def test_round_trip_on_generated_documents(owner):
         doc = "".join(parts)
         masked = secret_guard.mask_text(m, doc)
         for value in set(used):
-            if value != PASSWORD:
-                assert value not in masked
+            assert value not in masked
         assert secret_guard.mask_text(m, masked) == masked
-        restored, refusal = secret_guard.restore_field(m, masked, "content")
-        assert refusal == "" and (restored == doc or PASSWORD in doc or SHELLY in doc)
+        assert secret_guard.restore_field(m, masked, "content") == (doc, "")
 
 
 def test_every_spelling_of_a_strong_value_is_masked_and_restored(owner):
@@ -110,14 +108,54 @@ def test_every_spelling_of_a_strong_value_is_masked_and_restored(owner):
     assert secret_guard.restore_field(m, masked, "content") == (doc, "")
 
 
-def test_a_weak_value_is_swapped_only_as_a_whole_word(owner):
+def test_a_short_password_is_swapped_wherever_it_stands(owner):
+    """mysql's -pPASSWORD puts nothing between the flag and the value: a
+    password is not a word, so it needs no gap around it to be recognised."""
     _uid, m = owner
     fake = fake_of(m, PASSWORD)
-    doc = f"psql postgres://app:{PASSWORD}@db/app  x{PASSWORD}  {PASSWORD}9"
+    doc = f"mysqldump -uroot -p{PASSWORD} shop; psql postgres://app:{PASSWORD}@db/app  x{PASSWORD}9"
     masked = secret_guard.mask_text(m, doc)
-    assert masked == f"psql postgres://app:{fake}@db/app  x{PASSWORD}  {PASSWORD}9"
-    assert secret_guard.restore_field(m, f"a {fake} b x{fake}", "content") == (f"a {PASSWORD} b x{fake}", "")
+    assert masked == f"mysqldump -uroot -p{fake} shop; psql postgres://app:{fake}@db/app  x{fake}9"
+    assert secret_guard.restore_field(m, masked, "content") == (doc, "")
 
+
+def test_a_value_that_reads_like_text_is_swapped_only_as_a_whole_word(fresh_db):
+    """Words and numbers also occur inside other words and numbers, however
+    long they are: only the whole value is taken for the secret."""
+    uid = quick_user()
+    secret_guard.add_manual(uid, "RATELIMIT_BYPASS_KEY", WORDS)
+    secret_guard.add_manual(uid, "ACCOUNT_PIN", NUMBER)
+    m = secret_guard.map_for(uid)
+    words, number = fake_of(m, WORDS), fake_of(m, NUMBER)
+    doc = f"X-Bypass: {WORDS}\nKEY='{WORDS}' pin={NUMBER}\nre{WORDS}s x{WORDS} {WORDS}2 order 9{NUMBER}0 id{NUMBER}"
+    masked = secret_guard.mask_text(m, doc)
+    assert masked == f"X-Bypass: {words}\nKEY='{words}' pin={number}\nre{WORDS}s x{WORDS} {WORDS}2 order 9{NUMBER}0 id{NUMBER}"
+    assert secret_guard.restore_field(m, masked, "command") == (doc, "")
+    assert secret_guard.restore_text(m, f"use {words}, not {words}x or 1{number}") == f"use {WORDS}, not {words}x or 1{number}"
+    # Encoded, it is no longer text: a long enough one is found wherever it is.
+    b64 = base64.b64encode(WORDS.encode()).decode()
+    assert b64 not in secret_guard.mask_text(m, f"auth=x{b64}y")
+
+
+def test_the_spellings_other_programs_write(fresh_db):
+    """The same value as PHP's json_encode, a lower-case percent-encoder and
+    JavaScript's encodeURIComponent write it."""
+    uid = quick_user()
+    bang = "Kq7!Zm2@Vx9*Lp4/Rt8"
+    secret_guard.add_manual(uid, "AWS_SECRET_ACCESS_KEY", SLASHY)
+    secret_guard.add_manual(uid, "DB_PASSWORD", bang)
+    m = secret_guard.map_for(uid)
+    spellings = [
+        (SLASHY, lambda v: json.dumps({"secret": v}).replace("/", "\\/")),
+        (SLASHY, lambda v: "sig=" + v.replace("/", "%2f").replace("+", "%2b").replace("=", "%3d")),
+        (SLASHY, lambda v: "sig=" + v.replace("/", "%2F").replace("+", "%2B").replace("=", "%3D")),
+        (bang, lambda v: "postgres://app:" + v.replace("@", "%40").replace("/", "%2F") + "@db/app"),   # encodeURIComponent
+        (bang, lambda v: "u=" + v.replace("!", "%21").replace("@", "%40").replace("*", "%2A").replace("/", "%2F")),
+    ]
+    for real, spell in spellings:
+        doc, want = spell(real), spell(fake_of(m, real))
+        assert doc != want and secret_guard.mask_text(m, doc) == want
+        assert secret_guard.restore_field(m, want, "content") == (doc, "")
 
 def test_a_clipped_key_is_still_masked_but_never_restored(owner):
     _uid, m = owner
@@ -174,7 +212,7 @@ def test_a_reply_streamed_in_any_pieces_restores_to_the_same_text(owner):
     _uid, m = owner
     reply = f"Use {fake_of(m, OPENAI)} and {fake_of(m, PASSWORD)}, not x{fake_of(m, PASSWORD)}. Done {fake_of(m, GITHUB)}"
     want = secret_guard.restore_text(m, reply)
-    assert OPENAI in want and GITHUB in want and want.count(PASSWORD) == 1
+    assert OPENAI in want and GITHUB in want and want.count(PASSWORD) == 2
     for cut in range(len(reply) + 1):
         stream = secret_guard.StreamRestorer(m)
         assert stream.push(reply[:cut]) + stream.push(reply[cut:]) + stream.flush() == want
@@ -262,14 +300,151 @@ def test_the_owner_is_asked_once_per_secret(fresh_db):
     assert protected() == {OPENAI, ANTHROPIC} and not secret_guard.has_offers(uid)
     assert secret_guard.take_notes(uid) == ["OPENAI_API_KEY changed in .env: Fuse protects its new value too."]
     assert secret_guard.take_notes(uid) == []
-    # The declined password changes: still declined, unasked, and its value is not kept.
-    assert scan(f"OPENAI_API_KEY={ANTHROPIC}\nDB_PASSWORD=N3w&Pass9word\n") == 0
+    # The declined password changes: that decision was about the old value, so the owner is asked about the new one.
+    changed = f"OPENAI_API_KEY={ANTHROPIC}\nDB_PASSWORD=N3w&Pass9word\n"
+    assert scan(changed) == 1 and scan(changed) == 0
+    assert [(o["key"], o["value"]) for o in secret_guard.offers(uid)] == [("DB_PASSWORD", "N3w&Pass9word")]
+    secret_guard.decide(uid, [])
+    assert scan(changed) == 0 and not secret_guard.has_offers(uid)
+    # The value it replaced is forgotten with it: a name that keeps changing holds one row, not one per value.
     declined = db.fetchall("SELECT cipher, fake FROM user_secrets WHERE user_id=? AND status='ignored'", (uid,))
-    assert [(r["cipher"], r["fake"]) for r in declined] == [("", ""), ("", "")] and protected() == {OPENAI, ANTHROPIC}
+    assert [(r["cipher"], r["fake"]) for r in declined] == [("", "")] and protected() == {OPENAI, ANTHROPIC}
     # Only something never decided asks: a new name here, or the same name in another project's file.
     assert scan(f"OPENAI_API_KEY={ANTHROPIC}\nSTRIPE_KEY={STRIPE}\n") == 1
     assert scan(f"OPENAI_API_KEY={GITHUB}\n", path="other/.env") == 1
     assert [(o["key"], o["file"]) for o in secret_guard.offers(uid)] == [("STRIPE_KEY", ".env"), ("OPENAI_API_KEY", "other/.env")]
+
+
+def test_a_decision_belongs_to_its_project(fresh_db):
+    """Two projects on one machine both have a ".env": what the owner decided
+    for a name in one says nothing about the other's."""
+    uid = quick_user()
+
+    def scan(root, text):
+        return secret_guard.offer(uid, 3, "box", secret_scan.find(".env", text), root)
+
+    def protected():
+        return {it.real for it in secret_guard.map_for(uid).items if it.masked}
+
+    assert scan("/srv/shop", f"API_TOKEN={STRIPE}\nDB_PASSWORD={PASSWORD}\n") == 2
+    token, _password = secret_guard.offers(uid)
+    secret_guard.decide(uid, [token["id"]])
+    # The same names with other values in another project: asked, and until then neither protected nor declined.
+    assert scan("/srv/blog", f"API_TOKEN={HEX}\nDB_PASSWORD={SHELLY}\n") == 2
+    assert protected() == {STRIPE} and secret_guard.take_notes(uid) == []
+    assert {o["value"] for o in secret_guard.offers(uid)} == {HEX, SHELLY}
+    secret_guard.decide(uid, [])
+    # In its own project a protected name still follows its key.
+    assert scan("/srv/shop", f"API_TOKEN={GITHUB}\nDB_PASSWORD={PASSWORD}\n") == 0 and protected() == {STRIPE, GITHUB}
+    assert scan("/srv/blog", f"API_TOKEN={ANTHROPIC}\n") == 1 and ANTHROPIC not in protected()
+
+
+def test_a_value_kept_before_places_had_a_folder_is_not_asked_about_again(fresh_db):
+    uid = quick_user()
+    found = secret_scan.find(".env", f"API_TOKEN={STRIPE}\n")
+    secret_guard.offer(uid, 3, "box", found, "/srv/shop")
+    secret_guard.decide(uid, [secret_guard.offers(uid)[0]["id"]])
+    row = db.fetchone("SELECT id, sources FROM user_secrets WHERE user_id=?", (uid,))
+    old = [{k: v for k, v in src.items() if k != "root"} for src in json.loads(row["sources"])]
+    db.execute("UPDATE user_secrets SET sources=? WHERE id=?", (json.dumps(old), row["id"]))
+
+    assert secret_guard.offer(uid, 3, "box", found, "/srv/shop") == 0
+    sources = json.loads(db.fetchone("SELECT sources FROM user_secrets WHERE id=?", (row["id"],))["sources"])
+    assert [(s["root"], s["path"], s["key"]) for s in sources] == [("/srv/shop", ".env", "API_TOKEN")]
+    # From here on a rotated key in that project is protected unasked again.
+    assert secret_guard.offer(uid, 3, "box", secret_scan.find(".env", f"API_TOKEN={GITHUB}\n"), "/srv/shop") == 0
+    assert GITHUB in {it.real for it in secret_guard.map_for(uid).items if it.masked}
+
+
+def test_an_offer_says_which_values_read_like_text(fresh_db):
+    uid = quick_user()
+    text = f"RATELIMIT_BYPASS_KEY={WORDS}\nMETRICS_TOKEN={CUSTOM}\nDB_PASSWORD={PASSWORD}\n"
+    secret_guard.offer(uid, 3, "box", secret_scan.find(".env", text), "/srv/shop")
+    assert [(o["key"], o["plain"]) for o in secret_guard.offers(uid)] == [
+        ("RATELIMIT_BYPASS_KEY", True), ("METRICS_TOKEN", False), ("DB_PASSWORD", False)]
+
+
+def test_a_whole_session_leaves_with_no_protected_value_in_it(fresh_db):
+    """Everything one coding session sends: the project's instructions, what
+    the user pasted, the model's own calls and what the tools printed. No
+    protected value is in the request, and each text comes back unchanged."""
+    uid = quick_user()
+    kept = {"OPENAI_API_KEY": OPENAI, "GH_TOKEN": GITHUB, "STRIPE_SECRET_KEY": STRIPE, "SECRET_KEY": HEX,
+            "AWS_SECRET_ACCESS_KEY": SLASHY, "METRICS_TOKEN": CUSTOM, "DB_PASSWORD": PASSWORD,
+            "RATELIMIT_BYPASS_KEY": WORDS, "SIGNING_KEY": PEM}
+    for label, value in kept.items():
+        secret_guard.add_manual(uid, label, value)
+    m = secret_guard.map_for(uid)
+    env = "".join(f"{name}={value}\n" for name, value in kept.items() if value != PEM)
+    k8s = base64.b64encode(OPENAI.encode()).decode()
+    texts = [
+        f"You are a coding agent.\n# AGENTS.md\nDeploy with STRIPE_SECRET_KEY={STRIPE} (ask ops for a new one).",
+        f"the build fails with this env, why?\n\n{env}\nand prod uses postgres://shop:{PASSWORD}@db.internal:5432/shop",
+        "".join(f"{n}: {line}\n" for n, line in enumerate(env.splitlines(), 1)),
+        f"$ env | sort\nHOME=/home/dev\nOPENAI_API_KEY={OPENAI}\nPATH=/usr/bin\n$ mysqldump -ushop -p{PASSWORD} shop > /tmp/shop.sql",
+        f"> GET /v1/models HTTP/2\n> authorization: Bearer {OPENAI}\n> x-bypass: {WORDS}\n< HTTP/2 200",
+        json.dumps({"services": {"api": {"environment": [f"SECRET_KEY={HEX}", f"GH_TOKEN={GITHUB}"]}},
+                    "aws": {"secret": SLASHY}, "metrics": {"token": CUSTOM}}, indent=2),
+        f"apiVersion: v1\nkind: Secret\ndata:\n  openai: {k8s}\n  hex: {HEX.encode().hex()}",
+        f"-METRICS_TOKEN=old\n+METRICS_TOKEN={CUSTOM}\n {PEM}\nremote: https://x-access-token:{GITHUB}@github.com/acme/shop.git",
+        f"Traceback (most recent call last):\n  stripe.error.AuthenticationError: Invalid API Key provided: {STRIPE[:12]}{'*' * 12}{STRIPE[-4:]}",
+    ]
+    calls = [{"id": "call-1", "type": "function", "function": {
+        "name": "run_terminal_command", "arguments": json.dumps({"command": f"mysql -ushop -p{PASSWORD} -e 'select 1' && curl -H 'X-Key: {CUSTOM}' https://api.internal/"})}}]
+    messages = [{"role": "system", "content": texts[0]}, {"role": "user", "content": [{"type": "text", "text": texts[1]}]},
+                {"role": "assistant", "content": "", "tool_calls": calls}]
+    messages += [{"role": "tool", "tool_call_id": "call-1", "content": text} for text in texts[2:]]
+    body = {"model": "x", "messages": messages}
+
+    sent = run_async(secret_guard.outbound(uid, body))
+    wire = json.dumps(sent, ensure_ascii=False)
+    for name, value in kept.items():
+        probe = value.splitlines()[1] if value == PEM else value
+        assert probe not in wire and json.dumps(probe)[1:-1] not in wire, name
+    assert k8s not in wire and HEX.encode().hex() not in wire
+    # The masked half of a key in an error message stays as it was: nothing whole to swap.
+    assert STRIPE[:12] + "*" * 12 in wire
+    # Nothing but the values changed, and every text restores to exactly what it was.
+    plain_wire = json.dumps(body, ensure_ascii=False)
+    assert wire.count(fake_of(m, OPENAI)) == plain_wire.count(OPENAI) == 4 and len(wire) == len(plain_wire)
+    back = [m_["content"] if isinstance(m_["content"], str) else m_["content"][0]["text"] for m_ in sent["messages"]]
+    for masked, original in zip([back[0], back[1], *back[3:]], texts):
+        assert secret_guard.restore_field(m, masked, "content") == (original, "")
+    assert body["messages"][0]["content"] == texts[0]   # the stored chat itself is untouched
+
+
+@pytest.mark.parametrize("real,fake,anywhere", [
+    ("Tr0ub4dor&3xq", "Kp7ax2mwe&9bK", True),     # ends as it starts: its last character could begin it again
+    ("482915730264", "697057194156", False),
+])
+def test_a_stand_in_whose_end_reads_like_its_start_is_not_cut_in_two(real, fake, anywhere):
+    m = secret_guard.SecretMap([secret_guard.Item(1, "X", real, fake, False, 0, True, True, anywhere=anywhere)])
+    for reply in (f"{fake}{fake[1]} then", f"{fake}{fake[1:4]}", f"a {fake}{fake[1:3]} {fake} {fake}", f"{fake}{fake}"):
+        want = secret_guard.restore_text(m, reply)
+        for cut in range(len(reply) + 1):
+            for second in range(cut, len(reply) + 1):
+                stream = secret_guard.StreamRestorer(m)
+                got = stream.push(reply[:cut]) + stream.push(reply[cut:second]) + stream.push(reply[second:]) + stream.flush()
+                assert got == want, (reply, cut, second)
+
+
+def test_a_reply_streamed_in_any_pieces_with_many_values_restores_like_the_whole(fresh_db):
+    uid = quick_user()
+    for i, value in enumerate([OPENAI, GITHUB, PASSWORD, WORDS, NUMBER, CUSTOM, SLASHY, "aB3xY9kQ"]):
+        secret_guard.add_manual(uid, f"VALUE_{i}", value)
+    m = secret_guard.map_for(uid)
+    fakes = [it.fake for it in m.items]
+    glue = [" ", "x", "9", "_", "\n", "=", "'", "é", fakes[0][:11], fakes[3][:-1], fakes[4][1:], fakes[7][:4]]
+    rng = random.Random(11)
+    for _ in range(400):
+        reply = "".join(rng.choice(fakes + glue) for _ in range(rng.randint(1, 14)))
+        want = secret_guard.restore_text(m, reply)
+        stream, out, at = secret_guard.StreamRestorer(m), "", 0
+        while at < len(reply):
+            step = rng.randint(1, 7)
+            out += stream.push(reply[at:at + step])
+            at += step
+        assert out + stream.flush() == want, reply
 
 
 def test_switching_protection_off_keeps_old_chats_working(owner):

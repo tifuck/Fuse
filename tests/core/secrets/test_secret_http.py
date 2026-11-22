@@ -41,8 +41,8 @@ def test_an_offer_is_shown_only_to_its_owner_while_the_turn_waits(web):
         sign_in(web, uid)
         got = web.get(url)
         assert got.headers["cache-control"] == "no-store"
-        assert [(i["key"], i["value"], i["file"], i["line"]) for i in got.json()["items"]] == [
-            ("OPENAI_API_KEY", OPENAI, ".env", 1), ("DB_PASSWORD", PASSWORD, ".env", 2)]
+        assert [(i["key"], i["value"], i["file"], i["line"], i["plain"]) for i in got.json()["items"]] == [
+            ("OPENAI_API_KEY", OPENAI, ".env", 1, False), ("DB_PASSWORD", PASSWORD, ".env", 2, False)]
         # A chat of the same owner with no waiting turn shows nothing.
         idle = chats.create_thread(uid, model="offline", tools=[])["id"]
         assert web.get(f"/chat/threads/{idle}/secrets/offer").json() == {"pending": False, "items": []}

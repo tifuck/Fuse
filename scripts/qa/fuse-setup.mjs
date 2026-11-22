@@ -27,6 +27,7 @@ const SECRET_OFFER = [
   { key: 'OPENAI_API_KEY', value: 'sk-' + 'proj-' + rnd(3, 48), kind: 'OpenAI key', file: '.env', line: 3 },
   { key: 'DATABASE_URL', value: 'Tr0ub4dor' + '&3xq', kind: 'Password in a URL', file: '.env', line: 7 },
   { key: 'SESSION_SECRET', value: rnd(5, 64).toLowerCase(), kind: 'Secret', file: '.env', line: 9 },
+  { key: 'RATELIMIT_BYPASS_KEY', value: 'nightly_suite_bypass_2031', kind: 'Secret', file: '.env', line: 10, plain: true },
   { key: 'STRIPE_SECRET_KEY', value: 'sk_' + 'live_' + rnd(7, 24), kind: 'Stripe key', file: 'apps/api/.env.production', line: 12 },
   { key: '', value: 'npm_' + rnd(9, 36), kind: 'npm token', file: '.npmrc', line: 1 },
   { key: 'GITHUB_TOKEN', value: 'ghp_' + rnd(11, 36), kind: 'GitHub token', file: '.envrc', line: 4 },

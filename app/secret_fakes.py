@@ -46,6 +46,7 @@ _PEM = re.compile(r"-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----(.*?)-----END \1PRIVA
 _PUBLIC = frozenset({"AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"})
 # A real value with any of these is never placed into command text.
 _SHELL = re.compile(r"[$`\\'\"();|&<>{}\r\n]")
+_WORD = re.compile(r"(?:[a-z]+|[A-Z]+|[A-Z][a-z]+)?[0-9]{0,4}")
 LABELS = {kind: label for kind, label, _rx in _FORMATS} | {
     "jwt": "JWT", "pem": "Private key", "url": "Password in a URL", "named": "Secret", "manual": "Secret"}
 
@@ -81,6 +82,18 @@ def find_formats(text: str) -> list[tuple[str, str]]:
 
 def shell_safe(value: str) -> bool:
     return not _SHELL.search(value)
+
+
+def wordy(value: str) -> bool:
+    """Made of words: letter runs, each with up to four digits after it."""
+    return all(_WORD.fullmatch(piece) for piece in re.split(r"[-_.]+", value) if piece)
+
+
+def plain(value: str) -> bool:
+    """Could be ordinary text (words, or a number). However long it is, such a
+    value is swapped only as a whole word, and its owner is warned before
+    protecting it; any other value is swapped wherever it appears."""
+    return wordy(value) or value.isdigit()
 
 
 def _alnum(ch: str) -> bool:

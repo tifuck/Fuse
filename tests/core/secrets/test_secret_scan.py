@@ -1,11 +1,14 @@
 """The scan: env files only, parsed as KEY=value, and a candidate only when
 the key or the value's own format says so. What the removed feature took for
 secrets (code, paths, identifiers) must never be one."""
+import asyncio
+
 import pytest
 
-from app import secret_scan
+from app import secret_guard, secret_scan, workspace
+from tests.core.helpers import quick_user, run_async, wait_until_async
 
-from ._values import GITHUB, HEX, JWT, OPENAI, PASSWORD, PEM, STRIPE
+from ._values import ANTHROPIC, CUSTOM, GITHUB, HEX, JWT, OPENAI, PASSWORD, PEM, SLASHY, STRIPE, WORDS
 
 
 @pytest.mark.parametrize("name,ok", [
@@ -58,6 +61,90 @@ def test_what_is_offered():
     assert keyless and keyless[0][1] == "" and keyless[0][3] == "github"
     # A commented-out assignment is still in the file: offered under its name.
     assert any(key == "OLD_STRIPE" and kind == "stripe" for _l, key, _v, kind in got)
+
+
+def test_a_realistic_env_file():
+    """What a project's .env really holds: every credential is found, under
+    its name, and none of the settings beside them."""
+    secrets = {
+        "SECRET_KEY": HEX, "DATABASE_URL": f"postgres://shop:{PASSWORD}@db.internal:5432/shop",
+        "REDIS_URL": "redis://:" + "Zx9Qm2Lk8Vb4Np6T" + "@cache:6379/0",   # no user name, as Redis URLs are written
+        "AWS_SECRET_ACCESS_KEY": SLASHY, "METRICS_TOKEN": CUSTOM, "RATELIMIT_BYPASS_KEY": WORDS,
+        "APP_KEY": "base64:" + "Qx7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0GaQx7Lm2Vn9Rs=", "MAILER_KEY": "key-" + "3ax6xnjp29jd6fds" * 2,
+        "STRIPE_SECRET_KEY": STRIPE, "OPENAI_API_KEY": OPENAI, "GH_TOKEN": GITHUB,
+        "ENCRYPTION_KEY": "5b0e84a0-e29b-41d4-" + "a716-4466f5440c1d", "SMTP_PASS": "Wint3r!sC0ming",
+    }
+    settings = [
+        "APP_ENV=production", "APP_URL=https://shop.example.com", "PORT=8080", "LOG_LEVEL=info", "DB_HOST=db.internal",
+        "DB_USER=shop", "AWS_REGION=eu-central-1", "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE", "S3_BUCKET=shop-uploads",
+        "SENTRY_DSN=https://" + "9f2c4e7a1b3d5f60" + "@o123.ingest.sentry.io/42", "GOOGLE_CLIENT_ID=1234567890-abcdefgh.apps.googleusercontent.com",
+        "SESSION_TTL=86400", "PRIMARY_KEY=id", "SORT_KEY=created_at", "CACHE_KEY_PREFIX=shop:v2:", "SSH_KEY_FILE=/home/dev/.ssh/id_ed25519",
+        "JWT_PUBLIC_KEY=" + "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE", "MONKEY=Banana12!x", "FEATURE_FLAGS=checkout_v2,search",
+        "ADMIN_PASSWORD=hunter2", "MAIL_FROM=shop@example.com", "TZ=Europe/Berlin",
+    ]
+    lines = settings[:8] + [f"{name}={value}" for name, value in secrets.items()] + settings[8:]
+    got = {f.key: f.value for f in secret_scan.find(".env", "\n".join(lines))}
+    want = dict(secrets, DATABASE_URL=PASSWORD, REDIS_URL="Zx9Qm2Lk8Vb4Np6T")   # of a URL, only its password
+    assert got == want
+
+
+def scanned_from(monkeypatch, files, gate=None):
+    """The host's env files are the dict the test edits (path -> text).
+    Returns the list of reads: None for a listing, else the paths re-read."""
+    reads = []
+
+    async def read_env_files(user_id, host_id, root, *, pick, depth, max_chars, known=None):
+        reads.append(known)
+        if gate is not None:
+            await gate.wait()
+        return "box", [(name, files[name]) for name in (pick(list(files)) if known is None else known) if name in files]
+
+    monkeypatch.setattr(workspace, "read_env_files", read_env_files)
+    return reads
+
+
+def test_a_folder_is_listed_once_then_only_its_env_files_are_read_again(fresh_db, monkeypatch):
+    uid = quick_user()
+    files = {".env": f"OPENAI_API_KEY={OPENAI}\n", "README.md": "x", "node_modules/pkg/.env": f"T={STRIPE}\n"}
+    reads = scanned_from(monkeypatch, files)
+
+    async def body():
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 1
+        # Another request right after: nothing ran on the machine, so nothing is read.
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 0 and reads == [None]
+        # A tool ran: the env files already found are read again, without listing the folder.
+        files[".env"] += f"GH_TOKEN={GITHUB}\n"
+        secret_scan.mark_dirty(uid, 5)
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 1 and reads == [None, [".env"]]
+        # A new chat lists the folder again, whenever the last listing was.
+        files["api/.env.local"] = f"API_TOKEN={ANTHROPIC}\n"
+        assert await secret_scan.ensure(uid, 5, "/srv/app", force=True) == 1 and reads[-1] is None
+        assert await secret_scan.ensure(uid, 5, "/srv/app", force=True) == 0
+
+    run_async(body())
+    assert [(o["key"], o["file"]) for o in secret_guard.offers(uid)] == [
+        ("OPENAI_API_KEY", ".env"), ("GH_TOKEN", ".env"), ("API_TOKEN", "api/.env.local")]
+
+
+def test_a_slow_host_does_not_hold_the_turn_and_its_scan_still_lands(fresh_db, monkeypatch):
+    uid = quick_user()
+
+    async def body():
+        gate = asyncio.Event()
+        scanned_from(monkeypatch, {".env": f"OPENAI_API_KEY={OPENAI}\n"}, gate)
+        await secret_scan.ensure_within(uid, 5, "/srv/app", timeout=0.01)
+        assert not secret_guard.has_offers(uid)
+        gate.set()   # the host answers at last
+        await wait_until_async(lambda: secret_guard.has_offers(uid), message="the scan was dropped at its timeout")
+
+    run_async(body())
+
+
+def test_nothing_is_scanned_while_detection_is_off(fresh_db, monkeypatch):
+    uid = quick_user()
+    reads = scanned_from(monkeypatch, {".env": f"OPENAI_API_KEY={OPENAI}\n"})
+    secret_guard.set_switches(uid, offer_on=False)
+    assert run_async(secret_scan.ensure(uid, 5, "/srv/app", force=True)) == 0 and reads == []
 
 
 @pytest.mark.parametrize("line", [

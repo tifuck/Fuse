@@ -107,25 +107,35 @@ class Item:
     masked: bool      # False: restore only (switched off, or retired)
     random: bool = True   # the stand-in is random from prefix_len on (a PEM keeps its header lines)
     env: bool = False     # an environment secret: label is its variable name
+    anywhere: bool = True   # False: swapped only as a whole word (secret_fakes.plain)
 
 
-def _forms(real: str, fake: str, strong: bool) -> list[tuple[str, str]]:
-    """(real form, stand-in form) for each spelling a value is met in. The
-    stand-in keeps the real value's punctuation, so every form has one shape."""
-    out = [(real, fake), (json.dumps(real)[1:-1], json.dumps(fake)[1:-1]),
-           (json.dumps(real, ensure_ascii=False)[1:-1], json.dumps(fake, ensure_ascii=False)[1:-1]),
-           (quote(real, safe=""), quote(fake, safe=""))]
+def _lower_escapes(text: str) -> str:
+    return re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), text)
+
+
+def _forms(real: str, fake: str, strong: bool) -> list[tuple[str, str, bool]]:
+    """(real form, stand-in form, encoded) for each spelling a value is met
+    in. The stand-in keeps the real value's punctuation, so every form has one
+    shape. An encoded form is no longer text, whatever the value reads like."""
+    json_real, json_fake = json.dumps(real)[1:-1], json.dumps(fake)[1:-1]
+    url_real, url_fake = quote(real, safe=""), quote(fake, safe="")
+    out = [(real, fake, False), (json_real, json_fake, False),
+           (json.dumps(real, ensure_ascii=False)[1:-1], json.dumps(fake, ensure_ascii=False)[1:-1], False),
+           (json_real.replace("/", "\\/"), json_fake.replace("/", "\\/"), False),   # PHP's json_encode
+           (url_real, url_fake, False), (_lower_escapes(url_real), _lower_escapes(url_fake), False),
+           (quote(real, safe="!'()*"), quote(fake, safe="!'()*"), False)]              # encodeURIComponent
     if strong:
         raw_real, raw_fake = real.encode(), fake.encode()
         for encode in (base64.b64encode, base64.urlsafe_b64encode):
             a, b = encode(raw_real).decode(), encode(raw_fake).decode()
-            out += [(a, b), (a.rstrip("="), b.rstrip("="))]
-        out += [(raw_real.hex(), raw_fake.hex()), (raw_real.hex().upper(), raw_fake.hex().upper())]
+            out += [(a, b, True), (a.rstrip("="), b.rstrip("="), True)]
+        out += [(raw_real.hex(), raw_fake.hex(), True), (raw_real.hex().upper(), raw_fake.hex().upper(), True)]
     seen, forms = set(), []
-    for a, b in out:
+    for a, b, encoded in out:
         if a not in seen and len(a) == len(b) and a != b:
             seen.add(a)
-            forms.append((a, b))
+            forms.append((a, b, encoded))
     return forms
 
 
@@ -136,10 +146,11 @@ class SecretMap:
         self.token = object()   # identity of this version, for caches
         masks, restores = [], []
         for it in items:
-            for a, b in _forms(it.real, it.fake, it.strong):
+            for a, b, encoded in _forms(it.real, it.fake, it.strong):
+                loose = it.anywhere or encoded
                 if it.masked:
-                    masks.append((a, b, it))
-                restores.append((b, a, it, a == it.real))
+                    masks.append((a, b, it, loose))
+                restores.append((b, a, it, a == it.real, loose))
         self.masks = sorted(masks, key=lambda p: -len(p[0]))
         self.restores = sorted(restores, key=lambda p: -len(p[0]))
         self.fakes = sorted({it.fake for it in items}, key=len, reverse=True)
@@ -181,7 +192,7 @@ def map_for(user_id) -> SecretMap:
         items.append(Item(int(row["id"]), row["label"] or "", real, row["fake"], bool(row["strong"]),
                           int(row["prefix_len"] or 0), secret_fakes.shell_safe(real),
                           (on or row["origin"] == "env") and row["status"] == "protected", row["kind"] != "pem",
-                          row["origin"] == "env"))
+                          row["origin"] == "env", not secret_fakes.plain(real)))
     if broken:
         logger.error("Secret protection: saved values of user %s cannot be decrypted", user_id)
     built = SecretMap(items, broken) if rows else _EMPTY
@@ -231,9 +242,9 @@ def _mask_cut(text: str, it: Item) -> str:
 
 
 def _mask(m: SecretMap, text: str) -> str:
-    for old, new, it in m.masks:
+    for old, new, _it, loose in m.masks:
         if old in text:
-            text = _swap(text, old, new, it.strong)
+            text = _swap(text, old, new, loose)
     for it in m.items:
         if it.masked and it.strong:
             text = _mask_cut(text, it)
@@ -300,9 +311,9 @@ def restore_text(m: SecretMap, text):
     """Whole stand-ins in model-written text, back to the real values."""
     if not m.restores or not isinstance(text, str) or len(text) < MIN_LEN:
         return text
-    for old, new, it, plain in m.restores:
-        if plain and old in text:
-            text = _swap(text, old, new, it.strong)
+    for old, new, _it, raw, loose in m.restores:
+        if raw and old in text:
+            text = _swap(text, old, new, loose)
     return text
 
 
@@ -336,16 +347,16 @@ def restore_field(m: SecretMap, text, kind: str) -> tuple[str, str]:
     Everything that is not a whole stand-in stays byte for byte."""
     if not m.restores or not isinstance(text, str) or len(text) < MIN_LEN:
         return text, ""
-    for old, new, it, _plain in m.restores:
+    for old, new, it, _raw, loose in m.restores:
         if old not in text:
             continue
         if kind == "command" and not it.shell_safe:
-            if _swap(text, old, new, it.strong) == text:
+            if _swap(text, old, new, loose) == text:
                 continue
             name = it.label or "a protected value"
             return text, (f"[Fuse] Not run: {name} contains shell characters, so Fuse does not place it in a "
                           "command. Read it from its file or environment variable instead.")
-        text = _swap(text, old, _regex_literal(new) if kind == "regex" else new, it.strong)
+        text = _swap(text, old, _regex_literal(new) if kind == "regex" else new, loose)
     for it in m.items:
         if it.strong and _cut_stand_in(text, it):
             name = it.label or "a protected value"
@@ -419,8 +430,8 @@ class StreamRestorer:
     def _emit(self, text: str, after: str) -> str:
         if not text:
             return ""
-        out = restore_text(self.m, self.prev + text + after)
-        out = out[len(self.prev):len(out) - len(after)] if after else out[len(self.prev):]
+        # A stand-in is as long as its value, so positions hold after restoring.
+        out = restore_text(self.m, self.prev + text + after)[len(self.prev):len(self.prev) + len(text)]
         self.prev = text[-1:]
         return out
 
@@ -428,9 +439,18 @@ class StreamRestorer:
         if not self.m.restores or not text:
             return text
         buf = self.buf + text
-        hold = self._hold(buf)
-        emit, self.buf = buf[:len(buf) - hold], buf[len(buf) - hold:]
-        return self._emit(emit, self.buf[:1])
+        cut = len(buf) - self._hold(buf)
+        # A whole stand-in leaves in one piece, even when its end reads like
+        # the start of another one: half of it could not be restored.
+        moved = True
+        while moved:
+            moved = False
+            for fake in self.m.fakes:
+                at = buf.rfind(fake, max(0, cut - len(fake) + 1), cut + len(fake) - 1)
+                if at >= 0:
+                    cut, moved = at + len(fake), True
+        emit, self.buf = buf[:cut], buf[cut:]
+        return self._emit(emit, self.buf)
 
     def flush(self) -> str:
         emit, self.buf = self.buf, ""
@@ -439,9 +459,9 @@ class StreamRestorer:
 
 # -- candidates and decisions ---------------------------------------------------------
 
-def _source(host_id, alias: str, found) -> dict:
-    return {"host_id": int(host_id or 0), "host": str(alias or ""), "path": found.path, "line": int(found.line),
-            "key": found.key}
+def _source(host_id, alias: str, found, root: str = "") -> dict:
+    return {"host_id": int(host_id or 0), "host": str(alias or ""), "root": str(root or ""), "path": found.path,
+            "line": int(found.line), "key": found.key}
 
 
 def _taken(conn, user_id: int) -> list[str]:
@@ -473,17 +493,19 @@ def _insert(conn, user_id: int, value: str, taken: list, *, label: str, kind: st
 
 
 def _place(src: dict) -> tuple:
-    return int(src.get("host_id") or 0), src.get("path") or "", src.get("key") or ""
+    """A name in a file of a project: paths are relative to the scanned
+    folder, so two projects on one machine both have a ".env"."""
+    return int(src.get("host_id") or 0), src.get("root") or "", src.get("path") or "", src.get("key") or ""
 
 
 def _decided(conn, user_id: int) -> dict:
-    """Where the owner already decided: (host, file, name) -> the latest status."""
+    """Where the owner already decided: place -> (the latest status, its row)."""
     out = {}
-    for row in conn.execute("SELECT status, sources FROM user_secrets WHERE user_id=? AND status<>'offered' "
+    for row in conn.execute("SELECT id, status, sources FROM user_secrets WHERE user_id=? AND status<>'offered' "
                             "ORDER BY updated_at, id", (user_id,)).fetchall():
         for src in json.loads(row["sources"] or "[]"):
             if src.get("key"):
-                out[_place(src)] = row["status"]
+                out[_place(src)] = (row["status"], row["id"])
     return out
 
 
@@ -495,13 +517,13 @@ def take_notes(user_id: int) -> list[str]:
     return _notes.pop(int(user_id), [])
 
 
-def offer(user_id: int, host_id: int, alias: str, found: list) -> int:
-    """Keep what a scan found. The owner is asked once per secret: a value
-    already decided (or already offered) only gains this place as a source,
-    and a new value under a name the owner decided on in this file follows
-    that decision unasked (a rotated key stays protected, a declined one
-    stays declined). Only a value never seen, in a place never decided, is
-    offered. Returns how many were offered."""
+def offer(user_id: int, host_id: int, alias: str, found: list, root: str = "") -> int:
+    """Keep what a scan of the folder root found. The owner is asked once per
+    value: one already decided (or already offered) only gains this place as
+    a source. A new value under a name the owner protects in this file is
+    protected at once, unasked (a rotated key never leaves in clear). Any
+    other new value is offered, also under a name declined before: that
+    decision was about another value. Returns how many were offered."""
     user_id, new, renewed = int(user_id), 0, []
     if not found:
         return 0
@@ -514,13 +536,15 @@ def offer(user_id: int, host_id: int, alias: str, found: list) -> int:
             digest = _digest(user_id, one.value)
             row = conn.execute("SELECT id, status, sources FROM user_secrets WHERE user_id=? AND real_hmac=?",
                                (user_id, digest)).fetchone()
-            src = _source(host_id, alias, one)
+            src = _source(host_id, alias, one, root)
             if row is not None:
                 if row["status"] != "ignored":
                     sources = json.loads(row["sources"] or "[]")
                     if src not in sources:
-                        # The same place again (its line moved) replaces the old entry.
-                        rest = [s for s in sources if not (src["key"] and _place(s) == _place(src))]
+                        # The same place again (its line moved, or it was kept
+                        # before places had a folder) replaces the old entry.
+                        rest = [s for s in sources
+                                if not (src["key"] and _place({"root": src["root"], **s}) == _place(src))]
                         conn.execute("UPDATE user_secrets SET sources=? WHERE id=?",
                                      (json.dumps(([src] + rest)[:10]), row["id"]))
                 continue
@@ -528,17 +552,19 @@ def offer(user_id: int, host_id: int, alias: str, found: list) -> int:
                 break
             if places is None:
                 places = _decided(conn, user_id)
-            before = places.get(_place(src)) if one.key else None
-            if before in ("ignored", "retired"):
-                # Declined here before: its new value is declined too, and not kept.
-                now = db.now()
-                conn.execute(
-                    "INSERT INTO user_secrets (user_id, label, kind, origin, status, strong, prefix_len, length, real_hmac, "
-                    "fake, cipher, sources, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (user_id, one.key[:190], one.kind, "scan", "ignored", 0, 0, len(one.value), digest, "", "",
-                     json.dumps([src]), now, now))
-                count += 1
-                continue
+            before, old_id = places.get(_place(src), (None, None)) if one.key else (None, None)
+            if before == "ignored":
+                # The value declined here is gone from this place. Its
+                # fingerprint goes with its last place, so a value that keeps
+                # changing does not use up the limit.
+                places.pop(_place(src))
+                old = conn.execute("SELECT sources FROM user_secrets WHERE id=?", (old_id,)).fetchone()
+                rest = [s for s in json.loads(old["sources"] or "[]") if _place(s) != _place(src)] if old else []
+                if rest:
+                    conn.execute("UPDATE user_secrets SET sources=? WHERE id=?", (json.dumps(rest), old_id))
+                elif old:
+                    conn.execute("DELETE FROM user_secrets WHERE id=?", (old_id,))
+                    count -= 1
             if taken is None:
                 taken = _taken(conn, user_id)
             status = "protected" if before == "protected" else "offered"
@@ -568,7 +594,7 @@ def offers(user_id: int) -> list[dict]:
         except (DecryptionError, ValueError, TypeError):
             continue
         src = (json.loads(row["sources"] or "[]") or [{}])[0]
-        out.append({"id": int(row["id"]), "key": row["label"] or "", "value": value,
+        out.append({"id": int(row["id"]), "key": row["label"] or "", "value": value, "plain": secret_fakes.plain(value),
                     "kind": secret_fakes.LABELS.get(row["kind"], "Secret"), "host": src.get("host", ""),
                     "file": src.get("path", ""), "line": int(src.get("line") or 0)})
     return out

@@ -742,7 +742,7 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         if refusal:
             return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
         args["env"] = env_names
-    if writes or (name == "read_file" and secret_scan.is_env_name(str(args.get("path") or ""))):
+    if writes or name == "grep" or (name == "read_file" and secret_scan.is_env_name(str(args.get("path") or ""))):
         secret_scan.mark_dirty(user_id, host_id)
     deny_reason = ""
     if name in ("run_terminal_command", "monitor"):

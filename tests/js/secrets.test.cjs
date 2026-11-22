@@ -10,10 +10,11 @@ test('a row is named by its key, or by its kind when the line had no NAME=', asy
   const { secretRows } = await core();
   const rows = secretRows([
     { id: 4, key: 'API_KEY', value: 'abc', kind: 'OpenAI key', host: 'qa-box', file: '.env', line: 3 },
-    { id: 5, key: '', value: 'line one\nline two', kind: 'npm token', host: '', file: 'apps/api/.npmrc', line: 0 },
+    { id: 5, key: '', value: 'line one\nline two', kind: 'npm token', host: '', file: 'apps/api/.npmrc', line: 0, plain: true },
   ]);
-  assert.deepEqual(rows[0], { id: 4, name: 'API_KEY', keyed: true, kind: 'OpenAI key', value: 'abc', host: 'qa-box', place: '.env:3' });
-  assert.deepEqual(rows[1], { id: 5, name: 'npm token', keyed: false, kind: 'npm token', value: 'line one\nline two', host: '', place: 'apps/api/.npmrc' });
+  assert.deepEqual(rows[0], { id: 4, name: 'API_KEY', keyed: true, kind: 'OpenAI key', value: 'abc', plain: false, host: 'qa-box', place: '.env:3' });
+  // A value the server calls plain (it reads like ordinary text) keeps that mark: its row warns and starts unticked.
+  assert.deepEqual(rows[1], { id: 5, name: 'npm token', keyed: false, kind: 'npm token', value: 'line one\nline two', plain: true, host: '', place: 'apps/api/.npmrc' });
 });
 
 test('rows without a usable id are left out: the server only takes integer ids', async () => {
