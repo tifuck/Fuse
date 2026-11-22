@@ -46,7 +46,7 @@ def test_cached_prompt_tokens_bill_once_at_the_cached_rate(fresh_db):
     _record(uid, source_id, cred, prompt_tokens=1000, cached_tokens=600, completion_tokens=0)
 
     # 400 uncached * $1/M + 600 cached * $0.10/M = 400 + 60 micros.
-    assert _totals()[0] == 460
+    assert _totals() == (460, 460, 460)
 
 
 def test_a_later_price_reprices_history_and_every_rollup(fresh_db):
@@ -89,6 +89,7 @@ def test_cached_tokens_bill_as_input_unless_a_cached_rate_is_published(fresh_db)
 
     assert unknown["estimated_cost_micros"] == 1000 * 2
     assert free["estimated_cost_micros"] == 400 * 2  # a published $0 is a rate, not "unknown"
+    assert _totals() == (2800, 2800, 2800)
 
 
 def test_reasoning_is_part_of_output_and_never_billed_on_top(fresh_db):
