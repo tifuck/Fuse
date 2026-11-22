@@ -484,7 +484,7 @@ function consoleResultLine(trace, presentation) {
     if (name === "read_url") {
       const host = deps.pageHost(trace.url);
       if (preview && preview !== "still running" && preview.length < 72) return preview;
-      return host || "done";
+      return host || "Done";
     }
     if (name === "read_file") {
       const n = deps.consoleLineCount(trace);
@@ -530,7 +530,7 @@ function consoleResultLine(trace, presentation) {
       }
       const exit = deps.shellExitCode(trace);
       if (exit !== null && exit !== 0) return `exit ${exit}`;
-      return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : (deps.displayCommand(trace) || "done");
+      return preview && preview !== "still running" ? deps.shortToolText(preview, 100) : (deps.displayCommand(trace) || "Done");
     }
     if (name === "kill_command") {
       // The header names the target; this says what the stop found.
@@ -548,7 +548,7 @@ function consoleResultLine(trace, presentation) {
       if (read) return `Read ${read[1]} (${Number(read[2]).toLocaleString()} chars)`;
       const slots = preview.match(/^(\d+) slots$/);
       if (slots) return `Pad holds ${slots[1]} ${slots[1] === "1" ? "slot" : "slots"}`;
-      return preview || "done";
+      return preview || "Done";
     }
     if (name === "spawn_subagent") {
       const took = consoleDurationLabel(trace);
@@ -611,9 +611,10 @@ function consoleResultLine(trace, presentation) {
       if (hits) return `${hits} ${hits === 1 ? "result" : "results"}`;
       const queries = deps.searchQueries(trace);
       if (queries.length) return queries.length === 1 ? "1 query" : `${queries.length} queries`;
-      return "done";
+      return "Done";
     }
-    return preview && preview !== "still running" ? deps.shortToolText(preview, 80) : "done";
+    // A one-word server receipt ("done", "saved", "forgotten") reads capitalised.
+    return preview && preview !== "still running" ? deps.shortToolText(preview.replace(/^[a-z]+$/, (word) => word[0].toUpperCase() + word.slice(1)), 80) : "Done";
   }
 
   return { consoleCommandHtml, consoleCodeFold, consoleLastLine, consoleDiffHtml, consoleFileBody, consoleChangeText, consoleDiffCounts, consoleStdoutHtml, consoleTailHtml, consoleTruncationNote, ccTimeoutNote, consoleSameText, consoleFold, consoleStatusHtml, consoleDetailHtml, agentTraceWorkMs, consoleDurationLabel, consoleResultLine };

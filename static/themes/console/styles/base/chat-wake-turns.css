@@ -56,7 +56,7 @@
   text-align: left;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-auto-chip:hover { background: var(--raise); color: var(--mist); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-auto-chip .chat-step-chevron { margin-left: 0.1rem; transform: rotate(-90deg); transition: transform 200ms ease; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-auto-chip .chat-step-chevron { margin-left: 0.1rem; transform: rotate(-90deg); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-turn.is-auto.is-open .chat-auto-chip .chat-step-chevron { transform: rotate(0deg); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-auto-dot {
   width: 0.45rem;
