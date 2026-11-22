@@ -9,6 +9,7 @@ import gzip
 import sys
 import tracemalloc
 
+import httpcore
 import httpx
 import pytest
 
@@ -551,3 +552,34 @@ def test_a_failed_adapter_falls_back_to_the_page_itself(web, dns):
     web.page("https://github.com/o/r/blob/main/README.md", page("GitHub rendered file view text for the readme."))
     _, wrapped, err = read("https://github.com/o/r/blob/main/README.md")
     assert not err and "GitHub rendered file view text" in wrapped
+
+class _CountedBackend(httpcore.AsyncMockBackend):
+    """Two scripted HTTP/1.1 answers per connection; counts connects."""
+
+    def __init__(self):
+        super().__init__([b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"] * 2)
+        self.connects = 0
+
+    async def connect_tcp(self, *args, **kwargs):
+        self.connects += 1
+        return await super().connect_tcp(*args, **kwargs)
+
+
+def _connects_for_two_reads(make):
+    async def body():
+        backend = _CountedBackend()
+        async with make() as c:
+            c._transport._inner._pool._network_backend = backend
+            for _ in range(2):
+                resp = await c.get("http://93.184.216.34/doc", headers={"host": "example.com"})
+                assert resp.text == "ok"
+        return backend.connects
+
+    return run(body())
+
+
+def test_ip_pinned_page_reads_never_reuse_a_connection():
+    # Pinned to an IP, a kept-alive connection would serve another site behind
+    # the same CDN address (HTTP 421); the search client may keep its pool.
+    assert _connects_for_two_reads(client._new_fetch_client) == 2
+    assert _connects_for_two_reads(lambda: client._new_client(cookies=httpx.Cookies())) == 1
