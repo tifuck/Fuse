@@ -103,13 +103,15 @@ def _unbuffered(command: str, windows: bool = False) -> str:
     return (_UNBUFFERED_PS if windows else _UNBUFFERED_SH) + command
 
 
-def _ssh_job_script(cwd: str, command: str, token: str = "") -> str:
+def _ssh_job_script(cwd: str, command: str, token: str = "", env=()) -> str:
     """bash script for an SSH command: stdin closed (a prompt fails fast
     instead of hanging until the deadline), non-interactive env, and a cwd
     failure that stops the whole command instead of running the rest of a
     `a; b` list in $HOME. With a token, the session's process group id is
-    recorded so a timeout or kill can terminate the whole tree."""
+    recorded so a timeout or kill can terminate the whole tree. Each name in
+    env is read from one line of stdin and exported, before stdin closes."""
     lines = [
+        *(f"IFS= read -r {name}; export {name}" for name in env),
         "exec </dev/null",
         "export GIT_TERMINAL_PROMPT=0 DEBIAN_FRONTEND=noninteractive PAGER=cat GIT_PAGER=cat",
         _UNBUFFERED_SH.rstrip("; "),

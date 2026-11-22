@@ -731,6 +731,17 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
     refusal = await asyncio.to_thread(secret_guard.restore_tool_args, user_id, name, args)
     if refusal:
         return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
+    # Environment secrets the call asks for by name: checked here, allowed by
+    # their owner below, and read only when the command starts.
+    env_names: list[str] = []
+    if name in ("run_terminal_command", "monitor") and args.get("env"):
+        env_names, refusal = await asyncio.to_thread(secret_guard.env_request, user_id, args["env"])
+        if not refusal and _is_agent(user_id, host_id) and _agent_version(user_id, host_id) < CONNECTOR_ENV_VERSION:
+            refusal = ("[Fuse] Not run: environment secrets need connector "
+                       f"{'.'.join(map(str, CONNECTOR_ENV_VERSION))} or newer on {alias}. It updates itself when idle.")
+        if refusal:
+            return refusal, _error_rec(name, refusal, host=alias, kind="invalid_arguments")
+        args["env"] = env_names
     if writes or (name == "read_file" and secret_scan.is_env_name(str(args.get("path") or ""))):
         secret_scan.mark_dirty(user_id, host_id)
     deny_reason = ""
@@ -742,6 +753,15 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         deny_reason = denied(command, windows=windows) or ""
     if deny_reason and gate is None:
         return deny_reason, _error_rec(name, deny_reason, host=alias)
+    if env_names:
+        from . import permissions as permissions_mod
+
+        verdict = await permissions_mod.review_env(
+            gate, tool=name, names=env_names, command=str(args.get("command") or ""),
+            cwd=str(args.get("cwd") or root), host_alias=alias, host_id=host_id,
+            description=str(args.get("description") or "")[:200])
+        if not verdict.allowed:
+            return verdict.detail, _error_rec(name, verdict.detail, host=alias, kind="permission_denied")
     if gate is not None:
         from . import permissions as permissions_mod
 
@@ -770,11 +790,15 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
     if name in ("run_terminal_command", "monitor") and _shell_reaches_read_only(scope, args, root, windows):
         detail = "project is read-only"
         return detail, _error_rec(name, detail, host=alias, kind="not_allowed")
+    env = await asyncio.to_thread(secret_guard.env_values, user_id, env_names) if env_names else {}
+    if len(env) != len(env_names):
+        detail = "[Fuse] Not run: an environment secret it asks for was deleted."
+        return detail, _error_rec(name, detail, host=alias, kind="invalid_arguments")
     try:
         if name == "run_terminal_command":
-            text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started, on_output=on_output)
+            text, rec = await _shell(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started, on_output=on_output, env=env)
         elif name == "monitor":
-            text, rec = await _monitor(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started)
+            text, rec = await _monitor(user_id, host_id, alias, args, root, windows=windows, run_id=run_id, thread_id=thread_id, on_started=on_started, env=env)
         elif name == "read_file" and raw:
             body, page = await _read_raw(user_id, host_id, alias, args, root, windows=windows, max_chars=_RAW_READ_MAX)
             if len(body) > _RAW_READ_MAX:
@@ -1014,6 +1038,9 @@ def _is_agent(user_id, host_id) -> bool:
 # grep context/output modes, native glob sort (Windows), and the write/replace
 # hardening (hard links, in-place fallback, owner, parents).
 CONNECTOR_FEATURES_VERSION = (1, 4, 0)
+# First connector that takes "env" on exec: an older one would run the
+# command without it.
+CONNECTOR_ENV_VERSION = (1, 10, 0)
 
 
 def _parse_version(text: str) -> tuple[int, ...]:
@@ -1155,7 +1182,7 @@ async def _run_remote(user_id, host_id, command: str, cwd: str, seconds: int, *,
     return res
 
 
-def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
+def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, env: dict | None = None):
     from . import agent_hub, command_jobs
 
     async def runner(sink) -> _ExecResult:
@@ -1166,7 +1193,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
         # timeout plus the 30 minutes it is given from the move; the supervisor
         # cuts that short if the move happens late.
         kill_ms = int(timeout_ms)
-        payload = {"cwd": _agent_cwd(cwd), "cmd": command, "timeout_ms": kill_ms}
+        payload = {"cwd": _agent_cwd(cwd), "cmd": command, "timeout_ms": kill_ms, **({"env": env} if env else {})}
         err_parts: list[str] = []
         streamed = {"out": False, "nl": True, "err_len": 0}
         err_live = getattr(sink, "err_live", None)
@@ -1231,16 +1258,20 @@ def _close_channel(proc) -> None:
         proc.close()
 
 
-async def _start_ssh_process(user_id, host_id, script: str):
+async def _start_ssh_process(user_id, host_id, script: str, env: dict | None = None):
     """Connect and start `script`. A failure here means the command never
     ran: report it as such, never as the command's own deadline (an SSH
     connect timeout is a builtin TimeoutError, which the job supervisor reads
-    as its execution deadline)."""
+    as its execution deadline). env values go to the script's stdin, one a
+    line in order (_ssh_job_script reads them): never in the command line."""
     from . import ssh_pool
 
     try:
         conn = await ssh_pool.connection(user_id, host_id)
-        return await conn.create_process("bash -lc " + shlex.quote(script))
+        proc = await conn.create_process("bash -lc " + shlex.quote(script))
+        if env:
+            proc.stdin.write("".join(f"{value}\n" for value in env.values()))
+        return proc
     except Exception as exc:
         failure = _host_failure(exc)
         if failure is None:
@@ -1248,7 +1279,7 @@ async def _start_ssh_process(user_id, host_id, script: str):
         raise WorkspaceError(f"command did not start: {failure[0]}") from exc
 
 
-def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
+def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, env: dict | None = None):
     """Streaming SSH exec: incremental sink, deadline kill, continued drain."""
 
     async def runner(sink) -> _ExecResult:
@@ -1256,7 +1287,7 @@ def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
 
         _rate_ok(user_id, host_id)
         token = uuid4().hex
-        proc = await _start_ssh_process(user_id, host_id, _ssh_job_script(cwd, command, token))
+        proc = await _start_ssh_process(user_id, host_id, _ssh_job_script(cwd, command, token, env or ()), env)
         async def drain(reader):
             decoder = codecs.getincrementaldecoder("utf-8")("replace")
             while True:
@@ -1359,7 +1390,7 @@ async def _stream_output(rec: dict, on_output) -> None:
         on_output({"output": out[-_LIVE_OUTPUT_CHARS:]})
 
 
-async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None, on_output=None):
+async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None, on_output=None, env: dict | None = None):
     from . import command_jobs
 
     command = str(args.get("command") or "")
@@ -1372,9 +1403,9 @@ async def _shell(user_id, host_id, alias, args, root, *, windows: bool = False, 
     background = _as_bool(args.get("background"))
     timeout_ms, wait_ms = _command_timeouts(args, background)
     if _is_agent(user_id, host_id):
-        runner = _make_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms)
+        runner = _make_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms, env)
     else:
-        runner = _make_ssh_runner(user_id, host_id, command, cwd, timeout_ms)
+        runner = _make_ssh_runner(user_id, host_id, command, cwd, timeout_ms, env)
     try:
         rec = await command_jobs.launch_async(
             user_id=user_id,
@@ -1482,7 +1513,7 @@ def _make_ws_runner(url: str, timeout_ms: int):
     return runner
 
 
-def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
+def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, env: dict | None = None):
     """Connector exec_stream: live stdout chunks become events; stderr is retained."""
 
     async def runner(sink) -> _ExecResult:
@@ -1506,7 +1537,7 @@ def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout
                 user_id,
                 host_id,
                 "exec_stream",
-                {"cwd": _agent_cwd(cwd), "cmd": command, "timeout_ms": int(timeout_ms)},
+                {"cwd": _agent_cwd(cwd), "cmd": command, "timeout_ms": int(timeout_ms), **({"env": env} if env else {})},
                 timeout_ms / 1000 + 10,
                 on_chunk=on_chunk,
             )
@@ -1531,7 +1562,7 @@ def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout
     return runner
 
 
-def _make_monitor_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int):
+def _make_monitor_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, env: dict | None = None):
     """SSH exec that tees stdout to the event sink and stderr to rec.err only."""
 
     async def runner(sink) -> _ExecResult:
@@ -1539,7 +1570,7 @@ def _make_monitor_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_m
 
         _rate_ok(user_id, host_id)
         token = uuid4().hex
-        proc = await _start_ssh_process(user_id, host_id, _ssh_job_script(cwd, command, token))
+        proc = await _start_ssh_process(user_id, host_id, _ssh_job_script(cwd, command, token, env or ()), env)
         err_sink = getattr(sink, "err", None)
 
         async def drain(reader, dest):
@@ -1639,7 +1670,7 @@ async def _pinned_public_sock(url: str):
     return sock
 
 
-async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None):
+async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False, run_id: str = "", thread_id: int | None = None, on_started=None, env: dict | None = None):
     from . import command_jobs, monitor as monitor_mod
 
     command = str(args.get("command") or "").strip()
@@ -1669,9 +1700,9 @@ async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False
     if url:
         runner = _make_ws_runner(url, timeout_ms)
     elif _is_agent(user_id, host_id):
-        runner = _make_monitor_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms)
+        runner = _make_monitor_agent_runner(user_id, host_id, _unbuffered(command, windows), cwd, timeout_ms, env)
     else:
-        runner = _make_monitor_ssh_runner(user_id, host_id, command, cwd, timeout_ms)
+        runner = _make_monitor_ssh_runner(user_id, host_id, command, cwd, timeout_ms, env)
     try:
         rec = await command_jobs.launch_async(
             user_id=user_id,

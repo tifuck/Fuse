@@ -40,9 +40,9 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat.is-agent-view:has(> :where(.chat-stage) > .chat-dock > .chat-agent-live-todos.is-open:not([hidden])) { --todo-lift: var(--agent-todo-push, 0px); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat:has(> :where(.chat-stage) > .chat-dock > .chat-sync:not([hidden])) { --sync-lift: 2.3rem; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-dock > .chat-sync { bottom: calc(100% + 0.35rem + var(--todo-lift, 0px)); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.3rem + var(--todo-lift, 0px) + var(--sync-lift, 0px)); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-latest { bottom: calc(var(--dock-h, 6.5rem) + 0.5rem + var(--todo-lift, 0px) + var(--sync-lift, 0px)); }
 @media (max-width: 800px) {
-  :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.2rem + var(--todo-lift, 0px) + var(--sync-lift, 0px)); }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat .chat-latest { bottom: calc(var(--dock-h, 6rem) + 0.5rem + var(--todo-lift, 0px) + var(--sync-lift, 0px)); }
 }
 /* Open, the transcript makes room for the drawer's page (todos.js measures
    it into --todo-push), so the chat ends where the list begins. The console

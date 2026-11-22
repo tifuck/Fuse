@@ -186,6 +186,27 @@ waits (`secret_guard.wait_for_decision`, the
 decides. `tests/core/secrets/` holds the invariants: with a realistic
 registry no file of this repository changes through either door.
 
+### Environment secrets
+
+A protected value with a variable name (`origin='env'`, the name in `label`)
+is an environment secret: a way to give a command a credential that is kept
+on Fuse and not on the machine. A shell call asks for it by name
+(`env: ["HCLOUD_TOKEN"]` on `run_terminal_command` or `monitor`) and
+`workspace._execute` puts the value in that one process's environment: a
+connector takes it as `env` beside `cmd` (connector 1.10.0 or newer; an
+older one is refused, never given the value another way), an SSH host reads
+it from the job script's stdin. The command text, the job row, the card and
+the transcript hold the name only, and whatever the command prints is masked
+by the provider door like any protected value (always, whatever the Protect
+switch says).
+
+Its owner allows each use on a permission card (`permissions.review_env`,
+`perm_kind` and grant kind `env`): once, for the chat, or for that machine
+for good. Bypass skips the card; Jev never answers it. An unattended run
+(schedules) gets only what was allowed for good on that machine. Deleting the
+secret deletes its grants. The system prompt lists the names; a skill that
+needs one names it in its body.
+
 ## Stored transcripts
 
 - Large inline images in `chat_runs.provider_messages`/`request` and
@@ -239,6 +260,12 @@ Write a dated, idempotent migration in `scripts/sql/`, apply it to each
 database, then regenerate `scripts/sql/schema.sql` with
 `scripts/dump_schema.sh` (`tests/core/schema/test_fresh_install.py` fails while
 it is stale). Delete the dated file once every deployment has it.
+
+Within one file, additive statements (`CREATE`, `ADD COLUMN`) come before
+destructive ones (`DROP`, `RENAME`, `TRUNCATE`, `ALTER … DROP|CHANGE|MODIFY`).
+An updater holds the destructive ones back until the new code is healthy, so
+it refuses a file that adds after it drops. Drop only what no chat or user
+still needs.
 
 ## Connector releases
 

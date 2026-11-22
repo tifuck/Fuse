@@ -149,13 +149,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
   /* Dictation is a tray row (dictation.css lays it out). */
   & .chat-dock > .dictation { height: 40px; animation: none; }
-  /* A phone: dictation takes the stats strip's place while it is live, so it
-     stays the composer's card continued upward instead of a second bar. */
+  /* A phone: a tray takes the stats strip's place while it is open, so it
+     stays the composer's card continued upward instead of a second bar (and
+     no gap opens between them while the chat is read back). */
   @media (max-width: 800px) {
     & .chat-dock > .dictation { height: 44px; }
-    & .chat-dock:has(> .dictation:not([hidden])) > .dk-stats-strip { display: none; }
-    & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .dictation:not([hidden]) { border-bottom: 0; border-radius: 12px 12px 0 0; }
-    & .chat-dock:has(> .dictation:not([hidden])):has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .dk-box::before { border-top-left-radius: 0; border-top-right-radius: 0; }
+    & .chat-dock:has(> :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation):not([hidden])) > .dk-stats-strip { display: none; }
+    & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > :is(.chat-slash, .chat-rewind, .chat-context-alert, .dk-wallpicker, .dictation):not([hidden]),
+    & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .chat-perm-queue:not([hidden]) .chat-ask { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    & .chat-dock:has(> :is(.chat-slash, .chat-rewind, .chat-context-alert, .chat-perm-queue, .dk-wallpicker, .dictation):not([hidden])):has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .dk-box::before { border-top-left-radius: 0; border-top-right-radius: 0; }
   }
 
   /* One primary button: the send button's own ink on light. */

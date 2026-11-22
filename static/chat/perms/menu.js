@@ -67,7 +67,7 @@ function paintPermsList() {
       if (r && r.path) rows.push({ path: String(r.path), kind: "dir", tag: r.kind === "work" ? "work" : "temp" });
     });
     (h.grants || []).forEach((g) => {
-      rows.push({ path: String(g.value || ""), kind: g.kind === "file" ? "file" : "dir", tag: g.scope === "host" ? "host" : "session", grant: g.id });
+      rows.push({ path: (g.kind === "env" ? "secret $" : "") + String(g.value || ""), kind: g.kind === "file" || g.kind === "env" ? "file" : "dir", tag: g.scope === "host" ? "host" : "session", grant: g.id });
     });
     const shown = q && !name.toLowerCase().includes(q) ? rows.filter((r) => r.path.toLowerCase().includes(q)) : rows;
     if (!shown.length) return "";

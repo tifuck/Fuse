@@ -204,8 +204,29 @@ static void handle_job_impl(struct tls *t, cJSON *msg) {
         }
         int timed_out = 0, clipped = 0;
         size_t out_len = 0, err_len = 0;
-        if (run_exec(cwd, cmd, timeout, out, EXEC_CAP, err, EXEC_CAP, &code, job, &timed_out, stream, id, &clipped, &out_len, &err_len) != 0) {
-            send_res(t, id, 0, 1, "", "", "exec failed");
+        /* "env": {"NAME": "value"} is set for this one command only. */
+        char *envv[EXEC_ENV_MAX + 1] = {0};
+        int envn = 0, env_bad = 0;
+        cJSON *item;
+        cJSON_ArrayForEach(item, cJSON_GetObjectItemCaseSensitive(msg, "env")) {
+            if (envn >= EXEC_ENV_MAX || !cJSON_IsString(item) || !item->string || !item->string[0] || strchr(item->string, '=')) {
+                env_bad = 1;
+                break;
+            }
+            size_t len = strlen(item->string) + strlen(item->valuestring) + 2;
+            if (!(envv[envn] = malloc(len))) {
+                env_bad = 1;
+                break;
+            }
+            snprintf(envv[envn++], len, "%s=%s", item->string, item->valuestring);
+        }
+        int ran = env_bad ? -1 : run_exec_env(cwd, cmd, timeout, out, EXEC_CAP, err, EXEC_CAP, &code, job, &timed_out, stream, id, &clipped, &out_len, &err_len, envv);
+        for (int i = 0; i < envn; i++) {
+            explicit_bzero(envv[i], strlen(envv[i]));
+            free(envv[i]);
+        }
+        if (ran != 0) {
+            send_res(t, id, 0, 1, "", "", env_bad ? "invalid env" : "exec failed");
             return;
         }
         {

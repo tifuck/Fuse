@@ -135,7 +135,7 @@
       event.preventDefault();
       const out = add.querySelector("[data-secrets-status]");
       act(out, async () => {
-        await api("/settings/secrets", "POST", { label: add.elements.label.value, value: add.elements.value.value });
+        await api("/settings/secrets", "POST", { label: add.elements.label.value, value: add.elements.value.value, env: add.elements.env.checked });
         add.reset();
       });
     });

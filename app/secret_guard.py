@@ -14,6 +14,12 @@ detected in free text here. There are three doors and nothing else swaps:
 
 A user's values are one registry for all their chats, projects and machines.
 Both directions are pure functions of it: there is no per-chat state.
+
+An environment secret (origin "env") is a protected value with a variable
+name. A shell call asks for it by name (its `env` argument) and the command's
+process gets it in its environment (workspace._execute), after the owner
+allowed it (permissions.review_env): the value is never in the command text.
+It is masked whatever the Protect switch says.
 """
 from __future__ import annotations
 
@@ -100,6 +106,7 @@ class Item:
     shell_safe: bool
     masked: bool      # False: restore only (switched off, or retired)
     random: bool = True   # the stand-in is random from prefix_len on (a PEM keeps its header lines)
+    env: bool = False     # an environment secret: label is its variable name
 
 
 def _forms(real: str, fake: str, strong: bool) -> list[tuple[str, str]]:
@@ -162,7 +169,7 @@ def map_for(user_id) -> SecretMap:
         return hit
     on = _switches(user_id)[0]
     rows = db.fetchall(
-        "SELECT id, label, kind, status, strong, prefix_len, fake, cipher FROM user_secrets "
+        "SELECT id, label, kind, origin, status, strong, prefix_len, fake, cipher FROM user_secrets "
         "WHERE user_id=? AND status IN ('protected','retired') ORDER BY id", (user_id,))
     items, broken = [], False
     for row in rows:
@@ -173,7 +180,8 @@ def map_for(user_id) -> SecretMap:
             continue
         items.append(Item(int(row["id"]), row["label"] or "", real, row["fake"], bool(row["strong"]),
                           int(row["prefix_len"] or 0), secret_fakes.shell_safe(real),
-                          on and row["status"] == "protected", row["kind"] != "pem"))
+                          (on or row["origin"] == "env") and row["status"] == "protected", row["kind"] != "pem",
+                          row["origin"] == "env"))
     if broken:
         logger.error("Secret protection: saved values of user %s cannot be decrypted", user_id)
     built = SecretMap(items, broken) if rows else _EMPTY
@@ -655,7 +663,8 @@ def overview(user_id: int) -> dict:
         where = f"{src.get('host', '')}:{src.get('path', '')}".strip(":") if src else ""
         items.append({"id": int(row["id"]), "label": row["label"] or "", "kind": secret_fakes.LABELS.get(row["kind"], "Secret"),
                       "status": row["status"], "length": int(row["length"] or 0), "strong": bool(row["strong"]),
-                      "origin": row["origin"], "where": where if row["origin"] == "scan" else "Added by you",
+                      "origin": row["origin"], "env": row["origin"] == "env",
+                      "where": where if row["origin"] == "scan" else "Added by you",
                       "stand_in": row["fake"] or "",
                       "host": (src.get("host", "") if src else ""), "path": (src.get("path", "") if src else ""),
                       "line": int(src.get("line") or 0) if src else 0})
@@ -685,9 +694,52 @@ def set_switches(user_id: int, *, protect=None, offer_on=None) -> None:
     _changed(user_id)
 
 
-def add_manual(user_id: int, label: str, value: str) -> int:
-    """Protect a value the user typed. ValueError says why it cannot be kept."""
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+# Names that change how the shell or the loader runs every program.
+_ENV_RESERVED = frozenset({"PATH", "HOME", "USER", "SHELL", "PWD", "IFS", "ENV", "BASH_ENV", "PS4", "PROMPT_COMMAND",
+                           "PATHEXT", "COMSPEC", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "PSMODULEPATH"})
+ENV_MAX = 16   # environment secrets one command may ask for (the connectors' limit)
+
+
+def env_name_ok(name: str) -> bool:
+    upper = name.upper()
+    return bool(_ENV_NAME.fullmatch(name)) and upper not in _ENV_RESERVED and not upper.startswith(("LD_", "DYLD_", "__FUSE"))
+
+
+def env_names(user_id) -> list[str]:
+    return sorted(it.label for it in map_for(user_id).items if it.env)
+
+
+def env_values(user_id, names) -> dict[str, str]:
+    """name -> value for the environment secrets among names that exist."""
+    return {it.label: it.real for it in map_for(user_id).items if it.env and it.label in names}
+
+
+def env_request(user_id, raw) -> tuple[list[str], str]:
+    """The environment secrets a shell call asks for: (names, refusal)."""
+    names = [raw] if isinstance(raw, str) else raw
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return [], "[Fuse] Not run: env is a list of environment secret names."
+    names = list(dict.fromkeys(n.strip() for n in names if n.strip()))
+    have = env_names(user_id)
+    missing = [n[:64] for n in names if n not in have]
+    if missing or len(names) > ENV_MAX:
+        what = f"no environment secret is named {', '.join(missing[:ENV_MAX])}" if missing else f"env takes up to {ENV_MAX} names"
+        return [], (f"[Fuse] Not run: {what}. " + (f"Set: {', '.join(have)}. " if have else "None are set. ")
+                    + "The user adds one under Settings > Secrets; never ask for its value in chat.")
+    return names, ""
+
+
+def add_manual(user_id: int, label: str, value: str, env: bool = False) -> int:
+    """Protect a value the user typed; with env, as the environment secret
+    named label (replacing the one of that name). ValueError says why it
+    cannot be kept."""
     user_id, label = int(user_id), (label or "").strip()
+    if env and not env_name_ok(label):
+        raise ValueError("An environment secret needs a variable name: letters, digits and _, not starting with a digit, "
+                         "and not one the system uses (PATH, HOME, LD_*).")
+    if env and isinstance(value, str) and any(c in value for c in "\r\n\0"):
+        raise ValueError("An environment secret is a single line.")
     if not isinstance(value, str) or not (MIN_LEN <= len(value) <= MAX_LEN):
         raise ValueError(f"A protected value is {MIN_LEN} to {MAX_LEN} characters long.")
     if sum(c.isascii() and c.isalnum() for c in value) < 6 or len(set(value)) < 4:
@@ -697,10 +749,13 @@ def add_manual(user_id: int, label: str, value: str) -> int:
         row = conn.execute("SELECT id FROM user_secrets WHERE user_id=? AND real_hmac=?", (user_id, _digest(user_id, value))).fetchone()
         if row is not None:
             conn.execute("DELETE FROM user_secrets WHERE id=?", (row["id"],))
+        if env:
+            conn.execute("DELETE FROM user_secrets WHERE user_id=? AND origin='env' AND label=?", (user_id, label))
         if conn.execute("SELECT COUNT(*) FROM user_secrets WHERE user_id=?", (user_id,)).fetchone()[0] >= MAX_PER_USER:
             raise ValueError(f"You can keep up to {MAX_PER_USER} values.")
         made = _insert(conn, user_id, value, _taken(conn, user_id), label=label, kind=fmt[0] if fmt else "manual",
-                       prefix_len=fmt[1] if fmt else 0, origin="manual", status="protected", sources=[])
+                       prefix_len=fmt[1] if fmt else 0, origin="env" if env else "manual", status="protected",
+                       sources=[])
         if not made:
             raise ValueError("This value overlaps one you already keep.")
     _changed(user_id)
@@ -712,7 +767,8 @@ def set_status(user_id: int, secret_id: int, protected: bool) -> bool:
     being protected keeps its stand-in, so chats that hold it still work."""
     with db.tx() as conn:
         cur = conn.execute(
-            "UPDATE user_secrets SET status=?, updated_at=? WHERE id=? AND user_id=? AND status IN ('protected','retired','offered')",
+            "UPDATE user_secrets SET status=?, updated_at=? WHERE id=? AND user_id=? AND origin<>'env' "
+            "AND status IN ('protected','retired','offered')",
             ("protected" if protected else "retired", db.now(), int(secret_id), int(user_id)))
     _changed(user_id)
     _wake(user_id)

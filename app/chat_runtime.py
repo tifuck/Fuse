@@ -662,6 +662,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 user["id"], bound_host_id, bound_cwd
             )
     secrets_noted = False
+    env_secrets: list[str] = []
     if coding:
         from . import secret_guard as secret_guard_mod, secret_scan as secret_scan_mod
 
@@ -671,6 +672,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
         secrets_noted = await asyncio.to_thread(secret_guard_mod.noted, user["id"])
+        env_secrets = await asyncio.to_thread(secret_guard_mod.env_names, user["id"])
     ssh_any = False
     if coding:
         ssh_any = any(
@@ -704,6 +706,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         memory_project=bool(memory_project),
         temp_dir=temp_dir,
         secrets_protected=secrets_noted,
+        env_secrets=env_secrets,
         code_mode=CODE_MODE,
     )
     snapshot = raw.get("prompt_snapshot") if frozen_context is not None else None

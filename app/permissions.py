@@ -866,6 +866,21 @@ def _rows_cover(rows, kind: str, value: str, windows: bool) -> bool:
     return False
 
 
+def env_granted(user_id: int, thread_id: int | None, host_id: int, name: str) -> bool:
+    """May this chat use the environment secret on this machine without asking?"""
+    return any(row["kind"] == "env" and row["value"] == name for row in _grant_rows(user_id, thread_id, host_id))
+
+
+def prune_env_grants(user_id: int, keep) -> None:
+    """Drop the grants of environment secrets that no longer exist, so a new
+    secret under an old name starts unallowed."""
+    with db.tx() as conn:
+        for row in conn.execute("SELECT id, value FROM chat_permission_grants WHERE user_id=? AND kind='env'",
+                                (int(user_id),)).fetchall():
+            if row["value"] not in keep:
+                conn.execute("DELETE FROM chat_permission_grants WHERE id=?", (row["id"],))
+
+
 def grants_for(user_id: int, thread_id: int) -> list[dict]:
     rows = db.fetchall(
         """SELECT g.*, h.alias AS host_alias FROM chat_permission_grants g
@@ -1598,6 +1613,58 @@ async def review_skill(gate: Gate | None, *, slug: str, host_alias: str, host_id
                             detail=f"{why}: copying {where}. Its scripts are not on that machine; "
                                    "do not retry unchanged, continue without them.")
     return ReviewResult(allowed=True, resolved="asked")
+
+
+async def review_env(gate: Gate | None, *, tool: str, names: list[str], command: str, cwd: str,
+                     host_alias: str, host_id: int, description: str = "") -> ReviewResult:
+    """Ask before a command gets environment secrets (secret_guard): one card
+    per name not yet allowed on this machine. Allow always (this chat, or
+    this machine for good) is remembered per name. Never auto-approved: the
+    command can do anything with the value. An unattended run uses only what
+    was allowed for good."""
+    if gate is None:
+        return ReviewResult(allowed=False, kind="permission_denied",
+                            detail="Environment secrets are only available in a chat, where their owner can allow them.")
+    bypass = None
+    for name in names:
+        where = f"environment secret {name} on {host_alias}"
+        if await asyncio.to_thread(env_granted, gate.user_id, gate.thread_id, host_id, name):
+            continue
+        if bypass is None:
+            bypass = bool(gate.thread_id) and await asyncio.to_thread(bypass_enabled, gate.user_id, gate.thread_id)
+        if bypass:
+            continue
+        if gate.thread_id is None or gate.unattended:
+            return ReviewResult(allowed=False, kind="permission_denied",
+                                detail=f"Unattended run — permission cannot be requested to use {where}. Continue without "
+                                       "it; its owner allows it for unattended runs by answering its card in a chat "
+                                       "with Always allow.")
+        payload = {
+            "kind": "tool_permission",
+            "perm_kind": "env",
+            "tool": tool,
+            "host": host_alias,
+            "host_id": host_id,
+            "path": name,
+            "cwd": cwd[:400],
+            "command": command[:8000],
+            "secret": False,
+            "reasons": [],
+            "requester": gate.requester,
+            "requester_label": _requester_label(gate.requester),
+            "grant_kind": "env",
+            "grant_value": name,
+            "description": description,
+        }
+        action = await _ask_and_wait(gate, payload)
+        if action == "cancelled":
+            return ReviewResult(allowed=False, detail="Tool interrupted.", kind="interrupted")
+        if action not in ("allow", "allow_session", "allow_host"):
+            why = {"timeout": "The permission request timed out (no user response)",
+                   "deny_busy": "Too many pending permission requests in this chat"}.get(action, "The user denied it")
+            return ReviewResult(allowed=False, kind="permission_denied",
+                                detail=f"{why}: using {where}. The command did not run; do not retry it unchanged.")
+    return ReviewResult(allowed=True)
 
 
 async def review(*, tool: str, args: dict, user_id: int,

@@ -926,34 +926,38 @@
         }
       });
     }
+    // Leaving the connector deletes its unused install code.
+    async function dropPairing() {
+      const id = activePairing && activePairing.id;
+      if (!id) return;
+      try { await api(`/hosts/pairings/${id}`, { method: "DELETE" }); } catch (_) {}
+      bundle.pending = (bundle.pending || []).filter((p) => p.id !== id);
+    }
     const cancelBtn = connector.querySelector("[data-connector-cancel]");
     if (cancelBtn) {
       cancelBtn.addEventListener("click", async () => {
-        const id = activePairing && activePairing.id;
-        if (id) {
-          try { await api(`/hosts/pairings/${id}`, { method: "DELETE" }); } catch (_) {}
-          bundle.pending = (bundle.pending || []).filter((p) => p.id !== id);
-        }
+        await dropPairing();
         closeConnector();
       });
     }
     const sshInstead = connector.querySelector("[data-ssh-instead]");
     if (sshInstead) {
       sshInstead.addEventListener("click", () => {
+        dropPairing();
+        closeConnector();
         if (locked()) {
           if (window.fuseUI) {
             window.fuseUI.vaultPrompt({
               error: "Unlock with your account password to add an SSH machine.",
               message: "SSH machines keep their secrets wrapped with your account password.",
               onUnlocked: () => {
-                closeConnector();
+                setVault("unlocked");
                 openWizard();
               },
             });
           }
           return;
         }
-        closeConnector();
         openWizard();
       });
     }

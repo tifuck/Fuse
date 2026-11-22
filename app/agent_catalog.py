@@ -660,6 +660,16 @@ SCHEMAS = {
                             "Omit to use the bound host; required when unbound."
                         ),
                     },
+                    "env": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Names of the user's environment secrets this command needs, e.g. [\"HCLOUD_TOKEN\"] "
+                            "(the system prompt lists them). Fuse sets each as an environment variable of this "
+                            "command only, after the user allows it; the value is never in the command text. Read "
+                            "it as $NAME (PowerShell: $env:NAME). Never echo one or write it to a file."
+                        ),
+                    },
                 },
                 "required": ["command"],
                 "additionalProperties": False,
@@ -756,6 +766,16 @@ SCHEMAS = {
                         ),
                     },
                     "host": _HOST,
+                    "env": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Names of the user's environment secrets this command needs, e.g. [\"HCLOUD_TOKEN\"] "
+                            "(the system prompt lists them). Fuse sets each as an environment variable of this "
+                            "command only, after the user allows it; the value is never in the command text. Read "
+                            "it as $NAME (PowerShell: $env:NAME). Never echo one or write it to a file."
+                        ),
+                    },
                 },
                 "required": ["description"],
                 "additionalProperties": False,
