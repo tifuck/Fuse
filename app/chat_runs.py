@@ -488,7 +488,7 @@ def _reap_one(row):
         # generating past a Stop cannot pin itself in "stopping" forever.
         stamp = (row["cancel_requested_at"] if "cancel_requested_at" in row.keys() else "") or row["updated_at"]
         if live and _iso_age(stamp) < FORCE_CANCEL_SECONDS:
-            cancel(ident)
+            cancel(ident, jobs=int(row["cancel_requested"]) != chat_store.KEEP_JOBS)
         elif _still_stopping(ident):
             chat_store.abort_active(ident, "cancelled")
         return

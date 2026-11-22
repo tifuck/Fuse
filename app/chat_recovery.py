@@ -10,6 +10,7 @@ from . import db, chat_images, chat_schema, chat_tx, chat_views, chat_checkpoint
 from .chat_run_state import (
     DEFAULT_REMAINING_SECONDS,
     INTERRUPT_NOTICE,
+    KEEP_JOBS,
     MAX_RESUME_ATTEMPTS,
     RESUME_NOTICE,
     STOP_NOTICE,
@@ -41,9 +42,10 @@ def abort_active(run_id, status="cancelled", notice=None):
         # Before the row turns terminal: from then on a resume may requeue it.
         chat_runs.disown(run_id)
         try:
-            from . import workspace
+            if int(row["cancel_requested"] or 0) != KEEP_JOBS:
+                from . import workspace
 
-            workspace.cancel_run_jobs(run_id)
+                workspace.cancel_run_jobs(run_id)
         except Exception:
             logger.exception("Failed to cancel workspace jobs for %s", run_id)
         chat_checkpoint._request_cache.pop(run_id, None)

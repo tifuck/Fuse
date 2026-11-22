@@ -127,9 +127,69 @@ def test_stop_ends_foreground_subagents_but_send_now_keeps_them(fresh_db):
         child_row = run_row(child["id"])
         if child_survives:
             assert child_row["cancel_requested"] == 0, "Send now must leave the subagent running"
+            assert child_row["status"] in chat_store.ACTIVE
             assert chat_store.get_run(uid, child["id"])["request"]["agent"]["background"] is True
         else:
-            assert child_row["cancel_requested"] or child_row["status"] == "cancelled"
+            assert child_row["cancel_requested"] and child_row["status"] == "cancelled"
+
+
+def _wedged_tool(events):
+    """A tool that ignores the first cancellation (a stuck transport), so the
+    worker outlives the Stop/Send now grace window."""
+    async def wedged(name, arguments, **kwargs):
+        events["started"].set()
+        try:
+            await events["release"].wait()
+        except asyncio.CancelledError:
+            await events["release"].wait()
+        return "late", {"name": name, "status": "done"}
+    return wedged
+
+
+def test_send_now_keeps_background_commands_past_the_grace_window_and_the_reaper(fresh_db):
+    from app import command_jobs
+
+    uid = quick_user()
+    events = {}
+
+    async def scenario(action, reap):
+        events.update(started=asyncio.Event(), release=asyncio.Event())
+        thread, run, task = await start_run(uid, "go", thread=tool_thread(uid))
+        await asyncio.wait_for(events["started"].wait(), 5)
+        job = {"id": f"job-{run['id']}", "run_id": run["id"], "user_id": uid, "kind": "command", "status": "running"}
+        command_jobs._live[job["id"]] = job
+        try:
+            if reap:
+                # The reaper ticks while Send now still waits on the worker:
+                # first a live stopping run, then one past the force deadline.
+                stopping = asyncio.create_task(action(uid, run["id"]))
+                await wait_until_async(lambda: run_row(run["id"])["cancel_requested"])
+                await asyncio.to_thread(chat_runs.reap_orphans)
+                with patch.object(chat_runs, "FORCE_CANCEL_SECONDS", 0):
+                    await asyncio.to_thread(chat_runs.reap_orphans)
+                events["release"].set()
+                await asyncio.wait_for(stopping, 5)
+            else:
+                with patch.object(chat_runs, "CANCEL_GRACE_SECONDS", 0):
+                    await action(uid, run["id"])
+                events["release"].set()
+            await asyncio.wait_for(asyncio.wait({task}), 5)
+        finally:
+            command_jobs._live.pop(job["id"], None)
+        return run, job
+
+    for action, reap, keeps in ((chat_runs.interrupt_wait, False, True), (chat_runs.interrupt_wait, True, True),
+                                (chat_runs.cancel_wait, False, False)):
+        with patch("app.chat_runtime.execute_tool", new=_wedged_tool(events)), \
+                patch.object(command_jobs, "_kill_from_anywhere") as kill, \
+                fake_provider(tool_call_frames([("c1", "web_search", {"query": "x"})])):
+            run, job = run_async(scenario(action, reap))
+        assert run_row(run["id"])["status"] == "cancelled"
+        killed = [call.args[0]["id"] for call in kill.call_args_list]
+        if keeps:
+            assert killed == [], f"Send now killed the run's background command (reaper={reap})"
+        else:
+            assert job["id"] in killed, "Stop ends the run's background commands"
 
 
 def test_force_stop_then_continue_survives_the_wedged_old_worker(fresh_db):
