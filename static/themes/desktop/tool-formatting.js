@@ -341,10 +341,11 @@ function consoleCallHtml(trace, presentation, full = false) {
       const id = trace.command_id || trace.child_id || trace.job_id;
       const described = (name === "kill_command" ? deps.ccFlat(trace.description) : "") || commandOrigin(trace)?.description;
       prose = Boolean(described);
-      inner = consoleArgText(described || commandFor(trace) || (id ? `job ${id}` : "command"), 140);
+      // A job's title is quoted, so it reads as a name mid-sentence.
+      inner = described ? `“${consoleArgText(described, 140)}”` : consoleArgText(commandFor(trace) || (id ? `job ${id}` : "command"), 140);
     } else if (name === "monitor") {
       prose = Boolean(trace.description);
-      inner = consoleArgText(trace.description || trace.url || displayCommand(trace) || "watch", 100);
+      inner = trace.description ? `“${consoleArgText(trace.description, 100)}”` : consoleArgText(trace.url || displayCommand(trace) || "watch", 100);
     } else if ((name === "grep" || name === "glob")) {
       // Searched "x" in src
       const pattern = consoleArgText(trace.pattern || trace.query || "", 80);

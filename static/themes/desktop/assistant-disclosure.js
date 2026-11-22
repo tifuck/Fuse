@@ -145,6 +145,8 @@ function renderAssistant(msg, live) {
       const isConsoleCall = li.classList.contains("is-console-call");
       const isConsoleGroup = !isThink && li.classList.contains("is-console-group");
       if (!reveal && !isThink && !isConsoleCall && !isConsoleGroup) return;
+      // A lone call's group has no line of its own to fold it back open.
+      if (isConsoleGroup && li.classList.contains("is-dk-single")) return;
       if (isThink && li.dataset.thinkMode !== "collapsed" && String(window.getSelection() || "").trim()) return;
       event.preventDefault();
       const open = isThink
@@ -158,7 +160,7 @@ function renderAssistant(msg, live) {
       // A call or a summary line opens and folds upward: what is under it
       // stays put. A folding call keeps its box drawn until it has shrunk.
       if (isConsoleCall && hang) {
-        deps.foldInPlace(li, reveal, open, () => {
+        deps.foldInPlace(li, hang, open, () => {
           if (open) hang.classList.add("is-expanded");
           li.classList.toggle("is-console-expanded", open);
         }, () => { if (!open) hang.classList.remove("is-expanded"); });

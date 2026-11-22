@@ -179,7 +179,13 @@ const ROW_ICON_KIND = {
     write_file: "write", create_artifact: "write", update_artifact: "write", grep: "search", glob: "search", list_dir: "list",
     run_terminal_command: "shell", kill_command: "shell", get_command_output: "wait", monitor: "wait", read_url: "fetch", run_code: "code",
   };
+// Kinds the row draws with the step glyphs the theme already has.
+const ROW_STEP_ICON = {
+    scratch: "scratch", remember: "memory", recall: "memory", forget: "memory", load_skill: "skill", propose_skill: "skill", search_models: "model",
+  };
 function rowIconHtml(trace) {
+    const step = trace && ROW_STEP_ICON[trace.name];
+    if (step) return `<span class="dk-row-ico" aria-hidden="true">${deps.STEP_ICONS[step]}</span>`;
     const kind = trace ? ROW_ICON_KIND[trace.name] || (deps.isSearchTool(trace.name) ? "web" : "other") : "other";
     return `<span class="dk-row-ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${ROW_ICON_PATHS[kind]}</svg></span>`;
   }
@@ -302,7 +308,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
         // Where: the machine, plus a command's directory.
         inner = callBoxHtml({
           ...input, body: inner, note: stopText ? stopNote(stopText) : "", bad: failed || dotState === "error", stop: Boolean(stopText),
-          host: trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",
+          host: trace.name === "read_url" || deps.isSearchTool(trace.name) ? "" : trace.host || "", cwd: trace.name === "run_terminal_command" ? trace.cwd || "" : "",
         });
       }
       const line = deps.consoleCallHtml(trace, presentation, verbose) + lineResult;

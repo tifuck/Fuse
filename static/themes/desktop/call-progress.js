@@ -306,7 +306,7 @@ function consoleMonitorEventHtml(trace, key) {
         `<div class="chat-step-reveal"><div class="chat-step-reveal-inner"><div class="chat-console-hang is-expanded">${branch}<div class="chat-console-hang-body">${stdout(lines)}</div></div></div></div>`
       );
     }
-    const text = `New output from ${deps.escapeHtml(description)}`;
+    const text = `New output from “${deps.escapeHtml(description)}”`;
     if (!lines.length) return row(`<span class="chat-console-notice-text">${text}</span>`, "");
     // The newest lines of the event, under the count of the older ones.
     const show = lines.length === 4 ? 4 : 3;

@@ -97,8 +97,8 @@
 /* Low specificity on purpose: a component's own focus rule (inset ring,
    thumb ring, wrapper border) must win over this fallback. A field marks
    focus on its own border instead of drawing a second box around it. */
-:where(html.is-chat-root[data-chat-view="desktop"]) :where(.chat) :where(button, summary, a, [tabindex]):focus-visible { outline: 2px solid var(--steel); outline-offset: 3px; }
-:where(html.is-chat-root[data-chat-view="desktop"]) :where(.chat) :is(input[type="checkbox"], input[type="radio"]):focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) :where(.chat) :where(button, summary, a, [tabindex]):focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 3px; }
+:where(html.is-chat-root[data-chat-view="desktop"]) :where(.chat) :is(input[type="checkbox"], input[type="radio"]):focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :where(.chat) :is(input, textarea, select):focus { border-color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-compose textarea:focus,
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-compose textarea:focus-visible {

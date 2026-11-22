@@ -61,12 +61,20 @@ function foldInPlace(li, part, open, apply, settle) {
     apply();
     let motion = null;
     if (part && !deps.reduceMotion?.matches) {
-      part.style.setProperty("overflow", "hidden");
-      // A folding part stays drawn until it has shrunk away.
-      if (!open) part.style.setProperty("display", "block", "important");
+      // Rows that were folded away are skipped by content-visibility and
+      // would be measured at their placeholder height: draw them for real.
+      if (open) {
+        run.drawn = [...part.querySelectorAll(".chat-step")];
+        run.drawn.forEach((row) => row.style.setProperty("content-visibility", "visible"));
+      }
+      // Measured before the part clips: clipped, it holds its rows' margins
+      // and would end taller than it settles.
       const end = getComputedStyle(part);
       const to = open ? { height: part.getBoundingClientRect().height, top: end.marginTop, bottom: end.marginBottom, opacity: "1" }
         : { height: 0, top: "0px", bottom: "0px", opacity: "0" };
+      part.style.setProperty("overflow", "hidden");
+      // A folding part stays drawn until it has shrunk away.
+      if (!open) part.style.setProperty("display", "block", "important");
       motion = part.animate([
         { height: `${from.height}px`, marginTop: from.top, marginBottom: from.bottom, opacity: from.opacity },
         { height: `${to.height}px`, marginTop: to.top, marginBottom: to.bottom, opacity: to.opacity },
@@ -77,6 +85,7 @@ function foldInPlace(li, part, open, apply, settle) {
       box?.removeEventListener("wheel", release);
       box?.removeEventListener("touchstart", release);
       part?.style.removeProperty("overflow");
+      run.drawn?.forEach((row) => row.style.removeProperty("content-visibility"));
       part?.style.removeProperty("display");
       if (finished) settle?.();
       if (li._dkFold === run) li._dkFold = null;
