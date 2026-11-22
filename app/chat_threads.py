@@ -52,12 +52,17 @@ _THREAD_RUNNING_SQL = (
 )
 # Without "running": list_threads fills it from _THREAD_RUNNING_IDS_SQL, one
 # query per list instead of two dependent subqueries per row.
-_THREAD_LIST_BASE_COLS = (
+# The thread's own list columns; chat_tx.thread_event reads them under the row
+# lock without the joins below, so it never locks a project, host or schedule.
+_THREAD_ROW_COLS = (
     "t.id, t.public_id, t.title, t.model, t.archived, t.created_at, t.updated_at, t.revision, "
     "t.kind, t.host_id, t.project_id, t.schedule_id, t.bypass_permissions, t.auto_permissions, "
-    "t.pinned, t.pin_order, t.unread, "
+    "t.pinned, t.pin_order, t.unread, t.archived_at"
+)
+_THREAD_LIST_BASE_COLS = (
+    f"{_THREAD_ROW_COLS}, "
     "h.alias AS host_alias, p.name AS project_name, "
-    "p.color AS project_color, p.logo_rev AS project_logo_rev, p.archived AS project_archived, t.archived_at, "
+    "p.color AS project_color, p.logo_rev AS project_logo_rev, p.archived AS project_archived, "
     "s.name AS schedule_name"
 )
 _THREAD_LIST_COLS = f"{_THREAD_LIST_BASE_COLS}, {_THREAD_RUNNING_SQL} AS running"
@@ -824,7 +829,10 @@ def set_pin_order(user_id: int, ids, *, command_id=None) -> dict:
         # cursor (finalizers hold their thread row and wait for the cursor).
         # Ascending ids so two reorders lock the rows in one order.
         for pk, index in sorted((pk, index) for index, pk in enumerate(pks)):
-            chat_tx.lock_thread_id(conn, pk, user_id)
+            if chat_tx.lock_thread_id(conn, pk, user_id) is None:
+                # Deleted since it resolved: no row, event or list entry.
+                pks.remove(pk)
+                continue
             conn.execute(
                 "UPDATE chat_threads SET pin_order=? WHERE id=? AND user_id=? AND pinned=1",
                 (index, pk, user_id),
