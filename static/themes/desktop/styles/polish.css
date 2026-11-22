@@ -147,9 +147,16 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .chat-perm-queue .chat-ask { border-bottom: 1px solid var(--dk-tray-line); border-radius: 12px; }
   & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])):not(:has(> .chat-queue:not([hidden]))) > .dk-box::before { border-radius: 12px; }
 
-  /* Dictation is a tray row: what it hears on the left, its keys on the right. */
-  & .chat-dock > .dictation { justify-content: flex-start; height: 36px; animation: none; }
-  & .chat-dock > .dictation .dictation-time { margin-right: auto; }
+  /* Dictation is a tray row (dictation.css lays it out). */
+  & .chat-dock > .dictation { height: 40px; animation: none; }
+  /* A phone: dictation takes the stats strip's place while it is live, so it
+     stays the composer's card continued upward instead of a second bar. */
+  @media (max-width: 800px) {
+    & .chat-dock > .dictation { height: 44px; }
+    & .chat-dock:has(> .dictation:not([hidden])) > .dk-stats-strip { display: none; }
+    & .chat-dock:has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .dictation:not([hidden]) { border-bottom: 0; border-radius: 12px 12px 0 0; }
+    & .chat-dock:has(> .dictation:not([hidden])):has(> .dk-stats-strip > .chat-host-stats:not([hidden])) > .dk-box::before { border-top-left-radius: 0; border-top-right-radius: 0; }
+  }
 
   /* One primary button: the send button's own ink on light. */
   & .chat-dock .chat-ask-btn:is(.is-allow, .is-caret),
