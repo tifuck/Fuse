@@ -94,8 +94,10 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-history {
   border-right: 1px solid var(--line);
 }
 
+/* The open chat: the work strip's picked-row tint, fading out behind the
+   title, with no side bar. */
 html[data-chat-console="true"] .chat[data-view="console"] .chat-history-item.is-on {
-  background: linear-gradient(90deg, var(--brass) 2px, color-mix(in srgb, var(--brass) 9%, transparent) 2px);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--brass) 22%, transparent), color-mix(in srgb, var(--brass) 6%, transparent) 50%, transparent 85%);
 }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-history-tab[aria-selected="true"] { box-shadow: none; }
