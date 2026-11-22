@@ -6,8 +6,7 @@ SSH hosts) trusts these answers, so the cases aim at inputs that dress a
 private address up as a public one. Contract: an unsafe or malformed input
 is refused ('' / [] / True for "blocked"), never raised.
 
-DNS is the fake resolver from conftest (``dns``). Known bugs are kept as
-strict xfails (reason starts with "bug:").
+DNS is the fake resolver from conftest (``dns``).
 """
 import socket
 
@@ -49,9 +48,6 @@ def test_is_blocked_host_allows_public_hosts_and_plain_names(host):
     assert not ssrf.is_blocked_host(host)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError,
-                   reason="bug: a NUL byte in the host makes socket.inet_aton raise ValueError, "
-                          "which is_blocked_host does not catch (only OSError)")
 def test_is_blocked_host_refuses_a_host_with_a_nul_byte():
     assert ssrf.is_blocked_host("exa\x00mple.com")
 
@@ -112,9 +108,6 @@ def test_public_http_url_is_idempotent(url):
     assert once and ssrf.public_http_url(once) == once
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError,
-                   reason="bug: a NUL byte in the host raises ValueError out of public_http_url "
-                          "(via is_blocked_host) instead of returning ''")
 def test_public_http_url_returns_empty_for_a_host_with_a_nul_byte():
     assert ssrf.public_http_url("http://exa\x00mple.com/") == ""
 
@@ -187,11 +180,9 @@ def test_domain_pattern_returns_empty_for_non_hostnames(raw):
     assert ssrf.domain_pattern(raw) == ""
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="bug: _DOMAIN_RE allows its own '*.' prefix, so the remainder after "
-                          "stripping one '*.' may start with another and '*.*.x' is accepted")
 def test_domain_pattern_returns_empty_for_a_double_wildcard():
     assert ssrf.domain_pattern("*.*.example.com") == ""
+    assert ssrf.parse_domain_list("*.*.example.com\n*.example.com") == ["*.example.com"]
 
 
 def test_domain_pattern_is_idempotent():

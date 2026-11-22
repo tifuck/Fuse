@@ -41,6 +41,8 @@ def is_blocked_host(host: str) -> bool:
             ip = ipaddress.IPv4Address(socket.inet_aton(host))
         except OSError:
             return False
+        except ValueError:  # an embedded NUL: no real host has one
+            return True
     return not _is_global(ip)
 
 
@@ -154,7 +156,7 @@ def allowed_fetch_url(url: str, allowed: set[str] | None = None) -> str:
     return clean
 
 
-_DOMAIN_RE = re.compile(r"^(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+_DOMAIN_RE = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def domain_pattern(raw: str) -> str:
