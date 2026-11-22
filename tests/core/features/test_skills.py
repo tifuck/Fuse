@@ -81,6 +81,9 @@ def test_uploads_accept_one_skill_and_refuse_unsafe_archives():
     link = zipfile.ZipInfo("pack/evil.md")
     link.external_attr = 0o120777 << 16
     for archive in (zipped({"../SKILL.md": md()}),                          # traversal
+                    zipped({"pack\\..\\..\\SKILL.md": md()}),              # backslash traversal
+                    zipped({"/pack/SKILL.md": md()}),                       # absolute
+                    zipped({"C:/pack/SKILL.md": md()}),                     # drive letter
                     zipped({"SKILL.md": md(), "evil.md": link}),            # symlink
                     zipped({"a/SKILL.md": md("a"), "b/SKILL.md": md("b")}),  # two skills
                     b"PK\x03\x04 not a zip"):
