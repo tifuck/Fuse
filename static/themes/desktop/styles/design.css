@@ -29,3 +29,5 @@
 @import url("dock.css");
 /* Last of all: the one type scale, surface and row shape every part shares. */
 @import url("polish.css");
+/* The Protect secrets window. */
+@import url("secrets.css");

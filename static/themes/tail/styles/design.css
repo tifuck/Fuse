@@ -28,3 +28,5 @@
 @import url("tail.css");
 @import url("tail-rows.css");
 @import url("tail-chrome.css");
+/* The Protect secrets window. */
+@import url("secrets.css");

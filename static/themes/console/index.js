@@ -12,6 +12,7 @@ import { create as createTodos } from './todos.js';
 import { create as createToolRows } from './tool-rows.js';
 import { create as createAssistantDisclosure } from './assistant-disclosure.js';
 import { create as createPermissions } from './permissions.js';
+import { create as createSecrets } from './secrets.js';
 import { create as createVerbLexicon } from './verb-lexicon.js';
 import { create as createShellSemantics } from './shell-semantics.js';
 import { create as createCallSemantics } from './call-semantics.js';
@@ -468,6 +469,9 @@ export function createConsoleTheme(runtime) {
   Object.assign(theme, createWallpaperPicker({
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  Object.assign(theme, createSecrets({
+    get escapeHtml() { return runtime.escapeHtml; },
+  }));
   Object.assign(theme, createTurnExtras({
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
@@ -503,6 +507,7 @@ export function createConsoleTheme(runtime) {
     renderAssistant: theme.renderAssistant,
     renderUser: theme.renderUser,
     rewindListHtml: theme.rewindListHtml,
+    secretsWindowHtml: theme.secretsWindowHtml,
     setConsoleSpin: theme.setConsoleSpin,
     setLiveLabelText: theme.setLiveLabelText,
     setLivePhase: theme.setLivePhase,
