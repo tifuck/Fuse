@@ -124,6 +124,7 @@ app/schedules.py                 features
 app/cron.py                      features
 app/memory.py                    features
 app/skills.py                    features
+app/skill_install.py             search
 app/skill_*.py                   features
 app/artifacts.py                 features
 app/push.py                      features
