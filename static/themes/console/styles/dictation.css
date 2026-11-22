@@ -143,18 +143,19 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishin
 @media (max-width: 800px) {
   html[data-chat-console="true"] .chat[data-view="console"] .dictation {
     align-self: stretch;
-    margin-bottom: 0;
+    margin: 0 calc(-1 * var(--console-gutter));
     display: grid;
     grid-template: "cancel rec time done" auto "cancel bars bars done" auto / auto 1fr auto auto;
     gap: 6px 12px;
     height: auto;
-    padding: 8px 8px 8px 6px;
-    border-width: 1px 0 0 2px;
+    padding: 8px calc(var(--console-gutter) + 0.15rem);
+    border-width: 1px 0 0;
+    border-top-color: color-mix(in srgb, var(--mist) 22%, var(--ink));
     font-size: 0.8rem;
   }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-rec { grid-area: rec; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
-  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; max-width: 16rem; height: 1.25rem; }
+  html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; height: 1.25rem; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-bars i { width: 4px; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn { justify-content: center; min-width: 4.5rem; height: 44px; padding: 0 0.9rem; border: 1px solid var(--line); color: var(--mist); touch-action: manipulation; }
   html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn kbd { display: none; }

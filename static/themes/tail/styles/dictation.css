@@ -154,7 +154,7 @@ html[data-chat-view="tail"] .chat[data-view="tail"] .dictation.is-finishing .dic
   }
   html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-rec { grid-area: rec; }
   html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-time { grid-area: time; align-self: auto; min-width: 0; padding-right: 0; border-right: 0; }
-  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; max-width: 16rem; height: 1.25rem; }
+  html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars { grid-area: bars; justify-content: space-between; gap: 0; height: 1.25rem; }
   html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-bars i { width: 4px; }
   html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn { justify-content: center; min-width: 4.5rem; height: 44px; padding: 0 0.9rem; border: 1px solid var(--line); color: var(--mist); touch-action: manipulation; }
   html[data-chat-view="tail"] .chat[data-view="tail"] .dictation-btn kbd { display: none; }
