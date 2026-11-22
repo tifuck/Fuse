@@ -1,19 +1,23 @@
-"""Every route refuses an anonymous caller, and every /admin route a signed-in
-non-admin, unless it is listed in PUBLIC below.
+"""Every route refuses an anonymous caller, and every admin route a signed-in
+non-admin, unless it is listed in PUBLIC below; every PUBLIC route answers one.
 
 Routes are discovered from app.main, not listed by hand: a route added
 tomorrow is covered the day it lands, and either refuses or is made public on
 purpose by adding it here. Anonymous callers carry a valid CSRF token, so a
 403 is the route's own refusal and not csrf_guard's.
 """
+import inspect
+import re
+
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
 from app import db
+from app.config import settings
 from tests.core.auth._support import (
-    anonymous, call_route, dummy_path, http_routes, refused, sign_in,
+    PASSWORD, anonymous, call_route, dummy_path, http_routes, login, refused, sign_in,
 )
-from tests.core.helpers import quick_user
+from tests.core.helpers import make_user, quick_user
 
 # Reachable without signing in, by design.
 PUBLIC = {
@@ -24,7 +28,6 @@ PUBLIC = {
     ("GET", "/"),  # redirects to /chat
     ("GET", "/hosts/scheduled"),  # old links, redirect to /tasks
     ("GET", "/projects/scheduled"),
-    ("GET", "/docs"),
     ("GET", "/install-opencode.sh"),
     ("GET", "/sw.js"),  # the service worker must load signed out
     ("GET", "/build"),
@@ -65,6 +68,26 @@ def test_every_non_public_route_refuses_an_anonymous_caller(web):
             open_routes.append((method, path, res.status_code, res.text[:120]))
     assert not open_routes, open_routes
     assert db.fetchone("SELECT COUNT(*) AS n FROM users")["n"] == users_before
+
+
+def test_every_public_route_answers_an_anonymous_caller(web, monkeypatch):
+    monkeypatch.setattr(settings, "allow_register", True)
+    make_user("ada@core.test")
+    answers = {}
+    for method, path in sorted(PUBLIC):
+        if (method, path) == ("POST", "/login"):
+            res = login(web, "ada@core.test")
+        elif (method, path) == ("POST", "/register"):
+            form = {"email": "walk-in@core.test", "password": PASSWORD, "csrf_token": anonymous(web)["csrf"]}
+            web.headers.pop("x-csrf-token", None)
+            res = web.post("/register", data=form, follow_redirects=False)
+        else:
+            anonymous(web)
+            res = call_route(web, method, path)
+        answers[(method, path)] = (res.status_code, res.headers.get("location", ""))
+        assert not refused(res, "/login"), (method, path, res.status_code, res.text[:120])
+    # The two form posts did their job, not just avoided a refusal.
+    assert answers[("POST", "/login")] == answers[("POST", "/register")] == (303, "/chat")
 
 
 def test_a_write_without_the_session_csrf_token_is_refused(web):
@@ -122,9 +145,49 @@ def test_every_websocket_refuses_an_anonymous_caller(web):
         assert closed.value.code == 4401, path
 
 
+def test_chat_events_refuse_a_signed_in_caller_from_another_origin(web):
+    sign_in(web, quick_user("ada@core.test"))
+    for origin in ("https://evil.test", "https://testserver.evil.test", "http://testserver", "null", None):
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with web.websocket_connect("wss://testserver/chat/events",
+                                       headers={"origin": origin} if origin else {}) as ws:
+                ws.receive_json()
+        assert closed.value.code == 4403, origin
+    # Control: the page's own origin gets past the origin and sign-in checks,
+    # to the cursor check (a bad cursor closes before any stream opens).
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with web.websocket_connect("wss://testserver/chat/events?cursor=-1", headers={"origin": "https://testserver"}) as ws:
+            ws.receive_json()
+    assert closed.value.code == 4400
+
+
+# A handler that answers only admins, wherever it is mounted.
+_ADMIN_CHECK = re.compile(r"require_admin\(|^\s*if not user or not user\[\"is_admin\"\]:", re.M)
+
+
+def _admin_handler_routes():
+    from fastapi.routing import iter_route_contexts
+
+    from app import main
+
+    found = set()
+    for route in iter_route_contexts(main.app.routes):
+        endpoint = getattr(route.original_route, "endpoint", None)
+        methods = getattr(route, "methods", None)
+        if endpoint is None or not methods or not _ADMIN_CHECK.search(inspect.getsource(endpoint)):
+            continue
+        found.update((method, route.path) for method in methods - {"HEAD"})
+    return found
+
+
 def test_every_admin_route_refuses_a_signed_in_non_admin(web):
     routes, _mounts, _sockets = http_routes()
-    admin_routes = [(method, path) for method, path in routes if path.startswith("/admin")]
+    by_prefix = {(method, path) for method, path in routes if path.startswith("/admin")}
+    by_handler = _admin_handler_routes()
+    # The handler check finds every /admin route, so a route it finds
+    # elsewhere is an admin route mounted outside /admin.
+    assert by_prefix <= by_handler, sorted(by_prefix - by_handler)
+    admin_routes = sorted(by_prefix | by_handler)
     assert len(admin_routes) > 20
     member = quick_user("member@core.test")
     admin = quick_user("root@core.test", admin=True)

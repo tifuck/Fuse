@@ -8,7 +8,7 @@ import pytest
 from app import accounts, db, vault
 from app.config import settings
 from tests.core.auth._support import (
-    PASSWORD, anonymous, cookie, login, read_session, set_session, sign_in, sign_session,
+    PASSWORD, anonymous, cookie, login, main_client, read_session, session_options, set_session, sign_in, sign_session,
 )
 from tests.core.helpers import make_user, quick_user
 
@@ -247,6 +247,15 @@ def test_active_use_renews_the_session_cookie(web):
     set_session(web, {**session, "seen": int(time.time()) - 3601})
     renewed = web.get("/chat/threads")
     assert renewed.status_code == 200 and "Max-Age=" in renewed.headers["set-cookie"]
+
+
+def test_a_login_through_app_main_sets_the_cookie_lifetime_it_configures(fresh_db):
+    make_user("ada@core.test")
+    client = main_client()
+    res = login(client, "ada@core.test")
+    assert res.status_code == 303 and res.headers["location"] == "/chat"
+    [session_cookie] = [c for c in res.headers.get_list("set-cookie") if c.startswith("session=")]
+    assert f"Max-Age={session_options()['max_age']}" in session_cookie.split("; ")
 
 
 @pytest.fixture
