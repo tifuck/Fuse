@@ -200,4 +200,4 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why { padding-left: calc(15px + 2ch); text-indent: -2ch; }
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why::before { content: "└ "; color: var(--mute); }
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock :is(.chat-ask .chat-perm-always-menu, .chat-qrow .chat-queue-menu:not([hidden])) { border: 1px solid var(--line); border-radius: 0; background: #000; box-shadow: none; }
-html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-queue { border: 0; border-bottom: 1px dashed var(--line); }
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-queue { margin-inline: calc(-1 * var(--console-gutter)); padding-inline: var(--console-gutter); border: 0; border-top: 1px solid color-mix(in srgb, var(--mist) 22%, var(--ink)); border-bottom: 1px dashed var(--line); }
