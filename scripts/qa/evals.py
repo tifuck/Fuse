@@ -47,11 +47,16 @@ def _inline_chart(run: dict) -> bool:
                and t.get("format") == "chart" for t in tools)
 
 
+# Shaped like a key, built in pieces (a literal one is rejected when pushed). It opens nothing.
+_EVAL_KEY = "sk-" + "proj-" + "Eq7Lm2Vn9Rt4Wp8Zk3Jh6Fd1Sb5Yc0Ga" + "Tz4Kc9Rm8Wx1Yb5Q"
+
+
 # A task: turns are sent in order ("/compact" compacts the chat instead; the
 # last context_keep_tail messages, 6 by default, are never compacted), then
 # the last reply is graded. `want` regexes must match, `avoid` must not,
 # `check` is an extra predicate on the reply and `run_check` one on the last run
-# (its message's tool traces).
+# (its message's tool traces). `secret` is a value protected for the task's
+# duration (app/secret_guard.py): the model is sent its stand-in.
 TASKS = {
     "recall": {
         "about": "a fact from the first turn survives later turns (history, pruning)",
@@ -99,6 +104,19 @@ TASKS = {
         ],
         "want": [r"(?<![\d.])4(?![\d.])"],
         "avoid": [r"(?<![\d.])(16|20|36)(?![\d.])"],
+    },
+    "secret-echo": {
+        "about": "a protected value comes back whole: the stand-in is copied exactly and restored",
+        "secret": _EVAL_KEY,
+        "turns": [f"Here is my API key: {_EVAL_KEY}\nReply with exactly one line and nothing else: export API_KEY=<that key>"],
+        "want": [re.escape("export API_KEY=" + _EVAL_KEY)],
+    },
+    "secret-masked": {
+        "about": "the model only ever holds the stand-in of a protected value",
+        "secret": _EVAL_KEY,
+        "turns": [f"Here is my API key: {_EVAL_KEY}\nReply with only the last 8 characters of that key."],
+        "want": [r"[A-Za-z0-9]{8}"],
+        "avoid": [re.escape(_EVAL_KEY[-8:])],
     },
     "inline-chart": {
         "about": "a direct ask for one chart is drawn inline by the chart kit",
@@ -173,8 +191,12 @@ def run_task(dev: Dev, name: str, task: dict, model: str) -> tuple[bool, str]:
     thread = dev.call("POST", "/chat/threads", {"title": f"Eval · {name}", "model": model, "memory_off": True,
                                               "command_id": uuid.uuid4().hex})
     tid = thread["id"]
+    secret_id = None
     try:
         reply = ""
+        if task.get("secret"):
+            kept = dev.call("POST", "/settings/secrets", {"label": "EVAL_API_KEY", "value": task["secret"]})
+            secret_id = next((i["id"] for i in kept["items"] if i["label"] == "EVAL_API_KEY"), None)
         for text in task["turns"]:
             if text == "/compact":
                 done = dev.change("POST", tid, "/compact")
@@ -194,6 +216,11 @@ def run_task(dev: Dev, name: str, task: dict, model: str) -> tuple[bool, str]:
             problems.append("run check failed")
         return not problems, "; ".join(problems) or "ok"
     finally:
+        if secret_id is not None:
+            try:
+                dev.call("DELETE", f"/settings/secrets/{secret_id}")
+            except Exception as exc:
+                print(f"  (could not delete the eval's protected value: {exc})", file=sys.stderr)
         try:
             dev.change("DELETE", tid, "")
         except Exception as exc:  # a leftover chat is harmless; say so
