@@ -504,8 +504,11 @@ def _reap_one(row):
             stamp = row["updated_at"]
         quiet = _iso_age(stamp or row["created_at"])
         if quiet >= STALL_IDLE_SECONDS:
-            cancel(ident, stalled=True)
+            # Settle the row first: a worker woken while its disowned row is
+            # still active takes it for a resumed leg and leaves its
+            # foreground children to nobody.
             chat_store.abort_active(ident, "interrupted", chat_store.STALL_NOTICE)
+            cancel(ident, stalled=True)
             _wake_stalled_child(row)
         return
     if row["status"] == "queued":
