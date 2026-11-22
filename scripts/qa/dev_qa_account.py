@@ -721,6 +721,7 @@ def _seed(uid: int) -> list[str]:
     The artifact chat's calls name a real artifact, so its card opens."""
     from app import artifacts, chat_threads, db, skill_proposals
 
+    db.execute("DELETE FROM chat_runs WHERE user_id=?", (uid,))  # no foreign key takes them with their thread
     db.execute("DELETE FROM chat_threads WHERE user_id=?", (uid,))
     db.execute("DELETE FROM artifacts WHERE user_id=?", (uid,))
     db.execute("DELETE FROM skill_proposals WHERE user_id=?", (uid,))

@@ -1051,6 +1051,25 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
     elif model is not None and new_model != row["model"] and not new_state:
         conn.execute("UPDATE chat_threads SET title_attempts=0,title_attempted_at='' WHERE id=?", (row["id"],))
     return msgs if messages is not None else None
+def forget_thread_rows(conn, user_id: int, ids) -> None:
+    """What no foreign key removes with these threads: their command jobs
+    (output included) and their events. Call after the thread.deleted
+    events: those take the event cursor, which start_turn locks before
+    command_jobs rows. The delete's own events stay, as every client drops
+    the chat on them; chat_tx.prune_events takes those a day later."""
+    ids = [int(i) for i in ids]
+    if not ids:
+        return
+    marks = ",".join("?" * len(ids))
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'").fetchone():
+        conn.execute(f"DELETE FROM command_jobs WHERE user_id=? AND thread_id IN ({marks})", (user_id, *ids))
+    # shortcut: scans this user's events (a day of them at most); index
+    # chat_events.thread_id if deleting a chat gets slow.
+    conn.execute(
+        f"DELETE FROM chat_events WHERE user_id=? AND thread_id IN ({marks})"
+        " AND type NOT IN ('thread.deleted','run.cancel_requested','agent.cancel_requested')",
+        (user_id, *ids),
+    )
 def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id=None,
                   cancel_active: bool = True) -> bool:
     """Delete a thread and its runs. A stale ``expected_revision`` is a no-op
@@ -1096,6 +1115,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
         conn.execute("DELETE FROM chat_runs WHERE thread_id=? AND user_id=?", (pk, user_id))
         conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id))
         store.event(conn, user_id, "thread.deleted", pk, {"revision": row["revision"] + 1, "id": public})
+        forget_thread_rows(conn, user_id, [pk])
         store.remember(conn, user_id, command_id, fingerprint, True)
     # Wake live workers after the commit so they stop promptly instead of
     # burning provider quota until the next periodic poll notices the row is gone.
@@ -1141,6 +1161,7 @@ def delete_schedule_owned_thread(user_id: int, thread_id: int, *, keep_thread_id
         conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=? AND schedule_id IS NOT NULL", (tid, user_id))
         public = str(row["public_id"]) if "public_id" in row.keys() and row["public_id"] else tid
         store.event(conn, user_id, "thread.deleted", tid, {"id": public})
+        forget_thread_rows(conn, user_id, [tid])
     try:
         from . import command_jobs
 

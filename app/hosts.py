@@ -937,7 +937,7 @@ def _delete_threads(conn, user_id: int, threads) -> None:
     """Delete a project's sessions (runs before threads, as delete_thread
     does) in two statements, then one thread.deleted event each."""
     from . import chat_store as store
-    from .chat_threads import public_id_for
+    from .chat_threads import forget_thread_rows, public_id_for
 
     if not threads:
         return
@@ -948,6 +948,7 @@ def _delete_threads(conn, user_id: int, threads) -> None:
     for t in threads:
         store.event(conn, user_id, "thread.deleted", t["id"],
                     {"revision": int(t["revision"]) + 1, "id": t["public_id"] or public_id_for(t["id"], conn)})
+    forget_thread_rows(conn, user_id, ids)
 
 
 def _delete_archived_project(user_id: int, host_id: int, project_id: int, archived_before: str) -> bool:

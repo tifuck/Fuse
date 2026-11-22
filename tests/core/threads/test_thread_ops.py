@@ -2,8 +2,9 @@
 threads, on real store functions and real runs (provider faked)."""
 import pytest
 
-from app import chat_store, chats, db
+from app import chat_store, chats, command_jobs, db, hosts
 from app.chats import ChatValidationError
+from tests.core.features._support import make_host, make_project
 from tests.core.helpers import fake_provider, make_user, quick_user, run_async, run_turn, text_frames
 
 from ._support import events, pk, runs_of
@@ -59,6 +60,35 @@ def test_delete_cancels_live_runs_and_publishes_the_public_id(fresh_db):
     assert [e["type"] for e in published] == ["run.cancel_requested", "thread.deleted"]
     # The row is gone, yet observers still learn which thread it was.
     assert published[-1]["thread_id"] == thread["id"]
+
+
+def test_deleting_a_chat_or_project_deletes_its_command_jobs_and_events(fresh_db):
+    uid = make_user()
+    host = make_host(uid)
+    project = make_project(uid, host)
+    chat, kept = _finished_thread(uid)[0], _finished_thread(uid)[0]
+    session = chats.create_thread(uid, model="offline", kind="project", host_id=host, project_id=project)
+    run = chat_store.start_turn(uid, session["id"], "hi", session["revision"], None)["run"]
+    chat_store.finish_run(run["id"], {"content": "ok"}, "completed")
+    command_jobs.ensure_schema()
+    for n, thread in enumerate((chat, kept, session)):
+        db.execute(
+            "INSERT INTO command_jobs (id, user_id, host_id, thread_id, command, timeout_ms, status, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (f"job{n}", uid, host, pk(uid, thread["id"]), "true", 1000, "completed", db.now()),
+        )
+    gone, stays = {pk(uid, chat["id"]), pk(uid, session["id"])}, pk(uid, kept["id"])
+    stored = lambda: db.fetchall("SELECT thread_id, type FROM chat_events WHERE user_id=?", (uid,))  # noqa: E731
+    assert gone | {stays} <= {row["thread_id"] for row in stored()}
+
+    assert chats.delete_thread(uid, chat["id"]) is True
+    assert hosts.delete_project(uid, host, project) is True
+
+    assert [row["id"] for row in db.fetchall("SELECT id FROM command_jobs WHERE user_id=?", (uid,))] == ["job1"]
+    assert db.fetchone("SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND thread_id<>?", (uid, stays))["n"] == 0
+    # Only the notice every client drops the chat on outlives it.
+    assert {row["type"] for row in stored() if row["thread_id"] in gone} == {"thread.deleted"}
+    assert any(row["thread_id"] == stays and row["type"] != "thread.deleted" for row in stored())
 
 
 def test_retention_style_delete_refuses_while_a_run_is_live(fresh_db):

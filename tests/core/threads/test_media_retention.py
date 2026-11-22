@@ -117,6 +117,22 @@ def test_a_busy_chat_keeps_its_media(fresh_db):
     assert _images(uid, thread) == 1
 
 
+def test_an_archived_chat_loses_its_media_however_recent(fresh_db, monkeypatch):
+    uid = make_user()
+    archived, open_chat = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    _turn(uid, archived, seed=1)
+    _turn(uid, open_chat, seed=2)
+    chats.update_thread(uid, archived["id"], archived=True)
+    for thread in (archived, open_chat):
+        _age(uid, thread, 1)
+    monkeypatch.setattr(retention.settings, "chat_media_idle_days", 0)
+
+    assert retention.purge_idle_media() == {"threads": 1, "images": 1}
+    assert (_images(uid, archived), _images(uid, open_chat)) == (0, 1)
+    assert chat_images.ATTACHMENT_REMOVED in _stored(uid, archived)
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+
+
 def test_media_retention_off_keeps_everything(fresh_db, monkeypatch):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
