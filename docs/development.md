@@ -178,7 +178,10 @@ So Fuse's own records hold real values; stand-ins exist on the wire to a
 provider. Both directions are pure functions of the user's registry: there
 is no per-chat state. `app/secret_scan.py` reads a project's env files when a
 turn starts and after a tool round changed the machine, and offers what is
-clearly a secret; the turn waits (`secret_guard.wait_for_decision`, the
+clearly a secret. The owner is asked once per secret: a known value is never
+offered again, and a new value under a name already decided in that file
+follows the decision unasked (`secret_guard.offer`). For a new one the turn
+waits (`secret_guard.wait_for_decision`, the
 `secrets` run event, `/chat/threads/{id}/secrets/offer`) until the owner
 decides. `tests/core/secrets/` holds the invariants: with a realistic
 registry no file of this repository changes through either door.

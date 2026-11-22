@@ -1216,6 +1216,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                         with contextlib.suppress(Exception):
                             await asyncio.wait_for(
                                 secret_scan_mod.ensure(user["id"], bound_host_id, bound_cwd), timeout=6.0)
+                    for note in secret_guard_mod.take_notes(user["id"]):
+                        # A protected key was rotated on disk: said once, nothing to decide.
+                        yield _sse({"fuse": {"event": "notice", "message": note}})
                     if await asyncio.to_thread(secret_guard_mod.has_offers, user["id"]):
                         yield _sse({"fuse": {"event": "secrets", "status": "pending", "run_id": run_id}})
                         from . import push

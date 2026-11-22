@@ -14,7 +14,7 @@ import pytest
 from app import api, db, secret_guard, secret_scan
 from tests.core.helpers import quick_user, run_async
 
-from ._values import GITHUB, HEX, OPENAI, PASSWORD, PEM, SHELLY, STRIPE
+from ._values import ANTHROPIC, GITHUB, HEX, OPENAI, PASSWORD, PEM, SHELLY, STRIPE
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 ALL = {"OPENAI_API_KEY": OPENAI, "GITHUB_TOKEN": GITHUB, "STRIPE_KEY": STRIPE, "SESSION_SECRET": HEX,
@@ -214,6 +214,37 @@ def test_offers_are_decided_once_and_apply_to_every_chat(fresh_db):
     assert (kept["cipher"], kept["fake"]) == ("", "")
     assert secret_guard.offer(uid, 3, "box", found) == 0 and secret_guard.offers(uid) == []
     assert not secret_guard.map_for(other).items
+
+
+def test_the_owner_is_asked_once_per_secret(fresh_db):
+    uid = quick_user()
+
+    def scan(text, path=".env"):
+        return secret_guard.offer(uid, 3, "box", secret_scan.find(path, text))
+
+    def protected():
+        return {it.real for it in secret_guard.map_for(uid).items if it.masked}
+
+    first = f"OPENAI_API_KEY={OPENAI}\nDB_PASSWORD={PASSWORD}\n"
+    assert scan(first) == 2
+    key, _password = secret_guard.offers(uid)
+    secret_guard.decide(uid, [key["id"]])  # protect the key, decline the password
+    # The same files in any later chat, or with their lines moved: nothing to ask.
+    assert scan(first) == 0 and scan("# moved\n\n" + first) == 0 and not secret_guard.has_offers(uid)
+    # The protected key is rotated on disk: its new value is protected at once, unasked,
+    # the old one stays protected (old output still holds it), and the chat is told once.
+    assert scan(f"OPENAI_API_KEY={ANTHROPIC}\nDB_PASSWORD={PASSWORD}\n") == 0
+    assert protected() == {OPENAI, ANTHROPIC} and not secret_guard.has_offers(uid)
+    assert secret_guard.take_notes(uid) == ["OPENAI_API_KEY changed in .env: Fuse protects its new value too."]
+    assert secret_guard.take_notes(uid) == []
+    # The declined password changes: still declined, unasked, and its value is not kept.
+    assert scan(f"OPENAI_API_KEY={ANTHROPIC}\nDB_PASSWORD=N3w&Pass9word\n") == 0
+    declined = db.fetchall("SELECT cipher, fake FROM user_secrets WHERE user_id=? AND status='ignored'", (uid,))
+    assert [(r["cipher"], r["fake"]) for r in declined] == [("", ""), ("", "")] and protected() == {OPENAI, ANTHROPIC}
+    # Only something never decided asks: a new name here, or the same name in another project's file.
+    assert scan(f"OPENAI_API_KEY={ANTHROPIC}\nSTRIPE_KEY={STRIPE}\n") == 1
+    assert scan(f"OPENAI_API_KEY={GITHUB}\n", path="other/.env") == 1
+    assert [(o["key"], o["file"]) for o in secret_guard.offers(uid)] == [("STRIPE_KEY", ".env"), ("OPENAI_API_KEY", "other/.env")]
 
 
 def test_switching_protection_off_keeps_old_chats_working(owner):

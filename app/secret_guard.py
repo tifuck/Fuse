@@ -464,40 +464,90 @@ def _insert(conn, user_id: int, value: str, taken: list, *, label: str, kind: st
     return int(row["id"]) if row else None
 
 
+def _place(src: dict) -> tuple:
+    return int(src.get("host_id") or 0), src.get("path") or "", src.get("key") or ""
+
+
+def _decided(conn, user_id: int) -> dict:
+    """Where the owner already decided: (host, file, name) -> the latest status."""
+    out = {}
+    for row in conn.execute("SELECT status, sources FROM user_secrets WHERE user_id=? AND status<>'offered' "
+                            "ORDER BY updated_at, id", (user_id,)).fetchall():
+        for src in json.loads(row["sources"] or "[]"):
+            if src.get("key"):
+                out[_place(src)] = row["status"]
+    return out
+
+
+# What Fuse did unasked since the user's last turn, to say so in the chat.
+_notes: dict[int, list[str]] = {}
+
+
+def take_notes(user_id: int) -> list[str]:
+    return _notes.pop(int(user_id), [])
+
+
 def offer(user_id: int, host_id: int, alias: str, found: list) -> int:
-    """Keep newly found candidates as offers. A value already decided (or
-    already offered) only gains this place as a source. Returns the new count."""
-    user_id, new = int(user_id), 0
+    """Keep what a scan found. The owner is asked once per secret: a value
+    already decided (or already offered) only gains this place as a source,
+    and a new value under a name the owner decided on in this file follows
+    that decision unasked (a rotated key stays protected, a declined one
+    stays declined). Only a value never seen, in a place never decided, is
+    offered. Returns how many were offered."""
+    user_id, new, renewed = int(user_id), 0, []
     if not found:
         return 0
     with db.tx() as conn:
         count = conn.execute("SELECT COUNT(*) FROM user_secrets WHERE user_id=?", (user_id,)).fetchone()[0]
-        taken = None
+        taken = places = None
         for one in found:
             if not (MIN_LEN <= len(one.value) <= MAX_LEN):
                 continue
+            digest = _digest(user_id, one.value)
             row = conn.execute("SELECT id, status, sources FROM user_secrets WHERE user_id=? AND real_hmac=?",
-                               (user_id, _digest(user_id, one.value))).fetchone()
+                               (user_id, digest)).fetchone()
             src = _source(host_id, alias, one)
             if row is not None:
                 if row["status"] != "ignored":
                     sources = json.loads(row["sources"] or "[]")
                     if src not in sources:
+                        # The same place again (its line moved) replaces the old entry.
+                        rest = [s for s in sources if not (src["key"] and _place(s) == _place(src))]
                         conn.execute("UPDATE user_secrets SET sources=? WHERE id=?",
-                                     (json.dumps(([src] + sources)[:10]), row["id"]))
+                                     (json.dumps(([src] + rest)[:10]), row["id"]))
                 continue
             if count >= MAX_PER_USER:
                 break
+            if places is None:
+                places = _decided(conn, user_id)
+            before = places.get(_place(src)) if one.key else None
+            if before in ("ignored", "retired"):
+                # Declined here before: its new value is declined too, and not kept.
+                now = db.now()
+                conn.execute(
+                    "INSERT INTO user_secrets (user_id, label, kind, origin, status, strong, prefix_len, length, real_hmac, "
+                    "fake, cipher, sources, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (user_id, one.key[:190], one.kind, "scan", "ignored", 0, 0, len(one.value), digest, "", "",
+                     json.dumps([src]), now, now))
+                count += 1
+                continue
             if taken is None:
                 taken = _taken(conn, user_id)
+            status = "protected" if before == "protected" else "offered"
             try:
                 made = _insert(conn, user_id, one.value, taken, label=one.key, kind=one.kind, prefix_len=one.prefix_len,
-                               origin="scan", status="offered", sources=[src])
+                               origin="scan", status=status, sources=[src])
             except ValueError:
                 made = None
             if made:
-                new += 1
                 count += 1
+                if status == "protected":
+                    renewed.append(f"{one.key} changed in {one.path}: Fuse protects its new value too.")
+                else:
+                    new += 1
+    if renewed:
+        _changed(user_id)
+        _notes[user_id] = (_notes.get(user_id, []) + renewed)[-20:]
     return new
 
 
