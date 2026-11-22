@@ -656,6 +656,7 @@ def overview(user_id: int) -> dict:
         items.append({"id": int(row["id"]), "label": row["label"] or "", "kind": secret_fakes.LABELS.get(row["kind"], "Secret"),
                       "status": row["status"], "length": int(row["length"] or 0), "strong": bool(row["strong"]),
                       "origin": row["origin"], "where": where if row["origin"] == "scan" else "Added by you",
+                      "stand_in": row["fake"] or "",
                       "line": int(src.get("line") or 0) if src else 0})
     return {"protect": protect, "offer": offer_on, "items": items, "broken": map_for(user_id).broken}
 

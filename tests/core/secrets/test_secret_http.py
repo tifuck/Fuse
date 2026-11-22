@@ -82,6 +82,7 @@ def test_settings_never_return_a_value(web):
     kept = web.post("/settings/secrets", json={"label": "GITHUB_TOKEN", "value": GITHUB}).json()
     (item,) = kept["items"]
     assert (item["label"], item["status"], item["length"], item["where"]) == ("GITHUB_TOKEN", "protected", len(GITHUB), "Added by you")
+    assert item["stand_in"].startswith("ghp_") and item["stand_in"] != GITHUB and item["stand_in"] in web.get("/settings").text
     assert GITHUB not in web.get("/settings/secrets").text and GITHUB not in web.get("/settings").text
     # The owner can look at a kept value, one at a time, by asking for it.
     shown = web.post(f"/settings/secrets/{item['id']}/reveal", json={})
