@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation'];
+const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation', 'pool'];
 const SESSION = join(ROOT, 'data', 'dev-qa-session.json');
 
 // --fake: states no fixture can hold, made by rewriting what the page reads
@@ -179,6 +179,13 @@ const FIXES = {
     // The page asks for an offer only for a chat whose turn is running.
     if (fake.has('secrets')) data.running = true;
     if (fake.has('error') && last) last.error = 'Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)';
+    // The badge app/sources/pool_badge.py would send for a shared Claude account.
+    if (fake.has('pool')) {
+      const now = Math.round(startedAt / 1000);
+      data.compaction = { ...(data.compaction || {}), pool: { model: data.model, provider: 'claude', pool: 'Claude', slot: 'B', own: false,
+        windows: [{ label: '5-hour', short: '5h', percent: 42, reset_at: now + 7800 }, { label: 'Weekly', short: 'wk', percent: 18, reset_at: now + 302400 }],
+        ready: 3, size: 5, hop: { from: 'A', reason: 'limit' } } };
+    }
     return data;
   },
   run(data) {
@@ -270,7 +277,7 @@ export default {
     const has = (...names) => names.some((name) => fake.has(name));
     if (has('agents') && /^\/chat\/threads\/[^/]+\/agents$/.test(path)) return 'agents';
     if (has('secrets') && /^\/chat\/threads\/[^/]+\/secrets\/offer$/.test(path)) return 'secrets';
-    if (has('running', 'ask', 'secrets', 'error') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
+    if (has('running', 'ask', 'secrets', 'error', 'pool') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
     if (has('ask') && /^\/chat\/threads\/[^/]+\/permissions$/.test(path)) return 'perms';
     return has('running') && /^\/chat\/runs\/[^/]+$/.test(path) ? 'run' : '';
   },

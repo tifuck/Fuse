@@ -56,6 +56,10 @@
               <path class="chat-search-off" d="M2.6 13.4L13.4 2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
             </svg>
           </button>
+          <div class="chat-pool" data-pool-badge hidden>
+            <button type="button" class="chat-pool-btn" data-pool-toggle aria-haspopup="dialog" aria-expanded="false" aria-controls="chat-pool-pop"></button>
+            <div class="chat-context-pop chat-pool-pop" id="chat-pool-pop" data-pool-pop role="dialog" aria-label="Pool account" hidden></div>
+          </div>
           <div class="chat-perm-host" data-perm-host>
             <button type="button" class="chat-perm-btn" data-perm-chip aria-haspopup="dialog" aria-expanded="false" aria-label="Ask, permissions: prompts on" title="Ask: permission prompts on">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">

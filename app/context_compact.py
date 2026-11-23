@@ -222,12 +222,15 @@ def parse_state(raw) -> dict:
     meter_obj = data.get("meter") if isinstance(data.get("meter"), dict) else {}
     cfg = config()
     from .chat_generation import cache_watch
+    from .sources import pool_badge
 
     return {
         "checkpoints": checkpoints[-MAX_CHECKPOINTS:],
         "meter": meter_obj,
         # Newest request's prompt-cache probe (chat_generation.cache_watch).
         "cache": cache_watch.parse(data.get("cache")),
+        # The pool account that served the newest round (sources.pool_badge).
+        "pool": pool_badge.parse(data.get("pool")),
         "strategy": str(data.get("strategy") or cfg.strategy),
         "auto": data["auto"] if isinstance(data.get("auto"), bool) else cfg.auto,
         "warn_ratio": _clamp_ratio(data.get("warn_ratio"), cfg.warn_ratio),

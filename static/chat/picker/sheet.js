@@ -1,5 +1,6 @@
 // Picker button/sheet placement, composer hint.
 import { S } from '../state.js';
+import { renderPool } from '../poolbadge.js';
 import { shortModelName } from './list.js';
 
 const PICKER_CHEV =
@@ -174,6 +175,7 @@ export function createSheet(ctx) {
   }
 
     function renderPickerButton() {
+    renderPool();
     const agent = agentModel();
     const model = agent ? agent.model : context.currentModel();
     S.pickerHost.dataset.agentModel = agentPickerKey(agent);

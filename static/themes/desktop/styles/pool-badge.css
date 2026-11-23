@@ -1,0 +1,59 @@
+/* The pool account badge (static/chat/poolbadge.js, app/sources/pool_badge.py):
+   which account of a shared pool served this chat, by slot letter only, and
+   how full its usage windows are. Amber from 75%, red from 95%. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  /* Right after the model chip, the same height and type: a hairline, the
+     ring and the percent, as one more control of the chip's row. */
+  & .chat-pool { --pool-ring: 15px; position: static; display: flex; flex: none; align-items: center; }
+  & .chat-pool[hidden] { display: none; }
+  & .chat-pool::before { content: ""; width: 1px; height: 14px; margin: 0 3px 0 1px; background: color-mix(in srgb, var(--dk-mute) 30%, transparent); }
+  & .chat-pool-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px 0 6px; border: 0; border-radius: var(--dk-ctl-r, 7px); background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); white-space: nowrap; cursor: pointer; }
+  & .chat-pool-btn[aria-expanded="true"] { background: var(--dk-hover); color: var(--dk-text); }
+  @media (hover: hover) { & .chat-pool-btn:hover { background: var(--dk-hover); color: var(--dk-text); } }
+  & .chat-pool-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
+  & .chat-pool-ring b { --pool-letter: var(--dk-text); font: 700 7.5px/1 var(--sans); }
+  /* The card rises from the composer's right edge, like the context card. */
+  & .chat-pool .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
+  & .chat-pool-ring { position: relative; display: grid; flex: none; place-items: center; width: var(--pool-ring); height: var(--pool-ring); }
+  & .chat-pool-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  & .chat-pool-ring circle { fill: none; stroke-width: 1.7; }
+  & .chat-pool[data-own="true"] .chat-pool-face { fill: color-mix(in srgb, var(--mist) 16%, transparent); }
+  & .chat-pool-track { stroke: color-mix(in srgb, var(--mist) 22%, transparent); }
+  & .chat-pool-fill { stroke: var(--pool-tone); transition: stroke-dasharray 220ms ease, stroke 220ms ease; }
+  & .chat-pool-ring b { position: relative; color: var(--pool-letter, var(--mist)); font-weight: 700; line-height: 1; }
+  & .chat-pool-pct { color: var(--pool-num); font-variant-numeric: tabular-nums; }
+  & :is(.chat-pool-slot, .chat-pool-wins) { display: none; }
+  /* A switch of account flips the letter once. */
+  & .chat-pool.is-hop .chat-pool-ring { animation: chat-pool-hop 480ms ease; }
+  & .chat-pool { --pool-tone: var(--dk-text); --pool-num: var(--dk-mute); }
+  & .chat-pool[data-level="warn"] { --pool-tone: var(--brass); --pool-num: var(--brass); }
+  & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
+  /* The card: the theme's context card, with one row per usage window. */
+  & .chat-pool-ready { margin: 0; color: var(--mute); font: 0.7rem/1 var(--mono); font-variant-numeric: tabular-nums; }
+  & .chat-pool-acct { margin: 0.6rem 0 0.55rem; color: var(--mist); font: 500 13px/1.3 var(--sans); }
+  & .chat-pool-acct b { font-weight: 700; }
+  & .chat-pool-rows { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+  & .chat-pool-rows li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 2.5rem; align-items: center; column-gap: 0.55rem; row-gap: 0.15rem; color: var(--steel); font: 12px/1.3 var(--sans); }
+  & .chat-pool-rows small { grid-column: 2 / -1; color: var(--mute); font-size: 0.68rem; }
+  & .chat-pool-meter { height: 3px; overflow: hidden; border-radius: 999px; background: var(--line); }
+  & .chat-pool-meter i { display: block; height: 100%; border-radius: inherit; background: var(--steel); transition: width 220ms ease; }
+  & .chat-pool-rows li[data-level="warn"] .chat-pool-meter i { background: var(--brass); }
+  & .chat-pool-rows li[data-level="hot"] .chat-pool-meter i { background: var(--fault); }
+  & .chat-pool-num { color: var(--mist); font-family: var(--mono); font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right; }
+  & :is(.chat-pool-hop, .chat-pool-none) { margin: 0.65rem 0 0; color: var(--mute); font: 12px/1.4 var(--sans); }
+  & .chat-pool-link { display: inline-block; margin-top: 0.65rem; color: var(--steel); font: 12px/1.4 var(--sans); text-decoration: underline; text-underline-offset: 2px; }
+  & .chat-pool-link:hover { color: var(--mist); }
+  @media (hover: none), (pointer: coarse) {
+    & .chat-pool-btn { height: 36px; }
+  }
+  @media (max-width: 380px) {
+    & .chat-pool-pct { display: none; }
+  }
+}
+@keyframes chat-pool-hop {
+  50% { transform: scaleX(0.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-pool.is-hop .chat-pool-ring { animation: none; }
+  .chat-pool-fill, .chat-pool-meter i { transition: none; }
+}

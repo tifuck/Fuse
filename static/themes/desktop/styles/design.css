@@ -31,3 +31,5 @@
 @import url("polish.css");
 /* The Protect secrets window. */
 @import url("secrets.css");
+/* The pool account badge beside the model. */
+@import url("pool-badge.css");

@@ -63,6 +63,11 @@
 //                                  steady made-up voice: --click '[data-chat-mic]'
 //                                  opens the live overlay and words land in the
 //                                  box. The mic's markup is --tree's template
+//                         pool     the chat was served by shared Claude pool
+//                                  account B (5-hour 42%, weekly 18%, switched
+//                                  from A at its limit): the pool badge beside
+//                                  the model. --click '[data-pool-toggle]' opens
+//                                  its card
 //   --trace JSON        with --fake running: the reply's running calls become
 //                       these (an object, or an array of them), running unless
 //                       they say otherwise. A call with "parent": true is made
