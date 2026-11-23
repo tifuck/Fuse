@@ -108,7 +108,7 @@ export function acceptPool(pool) {
   const before = current();
   S.pool = pool && typeof pool === "object" && pool.name ? pool : null;
   S.poolThread = S.currentId;
-  S.poolModel = S.pool?.model || S.modelId;
+  S.poolModel = S.modelId;
   renderPool(Boolean(before && S.pool && before.id !== S.pool.id));
 }
 
