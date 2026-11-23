@@ -5,8 +5,10 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   /* Its own composer column before the model: gauge, window, then a rule. */
   & .chat-pool { position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
-  & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.3rem; }
-  & .chat-pool::after { content: ""; width: 1px; height: 0.85rem; background: color-mix(in srgb, var(--mist) 18%, var(--ink)); }
+  /* The rule sits as far from the gauge and the model as the model's own rule
+     sits from the tools: 0.7rem of space on each side. */
+  & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.7rem; }
+  & .chat-pool::after { content: ""; width: 1px; height: 0.85rem; margin-left: 0.4rem; background: color-mix(in srgb, var(--mist) 18%, var(--ink)); }
   & .chat-pool[hidden] { display: none !important; }
   & .chat-pool-btn { display: inline-flex; align-items: center; gap: 0.35rem; height: var(--composer-row); padding: 0 0.3rem; border: 0; border-radius: 5px; background: none; color: var(--mute); font: 0.75rem/1 var(--mono); white-space: nowrap; cursor: pointer; }
   & .chat-pool-btn[aria-expanded="true"] { background: var(--raise); color: var(--mist); }
@@ -95,6 +97,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
     & .chat-pool { margin-left: 0.45rem; margin-top: 0.15rem; }
     & .chat-pool::after, & .chat-pool-label { display: none; }
+    /* No rule on a phone: the gauge keeps the icons' 1rem rhythm to the logo. */
+    & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.7rem; }
   }
 }
 @keyframes chat-pool-hop {

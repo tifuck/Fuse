@@ -62,7 +62,9 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-note { padding: 0.35rem 0.5rem 0.1rem; list-style: none; }
   /* The sharing panel: the permission modes' segmented control per choice. */
   & .chat-pool-setting .chat-perms-modes { grid-template-columns: repeat(var(--segs, 3), minmax(0, 1fr)); margin: 0.2rem 0.5rem 0; }
-  & .chat-pool-setting .chat-perms-hint { margin: 0.4rem 0.5rem 0.45rem; padding: 0; line-height: 1.4; }
+  /* Tail sets a hint's margin and padding with !important; keep the same
+     space under it as above it. */
+  & .chat-pool-setting .chat-perms-hint { margin: 0 !important; padding: 0.4rem 0.5rem 0.45rem !important; line-height: 1.4; }
   & .chat-pool-menu .chat-pool-pick { grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.55rem; min-height: 1.9rem; padding: 0 0.5rem; cursor: default; }
   & .chat-pool-menu .chat-pool-pick:hover { background: none; color: inherit; }
   /* A row's label, not the forms' stacked label: box, name, yours. */
@@ -93,6 +95,9 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-menu :is(.chat-pool-line:not([data-status="current"]), .chat-pool-pick):hover { background: none !important; }
   & .chat-pool-menu .chat-pool-line[data-status="current"] { background: var(--tl-soft) !important; }
   & .chat-pool-menu.is-sheet .chat-pool-pick { min-height: 2.75rem !important; }
+  /* Tail's group headings carry no space above them; the card's groups get
+     the gap the other views give them. */
+  & .chat-pool-menu .chat-perms-group + :is(.chat-perms-group, .chat-pool-setting) { margin-top: 0.4rem; }
 }
 @media (max-width: 640px) {
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
