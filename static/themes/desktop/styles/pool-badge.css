@@ -10,25 +10,25 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-pool { position: static; display: flex; flex: none; align-items: center; margin-right: 6px; }
   & .chat-pool[hidden] { display: none !important; }
   /* The button is a full-height control like its neighbours; the capsule
-     inside it holds the fullest window's name, a bar and the percent. */
+     inside it stacks two windows, each a letter, a bar and the percent. */
   & .chat-pool-btn { display: inline-flex; align-items: center; height: 28px; padding: 0; border: 0; background: none; color: var(--dk-mute); cursor: pointer; -webkit-tap-highlight-color: transparent; }
   & .chat-pool-btn:focus-visible { outline: none; }
   & .chat-pool-btn:focus-visible .chat-pool-meter { outline: 2px solid var(--dk-link); outline-offset: 1px; }
-  & .chat-pool { --pool-tone: var(--dk-text); --pool-num: var(--dk-text); }
-  & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
-  & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
+  & .chat-pool-row { --pool-tone: var(--dk-text); --pool-num: var(--dk-text); display: contents; }
+  & .chat-pool-row[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
+  & .chat-pool-row[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
   & .chat-pool-meter {
-    display: inline-flex; align-items: center; gap: 7px; height: 22px; padding: 0 8px;
+    display: inline-grid; grid-template-columns: auto auto auto; align-items: center; align-content: center; gap: 2px 6px; height: 22px; padding: 0 7px; box-sizing: border-box;
     border: 1px solid color-mix(in srgb, var(--dk-mute) 28%, transparent); border-radius: 7px; background: none;
-    font: 500 11.5px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
+    font: 600 9px/9px var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
     transition: border-color var(--dur-hover, 120ms) ease, background-color var(--dur-hover, 120ms) ease;
   }
   & .chat-pool-btn[aria-expanded="true"] .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); }
   @media (hover: hover) { & .chat-pool-btn:hover .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); } }
-  & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; }
-  & .chat-pool-track { flex: none; width: 32px; height: 3px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
+  & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; font-weight: 400; opacity: 0.6; }
+  & .chat-pool-track { flex: none; width: 32px; height: 5px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
   & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }
-  & .chat-pool-meter b { min-width: 3ch; color: var(--pool-num); font-weight: 500; text-align: right; }
+  & .chat-pool-meter b { min-width: 3ch; color: var(--pool-num); text-align: right; }
   & .chat-pool-wins { display: none; }
   /* A move to another account blinks the meter once. */
   & .chat-pool.is-hop .chat-pool-meter { animation: chat-pool-hop 480ms ease; }

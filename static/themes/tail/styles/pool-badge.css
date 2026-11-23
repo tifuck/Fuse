@@ -3,8 +3,8 @@
    the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
    these rules only lay out its rows. Amber from 75%, red from 95%. */
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
-  /* A status bar segment: each plan window as its name, five cells and its
-     percent. A phone keeps the fullest window. */
+  /* A status bar segment: two windows, each a letter, five cells and its
+     percent. A phone stacks them. */
   & .chat-box-bar .chat-pool { position: relative; display: flex; align-items: stretch; }
   & .chat-box-bar .chat-pool[hidden] { display: none !important; }
   & .chat-pool-btn { display: flex; align-items: center; height: auto; padding: 0 0.7rem; border: 0; border-radius: 0; background: none; color: var(--mute); font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
@@ -16,7 +16,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-win { --pool-tone: color-mix(in srgb, var(--mist) 62%, transparent); --pool-num: var(--mist); display: inline-flex; align-items: center; gap: 0.35rem; }
   & .chat-pool-win[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
   & .chat-pool-win[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
-  & .chat-pool-win em { color: var(--tl-dim); font-style: normal; }
+  & .chat-pool-win em { color: var(--tl-dim); font-style: normal; opacity: 0.7; }
   & .chat-pool-cells { display: inline-flex; gap: 2px; }
   & .chat-pool-cells i { width: 4px; height: 0.6rem; border-radius: 1px; background: color-mix(in srgb, var(--mist) 16%, transparent); }
   & .chat-pool-cells i.is-on { background: var(--pool-tone); }
@@ -101,7 +101,10 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
 }
 @media (max-width: 640px) {
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
-    & .chat-pool-win:not([data-tight]) { display: none; }
+    & .chat-pool-btn { padding: 0 0.55rem; }
+    & .chat-pool-wins { display: inline-grid; grid-template-columns: auto auto auto; align-items: center; gap: 2px 0.3rem; font-size: 0.5625rem; line-height: 0.5625rem; }
+    & .chat-pool-win { display: contents; }
+    & .chat-pool-cells i { width: 3px; height: 0.3rem; }
   }
 }
 @keyframes chat-pool-hop {

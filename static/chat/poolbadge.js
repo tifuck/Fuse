@@ -3,8 +3,8 @@
 // every limit, every account of the pool, and the user's sharing settings for
 // it (saved through the Sources page's endpoint). Each theme places
 // [data-pool-badge] holding a [data-pool-toggle] button and styles the parts:
-// the meter (the fullest window's name, a bar and its percent) or every
-// window's cells. The card is the permissions menu's frame, so it looks like the
+// the meter (two windows, each a letter, a bar and its percent) or the same
+// windows as cells. The card is the permissions menu's frame, so it looks like the
 // theme's own menus: a popover above the composer, a sheet on phones.
 import { S } from './state.js';
 import { escapeHtml } from './core.js';
@@ -35,12 +35,19 @@ let deps = { place: () => {}, overlays: null };
 const PREVIEW_MS = 60_000;
 const previews = new Map();
 let previewing = "";
+// An idle chat rereads its meter this often while the page is visible, and
+// the read starts the pool's usage refresh on the server; replies update it
+// anyway.
+const REFRESH_MS = 60_000;
+let shownAt = 0;
 let menu = null;
 let view = "usage";
 let saving = null;
 let notice = "";
 
 const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : "ok");
+// A window's one-letter tag: 5-hour H, Weekly W, Fable weekly F, Auto A.
+const letter = (w) => (String(w.label || "").replace(/^[\d\s-]+/, "")[0] || "·").toUpperCase();
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
 function windowsOf(list) {
@@ -72,6 +79,7 @@ function previewKey() {
 function previewed() {
   const hit = previews.get(previewKey());
   if (!hit?.pool || Date.now() - hit.at > PREVIEW_MS) return null;
+  shownAt = hit.at;
   S.pool = hit.pool;
   S.poolThread = S.currentId;
   S.poolModel = S.modelId;
@@ -83,27 +91,52 @@ function requestPreview() {
   const hit = previews.get(key);
   if (!S.modelId || previewing === key || (hit && Date.now() - hit.at <= PREVIEW_MS)) return;
   previewing = key;
+  askPool().then((pool) => {
+    if (previewing === key) previewing = "";
+    previews.set(key, { at: Date.now(), pool });
+    if (pool && previewKey() === key && !current()) renderPool();
+  });
+}
+
+// The account the chat's next request goes to (its pinned account while the
+// pin lasts), with its numbers as the server has them now.
+function askPool(refresh = false) {
   const query = new URLSearchParams({ model: S.modelId });
   if (S.currentId) query.set("thread", S.currentId);
-  fetch(`/chat/pool?${query}`, { headers: { "X-CSRF-Token": csrfToken() } })
+  if (refresh) query.set("refresh", "1");
+  return fetch(`/chat/pool?${query}`, { headers: { "X-CSRF-Token": csrfToken() } })
     .then((res) => (res.ok ? res.json() : null))
     .catch(() => null)
-    .then((data) => {
-      if (previewing === key) previewing = "";
-      const pool = data?.pool?.name ? data.pool : null;
-      previews.set(key, { at: Date.now(), pool });
-      if (pool && previewKey() === key && !current()) renderPool();
-    });
+    .then((data) => (data?.pool?.name ? data.pool : null));
+}
+
+// Rereads a shown meter older than REFRESH_MS, unless the page is hidden or
+// a reply is streaming. A failed read keeps what is shown.
+export function refreshPool() {
+  const pool = current();
+  if (!pool || saving || document.hidden || S.streaming || S.sending || Date.now() - shownAt < REFRESH_MS) return null;
+  const key = previewKey();
+  shownAt = Date.now();
+  return askPool(true).then((fresh) => {
+    if (!fresh || previewKey() !== key || current() !== pool) return;
+    // The preview has no hop: the same account keeps its "moved here" note.
+    if (!fresh.hop && fresh.id === pool.id) fresh.hop = pool.hop;
+    previews.set(key, { at: Date.now(), pool: fresh });
+    acceptPool(fresh);
+  });
 }
 
 // Wired once by chat.js: the composer's popover placement and the back stack.
 export function bindPool(next) {
   deps = { ...deps, ...next };
   window.addEventListener("resize", () => { if (menu && !menu.hidden) placeMenu(); });
+  window.setInterval(refreshPool, REFRESH_MS / 2);
+  document.addEventListener("visibilitychange", refreshPool);
 }
 
 export function acceptPool(pool) {
   const before = current();
+  shownAt = Date.now();
   S.pool = pool && typeof pool === "object" && pool.name ? pool : null;
   S.poolThread = S.currentId;
   S.poolModel = S.modelId;
@@ -127,19 +160,20 @@ export function renderPool(hopped = false) {
     requestPreview();
     return;
   }
-  const windows = windowsOf(pool.windows);
-  const tight = windows.reduce((a, w) => (!a || w.percent > a.percent ? w : a), null);
-  host.dataset.level = tight ? level(tight.percent) : "none";
+  // Two rows: the plan's windows (5-hour, weekly), topped up with a model or
+  // product limit when the plan has only one (Cursor's monthly and Auto).
+  const shown = windowsOf(pool.windows).concat(windowsOf(pool.limits)).slice(0, 2);
   const name = `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}`;
-  const label = tight ? `${name}: ${tight.percent}% of the ${tight.label.toLowerCase()} limit used` : `${name}: no usage reported yet`;
+  const label = shown.length ? `${name}: ${shown.map((w) => `${w.label} ${w.percent}%`).join(", ")} used` : `${name}: no usage reported yet`;
   btn.setAttribute("aria-label", label);
   btn.title = label;
+  const rows = shown.length ? shown : [{ percent: 0, empty: true }];
   btn.innerHTML =
-    `<span class="chat-pool-meter" aria-hidden="true">${tight ? `<em>${escapeHtml(tight.short || "")}</em>` : ""}` +
-    `<span class="chat-pool-track"><i style="width: ${tight ? tight.percent : 0}%"></i></span>` +
-    `<b>${tight ? tight.percent + "%" : "–"}</b></span>` +
-    `<span class="chat-pool-wins" aria-hidden="true">${windows.map((w) =>
-      `<span class="chat-pool-win" data-level="${level(w.percent)}"${w === tight ? " data-tight" : ""}><em>${escapeHtml(w.short || "")}</em>` +
+    `<span class="chat-pool-meter" aria-hidden="true">${rows.map((w) =>
+      `<span class="chat-pool-row" data-level="${level(w.percent)}"><em>${w.empty ? "" : letter(w)}</em>` +
+      `<span class="chat-pool-track"><i style="width: ${w.percent}%"></i></span><b>${w.empty ? "–" : w.percent + "%"}</b></span>`).join("")}</span>` +
+    `<span class="chat-pool-wins" aria-hidden="true">${shown.map((w) =>
+      `<span class="chat-pool-win" data-level="${level(w.percent)}"><em>${letter(w)}</em>` +
       `<span class="chat-pool-cells">${cells(w.percent)}</span><b>${w.percent}%</b></span>`).join("")}</span>`;
   if (menu && !menu.hidden) fillMenu(pool);
   if (hopped && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
