@@ -45,7 +45,7 @@ let view = "usage";
 let saving = null;
 let notice = "";
 
-const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : "ok");
+const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : pct >= 50 ? "mid" : "ok");
 // A window's one-letter tag: 5-hour H, Weekly W, Fable weekly F, Auto A.
 const letter = (w) => (String(w.label || "").replace(/^[\d\s-]+/, "")[0] || "·").toUpperCase();
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));

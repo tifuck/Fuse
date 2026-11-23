@@ -73,8 +73,9 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .tail-receipt { display: inline-flex; flex-wrap: wrap; gap: 0 1rem; font-variant-numeric: tabular-nums; }
   & .tail-receipt b { font-weight: 500; color: var(--mist); }
   & .tail-burst-stat { flex: none; margin-left: auto; display: inline-flex; gap: 0.9rem; padding-left: 0.9rem; font-variant-numeric: tabular-nums; }
-  & :is(.tail-plus) { color: var(--ok); }
-  & :is(.tail-minus, .tail-fail) { color: var(--fault); }
+  & .tail-plus { color: var(--diff-add); }
+  & .tail-minus { color: var(--diff-del); }
+  & .tail-fail { color: var(--fault); }
 
   /* ---- a call: verb, subject, leader, result ---- */
   & .chat-activity:not(.is-bare) .chat-timeline { margin: 0; padding: 0.1rem 0 0; gap: 0 !important; }

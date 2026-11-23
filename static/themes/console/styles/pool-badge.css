@@ -1,7 +1,9 @@
 /* The plan usage meter (static/chat/poolbadge.js, app/sources/pool_badge.py):
    the pool account's plan usage beside the model, and its card. The card is
    the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
-   these rules only lay out its rows. Amber from 75%, red from 95%. */
+   these rules only lay out its rows. Usage reads gray, white from 50%, yellow
+   from 75%, red from 95%: fixed status colors, never the accent or the
+   palette's own. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   /* Its own composer column before the model, the tools' rhythm apart from it. */
   & .chat-pool { position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
@@ -12,9 +14,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-btn { display: inline-flex; align-items: center; height: var(--composer-row); padding: 0; border: 0; background: none; color: var(--mute); cursor: pointer; -webkit-tap-highlight-color: transparent; }
   & .chat-pool-btn:focus-visible { outline: none; }
   & .chat-pool-btn:focus-visible .chat-pool-meter { outline: 2px solid var(--steel); outline-offset: 1px; }
-  & .chat-pool-row { --pool-tone: var(--steel); --pool-num: var(--mist); display: contents; }
+  & .chat-pool-row { --pool-tone: var(--mute); --pool-num: var(--mute); display: contents; }
+  & .chat-pool-row[data-level="mid"] { --pool-tone: var(--mist); --pool-num: var(--mist); }
   & .chat-pool-row[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
-  & .chat-pool-row[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
+  & .chat-pool-row[data-level="hot"] { --pool-tone: var(--diff-del); --pool-num: var(--diff-del); }
   & .chat-pool-meter {
     display: inline-grid; grid-template-columns: auto auto auto; align-items: center; align-content: center; gap: 2px 0.4rem; height: 1.375rem; padding: 0 0.45rem; box-sizing: border-box;
     border: 1px solid color-mix(in srgb, var(--mist) 16%, var(--ink)); border-radius: 5px; background: none;
@@ -45,13 +48,14 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-name { display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; color: var(--mist); text-overflow: ellipsis; white-space: nowrap; }
   & .chat-pool-name b { flex: none; min-width: 1ch; font-weight: 700; }
   & .chat-pool-who { overflow: hidden; color: var(--mute); text-overflow: ellipsis; }
-  & .chat-pool-bar { --pool-tone: var(--steel); height: 4px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--mist) 14%, transparent); }
+  & .chat-pool-bar { --pool-tone: var(--mute); height: 4px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--mist) 14%, transparent); }
   & .chat-pool-bar i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); }
+  & .chat-pool-line[data-level="mid"] .chat-pool-bar { --pool-tone: var(--mist); }
   & .chat-pool-line[data-level="warn"] .chat-pool-bar { --pool-tone: var(--status-live); }
-  & .chat-pool-line[data-level="hot"] .chat-pool-bar { --pool-tone: var(--fault); }
+  & .chat-pool-line[data-level="hot"] .chat-pool-bar { --pool-tone: var(--diff-del); }
   & .chat-pool-pct { color: var(--mist); font: 0.72rem/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
   & .chat-pool-meta { overflow: hidden; text-align: right; text-overflow: ellipsis; }
-  & .chat-pool-line[data-status="current"] .chat-pool-meta { color: var(--brass); }
+  & .chat-pool-line[data-status="current"] .chat-pool-meta { color: var(--mist); }
   & .chat-pool-line[data-status="limit"] .chat-pool-meta { color: var(--status-live); }
   & .chat-pool-line[data-status="full"] .chat-pool-meta { color: var(--fault); }
   & .chat-pool-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }

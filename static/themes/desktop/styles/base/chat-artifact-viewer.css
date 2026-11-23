@@ -220,8 +220,8 @@
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-alert > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-alert-close { display: inline-flex; padding: 0.35rem; border-radius: 6px; color: var(--chat-secondary); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-alert-close:hover { background: var(--raise); color: var(--mist); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-source.is-diff .is-add { color: var(--ok, #6ee7a0); }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-source.is-diff .is-del { color: var(--fault); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-source.is-diff .is-add { color: var(--diff-add); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-source.is-diff .is-del { color: var(--diff-del); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-source.is-diff .is-hunk { color: var(--chat-secondary); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-list { flex: 1; overflow: auto; padding: 0.6rem 0.85rem 1rem; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-artifact-list[hidden] { display: none; }
