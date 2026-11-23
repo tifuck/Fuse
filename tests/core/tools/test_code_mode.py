@@ -404,9 +404,11 @@ def test_the_wrap_tip_follows_run_code_calls_in_a_row_that_only_passed_one_call_
     state, tip = tool_jobs.wrap_tip(run(3, 1), state)
     assert state == (2, 2) and "Your last 2 run_code calls each wrapped one" in tip
     # Each further one gets the tip again, up to the turn's limit.
-    for i in range(4, 8):
+    for i in range(4, 2 + tool_jobs.WRAP_TIPS):
         state, tip = tool_jobs.wrap_tip(run(i, 1), state)
-    assert state == (6, tool_jobs.WRAP_TIPS) and not tip
+        assert tip
+    state, tip = tool_jobs.wrap_tip(run(99, 1), state)
+    assert state == (tool_jobs.WRAP_TIPS + 1, tool_jobs.WRAP_TIPS) and not tip
     # A run of several calls, or one that works on its single result, ends the row.
     assert tool_jobs.wrap_tip(run(9, 2), (2, 0))[0] == (0, 0)
     assert tool_jobs.wrap_tip(run(10, 1, code="a\nb\nc\nd"), (2, 0))[0] == (0, 0)

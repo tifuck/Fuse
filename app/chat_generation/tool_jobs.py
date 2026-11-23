@@ -334,10 +334,12 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
 # in the tool-choice eval (scripts/qa/tool_choice.py) one such call was enough
 # for most later steps to be another. So the first one gets a tip, and so does
 # each one after it, WRAP_TIPS times a turn at most; that cost no batching in
-# the same eval. The tip is an order that names the direct call: advice ("when
-# a step is one call, ...") changed nothing there.
+# the same eval. A model that ignored three tips still took one of the next
+# (15 of 20 with the cap lifted, 6 of 19 with three), so the cap only bounds
+# the nagging in a long turn. The tip is an order that names the direct call:
+# advice ("when a step is one call, ...") changed nothing there.
 WRAP_TIP_AFTER = 1
-WRAP_TIPS = 3
+WRAP_TIPS = 10
 WRAP_LINES = 3
 
 

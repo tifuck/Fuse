@@ -193,7 +193,7 @@ CASES = {
                 "ask": CALLERS_ASK, "seed": _seed_grep, "good": TOGETHER, **CALLER_FILES},
     "multi-edit": {"about": "the same edit in every file that uses it: all edits in one step",
                    "ask": "Rename the function fetchUser to loadUser in every file under src/ that uses it.",
-                   "rounds": 4, "grade": "edit", "out": ("\n".join(CALLERS[:6]),), "good": TOGETHER, **CALLER_FILES},
+                   "rounds": 6, "grade": "edit", "out": ("\n".join(CALLERS[:6]),), "good": TOGETHER, **CALLER_FILES},
     "wrap-one": {"about": "four steps after one wrapped lone call, without the tips: is the last one direct?",
                  "ask": BINARY_ASK, "seed": _seed_one_wrap, "rounds": 4, "last": True, "out": BINARY_OUT[1:],
                  "good": NOT_WRAP},
@@ -289,6 +289,11 @@ def _canned(name: str, args: dict, case: dict, i: int) -> str:
         return "\n".join(case.get("files") or ("libclient.so",))
     if name == "read_file" and str(args.get("path") or "").endswith(".js"):
         return _file_text(str(args["path"]))
+    if name == "grep" and case.get("files") and args.get("output_mode") in (None, "", "content"):
+        # Content lines, as the tool gives them: path:line:text.
+        path = str(args.get("path") or "")
+        files = [f for f in case["files"] if f.startswith(path.rstrip("/"))] or case["files"]
+        return "\n".join(f"{f}:5:    const user = await fetchUser(id);" for f in files)
     if name in ("search_replace", "write_file"):
         return f"Edited {args.get('path') or 'the file'}."
     return out[max(0, min(i, len(out) - 1))] if out else "ok"
