@@ -203,10 +203,10 @@ export function createQueue(ctx) {
     S.permChip.classList.toggle("is-bypass", mode === "bypass");
     S.permChip.setAttribute("aria-expanded", S.permsOpen ? "true" : "false");
     const title = mode === "bypass"
-      ? "Bypass on — no permission prompts"
-      : (mode === "auto" ? "Auto-approve on — Jev allows ordinary calls" : "Permission prompts on");
+      ? "Bypass: no permission prompts"
+      : (mode === "auto" ? "Auto: a reviewer model allows routine calls" : "Ask: permission prompts on");
     S.permChip.setAttribute("title", title);
-    const label = mode === "bypass" ? "Bypass on" : (mode === "auto" ? "Auto" : "Bypass");
+    const label = mode === "bypass" ? "Bypass" : (mode === "auto" ? "Auto" : "Ask");
     if (permChipLabel) permChipLabel.textContent = label;
     // The spoken name starts with the visible word so voice control can say it;
     // the button opens the menu, so it carries no pressed state.

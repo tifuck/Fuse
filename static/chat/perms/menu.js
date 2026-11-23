@@ -18,8 +18,8 @@ const PERMS_ICON_DIR = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hid
 const PERMS_ICON_FILE = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2h5l3 3v9H4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 2v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
 const PERMS_MODES = [
-  { id: "ask", label: "Ask", hint: "Calls outside these directories wait for your answer." },
-  { id: "auto", label: "Auto", hint: "Jev reviews each call and allows routine ones. Dangerous commands and secrets still ask." },
+  { id: "ask", label: "Ask", hint: "Calls outside these folders wait for your answer." },
+  { id: "auto", label: "Auto", hint: "A reviewer model reviews each call and allows routine ones. Dangerous commands and secrets still ask." },
   { id: "bypass", label: "Bypass", hint: "No prompts. Read-only projects still apply." },
 ];
 
@@ -158,7 +158,7 @@ export function createMenu(ctx) {
     menu.hidden = true;
     menu.innerHTML =
       '<div class="chat-picker-head"><p>Permissions</p><button type="button" class="chat-menu-close" data-perms-close aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>' +
-      '<div class="chat-picker-searchrow"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.4 10.4L13.8 13.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input type="search" class="chat-picker-search" data-perms-search placeholder="Filter machines and directories" aria-label="Filter machines and directories" autocomplete="off" spellcheck="false"><kbd class="chat-picker-kbd" aria-hidden="true">esc</kbd></div>' +
+      '<div class="chat-picker-searchrow"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.4 10.4L13.8 13.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input type="search" class="chat-picker-search" data-perms-search placeholder="Filter machines and folders" aria-label="Filter machines and folders" autocomplete="off" spellcheck="false"><kbd class="chat-picker-kbd" aria-hidden="true">esc</kbd></div>' +
       '<div class="chat-perms-list" data-perms-list></div>' +
       '<div class="chat-perms-foot"><div class="chat-perms-mode"><p class="chat-perms-mode-label" aria-hidden="true">Mode</p><div class="chat-perms-modes" data-perms-modes role="radiogroup" aria-label="Permission mode" aria-describedby="chat-perms-hint">' +
       PERMS_MODES.map((m) => `<button type="button" role="radio" aria-checked="false" data-perms-mode="${m.id}">${m.label}</button>`).join("") +
@@ -224,7 +224,7 @@ export function createMenu(ctx) {
       btn.setAttribute("aria-checked", on ? "true" : "false");
       btn.tabIndex = on ? 0 : -1;
       btn.disabled = id === "auto" && !autoAvailable && !on;
-      btn.title = btn.disabled ? "Add an OpenRouter key on Sources to enable auto-approve." : "";
+      btn.title = btn.disabled ? "Add an OpenRouter key on Sources to enable Auto." : "";
     });
     const hint = permsMenuEl.querySelector("[data-perms-hint]");
     if (hint) {
