@@ -126,8 +126,9 @@ html[data-chat-view="tail"] .chat[data-view="tail"] { --chat-col: 100%; --dock-o
 
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] { letter-spacing: 0; }
 
+/* The inherited square-corner reset: :where() keeps it under the Tail layer (tail*.css), which sets its own corners. */
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"],
-html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] *:not(.chat-view-menu):not(.chat-view-menu *):not(.chat-view-backdrop):not(.chat-box):not(.chat-dock-dots):not(.chat-dock-dots *):not(.chat-activity-spin):not(.chat-activity-spin *) {
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] :where(*:not(.chat-view-menu):not(.chat-view-menu *):not(.chat-view-backdrop):not(.chat-box):not(.chat-dock-dots):not(.chat-dock-dots *):not(.chat-activity-spin):not(.chat-activity-spin *)) {
   border-radius: 0;
   box-shadow: none;
 }

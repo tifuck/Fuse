@@ -54,7 +54,7 @@ function toolStateHtml(running, failed, interrupted, statusLabel) {
 function toolOpenHtml(kind, id) {
     if (!id) return '<span class="chat-step-open is-empty" aria-hidden="true">Open</span>';
     const attr = kind === "artifact" ? "data-open-artifact" : "data-open-agent";
-    return `<button type="button" class="chat-step-open" ${attr}="${deps.escapeHtml(id)}" aria-label="Open ${kind === "artifact" ? "artifact" : "agent"}">Open${(`<span class="chat-open-target">&nbsp;${kind === "artifact" ? "artifact" : "agent"} ↗</span>`)}</button>`;
+    return `<button type="button" class="chat-step-open" ${attr}="${deps.escapeHtml(id)}" aria-label="Open ${kind === "artifact" ? "artifact" : "subagent"}">Open${(`<span class="chat-open-target">&nbsp;${kind === "artifact" ? "artifact" : "subagent"} ↗</span>`)}</button>`;
   }
 
 function toolCaretHtml(expandable, open) {
@@ -78,7 +78,7 @@ function toolHeadHtml({ line, title, running, failed, interrupted, expandable, o
         ? `<span class="chat-step-caret" aria-hidden="true">${deps.STEP_CHEVRON}</span>`
         : toolCaretHtml(false);
     return `<div class="chat-step-head">${copy}${toolStateHtml(running, failed, interrupted, statusLabel)}${toolOpenHtml(openKind, openId)}${caret}` +
-      (contextHost && !openId ? `<span class="chat-step-host" title="Host ${deps.escapeHtml(contextHost)}">@${deps.escapeHtml(contextHost)}</span>` : "") + `</div>`;
+      (contextHost && !openId ? `<span class="chat-step-host" title="Machine ${deps.escapeHtml(contextHost)}">@${deps.escapeHtml(contextHost)}</span>` : "") + `</div>`;
   }
 
   return { consoleVerb, toolStateHtml, toolOpenHtml, toolCaretHtml, toolHeadHtml };

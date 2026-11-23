@@ -26,7 +26,9 @@ base.
   transcript column spans the full width, from the left; with the pane open
   it gives up the pane's width.
 - **Rows:** 1.75rem (2.25rem at ≤800px), radius 6px, hover and selection a
-  6% wash.
+  6% wash. One focus ring: 2px accent, inset.
+- **Labels:** sentence case in the chrome (tabs, menus, headings); lower case
+  in the verb column, the receipt and the status bar.
 
 ## Transcript
 
@@ -41,7 +43,7 @@ base.
 - **A call** is one row: verb (lower case, 9ch, so an 8-letter verb keeps a gap), subject, dotted leader,
   result. Edits read `+N −M`; failures are red. No host tag (the pane's head
   has it). A running command prints its newest output line under the row.
-- **The receipt** ends a turn: mark, `done` / `interrupted` / `failed`,
+- **The receipt** ends a turn: mark, `done` / `stopped` / `failed`,
   duration, calls, files with `+N −M`, failures, speed, time.
 
 ## Pane
@@ -74,8 +76,8 @@ base.
 
 - The prompt line: accent `›`, the input, send (stop while running) at the
   right. Its top hairline takes the accent on focus.
-- Under it the status bar (26px, 36px on phones): the permission mode as an
-  accent chip, attach, the model, web search; on the right the project's
+- Under it the status bar (26px, 36px on phones): the permission mode (ask,
+  auto or bypass; an accent chip while prompts are off), attach, the model, web search; on the right the project's
   machine and path, the machine's cpu and ram while it reports them, then
   context use. Menus open over their own control.
 - A permission ask sits above the prompt line, inside the column's gutters.

@@ -45,7 +45,7 @@
   z-index: 44;
   border: 0;
   padding: 0;
-  background: rgba(8, 10, 9, 0.58);
+  background: var(--scrim);
   animation: fuse-dial-fade 180ms ease both;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) .fuse-dial-hub {

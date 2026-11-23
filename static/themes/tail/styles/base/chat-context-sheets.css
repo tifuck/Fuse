@@ -7,7 +7,7 @@
   z-index: 20;
   border: 0;
   padding: 0;
-  background: rgb(8 10 9 / 55%);
+  background: var(--scrim);
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-sheet-backdrop[hidden] { display: none !important; }
