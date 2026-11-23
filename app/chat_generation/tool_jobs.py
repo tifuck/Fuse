@@ -305,19 +305,20 @@ def _by_call(jobs: list[ToolJob]) -> list[list[ToolJob]]:
 
 # A turn that makes this many file calls one per step, without a run_code
 # that worked, gets one tip, naming those calls, on its next tool result: a
-# model that gives up on code after one failed run is nudged back. Calls made
-# together in one step do not count: they already share a round trip. It
+# model that gives up on code after one failed run is nudged back. Only a step
+# that is one file call and nothing else counts: a call made beside others
+# (a write next to the command that runs it) already shares a round trip. It
 # rides the conversation, so the cached system prompt is untouched.
 CODE_TIP_AFTER = 3
 _CODE_TIP_TOOLS = frozenset({"read_file", "list_dir", "grep", "glob", "write_file", "search_replace"})
 
 
 def code_tip_count(jobs: list[ToolJob], seen: collections.Counter) -> collections.Counter | None:
-    """File calls so far this turn that had a step to themselves, per tool; None once a run_code call has worked."""
+    """File calls so far this turn that were a step's only call, per tool; None once a run_code call has worked."""
     if any(j.name == "run_code" and j.trace.get("status") == "done" for j in jobs):
         return None
-    direct = [j.name for j in jobs if not j.parent and j.name in _CODE_TIP_TOOLS]
-    return seen + collections.Counter(direct) if len(direct) == 1 else seen
+    calls = [j.name for j in jobs if not j.parent]
+    return seen + collections.Counter(calls) if len(calls) == 1 and calls[0] in _CODE_TIP_TOOLS else seen
 
 
 def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
@@ -329,13 +330,13 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
 
 # The other way round. A run_code call that only passes one call's result
 # through (one call, WRAP_LINES lines of code or fewer) is a slower direct
-# call that hides a command's exit code, and a model that has made a few
-# copies its own history: in the tool-choice eval (scripts/qa/tool_choice.py)
-# nearly every step after three of them was another. WRAP_TIP_AFTER in a row
-# get a tip, and so does each one after it, WRAP_TIPS times a turn at most.
-# The tip is an order that names the direct call: advice ("when a step is one
-# call, ...") changed nothing in that eval.
-WRAP_TIP_AFTER = 3
+# call that hides a command's exit code, and a model copies its own history:
+# in the tool-choice eval (scripts/qa/tool_choice.py) one such call was enough
+# for most later steps to be another. So the first one gets a tip, and so does
+# each one after it, WRAP_TIPS times a turn at most; that cost no batching in
+# the same eval. The tip is an order that names the direct call: advice ("when
+# a step is one call, ...") changed nothing there.
+WRAP_TIP_AFTER = 1
 WRAP_TIPS = 3
 WRAP_LINES = 3
 
@@ -360,8 +361,9 @@ def wrap_tip(jobs: list[ToolJob], state: tuple[int, int] = (0, 0)) -> tuple[tupl
     if not tool or streak < WRAP_TIP_AFTER or given >= WRAP_TIPS:
         return (streak, given), ""
     hides = " and hides the command's exit code" if tool == "run_terminal_command" else ""
+    which = "Your last run_code call" if streak == 1 else f"Your last {streak} run_code calls each"
     return (streak, given + 1), (
-        f"[Fuse] Your last {streak} run_code calls each wrapped one {tool} call and returned its result unchanged. "
+        f"[Fuse] {which} wrapped one {tool} call and returned its result unchanged. "
         f"That costs more than the call itself{hides}. Make your next call directly: {tool}({{...}}), not run_code. "
         "Use run_code only when the code makes several calls or works on a result before returning it.")
 

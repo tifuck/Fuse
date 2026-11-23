@@ -373,11 +373,13 @@ def test_the_run_code_tip_counts_file_calls_made_one_per_step_and_never_after_a_
         return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}", trace={"status": status}) for i, name in enumerate(names)]
 
     seen = collections.Counter()
-    for step in (("read_file",), ("read_file", "web_search"), ("grep", "run_terminal_command")):
+    for step in (("read_file",), ("read_file",), ("grep",)):
         seen = tool_jobs.code_tip_count(jobs(*step), seen)
     assert seen == collections.Counter(read_file=2, grep=1)
-    # Calls made together in one step already share a round trip.
-    assert tool_jobs.code_tip_count(jobs("read_file", "grep", "glob"), seen) == seen
+    # A call made beside others already shares a round trip: file calls together, or a write next to the
+    # command that runs it.
+    for step in (("read_file", "grep", "glob"), ("write_file", "run_terminal_command"), ("read_file", "web_search")):
+        assert tool_jobs.code_tip_count(jobs(*step), seen) == seen
     # A model that gives up on code after a failed run still gets the tip.
     assert tool_jobs.code_tip_count(jobs("run_code", status="error"), seen) == seen
     assert tool_jobs.code_tip_count(jobs("run_code", "read_file"), seen) is None
@@ -392,18 +394,19 @@ def test_the_wrap_tip_follows_run_code_calls_in_a_row_that_only_passed_one_call_
         return [head] + [ToolJob(0, f"c{i}", "run_terminal_command", "{}", f"ts_{i}_c{n}", parent=f"ts_{i}",
                                  trace={"status": "done"}) for n in range(calls)]
 
-    state, tip = tool_jobs.wrap_tip(run(0, 1) + run(1, 1))
-    assert state == (2, 0) and not tip
-    # Failed runs and runs that made no call leave the row alone.
-    assert tool_jobs.wrap_tip(run(2, 1, status="error") + run(3, 0), state) == (state, "")
-    state, tip = tool_jobs.wrap_tip(run(4, 1), state)
-    assert state == (3, 1)
-    assert "Your last 3 run_code calls each wrapped one run_terminal_command call" in tip
+    # The first one gets the tip: one is enough for a model to copy it.
+    state, tip = tool_jobs.wrap_tip(run(0, 1))
+    assert state == (1, 1)
+    assert "Your last run_code call wrapped one run_terminal_command call" in tip
     assert "Make your next call directly: run_terminal_command({...}), not run_code" in tip
+    # Failed runs and runs that made no call leave the row alone.
+    assert tool_jobs.wrap_tip(run(1, 1, status="error") + run(2, 0), state) == (state, "")
+    state, tip = tool_jobs.wrap_tip(run(3, 1), state)
+    assert state == (2, 2) and "Your last 2 run_code calls each wrapped one" in tip
     # Each further one gets the tip again, up to the turn's limit.
-    for i in range(5, 9):
+    for i in range(4, 8):
         state, tip = tool_jobs.wrap_tip(run(i, 1), state)
-    assert state == (7, tool_jobs.WRAP_TIPS) and not tip
+    assert state == (6, tool_jobs.WRAP_TIPS) and not tip
     # A run of several calls, or one that works on its single result, ends the row.
     assert tool_jobs.wrap_tip(run(9, 2), (2, 0))[0] == (0, 0)
     assert tool_jobs.wrap_tip(run(10, 1, code="a\nb\nc\nd"), (2, 0))[0] == (0, 0)

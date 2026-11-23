@@ -18,14 +18,19 @@ and compare the rates.
 
 A step is one model reply, classified as:
   direct   one direct file or shell call
-  batch    several direct calls in one step
+  batch    several direct calls in one step, or one call that covers every
+           target (a shell loop or glob, a command naming several targets, a
+           grep over a folder): one round trip either way
   wrap     run_code around one call, in three lines or fewer: a slower direct call
   filter   run_code around one call, with code that works on its result
   snippet  run_code with several calls or a loop over calls
 Each case names the classes that are good for it; the summary is good samples
 over samples that made a file or shell call. A case of several steps counts a
 sample once: as a wrap if any step wrapped (wraps come in runs, so steps are
-not independent), else as its first step.
+not independent), else as its first step; multi-edit counts its first step
+that edits (a search first is fine; then all edits in one step, or one each?).
+A sample's calls are printed with --show: check a surprising rate there
+before trusting it (a loop the classifier missed once read as one per step).
 Seeded cases start from a made-up history; the "-tip" ones add the tips the
 checkout's runtime would (tool_jobs.wrap_tip after every step, add_code_tip
 once), so each pair shows what the tip changes. The wrap pair runs three steps
@@ -86,6 +91,13 @@ SERVICE_OUT = (
 CALLERS_ASK = "Which files call fetchUser, and how does each caller handle a failed fetch?"
 CALLERS = tuple(f"src/{name}.js" for name in ("account/profile", "account/settings", "admin/users", "billing/invoice",
                                                "billing/plan", "home/feed", "search/people", "support/ticket", "team/members"))
+UNITS = ("worker-ingest", "worker-resize", "worker-notify", "worker-billing", "worker-export")
+UNITS_ASK = ("The queue's worker units run on this machine. Check each one's recent logs for errors and tell me which "
+             "are failing.")
+CALLER_FILES = {"targets": CALLERS, "files": CALLERS}
+# One shell call that reaches every target: a loop, xargs, a glob, find, rg or a recursive grep.
+FOLDER_WIDE = re.compile(r"\bfor\s|\bwhile\s|\bxargs\b|\*|\bfind\b|\brg\b|\bgrep\b[^|;&]*\s-[a-zA-Z]*[rR]")
+EDITS = re.compile(r"\bsed\s+-i|\bperl\s+-[a-z]*i")
 
 
 def _file_text(path: str) -> str:
@@ -96,11 +108,13 @@ def _file_text(path: str) -> str:
     return "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
 
 
-def _result(name: str, body: str, sites: int = 1) -> str:
-    """A canned result in the shape the runtime gives the model."""
+def _result(name: str, body: str, helpers=()) -> str:
+    """A canned result in the shape the runtime gives the model; helpers are the calls a run_code made."""
     if name == "run_code":
-        n = max(sites, 1)
-        return f"{body}\n[Fuse: {n} call{'' if n == 1 else 's'}: run_terminal_command×{n}]"
+        used = collections.Counter(helpers)
+        n = sum(used.values())
+        calls = f"{n} call{'' if n == 1 else 's'}: " + ", ".join(f"{k}×{v}" for k, v in used.items()) if n else "no tool calls"
+        return f"{body}\n[Fuse: {calls}]"
     if name == "run_terminal_command":
         return f"From host qa-box:\nstatus: completed\nexit_code: 0\nduration_ms: 41\n\n{body}"
     return f"From host qa-box:\n{body}" if name in WORK else "ok"
@@ -110,7 +124,13 @@ def _step(msgs: list[dict], name: str, args: dict, body: str) -> None:
     ident = f"seed_{len(msgs)}"
     msgs.append({"role": "assistant", "content": "", "tool_calls": [
         {"id": ident, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]})
-    msgs.append({"role": "tool", "tool_call_id": ident, "content": _result(name, body)})
+    msgs.append({"role": "tool", "tool_call_id": ident, "content": _result(name, body, SITE.findall(args.get("code") or ""))})
+
+
+def _wrapped(msgs: list[dict], call: str, body: str) -> None:
+    """One step that wrapped a single call in run_code and returned its result."""
+    value = "r.output" if call.startswith("run_terminal_command") else "r"
+    _step(msgs, "run_code", {"code": f"const r = await {call};\nreturn {value};", "description": "Look"}, body)
 
 
 def _seed_grep(msgs: list[dict], files=CALLERS[:6]) -> None:
@@ -124,6 +144,19 @@ def _seed_wraps(msgs: list[dict]) -> None:
     for command, out in zip(commands, BINARY_OUT):
         code = f"const r = await run_terminal_command({{command: {json.dumps(command)}}});\nreturn r.output;"
         _step(msgs, "run_code", {"code": code, "description": "Inspect the binary"}, out)
+
+
+def _seed_one_wrap(msgs: list[dict]) -> None:
+    _wrapped(msgs, 'run_terminal_command({command: "file libclient.so"})', BINARY_OUT[0])
+
+
+def _seed_wrapped_grep(msgs: list[dict]) -> None:
+    _wrapped(msgs, 'grep({pattern: "fetchUser\\\\(", output_mode: "files_with_matches"})', "\n".join(CALLERS[:6]))
+
+
+def _seed_wrapped_units(msgs: list[dict]) -> None:
+    _wrapped(msgs, "run_terminal_command({command: \"systemctl list-units 'worker-*' --no-legend\"})",
+             "\n".join(f"{unit}.service loaded active running Queue worker" for unit in UNITS))
 
 
 def _seed_singles(msgs: list[dict]) -> None:
@@ -157,10 +190,27 @@ CASES = {
     "investigate-service": {"about": "the same, on a failing service",
                             "ask": SERVICE_ASK, "rounds": 4, "out": SERVICE_OUT, "good": NOT_WRAP},
     "fan-out": {"about": "six files to read are known: one step for all of them",
-                "ask": CALLERS_ASK, "seed": _seed_grep, "good": TOGETHER},
-    "multi-edit": {"about": "the same edit in every file that matches: a snippet",
+                "ask": CALLERS_ASK, "seed": _seed_grep, "good": TOGETHER, **CALLER_FILES},
+    "multi-edit": {"about": "the same edit in every file that uses it: all edits in one step",
                    "ask": "Rename the function fetchUser to loadUser in every file under src/ that uses it.",
-                   "good": frozenset({"snippet"})},
+                   "rounds": 4, "grade": "edit", "out": ("\n".join(CALLERS[:6]),), "good": TOGETHER, **CALLER_FILES},
+    "wrap-one": {"about": "four steps after one wrapped lone call, without the tips: is the last one direct?",
+                 "ask": BINARY_ASK, "seed": _seed_one_wrap, "rounds": 4, "last": True, "out": BINARY_OUT[1:],
+                 "good": NOT_WRAP},
+    "wrap-one-tip": {"about": "the same history, with the runtime's tips",
+                     "ask": BINARY_ASK, "seed": _seed_one_wrap, "tip": "wrap", "rounds": 4, "last": True,
+                     "out": BINARY_OUT[1:], "good": NOT_WRAP},
+    "fan-out-wrapped": {"about": "six files to read, found by a wrapped grep, without the tips: one step for all",
+                        "ask": CALLERS_ASK, "seed": _seed_wrapped_grep, "good": TOGETHER, **CALLER_FILES},
+    "fan-out-wrapped-tip": {"about": "the same history, with the runtime's tips: does the tip cost batching?",
+                            "ask": CALLERS_ASK, "seed": _seed_wrapped_grep, "tip": "wrap", "good": TOGETHER,
+                            **CALLER_FILES},
+    "units-wrapped": {"about": "five services to check, listed by a wrapped command, without the tips: one step for all",
+                      "ask": UNITS_ASK, "seed": _seed_wrapped_units, "out": ("-- No entries --",), "targets": UNITS,
+                      "good": TOGETHER},
+    "units-wrapped-tip": {"about": "the same history, with the runtime's tips: does the tip cost batching?",
+                          "ask": UNITS_ASK, "seed": _seed_wrapped_units, "tip": "wrap", "out": ("-- No entries --",),
+                          "targets": UNITS, "good": TOGETHER},
     "wrap-habit": {"about": "three steps after three wrapped lone calls, without the tips: is the last one direct?",
                    "ask": BINARY_ASK, "seed": _seed_wraps, "rounds": 3, "last": True, "out": BINARY_OUT[2:],
                    "good": NOT_WRAP},
@@ -168,50 +218,79 @@ CASES = {
                  "ask": BINARY_ASK, "seed": _seed_wraps, "tip": "wrap", "rounds": 3, "last": True,
                  "out": BINARY_OUT[2:], "good": NOT_WRAP},
     "single-habit": {"about": "after five files read one per step, four known files left, without the tip",
-                     "ask": CALLERS_ASK, "seed": _seed_singles, "good": TOGETHER},
+                     "ask": CALLERS_ASK, "seed": _seed_singles, "good": TOGETHER, **CALLER_FILES},
     "single-tip": {"about": "the same history, with the runtime's tip",
-                   "ask": CALLERS_ASK, "seed": _seed_singles, "tip": "single", "good": TOGETHER},
+                   "ask": CALLERS_ASK, "seed": _seed_singles, "tip": "single", "good": TOGETHER, **CALLER_FILES},
 }
 
 
-def classify_code(code: str) -> tuple[str, int]:
-    sites = [m.start() for m in SITE.finditer(code)]
+def classify_code(code: str) -> tuple[str, list[str]]:
+    """A snippet's class, and the helpers it calls."""
+    sites = list(SITE.finditer(code))
     loop = LOOP.search(code)
     # A loop counts only when a call sits inside it (not a .map over one result's lines).
-    if len(sites) > 1 or (loop and any(at > loop.start() for at in sites)):
-        return "snippet", len(sites)
-    return ("wrap" if len([line for line in code.splitlines() if line.strip()]) <= 3 else "filter"), len(sites)
+    if len(sites) > 1 or (loop and any(site.start() > loop.start() for site in sites)):
+        kind = "snippet"
+    else:
+        kind = "wrap" if len([line for line in code.splitlines() if line.strip()]) <= 3 else "filter"
+    return kind, [site.group(1) for site in sites]
 
 
-def classify(calls: list[dict]) -> tuple[str, list[int]]:
-    """A step's class, and per call how many calls its code makes (for the canned result)."""
-    kinds, sites = [], []
+def _covers(name: str, args: dict, targets) -> bool:
+    """One direct call that reaches every target: as good as several calls in one step."""
+    if name == "run_terminal_command":
+        command = str(args.get("command") or "")
+        return bool(FOLDER_WIDE.search(command)) or sum(target in command for target in targets) >= 2
+    if name == "grep":
+        # Content lines from a folder (not one file): every match in one call.
+        return args.get("output_mode") in (None, "", "content") and not re.search(r"\.\w+$", str(args.get("path") or ""))
+    return False
+
+
+def classify(calls: list[dict], targets=()) -> tuple[str, list[list[str]]]:
+    """A step's class, and per call the helpers its code calls (for the canned result)."""
+    kinds, helpers = [], []
     for call in calls:
         name = call["function"]["name"]
         try:
             args = json.loads(call["function"].get("arguments") or "{}")
         except ValueError:
             args = None
+        used: list[str] = []
         if name == "run_code" and isinstance(args, dict):
-            kind, n = classify_code(str(args.get("code") or ""))
+            kind, used = classify_code(str(args.get("code") or ""))
+        elif name in HELPERS and isinstance(args, dict):
+            kind = "batch" if _covers(name, args, targets) else "direct"
         else:
-            kind, n = ("direct" if name in HELPERS and isinstance(args, dict) else "other"), 1
+            kind = "other"
         kinds.append(kind)
-        sites.append(n)
+        helpers.append(used)
     for kind in ("wrap", "snippet", "filter"):
         if kind in kinds:
-            return kind, sites
-    direct = kinds.count("direct")
-    return ("batch" if direct > 1 else "direct" if direct else "other" if kinds else "none"), sites
+            return kind, helpers
+    direct = kinds.count("direct") + kinds.count("batch")
+    return ("batch" if "batch" in kinds or direct > 1 else "direct" if direct else "other" if kinds else "none"), helpers
 
 
-def _canned(name: str, args: dict, out: tuple, i: int) -> str:
+def _edits(calls: list[dict], helpers: list[list[str]]) -> bool:
+    for call, used in zip(calls, helpers):
+        name, raw = call["function"]["name"], call["function"].get("arguments") or ""
+        if name in ("search_replace", "write_file") or {"search_replace", "write_file"} & set(used) or (
+                name == "run_terminal_command" and EDITS.search(raw)):
+            return True
+    return False
+
+
+def _canned(name: str, args: dict, case: dict, i: int) -> str:
+    out = case.get("out") or ()
     if name == "list_dir":
         return "libclient.so\nnotes.md\nsrc/"
     if name == "glob":
-        return "libclient.so"
+        return "\n".join(case.get("files") or ("libclient.so",))
     if name == "read_file" and str(args.get("path") or "").endswith(".js"):
         return _file_text(str(args["path"]))
+    if name in ("search_replace", "write_file"):
+        return f"Edited {args.get('path') or 'the file'}."
     return out[max(0, min(i, len(out) - 1))] if out else "ok"
 
 
@@ -233,7 +312,7 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
         tool_jobs.add_code_tip(base, collections.Counter(read_file=5, grep=1))
     counts, tokens, errors = collections.Counter(), [], 0
     for _ in range(repeat):
-        msgs, counted, replies, kinds, state = copy.deepcopy(base), 0, 0, [], seeded
+        msgs, counted, replies, kinds, state, edit = copy.deepcopy(base), 0, 0, [], seeded, ""
         rounds = int(case.get("rounds") or 1)
         # A reply of only todo_write or search_tools is answered and not counted.
         while counted < rounds and replies < rounds + 2 and errors < 3:
@@ -245,7 +324,7 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
                 print(f"  (call failed: {type(exc).__name__}: {str(exc)[:160]})", file=sys.stderr)
                 break
             calls = message.get("tool_calls") or []
-            kind, sites = classify(calls)
+            kind, helpers = classify(calls, case.get("targets") or ())
             if kind == "none":
                 break
             if kind != "other":
@@ -257,19 +336,25 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
                 if used:
                     tokens.append(used)
             msgs.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": calls})
-            for call, n in zip(calls, sites):
+            for call, used in zip(calls, helpers):
                 name = call["function"]["name"]
                 try:
                     args = json.loads(call["function"].get("arguments") or "{}")
                 except ValueError:
                     args = {}
-                body = _canned(name, args if isinstance(args, dict) else {}, case.get("out") or (), counted - 1)
-                msgs.append({"role": "tool", "tool_call_id": call["id"], "content": _result(name, body, n)})
+                body = _canned(name, args if isinstance(args, dict) else {}, case, counted - 1)
+                msgs.append({"role": "tool", "tool_call_id": call["id"], "content": _result(name, body, used)})
             if wrap_tips and calls:
                 state, tip = _wrap_tip(tool_jobs, state, calls)
                 if tip:
                     msgs[-1]["content"] += f"\n\n{tip}"
-        if kinds:
+            if case.get("grade") == "edit" and kind != "other" and _edits(calls, helpers):
+                edit = kind
+                break
+        if case.get("grade") == "edit":
+            if kinds:
+                counts[edit or "no edit"] += 1
+        elif kinds:
             # Wraps come in runs, so a sample is one verdict, not one per step.
             counts[kinds[-1] if case.get("last") else "wrap" if "wrap" in kinds else kinds[0]] += 1
     return {"counts": counts, "tokens": tokens, "errors": errors}
