@@ -64,7 +64,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
   /* One red and one green, wherever a count is tinted. */
   & :is(.dk-tally.is-failed, .dk-minus) { color: var(--call-fail) !important; }
-  & .dk-plus { color: var(--ok) !important; }
+  & .dk-plus { color: var(--diff-add) !important; }
 
   /* ---- The opened group: a rail, one weight, the result beside its row ---- */
   & .chat-step.is-console-group:not(.is-dk-single) > .chat-step-main > .chat-console-bundle { margin-left: 5px; padding-left: 13px; border-left: 1px solid var(--dk-card-line, var(--line)); }
