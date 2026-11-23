@@ -32,7 +32,7 @@ def test_accounts_are_named_as_the_sources_page_names_them(fresh_db):
     assert view["name"] == "Claude plan 1" and view["own"] is False and view["hop"] is None
     assert [(a["id"], a["name"], a["own"]) for a in view["accounts"]] == [
         (theirs, "Claude plan 1", False), (mine, "me.work@example.com", True)]
-    assert [(w["short"], w["percent"]) for w in view["windows"]] == [("5h", 42), ("weekly", 18)]
+    assert [(w["short"], w["percent"]) for w in view["windows"]] == [("5h", 42), ("7d", 18)]
     assert view["size"] == 2 and view["model"] == "claude-opus-4-7"
     sent = json.dumps(view)
     for leak in ("donor.plan@example.com", "donor@core.test", "donor-secret"):
@@ -69,7 +69,7 @@ def test_windows_read_spans_and_restart_after_their_reset(fresh_db):
 
     assert windows == [
         {"label": "5-hour", "short": "5h", "percent": 0, "reset_at": None},
-        {"label": "Weekly", "short": "weekly", "percent": 30, "reset_at": 4102444800},
+        {"label": "Weekly", "short": "7d", "percent": 30, "reset_at": 4102444800},
     ]
 
 
@@ -87,7 +87,7 @@ def test_model_and_product_limits_and_plan_come_with_the_plan_windows(fresh_db):
     assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Fable weekly", 61)]
 
     view = pool_badge.public(me, pool_badge.state(None, cursor, "cursor", "m"))
-    assert [(w["label"], w["short"], w["percent"]) for w in view["windows"]] == [("Monthly", "monthly", 37)]
+    assert [(w["label"], w["short"], w["percent"]) for w in view["windows"]] == [("Monthly", "30d", 37)]
     assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Auto + Composer", 12)]
     assert view["plan"] == "Pro"
 

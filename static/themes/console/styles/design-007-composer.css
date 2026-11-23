@@ -99,12 +99,18 @@ html[data-chat-console="true"] body.is-chat .chat.is-composer-expanded[data-view
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.3rem; }
 
-/* One row needs ~34rem (10rem of text, the model chip and six tools). A
-   column narrowed by the artifact pane on a wide window misses the 800px
-   phone query, so the dock's own width picks the two-row layout. */
+/* One row needs ~40rem (10rem of text, the plan meter, the model chip and
+   six tools). A column narrowed by the artifact pane or the sidebar on a wide
+   window misses the 800px phone query, so the dock's own width picks the
+   two-row layout. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-dock { container: composer / inline-size; }
-@container composer (max-width: 34rem) {
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box { grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, max-content) repeat(6, auto); }
+@container composer (max-width: 40rem) {
+  /* + and the meter left; the model, by its short name, against its rule and
+     the tools at the right, as in one row. (A phone centres it instead.) */
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box { grid-template-columns: auto auto auto auto minmax(0, 1fr) repeat(6, auto); }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { justify-self: end; min-width: 0; max-width: 100%; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > span[data-short] { font-size: 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > span[data-short]::before { content: attr(data-short); content: attr(data-short) / ""; font-size: 0.75rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-compose { grid-column: 3 / -1; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-attach-btn { grid-area: 3 / 1 / 4 / 4; justify-self: start; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-attach-btn, .chat-pool, .chat-model, .chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) {

@@ -1,4 +1,4 @@
-/* The plan usage gauge (static/chat/poolbadge.js, app/sources/pool_badge.py):
+/* The plan usage meter (static/chat/poolbadge.js, app/sources/pool_badge.py):
    the pool account's plan usage beside the model, and its card. The card is
    the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
    these rules only lay out its rows. Amber from 75%, red from 95%. */
@@ -11,7 +11,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-btn[aria-expanded="true"] { background: var(--tl-soft); color: var(--mist); }
   @media (hover: hover) { & .chat-pool-btn:hover { background: var(--tl-soft); color: var(--mist); } }
   & .chat-pool-btn:focus-visible { outline: 2px solid var(--tl-ac); outline-offset: -2px; }
-  & :is(.chat-pool-gauge, .chat-pool-label) { display: none; }
+  & .chat-pool-meter { display: none; }
   & .chat-pool-wins { display: inline-flex; align-items: center; gap: 0.7rem; }
   & .chat-pool-win { --pool-tone: color-mix(in srgb, var(--mist) 62%, transparent); --pool-num: var(--mist); display: inline-flex; align-items: center; gap: 0.35rem; }
   & .chat-pool-win[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
@@ -105,7 +105,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   }
 }
 @keyframes chat-pool-hop {
-  50% { transform: scaleX(0.1); }
+  50% { opacity: 0.35; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-pool.is-hop .chat-pool-wins { animation: none; }
