@@ -2,7 +2,7 @@
   "id": "desktop",
   "order": 2,
   "label": "Desktop",
-  "description": "Desktop looks like a native coding app: a top bar with a breadcrumb, a sidebar of sessions, a centered transcript and an inspector for previews, diffs, terminals, tasks and the plan.",
+  "description": "Desktop looks like a native coding app: a top bar with a breadcrumb, a Chats sidebar, a centered transcript and an Activity pane for subagents, commands, the plan and command output.",
   "font": "geist",
   "wallpaper": "none",
   "scheme": "dark"

@@ -512,11 +512,11 @@ function consoleResultLine(trace, presentation) {
       // with execution_status running (chat_runtime rewrites the call, not
       // the child). Same signal the bash Wait reads; "finished" here is a lie.
       if (deps.executionState(trace) === "running" || String(trace.preview || "") === "still running") {
-        return `Agent "${subject}" still running`;
+        return `Agent “${subject}” still running`;
       }
       const took = consoleDurationLabel(trace);
       const verb = presentation.failed ? "failed" : presentation.interrupted ? "stopped" : "finished";
-      return took ? `Agent "${subject}" ${verb} · ${took}` : `Agent "${subject}" ${verb}`;
+      return took ? `Agent “${subject}” ${verb} · ${took}` : `Agent “${subject}” ${verb}`;
     }
     if (name === "monitor") {
       const n = Number(trace.event_count);

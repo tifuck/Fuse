@@ -386,7 +386,7 @@
   white-space: nowrap;
   color: color-mix(in srgb, var(--mist) 72%, var(--mute));
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-here { flex-shrink: 0; color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-here { flex-shrink: 0; color: var(--dk-accent); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-count {
   flex-shrink: 0;
   margin-left: auto;
@@ -436,7 +436,7 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-tag.is-host { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-tag.is-host { color: var(--dk-accent); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-perms-x {
   display: grid;
   place-items: center;

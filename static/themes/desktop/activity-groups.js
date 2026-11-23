@@ -1,22 +1,25 @@
 // activity-groups presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
-// A finished reply's line: what it took, then when it ended, then its
-// actions: "done 3m 53s 4m ago". usage: the stored-reply stand-in for
+// A finished reply's line: its actions, then when it ended, then what it
+// took: "4m ago 3m 53s". usage: the stored-reply stand-in for
 // the work time.
 function ccTurnLineHtml(msg, latest, usage = "") {
-    // One run of text, so it reads and copies as one line: "done 3m 53s 4m ago".
+    // One run of text, so it reads and copies as one line: "4m ago 3m 53s".
     const ago = agoHtml(msg);
     const lead = ago ? " " : "";
     // A stopped or failed turn never finished: its outcome leads
-    // ("interrupted 26s"), the one tinted word.
+    // ("stopped 26s"), the one tinted word.
     const outcome = msg.stopped ? "interrupted" : msg.error ? "failed" : "";
-    if (msg.elapsedMs == null) return `<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>${turnActionsHtml(msg, latest)}`;
+    if (msg.elapsedMs == null) return `${turnActionsHtml(msg, latest)}<span class="dk-turn-text">${ago}${usage ? `<span class="dk-took">${lead}${usage}</span>` : ""}</span>`;
     const pendingAgents = latest ? (deps.agentsRows || []).filter((row) => deps.agentLive(row.status)).length : 0;
     const took = deps.escapeHtml(deps.ccDuration(Math.max(0, Number(msg.elapsedMs) || 0)));
-    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome}</em> <b>${took}</b>` : `<b>${took}</b>`;
+    const doing = pendingAgents ? `waiting for ${pendingAgents} background ${pendingAgents === 1 ? "agent" : "agents"}` : outcome ? `<em class="dk-outcome is-${outcome}">${outcome === "interrupted" ? "stopped" : outcome}</em> <b>${took}</b>` : `<b>${took}</b>`;
     const still = latest && !pendingAgents ? deps.ccStillRunningText() : "";
     // tok/s is live only (the status line while the model streams).
-    return `<span class="dk-turn-text"><span class="dk-lead">${doing}</span>${lead}${ago}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>${turnActionsHtml(msg, latest)}`;
+    const leadHtml = `<span class="dk-lead">${doing}</span>`;
+    // What still holds the turn, or how it ended, leads; a plain work time follows the age.
+    const line = pendingAgents || outcome ? `${leadHtml}${lead}${ago}` : `${ago}${lead}${leadHtml}`;
+    return `${turnActionsHtml(msg, latest)}<span class="dk-turn-text">${line}${still ? ` · ${deps.escapeHtml(still)} still running` : ""}</span>`;
   }
 
 // A finished reply's actions: copy, fork, pin, read aloud. Desktop's
@@ -26,7 +29,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
 const TURN_ACTIONS = [
   ["copy", "Copy reply", '<rect x="5.2" y="5.2" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.8 5V3.8a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.6A1.2 1.2 0 0 0 4 10.6h1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
   ["fork", "Fork this chat", '<circle cx="4.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="12.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5v1.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V5M8 8.5V11" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
-  ["pin", "Pin this chat", '<path d="M6 2.5h4l-.6 4 2.3 2.3H4.3L6.6 6.5zM8 8.8V13.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>'],
+  ["pin", "Pin chat", '<path d="M6 2.5h4l-.6 4 2.3 2.3H4.3L6.6 6.5zM8 8.8V13.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>'],
   ["speak", "Read aloud", '<path d="M2.8 6.2h2.2l3-2.6v8.8l-3-2.6H2.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10.5 5.6a3.2 3.2 0 0 1 0 4.8M12.3 3.9a5.6 5.6 0 0 1 0 8.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'],
 ];
 function agoText(at) {

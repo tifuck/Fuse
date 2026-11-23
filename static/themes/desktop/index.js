@@ -521,6 +521,7 @@ export function createDesktopTheme(runtime) {
     get agentLive() { return runtime.agentLive; },
     get agentsRows() { return runtime.agentsRows; },
     get formatActivityClock() { return theme.formatActivityClock; },
+    get jobStateLabel() { return theme.jobStateLabel; },
     get jobsRows() { return runtime.jobsRows; },
     get liveElapsedSeconds() { return runtime.liveElapsedSeconds; },
     get liveMeter() { return runtime.liveMeter; },

@@ -74,26 +74,24 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .chat-send:active { tr
 
 /* Overlays the runtime moves to <body> (row and title menus, Appearance,
    Projects) sit outside .chat, so they carry the theme's card surfaces
-   themselves: menus are the popover card, Appearance and Projects the sheet. */
+   themselves: menus are the popover glass, Appearance and Projects the sheet
+   (shell.css has the same recipes; the tokens are body's, pages.css). */
 html[data-chat-view="desktop"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) {
-  --dk-card: color-mix(in srgb, var(--ink) 92%, var(--mist));
-  --dk-card-line: color-mix(in srgb, var(--ink) 86%, var(--mist));
-  --dk-hover: color-mix(in srgb, var(--mist) 6%, transparent);
   border: 1px solid var(--dk-card-line);
   background: var(--dk-card);
   color: var(--mist);
   font-family: var(--sans);
   letter-spacing: 0;
 }
-html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) { --dk-card: var(--ink); }
-html[data-chat-view="desktop"][data-chat-theme="fuse"] body.is-chat > :is(.chat-pop, .chat-view-menu, dialog.fp-dialog) { --dk-card: #141414; --dk-card-line: #252525; }
-html[data-chat-view="desktop"] body.is-chat > .chat-pop { padding: 4px; border-radius: 12px; box-shadow: 0 14px 36px rgb(0 0 0 / 0.4); }
-html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat > .chat-pop { box-shadow: 0 10px 28px rgb(0 0 0 / 0.12); }
-html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a) { min-height: 32px; border-radius: 8px; }
-html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a):is(:hover, :focus-visible) { background: var(--dk-hover); }
-html[data-chat-view="desktop"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) { --fp-radius: 14px; border-radius: 14px; box-shadow: 0 20px 52px rgb(0 0 0 / 0.45); }
+/* .chat-pop twice: it outranks the shared card rule above (dialog.fp-dialog). */
+html[data-chat-view="desktop"] body.is-chat > .chat-pop.chat-pop { padding: 4px; border-color: var(--dk-pop-edge); border-radius: 12px; background: var(--dk-pop-sheen), color-mix(in srgb, var(--dk-card) var(--dk-pop-a), transparent); box-shadow: var(--dk-pop-rim), var(--dk-pop-shadow); -webkit-backdrop-filter: var(--dk-pop-glass); backdrop-filter: var(--dk-pop-glass); }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a) { min-height: 32px; border-radius: var(--dk-row-r); font-size: 13px; }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a):focus-visible { outline: 2px solid var(--dk-accent); outline-offset: -2px; }
+html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a):is(:focus-visible) { background: var(--dk-hover); }
+@media (hover: hover) { html[data-chat-view="desktop"] body.is-chat > .chat-pop :is(button, a):hover { background: var(--dk-hover); } }
+html[data-chat-view="desktop"] body.is-chat > :is(.chat-view-menu, dialog.fp-dialog) { --fp-radius: 14px; border-color: var(--dk-pop-edge); border-radius: 14px; background: var(--dk-pop-sheen), color-mix(in srgb, var(--dk-card) var(--dk-sheet-a), transparent); box-shadow: var(--dk-sheet-shadow); -webkit-backdrop-filter: var(--dk-pop-glass); backdrop-filter: var(--dk-pop-glass); }
 html[data-chat-view="desktop"] body.is-chat > .chat-view-backdrop,
-html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog::backdrop { background: rgb(0 0 0 / 0.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog::backdrop { background: var(--scrim); }
 html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-title,
 html[data-chat-view="desktop"] body.is-chat > dialog.fp-dialog .fp-head h2 { color: var(--mist); font: 600 14px/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
 html[data-chat-view="desktop"] body.is-chat > .chat-view-menu .chat-view-sheet-sub { color: var(--mute); font: 12.5px/1.4 var(--sans); }

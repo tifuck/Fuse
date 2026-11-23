@@ -86,7 +86,7 @@
   font: 0.76rem/1 var(--mono);
   font-variant-numeric: tabular-nums;
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-pop-pct { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-pop-pct { color: var(--dk-accent); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-pop.is-warn .chat-context-pop-pct { color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-pop.is-auto .chat-context-pop-pct { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-context-pop-bar {

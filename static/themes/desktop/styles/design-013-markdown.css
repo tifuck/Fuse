@@ -7,7 +7,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   --md-imp: #b39dff;
   --md-warn: #e5b454;
   --md-stop: #f2766b;
-  --md-code: #a5d8ff;
+  --md-code: var(--dk-accent);
   --md-kw: #c4a7ff;
   --md-fn: #82aaff;
   --md-str: #a3d977;
@@ -27,7 +27,6 @@ html[data-chat-view="desktop"][data-chat-scheme="light"] body.is-chat .chat[data
   --md-imp: #8250df;
   --md-warn: #9a6700;
   --md-stop: #cf222e;
-  --md-code: #0550ae;
   --md-kw: #8250df;
   --md-fn: #0550ae;
   --md-str: #116329;
