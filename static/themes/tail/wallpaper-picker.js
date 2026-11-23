@@ -11,10 +11,10 @@ export function create(deps) {
         `<i class="chat-backdrop-preview chat-wp-thumb" data-kind="${esc(item.id)}" aria-hidden="true"></i>` +
         `<span class="chat-wp-name">${on ? '<b class="chat-wp-check" aria-hidden="true">✓</b>' : ""}${esc(item.label)}</span></button>`;
     }).join("");
-    return `<div class="chat-wp" role="dialog" aria-label="Wallpapers">` +
-      `<div class="chat-wp-head"><span class="chat-wp-cmd">/theme</span><b>Wallpapers</b><span class="chat-wp-keys">↵ apply · esc close</span>` +
-      `<button type="button" class="chat-wp-x" data-wallpaper-close aria-label="Close wallpapers">×</button></div>` +
-      `<div class="chat-wp-row" role="listbox" aria-label="Wallpapers">${cards}</div></div>`;
+    return `<div class="chat-wp" role="dialog" aria-label="Backdrops">` +
+      `<div class="chat-wp-head"><span class="chat-wp-cmd">/theme</span><b>Backdrops</b><span class="chat-wp-keys">↵ apply · esc close</span>` +
+      `<button type="button" class="chat-wp-x" data-wallpaper-close aria-label="Close backdrops">×</button></div>` +
+      `<div class="chat-wp-row" role="listbox" aria-label="Backdrops">${cards}</div></div>`;
   }
 
   return { wallpaperPickerHtml };

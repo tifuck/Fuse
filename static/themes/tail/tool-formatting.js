@@ -287,7 +287,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     const name = trace && trace.name;
     const running = Boolean(presentation && presentation.running);
     const host = trace.host || "";
-    const hostHtml = host ? `<span class="chat-tool-host" title="Host ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
+    const hostHtml = host ? `<span class="chat-tool-host" title="Machine ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
     const clock = (presentation) ? deps.ccCallClockHtml(trace, presentation) : "";
     // Console: a running call reads as Claude Code's live line, one row
     // counting up ("Running npm test | 12s"); it prints as Bash(…) once done.

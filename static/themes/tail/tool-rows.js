@@ -101,8 +101,8 @@ function toolDetailHtml(trace, failed, running) {
     const state = deps.executionState(trace);
     const queries = deps.searchQueries(trace);
     const meta = [
-      trace.host ? `Host ${trace.host}` : "",
-      trace.cwd && trace.cwd !== trace.project_root ? `Directory ${trace.cwd}` : trace.cwd && !trace.host ? `Directory ${trace.cwd}` : "",
+      trace.host ? `Machine ${trace.host}` : "",
+      trace.cwd && trace.cwd !== trace.project_root ? `Folder ${trace.cwd}` : trace.cwd && !trace.host ? `Folder ${trace.cwd}` : "",
       trace.path && ["read_file", "write_file", "search_replace", "list_dir", "grep", "glob"].includes(trace.name) ? trace.path : "",
       Number.isFinite(trace.offset) ? `lines ${trace.offset}–${trace.offset + (Number.isFinite(trace.limit) ? trace.limit - 1 : 0)}` : "",
       trace.include ? `include ${trace.include}` : "",

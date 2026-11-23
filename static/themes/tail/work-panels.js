@@ -65,7 +65,7 @@ function agentRowHtml(row, opts = {}) {
 
 // The root of the tree. Its trailing control folds the subagents away.
 function agentMainRowHtml({ state, live, selected, total, expanded }) {
-    const fold = `${total} agent${total === 1 ? "" : "s"}`;
+    const fold = `${total} subagent${total === 1 ? "" : "s"}`;
     const doing = live ? `${live} <span class="chat-agents-noun">subagent${live === 1 ? "" : "s"} </span>running` : "";
     return (
       `<div class="chat-agents-row is-main is-${deps.escapeHtml(state)}" role="listitem" data-agent-row="main"${selected ? ' aria-current="true"' : ""}>` +
@@ -108,7 +108,7 @@ function jobRowHtml(job, nowMs) {
     const state = String(job.state || "running");
     const cancelling = state === "cancelling";
     const live = ["running", "queued", "cancelling"].includes(state);
-    const label = cancelling ? "cancelling" : live ? "" : state.replace(/_/g, " ");
+    const label = cancelling ? "stopping" : live ? "" : ["cancelled", "interrupted", "lost"].includes(state) ? "stopped" : state.replace(/_/g, " ");
     const monitor = job.kind === "monitor" || job.name === "monitor";
     // As in Claude Code's task list: a monitor by what it watches for, a shell by its command.
     const title = monitor && job.description ? job.description : deps.displayCommand(job) || job.id;
@@ -128,7 +128,7 @@ function jobRowHtml(job, nowMs) {
       (meta ? `<span class="chat-jobs-meta">${deps.escapeHtml(meta)}</span>` : "") +
       "</button>" +
       `<span class="chat-agents-time" data-job-time="${deps.escapeHtml(job.id)}">${deps.formatActivityClock(secs)}</span>` +
-      `<button type="button" class="chat-jobs-kill" data-kill-job="${id}" aria-label="${cancelling ? "Cancelling" : "Stop"} ${deps.escapeHtml(deps.toolText(title))}" title="Stop this background command"${cancelling ? " disabled" : ""}>${cancelling ? "…" : "×"}</button>` +
+      `<button type="button" class="chat-jobs-kill" data-kill-job="${id}" aria-label="${cancelling ? "Stopping" : "Stop"} ${deps.escapeHtml(deps.toolText(title))}" title="Stop this background command"${cancelling ? " disabled" : ""}>${cancelling ? "…" : "×"}</button>` +
       "</div>"
     );
   }
