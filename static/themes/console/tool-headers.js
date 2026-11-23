@@ -71,7 +71,7 @@ function toolHeadHtml({ line, title, running, failed, interrupted, expandable, o
         ? `<span class="chat-step-caret" aria-hidden="true">${deps.STEP_CHEVRON}</span>`
         : toolCaretHtml(false);
     return `<div class="chat-step-head">${copy}${toolStateHtml(running, failed, interrupted, statusLabel)}${toolOpenHtml(openKind, openId)}${caret}` +
-      (contextHost && !openId ? `<span class="chat-step-host" title="Host ${deps.escapeHtml(contextHost)}">@${deps.escapeHtml(contextHost)}</span>` : "") + `</div>`;
+      (contextHost && !openId ? `<span class="chat-step-host" title="Machine ${deps.escapeHtml(contextHost)}">@${deps.escapeHtml(contextHost)}</span>` : "") + `</div>`;
   }
 
   return { consoleVerb, toolStateHtml, toolOpenHtml, toolCaretHtml, toolHeadHtml };

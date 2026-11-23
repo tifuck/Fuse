@@ -300,7 +300,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     const live = (running) && !full && !deps.toolBackground(trace) && !pending && name !== "run_terminal_command" ? deps.ccLiveText(trace, 1000) : "";
     if (live) return `<span class="chat-console-call is-live">${deps.escapeHtml(live)}</span>${hostHtml}${clock}`;
     if ((running) && name === "run_terminal_command" && pending) {
-      return `<span class="chat-console-call is-live">${deps.escapeHtml(presentation.statusLabel)}</span>${hostHtml}${clock}`;
+      return `<span class="chat-console-call is-live">${deps.escapeHtml(/^cancelling$/i.test(presentation.statusLabel) ? "Stopping" : presentation.statusLabel)}</span>${hostHtml}${clock}`;
     }
     const verb = deps.consoleVerb(name, trace);
     if (["todo_write", "list_subagents"].includes(name) || (name === "scratch" && !scratchAction(trace))) {

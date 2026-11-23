@@ -8,7 +8,7 @@ function ccTurnLineHtml(msg, latest) {
       return `${head}<span>Waiting for <b>${pendingAgents}</b> background ${pendingAgents === 1 ? "agent" : "agents"} to finish</span>`;
     }
     // A stopped or failed turn never finished, so it says so instead of "done".
-    const outcome = msg.stopped ? "Interrupted" : msg.error ? "Failed" : "";
+    const outcome = msg.stopped ? "Stopped" : msg.error ? "Failed" : "";
     const done = outcome ? "" : deps.ccDoneAt(msg.endedAt);
     const still = latest ? deps.ccStillRunningText() : "";
     const usage = msg.usage || {};
