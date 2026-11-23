@@ -95,10 +95,11 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
 }
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
-    & .chat-pool { margin-left: 0.45rem; margin-top: 0.15rem; }
+    & .chat-pool { margin-left: 0.25rem; margin-top: 0.15rem; }
     & .chat-pool::after, & .chat-pool-label { display: none; }
-    /* No rule on a phone: the gauge keeps the icons' 1rem rhythm to the logo. */
-    & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.7rem; }
+    /* No rule on a phone: + and the gauge keep the icons' 1rem rhythm; the
+       model keeps the phone's own margin (design-007-composer.css). */
+    & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.45rem; }
   }
 }
 @keyframes chat-pool-hop {
