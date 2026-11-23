@@ -1,5 +1,6 @@
 // Mobile sheets and overlay layer stack (push/drop/back).
 import { S } from './state.js';
+import { closePool } from './poolbadge.js';
 
 // Full-screen mobile sheets follow a downward drag on their head and close
 // past a distance or flick; otherwise they spring back (CSS transition).
@@ -125,6 +126,7 @@ export function createOverlays(ctx) {
     else if (kind === "pop") closePop();
     else if (kind === "context") context.closeContextPop();
     else if (kind === "lightbox") panels.closeLightbox();
+    else if (kind === "pool") closePool();
   }
 
     // Popovers shown and hidden from many call sites follow their [hidden]

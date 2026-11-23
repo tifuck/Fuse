@@ -2,7 +2,7 @@
 that served the chat, never its label, email, owner or credential id."""
 import json
 
-from app.sources import pool_badge, pool_pick
+from app.sources import pool_badge, pool_pick, pool_policy
 from tests.core.usage._support import pool_account, user
 
 
@@ -58,6 +58,42 @@ def test_windows_read_spans_and_restart_after_their_reset(fresh_db):
         {"label": "5-hour", "short": "5h", "percent": 0, "reset_at": None},
         {"label": "Weekly", "short": "wk", "percent": 30, "reset_at": 4102444800},
     ]
+
+
+def test_model_and_product_limits_and_plan_come_with_the_plan_windows(fresh_db):
+    me = user("me@core.test")
+    claude = _claude(42, 18)
+    claude["billing"]["model_windows"] = [{"id": "seven_day_fable", "label": "Fable weekly", "percent": 61, "resets_at": ""}]
+    claude["billing"]["plan_type"] = "Max 20x"
+    cid = pool_account("claude", me, claude)
+    cursor = pool_account("cursor", me, {"billing": {"credit_usage_percent": 37, "period_type": "MONTH", "plan_type": "pro",
+                                                     "products": [{"product": "Auto + Composer", "usage_percent": 12}]}})
+
+    view = pool_badge.public(me, pool_badge.state(None, cid, "claude", "m"))
+    assert view["plan"] == "Max 20x"
+    assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Fable weekly", 61)]
+
+    view = pool_badge.public(me, pool_badge.state(None, cursor, "cursor", "m"))
+    assert [(w["label"], w["short"], w["percent"]) for w in view["windows"]] == [("Monthly", "mo", 37)]
+    assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Auto + Composer", 12)]
+    assert view["plan"] == "Pro"
+
+
+def test_the_account_list_shows_every_reachable_account_and_its_state(fresh_db):
+    donor, me = user("donor@core.test"), user("me@core.test")
+    serving = pool_account("claude", me, _claude(42, 18))
+    spent = pool_account("claude", donor, _claude(99, 70), secret="donor-secret")
+    pool_account("claude", donor, _claude(99, 20))
+    left_out = pool_account("claude", me, _claude(1, 1))
+    pool_pick.note_failure(spent, cooldown_seconds=600, limit=True)
+    pool_policy.set_account_choice(me, "claude", skip=[left_out], primary=None)
+
+    rows = pool_badge.public(me, pool_badge.state(None, serving, "claude", "m"))["accounts"]
+
+    assert [(a["slot"], a["own"], a["status"], a["percent"]) for a in rows] == [
+        ("A", True, "current", 42), ("B", False, "limit", 99), ("C", False, "full", 99), ("D", True, "off", 1)]
+    assert rows[1]["until"] > 0
+    assert "donor" not in json.dumps(rows)
 
 
 def test_a_malformed_record_shows_no_badge(fresh_db):

@@ -6,7 +6,8 @@ Letters follow credential id over the accounts this user can reach in the
 pool, so an account keeps its letter while that set stays the same.
 
 The thread keeps the raw record (compaction state "pool"); public() turns it
-into the page's view with the account's latest usage windows.
+into the page's view: the serving account's plan limits, its model and
+product limits, and every account of the pool this user can reach.
 """
 
 from __future__ import annotations
@@ -21,6 +22,10 @@ from . import pool_pick, pool_policy
 
 REASONS = ("limit", "error", "")
 MAX_WINDOWS = 4
+# The card lists this many accounts at most; a pool rarely holds more.
+MAX_ACCOUNTS = 40
+# Grok and Cursor name their per-product meters by internal ids.
+PRODUCT_NAMES = {"GrokBuild": "Build", "GrokChat": "Chat", "GrokVoice": "Voice", "GrokImagine": "Imagine", "GrokAPI": "API"}
 
 
 def parse(raw) -> dict | None:
@@ -72,21 +77,63 @@ def public(user_id: int, raw) -> dict | None:
     kind = st["source"]
     rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0 ORDER BY id",
                        (pool_policy.source_id(kind),))
-    ids = [int(r["id"]) for r in pool_policy.filter_credentials(rows, kind, user_id, chosen=False)]
+    reachable = pool_policy.filter_credentials(rows, kind, user_id, chosen=False)
+    ids = [int(r["id"]) for r in reachable]
     skip = pool_policy.account_choice(user_id, kind)["skip"]
     used = [i for i in ids if i not in skip]
     row = next((r for r in rows if int(r["id"]) == st["cred"]), None)
+    billing = _billing(row)
     return {
         "model": st["model"],
         "provider": kind,
         "pool": pool_policy.POOL_LABELS.get(kind, kind),
         "slot": _slot(ids, st["cred"]),
         "own": row is not None and pool_policy.donated_by(row) == int(user_id),
-        "windows": _windows(row),
+        "plan": _plan(billing),
+        "windows": _windows(billing),
+        "limits": _limits(billing),
+        "accounts": [_account(r, ids, st["cred"], skip, user_id) for r in reachable[:MAX_ACCOUNTS]],
         "ready": sum(1 for i in used if not pool_pick.cooling_down(i)),
         "size": len(used),
         "hop": {"from": _slot(ids, st["prev"]), "reason": st["reason"]} if st["prev"] else None,
     }
+
+
+def _account(row, ids: list[int], current: int, skip, user_id: int) -> dict:
+    """One line of the card's account list: no label, email or owner."""
+    cid = int(row["id"])
+    billing = _billing(row)
+    peak = max((w["percent"] for w in _windows(billing)), default=None)
+    until = None
+    if cid == current:
+        status = "current"
+    elif cid in skip:
+        status = "off"
+    elif pool_pick._hard_cooldown(cid):
+        status = "paused"
+    elif pool_pick._limit_cooldown(cid):
+        status, until = "limit", int(pool_pick._cooldown_end(cid))
+    elif peak is not None and peak >= pool_pick.USAGE_BUSY:
+        status = "full"
+    else:
+        status = "ready"
+    return {"slot": _slot(ids, cid), "own": pool_policy.donated_by(row) == int(user_id),
+            "plan": _plan(billing), "percent": peak, "status": status, "until": until}
+
+
+def _billing(row) -> dict:
+    if row is None:
+        return {}
+    try:
+        billing = accounts.cred_extra(row).get("billing")
+    except (DecryptionError, accounts.CredentialDataError):
+        return {}
+    return billing if isinstance(billing, dict) else {}
+
+
+def _plan(billing: dict) -> str:
+    raw = str(billing.get("plan_type") or billing.get("tier") or "").strip()[:24]
+    return raw[:1].upper() + raw[1:] if raw.islower() else raw
 
 
 def _num(value) -> float | None:
@@ -135,34 +182,57 @@ def _short(label: str) -> str:
     return low[:4] or "use"
 
 
-def _windows(row) -> list[dict]:
-    """The account's usage windows from its last billing snapshot."""
-    if row is None:
-        return []
-    try:
-        billing = accounts.cred_extra(row).get("billing")
-    except (DecryptionError, accounts.CredentialDataError):
-        return []
-    if not isinstance(billing, dict):
-        return []
+def _window(win, now: float, named_first: bool = False) -> dict | None:
+    """A limit for the page. Plan windows are named by their span ("5-hour");
+    named_first keeps a model limit's own name ("Fable weekly")."""
+    if not isinstance(win, dict):
+        return None
+    pct = _num(win.get("percent", win.get("usage_percent")))
+    if pct is None:
+        return None
+    reset = _epoch(win.get("resets_at") or win.get("reset_at"))
+    if reset and reset <= now:
+        # A window past its reset has started over.
+        pct, reset = 0.0, None
+    span = _span(win.get("seconds"))
+    named = str(win.get("label") or win.get("name") or "")[:40]
+    label = (named or (span and span[0])) if named_first else ((span and span[0]) or named)
+    label = label or "Usage"
+    return {"label": label, "short": span[1] if span else _short(label),
+            "percent": round(max(0.0, min(100.0, pct))), "reset_at": int(reset) if reset else None}
+
+
+def _windows(billing: dict) -> list[dict]:
+    """The plan's own limits (5-hour, weekly, monthly…): what the badge shows."""
     now = time.time()
-    out = []
-    for win in billing.get("windows") or []:
-        if not isinstance(win, dict):
-            continue
-        pct = _num(win.get("percent", win.get("usage_percent")))
-        if pct is None:
-            continue
-        reset = _epoch(win.get("resets_at") or win.get("reset_at"))
-        if reset and reset <= now:
-            # A window past its reset has started over.
-            pct, reset = 0.0, None
-        span = _span(win.get("seconds"))
-        label = span[0] if span else str(win.get("label") or win.get("name") or "Usage")[:40]
-        out.append({"label": label, "short": span[1] if span else _short(label),
-                    "percent": round(max(0.0, min(100.0, pct))), "reset_at": int(reset) if reset else None})
+    out = [w for w in (_window(win, now) for win in billing.get("windows") or []) if w]
     if not out:
         pct = _num(billing.get("credit_usage_percent"))
         if pct is not None:
-            out.append({"label": "Usage", "short": "use", "percent": round(max(0.0, min(100.0, pct))), "reset_at": None})
+            period = str(billing.get("period_type") or "").lower()
+            label = "Monthly" if period.startswith("month") else "Plan"
+            out.append({"label": label, "short": "mo" if label == "Monthly" else "plan",
+                        "percent": round(max(0.0, min(100.0, pct))), "reset_at": _reset(billing.get("period_end"), now)})
     return out[:MAX_WINDOWS]
+
+
+def _limits(billing: dict) -> list[dict]:
+    """Narrower limits: one model's weekly cap (Claude's Fable, ChatGPT's
+    Codex models) or one product's share (Cursor's Auto, Grok's Build)."""
+    now = time.time()
+    out = [w for w in (_window(win, now, named_first=True) for win in billing.get("model_windows") or []) if w]
+    for product in billing.get("products") or []:
+        if not isinstance(product, dict):
+            continue
+        pct = _num(product.get("usage_percent"))
+        name = str(product.get("product") or product.get("name") or "")
+        if pct is None or not name:
+            continue
+        name = PRODUCT_NAMES.get(name, name)[:40]
+        out.append({"label": name, "short": _short(name), "percent": round(max(0.0, min(100.0, pct))), "reset_at": None})
+    return out[:8]
+
+
+def _reset(value, now: float) -> int | None:
+    reset = _epoch(value)
+    return int(reset) if reset and reset > now else None
