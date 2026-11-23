@@ -296,29 +296,23 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-con
    is tinted, in the colours of their "1 stopped" and "1 failed".
    The buttons outrank shell.css's chrome-button reset, which would make
    them inherit the row's colour. */
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 var(--console-type)/var(--console-leading) var(--mono); color: color-mix(in srgb, var(--dk-mute, var(--mute)) 62%, transparent); outline: none; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: -0.1rem; font: 400 var(--console-type)/var(--console-leading) var(--mono); color: var(--dk-mute, var(--mute)); outline: none; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead b { font-weight: 400; color: var(--dk-mute, var(--mute)); }
 /* Its first word is capitalised like a summary line's: "Done", "Interrupted". */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-turn-text::first-letter { text-transform: uppercase; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; height: 1lh; margin-left: 6px; opacity: 0; transition: opacity var(--dur-hover) ease; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-turn:hover, .chat-turn:focus-within) .dk-acts { opacity: 1; --dur-hover: 0s; }
-/* A touch screen has no pointer to show them: a reply shows its actions
-   while its line is tapped (focused), and hides them on the next tap
-   elsewhere. Hidden, they take no taps. */
-@media (hover: none) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-turn:not(:focus-within) .dk-acts { opacity: 0; pointer-events: none; }
-}
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; color: color-mix(in srgb, var(--dk-mute, var(--mute)) 55%, var(--dk-canvas, var(--ink))); }
+/* The actions lead the line and are always there; the first icon sits on the prose edge. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { display: inline-flex; align-items: center; gap: 0; margin: 0 6px 0 -7px; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--dk-ctl-r); background: none; color: var(--dk-mute, var(--mute)); cursor: pointer; }
+@media (hover: hover) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); } }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago { white-space: nowrap; }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-ago + .dk-lead { margin-left: 0.6em; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-lead + .dk-ago { margin-left: 0.6em; }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-took { color: color-mix(in srgb, var(--dk-mute, var(--mute)) 70%, var(--dk-canvas, var(--ink))); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome { font-style: normal; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-interrupted { color: var(--dk-warn); }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-outcome.is-failed { color: var(--fault); }
 @media (max-width: 480px), (pointer: coarse) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts > .dk-act-btn { width: 36px; height: 36px; }
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { margin-left: 0; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .dk-acts { margin-left: -10px; }
 }
 @media (max-width: 480px) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-turn { flex-wrap: nowrap; min-width: 0; }
@@ -356,7 +350,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ste
   white-space: nowrap;
   cursor: pointer;
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > button.chat-step-open:not(.is-empty):hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
+@media (hover: hover) { html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-step.is-console-call > .chat-step-main > .chat-step-head > button.chat-step-open:not(.is-empty):hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); } }
 
 /* Agent trees: children quieter than their launch line, focusable. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-console-agent-sub .chat-console-dim > [aria-hidden] { display: none; }

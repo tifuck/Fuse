@@ -93,11 +93,11 @@ html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-track
 html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-progress,
 html:is( [data-chat-console="true"]) .chat-view-menu .ap-range::-moz-range-thumb { border-radius: 0; }
 /* Same head, ground and edge as the Context and Skills sheets. */
-html:is( [data-chat-console="true"]) .chat-view-menu { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 24px 64px rgb(0 0 0 / 50%); }
+html:is( [data-chat-console="true"]) .chat-view-menu { background: var(--panel); border: 1px solid var(--line); box-shadow: none; }
 html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-head { min-height: 3.25rem; padding: 0.7rem 0.85rem 0.7rem 1.15rem; }
 html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-heading { min-width: 0; }
 html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-title { font: 600 1rem/1.5 var(--ap-ui); letter-spacing: -0.02em; }
-html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-sub { display: block; margin-top: 0.2rem; color: var(--mute); font-size: 0.78rem; line-height: 1.4; }
+html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-sub { display: block; margin-top: 0.2rem; color: var(--mute); font-size: var(--con-note); line-height: 1.4; }
 @media (max-width: 800px) {
   html:is( [data-chat-console="true"]) .chat-view-menu .chat-view-sheet-sub { display: none; }
 }
@@ -457,7 +457,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-err
   background: transparent;
   color: var(--mist);
   font: inherit;
-  font-size: calc(0.84rem * var(--chat-text-scale, 1));
+  font-size: var(--con-menu);
   cursor: pointer;
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-error-continue:hover {

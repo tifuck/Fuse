@@ -19,7 +19,7 @@ build: Jinja templates and plain JS/CSS are served as-is.
 | `agent/` | `fuse-agent` connector: C binary (`src/`, `make`) and Windows Go EXE (`windows/`). |
 | `templates/`, `static/` | Pages and assets. Chat UI: runtime in `static/chat.js` + `static/chat/`; each theme (`console`, `tail`, `desktop`) owns all /chat markup and styles in `static/themes/<t>/` + `templates/themes/<t>/`. Vendored code: `static/vendor/`, `static/dict/`. Wallpaper scenes: `static/backdrops/` (`docs/wallpapers.md`). |
 | `scripts/` | Operational scripts (database backup, schema dump/init, tool-failure review, usage rollup rebuild) and the test runners (`test.sh`, `test_sandbox.sh`). |
-| `scripts/qa/` | Dev-only QA harness, never released: the QA browser (`shot.mjs`), harness evals (`evals.py`, `tool_choice.py`) and the QA login's seeded chats (`dev_qa_account.py`). |
+| `scripts/qa/` | Dev-only QA harness, never released: the QA browser (`shot.mjs`), harness evals (`evals.py`, `tool_choice.py`), run_code usage counts (`run_code_usage.py`) and the QA login's seeded chats (`dev_qa_account.py`). |
 | `scripts/sql/` | `schema.sql` (the empty schema fresh installs load) and dated migrations not yet applied everywhere. |
 | `tests/` | `tests/core` (pytest, one folder per area), `tests/js` (Node unit suites, `*.test.cjs`); see `tests/README.md`. The UI has no automated tests: it is checked with screenshots. |
 | `docs/` | This guide, `wallpapers.md` (custom backdrops), `themes/` (Tail and Desktop view specs) and `screenshots/` (README images). |
@@ -160,14 +160,16 @@ the Code mode section of the coding prompt (`chat_prompts._code_mode`): a
 snippet when the next calls are already known or only part of a result is
 wanted, a direct call when a result must be read before the next step. Two
 tips in `chat_generation/tool_jobs.py` correct a turn that drifts either way,
-on its next tool result: `wrap_tip` after three run_code calls in a row that
-only passed one call through (repeated, three times a turn at most), and
-`add_code_tip` after three file calls made one per step. Both are orders that
-name one action; advice and two-way choices changed little when measured.
-Measure any change to this wording with the tool-choice eval before and
-after (`./venv/bin/python -m scripts.qa.tool_choice`, `--app <worktree>` for
-a checkout that is not merged yet): it sends the prompt and schemas to the
-dev model and classifies the calls it answers with, running nothing.
+on its next tool result: `wrap_tip` from the first run_code call that only
+passed one call through (one is enough for a model to copy; repeated, three
+times a turn at most), and `add_code_tip` after three steps that were a lone
+file call. Both are orders that name one action; advice and two-way choices
+changed little when measured. Measure any change to this wording with the
+tool-choice eval before and after (`./venv/bin/python -m scripts.qa.tool_choice`,
+`--app <worktree>` for a checkout that is not merged yet): it sends the prompt
+and schemas to the dev model and classifies the calls it answers with, running
+nothing. What real chats did is `scripts/qa/run_code_usage.py`: read-only
+counts per model for a date window, to compare before and after a release.
 
 ## Secret protection
 

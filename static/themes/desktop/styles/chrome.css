@@ -3,7 +3,7 @@
    The composer itself lives in design-007-composer.css. */
 
 /* —— Type: one rule for labels ——
-   Section labels are lowercase muted mono; controls and menu items keep
+   Section labels are sentence case, muted; controls and menu items keep
    sentence case; names (projects, hosts, providers) keep their own case. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(
   .chat-history-kicker, .chat-history-group, .chat-history-draft, .chat-brand-caption,
@@ -13,7 +13,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(
   .chat-perms-here, .chat-perms-tag, .chat-perms-mode-label,
   .chat-memory-field > span, .chat-skills .hosts-field > span, .skills-origin, .chat-code-head
 ) {
-  text-transform: lowercase;
+  text-transform: none;
   letter-spacing: 0;
 }
 
@@ -29,7 +29,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat
 /* —— One selected state for every segmented control —— */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-history-tab[aria-selected="true"], .chat-context-tab.is-on, .chat-perms-modes button.is-on) {
   color: var(--mist);
-  background: color-mix(in srgb, var(--mist) 11%, var(--panel));
+  background: color-mix(in srgb, var(--dk-text) 14%, transparent);
   box-shadow: none;
 }
 
@@ -64,9 +64,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-sta
 /* Appearance controls: 36x20 switches with a round knob drawn inside a 28px
    hit area (the whole row is the label), 28px segments, 28px ranges with a
    14px round thumb. Monochrome: on is the text colour. */
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch { min-height: 32px; }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { width: 36px; height: 28px; border: 0; border-radius: 0; background: none; }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::before {
+html[data-chat-view="desktop"] body.is-chat .ap-switch { min-height: 32px; }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"] { width: 36px; height: 28px; border: 0; border-radius: 0; background: none; }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]::before {
   content: "";
   position: absolute;
   inset: 4px 0;
@@ -75,17 +75,17 @@ html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[typ
   border-radius: 10px;
   background: color-mix(in srgb, var(--mute) 28%, var(--ink));
 }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::after { z-index: 1; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--mist); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::before { border-color: var(--mist); background: var(--mist); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:checked::after { background: var(--ink); transform: translate(16px, -50%); }
-html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 0; border-radius: 12px; }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]::after { z-index: 1; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]:checked::before { border-color: var(--mist); background: var(--mist); }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]:checked::after { background: var(--ink); transform: translate(16px, -50%); }
+html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 2px; border-radius: 12px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-filters button { min-height: 28px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-range { height: 28px; }
 html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-step { min-width: 28px; min-height: 28px; }
 @media (max-width: 480px) {
   html[data-chat-view="desktop"] body.is-chat .chat-view-menu :is(.ap-filters button, .ap-step) { min-height: 36px; }
-  html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"] { height: 32px; }
-  html[data-chat-view="desktop"] body.is-chat .chat-view-menu .ap-switch input[type="checkbox"]::before { inset: 6px 0; }
+  html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"] { height: 32px; }
+  html[data-chat-view="desktop"] body.is-chat .ap-switch input[type="checkbox"]::before { inset: 6px 0; }
 }
 
 /* Cards in a row share a height; their text starts at the top, not centred. */
@@ -94,7 +94,7 @@ html[data-chat-view="desktop"] body.is-chat .chat-view-menu :is(.ap-theme, .ap-b
 /* Sheet editors: the border is the focus mark, not a second outline inside it. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-sheet textarea:focus-visible {
   outline: none;
-  border-color: color-mix(in srgb, var(--brass) 70%, var(--line));
+  border-color: var(--dk-accent);
 }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-context-eg { color: color-mix(in srgb, var(--mute) 72%, var(--ink)); }
 
@@ -108,7 +108,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-ski
   background: transparent;
   color: var(--mist);
 }
-html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-skills :is(.skills-search, .skills-upload) .btn:hover { border-color: var(--brass); color: var(--brass); }
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-skills :is(.skills-search, .skills-upload) .btn:hover { border-color: var(--dk-text); color: var(--dk-text); }
 
 /* —— Empty chat: a quiet greeting above the prompt, terminal style —— */
 html[data-chat-view="desktop"] body.is-chat .chat.is-empty[data-view="desktop"] :is(.chat-welcome, .chat-welcome-note) {

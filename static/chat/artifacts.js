@@ -342,9 +342,9 @@ export function createArtifacts(ctx) {
     S.artifactToggle.setAttribute("aria-expanded", S.artifactOpen ? "true" : "false");
     S.artifactToggle.classList.toggle("is-on", S.artifactOpen);
     S.artifactToggle.classList.toggle("is-busy", Boolean(activity));
-    const label = activity ? (activity.phase === "writing" ? "Writing…" : "Publishing…") : count > 1 ? `Artifacts · ${count}` : "Artifact";
+    const label = activity ? (activity.phase === "writing" ? "Writing…" : "Publishing…") : count > 1 ? `Artifacts · ${count}` : "Artifacts";
     if (el.toggleLabel && el.toggleLabel.textContent !== label) el.toggleLabel.textContent = label;
-    S.artifactToggle.title = count ? "Artifact preview (Ctrl+])" : "Artifacts (Ctrl+])";
+    S.artifactToggle.title = "Artifacts (Ctrl+])";
   }
 
   function syncArtifactUi() {
@@ -863,7 +863,7 @@ export function createArtifacts(ctx) {
     if (appearance?.customCount >= appearance?.customMax) {
       replace = await appearance.chooseReplacement(name);
       if (!replace) return;
-    } else if (!(await window.fuseConfirm(`Use "${name}" as your backdrop?`, { confirmLabel: "Use backdrop" }))) {
+    } else if (!(await window.fuseConfirm(`Use “${name}” as your backdrop?`, { confirmLabel: "Use backdrop" }))) {
       return;
     }
     try {
@@ -949,7 +949,7 @@ export function createArtifacts(ctx) {
       metaTag = "";
       await refreshMeta(S.generation, false);
     } catch (error) {
-      showFailure("Artifact action failed", error);
+      showFailure("Could not finish the artifact action", error);
     }
   }
 

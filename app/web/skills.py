@@ -152,10 +152,14 @@ async def skills_catalog(request: Request):
     if not limiter.allow(f"skills:{user['id']}", 30, 60):
         raise HTTPException(429, "Search is busy. Try again shortly.")
     q = (request.query_params.get("q") or "").strip()
+    from ..search import egress
     from ..skill_install import catalog_search
 
     try:
-        data = await catalog_search(q)
+        with egress.through(user["id"]):
+            data = await catalog_search(q)
+    except egress.NoEgress:
+        raise HTTPException(503, egress.USER_HINT) from None
     except skills.SkillError as exc:
         return _skill_fail(exc)
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
@@ -187,12 +191,14 @@ async def skills_install(request: Request):
         return JSONResponse(skills._public(existing), headers={"Cache-Control": "no-store"})
     if not limiter.allow(f"skills-install:{user['id']}", 5, 3600):
         raise HTTPException(429, "Install rate limit reached. Try again shortly.")
+    from ..search import egress
     from ..skill_install import fetch_github_skill, valid_github_source
 
     if not valid_github_source(source):
         raise HTTPException(400, "invalid source")
     try:
-        files = await fetch_github_skill(source, skill_id)
+        with egress.through(user["id"]):
+            files = await fetch_github_skill(source, skill_id)
         row = skills.install_files(
             user["id"],
             files,

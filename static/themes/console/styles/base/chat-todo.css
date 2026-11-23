@@ -130,8 +130,8 @@
   font: 0.95rem/1 var(--sans);
   cursor: pointer;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-todo-dismiss:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-todo-dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-todo-dismiss:hover { color: var(--mist); background: var(--con-hover); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat .chat-todo-dismiss:focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 /* The page: full width, it opens up out of the composer. The transcript
    makes room for it in the same frame, so the page does not slide (a sliding
    page fought the transcript's jump); its rows fade up into place instead.

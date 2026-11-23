@@ -1,5 +1,5 @@
 // Desktop's chrome: the top bar (the breadcrumb's title menu, "← Main" in a
-// subagent, the ⋯ menu, the Activity button), the sidebar's Customize and
+// subagent, the ⋯ menu, the Activity button), the sidebar's Backdrop and
 // light/dark switches, the composer's chips row, the artifact workspace's own
 // controls, and Activity: the agents table, background commands, the plan and
 // a command's output, drawn here from the runtime's live state. Activity
@@ -686,7 +686,7 @@ export function create(deps) {
   function syncPins() {
     const row = q('[data-history-list] [data-row-open][aria-current="true"]')?.closest("[data-history-item]");
     const pinned = Boolean(row?.hasAttribute("data-pinned"));
-    const label = pinned ? "Unpin" : "Pin";
+    const label = pinned ? "Unpin chat" : "Pin chat";
     deps.root.querySelectorAll('[data-theme-turn-act="pin"]').forEach((btn) => {
       if (btn.getAttribute("aria-pressed") === String(pinned) && btn.title === label) return;
       btn.setAttribute("aria-pressed", String(pinned));
@@ -731,7 +731,7 @@ export function create(deps) {
     const command = deps.displayCommand(job) || "";
     const secs = Math.round((Number(job.started_ms) > 0 ? Date.now() - Number(job.started_ms) : Number(job.elapsed_ms) || 0) / 1000);
     const events = Number(job.event_count);
-    const status = state === "running" ? `Running for ${deps.formatActivityClock(secs)}` : state === "queued" ? "Queued" : state === "cancelling" ? "Stopping" : state.replace(/_/g, " ");
+    const status = state === "running" ? `Running for ${deps.formatActivityClock(secs)}` : state === "queued" ? "Queued" : state === "cancelling" ? "Stopping" : deps.jobStateLabel(state);
     const meta = [status, job.host || "", monitor && events > 0 ? `${events} event${events === 1 ? "" : "s"}` : ""].filter(Boolean);
     setText(q("[data-theme-term-title]"), job.description || command || job.id);
     const metaEl = q("[data-theme-term-meta]");
@@ -826,7 +826,7 @@ export function create(deps) {
     const done = todos ? todos.querySelectorAll(".chat-todo-row:is(.is-completed, .is-cancelled)").length : 0;
     show(q('[data-theme-grp="plan"]'), plan);
     show(q("[data-theme-plan-empty]"), !plan);
-    setText(q("[data-theme-plan-count]"), rows.length ? `${done} of ${rows.length} done` : "");
+    setText(q("[data-theme-plan-count]"), rows.length ? `${done}/${rows.length}` : "");
     const bar = q("[data-theme-plan-bar]");
     const width = rows.length ? `${Math.round((done / rows.length) * 100)}%` : "0%";
     if (bar && bar.style.width !== width) bar.style.width = width;

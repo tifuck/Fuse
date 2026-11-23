@@ -54,7 +54,7 @@ export function createSend(ctx) {
 
     function retryLastTurn() {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", "warn");
+      picker.setHint("Wait for the reply to finish.", "warn");
       return;
     }
     if (!net.requireLive()) return;
@@ -76,7 +76,7 @@ export function createSend(ctx) {
     // already did; Retry instead drops the turn and replays the prompt.
     function continueAssistant() {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", "warn");
+      picker.setHint("Wait for the reply to finish.", "warn");
       return;
     }
     const last = S.messages.at(-1);
@@ -102,7 +102,7 @@ export function createSend(ctx) {
       const data = await net.api("/chat/runs/" + encodeURIComponent(id) + "/cancel" + (scope ? "?scope=" + scope : ""), { method: "POST", body: JSON.stringify({ held_before: stoppedAt }) });
       sync.applyCancelResult(data, id);
     } catch (error) {
-      sync.showFailure("Stop failed", error);
+      sync.showFailure("Could not stop", error);
       if (S.activeRun?.id === id) {
         if (S.stoppingRunId === id) S.stoppingRunId = "";
         S.activeRun.cancel_requested = false;
@@ -323,17 +323,17 @@ export function createSend(ctx) {
         composer.resizeInput();
       }
       if (error.local) {
-        sync.showFailure("Send not confirmed; your draft is retained", error);
+        sync.showFailure("Could not confirm the send; your draft is kept", error);
       } else if (error.status === 409) {
         if (!opts?.queueBody) sync.setPendingTurn(null);
         await sync.reconcileThread().catch(() => {});
-        sync.showFailure("Send not confirmed; your draft is retained", error);
+        sync.showFailure("Could not confirm the send; your draft is kept", error);
       } else if (error.status && error.status < 500) {
         if (!opts?.queueBody) sync.setPendingTurn(null);
-        sync.showFailure("Send not confirmed; your draft is retained", error);
+        sync.showFailure("Could not confirm the send; your draft is kept", error);
       } else {
         net.markDisconnected();
-        sync.showFailure("Can't connect to the backend", error);
+        sync.showFailure("Could not connect to the backend", error);
       }
       return false;
     } finally {

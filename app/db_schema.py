@@ -526,6 +526,10 @@ def _ensure_host_tables(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "user_hosts", "agent_os", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "user_hosts", "agent_arch", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(conn, "user_hosts", "last_seen_at", "TEXT")
+    # Web access (search/egress.py): picked as a way out to the web, and the
+    # public IP sites see from it.
+    _ensure_column(conn, "user_hosts", "web_egress", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "user_hosts", "web_ip", "VARCHAR(64) NOT NULL DEFAULT ''")
     conn.execute("CREATE INDEX IF NOT EXISTS user_hosts_device_token ON user_hosts(device_token_hash)")
     conn.executescript(
         """

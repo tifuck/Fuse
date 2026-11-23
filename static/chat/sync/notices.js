@@ -39,7 +39,7 @@ export function createNotices(ctx) {
 
   function openChat(threadId) {
     sidebar.openThread(threadId).catch(() => {
-      ui()?.toast({ kind: "err", title: "Chat could not be opened", msg: "It may have been deleted." });
+      ui()?.toast({ kind: "err", title: "Could not open the chat", msg: "It may have been deleted." });
     });
   }
 

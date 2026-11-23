@@ -345,7 +345,7 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
 
 _CODE_MODE = _code_mode(
     "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command",
-    "one command, one read, one grep, one edit",
+    "one command, one read, one grep",
     "finding where something is defined or used (grep, read the matches, return the lines); the same edit in "
     "several files (grep for them, then search_replace each); comparing or counting across many files; running "
     "tests or a build and returning only the failures.",

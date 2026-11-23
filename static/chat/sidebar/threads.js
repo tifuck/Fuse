@@ -132,7 +132,7 @@ export function createThreads(ctx) {
     dropThread(id);
     if (S.currentId !== id) { if (known) render.renderHistory(); return; }
     if (!known) return;
-    if (next) openThread(next, { gone: true }).catch((error) => sync.showFailure("Chat could not be opened", error));
+    if (next) openThread(next, { gone: true }).catch((error) => sync.showFailure("Could not open the chat", error));
     else chatApi.clearChatState({ keepList: true });
   }
 
@@ -195,7 +195,7 @@ export function createThreads(ctx) {
     if (S.welcomeEl) {
       if (bound && (bound.project_name || bound.host_alias)) {
         const project = bound.project_name || "project";
-        const alias = bound.host_alias || "host";
+        const alias = bound.host_alias || "machine";
         setText(S.welcomeEl, `Work on ${project} on ${alias}.`);
       } else {
         setText(S.welcomeEl, "What are we building?");
@@ -339,7 +339,7 @@ export function createThreads(ctx) {
   }
 
     function showOpenedThread(data) {
-    if (!Number.isSafeInteger(data.event_cursor)) throw new Error("Thread snapshot is missing event_cursor.");
+    if (!Number.isSafeInteger(data.event_cursor)) throw new Error("Chat snapshot is missing event_cursor.");
     // Every article of another thread is about to be replaced. Hidden, it is
     // skipped by the layout reads below (queue, dock, composer) instead of
     // being laid out once more just before paint() drops it; paint's
@@ -480,7 +480,7 @@ export function createThreads(ctx) {
           upsertLocal(updated);
         } catch (error) {
           finishing = false;
-          sync.showFailure("Rename failed; the title is still editable", error);
+          sync.showFailure("Could not rename; the title is still editable", error);
           inputEl.focus();
           inputEl.select();
           return;
@@ -575,7 +575,7 @@ export function createThreads(ctx) {
     if (canMove && at_ < pinIds.length - 1) moves.push({ label: "Move down", run: move(1) });
     const items = [
       {
-        label: thread.pinned ? "Unpin" : "Pin to top",
+        label: thread.pinned ? "Unpin chat" : "Pin chat",
         run: () => togglePin(id),
       },
       ...moves,

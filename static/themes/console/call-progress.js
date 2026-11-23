@@ -254,7 +254,7 @@ function ccFailure(trace) {
   }
 
 function ccInterruptedText(trace) {
-    const head = "Interrupted";
+    const head = "Stopped";
     const error = String((trace && trace.error) || "").toLowerCase();
     const state = trace ? deps.executionState(trace) : "";
     if (/connector restarted/.test(error)) {
@@ -264,12 +264,12 @@ function ccInterruptedText(trace) {
       return `${head}: ${trace.host ? `${trace.host} lost its connection` : "the connection was lost"}`;
     }
     if (/\b(agent|connector|host) is offline\b|went offline|disconnected/.test(error)) {
-      return `${head}: ${trace.host ? `${trace.host} went offline` : "the host went offline"}`;
+      return `${head}: ${trace.host ? `${trace.host} went offline` : "the machine went offline"}`;
     }
     if (state === "cancelled" || /cancel/.test(error) || (trace && trace.status === "cancelled")) {
       return trace && trace.termination_confirmed === false && trace.name === "run_terminal_command"
-        ? `${head}: stopped; the process may still be running`
-        : `${head}: stopped`;
+        ? `${head}: the process may still be running`
+        : head;
     }
     if (state === "lost") return `${head}: the result was lost`;
     return `${head}: the run ended before it finished`;
@@ -344,7 +344,7 @@ function consoleAgentNoticeHtml(trace, key) {
     const branch = `<span class="chat-console-branch" aria-hidden="true">└</span>`;
     const text = (rows) => `<div class="chat-console-report">${rows.map((line) => `<div>${deps.escapeHtml(line) || " "}</div>`).join("")}</div>`;
     const open = trace.child_id
-      ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}" aria-label="Open agent">Open<span class="chat-open-target">&nbsp;agent ↗</span></button>`
+      ? `<button type="button" class="chat-step-open" data-open-agent="${deps.escapeHtml(trace.child_id)}" aria-label="Open subagent">Open<span class="chat-open-target">&nbsp;subagent ↗</span></button>`
       : "";
     const headText = `<span class="chat-console-notice-text">${deps.escapeHtml(head)}</span>`;
     const preview = lines.length
@@ -448,7 +448,7 @@ function ccAgentsGroupHtml(agents, live) {
           : ` — ${Number.isFinite(uses) ? uses : 0} ${uses === 1 ? "tool use" : "tool uses"}${Number.isFinite(tokens) && tokens > 0 ? `, ${deps.ccTokens(tokens)} tokens` : ""}${presentation.running ? "" : took}${rate}`;
       const status = presentation.running
         ? (background ? "Running in the background" : ccAgentLastCall(trace.agent_recent) || "Initializing…")
-        : presentation.failed ? "Failed" : presentation.interrupted ? "Interrupted" : "Done";
+        : presentation.failed ? "Failed" : presentation.interrupted ? "Stopped" : "Done";
       const sub = resolvedBackground ? "" :
         `<div class="chat-console-agent-sub"><span class="chat-console-branch${last ? " is-blank" : ""}" aria-hidden="true">│</span><span class="chat-console-dim"><span aria-hidden="true">└ </span>${deps.escapeHtml(status)}</span></div>`;
       return (

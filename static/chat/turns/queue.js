@@ -338,7 +338,7 @@ export function createQueue(ctx) {
       FuseComposerSpell.refresh();
     }
     composer.restoreEnterKeyHint();
-    picker.setHint(S.streaming ? "Queued — it sends when this turn finishes." : "Queued.");
+    picker.setHint(S.streaming ? "Queued: it sends when the reply finishes." : "Queued.");
     composer.syncComposer();
     composer.resizeInput();
     sync.syncStatus();

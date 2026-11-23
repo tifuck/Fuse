@@ -254,7 +254,7 @@ function ccFailure(trace) {
   }
 
 function ccInterruptedText(trace) {
-    const head = "Interrupted";
+    const head = "Stopped";
     const error = String((trace && trace.error) || "").toLowerCase();
     const state = trace ? deps.executionState(trace) : "";
     if (/connector restarted/.test(error)) {
@@ -264,12 +264,12 @@ function ccInterruptedText(trace) {
       return `${head}: ${trace.host ? `${trace.host} lost its connection` : "the connection was lost"}`;
     }
     if (/\b(agent|connector|host) is offline\b|went offline|disconnected/.test(error)) {
-      return `${head}: ${trace.host ? `${trace.host} went offline` : "the host went offline"}`;
+      return `${head}: ${trace.host ? `${trace.host} went offline` : "the machine went offline"}`;
     }
     if (state === "cancelled" || /cancel/.test(error) || (trace && trace.status === "cancelled")) {
       return trace && trace.termination_confirmed === false && trace.name === "run_terminal_command"
-        ? `${head}: stopped; the process may still be running`
-        : `${head}: stopped`;
+        ? `${head}: the process may still be running`
+        : head;
     }
     if (state === "lost") return `${head}: the result was lost`;
     return `${head}: the run ended before it finished`;

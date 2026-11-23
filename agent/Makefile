@@ -15,7 +15,7 @@ HARDEN := -fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fPIE -
 LIBS ?= -lssl -lcrypto -lpthread -ldl
 SRC := src/main.c src/config.c src/lifecycle.c src/net.c src/outq.c src/exec.c \
        src/files.c src/edit.c src/jobs.c src/update.c src/session.c \
-       src/reconnect.c src/stats.c third_party/cJSON.c
+       src/reconnect.c src/stats.c src/httpop.c third_party/cJSON.c
 LIB_SRC := $(filter-out src/main.c,$(SRC))
 HDRS := $(wildcard src/*.h) third_party/cJSON.h
 ARCH := $(shell uname -m)
@@ -99,7 +99,10 @@ tests/test_http: tests/test_http.c $(LIB_SRC) $(HDRS)
 tests/test_stats: tests/test_stats.c $(LIB_SRC) $(HDRS)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tests/test_stats.c $(LIB_SRC) $(LIBS)
 
-test: tests/test_expand_home tests/test_reconnect tests/test_files tests/test_lifecycle tests/test_output_queue tests/test_binary tests/test_ws_frame tests/test_exec_stream tests/test_jobs_pool tests/test_ws_tls tests/test_http tests/test_stats
+tests/test_httpop: tests/test_httpop.c $(LIB_SRC) $(HDRS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tests/test_httpop.c $(LIB_SRC) $(LIBS)
+
+test: tests/test_expand_home tests/test_reconnect tests/test_files tests/test_lifecycle tests/test_output_queue tests/test_binary tests/test_ws_frame tests/test_exec_stream tests/test_jobs_pool tests/test_ws_tls tests/test_http tests/test_stats tests/test_httpop
 	tests/test_expand_home
 	tests/test_reconnect
 	tests/test_files
@@ -112,7 +115,8 @@ test: tests/test_expand_home tests/test_reconnect tests/test_files tests/test_li
 	tests/test_ws_tls
 	tests/test_http
 	tests/test_stats
+	tests/test_httpop
 
 clean:
 	rm -f dist/fuse-agent-* tests/test_expand_home tests/test_reconnect tests/test_files tests/test_lifecycle \
-	  tests/test_output_queue tests/test_binary tests/test_ws_frame tests/test_exec_stream tests/test_jobs_pool tests/test_ws_tls tests/test_http tests/test_stats
+	  tests/test_output_queue tests/test_binary tests/test_ws_frame tests/test_exec_stream tests/test_jobs_pool tests/test_ws_tls tests/test_http tests/test_stats tests/test_httpop

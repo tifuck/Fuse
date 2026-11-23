@@ -9,7 +9,7 @@ function projectKey(hostId, projectId) {
 
 function projectWorkspaceDetails(info) {
   const details = [];
-  if (info.host_alias) details.push("Host: " + info.host_alias);
+  if (info.host_alias) details.push("Machine: " + info.host_alias);
   if (info.remote_path) details.push("Path: " + info.remote_path);
   if (info.permission_mode) {
     const permission = { read_only: "Read-only", project: "Project-scoped" }[info.permission_mode] || info.permission_mode;
@@ -228,7 +228,7 @@ export function createProjects(ctx) {
           await threads.startProjectThread(hostId, projectId, item);
         },
       },
-      { label: "Edit project", run: () => editProject(hostId, projectId) },
+      { label: "Project settings", run: () => editProject(hostId, projectId) },
       {
         label: item.archived ? "Unarchive project" : "Archive project",
         run: async () => {
@@ -247,7 +247,7 @@ export function createProjects(ctx) {
           const n = Number(item.sessions || 0);
           const what = n ? ` and its ${n === 1 ? "session" : n + " sessions"}` : "";
           const ok = await undo.askConfirm(
-            `Delete project "${item.name || "Project"}"${what}? The folder on ${item.host_alias || "the machine"} is not touched. This cannot be undone.`,
+            `Delete project “${item.name || "Project"}”${what}? The folder on ${item.host_alias || "the machine"} is not touched. This cannot be undone.`,
             { confirmLabel: "Delete", danger: true }
           );
           if (!ok) return;

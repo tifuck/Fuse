@@ -14,7 +14,7 @@ export function create(deps) {
   // An older answer drawn on demand: [data-load-earlier] hydrates it.
   function deferredShellHtml() {
     return '<article class="chat-turn is-assistant chat-deferred-message" data-deferred-message>' +
-      '<button type="button" class="btn ghost sm" data-load-earlier>Load earlier response</button></article>';
+      '<button type="button" class="btn ghost sm" data-load-earlier>Load earlier reply</button></article>';
   }
 
   function recapHtml(text) {

@@ -10,7 +10,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-search-btn {
   color: var(--mute);
 }
 
-html[data-chat-console="true"] .chat[data-view="console"] .chat-search-btn:hover { color: var(--mist); }
+html[data-chat-console="true"] .chat[data-view="console"] :is(.chat-search-btn, .chat-search-btn.is-on, .chat-perm-btn, .chat-context):hover { color: var(--mist); }
 
 html[data-chat-console="true"] .chat[data-view="console"] .chat-search-btn.is-on { color: var(--brass); background: none; }
 
@@ -58,7 +58,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-send {
 html[data-chat-console="true"] .chat[data-view="console"] .chat-send:disabled {
   background: none;
   color: var(--mute);
-  opacity: 0.4;
+  opacity: var(--con-disabled);
   filter: none;
   cursor: default;
 }
@@ -74,7 +74,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-send:active { tr
 
 /* The repeated class keeps the specificity of the old body:has(.chat[data-view])
    anchor; a :has() on body re-ran over the whole page on every DOM change. */
-html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-pop, .chat-picker-menu, .chat-context-pop, .chat-perms-menu) { border-radius: 0; box-shadow: none; background: var(--ink); }
+html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-pop, .chat-picker-menu, .chat-context-pop, .chat-perms-menu, .chat-slash, .user-dock-menu) { border-radius: 0; box-shadow: none; background: var(--ink); }
 
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-perms-row, .chat-perms-x, .chat-perms-modes, .chat-perms-modes button) { border-radius: 0; }
 

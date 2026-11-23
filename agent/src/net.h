@@ -3,6 +3,8 @@
 
 /* Outbound TLS + WebSocket transport: URL parsing, connect, framing. */
 
+#include <sys/socket.h>
+
 #include <openssl/ssl.h>
 
 struct url {
@@ -26,6 +28,19 @@ void url_host_header(const struct url *u, char *out, size_t cap);
 int url_join_path(struct url *u, const char *suffix);
 int tls_connect(struct tls *t, const struct url *u);
 void tls_close(struct tls *t);
+
+/* The http op's pinned one-shot connection, for worker threads: connect to
+ * exactly sa (no DNS) while SNI and certificate verification use host. One
+ * deadline (now_mono_ms based) spans connect, handshake, write and read; the
+ * job's cancel flag is noticed within 250 ms. Never touches the TLS session
+ * cache. Negative results: */
+enum { TLS_EOF = 0, TLS_FAIL = -1, TLS_TIMEOUT = -2, TLS_CANCELLED = -3, TLS_HANDSHAKE = -4 };
+struct job;
+int tls_connect_ip(struct tls *t, const char *host, const struct sockaddr *sa, socklen_t len,
+                   int64_t deadline, struct job *job);
+int tls_write_job(struct tls *t, const void *buf, size_t n, int64_t deadline, struct job *job);
+/* Bytes read (> 0), TLS_EOF, or a negative result above. */
+int tls_read_job(struct tls *t, void *buf, size_t n, int64_t deadline, struct job *job);
 int tls_write_all(struct tls *t, const void *buf, size_t n);
 int tls_read_some(struct tls *t, void *buf, size_t n);
 int b64(const unsigned char *in, int inlen, char *out, int outcap);

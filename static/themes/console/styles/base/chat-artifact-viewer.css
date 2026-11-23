@@ -78,7 +78,7 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-version select:hover { background-color: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-version select:hover { background-color: var(--con-hover); color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-tool,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-head .chat-menu-close {
   display: inline-flex;
@@ -100,7 +100,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-tool.is-icon,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-head .chat-menu-close { width: var(--chat-bar-btn); min-width: var(--chat-bar-btn); padding: 0; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-tool:hover,
-:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-head .chat-menu-close:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-head .chat-menu-close:hover { background: var(--con-hover); color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-tool:is([aria-pressed="true"], [aria-expanded="true"]) {
   background: color-mix(in srgb, var(--mist) 11%, transparent);
   color: var(--mist);
@@ -171,7 +171,7 @@
   font-weight: 400;
   letter-spacing: -0.015em;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-pick:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-pick:hover { background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-pick svg { flex-shrink: 0; color: var(--chat-secondary); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-artifact-tool[hidden] { display: none; }

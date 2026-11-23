@@ -202,7 +202,7 @@ export function createList(ctx) {
       .then(() => net.api("/chat/favorites", { method: "PUT", body: JSON.stringify({ model: id, on }) }))
       .then(
         (data) => { S.favoritesPending--; acceptFavorites(data.models); },
-        (err) => { S.favoritesPending--; flip(!on); sheet.setHint(err?.message || "Couldn't save the favorite.", true); }
+        (err) => { S.favoritesPending--; flip(!on); sheet.setHint(err?.message || "Could not save the favorite.", true); }
       );
   }
 

@@ -125,7 +125,7 @@ html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn kbd {
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn:hover { --dictation-kbd: var(--mute); color: var(--mist); }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn.is-done { color: var(--brass); }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn.is-done:hover { --dictation-kbd: currentColor; background: var(--brass); color: var(--on-brass, var(--ink)); }
-html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+html[data-chat-console="true"] .chat[data-view="console"] .dictation-btn:focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 html[data-chat-console="true"] .chat[data-view="console"] .dictation.is-finishing .dictation-btn { pointer-events: none; opacity: 0.35; }
 
 @keyframes dictation-blink-console {

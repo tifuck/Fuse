@@ -108,7 +108,7 @@ export function createStatus(ctx) {
         body = String(msg.error || (last && last.text) || msg.content || "").trim().slice(0, 160);
       }
       window.fusePush.show(threadId, title, body || "Reply finished.", () =>
-        sidebar.openThread(threadId).catch((error) => showFailure("Chat could not be opened", error)));
+        sidebar.openThread(threadId).catch((error) => showFailure("Could not open the chat", error)));
     } catch {}
   }
 

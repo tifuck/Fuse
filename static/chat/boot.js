@@ -132,7 +132,7 @@ export function createBoot(ctx) {
       if (sidebar.threadById((new URLSearchParams(window.location.search).get("t") || "").trim())) openLinked().catch(() => {});
     })
     .then(openLinked)
-    .catch((error) => sync.showFailure("Chat history could not be loaded", error));
+    .catch((error) => sync.showFailure("Could not load the chat history", error));
 
   return {
 

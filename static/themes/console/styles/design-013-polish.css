@@ -1,8 +1,9 @@
 /* Console polish over the working area (loaded last): even sizes on tool rows, cards that stand out, prettier tables. */
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: calc(0.78rem * var(--chat-text-scale, 1)); }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] { --tty: var(--console-type); }
 
 /* Tool rows and prompts: one size, so host tags, timings and notes stop shrinking. Replies keep their markdown scale. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-step, .chat-turn.is-user, .chat-notice-line) :not(svg, svg *, img, .chat-md, .chat-md *) { font-size: var(--tty) !important; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-turn.is-user .chat-bubble { font-size: var(--tty); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] [data-chat-log] :is(.chat-compact-mark, .chat-compact-banner) :is(strong, summary, summary *) { text-transform: none !important; letter-spacing: 0 !important; font-size: var(--tty) !important; }
 
 /* A folded call prints one line under it: long lines end in an ellipsis and

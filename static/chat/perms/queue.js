@@ -203,10 +203,10 @@ export function createQueue(ctx) {
     S.permChip.classList.toggle("is-bypass", mode === "bypass");
     S.permChip.setAttribute("aria-expanded", S.permsOpen ? "true" : "false");
     const title = mode === "bypass"
-      ? "Bypass on — no permission prompts"
-      : (mode === "auto" ? "Auto-approve on — Jev allows ordinary calls" : "Permission prompts on");
+      ? "Bypass: no permission prompts"
+      : (mode === "auto" ? "Auto: a reviewer model allows routine calls" : "Ask: permission prompts on");
     S.permChip.setAttribute("title", title);
-    const label = mode === "bypass" ? "Bypass on" : (mode === "auto" ? "Auto" : "Bypass");
+    const label = mode === "bypass" ? "Bypass" : (mode === "auto" ? "Auto" : "Ask");
     if (permChipLabel) permChipLabel.textContent = label;
     // The spoken name starts with the visible word so voice control can say it;
     // the button opens the menu, so it carries no pressed state.
@@ -298,12 +298,12 @@ export function createQueue(ctx) {
     // Theme variables are identical for every card; resolve them once per
     // theme instead of forcing computed style on each card per frame.
     const root = document.documentElement;
-    const key = root.getAttribute("data-theme") || "";
+    const key = `${root.getAttribute("data-chat-view") || ""}/${root.getAttribute("data-chat-theme") || ""}`;
     if (_permThemeCache.key === key && _permThemeCache.brass) return _permThemeCache;
     const theme = getComputedStyle(el);
     _permThemeCache = {
       key,
-      brass: parseCssRgb(theme.getPropertyValue("--brass"), "#A5D8FF"),
+      brass: parseCssRgb(theme.getPropertyValue("--ask-accent") || theme.getPropertyValue("--brass"), "#A5D8FF"),
       yellow: parseCssRgb(theme.getPropertyValue("--status-live"), "#FBBF24"),
       red: parseCssRgb(theme.getPropertyValue("--fault"), "#F87171"),
     };
@@ -459,7 +459,7 @@ export function createQueue(ctx) {
       renderPermQueue();
       if (S.permsOpen && (action === "allow_session" || action === "allow_host")) menu.refreshPerms();
     } catch (error) {
-      sync.showFailure("Permission decision failed", error);
+      sync.showFailure("Could not send the permission decision", error);
     }
   }
 

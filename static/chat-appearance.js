@@ -944,7 +944,7 @@
     if (strengthOut) strengthOut.textContent = `${strength}%`;
     if (strengthWrap) strengthWrap.hidden = shownBackdrop() === "none";
     document.querySelectorAll("[data-appearance-scope]").forEach((el) => {
-      el.textContent = `Saved for this theme (${VIEW_META[view].label || view}).`;
+      el.textContent = `Saved for this layout (${VIEW_META[view].label || view}).`;
     });
   }
 

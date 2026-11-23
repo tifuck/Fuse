@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     api_rate_per_minute: int = 90
     # Concurrent /v1/chat/completions per user (open streams count until they end).
     api_max_in_flight: int = 16
+    # Web searches and page reads leave through the connectors a user picks
+    # (Settings › Web search). On: a user who picked none goes out from this
+    # server instead. Off: that user has no web tools.
+    web_search_server_fallback: bool = False
     web_search_queries_per_turn: int = 32
     # Top result pages read at search time for query-relevant excerpts
     # (search/excerpts.py); 0 turns search-time reads off.

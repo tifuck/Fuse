@@ -287,6 +287,8 @@ func (h *jobHub) run(s *session, msg map[string]any) {
 			}
 		}
 		s.sendResFull(id, code == 0, code, out, errb, errText, timedOut, confirmed)
+	case "http":
+		s.httpOp(id, msg, jobCancel(job))
 	case "read_binary":
 		offset, offsetOK := binaryInt(msg, "offset", 0, 0, binaryFileMax)
 		limit, limitOK := binaryInt(msg, "limit", binaryChunkMax, 1, binaryChunkMax)

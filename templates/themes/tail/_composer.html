@@ -13,7 +13,7 @@
     <div class="chat-rewind" data-chat-rewind hidden role="dialog" aria-labelledby="chat-rewind-title">
       <div class="chat-rewind-head">
         <p id="chat-rewind-title">Rewind to a message</p>
-        <button type="button" class="chat-menu-close chat-rewind-close" data-rewind-close aria-label="Close">
+        <button type="button" class="chat-menu-close chat-rewind-close" data-rewind-close aria-label="Close" title="Close (Esc)">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
@@ -57,12 +57,12 @@
             </svg>
           </button>
           <div class="chat-perm-host" data-perm-host>
-            <button type="button" class="chat-perm-btn" data-perm-chip aria-haspopup="dialog" aria-expanded="false" aria-label="Bypass, permissions: prompts on" title="Permission prompts on">
+            <button type="button" class="chat-perm-btn" data-perm-chip aria-haspopup="dialog" aria-expanded="false" aria-label="Ask, permissions: prompts on" title="Ask: permission prompts on">
               <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                 <path d="M8 1.8l4.6 1.7v3.9c0 2.9-1.9 5.4-4.6 6.4-2.7-1-4.6-3.5-4.6-6.4V3.5L8 1.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
                 <path class="chat-perm-check" d="M5.6 7.9l1.7 1.7 3-3.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <span class="chat-perm-btn-label" data-perm-chip-label>Bypass</span>
+              <span class="chat-perm-btn-label" data-perm-chip-label>Ask</span>
             </button>
           </div>
         </div>
@@ -96,8 +96,8 @@
             <span class="dictation-rec" aria-hidden="true"></span>
             <span class="dictation-bars" aria-hidden="true"></span>
             <span class="dictation-time" data-dictation-time>0:00</span>
-            <button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel · Esc"><kbd>esc</kbd>cancel</button>
-            <button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done · Enter"><kbd>↵</kbd>done</button>
+            <button type="button" class="dictation-btn" data-dictation-cancel aria-label="Cancel dictation" title="Cancel (Esc)"><kbd>esc</kbd>cancel</button>
+            <button type="button" class="dictation-btn is-done" data-dictation-done aria-label="Finish dictation" title="Done (Enter)"><kbd>↵</kbd>done</button>
           </template>
           {% endif %}
           <button type="submit" class="chat-send" data-chat-send disabled aria-label="Send">

@@ -77,7 +77,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:checked + .skills-switch { border-color: var(--brass); background: color-mix(in srgb, var(--brass) 22%, var(--ink)); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:checked + .skills-switch::after { background: var(--brass); transform: translate(0.88rem, -50%); }
-:where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:focus-visible + .skills-switch { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .skills-toggle input:focus-visible + .skills-switch { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-toggle:hover .skills-switch { border-color: color-mix(in srgb, var(--mist) 30%, var(--line)); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-search,
 :where(html.is-chat-root[data-chat-view="console"]) .skills-upload { display: flex; flex-direction: column; gap: 0.55rem; align-items: stretch; }
@@ -133,7 +133,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-review-file summary::before { content: "▸"; width: 1rem; flex: none; color: var(--mute); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-review-file[open] > summary::before { content: "▾"; }
-:where(html.is-chat-root[data-chat-view="console"]) .skills-review-file summary:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .skills-review-file summary:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .skills-review-file pre {
   max-height: 18rem;
   margin: 0 0 0.5rem;

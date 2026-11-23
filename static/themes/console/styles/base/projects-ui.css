@@ -137,7 +137,7 @@ html:where(.is-chat-root[data-chat-view="console"])[data-chat-view="console"] bo
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-card:hover { border-color: color-mix(in srgb, var(--mist) 24%, var(--fp-card-line)); background: var(--raise); }
-:where(html.is-chat-root[data-chat-view="console"]) .fp-card:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .fp-card:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-card.is-current { border-color: color-mix(in srgb, var(--brass) 55%, var(--fp-card-line)); background: color-mix(in srgb, var(--brass) 7%, var(--fp-card-bg)); box-shadow: inset 2px 0 0 var(--brass); }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-card:disabled { opacity: 0.6; cursor: progress; }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-card > .fp-icon { grid-area: icon; }
@@ -239,7 +239,7 @@ html:where(.is-chat-root[data-chat-view="console"])[data-chat-view="console"] bo
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-swatch.is-on { border-color: var(--panel); box-shadow: 0 0 0 2px var(--mist); }
-:where(html.is-chat-root[data-chat-view="console"]) .fp-swatch:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .fp-swatch:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .fp-swatch-custom {
   display: block;
   place-items: center;

@@ -65,8 +65,9 @@ or SSH, and asks before it acts. Bulk work runs as sandboxed JavaScript
 <td valign="top">
 
 **🔎 Web search built in**<br>
-Searches and reads pages with no search API key. Add a Brave key for one more
-source.
+Searches and reads pages with no search API key, out through the machines
+each user picks, so the server's own IP stays out of it. Add a Brave key for
+one more source.
 
 </td>
 <td valign="top">
@@ -383,6 +384,7 @@ ones:
 | `ALLOW_REGISTER` | `config.env` | Open registration (default: invite-only after the first user) |
 | `LLAMA_BASE_URL`, `LLAMA_API_KEY` | `config.env`, `.env` | Optional site-wide llama.cpp backend |
 | `BRAVE_SEARCH_API_KEY` | `.env` | Optional extra web search source |
+| `WEB_SEARCH_SERVER_FALLBACK` | `config.env` | Web searches and page reads leave through the connectors a user picks under Settings › Web search. `true` lets a user who picked none go out from this server instead (default: off, that user has no web search) |
 | `GITHUB_TOKEN` | `.env` | Optional, raises the GitHub rate limit for skill installs |
 
 > [!IMPORTANT]

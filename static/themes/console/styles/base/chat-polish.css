@@ -241,7 +241,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-icon-btn:hover {
   color: var(--mist);
-  background: var(--raise);
+  background: var(--con-hover);
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-icon-btn:focus-visible {
   outline: 2px solid var(--steel);
@@ -336,7 +336,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-code-head { min-height: calc(2.1rem * var(--chat-text-scale, 1)); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-code-head .chat-icon-btn { color: var(--mute); }
 /* The code block clips its overflow; keep the ring inside the button. */
-:where(html.is-chat-root[data-chat-view="console"]) .chat-code-head .chat-icon-btn:focus-visible { outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-code-head .chat-icon-btn:focus-visible { outline-offset: calc(-1 * var(--con-ring-off)); }
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="console"]) .chat-icon-btn {
     width: 2rem;

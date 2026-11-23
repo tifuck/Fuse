@@ -517,6 +517,10 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             thread_context = thread.get("context") or ""
             if "tools" not in raw:
                 tools = parse_tool_names(thread.get("tools"))
+    from .search import egress
+
+    if not egress.available(user["id"]):
+        tools = [name for name in tools if name not in ("web_search", "read_url")]
     if isinstance(raw.get("thread_context"), str):
         thread_context = _clip(raw.get("thread_context"), chats.CONTEXT_MAX)
     from . import hosts as hosts_mod

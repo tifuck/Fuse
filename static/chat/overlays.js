@@ -191,7 +191,7 @@ export function createOverlays(ctx) {
         event.preventDefault();
         // A command that opens its own UI (Rename, a dialog) takes focus itself.
         closePop(true);
-        Promise.resolve(item.run()).catch((error) => sync.showFailure(`${item.label} failed`, error));
+        Promise.resolve(item.run()).catch((error) => sync.showFailure(`Could not ${item.label.charAt(0).toLowerCase()}${item.label.slice(1)}`, error));
       });
       S.pop.appendChild(btn);
     });

@@ -70,7 +70,7 @@ export function createLibrary(ctx) {
         `<span class="chat-library-bar-count">${cat.prompts.length} prompts</span></div>` +
         `<div class="chat-library-prompts" role="group" aria-label="${escapeHtml(cat.name)} prompts">${cat.prompts.map((p) => {
           const ok = usable(BY_ID.get(p.id));
-          return `<button type="button" class="chat-library-prompt" data-library-insert="${p.id}"${ok ? "" : ' aria-disabled="true" title="Needs a project chat"'}>${escapeHtml(p.title)}</button>`;
+          return `<button type="button" class="chat-library-prompt" data-library-insert="${p.id}"${ok ? "" : ' aria-disabled="true" title="Needs a project session"'}>${escapeHtml(p.title)}</button>`;
         }).join("")}</div>`
       : `<div class="chat-library-tiles" role="group" aria-label="Prompt library">${CATALOG.categories.map((c) =>
         `<button type="button" class="chat-library-tile" data-library-cat="${c.id}">${icon(c.icon, 18)}<span class="chat-library-tile-name">${escapeHtml(c.name)}</span><span class="chat-library-tile-count">${c.prompts.length} prompts</span></button>`).join("")}</div>`) +
@@ -94,7 +94,7 @@ export function createLibrary(ctx) {
     return `<div class="chat-library-item" role="listitem">` +
       `<button type="button" class="chat-library-row" data-library-insert="${p.id}"${ok ? "" : ' aria-disabled="true"'}>` +
       `<span class="chat-library-row-title">${escapeHtml(p.title)}</span>` +
-      `<span class="chat-library-row-blurb">${escapeHtml(ok ? p.blurb : "Needs a project chat. " + p.blurb)}</span></button>` +
+      `<span class="chat-library-row-blurb">${escapeHtml(ok ? p.blurb : "Needs a project session. " + p.blurb)}</span></button>` +
       `<span class="chat-library-tag${p.modes[0] === "act" ? " is-act" : ""}">${escapeHtml(modeTag(p))}</span>` +
       `<button type="button" class="chat-library-peek" data-library-preview="${p.id}" aria-label="Preview ${escapeHtml(p.title)}">${icon("eye", 15)}</button></div>`;
   }
@@ -104,7 +104,7 @@ export function createLibrary(ctx) {
     const items = q
       ? PROMPTS.filter((p) => (p.title + " " + p.blurb + " " + p.tags.join(" ") + " " + p.cat.name).toLowerCase().includes(q))
       : CATALOG.categories.find((c) => c.id === view.cat).prompts.map((p) => BY_ID.get(p.id));
-    if (!items.length) return `<p class="chat-library-empty">No prompt matches "${escapeHtml(view.query.trim())}".</p>`;
+    if (!items.length) return `<p class="chat-library-empty">No prompts match “${escapeHtml(view.query.trim())}”.</p>`;
     return items.map(rowHtml).join("");
   }
 
@@ -203,7 +203,7 @@ export function createLibrary(ctx) {
       const p = BY_ID.get(view.preview);
       const insertBtn = sheet.querySelector("[data-library-insert-preview]");
       insertBtn.disabled = !usable(p);
-      insertBtn.textContent = usable(p) ? "Insert into the message box" : "Needs a project chat";
+      insertBtn.textContent = usable(p) ? "Insert into the message box" : "Needs a project session";
       paintHead();
     } else paintList();
   }
@@ -302,7 +302,7 @@ export function createLibrary(ctx) {
     const p = BY_ID.get(id);
     if (!p) return;
     if (!usable(p)) {
-      picker.setHint(`"${p.title}" reads a codebase. Start a project chat to use it.`, "warn");
+      picker.setHint(`“${p.title}” reads a codebase. Start a project session to use it.`, "warn");
       return;
     }
     if (S.input.value.trim()) {
@@ -384,7 +384,7 @@ export function createLibrary(ctx) {
       const blank = fields.find((f) => f.required);
       if (blank) S.input.setSelectionRange(blank.start, blank.end);
       S.input.focus({ preventScroll: true });
-      picker.setHint(`"${firstBlank(S.input.value)}" is still blank. Fill it in, or send again to send it as is.`, "warn");
+      picker.setHint(`“${firstBlank(S.input.value)}” is still blank. Fill it in, or send again to send it as is.`, "warn");
     }
     S.input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.isComposing) guard(event);

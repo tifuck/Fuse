@@ -47,5 +47,53 @@ function secretsWindowHtml(rows) {
     </dialog>`;
   }
 
-  return { secretsWindowHtml };
+  // The web search setup window (chat/websetup.js): the user's connectors to
+  // tick, or a way to add one. The house dialog of the Protect secrets window,
+  // narrower. chat/websetup.js sets the ticks and the save label.
+  function webSetupWindowHtml(rows, opts = {}) {
+    const esc = deps.escapeHtml;
+    const body = rows.map((row) => {
+      const nameId = "chat-websetup-name-" + row.id;
+      const ip = row.ip || (opts.reading && row.usable && row.online ? "reading…" : "not read yet");
+      const shares = row.shares.length ? `<span class="chat-secrets-kind">same IP as ${esc(row.shares.join(", "))}</span>` : "";
+      return `<tr data-websetup-row="${row.id}"${row.usable ? "" : ' class="is-off"'}>
+        <td class="chat-secrets-tick"><input type="checkbox" data-websetup-check${row.usable ? "" : " disabled"} aria-labelledby="${nameId}"></td>
+        <td class="chat-secrets-name"><span class="chat-secrets-key" id="${nameId}">${esc(row.alias)}</span><span class="chat-secrets-kind">${esc(row.status)}</span></td>
+        <td class="chat-secrets-where"><span>${esc(ip)}</span>${shares}</td>
+      </tr>`;
+    }).join("");
+    const list = rows.length
+      ? `<div class="chat-secrets-list">
+          <table>
+            <thead><tr>
+              <th class="chat-secrets-tick" scope="col"><span class="visually-hidden">Use</span></th>
+              <th class="chat-secrets-name" scope="col">Machine</th>
+              <th class="chat-secrets-where" scope="col">Public IP</th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>`
+      : "";
+    const why = rows.length
+      ? "Web searches and page reads go out through the machines you tick, not from this server, and sites see that machine's public IP. Machines that share an IP only back each other up, so one per network is enough."
+      : "Web searches and page reads go out through one of your machines, not from this server. Add a machine with the Fuse connector, then pick it here.";
+    const primary = rows.length
+      ? '<button type="button" class="btn" data-websetup-save></button>'
+      : '<a class="btn" href="/hosts" data-websetup-add>Add a machine</a>';
+    return `<dialog class="modal chat-secrets is-web" role="dialog" aria-modal="true" aria-labelledby="chat-websetup-title" data-websetup-window>
+      <header class="chat-secrets-head">
+        <h2 id="chat-websetup-title">${rows.length ? "Set up web search" : "Web search needs a machine"}</h2>
+        <p>${why}</p>
+      </header>
+      ${list}
+      <p class="chat-secrets-error" data-websetup-error role="alert" hidden></p>
+      <div class="chat-secrets-actions">
+        <a class="chat-secrets-never" href="/settings#web">Web search settings</a>
+        <button type="button" class="btn ghost" data-websetup-later>Not now</button>
+        ${primary}
+      </div>
+    </dialog>`;
+  }
+
+  return { secretsWindowHtml, webSetupWindowHtml };
 }

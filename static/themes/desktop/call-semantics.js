@@ -181,9 +181,9 @@ function ccBytes(n) {
     const fixed = (value) => value.toFixed(1).replace(/\.0$/, "");
     const fits = (value) => Number(value.toFixed(1)) < 1024;
     if (bytes < 1024) return `${bytes} bytes`;
-    if (fits(bytes / 1024)) return `${fixed(bytes / 1024)}KB`;
-    if (fits(bytes / 1024 / 1024)) return `${fixed(bytes / 1024 / 1024)}MB`;
-    return `${fixed(bytes / 1024 ** 3)}GB`;
+    if (fits(bytes / 1024)) return `${fixed(bytes / 1024)} KB`;
+    if (fits(bytes / 1024 / 1024)) return `${fixed(bytes / 1024 / 1024)} MB`;
+    return `${fixed(bytes / 1024 ** 3)} GB`;
   }
 
 // tail: the lines under the error are command output, so the fold keeps the

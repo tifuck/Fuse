@@ -396,15 +396,15 @@ function initState() {
     { name: "retry", hint: "Resend the last message", needs: "messages" },
     { name: "redo", hint: "Redo an undone turn", needs: "redo" },
     { name: "rewind", hint: "Jump back to an earlier message", needs: "messages" },
-    { name: "title", hint: "Regenerate the chat title from this conversation", needs: "messages" },
+    { name: "title", hint: "Regenerate the title from this chat", needs: "messages" },
     { name: "recap", hint: "Summarize the latest work once it settles", needs: "messages" },
     { name: "prompts", hint: "Browse the prompt library", args: true },
     { name: "permissions", hint: "Manage agent permissions and bypass" },
     { name: "artifacts", hint: "This chat's artifacts, then all of yours: open, attach or copy a link" },
     { name: "init", hint: "Create or update AGENTS.md", needs: "project", args: true },
-    { name: "compact", hint: "Compress conversation context", needs: "messages", args: true },
+    { name: "compact", hint: "Compress this chat's context", needs: "messages", args: true },
     { name: "thinking", hint: "Show or hide thinking in every view" },
-    { name: "theme", hint: "Pick a wallpaper for this theme" },
+    { name: "theme", hint: "Pick a backdrop for this layout" },
     { name: "help", hint: "List slash commands" },
   ];
   S.activitySeq = 0;

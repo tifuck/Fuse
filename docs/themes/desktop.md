@@ -5,9 +5,9 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 ## Global rules
 
 - **Type:** 13–13.5px chrome, 15px/1.6 prose, 12–12.5px meta. Text colours are `--dk-text` or `--dk-mute` (≥4.5:1 on every surface). `--dk-dim` is for icons, borders and disabled states only, never text under 14px. On the default palette `--dk-dim` is at least `#8a8a8a`.
-- **Icons:** one set, 16px box, stroke 1.4, `currentColor`, centred in square buttons. Icon buttons rest at `--dk-mute` (≥3:1), hover = 6% mist fill + text colour, on (`aria-pressed`/`aria-expanded`=true) = `--dk-sel` fill. No accent colours or shadows on chrome buttons.
+- **Icons:** one set, 16px box, stroke 1.4, `currentColor`, centred in square buttons. Icon buttons rest at `--dk-mute` (≥3:1), hover = 6% mist fill + text colour, on (`aria-pressed`/`aria-expanded`=true) = `--dk-sel` fill. No accent colours or shadows on chrome buttons. Buttons share `--dk-ctl-r` (6px), list and menu rows `--dk-row-r` (7px); hover fills (`--dk-hover`) apply only under `(hover: hover)`, a press is `--dk-press`. One accent, `--dk-accent`.
 - **Targets:** ≥28px on pointer devices, ≥36px at ≤800px or `(pointer: coarse)`, never under 32px at ≤480px. Grow the hit area with padding or `::after`, not the glyph.
-- **Focus:** every focusable shows `:focus-visible { outline: 2px solid; outline-offset: 2px }` (or inset −2px inside clipping containers) at ≥3:1. A hairline handle (sidebar resize) gets a 2px bar on focus.
+- **Focus:** every control shows `:focus-visible { outline: 2px solid var(--dk-accent); outline-offset: -2px }` (inset, so no container clips it; links in prose sit 2px out) at ≥3:1. A hairline handle (sidebar resize) gets a 2px bar on focus.
 - **Escape** closes exactly the topmost layer (popover, menu, sheet, drawer, in that order) and returns focus to its trigger. Where the runtime does not, the theme's `chrome.js` handles Escape in the capture phase for its own popups (context ring, account, row, title and ⋯ menus) so the drawer under them stays open.
 - **Breakpoints** (one set, every file): ≥1040 docked panels; 801–1039 the inspector is a viewport-anchored overlay; ≤800 sidebar drawer + inspector modal sheet; ≤480 phone. The top bar adapts to its own width (container query), not the viewport.
 - **Never:** horizontal page scroll; text past the viewport (code, diff and stdout scroll inside their block, with a visible edge); a panel opening by itself.
@@ -20,13 +20,13 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 - The title is the only flexible item: `flex: 1 1 auto; min-width: 6rem`, ellipsis, full title in `title`. Crumb pieces clip their own overflow; nothing paints over the icons.
 - Right, at most five icons: **Todos** (only while a list exists) · **Artifacts** · **Context** · **Inspector** · **⋯**. Below 640px of bar width, Artifacts and Context move into ⋯.
 - No back/forward and no Chats|Code segment in the bar (the sidebar owns those).
-- **⋯ menu** (`role=menu`, arrow keys with wrap, Home/End, Tab or Escape closes and refocuses ⋯, rows 32px, 40px on touch): New session · Open project… · Web search (checkbox item) · Terminal output · Skills · Appearance… · Wallpapers… `/theme` · Light/Dark · Alerts (only when push is supported) · separator · Scheduled · Projects. A sheet opened from ⋯ returns focus to ⋯ when it closes.
+- **⋯ menu** (`role=menu`, arrow keys with wrap, Home/End, Tab or Escape closes and refocuses ⋯, rows 32px, 40px on touch): New chat · Open project… · Web search (checkbox item) · Command output · Skills · Appearance · Backdrop `/theme` · Light mode (checkbox item) · Alerts (only when push is supported) · separator · Scheduled · Projects. A sheet opened from ⋯ returns focus to ⋯ when it closes.
 - **Title menu** opens anchored under the title (Rename, Pin, Fork, Archive) with `aria-expanded`, works with the sidebar collapsed, and returns focus to the title.
 
 ## Sidebar
 
 - Head (the bar's height and hairline): Chats | Projects segmented tabs (28px, selected = subtle fill), then search and collapse pushed right.
-- Action rows 28px, 14px icons, 13.5px text: New session · Scheduled · Customize.
+- Action rows 28px, 14px icons, 13.5px text: New chat · Scheduled · Backdrop.
 - Search opens as a 30px field with one × (no native cancel button); first Esc clears, second closes.
 - Projects-tab filters: one 28px quiet text row ("Recent ▾ · All projects ▾"), transparent, `--dk-mute`, chevron, no border or black fill.
 - Section headers: 12px/500, sentence case, `--dk-mute`, never two in a row. Pinned (if any), then Recents.
@@ -38,7 +38,7 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 
 - Column 44rem (prose 680px); 12px phone gutters. Headings h1 1.4em … h4 1em, weight 600, never smaller than body. Links blue (no underline until hover). Inline code: small pill. Code blocks radius 10 with a hairline header and a Copy button (28px, 36px at ≤480). Tables: hairlines, `th` muted at ≥4.5:1.
 - User message: right-aligned pill, radius 16, padding 8px 14px, max-width 75%, clamped to 6 lines with "Show more"/"Show less".
-- Under every settled reply, in order: prose → recap (same left edge and font as prose, 0.92em, `--dk-mute`) → action row: copy (the whole reply's markdown) · fork · pin · read aloud, then "Just now" (full time in `title`), then work time · tok/s. Icons 14px in 28px buttons. In a subagent view only copy and read aloud.
+- Under every settled reply, in order: prose → recap (same left edge and font as prose, 0.92em, `--dk-mute`) → action row, always shown: copy (the whole reply's markdown) · fork · pin · read aloud, then "Just now" (full time in `title`), then work time. A turn that failed, was stopped or still waits on subagents says so before the time. Icons 14px in 28px buttons. In a subagent view only copy and read aloud.
 - Thinking: one muted italic line (≥4.5:1), collapsed by default.
 
 ## Tool rows and events
@@ -69,10 +69,10 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 ## Sheets and popovers
 
 - Menus and popovers: `--dk-card` at ≥92% + glass blur, 1px `--dk-card-line`, radius 12, shadow `0 14px 36px rgb(0 0 0 / .4)`, padding 4px, rows 32px (40px at ≤480).
-- Sheets (Context, Skills, Appearance, Projects, model picker at ≤800): `--dk-card`, radius 14, title 14px/600, 32px × (40px on phones), backdrop `rgb(0 0 0 / .45)`.
+- Sheets (Context, Skills, Appearance, Projects, model picker at ≤800): `--dk-card`, radius 14, title 14px/600, 32px × (40px on phones), backdrop `var(--scrim)`; opaque in a light scheme, shadow `--dk-sheet-shadow`.
 - Elements the runtime moves to `<body>` are styled from `html[data-chat-view="desktop"] body.is-chat > …`.
 - Controls: switches 36×20 with a round knob, segmented 28px, ranges 28px tall with a 14px round thumb.
-- `/theme`: dark panel above the composer, header "/theme · Wallpapers" with a right hint "↵ apply · esc close" in `--dk-mute`, thumbnail cards with labels, selected = 2px text-colour outline + ✓, × 28px, closes on outside click.
+- `/theme`: dark panel above the composer, header "/theme · Backdrops" with a right hint "↵ apply · esc close" in `--dk-mute`, thumbnail cards with labels, selected = 2px text-colour outline + ✓, × 28px, closes on outside click.
 
 ## Legibility over wallpapers
 
