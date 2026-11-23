@@ -4,11 +4,11 @@
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   /* Beside the model, in its own composer column: ring, then percent, then a
      rule before the model name. A phone keeps the ring alone by the logo. */
-  & .chat-pool { --pool-ring: 1.05rem; position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
+  & .chat-pool { --pool-ring: 1.1rem; position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
   & .chat-pool[hidden] { display: none; }
   & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.3rem; }
-  & .chat-pool::after { content: ""; width: 1px; height: 0.85rem; margin-left: 0.3rem; background: color-mix(in srgb, var(--mist) 18%, var(--ink)); }
-  & .chat-pool-btn { display: inline-flex; align-items: center; gap: 0.35rem; height: var(--composer-row); padding: 0 0.35rem 0 0.25rem; border: 0; border-radius: 5px; background: none; color: var(--mute); font: 0.75rem/1 var(--mono); cursor: pointer; }
+  & .chat-pool::after { content: ""; width: 1px; height: 0.85rem; background: color-mix(in srgb, var(--mist) 18%, var(--ink)); }
+  & .chat-pool-btn { display: inline-flex; align-items: center; gap: 0.35rem; height: var(--composer-row); padding: 0 0.3rem; border: 0; border-radius: 5px; background: none; color: var(--mute); font: 0.75rem/1 var(--mono); cursor: pointer; }
   & .chat-pool-btn:is(:hover, [aria-expanded="true"]) { background: var(--raise); color: var(--mist); }
   & .chat-pool-btn:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
   & .chat-pool-ring b { font: 700 0.5rem/1 var(--mono); }
@@ -24,7 +24,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   /* A switch of account flips the letter once. */
   & .chat-pool.is-hop .chat-pool-ring { animation: chat-pool-hop 480ms ease; }
   & .chat-pool { --pool-tone: var(--steel); --pool-num: var(--mute); }
-  & .chat-pool[data-level="warn"] { --pool-tone: var(--brass); --pool-num: var(--brass); }
+  & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
   & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
   /* The card: the theme's context card, with one row per usage window. */
   & .chat-pool-ready { margin: 0; color: var(--mute); font: 0.7rem/1 var(--mono); font-variant-numeric: tabular-nums; }
@@ -35,7 +35,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-rows small { grid-column: 2 / -1; color: var(--mute); font-size: 0.68rem; }
   & .chat-pool-meter { height: 3px; overflow: hidden; border-radius: 999px; background: var(--line); }
   & .chat-pool-meter i { display: block; height: 100%; border-radius: inherit; background: var(--steel); transition: width 220ms ease; }
-  & .chat-pool-rows li[data-level="warn"] .chat-pool-meter i { background: var(--brass); }
+  & .chat-pool-rows li[data-level="warn"] .chat-pool-meter i { background: var(--status-live); }
   & .chat-pool-rows li[data-level="hot"] .chat-pool-meter i { background: var(--fault); }
   & .chat-pool-num { color: var(--mist); font-family: var(--mono); font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right; }
   & :is(.chat-pool-hop, .chat-pool-none) { margin: 0.65rem 0 0; color: var(--mute); font: 0.72rem/1.4 var(--mono); }
@@ -44,7 +44,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
 }
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
-    & .chat-pool { --pool-ring: 1.15rem; margin-left: 0.45rem; margin-top: 0.15rem; }
+    & .chat-pool { margin-left: 0.45rem; margin-top: 0.15rem; }
     & .chat-pool::after, & .chat-pool-pct { display: none; }
     & .chat-pool-btn { padding-inline: 0.25rem; }
   }
