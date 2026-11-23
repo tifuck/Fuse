@@ -6,15 +6,15 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
      and its percent. A phone keeps the tightest window without its label. */
   & .chat-box-bar .chat-pool { position: relative; display: flex; align-items: stretch; }
   & .chat-box-bar .chat-pool[hidden] { display: none !important; }
-  & .chat-pool-btn { display: flex; align-items: center; gap: 0.65rem; height: auto; padding: 0 0.7rem; border: 0; border-radius: 0; background: none; color: var(--mute); font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
+  & .chat-pool-btn { display: flex; align-items: center; gap: 0.7rem; height: auto; padding: 0 0.7rem; border: 0; border-radius: 0; background: none; color: var(--mute); font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
   & .chat-pool-btn:is(:hover, [aria-expanded="true"]) { background: var(--tl-soft); color: var(--mist); }
   & .chat-pool-btn:focus-visible { outline: 2px solid var(--tl-ac); outline-offset: -2px; }
   & :is(.chat-pool-ring, .chat-pool-pct) { display: none; }
   & .chat-pool-slot { color: var(--mist); font-weight: 700; }
   & .chat-pool[data-own="true"] .chat-pool-slot { text-decoration: underline; text-underline-offset: 3px; }
-  & .chat-pool-wins { display: inline-flex; align-items: center; gap: 0.75rem; }
+  & .chat-pool-wins { display: inline-flex; align-items: center; gap: 0.7rem; }
   & .chat-pool-win { --pool-tone: color-mix(in srgb, var(--mist) 62%, transparent); --pool-num: var(--mute); display: inline-flex; align-items: center; gap: 0.35rem; }
-  & .chat-pool-win[data-level="warn"] { --pool-tone: var(--brass); --pool-num: var(--brass); }
+  & .chat-pool-win[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
   & .chat-pool-win[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
   & .chat-pool-win em { color: var(--tl-dim); font-style: normal; }
   & .chat-pool-cells { display: inline-flex; gap: 2px; }
@@ -31,7 +31,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-rows small { grid-column: 2 / -1; color: var(--mute); font-size: 0.68rem; }
   & .chat-pool-meter { height: 3px; overflow: hidden; border-radius: 999px; background: var(--line); }
   & .chat-pool-meter i { display: block; height: 100%; border-radius: inherit; background: var(--steel); transition: width 220ms ease; }
-  & .chat-pool-rows li[data-level="warn"] .chat-pool-meter i { background: var(--brass); }
+  & .chat-pool-rows li[data-level="warn"] .chat-pool-meter i { background: var(--status-live); }
   & .chat-pool-rows li[data-level="hot"] .chat-pool-meter i { background: var(--fault); }
   & .chat-pool-num { color: var(--mist); font-family: var(--mono); font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right; }
   & :is(.chat-pool-hop, .chat-pool-none) { margin: 0.65rem 0 0; color: var(--mute); font: 0.72rem/1.4 var(--mono); }
@@ -41,7 +41,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
 }
 @media (max-width: 640px) {
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
-    & .chat-pool-btn { gap: 0.45rem; padding-inline: 0.55rem; }
+    & .chat-pool-btn { gap: 0.45rem; }
+    & .chat-pool-wins { gap: 0.45rem; }
     & .chat-pool-win:not([data-tight]), & .chat-pool-win em { display: none; }
   }
 }
