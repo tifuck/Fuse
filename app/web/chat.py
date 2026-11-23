@@ -751,7 +751,7 @@ async def _project_agents_payload(user, host_id: int, cwd: str) -> JSONResponse:
 
 
 @router.get("/chat/pool")
-async def chat_pool_preview(request: Request, model: str = "", thread: str = ""):
+async def chat_pool_preview(request: Request, model: str = "", thread: str = "", refresh: bool = False):
     """The plan gauge before a reply (sources.pool_badge.preview): the pool
     account the chat's next request goes to, or null for a model outside a pool."""
     user, err = _chat_auth(request)
@@ -761,7 +761,7 @@ async def chat_pool_preview(request: Request, model: str = "", thread: str = "")
     thread = thread.strip()[:80]
     if thread:
         await asyncio.to_thread(_chat_thread_pk, user, thread)
-    view = await pool_badge.preview(user["id"], model, thread or None) if model else None
+    view = await pool_badge.preview(user["id"], model, thread or None, refresh=refresh) if model else None
     return JSONResponse({"pool": view}, headers={"Cache-Control": "no-store"})
 
 

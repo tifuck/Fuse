@@ -164,3 +164,32 @@ def test_before_a_reply_the_gauge_shows_the_account_the_next_request_uses(fresh_
     assert view["id"] == busy and view["preview"] is False
     assert pool_session._mem[("claude", sid)] == stamp
     assert src.creds == []  # the live source is untouched
+
+
+def test_an_idle_chats_reread_starts_the_pools_usage_refresh(fresh_db, monkeypatch):
+    me = user("me@core.test")
+    pool_account("claude", me, _claude(5, 1))
+    src = claude.ClaudeSource({"id": pool_policy.source_id("claude"), "name": "Claude"}, {}, [])
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "claude-opus-5-5"
+
+    import app.sources as sources
+    from app.sources import pool_refresh
+
+    started = []
+    monkeypatch.setattr(sources, "pick", pick)
+    monkeypatch.setattr(pool_session, "persist", False)
+    monkeypatch.setattr(pool_refresh, "start", lambda name, refresh: started.append((name, refresh)))
+
+    asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5"))
+    assert started == []
+    asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", refresh=True))
+    assert started == [("claude", claude.refresh_pool_quota)]
+
+
+def test_every_pool_refresh_names_a_function_of_its_source():
+    import importlib
+
+    for kind, name in pool_badge.POOL_REFRESH.items():
+        assert callable(getattr(importlib.import_module(f"app.sources.{kind}"), name)), kind

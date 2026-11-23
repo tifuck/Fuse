@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import importlib
 import re
 import time
 from datetime import datetime
 
 from .. import accounts, db
 from ..crypto import DecryptionError
-from . import pool_pick, pool_policy, pool_session
+from . import pool_pick, pool_policy, pool_refresh, pool_session
 
 REASONS = ("limit", "error", "")
 MAX_WINDOWS = 4
@@ -29,6 +30,13 @@ MAX_WINDOWS = 4
 MAX_ACCOUNTS = 40
 # Grok and Cursor name their per-product meters by internal ids.
 PRODUCT_NAMES = {"GrokBuild": "Build", "GrokChat": "Chat", "GrokVoice": "Voice", "GrokImagine": "Imagine", "GrokAPI": "API"}
+# The usage refresh a chat request starts for its pool (pool_refresh), by
+# module and function. An idle chat's meter starts it too, so its numbers do
+# not wait for a reply; each skips accounts read within their TTL.
+POOL_REFRESH = {"chatgpt": "refresh_pool_usage", "claude": "refresh_pool_quota", "cursor": "refresh_pool_quota",
+                "devin": "refresh_pool_status", "grok": "refresh_pool_billing", "kimi": "refresh_pool_quota",
+                "mimo": "refresh_pool_quota", "nanogpt": "refresh_pool_usage", "refuseless": "refresh_pool_usage",
+                "zai": "refresh_pool_quota"}
 
 
 def parse(raw) -> dict | None:
@@ -295,19 +303,24 @@ def _reset(value, now: float) -> int | None:
     return int(reset) if reset and reset > now else None
 
 
-async def preview(user_id: int, model: str, thread_id: str | None = None) -> dict | None:
+async def preview(user_id: int, model: str, thread_id: str | None = None, *, refresh: bool = False) -> dict | None:
     """The badge before a reply: the account the chat's next request goes to.
 
     A conversation is pinned to the account that served it (pool_session), so
     for a chat with a pin this is exact; otherwise it is the account the
     pool's own picker would choose now (marked preview), which the first
-    reply confirms or replaces. Nothing is reserved or refreshed.
+    reply confirms or replaces. Nothing is reserved. refresh (an open chat's
+    periodic reread) also starts the pool's usage refresh, as a request would;
+    its numbers land for the next read.
     """
     from . import POOL_TYPES, pick
 
     picked = await pick(model, user_id=user_id)
     if not picked or picked[0].type_id not in POOL_TYPES or not hasattr(picked[0], "_pick"):
         return None
+    kind = picked[0].type_id
+    if refresh and kind in POOL_REFRESH:
+        pool_refresh.start(kind, getattr(importlib.import_module(f"{__package__}.{kind}"), POOL_REFRESH[kind]))
     return await asyncio.to_thread(_preview, picked[0], picked[1], user_id, model, thread_id)
 
 
