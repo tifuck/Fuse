@@ -277,7 +277,7 @@ html:where(.is-chat-root[data-chat-view="tail"])[data-chat-font] .chat-code .cha
   z-index: 80;
   border: 0;
   padding: 0;
-  background: color-mix(in srgb, var(--ink) 62%, transparent);
+  background: var(--scrim);
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-view-backdrop[hidden] { display: none !important; }
@@ -496,7 +496,7 @@ html:where(.is-chat-root[data-chat-view="tail"])[data-chat-theme="ivory"] .chat 
   :where(html.is-chat-root[data-chat-view="tail"]) .chat .chat-sync { font-size: 0.65rem; }
   :where(html.is-chat-root[data-chat-view="tail"]) .chat .chat-welcome { font-size: 1.8rem; }
   :where(html.is-chat-root[data-chat-view="tail"]) .chat-welcome-note { font-size: 0.88rem; margin-bottom: 1.25rem; }
-  :where(html.is-chat-root[data-chat-view="tail"]) .chat-view-backdrop { z-index: 80; background: color-mix(in srgb, var(--ink) 42%, transparent); }
+  :where(html.is-chat-root[data-chat-view="tail"]) .chat-view-backdrop { z-index: 80; }
   :where(html.is-chat-root[data-chat-view="tail"]) .chat-view-menu {
     inset: 0;
     top: 0;

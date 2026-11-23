@@ -4,7 +4,7 @@
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock {
   --ask-r: 0px;
   --ask-btn-r: 0px;
-  --ask-bg: #000;
+  --ask-bg: var(--panel);
   --ask-edge: var(--line);
   --ask-inset: transparent;
 }
@@ -199,5 +199,5 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock .cha
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock .chat-ask-pay { padding: 0 0 0 15px; border: 0; background: transparent; }
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock .chat-ask-why { padding-left: calc(15px + 2ch); text-indent: -2ch; }
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock .chat-ask-why::before { content: "└ "; color: var(--mute); }
-html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock :is(.chat-ask .chat-perm-always-menu, .chat-qrow .chat-queue-menu:not([hidden])) { border: 1px solid var(--line); border-radius: 0; background: #000; box-shadow: none; }
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock :is(.chat-ask .chat-perm-always-menu, .chat-qrow .chat-queue-menu:not([hidden])) { border: 1px solid var(--line); border-radius: 0; background: var(--raise); box-shadow: none; }
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .chat-dock .chat-queue { border: 0; border-bottom: 1px dashed var(--line); }

@@ -262,7 +262,7 @@
   z-index: 15;
   border: 0;
   padding: 0;
-  background: rgb(8 10 9 / 42%);
+  background: var(--scrim);
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-md a.chat-md-cite {

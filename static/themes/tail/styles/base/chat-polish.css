@@ -103,7 +103,7 @@
   z-index: 13;
   border: 0;
   padding: 0;
-  background: rgb(8 10 9 / 42%);
+  background: var(--scrim);
   cursor: pointer;
   animation: chat-fade-in var(--dur-2) var(--ease-snap);
 }
