@@ -4,7 +4,7 @@ plus the per-user shared-pool preference toggle."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from ... import accounts, db, stats
 from ...security import safe_verify_url
 from ...sources import grok as grok_mod
@@ -23,7 +23,7 @@ from ...sources import refuseless as refuseless_mod
 from ...sources import zai as zai_mod
 from ...sources.grok import ensure_grok_source, grok_access_state, is_held
 from ...sources.pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type, chatgpt_usage_percent, grok_usage_percent
-from ...sources import pool_policy
+from ...sources import pool_badge, pool_policy
 from ...providers import logins
 from ..deps import _pool_flash, render, require_user
 from .context import _pool_batch, _pool_card
@@ -679,6 +679,18 @@ _SHARE_COPY = {
 }
 
 
+def _prefs_reply(request: Request, user, kind: str, level: str, message: str, saved: bool | None = None):
+    """The Sources form gets its page back with a notice; the chat's pool card
+    (Accept: application/json) gets the notice and the saved settings."""
+    if "application/json" not in (request.headers.get("accept") or ""):
+        _pool_flash[user["id"]] = (level, message, "pool")
+        return RedirectResponse(f"/sources#pool-{kind}", status_code=303)
+    rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0 ORDER BY id",
+                       (pool_policy.source_id(kind),))
+    ids = [int(row["id"]) for row in pool_policy.filter_credentials(rows, kind, user["id"], chosen=False)]
+    return JSONResponse({"ok": level == "ok" if saved is None else saved, "message": message, "prefs": pool_badge.prefs(user["id"], kind, ids)})
+
+
 @router.post("/sources/pool/{kind}/prefs")
 async def user_pool_prefs(request: Request, kind: str):
     user, redir = require_user(request)
@@ -688,12 +700,7 @@ async def user_pool_prefs(request: Request, kind: str):
         raise HTTPException(404, "Unknown pool")
     label = pool_policy.POOL_LABELS[kind]
     if not pool_policy.admin_policy(kind)["pool_shared"]:
-        _pool_flash[user["id"]] = (
-            "ok",
-            f"{label} is limited to linked accounts site-wide.",
-            "pool",
-        )
-        return RedirectResponse(f"/sources#pool-{kind}", status_code=303)
+        return _prefs_reply(request, user, kind, "ok", f"{label} is limited to linked accounts site-wide.", saved=False)
     form = await request.form()
     share = str(form.get("share") or "")
     use = str(form.get("use") or "")
@@ -710,8 +717,7 @@ async def user_pool_prefs(request: Request, kind: str):
     if "accounts_listed" in form:
         choice, refused = _save_account_choice(user["id"], kind, form)
         if refused:
-            _pool_flash[user["id"]] = ("fault", f"{label}: sharing saved, but {refused}", "pool")
-            return RedirectResponse(f"/sources#pool-{kind}", status_code=303)
+            return _prefs_reply(request, user, kind, "fault", f"{label}: sharing saved, but {refused}")
     if eff["use"] == "mine":
         routing = "Your requests use only your accounts"
     elif choice["primary"] is not None:
@@ -720,8 +726,7 @@ async def user_pool_prefs(request: Request, kind: str):
         routing = "Your requests use your accounts first, then accounts shared with you"
     left_out = len(choice["skip"])
     skipped = f" {left_out} account{'s' if left_out != 1 else ''} left out of your rotation." if left_out else ""
-    _pool_flash[user["id"]] = ("ok", f"{label}: {routing}; {shared}.{skipped}", "pool")
-    return RedirectResponse(f"/sources#pool-{kind}", status_code=303)
+    return _prefs_reply(request, user, kind, "ok", f"{label}: {routing}; {shared}.{skipped}")
 
 
 def _form_ids(values) -> set[int]:

@@ -182,17 +182,20 @@ const FIXES = {
     // The badge app/sources/pool_badge.py would send for a shared Claude account.
     if (fake.has('pool')) {
       const now = Math.round(startedAt / 1000);
-      data.compaction = { ...(data.compaction || {}), pool: { model: data.model, provider: 'claude', pool: 'Claude', plan: 'Max 20x', slot: 'B', own: false,
+      data.compaction = { ...(data.compaction || {}), pool: { model: data.model, provider: 'claude', pool: 'Claude', plan: 'Max 20x',
+        id: 902, name: 'Claude plan 2', own: false,
         windows: [{ label: '5-hour', short: '5h', percent: 42, reset_at: now + 7800 }, { label: 'Weekly', short: 'wk', percent: 18, reset_at: now + 302400 }],
         limits: [{ label: 'Fable weekly', short: 'wk', percent: 61, reset_at: now + 302400 }],
         accounts: [
-          { slot: 'A', own: false, plan: 'Max 20x', percent: 100, status: 'limit', until: now + 4800 },
-          { slot: 'B', own: false, plan: 'Max 20x', percent: 42, status: 'current', until: null },
-          { slot: 'C', own: true, plan: 'Max 5x', percent: 6, status: 'ready', until: null },
-          { slot: 'D', own: false, plan: 'Pro', percent: 81, status: 'ready', until: null },
-          { slot: 'E', own: true, plan: 'Pro', percent: null, status: 'off', until: null },
+          { id: 901, name: 'Claude plan 1', own: false, plan: 'Max 20x', percent: 100, status: 'limit', until: now + 4800, primary: false },
+          { id: 902, name: 'Claude plan 2', own: false, plan: 'Max 20x', percent: 42, status: 'current', until: null, primary: false },
+          { id: 903, name: 'qa.tester@example.invalid', own: true, plan: 'Max 5x', percent: 6, status: 'ready', until: null, primary: true },
+          { id: 904, name: 'Claude plan 4', own: false, plan: 'Pro', percent: 81, status: 'ready', until: null, primary: false },
+          { id: 905, name: 'qa.spare.account@example.invalid', own: true, plan: 'Pro', percent: null, status: 'off', until: null, primary: false },
         ],
-        ready: 3, size: 4, hop: { from: 'A', reason: 'limit' } } };
+        ready: 3, size: 4, hop: { from: 'Claude plan 1', reason: 'limit' },
+        prefs: { can_override: true, open_access: false, share: 'contributors', use: 'pool', saved_share: 'contributors', saved_use: 'pool',
+          contributor: true, skip: [905], primary: 903 } } };
     }
     return data;
   },

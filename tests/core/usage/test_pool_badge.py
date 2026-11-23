@@ -1,9 +1,17 @@
-"""The chat page's pool badge: a slot letter and usage windows for the account
-that served the chat, never its label, email, owner or credential id."""
+"""The chat page's pool card: the serving account's plan limits, every account
+the caller can reach, named as the Sources page names them, and the caller's
+sharing settings, which the card saves through the Sources endpoint."""
 import json
 
+from app.config import ROOT
 from app.sources import pool_badge, pool_pick, pool_policy
 from tests.core.usage._support import pool_account, user
+
+
+def _claude_email(five_hour, weekly, email):
+    data = _claude(five_hour, weekly)
+    data["email"] = email
+    return data
 
 
 def _claude(five_hour, weekly, reset="2099-01-01T00:00:00Z"):
@@ -13,23 +21,27 @@ def _claude(five_hour, weekly, reset="2099-01-01T00:00:00Z"):
     ]}}
 
 
-def test_badge_names_the_account_by_slot_and_hides_who_owns_it(fresh_db):
-    donor, me = user("donor@core.test"), user("me@core.test")
-    theirs = pool_account("claude", donor, _claude(42, 18), secret="donor-secret")
-    mine = pool_account("claude", me, _claude(5, 1))
+def test_accounts_are_named_as_the_sources_page_names_them(fresh_db):
+    donor, me, admin = user("donor@core.test"), user("me@core.test"), user("root@core.test", admin=True)
+    theirs = pool_account("claude", donor, _claude_email(42, 18, "donor.plan@example.com"), secret="donor-secret")
+    mine = pool_account("claude", me, _claude_email(5, 1, "me.work@example.com"))
 
     view = pool_badge.public(me, pool_badge.state(None, theirs, "claude", "claude-opus-4-7"))
 
-    assert view["slot"] == "A" and view["own"] is False and view["hop"] is None
+    assert view["name"] == "Claude plan 1" and view["own"] is False and view["hop"] is None
+    assert [(a["id"], a["name"], a["own"]) for a in view["accounts"]] == [
+        (theirs, "Claude plan 1", False), (mine, "me.work@example.com", True)]
     assert [(w["short"], w["percent"]) for w in view["windows"]] == [("5h", 42), ("wk", 18)]
     assert view["size"] == 2 and view["model"] == "claude-opus-4-7"
     sent = json.dumps(view)
-    for leak in ("donor@core.test", "donor-secret", f'"{theirs}"', "cred"):
+    for leak in ("donor.plan@example.com", "donor@core.test", "donor-secret"):
         assert leak not in sent
-    assert pool_badge.public(me, pool_badge.state(None, mine, "claude", "m"))["own"] is True
+    # An admin sees every account by its email, as on Sources.
+    names = [a["name"] for a in pool_badge.public(admin, pool_badge.state(None, theirs, "claude", "m"))["accounts"]]
+    assert names == ["donor.plan@example.com", "me.work@example.com"]
 
 
-def test_a_switch_records_the_slot_left_and_why(fresh_db):
+def test_a_switch_records_the_account_left_and_why(fresh_db):
     me = user("me@core.test")
     first = pool_account("claude", me, _claude(99, 50))
     second = pool_account("claude", me, _claude(3, 1))
@@ -39,7 +51,7 @@ def test_a_switch_records_the_slot_left_and_why(fresh_db):
     st = pool_badge.state(st, second, "claude", "m")
 
     view = pool_badge.public(me, st)
-    assert view["slot"] == "B" and view["hop"] == {"from": "A", "reason": "limit"}
+    assert view["id"] == second and view["hop"] == {"from": "claude", "reason": "limit"}
     assert view["ready"] == 1
     # The same account serving again keeps the record of the last switch.
     assert pool_badge.state(st, second, "claude", "m2")["prev"] == first
@@ -90,10 +102,34 @@ def test_the_account_list_shows_every_reachable_account_and_its_state(fresh_db):
 
     rows = pool_badge.public(me, pool_badge.state(None, serving, "claude", "m"))["accounts"]
 
-    assert [(a["slot"], a["own"], a["status"], a["percent"]) for a in rows] == [
-        ("A", True, "current", 42), ("B", False, "limit", 99), ("C", False, "full", 99), ("D", True, "off", 1)]
-    assert rows[1]["until"] > 0
-    assert "donor" not in json.dumps(rows)
+    assert [(a["id"], a["own"], a["status"], a["percent"]) for a in rows] == [
+        (serving, True, "current", 42), (spent, False, "limit", 99), (rows[2]["id"], False, "full", 99), (left_out, True, "off", 1)]
+    assert rows[1]["until"] > 0 and rows[1]["name"] == "Claude plan 2"
+    assert "donor@core.test" not in json.dumps(rows)
+
+
+def test_the_card_saves_sharing_through_the_sources_endpoint(fresh_db):
+    from tests.core.auth._support import sign_in, web_client
+
+    (ROOT / "data" / "desktop-releases").mkdir(parents=True, exist_ok=True)
+    me = user("me@core.test")
+    first = pool_account("claude", me, _claude(5, 1))
+    second = pool_account("claude", me, _claude(9, 2))
+    with web_client() as client:
+        sign_in(client, me)
+        res = client.post("/sources/pool/claude/prefs", headers={"Accept": "application/json"}, data={
+            "share": "contributors", "use": "mine", "accounts_listed": f"{first},{second}",
+            "account": [str(second)], "primary": str(second)})
+        assert res.status_code == 200 and res.json()["ok"] is True
+        prefs = res.json()["prefs"]
+        assert (prefs["share"], prefs["use"], prefs["skip"], prefs["primary"]) == ("contributors", "mine", [first], second)
+        # Leaving out every account is refused, and the reply says so.
+        res = client.post("/sources/pool/claude/prefs", headers={"Accept": "application/json"}, data={
+            "share": "contributors", "use": "mine", "accounts_listed": f"{first},{second}"})
+        assert res.json()["ok"] is False and "at least one" in res.json()["message"]
+        # The Sources form still gets its page back.
+        res = client.post("/sources/pool/claude/prefs", data={"share": "everyone", "use": "pool"}, follow_redirects=False)
+        assert res.status_code == 303 and res.headers["location"] == "/sources#pool-claude"
 
 
 def test_a_malformed_record_shows_no_badge(fresh_db):

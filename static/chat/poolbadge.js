@@ -1,22 +1,36 @@
 // The plan usage gauge beside the model (app/sources/pool_badge.py): how much
 // of the subscription plan the chat's pool account has used, and a card with
-// every limit and every account of the pool. Each theme places
+// every limit, every account of the pool, and the user's sharing settings for
+// it (saved through the Sources page's endpoint). Each theme places
 // [data-pool-badge] holding a [data-pool-toggle] button and styles the parts:
 // the gauge (a ring with the percent in it), the window label, or the window
 // cells. The card is the permissions menu's frame, so it looks like the
 // theme's own menus: a popover above the composer, a sheet on phones.
 import { S } from './state.js';
 import { escapeHtml } from './core.js';
+import { csrfToken } from './net.js';
 import { attachSheetSwipe } from './overlays.js';
 
 const CELLS = 5;
 const MANAGE = "/sources";
 const WHY = { limit: "it reached its usage limit", error: "it stopped answering" };
 const STATUS = { current: "in use", ready: "ready", full: "full", paused: "paused", off: "off" };
+const SHARE = [
+  ["everyone", "Anyone", (p) => `Anyone using the ${p} pool may use your accounts.`],
+  ["contributors", "Sharers", (p) => `Only people who share a ${p} account too may use yours.`],
+  ["private", "Nobody", () => "Only you use your accounts, and you use only them."],
+];
+const USE = [
+  ["pool", "Yours + pool", () => "Your accounts first, then accounts shared with you."],
+  ["mine", "Only yours", () => "Only your accounts. Requests fail when they are spent."],
+];
 const CLOSE_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
 let deps = { place: () => {}, overlays: null };
 let menu = null;
+let view = "usage";
+let saving = null;
+let notice = "";
 const ink = new Map();
 
 const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : "ok");
@@ -51,10 +65,10 @@ export function bindPool(next) {
 
 export function acceptPool(pool) {
   const before = current();
-  S.pool = pool && typeof pool === "object" && pool.slot ? pool : null;
+  S.pool = pool && typeof pool === "object" && pool.name ? pool : null;
   S.poolThread = S.currentId;
   S.poolModel = S.modelId;
-  renderPool(Boolean(before && S.pool && before.slot !== S.pool.slot));
+  renderPool(Boolean(before && S.pool && before.id !== S.pool.id));
 }
 
 // Centres the percent's ink (not its line box) in the ring: the font's
@@ -95,7 +109,7 @@ export function renderPool(hopped = false) {
   const tight = windows.reduce((a, w) => (!a || w.percent > a.percent ? w : a), null);
   host.dataset.level = tight ? level(tight.percent) : "none";
   const pct = tight ? String(tight.percent) : "–";
-  const name = `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan`;
+  const name = `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}`;
   const label = tight ? `${name}: ${tight.percent}% of the ${tight.label.toLowerCase()} limit used` : `${name}: no usage reported yet`;
   btn.setAttribute("aria-label", label);
   btn.title = label;
@@ -146,7 +160,25 @@ function buildMenu() {
   el.hidden = true;
   el.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (event.target.closest("[data-pool-close]")) setOpen(false);
+    const hit = (name) => event.target.closest(`[${name}]`);
+    if (hit("data-pool-close")) setOpen(false);
+    else if (hit("data-pool-sharing")) show("sharing");
+    else if (hit("data-pool-back")) show("usage");
+    else if (hit("data-pool-share")) save({ share: hit("data-pool-share").dataset.poolShare });
+    else if (hit("data-pool-use")) save({ use: hit("data-pool-use").dataset.poolUse });
+    else if (hit("data-pool-first")) {
+      const id = Number(hit("data-pool-first").dataset.poolFirst);
+      save({ primary: current()?.prefs?.primary === id ? null : id });
+    }
+  });
+  el.addEventListener("change", (event) => {
+    const box = event.target.closest("[data-pool-acct]");
+    if (!box) return;
+    const prefs = current()?.prefs || {};
+    const skip = new Set(prefs.skip || []);
+    if (box.checked) skip.delete(Number(box.value));
+    else skip.add(Number(box.value));
+    save({ skip: [...skip] });
   });
   attachSheetSwipe(el, ".chat-picker-head", () => el.classList.contains("is-sheet"), () => setOpen(false));
   deps.overlays?.backLayerFollowsHidden(el, "pool");
@@ -175,6 +207,8 @@ export function setOpen(open) {
   btn?.setAttribute("aria-controls", menu.id);
   if (!next) {
     menu.hidden = true;
+    view = "usage";
+    notice = "";
     return;
   }
   fillMenu(pool);
@@ -184,6 +218,28 @@ export function setOpen(open) {
 
 export function closePool() {
   setOpen(false);
+}
+
+function show(next) {
+  view = next;
+  notice = "";
+  const pool = current();
+  if (!pool) return;
+  fillMenu(pool);
+  placeMenu();
+  menu.querySelector(next === "sharing" ? "[data-pool-back]" : "[data-pool-sharing]")?.focus({ preventScroll: true });
+}
+
+// An email shows its name part (the whole address is its title); any other
+// name, like the Sources page's "Claude plan 2", shows as it is.
+function short(name) {
+  const text = String(name || "");
+  const at = text.indexOf("@");
+  return at > 0 ? text.slice(0, at) : text;
+}
+
+function nameHtml(name) {
+  return `<b title="${escapeHtml(name)}">${escapeHtml(short(name))}</b>`;
 }
 
 function line(name, pct, meta, attrs = "") {
@@ -199,30 +255,126 @@ function group(title, aside, rows, extra = "") {
     `<span class="chat-perms-count">${aside}</span></p><ul>${rows}</ul></section>`;
 }
 
+function head(title) {
+  return `<div class="chat-picker-head"><p>${title}</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>`;
+}
+
 function fillMenu(pool) {
+  menu.dataset.view = view;
+  if (view === "sharing") fillSharing(pool);
+  else fillUsage(pool);
+}
+
+function fillUsage(pool) {
   const limit = (w) => line(escapeHtml(w.label), w.percent, w.reset_at ? escapeHtml(span(w.reset_at)) : "");
   const plan = escapeHtml(`${pool.pool}${pool.plan ? " " + pool.plan : ""}`);
   const windows = windowsOf(pool.windows);
   const limits = windowsOf(pool.limits);
   const accounts = Array.isArray(pool.accounts) ? pool.accounts : [];
   const acct = (a) => {
-    const who = `<b>${escapeHtml(a.slot)}</b><span class="chat-pool-who">${[a.plan && escapeHtml(a.plan), a.own && "yours"].filter(Boolean).join(" · ")}</span>`;
+    const who = nameHtml(a.name) + (a.own ? '<span class="chat-pool-who">yours</span>' : "");
     const meta = a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
     const pct = a.percent == null ? null : clamp(a.percent);
     return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"`);
   };
-  const hop = pool.hop && pool.hop.from && pool.hop.from !== pool.slot
-    ? `<p class="chat-perms-hint">Moved here from account ${escapeHtml(pool.hop.from)}${WHY[pool.hop.reason] ? `: ${WHY[pool.hop.reason]}` : ""}.</p>`
+  const hop = pool.hop && pool.hop.from
+    ? `<li class="chat-perms-hint chat-pool-note">Moved here from ${escapeHtml(short(pool.hop.from))}${WHY[pool.hop.reason] ? `: ${WHY[pool.hop.reason]}` : ""}.</li>`
     : "";
+  const prefs = pool.prefs || {};
+  const shareName = (SHARE.find(([id]) => id === prefs.share) || SHARE[0])[1];
+  const sharing = prefs.can_override === false
+    ? '<span class="chat-pool-share is-locked" title="The admin has turned sharing off for this pool">Sharing <b>off site-wide</b></span>'
+    : `<button type="button" class="chat-pool-share" data-pool-sharing aria-haspopup="true">Sharing <b>${shareName}</b><span aria-hidden="true">›</span></button>`;
   menu.setAttribute("aria-label", `${pool.pool} plan usage`);
-  menu.innerHTML =
-    `<div class="chat-picker-head"><p>Plan usage</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>` +
+  menu.innerHTML = head("Plan usage") +
     '<div class="chat-perms-list">' +
-    group(plan, `account ${escapeHtml(pool.slot)} · ${pool.own ? "yours" : "shared"}`,
-      windows.map(limit).join("") || '<li class="chat-perms-empty">No usage reported yet.</li>',
-      '<span class="chat-perms-here">this chat</span>') +
+    group(plan, `<span title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</span>`,
+      (windows.map(limit).join("") || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop) +
     (limits.length ? group("Model limits", "", limits.map(limit).join("")) : "") +
     (accounts.length ? group("Accounts", `${Number(pool.ready) || 0} of ${Number(pool.size) || 0} ready`, accounts.map(acct).join("")) : "") +
     "</div>" +
-    `<div class="chat-perms-foot chat-pool-foot">${hop}<a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
+    `<div class="chat-perms-foot chat-pool-foot">${sharing}<a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
+}
+
+// The Sources sharing dialog, condensed: who may use your accounts, which
+// accounts your requests use, and the rotation with its first choice. Each
+// click saves at once, like the permission modes.
+function fillSharing(pool) {
+  const prefs = pool.prefs || {};
+  const accounts = Array.isArray(pool.accounts) ? pool.accounts : [];
+  const mine = accounts.filter((a) => a.own).length;
+  const label = escapeHtml(pool.pool);
+  const segs = (kind, options, value, off = () => false) =>
+    `<div class="chat-perms-modes" style="--segs: ${options.length}" role="radiogroup" aria-label="${kind === "share" ? "Who may use your accounts" : "Your requests use"}">` +
+    options.map(([id, name]) => `<button type="button" role="radio" aria-checked="${id === value}" class="${id === value ? "is-on" : ""}" data-pool-${kind}="${id}"${off(id) || saving ? " disabled" : ""}>${name}</button>`).join("") +
+    "</div>";
+  const hint = (options, value) => escapeHtml(((options.find(([id]) => id === value) || options[0])[2])(pool.pool));
+  const skip = new Set(prefs.skip || []);
+  const pick = (a) => `<li class="chat-perms-row chat-pool-pick" data-status="${skip.has(a.id) ? "off" : "on"}">` +
+    `<label class="chat-perms-path chat-pool-name"><input type="checkbox" value="${Number(a.id)}" data-pool-acct${skip.has(a.id) ? "" : " checked"}${saving ? " disabled" : ""}>` +
+    nameHtml(a.name) + (a.own ? '<span class="chat-pool-who">yours</span>' : "") + "</label>" +
+    `<button type="button" class="chat-perms-tag chat-pool-first${prefs.primary === a.id ? " is-on" : ""}" data-pool-first="${Number(a.id)}" aria-pressed="${prefs.primary === a.id}"${skip.has(a.id) || saving ? " disabled" : ""} title="New conversations start on this account while it has room">first</button></li>`;
+  const note = notice ? `<p class="chat-perms-hint chat-pool-notice" role="status">${escapeHtml(notice)}</p>` :
+    (mine ? "" : `<p class="chat-perms-hint">You have no ${label} account linked; these choices apply once you add one.</p>`);
+  menu.setAttribute("aria-label", `${pool.pool} sharing`);
+  menu.innerHTML = head("Sharing") +
+    '<div class="chat-perms-list">' +
+    `<section class="chat-perms-group chat-pool-setting"><p><span class="chat-perms-host">Who may use your accounts</span></p>` +
+    segs("share", SHARE, prefs.saved_share || prefs.share) + `<p class="chat-perms-hint">${hint(SHARE, prefs.saved_share || prefs.share)}</p></section>` +
+    `<section class="chat-perms-group chat-pool-setting"><p><span class="chat-perms-host">Your requests use</span></p>` +
+    segs("use", USE, prefs.use, (id) => id === "pool" && (prefs.saved_share || prefs.share) === "private") +
+    `<p class="chat-perms-hint">${hint(USE, prefs.use)}</p></section>` +
+    (accounts.length > 1 ? group("Rotation", "first choice", accounts.map(pick).join("")) : "") +
+    note + "</div>" +
+    `<div class="chat-perms-foot chat-pool-foot"><button type="button" class="chat-pool-share" data-pool-back><span aria-hidden="true">‹</span> Usage</button><a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
+}
+
+async function save(change) {
+  const pool = current();
+  if (!pool || saving) return;
+  const prefs = { ...(pool.prefs || {}) };
+  const share = change.share || prefs.saved_share || prefs.share || "everyone";
+  const use = share === "private" ? "mine" : change.use || prefs.use || "pool";
+  const ids = (pool.accounts || []).map((a) => Number(a.id));
+  const skip = new Set(change.skip || prefs.skip || []);
+  if (ids.length && ids.every((id) => skip.has(id))) {
+    notice = "Keep at least one account in your rotation.";
+    fillMenu(pool);
+    return;
+  }
+  const primary = "primary" in change ? change.primary : prefs.primary;
+  const body = new URLSearchParams({ share, use });
+  if (ids.length > 1) {
+    body.set("accounts_listed", ids.join(","));
+    ids.filter((id) => !skip.has(id)).forEach((id) => body.append("account", String(id)));
+    body.set("primary", primary != null && !skip.has(primary) ? String(primary) : "");
+  }
+  saving = change;
+  notice = "";
+  fillMenu(pool);
+  let reply = null;
+  try {
+    const res = await fetch(`/sources/pool/${encodeURIComponent(pool.provider)}/prefs`, {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF-Token": csrfToken() },
+      body,
+    });
+    reply = res.ok ? await res.json() : null;
+  } catch (_) {
+    reply = null;
+  }
+  saving = null;
+  const now = current();
+  if (!now) return;
+  if (reply && reply.prefs) {
+    now.prefs = reply.prefs;
+    const off = new Set(reply.prefs.skip || []);
+    (now.accounts || []).forEach((a) => {
+      a.primary = reply.prefs.primary === a.id;
+      if (off.has(a.id) && a.status !== "current") a.status = "off";
+      else if (!off.has(a.id) && a.status === "off") a.status = "ready";
+    });
+  }
+  notice = !reply ? "Could not save. Try again, or use Manage sources." : reply.ok ? "" : reply.message || "";
+  if (menu && !menu.hidden) fillMenu(now);
 }

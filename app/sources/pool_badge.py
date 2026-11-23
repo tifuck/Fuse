@@ -1,13 +1,14 @@
-"""What the chat page may know about the pool account that served a chat.
+"""What the chat page knows about the pool account that served a chat.
 
-The badge beside the model names the account by a slot letter, never by its
-label, email, owner or credential id: shared accounts belong to other users.
-Letters follow credential id over the accounts this user can reach in the
-pool, so an account keeps its letter while that set stays the same.
+Accounts are named as the Sources page names them: the caller's own accounts
+(every account, for an admin) by their provider email or label, anyone
+else's as "<Pool> plan <n>" by its place among the accounts the caller can
+reach. The ids are the ones the Sources sharing dialog already lists.
 
 The thread keeps the raw record (compaction state "pool"); public() turns it
 into the page's view: the serving account's plan limits, its model and
-product limits, and every account of the pool this user can reach.
+product limits, every account of the pool this user can reach, and the
+user's own sharing settings for the pool, which the card can change.
 """
 
 from __future__ import annotations
@@ -62,11 +63,65 @@ def _reason(cred_id: int) -> str:
     return "error" if pool_pick.cooling_down(cred_id) else ""
 
 
-def _slot(ids: list[int], cred_id: int) -> str:
-    if cred_id not in ids:
-        return "?"
-    i = ids.index(cred_id)
-    return chr(65 + i) if i < 26 else str(i + 1)
+def _emails(kind: str):
+    """The provider's account_email(extra), for pools whose accounts have one."""
+    from . import chatgpt, claude, cursor, devin, grok, kimi
+
+    mod = {"chatgpt": chatgpt, "claude": claude, "cursor": cursor, "devin": devin, "grok": grok, "kimi": kimi}.get(kind)
+    return getattr(mod, "account_email", None)
+
+
+def _extra(row) -> dict:
+    if row is None:
+        return {}
+    try:
+        return accounts.cred_extra(row)
+    except (DecryptionError, accounts.CredentialDataError):
+        return {}
+
+
+def _names(reachable, kind: str, user_id: int) -> dict[int, str]:
+    """Each reachable account's name, as the Sources page shows it."""
+    user = accounts.get_user(user_id)
+    admin = bool(user and user["is_admin"])
+    label = pool_policy.POOL_LABELS.get(kind, kind)
+    email_of = _emails(kind)
+    donors = {}
+    if admin:
+        ids = sorted({d for d in (pool_policy.donated_by(r) for r in reachable) if d and d != int(user_id)})
+        if ids:
+            rows = db.fetchall(f"SELECT id, email FROM users WHERE id IN ({','.join('?' * len(ids))})", tuple(ids))
+            donors = {int(r["id"]): str(r["email"] or "").strip() for r in rows}
+    names = {}
+    for index, row in enumerate(reachable, 1):
+        donor = pool_policy.donated_by(row)
+        mine = donor == int(user_id)
+        if not (mine or admin):
+            names[int(row["id"])] = f"{label} plan {index}"
+            continue
+        email = str(email_of(_extra(row)) or "") if email_of else ""
+        if not email and not mine:
+            email = donors.get(donor or 0, "")
+        names[int(row["id"])] = (email or row["label"] or f"{label} account")[:120]
+    return names
+
+
+def prefs(user_id: int, kind: str, ids: list[int]) -> dict:
+    """The user's sharing settings for this pool, as the Sources dialog edits them."""
+    ui = pool_policy.ui_state(user_id, kind)
+    choice = pool_policy.account_choice(user_id, kind)
+    used = [i for i in ids if i not in choice["skip"]]
+    return {
+        "can_override": ui["can_override"],
+        "open_access": ui["open_access"],
+        "share": ui["share"],
+        "use": ui["use"],
+        "saved_share": ui["saved_share"],
+        "saved_use": ui["saved_use"],
+        "contributor": pool_policy.contributes(user_id, kind) if ui["pool_shared"] else False,
+        "skip": sorted(i for i in choice["skip"] if i in ids),
+        "primary": choice["primary"] if choice["primary"] in used else None,
+    }
 
 
 def public(user_id: int, raw) -> dict | None:
@@ -79,35 +134,39 @@ def public(user_id: int, raw) -> dict | None:
                        (pool_policy.source_id(kind),))
     reachable = pool_policy.filter_credentials(rows, kind, user_id, chosen=False)
     ids = [int(r["id"]) for r in reachable]
-    skip = pool_policy.account_choice(user_id, kind)["skip"]
-    used = [i for i in ids if i not in skip]
+    names = _names(reachable, kind, user_id)
+    settings = prefs(user_id, kind, ids)
+    used = [i for i in ids if i not in settings["skip"]]
     row = next((r for r in rows if int(r["id"]) == st["cred"]), None)
     billing = _billing(row)
+    label = pool_policy.POOL_LABELS.get(kind, kind)
     return {
         "model": st["model"],
         "provider": kind,
-        "pool": pool_policy.POOL_LABELS.get(kind, kind),
-        "slot": _slot(ids, st["cred"]),
+        "pool": label,
+        "id": st["cred"],
+        "name": names.get(st["cred"], f"{label} account"),
         "own": row is not None and pool_policy.donated_by(row) == int(user_id),
         "plan": _plan(billing),
         "windows": _windows(billing),
         "limits": _limits(billing),
-        "accounts": [_account(r, ids, st["cred"], skip, user_id) for r in reachable[:MAX_ACCOUNTS]],
+        "accounts": [_account(r, names, st["cred"], settings, user_id) for r in reachable[:MAX_ACCOUNTS]],
         "ready": sum(1 for i in used if not pool_pick.cooling_down(i)),
         "size": len(used),
-        "hop": {"from": _slot(ids, st["prev"]), "reason": st["reason"]} if st["prev"] else None,
+        "prefs": settings,
+        "hop": {"from": names.get(st["prev"], f"another {label} account"), "reason": st["reason"]} if st["prev"] else None,
     }
 
 
-def _account(row, ids: list[int], current: int, skip, user_id: int) -> dict:
-    """One line of the card's account list: no label, email or owner."""
+def _account(row, names: dict[int, str], current: int, settings: dict, user_id: int) -> dict:
+    """One line of the card's account list."""
     cid = int(row["id"])
     billing = _billing(row)
     peak = max((w["percent"] for w in _windows(billing)), default=None)
     until = None
     if cid == current:
         status = "current"
-    elif cid in skip:
+    elif cid in settings["skip"]:
         status = "off"
     elif pool_pick._hard_cooldown(cid):
         status = "paused"
@@ -117,17 +176,13 @@ def _account(row, ids: list[int], current: int, skip, user_id: int) -> dict:
         status = "full"
     else:
         status = "ready"
-    return {"slot": _slot(ids, cid), "own": pool_policy.donated_by(row) == int(user_id),
-            "plan": _plan(billing), "percent": peak, "status": status, "until": until}
+    return {"id": cid, "name": names.get(cid, ""), "own": pool_policy.donated_by(row) == int(user_id),
+            "plan": _plan(billing), "percent": peak, "status": status, "until": until,
+            "primary": settings["primary"] == cid}
 
 
 def _billing(row) -> dict:
-    if row is None:
-        return {}
-    try:
-        billing = accounts.cred_extra(row).get("billing")
-    except (DecryptionError, accounts.CredentialDataError):
-        return {}
+    billing = _extra(row).get("billing")
     return billing if isinstance(billing, dict) else {}
 
 

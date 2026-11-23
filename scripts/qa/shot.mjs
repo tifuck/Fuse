@@ -64,10 +64,13 @@
 //                                  opens the live overlay and words land in the
 //                                  box. The mic's markup is --tree's template
 //                         pool     the chat was served by shared Claude pool
-//                                  account B (5-hour 42%, weekly 18%, Fable
-//                                  weekly 61%, moved from A at its limit; five
-//                                  accounts): the plan gauge beside the model.
-//                                  --click '[data-pool-toggle]' opens its card
+//                                  account "Claude plan 2" (5-hour 42%, weekly
+//                                  18%, Fable weekly 61%, moved from plan 1 at
+//                                  its limit; five accounts, sharing with
+//                                  sharers): the plan gauge beside the model.
+//                                  --click '[data-pool-toggle]' opens its card,
+//                                  then '[data-pool-sharing]' its sharing panel
+//                                  (saving is refused: writes are aborted)
 //   --trace JSON        with --fake running: the reply's running calls become
 //                       these (an object, or an array of them), running unless
 //                       they say otherwise. A call with "parent": true is made

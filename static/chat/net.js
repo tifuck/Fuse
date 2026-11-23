@@ -239,4 +239,4 @@ export function createNet(ctx) {
   };
 }
 
-export { VAULT_WHAT, isTransportError, unpackThread };
+export { VAULT_WHAT, csrfToken, isTransportError, unpackThread };
