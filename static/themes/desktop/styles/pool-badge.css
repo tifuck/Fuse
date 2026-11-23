@@ -12,13 +12,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   @media (hover: hover) { & .chat-pool-btn:hover { background: var(--dk-hover); color: var(--dk-text); } }
   & .chat-pool-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
   & .chat-pool-ring b { --pool-letter: var(--dk-text); font: 700 7.5px/1 var(--sans); }
-  /* The context ring's stroke: 4 of 32 units, 2px at this size. */
-  & .chat-pool-ring circle { stroke-width: 2.25; }
   /* The card rises from the composer's right edge, like the context card. */
   & .chat-pool .chat-context-pop:not(.is-sheet) { left: auto !important; right: 0 !important; }
   & .chat-pool-ring { position: relative; display: grid; flex: none; place-items: center; width: var(--pool-ring); height: var(--pool-ring); }
   & .chat-pool-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-  & .chat-pool-ring circle { fill: none; stroke-width: 1.7; }
+  /* The context ring's stroke: 4 of 32 units, 2px at this size. */
+  & .chat-pool-ring circle { fill: none; stroke-width: 2.25; }
   & .chat-pool[data-own="true"] .chat-pool-face { fill: color-mix(in srgb, var(--mist) 16%, transparent); }
   & .chat-pool-track { stroke: color-mix(in srgb, var(--mist) 22%, transparent); }
   & .chat-pool-fill { stroke: var(--pool-tone); transition: stroke-dasharray 220ms ease, stroke 220ms ease; }
