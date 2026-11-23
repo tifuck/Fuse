@@ -118,3 +118,8 @@ def test_turning_recaps_off_disables_pending_work_but_not_manual_requests(fresh_
     assert _recaps(uid, thread["id"])[-1]["state"] == "disabled"
     assert chat_recaps.claim(job_id) is None
     assert chat_recaps.claim(_manual_job(uid, thread)) is not None
+
+
+def test_a_recap_a_little_over_its_word_target_is_kept_and_a_rambling_one_is_not():
+    assert chats.parse_generated_recap(" ".join(["word"] * 52)) == " ".join(["word"] * 52)
+    assert chats.parse_generated_recap(" ".join(["word"] * 61)) == ""
