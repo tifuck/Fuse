@@ -366,7 +366,7 @@
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-insert:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 800px) {
-  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-backdrop { background: color-mix(in srgb, var(--ink, #000) 60%, transparent); }
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-backdrop { background: var(--scrim); }
   :where(html.is-chat-root[data-chat-view="desktop"]) .chat-library-sheet {
     left: 0;
     right: 0;

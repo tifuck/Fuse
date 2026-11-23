@@ -173,9 +173,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
-  & .dk-call-copy { flex: none; min-height: 20px; padding: 0 5px; border: 0; border-radius: 5px; background: none; color: var(--dk-mute, var(--mute)); font: 500 11.5px/20px var(--sans); cursor: pointer; }
-  & .dk-call-copy:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); }
-  & .dk-call-copy:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: 1px; }
+  & .dk-call-copy { flex: none; min-height: 20px; padding: 0 5px; border: 0; border-radius: var(--dk-ctl-r); background: none; color: var(--dk-mute, var(--mute)); font: 400 11.5px/20px var(--sans); cursor: pointer; }
+  @media (hover: hover) { & .dk-call-copy:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); } }
+  & .dk-call-copy:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
   @media (max-width: 480px), (pointer: coarse) { & .dk-call-copy { min-height: 28px; padding: 0 8px; line-height: 28px; } }
   & .dk-call-box :is(.chat-console-out, .chat-console-lines, pre) { margin: 0; border: 0; border-radius: 0; background: none; font-size: 1em; }
   & .dk-call-box > * { margin-inline: 0 !important; }
