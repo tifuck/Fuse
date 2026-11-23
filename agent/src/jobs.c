@@ -10,6 +10,7 @@
 #include "edit.h"
 #include "exec.h"
 #include "files.h"
+#include "httpop.h"
 #include "jobs.h"
 #include "net.h"
 #include "outq.h"
@@ -249,6 +250,10 @@ static void handle_job_impl(struct tls *t, cJSON *msg) {
             if (timed_out) emsg = "timed out";
             send_res_tmo_len(t, id, code == 0, code, out, out_len, err, err_len, emsg, timed_out, clipped);
         }
+        return;
+    }
+    if (strcmp(op, "http") == 0) {
+        http_op(t, id, msg, job_reserve(id));
         return;
     }
     if (strcmp(op, "read_binary") == 0) {

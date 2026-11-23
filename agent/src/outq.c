@@ -121,6 +121,24 @@ int send_chunk(const char *id, const char *stream, const char *data, size_t n) {
     return out_push(1, (unsigned char *)buf, (size_t)(w - buf), 0);
 }
 
+/* The http op's response bytes. Reliable: it waits for queue space like a
+ * terminal result, since a dropped chunk would corrupt the response. */
+int send_chunk_b64(const char *id, const unsigned char *data, size_t n) {
+    if (!id) id = "";
+    size_t idn = strlen(id), cap = 4 * ((n + 2) / 3) + 1;
+    char *buf = malloc(64 + idn * 6 + cap);
+    if (!buf) return -1;
+    char *w = stpcpy(buf, "{\"v\":1,\"t\":\"chunk\",\"id\":\"");
+    w = json_escape_into(w, id, idn);
+    w = stpcpy(w, "\",\"stream\":\"b64\",\"data\":\"");
+    if (b64(data, (int)n, w, (int)cap) != 0) {
+        free(buf);
+        return -1;
+    }
+    w = stpcpy(w + strlen(w), "\"}");
+    return out_push(1, (unsigned char *)buf, (size_t)(w - buf), 1);
+}
+
 void send_res_tmo_len(struct tls *t, const char *id, int ok, int exit_code,
                       const char *out, size_t out_len, const char *err, size_t err_len,
                       const char *error, int timed_out, int clipped) {

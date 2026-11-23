@@ -33,6 +33,7 @@ int out_has_room(void);
 /* Wait up to ms for stream room (out_has_room) to open. */
 void out_wait_room(int ms);
 int send_chunk(const char *id, const char *stream, const char *data, size_t n);
+int send_chunk_b64(const char *id, const unsigned char *data, size_t n);
 void send_res_tmo_len(struct tls *t, const char *id, int ok, int exit_code,
                       const char *out, size_t out_len, const char *err, size_t err_len,
                       const char *error, int timed_out, int clipped);

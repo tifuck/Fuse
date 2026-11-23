@@ -13,6 +13,7 @@
 #include <openssl/ssl.h>
 
 #include "agent.h"
+#include "jobs.h"
 #include "lifecycle.h"
 #include "net.h"
 #include "reconnect.h"
@@ -275,6 +276,106 @@ int tls_connect(struct tls *t, const struct url *u) {
     return 0;
 }
 
+/* Worker-thread wait for the http op: the socket alone, never the wake or
+ * stop pipes. Their single reader is the session loop, and a reconnect wake
+ * must not end a fetch. The cancel flag is polled every 250 ms. */
+static int wait_job(int fd, int events, int64_t deadline, struct job *job) {
+    for (;;) {
+        if (job_cancelled(job)) return TLS_CANCELLED;
+        int64_t left = deadline - now_mono_ms();
+        if (left <= 0) return TLS_TIMEOUT;
+        struct pollfd p = {fd, (short)events, 0};
+        int pr = poll(&p, 1, left < 250 ? (int)left : 250);
+        if (pr < 0 && errno != EINTR) return TLS_FAIL;
+        if (pr > 0) return 1; /* an error or hangup is reported by the I/O call */
+    }
+}
+
+int tls_connect_ip(struct tls *t, const char *host, const struct sockaddr *sa, socklen_t len,
+                   int64_t deadline, struct job *job) {
+    memset(t, 0, sizeof(*t));
+    t->fd = -1;
+    pthread_once(&s_ctx_once, ctx_init);
+    if (!s_ctx) return TLS_HANDSHAKE;
+    int fd = socket(sa->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return TLS_FAIL;
+    set_nonblock(fd, 1);
+    tune_sock(fd);
+    int rc = 0;
+    if (connect(fd, sa, len) != 0) {
+        int err = 0;
+        socklen_t elen = sizeof(err);
+        if (errno != EINPROGRESS) rc = TLS_FAIL;
+        else if ((rc = wait_job(fd, POLLOUT, deadline, job)) == 1)
+            rc = (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &elen) != 0 || err != 0) ? TLS_FAIL : 0;
+    }
+    if (rc != 0) {
+        close(fd);
+        return rc;
+    }
+    SSL *ssl = SSL_new(s_ctx);
+    /* As tls_connect: an unchecked hostname is refused, never accepted. */
+    if (!ssl || SSL_set_fd(ssl, fd) != 1 || SSL_set_tlsext_host_name(ssl, host) != 1 ||
+        SSL_set1_host(ssl, host) != 1)
+        rc = TLS_HANDSHAKE;
+#ifdef SSL_OP_IGNORE_UNEXPECTED_EOF
+    /* Many servers close without close_notify; the Fuse server checks the
+     * response length itself, so that is an end of stream, not an error. */
+    if (ssl) SSL_set_options(ssl, SSL_OP_IGNORE_UNEXPECTED_EOF);
+#endif
+    while (rc == 0) {
+        int k = SSL_connect(ssl);
+        if (k == 1) break;
+        int err = SSL_get_error(ssl, k);
+        if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) rc = TLS_HANDSHAKE;
+        else if ((rc = wait_job(fd, err == SSL_ERROR_WANT_WRITE ? POLLOUT : POLLIN, deadline, job)) == 1) rc = 0;
+    }
+    if (rc != 0) {
+        if (ssl) SSL_free(ssl);
+        close(fd);
+        return rc;
+    }
+    t->fd = fd;
+    t->ssl = ssl;
+    return 0;
+}
+
+int tls_write_job(struct tls *t, const void *buf, size_t n, int64_t deadline, struct job *job) {
+    const unsigned char *p = buf;
+    while (n) {
+        int k = SSL_write(t->ssl, p, (int)n);
+        if (k > 0) {
+            p += k;
+            n -= (size_t)k;
+            continue;
+        }
+        int err = SSL_get_error(t->ssl, k);
+        if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) return TLS_FAIL;
+        int w = wait_job(t->fd, err == SSL_ERROR_WANT_WRITE ? POLLOUT : POLLIN, deadline, job);
+        if (w < 0) return w;
+    }
+    return 0;
+}
+
+int tls_read_job(struct tls *t, void *buf, size_t n, int64_t deadline, struct job *job) {
+    for (;;) {
+        /* Checked per read too: a peer that never pauses would otherwise
+         * never reach the wait below. */
+        if (job_cancelled(job)) return TLS_CANCELLED;
+        if (now_mono_ms() >= deadline) return TLS_TIMEOUT;
+        errno = 0;
+        int k = SSL_read(t->ssl, buf, (int)n);
+        if (k > 0) return k;
+        int err = SSL_get_error(t->ssl, k);
+        /* OpenSSL 1.1.1 reports a close without close_notify as a syscall
+         * error with errno 0. */
+        if (err == SSL_ERROR_ZERO_RETURN || (err == SSL_ERROR_SYSCALL && errno == 0)) return TLS_EOF;
+        if (err != SSL_ERROR_WANT_READ && err != SSL_ERROR_WANT_WRITE) return TLS_FAIL;
+        int w = wait_job(t->fd, err == SSL_ERROR_WANT_WRITE ? POLLOUT : POLLIN, deadline, job);
+        if (w < 0) return w;
+    }
+}
+
 void tls_close(struct tls *t) {
     if (t->fd >= 0) {
         pthread_mutex_lock(&g_conn_mu);
@@ -284,7 +385,8 @@ void tls_close(struct tls *t) {
     if (t->ssl) {
         /* TLS 1.3 tickets arrive after the handshake: take the session now. */
         SSL_SESSION *sess = SSL_get1_session(t->ssl);
-        if (sess && SSL_SESSION_is_resumable(sess)) {
+        /* No key: a pinned http op connection, which stays out of the cache. */
+        if (sess && t->sess_key[0] && SSL_SESSION_is_resumable(sess)) {
             pthread_mutex_lock(&s_sess_mu);
             if (s_sess) SSL_SESSION_free(s_sess);
             s_sess = sess;
