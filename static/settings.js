@@ -195,6 +195,35 @@
     });
   });
 
+  const web = root.querySelector("[data-web-form]");
+  if (web) {
+    const out = web.querySelector("[data-web-status]");
+    // The page groups machines by network, so it is drawn again from the server.
+    const reload = () => { window.location.hash = "web"; window.location.reload(); };
+    web.addEventListener("submit", (event) => {
+      event.preventDefault();
+      run(web, out, async () => {
+        const machines = [...web.querySelectorAll('input[name="web_machine"]:checked')].map((el) => Number(el.value));
+        await api("/settings/web", "POST", { machines });
+        await api("/settings/web/detect", "POST", {}).catch(() => {});
+        reload();
+        return "Saved.";
+      });
+    });
+    const detect = web.querySelector("[data-web-detect]");
+    detect.addEventListener("click", async () => {
+      detect.disabled = true;
+      status(out, "Reading public IPs…");
+      try {
+        await api("/settings/web/detect", "POST", {});
+        reload();
+      } catch (err) {
+        status(out, err.message, "fault");
+        detect.disabled = false;
+      }
+    });
+  }
+
   const cleanup = root.querySelector("[data-cleanup-form]");
   if (cleanup) {
     const f = cleanup.elements;

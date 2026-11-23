@@ -25,8 +25,9 @@ from .client import (
     TIMEOUT_WIKI,
     get_client,
     get_fetch_client,
+    server_client,
 )
-from . import adapters
+from . import adapters, egress
 from .extract import (
     FETCH_CHARS,
     FETCH_MAX_BYTES,
@@ -261,22 +262,28 @@ async def _pdf_worker(raw_bytes: bytes) -> str:
         await proc.wait()
 
 
-def _cached_page(clean: str):
-    cached = _page_cache.get(normalize_url(clean))
+def _cached_page(clean: str, scope: str = ""):
+    cached = _page_cache.get(scope + normalize_url(clean))
     if isinstance(cached, str):
         cached = _page_cache.get(cached)
     # The final URL may itself have become a redirect since: one hop only.
     return None if isinstance(cached, str) else cached
 
 
-def is_fetch_cached(url: str, allowed: set[str] | None = None) -> bool:
+def _scope(user_id: int | None) -> str:
+    # What came back through a user's connector is that user's alone: another
+    # user must never be served a page or results their machine answered.
+    return egress.scope(user_id) if user_id is not None else ""
+
+
+def is_fetch_cached(url: str, allowed: set[str] | None = None, user_id: int | None = None) -> bool:
     clean = allowed_fetch_url(url)
-    return bool(clean and _cached_page(clean) is not None)
+    return bool(clean and _cached_page(clean, _scope(user_id)) is not None)
 
 
-def is_host_blocked(url: str) -> bool:
+def is_host_blocked(url: str, user_id: int | None = None) -> bool:
     """True while the host recently answered with a bot-wall status."""
-    return _blocked_hosts.get(host_of(url)) is not None
+    return _blocked_hosts.get(_scope(user_id) + host_of(url)) is not None
 
 
 _URL_WORDS = re.compile(r"[/._\-?=&+]+")
@@ -498,6 +505,26 @@ async def _one_query(
     recency_days: int | None,
     cancel: asyncio.Event | None,
 ) -> QueryResult:
+    try:
+        via = egress.enter(user_id)
+    except egress.NoEgress as exc:
+        return QueryResult(
+            query=query, hits=[], error=str(exc), kind="provider_error",
+            provider="", latency_ms=0, cached=False, status=0,
+        )
+    try:
+        return await _query(query, user_id=user_id, recency_days=recency_days, cancel=cancel)
+    finally:
+        egress.leave(via)
+
+
+async def _query(
+    query: str,
+    *,
+    user_id: int,
+    recency_days: int | None,
+    cancel: asyncio.Event | None,
+) -> QueryResult:
     started = time.monotonic()
     original = query
     if cancel and cancel.is_set():
@@ -514,7 +541,7 @@ async def _one_query(
     bucket = freshness_bucket(recency)
     key = _brave_key()
     use_brave = bool(key) and not brave_auth_failed()
-    ck = _cache_key(normalize_query(query), bucket, "mix-b" if use_brave else "mix", recency)
+    ck = _cache_key(normalize_query(query), bucket, _scope(user_id) + ("mix-b" if use_brave else "mix"), recency)
     cached = _cache.get(ck)
     if isinstance(cached, QueryResult):
         hit = QueryResult(
@@ -607,7 +634,9 @@ async def _one_query(
                 jobs.append(
                     (
                         "brave",
-                        BraveProvider(key).search(client, query, recency_days=recency, timeout=TIMEOUT_BRAVE),
+                        # Always from this server: the key is the site's, not
+                        # something to send through a user's machine.
+                        BraveProvider(key).search(server_client(), query, recency_days=recency, timeout=TIMEOUT_BRAVE),
                     )
                 )
             if quote_ids(query) and live:
@@ -1015,6 +1044,31 @@ async def fetch_url(
     rate_kind: str = "fetch",
 ) -> tuple[PageExtract | None, str, str]:
     """Return (extract, wrapped_text, error). extract is None on hard failure."""
+    try:
+        via = egress.enter(user_id)
+    except egress.NoEgress as exc:
+        return None, str(exc), str(exc)
+    try:
+        return await _fetch(
+            url, user_id=user_id, allowed=allowed, find=find, query=query, cancel=cancel, offset=offset,
+            rate_kind=rate_kind,
+        )
+    finally:
+        egress.leave(via)
+
+
+async def _fetch(
+    url: str,
+    *,
+    user_id: int,
+    allowed: set[str],
+    find: str | None,
+    query: str | None,
+    cancel: asyncio.Event | None,
+    offset: int,
+    rate_kind: str,
+) -> tuple[PageExtract | None, str, str]:
+    scope = _scope(user_id)
     clean = allowed_fetch_url(url)
     if not clean:
         clean_host = host_of(url)
@@ -1023,7 +1077,7 @@ async def fetch_url(
         else:
             msg = "That URL is not an allowed public HTTPS address."
         return None, msg, msg
-    cached = _cached_page(clean)
+    cached = _cached_page(clean, scope)
     if cached is not None and not allowed_fetch_url(cached[0]):
         # The redirect target fell under the domain policy since it was cached.
         cached = None
@@ -1046,7 +1100,7 @@ async def fetch_url(
         raise
     except FetchError as exc:
         if exc.blocked:
-            _blocked_hosts.set(host, True, BLOCKED_HOST_TTL)
+            _blocked_hosts.set(scope + host, True, BLOCKED_HOST_TTL)
         msg = str(exc)
         return None, msg, msg
     except (TimeoutError, httpx.TimeoutException):
@@ -1074,10 +1128,10 @@ async def fetch_url(
         return None, msg, msg
     allowed.add(final_url)
     allowed.update(_safe_links(base_extract))
-    final_key = normalize_url(final_url)
+    final_key = scope + normalize_url(final_url)
     _page_cache.set(final_key, (final_url, base_extract), PAGE_CACHE_TTL)
-    if normalize_url(clean) != final_key:
-        _page_cache.set(normalize_url(clean), final_key, PAGE_CACHE_TTL)
+    if scope + normalize_url(clean) != final_key:
+        _page_cache.set(scope + normalize_url(clean), final_key, PAGE_CACHE_TTL)
     extract = _with_find(base_extract, find, query=query, offset=offset)
     extract.bytes_in = received
     return extract, pack_page(final_url, extract), ""

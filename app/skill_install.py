@@ -489,6 +489,14 @@ def _safe_https(url: str, hosts: set[str]) -> tuple[str, str]:
     return clean, addrs[0]
 
 
+def _site_token(value: str) -> str:
+    """The site's own API token, only for requests this server sends itself:
+    never through a user's machine."""
+    from .search import egress
+
+    return "" if egress.current() else (value or "").strip()
+
+
 def _github_cap() -> int:
     return 200 if (settings.github_token or "").strip() else 20
 
@@ -514,11 +522,15 @@ async def _http_get(url: str, *, hosts: set[str], headers: dict | None = None, t
     parsed = urlparse(clean)
     hdrs["Host"] = parsed.netloc
     try:
+        from .search import egress
         from .search.client import CappedTransport
 
         # The transport bounds inflated bytes too: aiter_bytes alone would let
         # httpx decompress a gzip bomb before the size check runs.
+        via = egress.current()
         transport = CappedTransport(MAX_ZIPBALL + 1)
+        if via:
+            transport = CappedTransport(MAX_ZIPBALL + 1, inner=egress.ConnectorTransport(*via, MAX_ZIPBALL + 1))
         # httpx timeouts are per read; a server trickling bytes would never
         # hit them, so the whole request also gets a deadline.
         async with asyncio.timeout(timeout * 4), \
@@ -568,12 +580,15 @@ async def catalog_search(query: str) -> dict:
     q = (query or "").strip()
     if len(q) < 2 or len(q) > 80:
         raise SkillError("query must be 2–80 characters")
-    key = q.lower()
+    from .search import egress
+
+    # Per exit: what one user's machine answered is not served to another.
+    key = f"{egress.key()}|{q.lower()}"
     now = time.monotonic()
     hit = _CACHE.get(key)
     if hit and now - hit[0] < _CACHE_TTL:
         return hit[1]
-    token = (settings.skills_sh_token or "").strip()
+    token = _site_token(settings.skills_sh_token)
     if token:
         url = f"https://skills.sh/api/v1/skills/search?q={quote(q)}"
         headers = {"Authorization": f"Bearer {token}"}
@@ -612,7 +627,7 @@ async def catalog_search(query: str) -> dict:
 async def _github_get(url: str, *, accept: str = "application/vnd.github+json", timeout: float = 12.0):
     _take_github()
     headers = {"User-Agent": "Fuse/skills", "Accept": accept}
-    token = (settings.github_token or "").strip()
+    token = _site_token(settings.github_token)
     if token:
         headers["Authorization"] = f"Bearer {token}"
     resp = await _http_get(url, hosts=_GH_HOSTS, headers=headers, timeout=timeout,
@@ -627,7 +642,7 @@ async def _follow_github(resp) -> bytes:
         loc = resp.headers.get("location") or ""
         _take_github()
         headers = {"User-Agent": "Fuse/skills", "Accept": "application/vnd.github+json"}
-        token = (settings.github_token or "").strip()
+        token = _site_token(settings.github_token)
         if token:
             headers["Authorization"] = f"Bearer {token}"
         resp = await _http_get(loc, hosts=_GH_HOSTS, headers=headers, timeout=20.0,

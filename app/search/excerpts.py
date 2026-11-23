@@ -31,7 +31,7 @@ _SKIP_SUFFIXES = (".pdf", ".zip", ".gz", ".tar", ".png", ".jpg", ".jpeg", ".gif"
 _background: set[asyncio.Task] = set()
 
 
-def _pick(results: list[QueryResult], max_pages: int) -> list[tuple[str, str]]:
+def _pick(results: list[QueryResult], max_pages: int, user_id: int | None = None) -> list[tuple[str, str]]:
     """(url, query) to read: each query's best hit first, then second-best."""
     depth = 3 if len(results) == 1 else 2 if len(results) <= 3 else 1
     picks: list[tuple[str, str]] = []
@@ -45,7 +45,7 @@ def _pick(results: list[QueryResult], max_pages: int) -> list[tuple[str, str]]:
                 continue
             key = canonical_url(hit.url)
             path = key.split("?", 1)[0].lower()
-            if not key or key in seen or path.endswith(_SKIP_SUFFIXES) or is_host_blocked(hit.url):
+            if not key or key in seen or path.endswith(_SKIP_SUFFIXES) or is_host_blocked(hit.url, user_id):
                 continue
             seen.add(key)
             picks.append((hit.url, item.query))
@@ -79,7 +79,7 @@ async def attach_excerpts(
     """Return results whose top hits carry a page excerpt where one was read."""
     if max_pages <= 0:
         return results
-    picks = _pick(results, max_pages)
+    picks = _pick(results, max_pages, user_id)
     if not picks:
         return results
     tasks: dict[asyncio.Task, tuple[str, str]] = {}

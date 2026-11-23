@@ -6,6 +6,8 @@ import zlib
 
 import httpx
 
+from . import egress
+
 logger = logging.getLogger(__name__)
 
 CLIENT_DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=1.5)
@@ -22,6 +24,10 @@ TRANSPORT_BODY_MAX = 1_048_576
 
 _search_client: httpx.AsyncClient | None = None
 _fetch_client: httpx.AsyncClient | None = None
+# (user id, host id) -> (search client, page client) over that connector, so
+# cookies an engine sets stay with the IP it set them for.
+_connector_clients: dict[tuple[int, int], tuple[httpx.AsyncClient, httpx.AsyncClient]] = {}
+CONNECTOR_CLIENTS_MAX = 256
 
 
 class _NoCookies(http.cookiejar.CookieJar):
@@ -107,10 +113,11 @@ class CappedTransport(httpx.AsyncBaseTransport):
         await self._inner.aclose()
 
 
-def _new_client(*, cookies, max_bytes: int = TRANSPORT_BODY_MAX, reuse: bool = True) -> httpx.AsyncClient:
+def _new_client(*, cookies, max_bytes: int = TRANSPORT_BODY_MAX, reuse: bool = True, inner=None) -> httpx.AsyncClient:
     # gzip/deflate are inflated by CappedTransport under max_bytes, so
     # compression is safe to ask for and cuts transfer roughly tenfold.
-    inner = None if reuse else httpx.AsyncHTTPTransport(limits=httpx.Limits(max_keepalive_connections=0))
+    if inner is None and not reuse:
+        inner = httpx.AsyncHTTPTransport(limits=httpx.Limits(max_keepalive_connections=0))
     return httpx.AsyncClient(
         timeout=CLIENT_DEFAULT_TIMEOUT,
         follow_redirects=False,
@@ -121,7 +128,7 @@ def _new_client(*, cookies, max_bytes: int = TRANSPORT_BODY_MAX, reuse: bool = T
     )
 
 
-def _new_fetch_client() -> httpx.AsyncClient:
+def _new_fetch_client(inner=None) -> httpx.AsyncClient:
     from .extract import PDF_MAX_BYTES
 
     # read_url streams and caps each document itself (HTML/text and PDF
@@ -129,7 +136,22 @@ def _new_fetch_client() -> httpx.AsyncClient:
     # the pool would key connections by IP and hand a TLS session opened for
     # one site to another site behind the same CDN address (HTTP 421
     # Misdirected Request): no keep-alive for page reads.
-    return _new_client(cookies=_NoCookies(), max_bytes=PDF_MAX_BYTES + 1, reuse=False)
+    return _new_client(cookies=_NoCookies(), max_bytes=PDF_MAX_BYTES + 1, reuse=False, inner=inner)
+
+
+def _connector(via: tuple[int, int]) -> tuple[httpx.AsyncClient, httpx.AsyncClient]:
+    pair = _connector_clients.get(via)
+    if pair is None:
+        from .extract import PDF_MAX_BYTES
+
+        if len(_connector_clients) >= CONNECTOR_CLIENTS_MAX:
+            # No sockets behind these clients: dropping one needs no aclose.
+            _connector_clients.pop(next(iter(_connector_clients)))
+        pair = _connector_clients[via] = (
+            _new_client(cookies=httpx.Cookies(), inner=egress.ConnectorTransport(*via, TRANSPORT_BODY_MAX)),
+            _new_fetch_client(egress.ConnectorTransport(*via, PDF_MAX_BYTES + 1)),
+        )
+    return pair
 
 
 def start_client() -> httpx.AsyncClient:
@@ -152,6 +174,12 @@ async def stop_client() -> None:
 
 
 def get_client() -> httpx.AsyncClient:
+    via = egress.current()
+    return _connector(via)[0] if via else server_client()
+
+
+def server_client() -> httpx.AsyncClient:
+    """This server's own search client, whatever the task's egress is."""
     global _search_client
     if _search_client is None or _search_client.is_closed:
         _search_client = _new_client(cookies=httpx.Cookies())
@@ -160,6 +188,9 @@ def get_client() -> httpx.AsyncClient:
 
 def get_fetch_client() -> httpx.AsyncClient:
     global _fetch_client
+    via = egress.current()
+    if via:
+        return _connector(via)[1]
     if _fetch_client is None or _fetch_client.is_closed:
         _fetch_client = _new_fetch_client()
     return _fetch_client

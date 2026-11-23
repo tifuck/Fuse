@@ -49,9 +49,11 @@ export function createPanels(ctx) {
       S.memoryToggle.classList.toggle("has-notes", !S.memoryOpen && (hasMemory() || S.projectAgentsOk));
     }
     if (S.searchChip) {
-      S.searchChip.classList.toggle("is-on", S.searchOn);
-      S.searchChip.setAttribute("aria-pressed", S.searchOn ? "true" : "false");
-      S.searchChip.title = S.searchOn ? "Web search is on" : "Web search is off";
+      const ready = S.config.web !== false;
+      S.searchChip.classList.toggle("is-on", S.searchOn && ready);
+      S.searchChip.setAttribute("aria-pressed", S.searchOn && ready ? "true" : "false");
+      S.searchChip.title = !ready ? "Web search is off: pick a machine for it in Settings › Web search"
+        : S.searchOn ? "Web search is on" : "Web search is off";
     }
   }
 

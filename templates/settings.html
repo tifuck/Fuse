@@ -11,6 +11,7 @@
   <a href="#secrets">Secrets</a>
   <a href="#alerts">Alerts</a>
   <a href="#agents">Coding agents</a>
+  <a href="#web">Web search</a>
   <a href="#cleanup">Cleanup</a>
   <a href="#appearance">Appearance</a>
 </nav>
@@ -258,6 +259,30 @@
   <div class="set-foot">
     <button type="submit" class="btn sm">Save coding agents</button>
     <span class="set-status" data-agent-status role="status"></span>
+  </div>
+</form>
+
+<form class="panel set" id="web" aria-labelledby="set-web-title" data-web-form>
+  <header class="set-head">
+    <h2 id="set-web-title">Web search</h2>
+    <p>Web searches and page reads in your chats go out through the <a href="/hosts">machines</a> you pick here, not from this server. Sites see that machine's public IP, and a model can have it request any public web page. {% if web.fallback %}With none picked, this server is used.{% else %}With none picked, web search is off.{% endif %}</p>
+  </header>
+  {% for group in web.groups %}
+  <div class="set-row">
+    <div class="set-label"><strong>{{ group.network or "Public IP not read yet" }}</strong><span>{% if group.network and group.machines|length > 1 %}These share one public IP: one is used at a time, the others take over when it is offline.{% elif not group.network %}Read the public IPs to see which machines share a network.{% endif %}</span></div>
+    <div class="set-control">
+      {% for m in group.machines %}
+      <label class="check"><input type="checkbox" name="web_machine" value="{{ m.id }}"{% if m.selected %} checked{% endif %}{% if not m.supported and not m.selected %} disabled{% endif %}> {{ m.alias }}{% if not m.supported %} (needs connector {{ web.min_version }}){% elif not m.online %} (offline){% endif %}</label>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <p class="set-row set-note">No connected machines yet. <a href="/hosts">Add a machine</a> with the connector to use it for web search.</p>
+  {% endfor %}
+  <div class="set-foot">
+    <button type="submit" class="btn sm">Save web search</button>
+    <button type="button" class="btn sm" data-web-detect>Read public IPs</button>
+    <span class="set-status" data-web-status role="status"></span>
   </div>
 </form>
 
