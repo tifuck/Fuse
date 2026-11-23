@@ -60,7 +60,7 @@ export function createPersist(ctx) {
     }
     if (!net.isLive()) {
       net.markDisconnected();
-      throw new Error("Can't connect to the backend");
+      throw new Error("Could not connect to the backend");
     }
     const savedRevision = S.revision;
     const targetId = S.currentId;
@@ -132,7 +132,7 @@ export function createPersist(ctx) {
       }
       S.dirty = true;
       if (net.isTransportError(error)) net.markDisconnected();
-      else status.showFailure("Chat was not saved", error, "save");
+      else status.showFailure("Could not save the chat", error, "save");
       throw error;
     }
   }

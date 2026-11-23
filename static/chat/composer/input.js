@@ -70,7 +70,7 @@ export function createInput(ctx) {
     // composer's single-row layout on narrow screens.
     const ph = S.input.placeholder;
     if (!S.input.dataset.placeholder) S.input.dataset.placeholder = ph;
-    const wanted = S.pickerSheetQuery.matches ? "Ask or type /" : S.input.dataset.placeholder;
+    const wanted = S.input.dataset.placeholder;
     if (ph !== wanted) S.input.placeholder = wanted;
     S.input.placeholder = "";
     const followGap = S.thread ? S.thread.scrollHeight - S.thread.scrollTop - S.thread.clientHeight : Infinity;

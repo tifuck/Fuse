@@ -75,7 +75,7 @@ function partsRows(parts) {
   const families = parts?.tool_families || {};
   Object.keys(families).sort().forEach((name) => {
     const value = Number(families[name]) || 0;
-    if (value) rows.push([name.replace(/\b\w/g, (ch) => ch.toUpperCase()), value, "grand"]);
+    if (value) rows.push([name.replace(/^\w/, (ch) => ch.toUpperCase()), value, "grand"]);
   });
   rows.push(["Tool schemas", n("tools"), ""]);
   return rows;
@@ -536,7 +536,7 @@ export function createContext(ctx) {
       return;
     }
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for this reply to finish, then compact.", "warn");
+      picker.setHint("Wait for the reply to finish, then compact.", "warn");
       return;
     }
     if (!net.requireLive()) return;

@@ -459,7 +459,7 @@ export function createQueue(ctx) {
       renderPermQueue();
       if (S.permsOpen && (action === "allow_session" || action === "allow_host")) menu.refreshPerms();
     } catch (error) {
-      sync.showFailure("Permission decision failed", error);
+      sync.showFailure("Could not send the permission decision", error);
     }
   }
 

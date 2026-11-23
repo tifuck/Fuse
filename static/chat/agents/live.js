@@ -116,7 +116,7 @@ function agentResumeAvailable(run) {
 
 function compactionMarkerText(line) {
   const text = String(line || "").trim().toLowerCase();
-  if (text.startsWith("context compacted")) return "Context compacted. The conversation was replaced with a handoff. Nothing else was kept.";
+  if (text.startsWith("context compacted")) return "Context compacted. The chat history was replaced with a handoff. Nothing else was kept.";
   if (text.startsWith("context pruning")) return "Context pruned. Older tool outputs were shortened; recent results are unchanged.";
   return "";
 }
@@ -128,14 +128,13 @@ export function createLive(ctx) {
     if (row.cancel_requested && agentLive(row.status)) {
       const stamp = Date.parse(row.cancel_requested_at || "");
       const secs = Number.isFinite(stamp) ? Math.max(0, (Date.now() - stamp) / 1000) : 0;
-      if (secs >= 30) return "wedged — force stop";
+      if (secs >= 30) return "wedged · force stop";
       return secs >= 15 ? `stopping ${ui.formatActivityClock(secs)}` : "stopping";
     }
     if (row.status === "queued") return "queued";
     if (row.status === "completed") return "completed";
     if (row.status === "failed") return "failed";
-    if (row.status === "cancelled") return "cancelled";
-    if (row.status === "interrupted") return "interrupted";
+    if (row.status === "cancelled" || row.status === "interrupted") return "stopped";
     if (agentIsStalled(row)) return "stalled";
     if (agentIsWaiting(row)) return "waiting on model";
     if (row.status === "running") return "running";
@@ -306,7 +305,7 @@ export function createLive(ctx) {
     if (shimmer) shimmer.hidden = !live && !stalled;
     if (stalled) {
       ui.setLivePhase(S.agentLiveDock, "stalled");
-      ui.setLiveLabelText(S.agentLiveLabel, ("stalled — no progress"));
+      ui.setLiveLabelText(S.agentLiveLabel, ("stalled · no progress"));
       if (S.agentLiveSpin && (S.agentLiveSpin.firstChild || S.agentLiveSpin.dataset.spinSet)) {
         S.agentLiveSpin.replaceChildren();
         delete S.agentLiveSpin.dataset.spinSet;

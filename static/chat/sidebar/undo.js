@@ -148,7 +148,7 @@ export function createUndo(ctx) {
 
     async function undoConversation(times = 1) {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", "warn");
+      picker.setHint("Wait for the reply to finish.", "warn");
       return;
     }
     if (S.loading || S.partialTranscript || !net.requireLive()) return;
@@ -204,14 +204,14 @@ export function createUndo(ctx) {
         saveHistoryStacks();
         context.recountLocalContext();
         if (removed) restored = removed.content || "";
-        picker.setHint(previous.length ? "Undid last turn." : "Conversation cleared.");
+        picker.setHint(previous.length ? "Undid last turn." : "Chat cleared.");
       }
       if (gen === S.generation && origin === S.currentId) artifacts.offerRestore(marks);
     } catch (error) {
       if (gen === S.generation && origin === S.currentId) {
         await sync.reconcileThread().catch(() => {});
         if (net.isTransportError(error)) net.markDisconnected();
-        sync.showFailure("Undo was not confirmed", error);
+        sync.showFailure("Could not confirm the undo", error);
       }
     } finally {
       S.sending = false;
@@ -271,7 +271,7 @@ export function createUndo(ctx) {
     } catch (error) {
       if (origin === S.currentId && gen === S.generation) {
         await sync.reconcileThread().catch(() => {});
-        sync.showFailure('Redo was not confirmed', error);
+        sync.showFailure("Could not confirm the redo", error);
       }
     } finally {
       S.sending = false;
@@ -281,7 +281,7 @@ export function createUndo(ctx) {
 
     function mutateTranscript(fn, hint) {
     if (traces.runIsActive(S.activeRun) || S.sending) {
-      picker.setHint("Wait for the current reply to finish.", "warn");
+      picker.setHint("Wait for the reply to finish.", "warn");
       return false;
     }
     if (!net.requireLive()) return false;

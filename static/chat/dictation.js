@@ -42,7 +42,7 @@ export function createDictation({ picker }) {
   overlay.setAttribute("aria-label", "Dictation");
   overlay.append(markup.content.cloneNode(true));
   overlay.querySelector(".dictation-bars").innerHTML = Array.from({ length: BANDS * 2 }, (_, i) => `<i style="--i:${i}"></i>`).join("");
-  overlay.querySelector("[data-dictation-done]").title += ` or ${HOTKEY_LABEL}`;
+  overlay.querySelector("[data-dictation-done]").title = `Done (Enter or ${HOTKEY_LABEL})`;
   (S.form.querySelector("[data-dictation-slot]") || S.chatBox).before(overlay);
   const bars = [...overlay.querySelectorAll(".dictation-bars i")];
   const timeEl = overlay.querySelector("[data-dictation-time]");
@@ -306,7 +306,7 @@ export function createDictation({ picker }) {
   button.addEventListener("click", (event) => { if (event.detail === 0) toggle(); });
   overlay.querySelector("[data-dictation-cancel]").addEventListener("click", cancel);
   overlay.querySelector("[data-dictation-done]").addEventListener("click", finish);
-  button.title = `Dictate · ${HOTKEY_LABEL}`;
+  button.title = `Dictate (${HOTKEY_LABEL})`;
 
   // Typing or sending in another chat leaves the dictated one alone.
   S.input.addEventListener("input", () => { if (run && !run.writing && here()) detach(); });

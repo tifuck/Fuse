@@ -77,7 +77,7 @@ function paintPermsList() {
       `<span class="chat-perms-count">${granted ? `${granted} granted` : ""}</span></p>` +
       `<ul aria-label="${escapeHtml(name)}">${shown.map(permRowHtml).join("")}</ul></section>`;
   }).join("");
-  listEl.innerHTML = groups || `<p class="chat-perms-empty">${q ? "Nothing matches." : "No machines yet."}</p>`;
+  listEl.innerHTML = groups || `<p class="chat-perms-empty">${q ? "No machines or folders match." : "No machines yet."}</p>`;
 }
 
 export function createMenu(ctx) {

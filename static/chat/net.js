@@ -2,7 +2,7 @@
 import { S } from './state.js';
 import { readQueue } from './turns/queue-store.js';
 
-const VAULT_WHAT = "Unlock machines to use SSH. Your account password unwraps those secrets here — chat still works without it.";
+const VAULT_WHAT = "Unlock machines to use SSH. Your account password unwraps those secrets here. Chat still works without it.";
 
 function csrfToken() {
   const el = document.querySelector('meta[name="csrf-token"]');
@@ -77,7 +77,7 @@ async function readThreadStream(res, onPartial, signal) {
   }
   parts.push(decoder.decode());
   take(parts.join(""));
-  if (!full) throw new Error("Thread snapshot was incomplete.");
+  if (!full) throw new Error("Chat snapshot was incomplete.");
   return full;
 }
 
@@ -137,7 +137,7 @@ export function createNet(ctx) {
     } catch (error) {
       if (opts.signal?.aborted) throw error;
       if (!isLive()) markDisconnected();
-      const netError = new Error("Can't connect to the backend");
+      const netError = new Error("Could not connect to the backend");
       netError.status = 0;
       throw netError;
     }
@@ -210,7 +210,7 @@ export function createNet(ctx) {
 
     function requireLive() {
     if (isLive()) return true;
-    picker.setHint("Can't connect to the backend", true);
+    picker.setHint("Could not connect to the backend", true);
     return false;
   }
 

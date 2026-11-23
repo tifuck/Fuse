@@ -73,7 +73,7 @@ export function createPanels(ctx) {
     if (!S.agentsDirty) S.agentsBody.value = data.body || "";
     S.agentsBody.readOnly = Boolean(data.truncated);
     S.agentsSave.disabled = Boolean(data.truncated);
-    S.agentsStatus.textContent = data.truncated ? "Too long to edit here; open the file on the host." : "";
+    S.agentsStatus.textContent = data.truncated ? "Too long to edit here; open the file on the machine." : "";
     S.agentsStatus.classList.remove("is-ok");
   }
 
@@ -118,9 +118,9 @@ export function createPanels(ctx) {
     } else if (data.state === "missing") {
       label = "No AGENTS.md, agent.md, or CLAUDE.md found in the project folder.";
     } else if (data.reason === "locked") {
-      label = "Project instructions unavailable: vault is locked.";
+      label = "Project instructions unavailable: machines are locked.";
     } else {
-      label = "Project instructions unavailable: host not reachable.";
+      label = "Project instructions unavailable: machine not reachable.";
     }
     S.memoryProject.textContent = label;
     S.memoryProject.classList.toggle("is-ok", data.state === "loaded");
@@ -155,7 +155,7 @@ export function createPanels(ctx) {
     sync.syncStatus();
     window.clearTimeout(S.memoryTimer);
     S.memoryTimer = window.setTimeout(() => {
-      saveMemory().catch((error) => sync.showFailure("Context was not saved", error));
+      saveMemory().catch((error) => sync.showFailure("Could not save the context", error));
     }, 400);
   }
 

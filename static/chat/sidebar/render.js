@@ -122,7 +122,7 @@ export function createRender(ctx) {
     const newLabel = S.root.querySelector("[data-chat-new-label]");
     const newBtn = S.root.querySelector("[data-chat-new]");
     const projectLabel = S.historyTab === "projects";
-    if (newLabel) newLabel.textContent = projectLabel ? "New project" : "New chat";
+    if (newLabel) newLabel.textContent = projectLabel ? "New project session" : "New chat";
     if (newBtn) {
       newBtn.setAttribute("aria-label", projectLabel ? "New project session" : "New chat");
       newBtn.title = projectLabel ? "New project session" : "New chat";
@@ -345,7 +345,7 @@ export function createRender(ctx) {
         if (chats.length) blocks.push(kicker("Projects"));
         blocks.push(...unusedHits.map(projects.projectBlock));
       }
-      paint(blocks.length ? blocks : [empty("No chats or projects match your search.")]);
+      paint(blocks.length ? blocks : [empty("No chats or projects match.")]);
       return;
     }
     if (S.showArchived) {
@@ -363,7 +363,7 @@ export function createRender(ctx) {
       const sessions = projects.projectSessionList(draftItems(true));
       const { pinned, rest } = splitPinned(sessions);
       if (!sessions.length) {
-        paint([empty("No project sessions yet. Use New project to start one.")]);
+        paint([empty("No project sessions yet. Use New project session to start one.")]);
         return;
       }
       const blocks = [];
@@ -506,7 +506,7 @@ export function createRender(ctx) {
         S.searchProjects = data.projects || [];
         renderHistory();
       } catch (error) {
-        if (gen === S.searchGen) sync.showFailure("Chat search failed", error);
+        if (gen === S.searchGen) sync.showFailure("Could not search chats", error);
       }
     }, 250);
   }

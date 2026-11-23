@@ -240,7 +240,7 @@ export function createSlash(ctx) {
     if (!S.paletteItems.length) {
       const empty = document.createElement("p");
       empty.className = "chat-slash-empty";
-      empty.textContent = "No matches";
+      empty.textContent = "No matches.";
       S.slashList.appendChild(empty);
     } else {
       S.paletteItems.forEach((item, index) => {

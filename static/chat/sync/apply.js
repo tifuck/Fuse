@@ -71,7 +71,7 @@ export function createApply(ctx) {
   }
 
     function acceptThread(data) {
-    if (data && !Number.isSafeInteger(data.event_cursor)) throw new Error("Thread snapshot is missing event_cursor; live sync requires a consistent snapshot.");
+    if (data && !Number.isSafeInteger(data.event_cursor)) throw new Error("Chat snapshot is missing event_cursor; live sync requires a consistent snapshot.");
     if (!data || data.id !== S.currentId) return;
     // A reconcile issued before this snapshot (a send's, undo's or compact's
     // reply) holds older state: drop it when it lands.

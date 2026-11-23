@@ -648,8 +648,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         text = pre.textContent.replace(/^\n/, "");
       }
       const idle = copy.textContent;
-      try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; setTimeout(() => { if (copy.isConnected) copy.textContent = idle; }, 1400); }
-      catch { copy.textContent = "Select to copy"; }
+      try { await navigator.clipboard.writeText(text); copy.textContent = "Copied."; setTimeout(() => { if (copy.isConnected) copy.textContent = idle; }, 1400); }
+      catch { copy.textContent = "Could not copy"; }
     }
   });
 
@@ -676,7 +676,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         await composer.refreshSkills(true);
         await sync.reconcileThread();
       } catch (error) {
-        sync.showFailure("Skill was not saved", error);
+        sync.showFailure("Could not save the skill", error);
       }
     });
   }
@@ -826,7 +826,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     event.preventDefault();
     overlays.showPop(null, [
       { label: "Open in browser", run: () => window.open(url.href, "_blank", "noopener") },
-      { label: "Copy link", run: () => navigator.clipboard.writeText(url.href).then(() => picker.setHint("Copied link.")) },
+      { label: "Copy link", run: () => navigator.clipboard.writeText(url.href).then(() => picker.setHint("Link copied.")) },
     ], { x: event.clientX, y: event.clientY });
   });
 
@@ -838,7 +838,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     if (!code) return;
     try {
       await navigator.clipboard.writeText(code.textContent || "");
-      picker.setHint("Copied to clipboard.");
+      picker.setHint("Copied.");
       btn.innerHTML = ACTION_ICONS.copied;
       btn.setAttribute("aria-label", "Copied");
       setTimeout(() => {
@@ -846,7 +846,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         btn.setAttribute("aria-label", "Copy");
       }, 1200);
     } catch (error) {
-      sync.showFailure("Clipboard copy failed", error);
+      sync.showFailure("Could not copy", error);
     }
   });
 
@@ -1121,7 +1121,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
     async function sendToAgent(text) {
     if (S.pendingAttachments.length) {
-      picker.setHint("Files can't be sent to a subagent. Remove them, or go back to the main agent.", "warn");
+      picker.setHint("Files cannot be sent to a subagent. Remove them, or go back to the main agent.", "warn");
       return;
     }
     if (S.agentSending || !net.requireLive()) return;
@@ -2149,7 +2149,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
           return;
         }
         const id = row?.dataset.thread;
-        if (id) sidebar.openThread(id).catch((error) => sync.showFailure("Chat could not be opened", error));
+        if (id) sidebar.openThread(id).catch((error) => sync.showFailure("Could not open the chat", error));
       }
     });
   }
