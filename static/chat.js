@@ -20,6 +20,7 @@ import { createTurns } from './chat/turns.js';
 import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
+import { bindPool } from './chat/poolbadge.js';
 import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
@@ -1175,6 +1176,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
   }
 
     overlays.backLayerFollowsHidden(S.contextPop, "context");
+    bindPool({
+      place: (menu, anchor) => composer.placeComposerPop(menu, anchor, 30 * 16, true),
+      overlays,
+      closeOthers: () => { picker.closePicker(); perms.setPermsOpen(false); context.closeContextPop(); },
+    });
 
     if (S.contextPop) {
     S.contextPop.addEventListener("click", (event) => {

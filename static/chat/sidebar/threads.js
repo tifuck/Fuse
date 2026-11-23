@@ -1,5 +1,6 @@
 // Thread navigation: open, list mutation, rename, session project.
 import { S } from '../state.js';
+import { acceptPool } from '../poolbadge.js';
 import { draftKey, newSession, resolveListedModel } from '../state.js';
 
 function isUntitledThread(current) {
@@ -382,6 +383,7 @@ export function createThreads(ctx) {
     sync.setRunning(false);
     sync.healStuckRun(S.activeRun);
     context.acceptCacheProbe(data.compaction?.cache);
+    acceptPool(data.compaction?.pool);
     if (data.compaction && data.compaction.meter) context.acceptMeter(data.compaction.meter);
     else context.syncContextMeter();
     S.acceptedQueueCommands = new Set(data.accepted_queue_ids || []);

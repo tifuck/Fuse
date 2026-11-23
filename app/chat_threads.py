@@ -37,6 +37,7 @@ from .chat_schema import (
 from .chat_titles import _clean_title
 from .database_errors import is_lock_conflict
 from .chat_generation import cache_watch
+from .sources import pool_badge
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +385,7 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
             "keep_tail": state.get("keep_tail"),
             "window_override": state.get("window_override"),
             "cache": cache_watch.public(state.get("cache")),
+            "pool": pool_badge.public(row["user_id"], state.get("pool")),
             "checkpoints": [
                 {
                     "id": cp.get("id"),

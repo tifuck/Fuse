@@ -2,6 +2,7 @@
 import { S } from './state.js';
 import { escapeHtml, formatTokens } from './core.js';
 import { newSession } from './state.js';
+import { acceptPool } from './poolbadge.js';
 
 // Below this many prompt tokens a lost cache is not worth mentioning
 // (matches cache_watch.MIN_TOKENS).
@@ -348,6 +349,7 @@ export function createContext(ctx) {
     function acceptMeter(meter) {
     if (!meter || typeof meter !== "object") return;
     if (meter.cache) acceptCacheProbe(meter.cache);
+    if ("pool" in meter) acceptPool(meter.pool);
     const scope = meter.scope === "transcript" ? "transcript" : "prompt";
     // Prompt-scope readings (live request during a turn) only apply while a
     // run is active. Transcript snapshots are authoritative at rest, so

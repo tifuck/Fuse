@@ -1,0 +1,107 @@
+/* The plan usage gauge (static/chat/poolbadge.js, app/sources/pool_badge.py):
+   the pool account's plan usage beside the model, and its card. The card is
+   the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
+   these rules only lay out its rows. Amber from 75%, red from 95%. */
+html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
+  /* After the model chip, its height and type: a rule, the gauge, the window. */
+  & .chat-pool { position: static; display: flex; flex: none; align-items: center; }
+  & .chat-pool::before { content: ""; width: 1px; height: 14px; margin-right: 4px; background: color-mix(in srgb, var(--dk-mute) 30%, transparent); }
+  & .chat-pool[hidden] { display: none !important; }
+  & .chat-pool-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--dk-ctl-r, 7px); background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); white-space: nowrap; cursor: pointer; }
+  & .chat-pool-btn[aria-expanded="true"] { background: var(--dk-hover); color: var(--dk-text); }
+  @media (hover: hover) { & .chat-pool-btn:hover { background: var(--dk-hover); color: var(--dk-text); } }
+  & .chat-pool-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
+  & .chat-pool { --pool-tone: var(--dk-text); --pool-ink: var(--dk-text); }
+  & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-ink: var(--status-live); }
+  & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-ink: var(--fault); }
+  & .chat-pool-gauge { display: block; flex: none; width: 20px; height: 20px; }
+  & .chat-pool-gauge svg { display: block; width: 20px; height: 20px; overflow: visible; }
+  & .chat-pool-gauge circle { fill: none; stroke-width: 2; }
+  & .chat-pool-track { stroke: color-mix(in srgb, var(--dk-mute) 35%, transparent); }
+  & .chat-pool-fill { stroke: var(--pool-tone); transition: stroke-dasharray 220ms ease, stroke 220ms ease; }
+  & .chat-pool-num { fill: var(--pool-ink); font: 600 8px var(--sans); }
+  & .chat-pool-num.is-long { font-size: 6.5px; }
+  & .chat-pool-wins { display: none; }
+  /* A move to another account turns the gauge over once. */
+  & .chat-pool.is-hop .chat-pool-gauge { animation: chat-pool-hop 480ms ease; }
+  & .chat-pool-menu .chat-perms-group > p { gap: 0.45rem; }
+  & .chat-pool-menu .chat-perms-count { margin-left: auto; }
+  & .chat-pool-menu .chat-pool-line {
+    grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem;
+    column-gap: 0.55rem;
+    min-height: 30px;
+    padding: 0 0.5rem;
+    cursor: default;
+  }
+  & .chat-pool-menu .chat-pool-line:hover { background: none; color: inherit; }
+  & .chat-pool-menu .chat-pool-line[data-status="current"] { background: var(--dk-hover); }
+  & .chat-pool-menu .chat-pool-line:is([data-status="off"], [data-status="paused"]) { opacity: 0.5; }
+  & .chat-pool-name { display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; color: var(--dk-text); text-overflow: ellipsis; white-space: nowrap; }
+  & .chat-pool-name b { flex: none; min-width: 1ch; font-weight: 700; }
+  & .chat-pool-who { overflow: hidden; color: var(--dk-mute); text-overflow: ellipsis; }
+  & .chat-pool-bar { --pool-tone: var(--dk-text); height: 4px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
+  & .chat-pool-bar i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); }
+  & .chat-pool-line[data-level="warn"] .chat-pool-bar { --pool-tone: var(--status-live); }
+  & .chat-pool-line[data-level="hot"] .chat-pool-bar { --pool-tone: var(--fault); }
+  & .chat-pool-pct { color: var(--dk-text); font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; text-align: right; }
+  & .chat-pool-meta { overflow: hidden; text-align: right; text-overflow: ellipsis; }
+  & .chat-pool-line[data-status="current"] .chat-pool-meta { color: var(--dk-link); }
+  & .chat-pool-line[data-status="limit"] .chat-pool-meta { color: var(--status-live); }
+  & .chat-pool-line[data-status="full"] .chat-pool-meta { color: var(--fault); }
+  & .chat-pool-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+  & .chat-pool-foot .chat-perms-hint { flex: 1 1 auto; }
+  & .chat-pool-manage { flex: none; margin-left: auto; color: var(--dk-link); font: 500 12px/1.4 var(--sans); text-decoration: none; }
+  @media (hover: hover) { & .chat-pool-manage:hover { text-decoration: underline; text-underline-offset: 3px; } }
+  & .chat-pool-manage:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 3px; }
+  & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
+  /* The card's foot: Sharing (opens the sharing panel) and the Sources link. */
+  & .chat-pool-share { display: inline-flex; align-items: center; gap: 0.4rem; height: 1.6rem; margin: 0 0 0 -0.4rem; padding: 0 0.4rem; border: 0; border-radius: 6px; background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); cursor: pointer; }
+  & .chat-pool-share b { color: var(--dk-text); font-weight: 600; }
+  & .chat-pool-share:focus-visible { background: var(--dk-hover); color: var(--dk-text); }
+  @media (hover: hover) { & .chat-pool-share:hover { background: var(--dk-hover); color: var(--dk-text); } }
+  & .chat-pool-share:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
+  & .chat-pool-share.is-locked { cursor: default; background: none; }
+  & .chat-pool-note { padding: 0.35rem 0.5rem 0.1rem; list-style: none; }
+  /* The sharing panel: the permission modes' segmented control per choice. */
+  & .chat-pool-setting .chat-perms-modes { grid-template-columns: repeat(var(--segs, 3), minmax(0, 1fr)); margin: 0.2rem 0.5rem 0; }
+  & .chat-pool-setting .chat-perms-hint { margin: 0.4rem 0.5rem 0.45rem; padding: 0; line-height: 1.4; }
+  & .chat-pool-menu .chat-pool-pick { grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.55rem; min-height: 30px; padding: 0 0.5rem; cursor: default; }
+  & .chat-pool-menu .chat-pool-pick:hover { background: none; color: inherit; }
+  /* A row's label, not the forms' stacked label: box, name, yours. */
+  & .chat-pool-pick label { flex-direction: row; gap: 0.5rem; margin: 0; color: inherit; cursor: pointer; }
+  & .chat-pool-pick input { flex: none; align-self: center; width: 0.85rem; height: 0.85rem; margin: 0; accent-color: var(--dk-link); }
+  & .chat-pool-pick[data-status="off"] :is(b, .chat-pool-who) { opacity: 0.5; }
+  & .chat-pool-first { height: 1.4rem; padding: 0 0.45rem; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; }
+  @media (hover: hover) { & .chat-pool-first:hover:not(:disabled) { border-color: color-mix(in srgb, var(--dk-mute) 35%, transparent); color: var(--dk-text); } }
+  & .chat-pool-first.is-on { border-color: color-mix(in srgb, var(--dk-link) 55%, transparent); color: var(--dk-link); }
+  & .chat-pool-first:disabled { opacity: 0.35; cursor: default; }
+  & .chat-pool-first:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
+  & .chat-pool-notice { margin: 0.4rem 0.8rem 0.2rem; color: var(--status-live); }
+  & .chat-pool-menu.is-sheet .chat-pool-pick { min-height: 2.75rem; padding: 0 0.6rem; }
+  & .chat-pool-menu.is-sheet .chat-pool-first { height: 2.25rem; padding: 0 0.75rem; }
+  /* Phone sheet: every control a 44px target; the rotation row's whole
+     height toggles its account; the head carries back on the sharing panel. */
+  & :is(.chat-pool-btn, .chat-pool-share, .chat-pool-first, .chat-pool-pick label, .chat-pool-manage) { -webkit-tap-highlight-color: transparent; }
+  & .chat-pool-pick label { align-self: stretch; align-items: center; }
+  & .chat-pool-menu.is-sheet :is(.chat-pool-share, .chat-pool-manage) { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  & .chat-pool-menu.is-sheet .chat-pool-first { position: relative; }
+  & .chat-pool-menu.is-sheet .chat-pool-first::after { content: ""; position: absolute; inset: -0.25rem -0.4rem; }
+  & .chat-pool-menu:not(.is-sheet) .chat-pool-head-back { display: none; }
+  & .chat-pool-menu .chat-picker-head p { display: flex; align-items: center; gap: 0.35rem; }
+  & .chat-pool-head-back { margin-left: -0.6rem; }
+  @media (hover: none), (pointer: coarse) {
+    & .chat-pool-btn { height: 36px; }
+  }
+  /* The row drops its gaps and the model chip's padding here; match them. */
+  @media (max-width: 480px) {
+    & .chat-pool::before { margin-right: 0; }
+    & .chat-pool-btn { padding-inline: 4px; }
+  }
+}
+@keyframes chat-pool-hop {
+  50% { transform: scaleX(0.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-pool.is-hop .chat-pool-gauge { animation: none; }
+  .chat-pool-fill { transition: none; }
+}

@@ -436,7 +436,9 @@ def parse_generated_recap(raw: str) -> str:
     text = re.sub(r"^\s*(?:[-•#>]+|\d+\.)\s*", "", re.sub(r"\s+", " ", text).strip())
     text = re.sub(r"^(?:recap|summary)\s*:\s*", "", text, flags=re.I)
     lowered = text.lower()
-    if not text or len(text) > 400 or len(text.split()) > 45 or lowered.startswith((
+    # Models asked for "under 40 words" often land at 45-55; rejecting those
+    # cost a retry 30s later. 400 characters is the real display bound.
+    if not text or len(text) > 400 or len(text.split()) > 60 or lowered.startswith((
         "i cannot", "i can't", "i am unable", "i'm unable", "sorry", "as an ai",
     )):
         return ""

@@ -19,7 +19,7 @@ from .config import settings
 from .chat_generation import inbox, metadata, policy, tool_runner
 from .chat_tools import execute_tool, openai_tools, parse_tool_names
 from .proxy import merge_usage, usage_from_obj
-from .sources import POOL_TYPES
+from .sources import POOL_TYPES, pool_badge
 
 from .chat_prompts import (
     INIT_PROMPT,
@@ -931,12 +931,14 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         # The newest request's prompt-cache probe, carried across turns on the
         # thread; one miss notice per run at most, a resumed run included
         # (chat_generation.cache_watch).
-        cache_prior = None
+        # The pool account that served the chat last (sources.pool_badge).
+        cache_prior = pool_prior = None
         if not is_child and thread_id:
             try:
                 from .chat_checkpoint import load_compaction
 
-                cache_prior = (load_compaction(user["id"], thread_id) or {}).get("cache")
+                stored_state = load_compaction(user["id"], thread_id) or {}
+                cache_prior, pool_prior = stored_state.get("cache"), stored_state.get("pool")
             except Exception:
                 logger.exception("Could not load the prompt-cache probe")
         cache_warned = cache_watch.warned(cache_prior, run_id)
@@ -1591,12 +1593,27 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 # Telemetry only: a bug here must not fail the turn.
                 logger.exception("Cache watch failed for run %s", run_id)
                 probe = missed = None
-            # The page reads cache warmth from the round meter (no account id).
-            yield _sse(context_meter.context_event({**round_meter, "cache": cache_watch.public(probe)} if probe else round_meter, phase="round"))
+            pool_view = None
+            served_by = getattr(result, "credential_id", None)
+            if not is_child and served_by and src_type in POOL_TYPES:
+                try:
+                    pool_prior = pool_badge.state(pool_prior, served_by, src_type, model)
+                    pool_view = await asyncio.to_thread(pool_badge.public, user["id"], pool_prior)
+                except Exception:
+                    logger.exception("Pool badge failed for run %s", run_id)
+            # The page reads cache warmth and the pool badge from the round
+            # meter (no account id).
+            page_meter = {**round_meter, "cache": cache_watch.public(probe)} if probe else dict(round_meter)
+            if pool_view:
+                page_meter["pool"] = pool_view
+            yield _sse(context_meter.context_event(page_meter, phase="round"))
             if missed:
                 cache_warned = True
                 yield _sse({"fuse": {**missed, "run_id": run_id}})
-            await _persist_meter({**round_meter, "cache_probe": probe} if probe else round_meter)
+            saved_meter = {**round_meter, "cache_probe": probe} if probe else dict(round_meter)
+            if pool_view:
+                saved_meter["pool_state"] = pool_prior
+            await _persist_meter(saved_meter)
             if summary.get("error"):
                 raw_err = summary["error"] if isinstance(summary["error"], dict) else {"error": {"message": str(summary["error"])}}
                 err_code, _msg = _error_code_and_message(raw_err)

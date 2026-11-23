@@ -1,5 +1,6 @@
 // Thread/context snapshot application and fuse event application.
 import { S } from '../state.js';
+import { acceptPool } from '../poolbadge.js';
 import { newSession, resolveListedModel } from '../state.js';
 import { deltaParts, messageRunLive, splitThink, untimed } from '../core.js';
 
@@ -185,6 +186,7 @@ export function createApply(ctx) {
       if ((listed && S.modelId !== listed) || effortChanged) { if (listed) S.modelId = listed; picker.renderPickerButton(); }
     }
     context.acceptCacheProbe(data.compaction?.cache);
+    acceptPool(data.compaction?.pool);
     if (data.compaction && data.compaction.meter) context.acceptMeter(data.compaction.meter);
     else context.syncContextMeter();
     S.transcriptDirty = keepLocalTranscript;
