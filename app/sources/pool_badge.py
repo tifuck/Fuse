@@ -222,10 +222,10 @@ def _span(seconds) -> tuple[str, str] | None:
         return f"{hours}-hour", f"{hours}h"
     if s < 7 * 86400:
         days = round(s / 86400)
-        return ("Daily", "daily") if days == 1 else (f"{days}-day", f"{days}d")
+        return ("Daily", "1d") if days == 1 else (f"{days}-day", f"{days}d")
     if s < 28 * 86400:
-        return "Weekly", "weekly"
-    return "Monthly", "monthly"
+        return "Weekly", "7d"
+    return "Monthly", "30d"
 
 
 def _short(label: str) -> str:
@@ -233,7 +233,7 @@ def _short(label: str) -> str:
     hours = re.search(r"(\d+)\s*-?\s*h", low)
     if hours:
         return f"{hours.group(1)}h"
-    for word, short in (("week", "weekly"), ("month", "monthly"), ("day", "daily")):
+    for word, short in (("week", "7d"), ("month", "30d"), ("day", "1d")):
         if word in low:
             return short
     return low[:4] or "use"
@@ -268,7 +268,7 @@ def _windows(billing: dict) -> list[dict]:
         if pct is not None:
             period = str(billing.get("period_type") or "").lower()
             label = "Monthly" if period.startswith("month") else "Plan"
-            out.append({"label": label, "short": label.lower(),
+            out.append({"label": label, "short": "30d" if label == "Monthly" else "plan",
                         "percent": round(max(0.0, min(100.0, pct))), "reset_at": _reset(billing.get("period_end"), now)})
     return out[:MAX_WINDOWS]
 

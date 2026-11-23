@@ -1,30 +1,37 @@
-/* The plan usage gauge (static/chat/poolbadge.js, app/sources/pool_badge.py):
+/* The plan usage meter (static/chat/poolbadge.js, app/sources/pool_badge.py):
    the pool account's plan usage beside the model, and its card. The card is
    the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
    these rules only lay out its rows. Amber from 75%, red from 95%. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
-  /* Before the model chip, its height and type: the gauge, the window, a rule;
-     the context ring then sits right of the model it measures. */
-  & .chat-pool { position: static; display: flex; flex: none; align-items: center; }
-  & .chat-pool::after { content: ""; width: 1px; height: 14px; margin-left: 4px; background: color-mix(in srgb, var(--dk-mute) 30%, transparent); }
+  /* Before the model chip, its height: the meter; the context ring then sits
+     right of the model it measures. */
+  /* Its margin puts the model's logo as far from it as the model's chevron
+     sits from the ring. */
+  & .chat-pool { position: static; display: flex; flex: none; align-items: center; margin-right: 6px; }
   & .chat-pool[hidden] { display: none !important; }
-  & .chat-pool-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--dk-ctl-r, 7px); background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); white-space: nowrap; cursor: pointer; }
-  & .chat-pool-btn[aria-expanded="true"] { background: var(--dk-hover); color: var(--dk-text); }
-  @media (hover: hover) { & .chat-pool-btn:hover { background: var(--dk-hover); color: var(--dk-text); } }
-  & .chat-pool-btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: -2px; }
-  & .chat-pool { --pool-tone: var(--dk-text); --pool-ink: var(--dk-text); }
-  & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-ink: var(--status-live); }
-  & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-ink: var(--fault); }
-  & .chat-pool-gauge { display: block; flex: none; width: 20px; height: 20px; }
-  & .chat-pool-gauge svg { display: block; width: 20px; height: 20px; overflow: visible; }
-  & .chat-pool-gauge circle { fill: none; stroke-width: 2; }
-  & .chat-pool-track { stroke: color-mix(in srgb, var(--dk-mute) 35%, transparent); }
-  & .chat-pool-fill { stroke: var(--pool-tone); transition: stroke-dasharray 220ms ease, stroke 220ms ease; }
-  & .chat-pool-num { fill: var(--pool-ink); font: 600 8px var(--sans); }
-  & .chat-pool-num.is-long { font-size: 6.5px; }
+  /* The button is a full-height control like its neighbours; the capsule
+     inside it holds the fullest window's name, a bar and the percent. */
+  & .chat-pool-btn { display: inline-flex; align-items: center; height: 28px; padding: 0; border: 0; background: none; color: var(--dk-mute); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  & .chat-pool-btn:focus-visible { outline: none; }
+  & .chat-pool-btn:focus-visible .chat-pool-meter { outline: 2px solid var(--dk-link); outline-offset: 1px; }
+  & .chat-pool { --pool-tone: var(--dk-text); --pool-num: var(--dk-text); }
+  & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
+  & .chat-pool[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
+  & .chat-pool-meter {
+    display: inline-flex; align-items: center; gap: 7px; height: 22px; padding: 0 8px;
+    border: 1px solid color-mix(in srgb, var(--dk-mute) 28%, transparent); border-radius: 7px; background: none;
+    font: 500 11.5px/1 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap;
+    transition: border-color var(--dur-hover, 120ms) ease, background-color var(--dur-hover, 120ms) ease;
+  }
+  & .chat-pool-btn[aria-expanded="true"] .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); }
+  @media (hover: hover) { & .chat-pool-btn:hover .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); } }
+  & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; }
+  & .chat-pool-track { flex: none; width: 32px; height: 3px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
+  & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }
+  & .chat-pool-meter b { min-width: 3ch; color: var(--pool-num); font-weight: 500; text-align: right; }
   & .chat-pool-wins { display: none; }
-  /* A move to another account turns the gauge over once. */
-  & .chat-pool.is-hop .chat-pool-gauge { animation: chat-pool-hop 480ms ease; }
+  /* A move to another account blinks the meter once. */
+  & .chat-pool.is-hop .chat-pool-meter { animation: chat-pool-hop 480ms ease; }
   & .chat-pool-menu .chat-perms-group > p { gap: 0.45rem; }
   & .chat-pool-menu .chat-perms-count { margin-left: auto; }
   & .chat-pool-menu .chat-pool-line {
@@ -93,16 +100,15 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   @media (hover: none), (pointer: coarse) {
     & .chat-pool-btn { height: 36px; }
   }
-  /* The row drops its gaps and the model chip's padding here; match them. */
+  /* The row drops its gaps and the model chip's padding here. */
   @media (max-width: 480px) {
-    & .chat-pool::after { margin-left: 0; }
-    & .chat-pool-btn { padding-inline: 4px; }
+    & .chat-pool { margin-right: 10px; }
   }
 }
 @keyframes chat-pool-hop {
-  50% { transform: scaleX(0.1); }
+  50% { opacity: 0.35; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-pool.is-hop .chat-pool-gauge { animation: none; }
+  .chat-pool.is-hop .chat-pool-meter { animation: none; }
   .chat-pool-fill { transition: none; }
 }

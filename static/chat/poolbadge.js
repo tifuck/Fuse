@@ -1,10 +1,10 @@
-// The plan usage gauge beside the model (app/sources/pool_badge.py): how much
+// The plan usage meter beside the model (app/sources/pool_badge.py): how much
 // of the subscription plan the chat's pool account has used, and a card with
 // every limit, every account of the pool, and the user's sharing settings for
 // it (saved through the Sources page's endpoint). Each theme places
 // [data-pool-badge] holding a [data-pool-toggle] button and styles the parts:
-// the gauge (a ring with the percent in it), the window label, or the window
-// cells. The card is the permissions menu's frame, so it looks like the
+// the meter (the fullest window's name, a bar and its percent) or every
+// window's cells. The card is the permissions menu's frame, so it looks like the
 // theme's own menus: a popover above the composer, a sheet on phones.
 import { S } from './state.js';
 import { escapeHtml } from './core.js';
@@ -39,7 +39,6 @@ let menu = null;
 let view = "usage";
 let saving = null;
 let notice = "";
-const ink = new Map();
 
 const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : "ok");
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
@@ -57,7 +56,7 @@ function span(at) {
   return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-// The chat's gauge, or null when it has none, belongs to another chat, or the
+// The chat's meter, or null when it has none, belongs to another chat, or the
 // picker moved to another model since the account answered.
 function current() {
   const pool = S.pool;
@@ -68,7 +67,7 @@ function previewKey() {
   return `${S.currentId || ""}|${S.modelId || ""}`;
 }
 
-// A fresh preview for the open chat and model becomes its gauge until a
+// A fresh preview for the open chat and model becomes its meter until a
 // reply names the account that really served it.
 function previewed() {
   const hit = previews.get(previewKey());
@@ -101,7 +100,6 @@ function requestPreview() {
 export function bindPool(next) {
   deps = { ...deps, ...next };
   window.addEventListener("resize", () => { if (menu && !menu.hidden) placeMenu(); });
-  document.fonts?.ready.then(() => { ink.clear(); renderPool(); });
 }
 
 export function acceptPool(pool) {
@@ -110,24 +108,6 @@ export function acceptPool(pool) {
   S.poolThread = S.currentId;
   S.poolModel = S.modelId;
   renderPool(Boolean(before && S.pool && before.id !== S.pool.id));
-}
-
-// Centres the percent's ink (not its line box) in the ring: the font's
-// ascent and descent would otherwise push digits off centre.
-function centre(text, size) {
-  const style = getComputedStyle(text);
-  const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const key = font + "|" + text.textContent;
-  let off = ink.get(key);
-  if (!off) {
-    const ctx = (centre.ctx ||= document.createElement("canvas").getContext("2d"));
-    ctx.font = font;
-    const m = ctx.measureText(text.textContent);
-    off = [(m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2];
-    ink.set(key, off);
-  }
-  text.setAttribute("x", (size / 2 - off[0]).toFixed(2));
-  text.setAttribute("y", (size / 2 + off[1]).toFixed(2));
 }
 
 function cells(pct) {
@@ -150,22 +130,17 @@ export function renderPool(hopped = false) {
   const windows = windowsOf(pool.windows);
   const tight = windows.reduce((a, w) => (!a || w.percent > a.percent ? w : a), null);
   host.dataset.level = tight ? level(tight.percent) : "none";
-  const pct = tight ? String(tight.percent) : "–";
   const name = `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}`;
   const label = tight ? `${name}: ${tight.percent}% of the ${tight.label.toLowerCase()} limit used` : `${name}: no usage reported yet`;
   btn.setAttribute("aria-label", label);
   btn.title = label;
   btn.innerHTML =
-    `<span class="chat-pool-gauge" aria-hidden="true"><svg viewBox="0 0 20 20">` +
-    `<circle class="chat-pool-track" cx="10" cy="10" r="8.5"/>` +
-    `<circle class="chat-pool-fill" cx="10" cy="10" r="8.5" pathLength="100" stroke-dasharray="${tight ? tight.percent : 0} 100" transform="rotate(-90 10 10)"/>` +
-    `<text class="chat-pool-num${pct.length > 2 ? " is-long" : ""}">${pct}</text></svg></span>` +
-    (tight ? `<span class="chat-pool-label" aria-hidden="true">${escapeHtml(tight.short || "")}</span>` : "") +
+    `<span class="chat-pool-meter" aria-hidden="true">${tight ? `<em>${escapeHtml(tight.short || "")}</em>` : ""}` +
+    `<span class="chat-pool-track"><i style="width: ${tight ? tight.percent : 0}%"></i></span>` +
+    `<b>${tight ? tight.percent + "%" : "–"}</b></span>` +
     `<span class="chat-pool-wins" aria-hidden="true">${windows.map((w) =>
       `<span class="chat-pool-win" data-level="${level(w.percent)}"${w === tight ? " data-tight" : ""}><em>${escapeHtml(w.short || "")}</em>` +
       `<span class="chat-pool-cells">${cells(w.percent)}</span><b>${w.percent}%</b></span>`).join("")}</span>`;
-  const text = btn.querySelector("text");
-  if (text.getClientRects().length) centre(text, 20);
   if (menu && !menu.hidden) fillMenu(pool);
   if (hopped && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     host.classList.remove("is-hop");
