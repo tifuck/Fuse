@@ -1,10 +1,11 @@
 """The chat page's pool card: the serving account's plan limits, every account
 the caller can reach, named as the Sources page names them, and the caller's
 sharing settings, which the card saves through the Sources endpoint."""
+import asyncio
 import json
 
 from app.config import ROOT
-from app.sources import pool_badge, pool_pick, pool_policy
+from app.sources import claude, pool_badge, pool_pick, pool_policy, pool_session
 from tests.core.usage._support import pool_account, user
 
 
@@ -31,7 +32,7 @@ def test_accounts_are_named_as_the_sources_page_names_them(fresh_db):
     assert view["name"] == "Claude plan 1" and view["own"] is False and view["hop"] is None
     assert [(a["id"], a["name"], a["own"]) for a in view["accounts"]] == [
         (theirs, "Claude plan 1", False), (mine, "me.work@example.com", True)]
-    assert [(w["short"], w["percent"]) for w in view["windows"]] == [("5h", 42), ("wk", 18)]
+    assert [(w["short"], w["percent"]) for w in view["windows"]] == [("5h", 42), ("weekly", 18)]
     assert view["size"] == 2 and view["model"] == "claude-opus-4-7"
     sent = json.dumps(view)
     for leak in ("donor.plan@example.com", "donor@core.test", "donor-secret"):
@@ -68,7 +69,7 @@ def test_windows_read_spans_and_restart_after_their_reset(fresh_db):
 
     assert windows == [
         {"label": "5-hour", "short": "5h", "percent": 0, "reset_at": None},
-        {"label": "Weekly", "short": "wk", "percent": 30, "reset_at": 4102444800},
+        {"label": "Weekly", "short": "weekly", "percent": 30, "reset_at": 4102444800},
     ]
 
 
@@ -86,7 +87,7 @@ def test_model_and_product_limits_and_plan_come_with_the_plan_windows(fresh_db):
     assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Fable weekly", 61)]
 
     view = pool_badge.public(me, pool_badge.state(None, cursor, "cursor", "m"))
-    assert [(w["label"], w["short"], w["percent"]) for w in view["windows"]] == [("Monthly", "mo", 37)]
+    assert [(w["label"], w["short"], w["percent"]) for w in view["windows"]] == [("Monthly", "monthly", 37)]
     assert [(w["label"], w["percent"]) for w in view["limits"]] == [("Auto + Composer", 12)]
     assert view["plan"] == "Pro"
 
@@ -137,3 +138,29 @@ def test_a_malformed_record_shows_no_badge(fresh_db):
     assert pool_badge.public(me, None) is None
     assert pool_badge.public(me, {"cred": "x", "source": "claude"}) is None
     assert pool_badge.public(me, {"cred": 3, "source": "llama"}) is None
+
+
+def test_before_a_reply_the_gauge_shows_the_account_the_next_request_uses(fresh_db, monkeypatch):
+    me = user("me@core.test")
+    busy = pool_account("claude", me, _claude(70, 60))
+    fresh = pool_account("claude", me, _claude(5, 1))
+    src = claude.ClaudeSource({"id": pool_policy.source_id("claude"), "name": "Claude"}, {}, [])
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "claude-opus-5-5"
+
+    import app.sources as sources
+    monkeypatch.setattr(sources, "pick", pick)
+    monkeypatch.setattr(pool_session, "persist", False)
+
+    # A new chat: the account the pool's picker chooses now, a best guess.
+    view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5"))
+    assert view["id"] == fresh and view["preview"] is True and view["model"] == "claude/claude-opus-5-5"
+    # A chat pinned to an account: that account, exactly, and the pin is not refreshed.
+    sid = pool_session.related_session_id("thread:abc", user_id=me, model="claude-opus-5-5")
+    pool_session.bind("claude", sid, busy)
+    stamp = pool_session._mem[("claude", sid)]
+    view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", "abc"))
+    assert view["id"] == busy and view["preview"] is False
+    assert pool_session._mem[("claude", sid)] == stamp
+    assert src.creds == []  # the live source is untouched
