@@ -332,7 +332,7 @@
   color: var(--brass);
   font: inherit;
   cursor: pointer;
-  transition: color var(--dur-hover) ease, opacity 140ms ease, filter 140ms ease;
+  transition: color var(--dur-hover) ease, opacity var(--dur-1) ease, filter var(--dur-1) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perm-btn svg { display: block; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perm-btn:hover { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--brass) 55%, transparent)); }
@@ -406,7 +406,7 @@
   color: color-mix(in srgb, var(--mist) 88%, var(--mute));
 }
 @media (hover: hover) {
-  :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-row:hover { background: color-mix(in srgb, var(--mist) 7%, transparent); color: var(--mist); }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-row:hover { background: var(--con-hover); color: var(--mist); }
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-icon { display: grid; place-items: center; color: var(--mute); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-icon svg { width: 0.9rem; height: 0.9rem; }
@@ -452,7 +452,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x svg { display: block; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x:hover { color: var(--fault); background: color-mix(in srgb, var(--fault) 12%, transparent); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x:focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x.is-fixed { cursor: default; opacity: 0.4; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-x.is-fixed:hover { color: var(--mute); background: transparent; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-empty {
@@ -507,8 +507,8 @@
   }
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button.is-on { color: var(--on-brass, var(--ink)); background: var(--brass); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button:disabled { opacity: 0.45; cursor: not-allowed; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button:focus-visible { outline: 2px solid var(--steel); outline-offset: 1px; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button:disabled { opacity: var(--con-disabled); cursor: not-allowed; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-perms-modes button:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-perms-hint { margin: 0; color: var(--mute); font-size: 0.7rem; line-height: 1.4; }
 /* Phones: a bottom sheet with the model picker's head, motion and
    swipe-to-close, as tall as its few rows (the model list needs the whole

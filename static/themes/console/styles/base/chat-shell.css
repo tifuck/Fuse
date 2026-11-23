@@ -82,7 +82,7 @@ html:where(.is-chat-root[data-chat-view="console"]).is-chat-root,
   text-align: left;
   font-size: 0.85rem;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-pop button:hover { background: var(--raise); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-pop button:hover { background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-pop button.danger { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-pop button.danger:hover { background: color-mix(in srgb, var(--fault) 12%, transparent); }
 /* Menus open with a short fade and scale from their anchor corner. */

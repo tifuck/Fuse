@@ -1,3 +1,18 @@
+/* Console's own shared values: one focus ring, hover fill, disabled opacity,
+   menu row, kicker and note size, and sheet shell. */
+html[data-chat-view="console"] {
+  --con-ring: 2px solid var(--brass);
+  --con-ring-off: 2px;
+  --con-hover: color-mix(in srgb, var(--mist) 8%, transparent);
+  --con-disabled: 0.45;
+  --con-menu: calc(0.8125rem * var(--chat-text-scale, 1));
+  --con-menu-row: calc(1.875rem * var(--chat-text-scale, 1));
+  --con-kicker: calc(0.6875rem * var(--chat-text-scale, 1));
+  --con-note: 0.78rem;
+  --con-sheet-w: 54rem;
+  --con-sheet-h: 42rem;
+}
+
 :is( html[data-chat-console="true"] .chat[data-view="console"]) .chat-tool-image {
   margin: 0.5rem 0;
   max-width: 100%;
@@ -202,8 +217,10 @@ html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .ch
   user-select: none;
 }
 
+html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-user-file.is-image { margin-inline: 0; }
 html[data-chat-console="true"] .chat[data-view="console"] .chat-turn.is-user .chat-user-files {
-  margin-left: 1.5rem;
+  justify-content: flex-start;
+  margin-left: 1.3rem;
   max-width: min(92%, 64rem);
 }
 

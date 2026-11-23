@@ -145,7 +145,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-pic
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea {
-  font: 0.8125rem/var(--composer-line) var(--mono);
+  font: calc(0.8125rem * var(--chat-text-scale, 1))/var(--composer-line) var(--mono);
   padding-block: calc((var(--composer-row) - var(--composer-line)) / 2);
   max-height: min(24rem, 45dvh);
 }

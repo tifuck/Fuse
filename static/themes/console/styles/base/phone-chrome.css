@@ -66,7 +66,7 @@
   transition: opacity 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
   -webkit-tap-highlight-color: transparent;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-hub:focus-visible { outline: 2px solid var(--steel); outline-offset: 3px; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-hub:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-hub svg { position: relative; transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1); }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-ticks {
   position: absolute;
@@ -125,7 +125,7 @@
   transform: translate(var(--x), var(--y)) scale(1);
   transition-delay: calc(var(--i) * 18ms), calc(var(--i) * 18ms), 0ms, 0ms;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-sat:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-sat:focus-visible { outline: var(--con-ring); outline-offset: var(--con-ring-off); }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-sat.is-off { color: color-mix(in srgb, var(--mist) 40%, transparent); }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-sat.is-hot { color: var(--ink); background: var(--brass); border-color: transparent; }
 :where(html.is-chat-root[data-chat-view="console"]) .fuse-dial-label {

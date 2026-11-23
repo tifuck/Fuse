@@ -282,8 +282,8 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item:hover,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-rewind-item:hover,
-:where(html.is-chat-root[data-chat-view="console"]) .chat-rewind-item.is-active { background: var(--raise); }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item.is-active { background: var(--raise); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-rewind-item.is-active { background: var(--con-hover); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item.is-active { background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item kbd,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-rewind-item strong {
   flex: 0 0 auto;
@@ -302,7 +302,8 @@
   white-space: nowrap;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item.is-off {
-  opacity: 0.48;
+  opacity: var(--con-disabled);
+  cursor: default;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-slash-item.is-empty {
   color: var(--mute);
@@ -385,14 +386,13 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(6, 7, 6, 0.66);
+  background: color-mix(in srgb, var(--ink) 66%, transparent);
   color: var(--mist);
   line-height: 0;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-  opacity: 0;
-  transform: scale(0.92);
+  opacity: 1;
   touch-action: manipulation;
-  transition: opacity 120ms ease, transform 120ms ease, background var(--dur-hover) ease;
+  transition: opacity var(--dur-1) ease, transform var(--dur-1) ease, background var(--dur-hover) ease;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-user-file.is-file .chat-user-file-x {
   top: 50%;
@@ -412,7 +412,7 @@
   opacity: 1;
   transform: none;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-user-file-x:hover { background: rgba(6, 7, 6, 0.88); color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-user-file-x:hover { background: color-mix(in srgb, var(--ink) 88%, transparent); color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-user-file.is-file .chat-user-file-x:hover { background: var(--ink); color: var(--mist); }
 /* Code boxes in the composer (static/chat/composer/blocks.js): prose fields
    and code boxes stand in for #chat-input while the message has a fence. */

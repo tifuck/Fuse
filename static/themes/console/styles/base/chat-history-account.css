@@ -31,7 +31,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.more { opacity: 1; pointer-events: auto; color: var(--mist); --dur-hover: 0s; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item:is(:hover, :focus-within, .is-menu) > button.open { padding-right: 1.9rem; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-history-item > button.more:hover { background: color-mix(in srgb, var(--mist) 10%, transparent); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-history-item > button.more:hover { background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-history-item input.rename {
   flex: 1;
   min-width: 0;
@@ -191,7 +191,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .user-dock-caret { flex-shrink: 0; color: var(--mute); transition: transform 140ms ease; }
+:where(html.is-chat-root[data-chat-view="console"]) .user-dock-caret { flex-shrink: 0; color: var(--mute); transition: transform var(--dur-1) ease; }
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock.is-open .user-dock-caret { transform: rotate(180deg); }
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock-menu {
   position: absolute;
@@ -258,7 +258,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock-build { flex-shrink: 0; padding: 0 0.625rem; color: var(--mute); font: 0.625rem/1.4 var(--mono); white-space: nowrap; }
 :where(html.is-chat-root[data-chat-view="console"]) .user-dock-out button { width: 100%; border: 0; background: none; color: var(--fault); cursor: pointer; text-align: left; }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.app-rail-nav a, .user-dock-nav a, .user-dock-out button):hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 6%, transparent); }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.app-rail-nav a, .user-dock-nav a, .user-dock-out button):hover { color: var(--mist); background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.app-rail-nav a, .user-dock-nav a).on { color: var(--mist); background: color-mix(in srgb, var(--mist) 9%, transparent); }
 @media (max-width: 800px) {
   :where(html.is-chat-root[data-chat-view="console"]) .user-dock-close { display: grid; }

@@ -51,7 +51,6 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-code {
   margin: calc(0.75rem * var(--chat-text-scale, 1)) 0;
   overflow: hidden;
-  background: #141816;
   border: 1px solid var(--line);
   border-radius: 9px;
 }
@@ -81,14 +80,14 @@
   white-space: pre;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-code code { display: block; padding: 0; background: none; font-size: inherit; }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-keyword, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-doctag, .hljs-operator) { color: #9bc5d2; }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-name, .hljs-selector-class, .hljs-selector-id) { color: #a9c9b7; }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-addition, .hljs-code, .hljs-link) { color: #d0b486; }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-number, .hljs-literal, .hljs-built_in, .hljs-type, .hljs-variable.constant_, .hljs-variable.language_, .hljs-template-tag) { color: #d18d83; }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-keyword, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-doctag, .hljs-operator) { color: var(--reason); }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-name, .hljs-selector-class, .hljs-selector-id) { color: var(--steel); }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-addition, .hljs-code, .hljs-link) { color: var(--brass); }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-number, .hljs-literal, .hljs-built_in, .hljs-type, .hljs-variable.constant_, .hljs-variable.language_, .hljs-template-tag) { color: var(--fault); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-comment, .hljs-quote) { color: var(--mute); font-style: italic; }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-meta, .hljs-meta .hljs-keyword) { color: var(--brass); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) .hljs-meta.prompt_ { color: var(--ok); }
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-attr, .hljs-property, .hljs-selector-attr, .hljs-variable, .hljs-template-variable) { color: #b8c9c1; }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-attr, .hljs-property, .hljs-selector-attr, .hljs-variable, .hljs-template-variable) { color: var(--steel); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-params, .hljs-subst, .hljs-punctuation, .hljs-tag) { color: var(--mist); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-section, .hljs-strong) { color: var(--mist); font-weight: 700; }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) .hljs-emphasis { font-style: italic; }
