@@ -564,6 +564,7 @@ export function createDesktopTheme(runtime) {
     renderUser: theme.renderUser,
     rewindListHtml: theme.rewindListHtml,
     secretsWindowHtml: theme.secretsWindowHtml,
+    webSetupWindowHtml: theme.webSetupWindowHtml,
     setConsoleSpin: theme.setConsoleSpin,
     setLiveLabelText: theme.setLiveLabelText,
     setLivePhase: theme.setLivePhase,

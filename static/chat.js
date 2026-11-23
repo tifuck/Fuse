@@ -9,6 +9,7 @@ import { createPicker } from './chat/picker.js';
 import { createPanels } from './chat/panels.js';
 import { createPerms } from './chat/perms.js';
 import { createSecrets } from './chat/secrets.js';
+import { createWebSetup } from './chat/websetup.js';
 import { createArtifacts } from './chat/artifacts.js';
 import { createTranscript } from './chat/transcript.js';
 import { createSidebar } from './chat/sidebar.js';
@@ -62,6 +63,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     renderUser,
     rewindListHtml,
     secretsWindowHtml,
+    webSetupWindowHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -227,6 +229,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     renderUser,
     rewindListHtml,
     secretsWindowHtml,
+    webSetupWindowHtml,
     setConsoleSpin,
     setLiveLabelText,
     setLivePhase,
@@ -428,6 +431,13 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     ui,
   });
 
+  const webSetup = createWebSetup({
+    composer: { persist: (...args) => composer.persist(...args) },
+    net,
+    panels,
+    ui,
+  });
+
   const boot = createBoot({
     agents,
     artifacts,
@@ -481,6 +491,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       },
     });
   }
+
+    webSetup.start();
 
     if (sync.recapsToggle) {
     sync.recapsToggle.checked = S.recapsEnabled;
@@ -1343,6 +1355,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     S.searchChip.addEventListener("click", (event) => {
       event.preventDefault();
       if (!net.requireLive()) return;
+      // Off for want of a machine: the button opens the setup instead.
+      if (S.config.web === false) {
+        webSetup.open();
+        return;
+      }
       S.searchOn = !S.searchOn;
       composer.persist();
       panels.syncMemoryUi();

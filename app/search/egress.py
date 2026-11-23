@@ -320,6 +320,7 @@ def overview(user_id: int) -> dict:
     for machine in machines(user_id):
         groups.setdefault(machine["network"], []).append(machine)
     return {
+        "available": available(user_id),
         "fallback": bool(settings.web_search_server_fallback),
         "min_version": ".".join(map(str, MIN_VERSION)),
         # Networks with a known IP first; the not-yet-read ones last.

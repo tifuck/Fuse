@@ -33,6 +33,14 @@ async def settings_page(request: Request):
     )
 
 
+@router.get("/settings/web")
+async def web_get(request: Request):
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    return JSONResponse(egress.overview(user["id"]), headers={"Cache-Control": "no-store"})
+
+
 @router.post("/settings/web")
 async def web_set(request: Request):
     """The connectors this user's web searches and page reads leave through."""
