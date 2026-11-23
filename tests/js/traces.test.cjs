@@ -81,11 +81,11 @@ test('presentation names queued, cancelling, lost, timed-out and stopped executi
   const shell = (extra) => ({ name: 'run_terminal_command', status: 'running', ...extra });
   const label = (trace, live) => m.toolPresentation(trace, live).statusLabel;
   assert.equal(label(shell({ execution_status: 'queued' }), true), 'Queued');
-  assert.equal(label(shell({ execution_status: 'cancelling' }), true), 'Cancelling');
-  assert.equal(label(shell({ state: 'lost', status: 'error' }), false), 'Lost');
+  assert.equal(label(shell({ execution_status: 'cancelling' }), true), 'Stopping');
+  assert.equal(label(shell({ state: 'lost', status: 'error' }), false), 'Stopped');
   assert.equal(label(shell({ state: 'timed_out', status: 'error' }), false), 'Timed out');
   const uncertain = m.toolPresentation(shell({ state: 'cancelled', status: 'interrupted', termination_confirmed: false }), false);
-  assert.equal(uncertain.statusLabel, 'Cancelled');
+  assert.equal(uncertain.statusLabel, 'Stopped');
   assert.equal(uncertain.state, 'interrupted');
   assert.equal(label(shell({ state: 'interrupted', status: 'interrupted', termination_confirmed: true }), false), 'Stopped');
   assert.equal(label({ name: 'run_terminal_command', status: 'done', state: 'running' }, false), 'Background');

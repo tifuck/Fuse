@@ -298,12 +298,12 @@ export function createQueue(ctx) {
     // Theme variables are identical for every card; resolve them once per
     // theme instead of forcing computed style on each card per frame.
     const root = document.documentElement;
-    const key = root.getAttribute("data-theme") || "";
+    const key = `${root.getAttribute("data-chat-view") || ""}/${root.getAttribute("data-chat-theme") || ""}`;
     if (_permThemeCache.key === key && _permThemeCache.brass) return _permThemeCache;
     const theme = getComputedStyle(el);
     _permThemeCache = {
       key,
-      brass: parseCssRgb(theme.getPropertyValue("--brass"), "#A5D8FF"),
+      brass: parseCssRgb(theme.getPropertyValue("--ask-accent") || theme.getPropertyValue("--brass"), "#A5D8FF"),
       yellow: parseCssRgb(theme.getPropertyValue("--status-live"), "#FBBF24"),
       red: parseCssRgb(theme.getPropertyValue("--fault"), "#F87171"),
     };

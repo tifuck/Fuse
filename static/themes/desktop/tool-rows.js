@@ -289,7 +289,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
       // A failure keeps its reason on the line too.
       const exit = deps.shellExitCode(trace);
       const status = opts.oneLine && running
-        ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Cancelling" ? "Cancelling…" : "")
+        ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Stopping" ? "Stopping…" : "")
         : stopText ? (deps.rowSaysStopped(trace, presentation) ? "" : stopWord(stopText))
         : fold.status || (opts.oneLine && (failed || dotState === "error")
           ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : errorLine(trace.error || trace.summary) || "failed")

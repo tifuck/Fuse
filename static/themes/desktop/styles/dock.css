@@ -5,6 +5,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-doc
   --ask-r: 10px;
   --ask-btn-r: var(--dk-ctl-r);
   --ask-bg: var(--dk-card);
+  --ask-accent: var(--dk-accent);
   --ask-edge: color-mix(in srgb, var(--brass) 45%, var(--line));
   --ask-inset: color-mix(in srgb, #000 40%, var(--ask-bg));
 }

@@ -485,7 +485,7 @@ function consoleResultLine(trace, presentation) {
       return `Monitor started${id ? `, task ${id}` : ""}`;
     }
     if ((running) && name === "read_url") return "Fetching…";
-    if (running) return presentation.statusLabel === "Cancelling" ? "Stopping…" : "Running…";
+    if (running) return presentation.statusLabel === "Stopping" ? "Stopping…" : "Running…";
     if (failed) return String(trace.error || trace.summary || "failed").replace(/\s+/g, " ").trim();
     if (interrupted) return "Stopped";
     if (trace.wake_state === "dropped") return "Report not delivered";

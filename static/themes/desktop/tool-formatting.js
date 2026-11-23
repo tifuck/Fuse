@@ -291,7 +291,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     const clock = (presentation) ? deps.ccCallClockHtml(trace, presentation) : "";
     // Console: a running call reads as a terminal agent's live line, one row
     // counting up ("Running npm test · 12s"); it prints as Bash(…) once done.
-    const pending = /^(queued|cancelling)$/i.test(presentation && presentation.statusLabel);
+    const pending = /^(queued|stopping)$/i.test(presentation && presentation.statusLabel);
     const live = (running) && !full && !deps.toolBackground(trace) && !pending ? deps.ccLiveText(trace, 1000) : "";
     if (live) return `<span class="chat-console-call is-live">${deps.escapeHtml(live)}</span>${hostHtml}${clock}`;
     if ((running) && name === "run_terminal_command" && pending) {

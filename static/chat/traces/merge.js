@@ -55,7 +55,7 @@ export function createMerge(ctx) {
     const running = !failed && !interrupted && toolRunning(trace, live);
     const exit = shellExitCode(trace);
     const warning = !running && !failed && !interrupted && exit !== null && exit !== 0;
-    const statusLabel = !returnedWait && execution === "cancelling" ? "Cancelling" : !returnedWait && execution === "timed_out" ? "Timed out" : !returnedWait && execution === "lost" ? "Stopped"
+    const statusLabel = !returnedWait && execution === "cancelling" ? "Stopping" : !returnedWait && execution === "timed_out" ? "Timed out" : !returnedWait && execution === "lost" ? "Stopped"
       : failed ? "Failed" : interrupted ? "Stopped" : running
       ? execution === "queued" || trace.status === "queued" ? "Queued" : trace.status === "done" && executing ? "Background" : /^get_(command|subagent)_output$/.test(trace.name) ? "Waiting" : toolBackground(trace) ? "Background" : "Running"
       : warning ? `Exit ${exit}` : "Done";

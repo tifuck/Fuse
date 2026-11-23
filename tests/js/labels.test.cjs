@@ -37,7 +37,7 @@ test('sub-second durations stay in ms and hand off above a second', () => {
 test('byte sizes take the larger unit once they round up to it, in every theme', async () => {
   for (const theme of ['console', 'tail', 'desktop']) {
     const { ccBytes } = (await import(`../../static/themes/${theme}/call-semantics.js`)).create({});
-    const cases = [[1023, '1023 bytes'], [1536, '1.5KB'], [1_048_575, '1MB'], [5 * 1024 ** 2, '5MB'], [1024 ** 3 - 1, '1GB']];
+    const cases = [[1023, '1023 bytes'], [1536, '1.5 KB'], [1_048_575, '1 MB'], [5 * 1024 ** 2, '5 MB'], [1024 ** 3 - 1, '1 GB']];
     for (const [n, text] of cases) assert.equal(ccBytes(n), text, `${theme} ${n}`);
   }
 });
@@ -123,8 +123,8 @@ test('agent rows say stopping only while the stopped agent is still live', () =>
   const live = createLive({ ui: { formatActivityClock: (secs) => `${Math.round(secs)}s` } });
   const ago = (secs) => new Date(Date.now() - secs * 1000).toISOString();
   assert.equal(live.agentStatusText({ status: 'running', cancel_requested: true, cancel_requested_at: ago(1) }), 'stopping');
-  assert.equal(live.agentStatusText({ status: 'running', cancel_requested: true, cancel_requested_at: ago(40) }), 'wedged — force stop');
-  assert.equal(live.agentStatusText({ status: 'cancelled', cancel_requested: true, cancel_requested_at: ago(40) }), 'cancelled');
+  assert.equal(live.agentStatusText({ status: 'running', cancel_requested: true, cancel_requested_at: ago(40) }), 'wedged · force stop');
+  assert.equal(live.agentStatusText({ status: 'cancelled', cancel_requested: true, cancel_requested_at: ago(40) }), 'stopped');
   assert.equal(live.agentStatusText({ status: 'completed', cancel_requested: true, cancel_requested_at: ago(40) }), 'completed');
 });
 
@@ -240,7 +240,7 @@ test('desktop agents table: what a subagent did, in words; how a finished one en
   const doing = (row) => /class="chat-agents-doing">([^<]*)</.exec(panels.agentRowHtml({ id: 'a', description: 'Audit', ...row }))?.[1];
   assert.equal(doing({ status: 'completed', tool_counts: { read_file: 6, grep: 2, glob: 1, search_replace: 1, todo_write: 4 } }), '6 files, 3 searches, 1 edit');
   assert.equal(doing({ status: 'completed', summary: 'Fixed the reconnect.\nDetails follow.', tool_counts: { read_file: 1 } }), 'Fixed the reconnect.');
-  assert.equal(doing({ status: 'cancelled', tool_counts: { read_file: 1 } }), 'Stopped, 1 file');
-  assert.equal(doing({ status: 'running', tool_counts: { web_search: 2 } }), 'Working, 2 web searches');
+  assert.equal(doing({ status: 'cancelled', tool_counts: { read_file: 1 } }), 'Stopped · 1 file');
+  assert.equal(doing({ status: 'running', tool_counts: { web_search: 2 } }), 'Working · 2 web searches');
   assert.equal(doing({ status: 'running' }), 'Working');
 });
