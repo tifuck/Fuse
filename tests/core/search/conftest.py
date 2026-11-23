@@ -17,7 +17,7 @@ import pytest
 
 from app import security
 from app.config import settings
-from app.search import client, engine, excerpts, policy, ssrf
+from app.search import client, egress, engine, excerpts, policy, ssrf
 from app.search.extract import PDF_MAX_BYTES
 from app.search.providers import brave, ddg
 
@@ -98,6 +98,9 @@ def _clear():
     engine._blocked_hosts.clear()
     excerpts._background.clear()
     ddg.reset_circuit()
+    egress._turn.clear()
+    egress._selected_cache.clear()
+    client._connector_clients.clear()
     brave._brave_auth_until = 0.0
     policy._cached = None
 
@@ -105,7 +108,11 @@ def _clear():
 @pytest.fixture(autouse=True)
 def _search_state(monkeypatch):
     _clear()
-    monkeypatch.setattr(ddg, "_warmed", True)
+    monkeypatch.setattr(ddg, "_warmed", {""})
+    # No connector picked and the server allowed to go out itself: what these
+    # tests script. test_egress.py picks connectors.
+    monkeypatch.setattr(egress, "_selected", lambda user_id: [])
+    monkeypatch.setattr(settings, "web_search_server_fallback", True)
     monkeypatch.setattr(settings, "brave_search_api_key", "")
     monkeypatch.setattr(engine, "limiter", security.RateLimiter())
     # No domain lists unless a test stores some (fresh_db + save_domain_lists).

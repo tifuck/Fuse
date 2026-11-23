@@ -1534,7 +1534,7 @@ async def execute_tool(
         offset = max(0, int(args.get("offset") or 0))
     except (TypeError, ValueError, OverflowError):
         offset = 0
-    cached = is_fetch_cached(url, allowed_urls)
+    cached = is_fetch_cached(url, allowed_urls, user_id)
     counted = budgets is not None and not cached
     if budgets is not None:
         attempts = budgets.get("fetch_attempts", 0)
@@ -1562,6 +1562,8 @@ async def execute_tool(
         low = (error or "").lower()
         if "rate limit" in low:
             kind = "rate_limited"
+        elif low.startswith("web access is"):
+            kind = "unavailable"
         elif "not an allowed public" in low or "not allowed" in low or "refused" in low or "non-public" in low:
             kind = "not_allowed"
         else:

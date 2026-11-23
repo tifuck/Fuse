@@ -73,6 +73,20 @@ def _no_search_time_page_reads():
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _web_from_the_server():
+    """Web requests leave through a user's connectors, or from the server only
+    when the site allows it (off by default). Tests script the server's own
+    clients, so they run with it on; tests/core/search/test_egress.py covers
+    the rest."""
+    from app.config import settings
+
+    saved = settings.web_search_server_fallback
+    settings.web_search_server_fallback = True
+    yield
+    settings.web_search_server_fallback = saved
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _production_oauth_refresh():
     """Dev's config turns pooled OAuth refresh off (production owns those
     tokens); tests run the production path against faked token endpoints."""

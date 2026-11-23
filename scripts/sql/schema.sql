@@ -908,6 +908,8 @@ CREATE TABLE `user_hosts` (
   `last_seen_at` longtext DEFAULT NULL,
   `agent_os` longtext NOT NULL DEFAULT '',
   `agent_arch` longtext NOT NULL DEFAULT '',
+  `web_egress` bigint(20) NOT NULL DEFAULT 0,
+  `web_ip` varchar(64) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_user_hosts_1` (`user_id`,`alias`) USING HASH,
   KEY `user_hosts_user` (`user_id`),

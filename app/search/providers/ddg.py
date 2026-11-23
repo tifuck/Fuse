@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 
 import httpx
 
+from .. import egress
 from ..client import TIMEOUT_DDG, PROVIDER_BODY_MAX
 from ..ssrf import decode_ddg_url, host_of, public_http_url
 from .base import ProviderResponse, SearchHit, empty_reason
@@ -38,9 +39,11 @@ _LITE_LINK = re.compile(
 _LITE_SNIP = re.compile(r"class=['\"]result-snippet['\"][^>]*>(.*?)</td>", re.I | re.S)
 _TAG = re.compile(r"(?is)<[^>]+>")
 
-_fail_streak = 0
-_break_until = 0.0
-_warmed = False
+# Keyed by egress.key(): DuckDuckGo judges the IP a request comes from, so
+# one user's flagged machine must not pause the provider for anyone else.
+_fail_streak: dict[str, int] = {}
+_break_until: dict[str, float] = {}
+_warmed: set[str] = set()
 # DuckDuckGo answers flagged server IPs with a bot challenge (HTTP 202/403,
 # "anomaly" page) on nearly every request; retrying each query twice only
 # added load and latency. One challenge pauses the provider for a while.
@@ -48,32 +51,29 @@ CHALLENGE_BACKOFF = 600.0
 
 
 def ddg_circuit_open() -> bool:
-    return time.monotonic() < _break_until
+    return time.monotonic() < _break_until.get(egress.key(), 0.0)
 
 
 def reset_circuit() -> None:
-    global _fail_streak, _break_until
-    _fail_streak = 0
-    _break_until = 0.0
+    _fail_streak.clear()
+    _break_until.clear()
 
 
 def _record_challenge() -> None:
-    global _fail_streak, _break_until
-    _fail_streak = 0
-    _break_until = time.monotonic() + CHALLENGE_BACKOFF
+    _fail_streak.pop(egress.key(), None)
+    _break_until[egress.key()] = time.monotonic() + CHALLENGE_BACKOFF
 
 
 def _record_timeout() -> None:
-    global _fail_streak, _break_until
-    _fail_streak += 1
-    if _fail_streak >= 5:
-        _break_until = time.monotonic() + 30
-        _fail_streak = 0
+    key = egress.key()
+    _fail_streak[key] = _fail_streak.get(key, 0) + 1
+    if _fail_streak[key] >= 5:
+        _break_until[key] = time.monotonic() + 30
+        _fail_streak.pop(key)
 
 
 def _record_ok() -> None:
-    global _fail_streak
-    _fail_streak = 0
+    _fail_streak.pop(egress.key(), None)
 
 
 def _strip(text: str) -> str:
@@ -138,12 +138,11 @@ def parse_ddg_html(raw: str) -> list[SearchHit]:
 
 
 async def _warm(client: httpx.AsyncClient, timeout: httpx.Timeout) -> None:
-    global _warmed
-    if _warmed:
+    if egress.key() in _warmed:
         return
     try:
         await _request(client, "GET", "https://duckduckgo.com/", timeout, headers={"User-Agent": _UA, "Accept": "text/html"})
-        _warmed = True
+        _warmed.add(egress.key())
     except Exception:
         pass
 

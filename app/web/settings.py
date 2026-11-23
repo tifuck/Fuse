@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .. import chats, hosts, memory, permissions, retention, secret_guard
+from ..search import egress
 from ..security import limiter
 from .deps import _chat_auth, _json_object, render, require_user
 
@@ -28,7 +29,34 @@ async def settings_page(request: Request):
         memories=memory.list_all(user["id"]),
         memory_types=memory.TYPES,
         secrets=secret_guard.overview(user["id"]),
+        web=egress.overview(user["id"]),
     )
+
+
+@router.post("/settings/web")
+async def web_set(request: Request):
+    """The connectors this user's web searches and page reads leave through."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    raw = await _json_object(request)
+    ids = raw.get("machines")
+    if set(raw) != {"machines"} or not isinstance(ids, list) or len(ids) > 500 or any(type(i) is not int for i in ids):
+        raise HTTPException(422, "machines must be a list of machine ids")
+    egress.save(user["id"], ids)
+    return JSONResponse(egress.overview(user["id"]), headers={"Cache-Control": "no-store"})
+
+
+@router.post("/settings/web/detect")
+async def web_detect(request: Request):
+    """Read each online connector's public IP through the connector itself."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    if not limiter.allow(f"web-detect:{user['id']}", 6, 60):
+        raise HTTPException(429, "Too many checks. Try again in a minute.")
+    await egress.detect(user["id"])
+    return JSONResponse(egress.overview(user["id"]), headers={"Cache-Control": "no-store"})
 
 
 def _secrets_json(user_id: int) -> JSONResponse:
