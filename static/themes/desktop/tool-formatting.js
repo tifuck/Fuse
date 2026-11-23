@@ -287,7 +287,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     const name = trace && trace.name;
     const running = Boolean(presentation && presentation.running);
     const host = trace.host || "";
-    const hostHtml = host ? `<span class="chat-tool-host" title="Host ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
+    const hostHtml = host ? `<span class="chat-tool-host" title="Machine ${deps.escapeHtml(host)}">${deps.escapeHtml(host)}</span>` : "";
     const clock = (presentation) ? deps.ccCallClockHtml(trace, presentation) : "";
     // Console: a running call reads as a terminal agent's live line, one row
     // counting up ("Running npm test · 12s"); it prints as Bash(…) once done.
@@ -361,7 +361,7 @@ function consoleCallHtml(trace, presentation, full = false) {
       inner = consoleArgText(page, 100);
     } else if (isSearchTool(name)) {
       const queries = searchQueries(trace);
-      inner = queries.length ? `"${consoleArgText(queries[0], 80)}"${queries.length > 1 ? ` and ${queries.length - 1} more` : ""}` : "";
+      inner = queries.length ? `“${consoleArgText(queries[0], 80)}”${queries.length > 1 ? ` and ${queries.length - 1} more` : ""}` : "";
     } else if (["spawn_subagent", "get_subagent_output"].includes(name)) {
       inner = consoleArgText(agentSubject(trace) || "subagent", 90);
     } else if (name === "kill_subagent") {
@@ -374,7 +374,7 @@ function consoleCallHtml(trace, presentation, full = false) {
       // The range is the row's result ("1–40 of 120").
       inner = "";
     } else if (name === "search_models") {
-      inner = trace.query ? `"${consoleArgText(trace.query, 80)}"` : "";
+      inner = trace.query ? `“${consoleArgText(trace.query, 80)}”` : "";
     } else if (["remember", "recall", "forget"].includes(name)) {
       inner = consoleArgText(trace.title || "memory", 90);
     } else if (name === "load_skill") {
@@ -429,7 +429,7 @@ const ARTIFACT_FORMS = { Create: ["Created", "Creating"], Update: ["Updated", "U
 function sentenceVerb(verb, name, presentation, trace) {
     const running = Boolean(presentation?.running);
     const artifact = ARTIFACT_VERBS[name];
-    if (artifact && presentation?.failed) return `Couldn't ${artifact.toLowerCase()} the artifact`;
+    if (artifact && presentation?.failed) return `Could not ${artifact.toLowerCase()} the artifact`;
     if (!running && trace) {
       if (unknownTool(trace, presentation)) return "Tried a tool that doesn't exist";
       if (name === "kill_command" && /^already /.test(String(trace.preview || ""))) return "Tried to stop";

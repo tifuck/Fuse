@@ -26,7 +26,7 @@ function ccTurnLineHtml(msg, latest, usage = "") {
 const TURN_ACTIONS = [
   ["copy", "Copy reply", '<rect x="5.2" y="5.2" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.8 5V3.8a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.6A1.2 1.2 0 0 0 4 10.6h1.2" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
   ["fork", "Fork this chat", '<circle cx="4.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="3.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="12.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5v1.5a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2V5M8 8.5V11" fill="none" stroke="currentColor" stroke-width="1.3"/>'],
-  ["pin", "Pin this chat", '<path d="M6 2.5h4l-.6 4 2.3 2.3H4.3L6.6 6.5zM8 8.8V13.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>'],
+  ["pin", "Pin chat", '<path d="M6 2.5h4l-.6 4 2.3 2.3H4.3L6.6 6.5zM8 8.8V13.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>'],
   ["speak", "Read aloud", '<path d="M2.8 6.2h2.2l3-2.6v8.8l-3-2.6H2.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10.5 5.6a3.2 3.2 0 0 1 0 4.8M12.3 3.9a5.6 5.6 0 0 1 0 8.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'],
 ];
 function agoText(at) {

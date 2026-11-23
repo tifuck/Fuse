@@ -25,10 +25,10 @@ export function create(deps) {
         `<i class="chat-backdrop-preview dk-wp-thumb" data-kind="${esc(item.id)}" aria-hidden="true"></i>` +
         `<span class="dk-wp-name">${on ? '<b class="dk-wp-check" aria-hidden="true">✓</b>' : ""}${esc(item.label)}</span></button>`;
     }).join("");
-    return `<div class="dk-wp" role="dialog" aria-label="Wallpapers">` +
-      `<div class="dk-wp-head"><span class="dk-wp-cmd">/theme</span><b>Wallpapers</b><span class="dk-wp-keys">↵ apply · esc close</span>` +
-      `<button type="button" class="dk-wp-x" data-wallpaper-close aria-label="Close wallpapers">×</button></div>` +
-      `<div class="dk-wp-row" role="listbox" aria-label="Wallpapers">${cards}</div></div>`;
+    return `<div class="dk-wp" role="dialog" aria-label="Backdrops">` +
+      `<div class="dk-wp-head"><span class="dk-wp-cmd">/theme</span><b>Backdrops</b><span class="dk-wp-keys">↵ apply · esc close</span>` +
+      `<button type="button" class="dk-wp-x" data-wallpaper-close aria-label="Close backdrops">×</button></div>` +
+      `<div class="dk-wp-row" role="listbox" aria-label="Backdrops">${cards}</div></div>`;
   }
 
   return { wallpaperPickerHtml };

@@ -19,6 +19,9 @@ function workDone(row) {
   });
   return [...tally].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([noun, n]) => `${n} ${plural(n, noun)}`).join(", ");
 }
+// A finished command's state as the UI says it: never the raw enum.
+const JOB_STATES = { cancelled: "Stopped", interrupted: "Stopped", lost: "Stopped", timed_out: "Timed out" };
+const jobStateLabel = (state) => JOB_STATES[state] || (state ? state[0].toUpperCase() + state.slice(1).replace(/_/g, " ") : "");
 const firstLine = (text) => String(text || "").trim().split(/\n/)[0].slice(0, 160);
 // Sort keys: a row sorts with the top of its family (the subagent its main
 // agent started), live families first; equal keys keep the runtime's order,
@@ -79,9 +82,9 @@ export function create(deps) {
     const done = workDone(row);
     // Live: what it is doing now; finished: how it ended.
     const doing = live
-      ? (row.cancel_requested ? "Stopping" : lastCall || (done ? `Working, ${done}` : "Working"))
+      ? (row.cancel_requested ? "Stopping" : lastCall || (done ? `Working · ${done}` : "Working"))
       : row.status === "completed" ? firstLine(row.summary) || done || "Done"
-        : row.status === "failed" ? "Failed" : done ? `Stopped, ${done}` : "Stopped";
+        : row.status === "failed" ? "Failed" : done ? `Stopped · ${done}` : "Stopped";
     const commands = deps.jobsFor(row.id).length;
     const kind = KINDS[row.subagent_type] || (row.subagent_type ? row.subagent_type[0].toUpperCase() + row.subagent_type.slice(1) : "General");
     const depth = opts.tree ? opts.tree.ancestors.length : 0;
@@ -183,7 +186,7 @@ function compactionMarkHtml(text, summary) {
     const state = String(job.state || "running");
     const cancelling = state === "cancelling";
     const live = ["running", "queued", "cancelling"].includes(state);
-    const label = cancelling ? "Stopping" : state === "queued" ? "Queued" : live ? "" : state.replace(/_/g, " ");
+    const label = cancelling ? "Stopping" : state === "queued" ? "Queued" : live ? "" : jobStateLabel(state);
     const monitor = job.kind === "monitor" || job.name === "monitor";
     const command = deps.toolText(deps.displayCommand(job) || "");
     const title = deps.toolText(job.description || command || job.id);
@@ -215,5 +218,5 @@ function jobDetailHtml(job) {
       `<div class="chat-step-reveal-inner">${deps.toolDetailHtml(trace, false, true)}</div></div>`;
   }
 
-  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml, jobDetailHtml };
+  return { agentRowHtml, agentMainRowHtml, workHeadHtml, compactionMarkHtml, jobRowHtml, jobDetailHtml, jobStateLabel };
 }
