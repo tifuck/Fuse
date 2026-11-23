@@ -162,3 +162,16 @@ def test_cheap_reasoning_drops_a_guessed_effort_on_a_generic_route(uid, upstream
     upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion()))
     _invoke(uid, {"messages": [{"role": "user", "content": "t"}], "reasoning_effort": "high"}, cheap=True)
     assert "reasoning_effort" not in upstream.sent("/chat/completions")[0]
+
+
+def test_cheap_reasoning_turns_thinking_off_on_llama_cpp(fresh_db, upstream):
+    uid = quick_user()
+    sid = source("llama", {"base_url": "https://up.test/v1"})
+    key(sid, "sk-llama-key")
+    route("m1", sid, "up-1")
+    upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion()))
+    _invoke(uid, {"messages": [{"role": "user", "content": "t"}]}, cheap=True)
+    _invoke(uid, {"messages": [{"role": "user", "content": "t"}]})
+    cheap, chat = upstream.sent("/chat/completions")
+    assert cheap["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in chat

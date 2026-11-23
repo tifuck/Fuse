@@ -571,6 +571,10 @@ def _set_cheap_reasoning(body: dict, type_id: str, model: str, user_id: int) -> 
     effort = metadata_effort(type_id, model, user_id)
     if effort:
         body["reasoning_effort"] = effort
+    if type_id == "llama":
+        # llama.cpp takes no effort, so thinking ate the whole title/recap
+        # budget (empty content). Templates without this switch ignore it.
+        body["chat_template_kwargs"] = {**(body.get("chat_template_kwargs") or {}), "enable_thinking": False}
 
 
 def _prepare_images(original, type_id: str, upstream: str, user_id: int, images: dict) -> tuple[list, int, int]:
