@@ -230,10 +230,12 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
 }
 
 @media (max-width: 800px) {
+  /* The tools row spans the phone: + and the plan gauge at the left, the
+     tools at the right, and the model in the free space between them. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box {
     --composer-row: 1.875rem;
     --composer-line: 1.4rem;
-    grid-template-columns: auto auto minmax(0, 1fr) auto minmax(0, max-content) repeat(6, auto);
+    grid-template-columns: auto auto auto auto minmax(0, 1fr) repeat(6, auto);
   }
 
   /* A phone always keeps two rows: the text runs from the left edge and
@@ -247,12 +249,24 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
   }
 
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box textarea { font-size: 16px; }
+  /* Its 0.45rem left margin balances the tool's padding past the model's rule,
+     so the free space falls evenly on both sides of the centred model. */
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { max-width: none; margin-left: 0.45rem; }
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.15rem; }
 
-  /* A phone always shows the provider mark, so the chip keeps one shape. */
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > :is(span, small) { display: none; }
-  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn .provider-logo { display: block; width: 1rem; height: 1rem; opacity: 0.7; }
+  /* The model: its provider mark and its short name (the picker's data-short;
+     the full name stays the label), centred in the space it has. Too little
+     room drops whole words: the name wraps at spaces and only its first line
+     shows. */
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-model { justify-self: center; min-width: 0; max-width: 100%; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > small { display: none; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > span { display: block; flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; line-height: 1.2; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > span[data-short] { font-size: 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn > span[data-short]::before {
+    content: attr(data-short); content: attr(data-short) / "";
+    display: block; height: 1.2em; overflow: hidden; font-size: 0.75rem; line-height: 1.2; text-align: left; white-space: normal;
+  }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn .provider-logo { display: block; flex: none; width: 1rem; height: 1rem; opacity: 0.7; }
 }
 
 @media (max-width: 800px) {
