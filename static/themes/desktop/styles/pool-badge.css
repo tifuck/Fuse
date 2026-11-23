@@ -25,7 +25,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .chat-pool-btn[aria-expanded="true"] .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); }
   @media (hover: hover) { & .chat-pool-btn:hover .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); } }
-  & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; }
+  & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; font-weight: 400; opacity: 0.6; }
   & .chat-pool-track { flex: none; width: 32px; height: 3px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
   & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }
   & .chat-pool-meter b { min-width: 3ch; color: var(--pool-num); text-align: right; }

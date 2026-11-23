@@ -16,7 +16,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-win { --pool-tone: color-mix(in srgb, var(--mist) 62%, transparent); --pool-num: var(--mist); display: inline-flex; align-items: center; gap: 0.35rem; }
   & .chat-pool-win[data-level="warn"] { --pool-tone: var(--status-live); --pool-num: var(--status-live); }
   & .chat-pool-win[data-level="hot"] { --pool-tone: var(--fault); --pool-num: var(--fault); }
-  & .chat-pool-win em { color: var(--tl-dim); font-style: normal; }
+  & .chat-pool-win em { color: var(--tl-dim); font-style: normal; opacity: 0.7; }
   & .chat-pool-cells { display: inline-flex; gap: 2px; }
   & .chat-pool-cells i { width: 4px; height: 0.6rem; border-radius: 1px; background: color-mix(in srgb, var(--mist) 16%, transparent); }
   & .chat-pool-cells i.is-on { background: var(--pool-tone); }
