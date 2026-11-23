@@ -1,5 +1,7 @@
 // permissions presentation. Dependencies are live getters supplied by index.js.
 export function create(deps) {
+// A draft's state in the card's own words: its button says Discard.
+const SKILL_STATUS = { pending: "Waiting for you", saved: "Saved", approved: "Saved", rejected: "Discarded", error: "Could not save" };
 function permissionCardHtml(perm, msg) {
     if (!perm) return "";
     if (perm.kind === "tool_permission") return "";
@@ -13,7 +15,7 @@ function permissionCardHtml(perm, msg) {
       ? `<div class="chat-perm-actions"><button type="button" class="btn sm ghost" data-perm-reject>Discard</button><button type="button" class="btn sm" data-perm-save>Save skill</button></div>`
       : "";
     const fields = pending
-      ? `<p class="chat-skill-scope">Saves to your own skills only. Other users don't see it.</p>
+      ? `<p class="chat-skill-scope">Saves to your own skills only. Other users do not see it.</p>
          <label class="chat-skill-field"><span>Name</span><input class="mono" data-perm-slug maxlength="64" spellcheck="false" value="${deps.escapeHtml(perm.slug || "")}"></label>
          <label class="chat-skill-field"><span>When to use</span><textarea data-perm-desc maxlength="1024" rows="3">${deps.escapeHtml(perm.description || "")}</textarea></label>
          <label class="chat-skill-field"><span>Instructions <em class="mono">${files}</em></span><textarea class="mono" data-perm-body rows="10" spellcheck="false"></textarea></label>
@@ -23,7 +25,7 @@ function permissionCardHtml(perm, msg) {
          </div>`
       : `<p class="chat-perm-slug mono">${deps.escapeHtml(perm.slug || "")}</p><p class="usage-sub">${deps.escapeHtml(perm.description || "")}</p>`;
     return `<div class="chat-perm chat-skill-card" data-perm-id="${deps.escapeHtml(perm.id)}" data-msg="${deps.escapeHtml(msg.id || "")}">
-      <div class="chat-perm-head"><span>Skill proposal</span><span class="chat-perm-status">${deps.escapeHtml(status)}</span></div>
+      <div class="chat-perm-head"><span>Skill draft</span><span class="chat-perm-status" data-status="${deps.escapeHtml(status)}">${deps.escapeHtml(SKILL_STATUS[status] || status)}</span></div>
       ${fields}${actions}
     </div>`;
   }

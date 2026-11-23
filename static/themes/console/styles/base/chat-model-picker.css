@@ -38,7 +38,7 @@
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-btn > small:empty { display: none; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-btn .provider-logo { width: 1rem; height: 1rem; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-picker-chev { flex-shrink: 0; color: var(--mute); transition: transform 160ms ease; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-picker-chev { flex-shrink: 0; color: var(--mute); transition: transform var(--dur-1) ease; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-btn[aria-expanded="true"] .chat-picker-chev { transform: rotate(180deg); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-menu {
   position: absolute;

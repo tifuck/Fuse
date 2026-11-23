@@ -7,7 +7,7 @@
   z-index: 20;
   border: 0;
   padding: 0;
-  background: rgb(8 10 9 / 55%);
+  background: var(--scrim);
   cursor: pointer;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sheet-backdrop[hidden] { display: none !important; }
@@ -22,8 +22,8 @@
   transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
-  width: min(48rem, calc(100% - 3.5rem));
-  height: min(42rem, calc(100% - 4.5rem));
+  width: min(var(--con-sheet-w), calc(100% - 3.5rem));
+  height: min(var(--con-sheet-h), calc(100% - 4.5rem));
   min-height: 0;
   overflow: hidden;
   margin: 0;
@@ -78,9 +78,9 @@
   transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
 @media (hover: hover) {
-  :where(html.is-chat-root[data-chat-view="console"]) .chat-menu-close:hover { color: var(--mist); background: color-mix(in srgb, var(--mist) 8%, transparent); }
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-menu-close:hover { color: var(--mist); background: var(--con-hover); }
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-menu-close:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-menu-close:focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-menu-close svg { display: block; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-sheet-body {
   flex: 1;
@@ -372,7 +372,7 @@
   cursor: pointer;
   transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-context-tab:hover { color: var(--mist); background: var(--raise); }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-context-tab:hover { color: var(--mist); background: var(--con-hover); }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-context-tab.is-on {
   color: var(--brass);
   background: color-mix(in srgb, var(--brass) 12%, transparent);

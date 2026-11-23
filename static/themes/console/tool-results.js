@@ -303,7 +303,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const callsHtml = total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : `<span class="chat-console-codecount">No calls ran</span>`;
     const errorLine = String(trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
     const statusHtml = failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^Error: /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
-      : interrupted ? `Interrupted, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      : interrupted ? `Stopped, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? callsHtml : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
@@ -367,7 +367,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
 function consoleStatusHtml(text) {
     return deps.escapeHtml(text)
       .replace(/^(Read|Wrote|Added|Removed|Found|Listed) (\d[\d,]*)/, "$1 <b>$2</b>")
-      .replace(/^(Received) (\S+)/, "$1 <b>$2</b>")
+      .replace(/^(Received) (\S+(?: [KMG]B)?)/, "$1 <b>$2</b>")
       .replace(/( across )(\d[\d,]*)/, "$1<b>$2</b>")
       .replace(/(, removed )(\d[\d,]*)/, "$1<b>$2</b>")
       .replace(/^(Wrote <b>[^<]*<\/b> lines? to )(.+)$/, "$1<b>$2</b>");
@@ -470,9 +470,9 @@ function consoleResultLine(trace, presentation) {
       return `Monitor started${id ? `, task ${id}` : ""}`;
     }
     if ((running) && name === "read_url") return "Fetching…";
-    if (running) return presentation.statusLabel === "Cancelling" ? "Cancelling…" : "Running…";
-    if (failed) return String(trace.error || trace.summary || "failed").replace(/\s+/g, " ").trim();
-    if (interrupted) return "Interrupted";
+    if (running) return presentation.statusLabel === "Cancelling" ? "Stopping…" : "Running…";
+    if (failed) return String(trace.error || trace.summary || "failed").replace(/\s+/g, " ").trim().replace(/^timed_out$/, "Timed out");
+    if (interrupted) return "Stopped";
     if (trace.wake_state === "dropped") return "Report not delivered";
     const preview = String(trace.preview || trace.summary || "").replace(/\s+/g, " ").trim();
     if ((name === "read_url") && Number(trace.bytes) > 0) {

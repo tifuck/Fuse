@@ -244,7 +244,7 @@ html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal {
   box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
   font-family: var(--mono);
 }
-html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal::backdrop { background: rgb(8 10 9 / 55%); }
+html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal::backdrop { background: var(--scrim); }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal .modal-shell { padding: 0; }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal .modal-shell > :not(.modal-head) { margin-left: 1.15rem; margin-right: 1.15rem; }
 html[data-chat-console="true"] body:is(.is-settings, .is-chat) dialog.modal .modal-shell > :not(.modal-head):first-child { margin-top: 1rem; }

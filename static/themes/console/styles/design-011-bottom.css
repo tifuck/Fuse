@@ -203,7 +203,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-que
 }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more[aria-expanded="true"]:not(:disabled) { color: var(--mist); opacity: 1; }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more:disabled { opacity: 0.45; cursor: default; }
-html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-more:focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-queue-menu {
   position: absolute;
   right: 100%;

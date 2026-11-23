@@ -69,7 +69,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-agents-pick:focus-visible,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-jobs-output-link:focus-visible,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-agents-fold:focus-visible,
-:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-agents-act, .chat-jobs-kill):focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+:where(html.is-chat-root[data-chat-view="console"]) :is(.chat-agents-act, .chat-jobs-kill):focus-visible { outline: var(--con-ring); outline-offset: calc(-1 * var(--con-ring-off)); }
 /* Tree connectors are typed, like the transcript's agent tree: box-drawing
    glyphs (├─ └─ │) with the terminal's gaps between rows, and a space
    before each row's square. Each level is a cell two glyphs plus a gap wide;
