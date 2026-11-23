@@ -9,7 +9,7 @@
 import { S } from './state.js';
 import { escapeHtml } from './core.js';
 import { csrfToken } from './net.js';
-import { attachSheetSwipe } from './overlays.js';
+import { attachSheetSwipe, returnFocus } from './overlays.js';
 
 const CELLS = 5;
 const MANAGE = "/sources";
@@ -24,6 +24,9 @@ const USE = [
   ["pool", "Yours + pool", () => "Your accounts first, then accounts shared with you."],
   ["mine", "Only yours", () => "Only your accounts. Requests fail when they are spent."],
 ];
+const BACK_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// A sideways drag this far (and mostly sideways) on a phone sheet goes back.
+const SWIPE_BACK = 64;
 const CLOSE_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
 let deps = { place: () => {}, overlays: null };
@@ -163,7 +166,7 @@ function buildMenu() {
     const hit = (name) => event.target.closest(`[${name}]`);
     if (hit("data-pool-close")) setOpen(false);
     else if (hit("data-pool-sharing")) show("sharing");
-    else if (hit("data-pool-back")) show("usage");
+    else if (hit("data-pool-back")) back();
     else if (hit("data-pool-share")) save({ share: hit("data-pool-share").dataset.poolShare });
     else if (hit("data-pool-use")) save({ use: hit("data-pool-use").dataset.poolUse });
     else if (hit("data-pool-first")) {
@@ -181,8 +184,27 @@ function buildMenu() {
     save({ skip: [...skip] });
   });
   attachSheetSwipe(el, ".chat-picker-head", () => el.classList.contains("is-sheet"), () => setOpen(false));
+  swipeBack(el);
   deps.overlays?.backLayerFollowsHidden(el, "pool");
   return el;
+}
+
+// On a phone sheet the sharing panel is one level in: a swipe to the right
+// (like the system's back gesture) returns to the usage panel.
+function swipeBack(el) {
+  let start = null;
+  el.addEventListener("pointerdown", (event) => {
+    start = el.classList.contains("is-sheet") && view === "sharing" && event.pointerType !== "mouse"
+      ? { x: event.clientX, y: event.clientY } : null;
+  });
+  el.addEventListener("pointercancel", () => { start = null; });
+  el.addEventListener("pointerup", (event) => {
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = Math.abs(event.clientY - start.y);
+    start = null;
+    if (dx > SWIPE_BACK && dy < dx / 2) back();
+  });
 }
 
 function placeMenu() {
@@ -206,21 +228,35 @@ export function setOpen(open) {
   btn?.setAttribute("aria-expanded", String(next));
   btn?.setAttribute("aria-controls", menu.id);
   if (!next) {
+    // A tap on the sheet's close button must not land on what lies under it.
+    if (menu.classList.contains("is-sheet")) deps.overlays?.armOverlayGhost(menu.querySelector("[data-pool-close]"));
+    window.FuseBack?.drop("chat:pool-sharing");
     menu.hidden = true;
     view = "usage";
     notice = "";
+    returnFocus(menu, btn);
     return;
   }
+  if (menu.hidden) deps.closeOthers?.();
   fillMenu(pool);
   menu.hidden = false;
   placeMenu();
+  menu.focus({ preventScroll: true });
 }
 
 export function closePool() {
   setOpen(false);
 }
 
+// Back from the sharing panel: its own entry on the phone's back stack, so the
+// system back gesture steps out of it before it closes the sheet.
+function back() {
+  window.FuseBack?.drop("chat:pool-sharing");
+  show("usage");
+}
+
 function show(next) {
+  if (next === "sharing") window.FuseBack?.open("chat:pool-sharing", () => show("usage"));
   view = next;
   notice = "";
   const pool = current();
@@ -255,8 +291,9 @@ function group(title, aside, rows, extra = "") {
     `<span class="chat-perms-count">${aside}</span></p><ul>${rows}</ul></section>`;
 }
 
-function head(title) {
-  return `<div class="chat-picker-head"><p>${title}</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>`;
+function head(title, backTo = "") {
+  const back = backTo ? `<button type="button" class="chat-menu-close chat-pool-head-back" data-pool-back aria-label="Back to ${backTo}">${BACK_SVG}</button>` : "";
+  return `<div class="chat-picker-head"><p>${back}${title}</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>`;
 }
 
 function fillMenu(pool) {
@@ -317,7 +354,7 @@ function fillSharing(pool) {
   const note = notice ? `<p class="chat-perms-hint chat-pool-notice" role="status">${escapeHtml(notice)}</p>` :
     (mine ? "" : `<p class="chat-perms-hint">You have no ${label} account linked; these choices apply once you add one.</p>`);
   menu.setAttribute("aria-label", `${pool.pool} sharing`);
-  menu.innerHTML = head("Sharing") +
+  menu.innerHTML = head("Sharing", "usage") +
     '<div class="chat-perms-list">' +
     `<section class="chat-perms-group chat-pool-setting"><p><span class="chat-perms-host">Who may use your accounts</span></p>` +
     segs("share", SHARE, prefs.saved_share || prefs.share) + `<p class="chat-perms-hint">${hint(SHARE, prefs.saved_share || prefs.share)}</p></section>` +

@@ -9,7 +9,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool::after { content: ""; width: 1px; height: 0.85rem; background: color-mix(in srgb, var(--mist) 18%, var(--ink)); }
   & .chat-pool[hidden] { display: none !important; }
   & .chat-pool-btn { display: inline-flex; align-items: center; gap: 0.35rem; height: var(--composer-row); padding: 0 0.3rem; border: 0; border-radius: 5px; background: none; color: var(--mute); font: 0.75rem/1 var(--mono); white-space: nowrap; cursor: pointer; }
-  & .chat-pool-btn:is(:hover, [aria-expanded="true"]) { background: var(--raise); color: var(--mist); }
+  & .chat-pool-btn[aria-expanded="true"] { background: var(--raise); color: var(--mist); }
+  @media (hover: hover) { & .chat-pool-btn:hover { background: var(--raise); color: var(--mist); } }
   & .chat-pool-btn:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
   & .chat-pool { --pool-tone: var(--steel); --pool-ink: var(--mist); }
   & .chat-pool[data-level="warn"] { --pool-tone: var(--status-live); --pool-ink: var(--status-live); }
@@ -51,13 +52,14 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
   & .chat-pool-foot .chat-perms-hint { flex: 1 1 auto; }
   & .chat-pool-manage { flex: none; margin-left: auto; color: var(--brass); font: 0.72rem/1.4 var(--mono); text-decoration: none; }
-  & .chat-pool-manage:hover { text-decoration: underline; text-underline-offset: 3px; }
+  @media (hover: hover) { & .chat-pool-manage:hover { text-decoration: underline; text-underline-offset: 3px; } }
   & .chat-pool-manage:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 3px; }
   & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
   /* The card's foot: Sharing (opens the sharing panel) and the Sources link. */
   & .chat-pool-share { display: inline-flex; align-items: center; gap: 0.4rem; height: 1.6rem; margin: 0 0 0 -0.4rem; padding: 0 0.4rem; border: 0; border-radius: 6px; background: none; color: var(--mute); font: 0.72rem/1 var(--mono); cursor: pointer; }
   & .chat-pool-share b { color: var(--mist); font-weight: 600; }
-  & .chat-pool-share:is(:hover, :focus-visible) { background: var(--con-hover, var(--raise)); color: var(--mist); }
+  & .chat-pool-share:focus-visible { background: var(--con-hover, var(--raise)); color: var(--mist); }
+  @media (hover: hover) { & .chat-pool-share:hover { background: var(--con-hover, var(--raise)); color: var(--mist); } }
   & .chat-pool-share:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
   & .chat-pool-share.is-locked { cursor: default; background: none; }
   & .chat-pool-note { padding: 0.35rem 0.5rem 0.1rem; list-style: none; }
@@ -71,14 +73,23 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-pick input { flex: none; align-self: center; width: 0.85rem; height: 0.85rem; margin: 0; accent-color: var(--brass); }
   & .chat-pool-pick[data-status="off"] :is(b, .chat-pool-who) { opacity: 0.5; }
   & .chat-pool-first { height: 1.4rem; padding: 0 0.45rem; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; }
-  & .chat-pool-first:hover:not(:disabled) { border-color: var(--line); color: var(--mist); }
+  @media (hover: hover) { & .chat-pool-first:hover:not(:disabled) { border-color: var(--line); color: var(--mist); } }
   & .chat-pool-first.is-on { border-color: color-mix(in srgb, var(--brass) 55%, transparent); color: var(--brass); }
   & .chat-pool-first:disabled { opacity: 0.35; cursor: default; }
   & .chat-pool-first:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
   & .chat-pool-notice { margin: 0.4rem 0.8rem 0.2rem; color: var(--status-live); }
   & .chat-pool-menu.is-sheet .chat-pool-pick { min-height: 2.75rem; padding: 0 0.6rem; }
   & .chat-pool-menu.is-sheet .chat-pool-first { height: 2.25rem; padding: 0 0.75rem; }
-  & .chat-pool-menu.is-sheet .chat-pool-share { height: 2.5rem; }
+  /* Phone sheet: every control a 44px target; the rotation row's whole
+     height toggles its account; the head carries back on the sharing panel. */
+  & :is(.chat-pool-btn, .chat-pool-share, .chat-pool-first, .chat-pool-pick label, .chat-pool-manage) { -webkit-tap-highlight-color: transparent; }
+  & .chat-pool-pick label { align-self: stretch; align-items: center; }
+  & .chat-pool-menu.is-sheet :is(.chat-pool-share, .chat-pool-manage) { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  & .chat-pool-menu.is-sheet .chat-pool-first { position: relative; }
+  & .chat-pool-menu.is-sheet .chat-pool-first::after { content: ""; position: absolute; inset: -0.25rem -0.4rem; }
+  & .chat-pool-menu:not(.is-sheet) .chat-pool-head-back { display: none; }
+  & .chat-pool-menu .chat-picker-head p { display: flex; align-items: center; gap: 0.35rem; }
+  & .chat-pool-head-back { margin-left: -0.6rem; }
 }
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {

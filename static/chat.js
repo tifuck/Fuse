@@ -1176,7 +1176,11 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
   }
 
     overlays.backLayerFollowsHidden(S.contextPop, "context");
-    bindPool({ place: (menu, anchor) => composer.placeComposerPop(menu, anchor, 30 * 16, true), overlays });
+    bindPool({
+      place: (menu, anchor) => composer.placeComposerPop(menu, anchor, 30 * 16, true),
+      overlays,
+      closeOthers: () => { picker.closePicker(); perms.setPermsOpen(false); context.closeContextPop(); },
+    });
 
     if (S.contextPop) {
     S.contextPop.addEventListener("click", (event) => {
