@@ -108,6 +108,7 @@ html[data-chat-theme="ivory"] {
   --brass: #3d4a9a; --steel: #3d6a80; --reason: #4e5a66; --fault: #c24b40; --ok: #2f7a48; --on-brass: #ffffff; --chat-code-bg: #faf6f0;
 }
 html[data-chat-scheme="light"] { --diff-add: #2c8a4b; --diff-del: #c8453b; --call-done: #2c8a4b; --call-fail: #c8453b; }
+html[data-chat-scheme="light"] { --status-live: #8a5a00; --status-run: #1f7a3a; --status-done: #0b7a55; --status-fail: #b8382e; --scrim: rgb(0 0 0 / 0.25); }
 html[data-chat-theme="custom"] { --sans: "Bricolage Grotesque", sans-serif; --mono: "Red Hat Mono", ui-monospace, monospace; }
 /* One plain selector per element, not a :is() list over "*": the ancestor
    filter then rejects them on every element outside code at once. */
