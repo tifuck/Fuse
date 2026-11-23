@@ -11,7 +11,7 @@ from .. import artifacts, changelog, speech, chat_drafts, notices, model_favorit
 from ..config import settings
 from ..search import egress
 from ..security import limiter
-from ..sources import openrouter as openrouter_mod
+from ..sources import openrouter as openrouter_mod, pool_badge
 from .deps import (
     _chat_auth,
     _chat_validation_error,
@@ -748,6 +748,21 @@ async def _project_agents_payload(user, host_id: int, cwd: str) -> JSONResponse:
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/chat/pool")
+async def chat_pool_preview(request: Request, model: str = "", thread: str = ""):
+    """The plan gauge before a reply (sources.pool_badge.preview): the pool
+    account the chat's next request goes to, or null for a model outside a pool."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    model = model.strip()[:200]
+    thread = thread.strip()[:80]
+    if thread:
+        await asyncio.to_thread(_chat_thread_pk, user, thread)
+    view = await pool_badge.preview(user["id"], model, thread or None) if model else None
+    return JSONResponse({"pool": view}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/chat/threads/{thread_id}/agents")

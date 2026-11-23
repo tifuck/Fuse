@@ -3,9 +3,10 @@
    the permissions menu's frame (.chat-perms-*), so it is this theme's menu;
    these rules only lay out its rows. Amber from 75%, red from 95%. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
-  /* After the model chip, its height and type: a rule, the gauge, the window. */
+  /* Before the model chip, its height and type: the gauge, the window, a rule;
+     the context ring then sits right of the model it measures. */
   & .chat-pool { position: static; display: flex; flex: none; align-items: center; }
-  & .chat-pool::before { content: ""; width: 1px; height: 14px; margin-right: 4px; background: color-mix(in srgb, var(--dk-mute) 30%, transparent); }
+  & .chat-pool::after { content: ""; width: 1px; height: 14px; margin-left: 4px; background: color-mix(in srgb, var(--dk-mute) 30%, transparent); }
   & .chat-pool[hidden] { display: none !important; }
   & .chat-pool-btn { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--dk-ctl-r, 7px); background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); white-space: nowrap; cursor: pointer; }
   & .chat-pool-btn[aria-expanded="true"] { background: var(--dk-hover); color: var(--dk-text); }
@@ -94,7 +95,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   /* The row drops its gaps and the model chip's padding here; match them. */
   @media (max-width: 480px) {
-    & .chat-pool::before { margin-right: 0; }
+    & .chat-pool::after { margin-left: 0; }
     & .chat-pool-btn { padding-inline: 4px; }
   }
 }

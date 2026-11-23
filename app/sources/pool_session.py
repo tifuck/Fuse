@@ -258,6 +258,23 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
             logger.warning("Could not persist pool session pin kind=%s credential=%s", kind, cid, exc_info=True)
 
 
+def peek(kind: str, session_id: str | None) -> int | None:
+    """The account a session is pinned to, without refreshing the pin: a
+    look from the chat page must not keep a conversation alive."""
+    if not session_id:
+        return None
+    key = (str(kind), str(session_id)[:SESSION_ID_MAX])
+    with _lock:
+        hit = _mem.get(key)
+    if hit:
+        return int(hit[0])
+    if not persist:
+        return None
+    row = db.fetchone("SELECT credential_id FROM pool_sessions WHERE kind=? AND session_id=? AND updated_at >= ?",
+                      (key[0], key[1], _cutoff()))
+    return int(row["credential_id"]) if row else None
+
+
 def lookup(kind: str, session_id: str | None, *, now: datetime | None = None) -> int | None:
     if not session_id:
         return None

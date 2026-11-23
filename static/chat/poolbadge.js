@@ -30,6 +30,11 @@ const SWIPE_BACK = 64;
 const CLOSE_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
 let deps = { place: () => {}, overlays: null };
+// Before a reply: the account the next request goes to, per chat and model
+// (GET /chat/pool), kept a minute so switching back and forth costs nothing.
+const PREVIEW_MS = 60_000;
+const previews = new Map();
+let previewing = "";
 let menu = null;
 let view = "usage";
 let saving = null;
@@ -57,6 +62,39 @@ function span(at) {
 function current() {
   const pool = S.pool;
   return pool && S.poolThread === S.currentId && S.poolModel === S.modelId ? pool : null;
+}
+
+function previewKey() {
+  return `${S.currentId || ""}|${S.modelId || ""}`;
+}
+
+// A fresh preview for the open chat and model becomes its gauge until a
+// reply names the account that really served it.
+function previewed() {
+  const hit = previews.get(previewKey());
+  if (!hit?.pool || Date.now() - hit.at > PREVIEW_MS) return null;
+  S.pool = hit.pool;
+  S.poolThread = S.currentId;
+  S.poolModel = S.modelId;
+  return hit.pool;
+}
+
+function requestPreview() {
+  const key = previewKey();
+  const hit = previews.get(key);
+  if (!S.modelId || previewing === key || (hit && Date.now() - hit.at <= PREVIEW_MS)) return;
+  previewing = key;
+  const query = new URLSearchParams({ model: S.modelId });
+  if (S.currentId) query.set("thread", S.currentId);
+  fetch(`/chat/pool?${query}`, { headers: { "X-CSRF-Token": csrfToken() } })
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null)
+    .then((data) => {
+      if (previewing === key) previewing = "";
+      const pool = data?.pool?.name ? data.pool : null;
+      previews.set(key, { at: Date.now(), pool });
+      if (pool && previewKey() === key && !current()) renderPool();
+    });
 }
 
 // Wired once by chat.js: the composer's popover placement and the back stack.
@@ -102,10 +140,11 @@ export function renderPool(hopped = false) {
   if (!host) return;
   const btn = host.querySelector("[data-pool-toggle]");
   wire(host, btn);
-  const pool = current();
+  const pool = current() || previewed();
   host.hidden = !pool;
   if (!pool) {
     setOpen(false);
+    requestPreview();
     return;
   }
   const windows = windowsOf(pool.windows);
@@ -310,7 +349,8 @@ function fillUsage(pool) {
   const accounts = Array.isArray(pool.accounts) ? pool.accounts : [];
   const acct = (a) => {
     const who = nameHtml(a.name) + (a.own ? '<span class="chat-pool-who">yours</span>' : "");
-    const meta = a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
+    const meta = a.status === "current" && pool.preview ? "next" :
+      a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
     const pct = a.percent == null ? null : clamp(a.percent);
     return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"`);
   };

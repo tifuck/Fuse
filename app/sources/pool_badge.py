@@ -13,13 +13,15 @@ user's own sharing settings for the pool, which the card can change.
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import re
 import time
 from datetime import datetime
 
 from .. import accounts, db
 from ..crypto import DecryptionError
-from . import pool_pick, pool_policy
+from . import pool_pick, pool_policy, pool_session
 
 REASONS = ("limit", "error", "")
 MAX_WINDOWS = 4
@@ -220,10 +222,10 @@ def _span(seconds) -> tuple[str, str] | None:
         return f"{hours}-hour", f"{hours}h"
     if s < 7 * 86400:
         days = round(s / 86400)
-        return ("Daily", "day") if days == 1 else (f"{days}-day", f"{days}d")
+        return ("Daily", "daily") if days == 1 else (f"{days}-day", f"{days}d")
     if s < 28 * 86400:
-        return "Weekly", "wk"
-    return "Monthly", "mo"
+        return "Weekly", "weekly"
+    return "Monthly", "monthly"
 
 
 def _short(label: str) -> str:
@@ -231,7 +233,7 @@ def _short(label: str) -> str:
     hours = re.search(r"(\d+)\s*-?\s*h", low)
     if hours:
         return f"{hours.group(1)}h"
-    for word, short in (("week", "wk"), ("month", "mo"), ("day", "day"), ("daily", "day")):
+    for word, short in (("week", "weekly"), ("month", "monthly"), ("day", "daily")):
         if word in low:
             return short
     return low[:4] or "use"
@@ -266,7 +268,7 @@ def _windows(billing: dict) -> list[dict]:
         if pct is not None:
             period = str(billing.get("period_type") or "").lower()
             label = "Monthly" if period.startswith("month") else "Plan"
-            out.append({"label": label, "short": "mo" if label == "Monthly" else "plan",
+            out.append({"label": label, "short": label.lower(),
                         "percent": round(max(0.0, min(100.0, pct))), "reset_at": _reset(billing.get("period_end"), now)})
     return out[:MAX_WINDOWS]
 
@@ -291,3 +293,42 @@ def _limits(billing: dict) -> list[dict]:
 def _reset(value, now: float) -> int | None:
     reset = _epoch(value)
     return int(reset) if reset and reset > now else None
+
+
+async def preview(user_id: int, model: str, thread_id: str | None = None) -> dict | None:
+    """The badge before a reply: the account the chat's next request goes to.
+
+    A conversation is pinned to the account that served it (pool_session), so
+    for a chat with a pin this is exact; otherwise it is the account the
+    pool's own picker would choose now (marked preview), which the first
+    reply confirms or replaces. Nothing is reserved or refreshed.
+    """
+    from . import POOL_TYPES, pick
+
+    picked = await pick(model, user_id=user_id)
+    if not picked or picked[0].type_id not in POOL_TYPES or not hasattr(picked[0], "_pick"):
+        return None
+    return await asyncio.to_thread(_preview, picked[0], picked[1], user_id, model, thread_id)
+
+
+def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None) -> dict | None:
+    from .chatgpt_catalog import base_slug
+
+    kind = src.type_id
+    rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0 ORDER BY id", (src.source_id,))
+    # The picker reads self.creds; a copy keeps the live source untouched.
+    probe = copy.copy(src)
+    probe.creds = pool_policy.filter_credentials(rows, kind, user_id)
+    scope_model = base_slug(upstream) if kind == "chatgpt" else upstream
+    pinned = None
+    if thread_id:
+        # The chat runtime's cache key for a conversation (chat_runtime: "thread:<id>").
+        pinned = pool_session.peek(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model))
+    args = {"prefer_id": pinned, "owner_id": user_id, "primary_id": pool_policy.primary_account(user_id, kind)}
+    got = probe._pick(upstream, **args) if kind == "chatgpt" else probe._pick(**args)
+    if not got:
+        return None
+    view = public(user_id, {"cred": got[0]["id"], "source": kind, "model": model})
+    if view is not None:
+        view["preview"] = int(got[0]["id"]) != pinned
+    return view
