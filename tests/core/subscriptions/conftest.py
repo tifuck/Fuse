@@ -10,7 +10,7 @@ import pytest
 from app.config import settings
 from app.sources import (
     chatgpt, chatgpt_catalog, claude, claude_catalog, claude_thread, cursor, cursor_agent, devin, devin_catalog,
-    grok, grok_version, kimi, mimo, pool_pick, pool_policy, pool_session, token_store, zai,
+    grok, grok_version, kimi, mimo, pool_pick, pool_policy, pool_refresh, pool_session, token_store, zai,
 )
 
 
@@ -22,6 +22,8 @@ def _backend_state(monkeypatch):
     claude_thread.reset()
     devin_catalog.reset_sku_health()
     monkeypatch.setattr(token_store, "_dead_grants", {})
+    monkeypatch.setattr(pool_refresh, "_refreshing", {})
+    monkeypatch.setattr(pool_refresh, "_retry_at", {})
     monkeypatch.setattr(settings, "oauth_refresh_enabled", True)
     for mod in (grok, kimi, zai, mimo, cursor, chatgpt_catalog, claude_catalog, devin_catalog):
         monkeypatch.setattr(mod, "_models_cache", None)

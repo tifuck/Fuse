@@ -21,9 +21,9 @@ from .base import ChatResult
 from .pool_pick import Failover, explain_empty, note_failure, pick_account, release, reserve
 from . import http_pool, pool_policy, pool_refresh
 from .grok_version import current_version, force_refresh
-from .pool_session import bind, drop_cache_routing_fields, lookup
+from .pool_session import bind, drop_cache_routing_fields
 from .token_store import (
-    dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh,
+    dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ HOLD_HOURS = 24
 OFFPOOL_PCT = 0.5
 _models_cache: tuple[float, list[str]] | None = None
 _refresh_locks: dict[int, asyncio.Lock] = {}
+REFRESH_WINDOW = timedelta(minutes=5)
 
 GROK_MODELS = [
     "grok-4.7",
@@ -525,9 +526,8 @@ class GrokSource:
             prepared = chat_payload(body)
             if isinstance(prepared.get("messages"), list):
                 prepared["messages"] = await jpeg_png_images(prepared["messages"])
-            prefer_id = await asyncio.to_thread(lookup, "grok", session_id)
-            hint_id = await asyncio.to_thread(lookup, "grok", affinity_id) if prefer_id is None and affinity_id else None
-            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "grok")
+            prefer_id, hint_id, primary_id = await asyncio.to_thread(
+                pool_refresh.pins, "grok", session_id, affinity_id, user_id)
         failover = Failover()
         why: list = []
         while True:
@@ -541,7 +541,7 @@ class GrokSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            await asyncio.to_thread(note_pool_invoke, cred["id"])
+            pool_refresh.note_invoke(note_pool_invoke, cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
             token = extra.get("access_token") or accounts.cred_secret(cred)
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
@@ -641,7 +641,7 @@ class GrokSource:
                 # as having served the conversation's cache prefix.
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("grok", session_id, cid)
+                    await asyncio.to_thread(bind, "grok", session_id, cid)
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
@@ -733,10 +733,11 @@ def store_tokens(source_id: int, tokens: dict, donated_by: int | None, label: st
 async def _refresh_one_unlocked(cred) -> bool:
     if not settings.oauth_refresh_enabled:
         return False
-    row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
-    if not row or row["disabled"]:
+    row, extra, renewed = await asyncio.to_thread(reread, cred, REFRESH_WINDOW)
+    if not row:
         return False
-    extra = accounts.cred_extra(row)
+    if renewed:
+        return True
     rt = extra.get("refresh_token")
     if not rt:
         return False
@@ -744,12 +745,11 @@ async def _refresh_one_unlocked(cred) -> bool:
         revoked_grant(row, extra, "grok", disable_credential)
         return False
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(
-                settings.grok_token_url,
-                data={"grant_type": "refresh_token", "refresh_token": rt, "client_id": CLIENT_ID},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
+        r = await http_pool.client(20).post(
+            settings.grok_token_url,
+            data={"grant_type": "refresh_token", "refresh_token": rt, "client_id": CLIENT_ID},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
     except httpx.HTTPError:
         note_failure(row["id"], cooldown_seconds=30)
         return False
@@ -913,11 +913,12 @@ async def refresh_pool_billing(*, force: bool = False) -> None:
     log_refresh_failures("Grok billing refresh", rows, results)
 
 
-def _due_accounts(rows) -> tuple[list, list[float]]:
-    """The accounts whose token is due, and when each one comes due."""
-    window = timedelta(minutes=5)
-    soon = datetime.now(timezone.utc) + window
-    due, due_at = [], []
+def _due_accounts(rows) -> tuple[list, list, list[float]]:
+    """The accounts whose token is due, those of them a request waits for
+    (pool_refresh.URGENT), and when each account comes due."""
+    now = datetime.now(timezone.utc)
+    soon, urgent_by = now + REFRESH_WINDOW, now + pool_refresh.URGENT
+    due, urgent, due_at = [], [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         exp = extra.get("expires_at")
@@ -927,21 +928,28 @@ def _due_accounts(rows) -> tuple[list, list[float]]:
             when = None
         if when is None or when <= soon:
             due.append(cred)
-        due_at.append((when - window).timestamp() if when else 0.0)
-    return due, due_at
+            if when is None or when <= urgent_by:
+                urgent.append(cred)
+        due_at.append((when - REFRESH_WINDOW).timestamp() if when else 0.0)
+    return due, urgent, due_at
 
 
 async def refresh_due(rows=None) -> bool:
     """Refresh every due token; True when one was due. rows: a request's pool,
-    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
-    if rows is not None and not pool_refresh.scan_due("grok", rows):
-        return False
-    if rows is None:
-        rows = await asyncio.to_thread(
-            db.fetchall,
-            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='grok' AND c.disabled=0",
-        )
-    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    rescanned only once one of them changed or came due (pool_refresh.scan_due);
+    it waits only for urgent tokens and returns True when it did
+    (pool_refresh.refresh_tokens)."""
+    if rows is not None:
+        if not pool_refresh.scan_due("grok", rows):
+            return False
+        due, urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
+        pool_refresh.scanned("grok", rows, due_at)
+        return await pool_refresh.refresh_tokens("grok", due, urgent, refresh_one, "Grok OAuth refresh")
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='grok' AND c.disabled=0",
+    )
+    due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("grok", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
