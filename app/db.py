@@ -340,6 +340,7 @@ def record_usage(
     requested_model: str = "",
     request_status: str = "success",
     count_request: bool = True,
+    source_name: str = "",
 ) -> None:
     def bounded(value) -> int:
         try:
@@ -377,10 +378,12 @@ def record_usage(
     week = iso_week_start()
     model = model or ""
     provider = (provider or "")[:32]
+    # A caller that names the source's type and name saves a read.
+    known = bool(source_id and provider and source_name)
     with tx() as conn:
-        source = conn.execute("SELECT type, name FROM sources WHERE id=?", (source_id,)).fetchone() if source_id else None
+        source = conn.execute("SELECT type, name FROM sources WHERE id=?", (source_id,)).fetchone() if source_id and not known else None
         provider = provider or (source["type"] if source else "unknown")
-        source_name = source["name"] if source else provider
+        source_name = source_name if known else source["name"] if source else provider
         # OpenRouter is per-account only: every call is billed 1:1 on the
         # caller's own key (direct openrouter/... ids and pool-model fallback
         # alike), so tokens are counted but cost is not. Cost views must only
@@ -502,12 +505,16 @@ def record_usage(
                      cache_write_tokens = cache_write_tokens + MIN(?, 9223372036854775807 - MAX(cache_write_tokens, 0)),
                      total_tokens = total_tokens + MIN(?, 9223372036854775807 - MAX(total_tokens, 0)),
                      requests = requests + MIN(?, 9223372036854775807 - MAX(requests, 0)),
-                     cost_micros = cost_micros + MIN(?, 9223372036854775807 - MAX(cost_micros, 0))
+                     cost_micros = cost_micros + MIN(?, 9223372036854775807 - MAX(cost_micros, 0)),
+                     fuse_api_equiv_micros = fuse_api_equiv_micros + MIN(?, 9223372036854775807 - MAX(fuse_api_equiv_micros, 0)),
+                     fuse_priced_events = fuse_priced_events + ?,
+                     fuse_unpriced_events = fuse_unpriced_events + ?
                    WHERE id=?""",
                 (
                     week, total, total, week, request_inc, request_inc, week,
                     pt, ct, output, visible, rt, cached, cache_write, total, request_inc,
-                    effective_cost, credential_id,
+                    effective_cost, estimated_cost, 1 if total > 0 and price else 0,
+                    1 if total > 0 and not price else 0, credential_id,
                 ),
             )
 
@@ -626,54 +633,55 @@ def save_model_price(
             if isinstance(t, dict) and int(t.get("min_prompt_tokens") or 0) > 0
         ]
     )
-    # Own transaction, first read after the upsert: the snapshot that picks
-    # the events to reprice must start after this price-row lock, so every
-    # event priced at the old rate (record_usage holds a shared lock on the
-    # row until it commits) is in it.
-    with tx() as write_conn:
-        write_conn.execute(
-            f"""INSERT INTO model_prices
-               (provider, model, input_micros_per_million, cached_input_micros_per_million,
-                cache_write_micros_per_million, output_micros_per_million, reasoning_micros_per_million,
-                cached_input_known, cache_write_known, reasoning_known, long_context_threshold,
-                long_input_micros_per_million, long_cached_input_micros_per_million,
-                long_output_micros_per_million, long_cached_input_known, tiers_json,
-                origin, openrouter_id, synced_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(provider, model) DO UPDATE SET
-                  input_micros_per_million=excluded.input_micros_per_million,
-                  cached_input_micros_per_million=excluded.cached_input_micros_per_million,
-                  cache_write_micros_per_million=excluded.cache_write_micros_per_million,
-                  output_micros_per_million=excluded.output_micros_per_million,
-                  reasoning_micros_per_million=excluded.reasoning_micros_per_million,
-                  cached_input_known=excluded.cached_input_known,
-                  cache_write_known=excluded.cache_write_known,
-                  reasoning_known=excluded.reasoning_known,
-                  long_context_threshold={current}.long_context_threshold,
-                  long_input_micros_per_million={current}.long_input_micros_per_million,
-                  long_cached_input_micros_per_million={current}.long_cached_input_micros_per_million,
-                  long_output_micros_per_million={current}.long_output_micros_per_million,
-                  long_cached_input_known={current}.long_cached_input_known,
-                  tiers_json={current}.tiers_json,
-                  origin=excluded.origin,
-                  openrouter_id=excluded.openrouter_id,
-                  synced_at=excluded.synced_at,
-                  updated_at=excluded.updated_at
-               WHERE model_prices.origin != 'manual' OR excluded.origin = 'manual'""",
-            (
-                provider, model, input_rate, cached_rate or 0, cache_write_rate or 0,
-                output_rate, reasoning_rate or 0,
-                1 if cached_rate is not None else 0, 1 if cache_write_rate is not None else 0,
-                1 if reasoning_rate is not None else 0,
-                long_context_threshold, long_input_rate, long_cached_rate, long_output_rate,
-                1 if long_cached_rate is not None else 0, tiers_json,
-                origin[:32], openrouter_id, ts if origin == "openrouter" else None, ts,
-            ),
-        )
-        persisted_price = write_conn.execute(
-            "SELECT * FROM model_prices WHERE provider=? AND model=?",
-            (provider, model),
-        ).fetchone()
+    # The upsert commits on its own, before the walk: it waited for every
+    # record_usage holding a shared lock on the row, so each event priced at
+    # the old rate has committed and every window's later snapshot sees it.
+    # One recorded at the new price meanwhile reprices to itself (no delta).
+    with _price_lock(provider, model):
+        with tx() as write_conn:
+            write_conn.execute(
+                f"""INSERT INTO model_prices
+                   (provider, model, input_micros_per_million, cached_input_micros_per_million,
+                    cache_write_micros_per_million, output_micros_per_million, reasoning_micros_per_million,
+                    cached_input_known, cache_write_known, reasoning_known, long_context_threshold,
+                    long_input_micros_per_million, long_cached_input_micros_per_million,
+                    long_output_micros_per_million, long_cached_input_known, tiers_json,
+                    origin, openrouter_id, synced_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(provider, model) DO UPDATE SET
+                      input_micros_per_million=excluded.input_micros_per_million,
+                      cached_input_micros_per_million=excluded.cached_input_micros_per_million,
+                      cache_write_micros_per_million=excluded.cache_write_micros_per_million,
+                      output_micros_per_million=excluded.output_micros_per_million,
+                      reasoning_micros_per_million=excluded.reasoning_micros_per_million,
+                      cached_input_known=excluded.cached_input_known,
+                      cache_write_known=excluded.cache_write_known,
+                      reasoning_known=excluded.reasoning_known,
+                      long_context_threshold={current}.long_context_threshold,
+                      long_input_micros_per_million={current}.long_input_micros_per_million,
+                      long_cached_input_micros_per_million={current}.long_cached_input_micros_per_million,
+                      long_output_micros_per_million={current}.long_output_micros_per_million,
+                      long_cached_input_known={current}.long_cached_input_known,
+                      tiers_json={current}.tiers_json,
+                      origin=excluded.origin,
+                      openrouter_id=excluded.openrouter_id,
+                      synced_at=excluded.synced_at,
+                      updated_at=excluded.updated_at
+                   WHERE model_prices.origin != 'manual' OR excluded.origin = 'manual'""",
+                (
+                    provider, model, input_rate, cached_rate or 0, cache_write_rate or 0,
+                    output_rate, reasoning_rate or 0,
+                    1 if cached_rate is not None else 0, 1 if cache_write_rate is not None else 0,
+                    1 if reasoning_rate is not None else 0,
+                    long_context_threshold, long_input_rate, long_cached_rate, long_output_rate,
+                    1 if long_cached_rate is not None else 0, tiers_json,
+                    origin[:32], openrouter_id, ts if origin == "openrouter" else None, ts,
+                ),
+            )
+            persisted_price = write_conn.execute(
+                "SELECT * FROM model_prices WHERE provider=? AND model=?",
+                (provider, model),
+            ).fetchone()
         if persisted_price is None:
             return
         if provider == "openrouter":
@@ -681,13 +689,32 @@ def save_model_price(
             # personal (per-account, user pays 1:1): repricing history must
             # never attach estimated cost to them.
             return
-        for rows in _priced_events(write_conn, provider, model):
-            _reprice_batch(write_conn, provider, model, rows, persisted_price)
+        _reprice_history(provider, model, persisted_price)
 
 
-# Events repriced per id window: a popular model's whole history never sits in
-# memory at once. Windows on the primary key keep each query a bounded range
-# scan; ORDER BY id LIMIT re-sorts the model's remaining rows on every page.
+# Seconds a price save or delete waits for another one of the same model.
+PRICE_LOCK_WAIT = 600
+
+
+@contextmanager
+def _price_lock(provider: str, model: str):
+    """Serialize saves and deletes of one model's price, so two reprice walks
+    never interleave: a named lock on one connection held for the whole walk
+    (the walk's own transactions borrow others)."""
+    name = "MD5(CONCAT_WS(CHAR(0), 'fuse_price', DATABASE(), %s, %s))"
+    with tx() as conn:
+        if conn.native(f"SELECT GET_LOCK({name}, %s)", (provider, model, PRICE_LOCK_WAIT)).fetchone()[0] != 1:
+            raise TimeoutError(f"another price change of {provider}/{model} is still repricing")
+        try:
+            yield
+        finally:
+            conn.native(f"SELECT RELEASE_LOCK({name})", (provider, model))
+
+
+# Events repriced per id window, one transaction each: a popular model's whole
+# history never sits in memory, or under row locks, at once. Windows on the
+# primary key keep each query a bounded range scan; ORDER BY id LIMIT re-sorts
+# the model's remaining rows on every page.
 REPRICE_WINDOW = 5000
 # Events per estimate UPDATE. Fixed size (the last chunk repeats its final
 # row), so the statement text is the same every time and is translated once.
@@ -698,20 +725,21 @@ _REPRICE_COLUMNS = """id, user_id, api_key_id, credential_id, reported_cost_micr
                       created_at"""
 
 
-def _priced_events(conn, provider: str, model: str):
-    span = conn.execute("SELECT MIN(id) AS lo, MAX(id) AS hi FROM usage_events WHERE model=?", (model,)).fetchone()
+def _reprice_history(provider: str, model: str, price) -> None:
+    span = fetchone("SELECT MIN(id) AS lo, MAX(id) AS hi FROM usage_events WHERE model=?", (model,))
     if span is None or span["lo"] is None:
         return
     lo, hi = int(span["lo"]) - 1, int(span["hi"])
     while lo < hi:
-        rows = conn.execute(
-            f"""SELECT {_REPRICE_COLUMNS} FROM usage_events
-                WHERE source_type=? AND model=? AND id>? AND id<=?""",
-            (provider, model, lo, lo + REPRICE_WINDOW),
-        ).fetchall()
+        with tx() as conn:
+            rows = conn.execute(
+                f"""SELECT {_REPRICE_COLUMNS} FROM usage_events
+                    WHERE source_type=? AND model=? AND id>? AND id<=?""",
+                (provider, model, lo, lo + REPRICE_WINDOW),
+            ).fetchall()
+            if rows:
+                _reprice_batch(conn, provider, model, rows, price)
         lo += REPRICE_WINDOW
-        if rows:
-            yield rows
 
 
 def _price_measures(row, estimate: int, known: int) -> tuple[int, int, int, int, int]:
@@ -742,7 +770,8 @@ def _reprice_batch(conn, provider, model, rows, price) -> None:
     updates = []
     key_deltas: dict[int, int] = {}
     user_deltas: dict[int, int] = {}
-    cred_deltas: dict[int, int] = {}
+    # Per credential: cost_micros, fuse_api_equiv_micros, fuse_priced_events, fuse_unpriced_events.
+    cred_deltas: dict[int, list] = {}
     rollup_deltas: dict[tuple, list] = {}
     for row in rows:
         estimate = 0
@@ -768,7 +797,10 @@ def _reprice_batch(conn, provider, model, rows, price) -> None:
         if row["api_key_id"]:
             key_deltas[row["api_key_id"]] = key_deltas.get(row["api_key_id"], 0) + delta
         if row["credential_id"]:
-            cred_deltas[row["credential_id"]] = cred_deltas.get(row["credential_id"], 0) + delta
+            counted = known - old_known if int(row["total_tokens"] or 0) > 0 else 0
+            moved_cred = cred_deltas.setdefault(row["credential_id"], [0, 0, 0, 0])
+            for n, change in enumerate((delta, estimate - old_estimate, counted, -counted)):
+                moved_cred[n] += change
         moved = rollup_deltas.setdefault(_rollup_key(row, provider, model), [0] * len(new) + [row["created_at"]])
         for n, (after, before) in enumerate(zip(new, old)):
             moved[n] += after - before
@@ -803,8 +835,9 @@ def _apply_cost_deltas(conn, provider, key_deltas, user_deltas, cred_deltas, rol
         [(delta, user_id, provider) for user_id, delta in user_deltas.items() if delta],
     )
     conn.executemany(
-        "UPDATE credentials SET cost_micros=cost_micros+? WHERE id=?",
-        [(delta, cred_id) for cred_id, delta in cred_deltas.items() if delta],
+        """UPDATE credentials SET cost_micros=cost_micros+?, fuse_api_equiv_micros=fuse_api_equiv_micros+?,
+             fuse_priced_events=fuse_priced_events+?, fuse_unpriced_events=fuse_unpriced_events+? WHERE id=?""",
+        [(*moved, cred_id) for cred_id, moved in cred_deltas.items() if any(moved)],
     )
     conn.executemany(
         f"""INSERT INTO usage_rollup_hourly ({", ".join(_ROLLUP_KEY + _ROLLUP_PRICE)}, first_at, last_at)
@@ -816,10 +849,10 @@ def _apply_cost_deltas(conn, provider, key_deltas, user_deltas, cred_deltas, rol
 
 
 def delete_model_price(provider: str, model: str) -> None:
-    with tx() as conn:
-        conn.execute("DELETE FROM model_prices WHERE provider=? AND model=?", (provider, model))
-        for rows in _priced_events(conn, provider, model):
-            _reprice_batch(conn, provider, model, rows, None)
+    # Committed before the walk, like save_model_price's upsert.
+    with _price_lock(provider, model):
+        execute("DELETE FROM model_prices WHERE provider=? AND model=?", (provider, model))
+        _reprice_history(provider, model, None)
 
 
 def provider_usage_for(user_id: int):

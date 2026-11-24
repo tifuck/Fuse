@@ -4,8 +4,8 @@ Usage: python -m scripts.rebuild_usage_rollups [--apply]
 
 Run from the tree whose schema you mean (/root/fuse is fuse_live, /root/fuse-dev
 is fuse_dev). Without --apply it only reports how many rollup rows disagree
-with their events. --apply rewrites credentials, api_keys, provider_usage and
-usage_rollup_hourly in one transaction; stop the service first, since every request
+with their events. --apply rewrites credentials (Fuse coverage counters included), api_keys,
+provider_usage and usage_rollup_hourly in one transaction; stop the service first, since every request
 writes the same rows (--apply refuses while another connection uses the
 schema: rows a live request writes during the rebuild would be lost).
 Credential week counters (week_tokens/week_requests) are left alone: they restart each ISO week. Uses one connection, not a pool.
@@ -23,6 +23,12 @@ CRED_COLS = ("prompt_tokens", "completion_tokens", "output_tokens", "visible_tok
              "cached_tokens", "cache_write_tokens", "total_tokens")
 KEY_COLS = CRED_COLS + ("audio_tokens", "image_tokens")
 PROVIDER = "COALESCE(NULLIF(e.source_type, ''), s.type, 'unknown')"
+# credentials.fuse_*: what /sources shows as a credential's API-equivalent cost and priced/unpriced events.
+FUSE_SUMS = {
+    "fuse_api_equiv_micros": "e.estimated_cost_micros",
+    "fuse_priced_events": "CASE WHEN e.total_tokens > 0 AND e.pricing_known = 1 THEN 1 ELSE 0 END",
+    "fuse_unpriced_events": "CASE WHEN e.total_tokens > 0 AND e.pricing_known = 0 THEN 1 ELSE 0 END",
+}
 
 
 def _sums(cols):
@@ -30,15 +36,17 @@ def _sums(cols):
         f", COALESCE(SUM(e.count_request), 0) AS requests, COALESCE({COST}, 0) AS cost_micros"
 
 
-def _all(cols):
-    return (*cols, "requests", "cost_micros")
+def _all(cols, extra=()):
+    return (*cols, "requests", "cost_micros", *extra)
 
 
-def _differs(cols, left, right):
-    return " OR ".join(f"{left}.{col} <> COALESCE({right}.{col}, 0)" for col in _all(cols))
+def _differs(cols, left, right, extra=()):
+    return " OR ".join(f"{left}.{col} <> COALESCE({right}.{col}, 0)" for col in _all(cols, extra))
 
 
-CRED_AGG = f"SELECT e.credential_id AS id, {_sums(CRED_COLS)} FROM usage_events e WHERE e.credential_id IS NOT NULL GROUP BY e.credential_id"
+CRED_AGG = (f"SELECT e.credential_id AS id, {_sums(CRED_COLS)}, "
+            + ", ".join(f"COALESCE(SUM({expr}), 0) AS {col}" for col, expr in FUSE_SUMS.items())
+            + " FROM usage_events e WHERE e.credential_id IS NOT NULL GROUP BY e.credential_id")
 KEY_AGG = f"SELECT e.api_key_id AS id, {_sums(KEY_COLS)} FROM usage_events e WHERE e.api_key_id IS NOT NULL GROUP BY e.api_key_id"
 PROVIDER_AGG = (f"SELECT e.user_id, {PROVIDER} AS provider, {_sums(KEY_COLS)} "
                 f"FROM usage_events e LEFT JOIN sources s ON s.id=e.source_id GROUP BY e.user_id, {PROVIDER}")
@@ -78,7 +86,7 @@ ROLLUP_AGG = (f"SELECT e.user_id, {HOUR} AS hour, COALESCE(e.api_key_id, 0) AS a
 ROLLUP_ON = " AND ".join(f"a.{col}=r.{col}" for col in ROLLUP_KEY)
 
 REPORT = {
-    "credentials": f"SELECT COUNT(*) FROM credentials c LEFT JOIN ({CRED_AGG}) a ON a.id=c.id WHERE {_differs(CRED_COLS, 'c', 'a')}",
+    "credentials": f"SELECT COUNT(*) FROM credentials c LEFT JOIN ({CRED_AGG}) a ON a.id=c.id WHERE {_differs(CRED_COLS, 'c', 'a', FUSE_SUMS)}",
     "api_keys": f"SELECT COUNT(*) FROM api_keys k LEFT JOIN ({KEY_AGG}) a ON a.id=k.id WHERE {_differs(KEY_COLS, 'k', 'a')}",
     "provider_usage": (f"SELECT COUNT(*) FROM provider_usage p LEFT JOIN ({PROVIDER_AGG}) a "
                        f"ON a.user_id=p.user_id AND a.provider=p.provider WHERE {_differs(KEY_COLS, 'p', 'a')}"),
@@ -91,12 +99,12 @@ REPORT = {
 }
 
 
-def _set(cols, target):
-    return ", ".join(f"{target}.{col}=COALESCE(a.{col}, 0)" for col in _all(cols))
+def _set(cols, target, extra=()):
+    return ", ".join(f"{target}.{col}=COALESCE(a.{col}, 0)" for col in _all(cols, extra))
 
 
 def apply(conn):
-    conn.native(f"UPDATE credentials c LEFT JOIN ({CRED_AGG}) a ON a.id=c.id SET {_set(CRED_COLS, 'c')}")
+    conn.native(f"UPDATE credentials c LEFT JOIN ({CRED_AGG}) a ON a.id=c.id SET {_set(CRED_COLS, 'c', FUSE_SUMS)}")
     conn.native(f"UPDATE api_keys k LEFT JOIN ({KEY_AGG}) a ON a.id=k.id SET {_set(KEY_COLS, 'k')}")
     conn.native(f"UPDATE provider_usage p LEFT JOIN ({PROVIDER_AGG}) a "
                 f"ON a.user_id=p.user_id AND a.provider=p.provider SET {_set(KEY_COLS, 'p')}")
