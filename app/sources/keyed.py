@@ -394,6 +394,20 @@ async def validate_key(p, key: str, region: str = "") -> str:
     return f"{p.label} could not check the key (HTTP {r.status_code})."
 
 
+def _same_key(rows, key: str):
+    for row in rows:
+        try:
+            if accounts.cred_secret(row) == key:
+                return row
+        except Exception:
+            continue
+    return None
+
+
+def _linked_elsewhere(row, user_id: int | None) -> bool:
+    return row is not None and not row["disabled"] and row["donated_by"] != user_id
+
+
 async def store_key(type_id: str, raw: str, *, user_id: int | None, label: str = "", method: str = "",
                     region: str = "") -> tuple[int | None, str]:
     """Validate and save a key: personal for user_id, a site key for None.
@@ -408,33 +422,38 @@ async def store_key(type_id: str, raw: str, *, user_id: int | None, label: str =
     region = region if region in regions else (regions[0] if regions else "")
     sid = ensure_source(type_id)
     rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? ORDER BY id", (sid,))
-    same = None
-    for row in rows:
-        try:
-            if accounts.cred_secret(row) == key:
-                same = row
-                break
-        except Exception:
-            continue
-    if same is not None and not same["disabled"] and same["donated_by"] != user_id:
+    if _linked_elsewhere(_same_key(rows, key), user_id):
         return None, "That key is already linked to another account."
     err = await (p.validate(key) if p.validate else validate_key(p, key, region))
     if err:
         return None, err
     name = (label or "").strip()[:80] or f"{p.label} key"
     extra = {"method": method, "region": region}
-    target = same
-    if target is None and user_id is not None:
-        target = next((r for r in rows if r["donated_by"] == user_id and not r["disabled"]
-                       and _extra(r).get("method", methods[0]) == method), None)
     clear_catalogs(sid)
-    if target is not None:
-        db.execute(
-            "UPDATE credentials SET disabled=0, donated_by=?, label=?, secret=?, extra=? WHERE id=?",
-            (user_id, name, encrypt(key), encrypt(json.dumps(extra)), target["id"]),
+    with db.tx() as conn:
+        # The source row lock serializes key saves, so a key submitted twice
+        # during its check is decided on rows the other save already wrote.
+        conn.execute("SELECT id FROM sources WHERE id=?" + db.for_update(conn), (sid,)).fetchone()
+        rows = conn.execute("SELECT * FROM credentials WHERE source_id=? ORDER BY id", (sid,)).fetchall()
+        same = _same_key(rows, key)
+        if _linked_elsewhere(same, user_id):
+            return None, "That key is already linked to another account."
+        target = same
+        if target is None and user_id is not None:
+            target = next((r for r in rows if r["donated_by"] == user_id and not r["disabled"]
+                           and _extra(r).get("method", methods[0]) == method), None)
+        if target is not None:
+            conn.execute(
+                "UPDATE credentials SET disabled=0, donated_by=?, label=?, secret=?, extra=? WHERE id=?",
+                (user_id, name, encrypt(key), encrypt(json.dumps(extra)), target["id"]),
+            )
+            return int(target["id"]), ""
+        conn.execute(
+            """INSERT INTO credentials (source_id, label, secret, extra, week_start, donated_by, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (sid, name, encrypt(key), encrypt(json.dumps(extra)), db.iso_week_start(), user_id, db.now()),
         )
-        return int(target["id"]), ""
-    return int(accounts.add_credential(sid, name, key, extra=extra, donated_by=user_id)), ""
+        return int(db.last_id(conn)), ""
 
 
 def remove_key(type_id: str, cred_id: int, *, user_id: int | None) -> bool:

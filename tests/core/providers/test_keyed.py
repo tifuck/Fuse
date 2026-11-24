@@ -134,6 +134,23 @@ def test_a_key_is_validated_without_echoing_it_and_never_linked_twice(fresh_db, 
     assert keyed.access_states(alice)["deepseek"]["ok"] is False
 
 
+def test_a_key_another_user_saves_during_its_check_is_not_linked_twice(fresh_db, monkeypatch):
+    alice, bob = quick_user("alice@core.test"), quick_user("bob@core.test")
+    raced = {}
+
+    async def racing_check(p, key, region=""):
+        if not raced:
+            raced["bob"] = None
+            raced["bob"] = await keyed.store_key("deepseek", key, user_id=bob)
+        return ""
+
+    monkeypatch.setattr(keyed, "validate_key", racing_check)
+    assert asyncio.run(keyed.store_key("deepseek", "sk-good-key-12345", user_id=alice)) == (
+        None, "That key is already linked to another account.")
+    rows = db.fetchall("SELECT id, donated_by FROM credentials WHERE source_id=?", (keyed.ensure_source("deepseek"),))
+    assert [(r["id"], r["donated_by"]) for r in rows] == [(raced["bob"][0], bob)]
+
+
 def test_an_unreachable_or_failing_check_says_so_without_the_body(fresh_db, upstream):
     upstream.on("GET", "api.groq.com/openai/v1/models", httpx.ConnectError("down"),
                 httpx.Response(500, text="internal sk-groq-secret"))
