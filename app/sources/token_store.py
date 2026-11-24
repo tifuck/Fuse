@@ -88,15 +88,37 @@ def dead_grant(cred_id, refresh_token) -> bool:
     return bool(kept) and kept[0] == _grant_key(refresh_token)
 
 
-def _token_live(extra: dict) -> bool:
+def _expiry(extra: dict) -> datetime | None:
     raw = str(extra.get("expires_at") or "")
     try:
         when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
-        return False
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return when > datetime.now(timezone.utc)
+        return None
+    return when.replace(tzinfo=timezone.utc) if when.tzinfo is None else when
+
+
+def _token_live(extra: dict) -> bool:
+    when = _expiry(extra)
+    return when is not None and when > datetime.now(timezone.utc)
+
+
+def reread(cred, window: timedelta) -> tuple:
+    """(row, extra, renewed) for a refresh that holds the credential's lock:
+    its current row (None when gone or disabled) and extra, and whether a
+    refresh queued ahead of this one already renewed the token the caller saw
+    (`cred`, its copy): a new access token outside the refresh window."""
+    row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
+    if not row or row["disabled"]:
+        return None, {}, False
+    extra = accounts.cred_extra(row)
+    try:
+        seen = accounts.cred_extra(cred).get("access_token")
+    except Exception:
+        seen = extra.get("access_token")
+    when = _expiry(extra)
+    renewed = (extra.get("access_token") != seen and when is not None
+               and when > datetime.now(timezone.utc) + window)
+    return row, extra, renewed
 
 
 def revoked_grant(row, extra: dict, kind: str, disable, reason: str = "") -> None:

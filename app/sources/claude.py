@@ -35,8 +35,10 @@ from .base import ChatResult
 from .grok import apply_usage_guard, is_held as credential_is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
 from . import claude_thread, http_pool, pool_policy, pool_refresh
-from .pool_session import bind, lookup
-from .token_store import dead_grant, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh
+from .pool_session import bind
+from .token_store import (
+    dead_grant, log_refresh_failures, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
+)
 
 from .claude_catalog import (
     CLAUDE_MODELS,
@@ -536,10 +538,11 @@ async def complete_login(raw_code: str, verifier: str, expected_state: str, dona
 async def _refresh_one_unlocked(cred) -> bool:
     if not settings.oauth_refresh_enabled:
         return False
-    row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
-    if not row or row["disabled"]:
+    row, extra, renewed = await asyncio.to_thread(reread, cred, REFRESH_WINDOW)
+    if not row:
         return False
-    extra = accounts.cred_extra(row)
+    if renewed:
+        return True
     rt = extra.get("refresh_token")
     if not rt:
         return False
@@ -553,12 +556,11 @@ async def _refresh_one_unlocked(cred) -> bool:
         "scope": str(extra.get("scope") or " ".join(SCOPES)),
     }
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(
-                settings.claude_token_url,
-                json=body,
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-            )
+        r = await http_pool.client(30).post(
+            settings.claude_token_url,
+            json=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
     except httpx.HTTPError:
         note_failure(row["id"], cooldown_seconds=30)
         return False
@@ -616,10 +618,12 @@ async def refresh_pool_quota(*, force: bool = False) -> None:
         log_refresh_failures("Claude quota refresh", rows, results)
 
 
-def _due_accounts(rows) -> tuple[list, list[float]]:
-    """The accounts whose token is due, and when each one comes due."""
-    soon = datetime.now(timezone.utc) + REFRESH_WINDOW
-    due, due_at = [], []
+def _due_accounts(rows) -> tuple[list, list, list[float]]:
+    """The accounts whose token is due, those of them a request waits for
+    (pool_refresh.URGENT), and when each account comes due."""
+    now = datetime.now(timezone.utc)
+    soon, urgent_by = now + REFRESH_WINDOW, now + pool_refresh.URGENT
+    due, urgent, due_at = [], [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         if not extra.get("refresh_token"):
@@ -627,21 +631,28 @@ def _due_accounts(rows) -> tuple[list, list[float]]:
         when = _parse_ts(str(extra.get("expires_at") or ""))
         if not when or when <= soon:
             due.append(cred)
+            if not when or when <= urgent_by:
+                urgent.append(cred)
         due_at.append((when - REFRESH_WINDOW).timestamp() if when else 0.0)
-    return due, due_at
+    return due, urgent, due_at
 
 
 async def refresh_due(rows=None) -> bool:
     """Refresh every due token; True when one was due. rows: a request's pool,
-    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
-    if rows is not None and not pool_refresh.scan_due("claude", rows):
-        return False
-    if rows is None:
-        rows = await asyncio.to_thread(
-            db.fetchall,
-            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='claude' AND c.disabled=0",
-        )
-    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    rescanned only once one of them changed or came due (pool_refresh.scan_due);
+    it waits only for urgent tokens and returns True when it did
+    (pool_refresh.refresh_tokens)."""
+    if rows is not None:
+        if not pool_refresh.scan_due("claude", rows):
+            return False
+        due, urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
+        pool_refresh.scanned("claude", rows, due_at)
+        return await pool_refresh.refresh_tokens("claude", due, urgent, refresh_one, "Claude OAuth refresh")
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='claude' AND c.disabled=0",
+    )
+    due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("claude", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
@@ -687,6 +698,12 @@ def user_has_claude(user_id: int) -> bool:
 
 
 note_pool_invoke = creds.note_pool_invoke
+
+
+def _json_body(payload: dict) -> bytes:
+    """The bytes httpx's json= would send (agent transcripts run to megabytes:
+    encoded off the loop)."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
 async def fetch_catalog() -> list[str]:
@@ -741,7 +758,8 @@ class ClaudeSource:
         # it, so the first event reaches the client as Anthropic produces it
         # and a cancelled request stops generation promptly. client.post would
         # buffer the whole SSE response before returning.
-        req = client.build_request("POST", url, headers=_chat_headers(token, beta), json=payload)
+        req = client.build_request("POST", url, headers=_chat_headers(token, beta),
+                                   content=await asyncio.to_thread(_json_body, payload))
         return await client.send(req, stream=True)
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
@@ -756,9 +774,8 @@ class ClaudeSource:
             upstream = upstream_id(requested)
             want_stream = bool(body.get("stream"))
             payload = build_messages_payload(body, upstream)
-            prefer_id = await asyncio.to_thread(lookup, "claude", session_id)
-            hint_id = await asyncio.to_thread(lookup, "claude", affinity_id) if prefer_id is None and affinity_id else None
-            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "claude")
+            prefer_id, hint_id, primary_id = await asyncio.to_thread(
+                pool_refresh.pins, "claude", session_id, affinity_id, user_id)
         failover = Failover()
         why: list = []
         while True:
@@ -772,7 +789,7 @@ class ClaudeSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            await asyncio.to_thread(note_pool_invoke, cred["id"])
+            pool_refresh.note_invoke(note_pool_invoke, cred["id"])
             token = _bearer(cred, extra)
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             resp = None
@@ -929,9 +946,9 @@ class ClaudeSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("claude", session_id, cid)
                     if remember is not None:
                         remember()
+                    await asyncio.to_thread(bind, "claude", session_id, cid)
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 

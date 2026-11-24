@@ -1,6 +1,7 @@
 """OAuth refresh per backend: gated on OAUTH_REFRESH_ENABLED (schema ownership
 turns it off on clones), a single-use refresh token is never posted twice
-even by concurrent refreshes, rotated tokens land, and a revoked grant keeps
+even by concurrent refreshes (one queued behind another finds the token
+already renewed and posts nothing), rotated tokens land, and a revoked grant keeps
 serving until its access token expires, is never re-posted, then disables.
 Ownership itself is pinned in tests/core/usage/test_credentials.py."""
 import asyncio
@@ -77,9 +78,9 @@ def test_concurrent_refreshes_never_post_the_same_single_use_token_twice(fresh_d
         results = run(both())
 
     assert results == [True, True]
-    assert upstream.spent == ["rt-0", "rt-1"]
+    assert upstream.spent == ["rt-0"]
     extra = extra_of(cred)
-    assert (extra["access_token"], extra["refresh_token"]) == ("at-2", "rt-2")
+    assert (extra["access_token"], extra["refresh_token"]) == ("at-1", "rt-1")
     assert row(cred)["disabled"] == 0
 
 
