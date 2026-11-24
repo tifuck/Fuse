@@ -8,6 +8,7 @@ the server on /admin/sources#speech; that row is a `sources` row of type
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import time
@@ -18,6 +19,7 @@ import httpx
 from . import accounts, db
 from .config import settings
 from .crypto import encrypt
+from .sources import http_pool
 from .sources.openai_compat import _v1
 
 TYPE = "speech"
@@ -131,7 +133,8 @@ def silence_wav(seconds: float = 1.0, rate: int = 16000) -> bytes:
 
 
 def _client(cfg: dict, timeout: float) -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=timeout, verify=bool(cfg.get("verify", 1)))
+    """The shared client for these settings. Never close it."""
+    return http_pool.client(timeout, verify=bool(cfg.get("verify", 1)))
 
 
 def _headers(key: str) -> dict:
@@ -139,13 +142,12 @@ def _headers(key: str) -> dict:
 
 
 async def _post(cfg: dict, key: str, audio: bytes) -> str:
-    async with _client(cfg, 30) as client:
-        r = await client.post(
-            _v1(cfg["base_url"]) + "/audio/transcriptions",
-            headers=_headers(key),
-            data={"model": cfg["model"], "response_format": "json"},
-            files={"file": ("audio.wav", audio, "audio/wav")},
-        )
+    r = await _client(cfg, 30).post(
+        _v1(cfg["base_url"]) + "/audio/transcriptions",
+        headers=_headers(key),
+        data={"model": cfg["model"], "response_format": "json"},
+        files={"file": ("audio.wav", audio, "audio/wav")},
+    )
     if r.status_code != 200:
         raise SpeechError(f"speech server returned HTTP {r.status_code}")
     try:
@@ -155,7 +157,7 @@ async def _post(cfg: dict, key: str, audio: bytes) -> str:
 
 
 async def transcribe(audio: bytes) -> str:
-    cfg = _config()
+    cfg = await asyncio.to_thread(_config)
     if cfg is None:
         raise SpeechError("speech to text is off")
     return await _post(cfg, cfg["key"], audio)
@@ -175,8 +177,7 @@ async def probe() -> dict:
     key = _key(row["id"])
     checks = []
     try:
-        async with _client(cfg, 10) as client:
-            r = await client.get(_v1(cfg["base_url"]) + "/models", headers=_headers(key))
+        r = await _client(cfg, 10).get(_v1(cfg["base_url"]) + "/models", headers=_headers(key))
         data = r.json().get("data") if r.status_code == 200 else None
         ids = [
             m["id"] for m in data or []

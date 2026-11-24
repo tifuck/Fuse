@@ -182,25 +182,41 @@ def _thread_context(user_id: int, thread_id: int) -> tuple[str, list[dict]]:
     return context
 
 
+def _key_and_masked(user_id: int, state: dict) -> tuple[str, dict]:
+    """The user's OpenRouter key and the state with protected values masked
+    (Jev is a provider too, reached outside api._run_chat). ('', state)
+    without a key."""
+    from . import secret_guard
+    from .sources import openrouter as openrouter_mod
+
+    picked = openrouter_mod.pick_key_for(int(user_id))
+    if not picked:
+        return "", state
+    _cred, _extra, key, _via = picked
+    if not key:
+        return "", state
+    return key, secret_guard.mask_value(secret_guard.map_for(user_id), state)
+
+
+def _auto_state(user_id: int, thread_id: int, action: dict, roots: list[str] | None) -> dict | None:
+    """clip_thread_state, or None when the user has no OpenRouter key."""
+    if not user_can_auto(user_id):
+        return None
+    return clip_thread_state(user_id, thread_id, action, roots=roots)
+
+
 async def evaluate(user_id: int, state: dict, questions: dict | None = None, timeout: float = TIMEOUT_S):
     """POST /api/alpha/decisions with the user's OpenRouter key. None on any failure."""
     try:
         from . import chat_runs as chat_runs_mod
-        from .sources import openrouter as openrouter_mod
+        from .sources import http_pool, openrouter as openrouter_mod
 
         if getattr(chat_runs_mod, "_stopping", False):
             return None
 
-        picked = openrouter_mod.pick_key_for(int(user_id))
-        if not picked:
-            return None
-        _cred, _extra, key, _via = picked
+        key, state = await asyncio.to_thread(_key_and_masked, user_id, state)
         if not key:
             return None
-        from . import secret_guard
-
-        # Jev is a provider too, reached outside api._run_chat.
-        state = await asyncio.to_thread(lambda: secret_guard.mask_value(secret_guard.map_for(user_id), state))
         body = {
             "model": MODEL,
             "state": state,
@@ -210,11 +226,12 @@ async def evaluate(user_id: int, state: dict, questions: dict | None = None, tim
         async with _gate():
             if getattr(chat_runs_mod, "_stopping", False):
                 return None
-            async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_s, connect=min(0.8, timeout_s))) as client:
-                response = await asyncio.wait_for(
-                    client.post(DECISIONS_URL, headers=openrouter_mod._headers(key), json=body),
-                    timeout=timeout_s + 0.2,
-                )
+            client = http_pool.client(TIMEOUT_S)
+            response = await asyncio.wait_for(
+                client.post(DECISIONS_URL, headers=openrouter_mod._headers(key), json=body,
+                            timeout=httpx.Timeout(timeout_s, connect=min(0.8, timeout_s))),
+                timeout=timeout_s + 0.2,
+            )
         if response.status_code != 200:
             logger.warning("Jev HTTP %s body=%s", response.status_code, (response.text or "")[:300])
             return None
@@ -246,10 +263,10 @@ async def judge(user_id: int, thread_id: int, action: dict, *, roots: list[str] 
         # Destructive-pattern hits are not a verdict: they ride along as an
         # advisory reason and Jev decides. A regex refusal here would make
         # auto mode card on every sudo/rm instead of judging it.
-        if not user_can_auto(user_id):
+        state = await asyncio.to_thread(_auto_state, user_id, thread_id, action, roots)
+        if state is None:
             logger.warning("Jev skip no OpenRouter key user=%s", user_id)
             return None
-        state = await asyncio.to_thread(clip_thread_state, user_id, thread_id, action, roots=roots)
         result = await evaluate(user_id, state)
         if not result:
             logger.warning("Jev no result tool=%s path=%s", (action or {}).get("tool"), (action or {}).get("path"))
