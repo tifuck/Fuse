@@ -113,3 +113,15 @@ def test_a_failure_after_the_request_was_sent_is_never_rotated(keys):
 
         # The upstream may already be generating: replaying it could bill twice.
         assert (result.status, result.credential_id, result.attempts, upstream.await_count) == (502, a, [], 1)
+
+
+def test_a_source_with_one_key_reads_and_writes_no_pin(fresh_db):
+    sid = source("openai")
+    cid = accounts.add_credential(sid, "only", "sk-only")
+    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=?", (sid,))
+    with patch.object(openai_compat, "openai_chat", new_callable=AsyncMock, return_value=reply(200)) as upstream:
+        result = _chat(sid, creds, "sticky", session_id="fx:convo")
+
+    assert result.credential_id == cid
+    assert upstream.await_args.args[3]["prompt_cache_key"] == "fx:convo"  # the cache key still goes upstream
+    assert pool_session.lookup(f"openai:{sid}", "fx:convo") is None

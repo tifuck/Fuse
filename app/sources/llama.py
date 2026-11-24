@@ -58,82 +58,79 @@ class LlamaSource(OpenAICompatSource):
         # the configured API key, so an unvalidated TLS peer would capture it.
         return True
 
-    def _client(self, timeout) -> httpx.AsyncClient:
-        return httpx.AsyncClient(timeout=timeout, verify=self._verify())
-
     async def models(self, *, user_id: int | None = None) -> list[str]:
         hit = _models_cache.get(self.source_id)
         if hit and time.time() - hit[0] < _MODELS_TTL:
             return list(hit[1])
         default = str(self.cfg.get("model") or "").strip()
-        async with self._client(8) as client:
-            r = await client.get(self._url() + "/models", headers=self._headers(self._key()))
-            rows: list[dict] = []
-            if r.status_code == 200:
-                data = r.json()
-                rows = [m for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+        client = http_pool.client(8, verify=self._verify())
+        r = await client.get(self._url() + "/models", headers=self._headers(self._key()))
+        rows: list[dict] = []
+        if r.status_code == 200:
+            data = r.json()
+            rows = [m for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
 
-            aliases: dict[str, str] = {}
-            names: list[str] = []
-            # Per model, from the router's /models rows (or a direct server's
-            # one row); /props describes a single model, so it only fills gaps.
-            vision: dict[str, bool] = {}
-            windows: dict[str, int] = {}
-            for row in rows:
-                raw = row["id"]
-                public = _public_model_id(raw)
-                if public in aliases and aliases[public] != raw:
-                    public = raw
-                aliases[public] = raw
-                if public not in names:
-                    names.append(public)
-                arch = row.get("architecture") if isinstance(row.get("architecture"), dict) else {}
-                if isinstance(arch.get("input_modalities"), list):
-                    vision[public] = "image" in arch["input_modalities"]
-                memory = row.get("memory") if isinstance(row.get("memory"), dict) else {}
-                ctx = next((m.get("n_ctx") for m in (memory.get("effective"), memory.get("max")) if isinstance(m, dict) and m.get("n_ctx")), None)
-                if isinstance(ctx, int) and ctx > 0:
-                    windows[public] = ctx
+        aliases: dict[str, str] = {}
+        names: list[str] = []
+        # Per model, from the router's /models rows (or a direct server's
+        # one row); /props describes a single model, so it only fills gaps.
+        vision: dict[str, bool] = {}
+        windows: dict[str, int] = {}
+        for row in rows:
+            raw = row["id"]
+            public = _public_model_id(raw)
+            if public in aliases and aliases[public] != raw:
+                public = raw
+            aliases[public] = raw
+            if public not in names:
+                names.append(public)
+            arch = row.get("architecture") if isinstance(row.get("architecture"), dict) else {}
+            if isinstance(arch.get("input_modalities"), list):
+                vision[public] = "image" in arch["input_modalities"]
+            memory = row.get("memory") if isinstance(row.get("memory"), dict) else {}
+            ctx = next((m.get("n_ctx") for m in (memory.get("effective"), memory.get("max")) if isinstance(m, dict) and m.get("n_ctx")), None)
+            if isinstance(ctx, int) and ctx > 0:
+                windows[public] = ctx
 
-            # A configured alias is useful only when the upstream has no catalog.
-            # Never advertise the historical placeholder as if it were a model.
-            if not names and default and default not in ("local", "llama"):
-                aliases[default] = default
-                names.append(default)
-            _model_aliases[self.source_id] = aliases
+        # A configured alias is useful only when the upstream has no catalog.
+        # Never advertise the historical placeholder as if it were a model.
+        if not names and default and default not in ("local", "llama"):
+            aliases[default] = default
+            names.append(default)
+        _model_aliases[self.source_id] = aliases
+        n_ctx = None
+        cfg_ctx = self.cfg.get("n_ctx") or self.cfg.get("context_window")
+        try:
+            n_ctx = int(cfg_ctx) if cfg_ctx else None
+        except (TypeError, ValueError):
             n_ctx = None
-            cfg_ctx = self.cfg.get("n_ctx") or self.cfg.get("context_window")
+        props_ctx = None
+        if any(name not in vision or (not n_ctx and name not in windows) for name in names):
             try:
-                n_ctx = int(cfg_ctx) if cfg_ctx else None
-            except (TypeError, ValueError):
-                n_ctx = None
-            props_ctx = None
-            if any(name not in vision or (not n_ctx and name not in windows) for name in names):
-                try:
-                    props_url = self._url()[:-3] + "/props" if self._url().endswith("/v1") else self._url().rstrip("/") + "/props"
-                    props = await client.get(props_url, headers=self._headers(self._key()))
-                    if props.status_code == 200:
-                        payload = props.json()
-                        gen = payload.get("default_generation_settings") if isinstance(payload, dict) else None
-                        if isinstance(gen, dict):
-                            props_ctx = int(gen.get("n_ctx") or 0) or None
-                        modalities = payload.get("modalities") if isinstance(payload, dict) else None
-                        if isinstance(modalities, dict) and isinstance(modalities.get("vision"), bool):
-                            for name in names:
-                                vision.setdefault(name, modalities["vision"])
-                except Exception:
-                    pass
-            from .. import context_meter as ctxmod, model_caps
+                props_url = self._url()[:-3] + "/props" if self._url().endswith("/v1") else self._url().rstrip("/") + "/props"
+                props = await client.get(props_url, headers=self._headers(self._key()))
+                if props.status_code == 200:
+                    payload = props.json()
+                    gen = payload.get("default_generation_settings") if isinstance(payload, dict) else None
+                    if isinstance(gen, dict):
+                        props_ctx = int(gen.get("n_ctx") or 0) or None
+                    modalities = payload.get("modalities") if isinstance(payload, dict) else None
+                    if isinstance(modalities, dict) and isinstance(modalities.get("vision"), bool):
+                        for name in names:
+                            vision.setdefault(name, modalities["vision"])
+            except Exception:
+                pass
+        from .. import context_meter as ctxmod, model_caps
 
-            for name in names:
-                if name in vision:
-                    model_caps.remember(self.type_id, name, vision[name])
-                window = n_ctx or windows.get(name) or props_ctx
-                if window:
-                    ctxmod.remember_window(self.type_id, name, window, source_id=self.source_id)
-            if names:
-                _models_cache[self.source_id] = (time.time(), list(names))
-            return names
+        for name in names:
+            if name in vision:
+                model_caps.remember(self.type_id, name, vision[name])
+            window = n_ctx or windows.get(name) or props_ctx
+            if window:
+                ctxmod.remember_window(self.type_id, name, window, source_id=self.source_id)
+        if names:
+            _models_cache[self.source_id] = (time.time(), list(names))
+        return names
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         cred_id = self.creds[0]["id"] if self.creds else None

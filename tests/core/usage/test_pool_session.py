@@ -1,6 +1,7 @@
 """Session pins: a tenant-scoped session id per conversation, pinned to one
 pool account durably (memory plus pool_sessions) until retention vacuums it.
 """
+import threading
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -84,3 +85,28 @@ def test_cache_routing_fields_are_dropped_from_a_copy():
     body = {"model": "glm-5.3", "prompt_cache_key": "x", "prompt_cache_retention": "24h", "n": 1}
     out = pool_session.drop_cache_routing_fields(body)
     assert out == {"model": "glm-5.3", "n": 1} and body["prompt_cache_key"] == "x"
+
+
+def test_a_lookup_never_waits_on_another_binds_database_write(fresh_db):
+    bind("grok", "sess-1", 7, now=T0)
+    writing, release = threading.Event(), threading.Event()
+
+    def slow_write(*_args):
+        writing.set()
+        release.wait(5)
+
+    with patch.object(db, "execute", side_effect=slow_write):
+        binder = threading.Thread(target=bind, args=("grok", "sess-2", 8), kwargs={"now": T0})
+        binder.start()
+        try:
+            assert writing.wait(5)
+            seen = []
+            # Memory already holds the new pin while its row is being written.
+            reader = threading.Thread(target=lambda: seen.append(
+                (lookup("grok", "sess-1", now=T0), pool_session.peek("grok", "sess-2"))))
+            reader.start()
+            reader.join(5)
+            assert seen == [(7, 8)]
+        finally:
+            release.set()
+            binder.join(5)
