@@ -267,3 +267,26 @@ def test_purging_an_archived_chat_keeps_its_forks_and_other_accounts_images(fres
     ref = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": chat_images.PREFIX + sha}}]}]
     for owner in (uid, stranger):
         assert chat_images.rehydrate(owner, ref)[0]["content"][0]["image_url"]["url"] == image_url(1)
+
+
+def test_a_purge_cut_off_before_its_runs_were_stripped_runs_again(fresh_db, monkeypatch):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    run = _turn(uid, thread, seed=1)
+    sha = hashlib.sha256(image_url(1).encode()).hexdigest()
+    ref = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": chat_images.PREFIX + sha}}]}]
+    db.execute(f"UPDATE chat_runs SET {db.set_provider_sql()} WHERE id=?", (json.dumps(ref), run["id"]))
+    _age(uid, thread, 4)
+    real_strip = retention._strip_runs
+
+    def cut_off(user_id, thread_id):
+        raise RuntimeError("worker stopped")
+
+    monkeypatch.setattr(retention, "_strip_runs", cut_off)
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+    assert _images(uid, thread) == 0 and chat_images.PREFIX in _stored(uid, thread)
+    monkeypatch.setattr(retention, "_strip_runs", real_strip)
+    # The next sweep finishes the purge: no run keeps a reference to a deleted image.
+    assert retention.purge_idle_media() == {"threads": 1, "images": 0}
+    assert chat_images.PREFIX not in _stored(uid, thread)
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}

@@ -109,20 +109,20 @@ def set_settings(user_id: int, raw: dict) -> dict:
     allowed = {"archive_hours", "archive_chats", "archive_projects", "delete_days"}
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise RetentionError("unsupported cleanup fields")
-    current = get_settings(user_id)
-    hours = _bounded_int(raw["archive_hours"], "archive_hours", MAX_ARCHIVE_HOURS) if "archive_hours" in raw else current["archive_hours"]
-    days = _bounded_int(raw["delete_days"], "delete_days", MAX_DELETE_DAYS) if "delete_days" in raw else current["delete_days"]
-    flags = {}
+    # Only the fields sent: writing back a read of the others would revert
+    # another save of them that landed in between.
+    sets = {}
+    if "archive_hours" in raw:
+        sets["retention_archive_hours"] = _bounded_int(raw["archive_hours"], "archive_hours", MAX_ARCHIVE_HOURS)
+    if "delete_days" in raw:
+        sets["retention_delete_days"] = _bounded_int(raw["delete_days"], "delete_days", MAX_DELETE_DAYS)
     for key in ("archive_chats", "archive_projects"):
-        value = raw.get(key, current[key])
-        if not isinstance(value, bool):
-            raise RetentionError(f"{key} must be true or false")
-        flags[key] = value
-    db.execute(
-        """UPDATE users SET retention_archive_hours=?, retention_archive_chats=?, retention_archive_projects=?,
-           retention_delete_days=? WHERE id=?""",
-        (hours, int(flags["archive_chats"]), int(flags["archive_projects"]), days, user_id),
-    )
+        if key in raw:
+            if not isinstance(raw[key], bool):
+                raise RetentionError(f"{key} must be true or false")
+            sets[f"retention_{key}"] = int(raw[key])
+    if sets:
+        db.execute(f"UPDATE users SET {', '.join(f'{col}=?' for col in sets)} WHERE id=?", (*sets.values(), user_id))
     return get_settings(user_id)
 
 
@@ -525,11 +525,7 @@ def _purge_thread_media(user_id: int, thread: dict) -> int | None:
         history = _strip_history(row["retained_history"], messages, stripped)
         shas = [r["sha"] for r in conn.execute("SELECT sha FROM chat_images WHERE thread_id=?", (tid,)).fetchall()]
         conn.execute("DELETE FROM chat_images WHERE thread_id=?", (tid,))
-        conn.execute(
-            "INSERT INTO chat_media_purges(thread_id, purged_at) VALUES(?,?)"
-            " ON CONFLICT(thread_id) DO UPDATE SET purged_at=excluded.purged_at",
-            (tid, db.now()),
-        )
+        purged_at = db.now()
         sets, args = [], []
         if history is not None:
             sets.append("retained_history=?")
@@ -544,6 +540,14 @@ def _purge_thread_media(user_id: int, thread: dict) -> int | None:
             chat_tx.thread_event(conn, user_id, tid, transcript_changed=True)
     chat_images.forget(user_id, shas)
     _strip_runs(user_id, tid)
+    # Marked purged only once its runs are stripped too: a purge cut off
+    # before that runs again on the next sweep instead of leaving runs that
+    # point at deleted images.
+    db.execute(
+        "INSERT INTO chat_media_purges(thread_id, purged_at) VALUES(?,?)"
+        " ON CONFLICT(thread_id) DO UPDATE SET purged_at=excluded.purged_at",
+        (tid, purged_at),
+    )
     return len(shas)
 
 
