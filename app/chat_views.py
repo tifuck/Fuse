@@ -567,12 +567,17 @@ def followup_text(item) -> str:
     return str(item or "").strip()
 
 
-def _followup_delivered(item, transcript: str) -> bool:
+def _followup_needle(item) -> str:
+    """What a delivered follow-up leaves in the stored transcript."""
     marker = _followup_marker(item)
     if marker:
-        return chat_tx._json_needle(marker) in transcript
+        return chat_tx._json_needle(marker)
     # Legacy plain-string entry queued before ids existed.
-    return chat_tx._json_needle(str(item)) in transcript
+    return chat_tx._json_needle(str(item))
+
+
+def _followup_delivered(item, transcript: str) -> bool:
+    return _followup_needle(item) in transcript
 
 
 _FOLLOWUP_ID_RE = re.compile(r"\(followup:[0-9a-f]{1,32}\)\s*")
@@ -1373,9 +1378,15 @@ def get_run_snapshot(user_id, run_id):
     stamps = chat_checkpoint.state_cursor_snapshot(user_id)
     with db.tx() as conn:
         conn.execute("BEGIN")
-        run = run_view(conn.execute("SELECT * FROM chat_runs WHERE user_id=? AND id=?", (user_id, run_id)).fetchone())
+        has = "provider_base IS NOT NULL OR provider_tail IS NOT NULL" if db.provider_split(conn) else "provider_messages IS NOT NULL"
+        run = run_view(conn.execute(f"SELECT {RUN_COLUMNS}, ({has}) AS has_transcript FROM chat_runs WHERE user_id=? AND id=?",
+                                    (user_id, run_id)).fetchone())
         if run is None:
             return None
+        if run["parent_run_id"]:
+            # Only a subagent's panel projects its transcript.
+            stored = conn.execute("SELECT provider_messages FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+            run["provider_messages"] = stored["provider_messages"] if stored else None
         high = conn.execute("SELECT cursor FROM chat_event_cursors WHERE user_id=?", (user_id,)).fetchone()
         run["event_cursor"] = int(high[0]) if high else 0
         if run["status"] in chat_tx.ACTIVE:
@@ -1392,7 +1403,7 @@ def get_run_snapshot(user_id, run_id):
                 run["event_cursor"] = stamped
         settle_spawn_traces(conn, user_id, [run["message"]])
         settle_command_traces(conn, user_id, run["thread_id"], [run["message"]])
-        run["display_messages"], live_start = _child_display(run)
+        run["display_messages"], live_start = _child_display(run) if run["parent_run_id"] else ([], {})
         run["live_start"] = _utf16_mark(run.get("message"), live_start) if live_start else None
         settle_spawn_traces(conn, user_id, run["display_messages"])
         settle_command_traces(conn, user_id, run["thread_id"], run["display_messages"])
@@ -1407,7 +1418,7 @@ def thread_revision(user_id, thread_id):
 
 def active_runs(user_id):
     return [run_view(row) for row in db.fetchall(
-        """SELECT * FROM chat_runs WHERE user_id=? AND status IN ('queued','running')
+        f"""SELECT {RUN_COLUMNS} FROM chat_runs WHERE user_id=? AND status IN ('queued','running')
            AND parent_run_id IS NULL ORDER BY created_at,id""",
         (user_id,),
     )]

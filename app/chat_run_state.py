@@ -101,7 +101,7 @@ def steer_turn(user_id, thread_id, text, command_id, attachments=None):
         fingerprint, previous = chat_tx.command(conn, user_id, command_id, identity)
         if previous is not None:
             return {"idempotent": True, "thread": chat_views.thread_view(conn, user_id, pk)}
-        run = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running') AND parent_run_id IS NULL",
+        run = conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running') AND parent_run_id IS NULL",
                            (pk, user_id)).fetchone()
         if run is None or run["cancel_requested"]:
             raise chats.ChatValidationError("No active run; send a turn instead.", 409)
@@ -963,6 +963,49 @@ def _json_field(value):
         return value
 
 
+# What the agents pane derives from a child's message, per (run id, message
+# digest): a poll re-reads only the messages that changed since the last one.
+_AGENT_FIELDS_MAX = 1024
+_agent_fields: dict[tuple[str, str], dict] = {}
+_agent_fields_lock = threading.Lock()
+_ACTIVITY_TRACE_KEYS = ("name", "status", "state", "execution_status", "background", "child_id", "command_id")
+
+
+def _agent_message_fields(message) -> dict:
+    tools = message.get("tools") if isinstance(message.get("tools"), list) else []
+    tool_counts: dict[str, int] = {}
+    for trace in tools:
+        if not isinstance(trace, dict):
+            continue
+        name = str(trace.get("name") or "")
+        if not name:
+            continue
+        tool_counts[name] = tool_counts.get(name, 0) + 1
+    segments = message.get("segments") or []
+    last = next((part for part in reversed(segments) if isinstance(part, dict) and (part.get("type") == "tool" or str(part.get("text") or "").strip())), None)
+    return {
+        "tool_counts": tool_counts,
+        "recent": chat_views.agent_recent_calls(tools),
+        "error": str(message.get("error") or "")[:400],
+        "gen": {key: value for key, value in usage.items()
+                if key in ("gen_ms", "gen_out", "gen_est") and type(value) is int}
+        if isinstance(usage := message.get("usage"), dict) else {},
+        # As much of the message as agent_current_activity and run_work_fields read.
+        "slim": {
+            "tools": [{key: trace[key] for key in _ACTIVITY_TRACE_KEYS if key in trace} for trace in message.get("tools") or []
+                      if isinstance(trace, dict) and trace.get("status") in ("running", "progress", "queued")],
+            "segments": [last] if last is not None else [],
+            "elapsedMs": message.get("elapsedMs"),
+        },
+        # child_writeup()[:200] per (status, follow-up fields it reads).
+        "summaries": {},
+    }
+
+
+def _summary_key(status, agent) -> str:
+    return chat_tx.dumps([status, agent.get("unconsumed_followups"), agent.get("carried_report")])
+
+
 def list_thread_agents(user_id, thread_id, limit=100):
     """Child runs (subagents) of a thread, newest first, with spawned-child counts."""
     # Only agent and model from each request: a subagent's request also
@@ -970,7 +1013,7 @@ def list_thread_agents(user_id, thread_id, limit=100):
     # MariaDB's JSON_EXTRACT returns objects (the translator would emit
     # JSON_VALUE, which returns NULL for them), so it goes out natively.
     sql = """SELECT id, status, {agent} AS agent_json, {model} AS model_json,
-                  message, activity, created_at, updated_at, cancel_requested, cancel_requested_at,
+                  {digest} AS message_digest, activity, created_at, updated_at, cancel_requested, cancel_requested_at,
                   resume_count, ({has}) AS has_transcript, parent_run_id, root_run_id, agent_depth
            FROM chat_runs
            WHERE user_id={p} AND thread_id={p} AND parent_run_id IS NOT NULL
@@ -984,14 +1027,15 @@ def list_thread_agents(user_id, thread_id, limit=100):
     args = (user_id, thread_id, user_id, thread_id, max(1, min(int(limit), 200)))
     # Not the virtual provider_messages: testing it builds each transcript.
     has = "provider_base IS NOT NULL OR provider_tail IS NOT NULL" if db.provider_split() else "provider_messages IS NOT NULL"
+    digest = "message_digest" if "message_digest" in chat_checkpoint._run_columns() else "MD5(message)"
     with db.tx() as conn:
         native = getattr(conn, "native", None)
         if native is not None:
-            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", has=has, p="%s"),
-                          args).fetchall()
+            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", has=has,
+                                     digest=digest, p="%s"), args).fetchall()
         else:
-            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", has=has, p="?"),
-                                args).fetchall()
+            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", has=has,
+                                           digest=digest, p="?"), args).fetchall()
     counts: dict[str, int] = {}
     root = thread_root_run(user_id, thread_id) if rows else None
     stopped_at = str(root.get("stopped_at") or "") if root else ""

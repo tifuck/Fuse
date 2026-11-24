@@ -485,9 +485,25 @@ def settle_abandoned_followups(run_id: str) -> None:
         logger.exception("Failed to settle follow-ups for abandoned run %s", run_id)
 
 
+def _in_transcript(conn, needles) -> tuple[str, tuple]:
+    """SELECT columns d0, d1, ... (and their args) telling whether the stored
+    provider transcript holds each needle, without reading it. Base and tail
+    apart, as followup_display_deliveries: no marker straddles the split."""
+    split = db.provider_split(conn)
+    columns, args = [], []
+    for index, needle in enumerate(needles):
+        if split:
+            columns.append(f"(INSTR(provider_base,?) OR INSTR(provider_tail,?)) AS d{index}")
+            args += [needle, needle]
+        else:
+            columns.append(f"INSTR(provider_messages,?) AS d{index}")
+            args.append(needle)
+    return ",".join(columns), tuple(args)
+
+
 def _settle_child_followups(conn, run_id: str) -> None:
     row = conn.execute(
-        "SELECT id,parent_run_id,status,provider_messages,request FROM chat_runs WHERE id=?",
+        "SELECT id,parent_run_id,status,request FROM chat_runs WHERE id=?",
         (run_id,),
     ).fetchone()
     if row is None or not row["parent_run_id"] or row["status"] not in chat_tx.TERMINAL:
@@ -502,12 +518,13 @@ def _settle_child_followups(conn, run_id: str) -> None:
     pending = agent.get("pending_followups")
     if not isinstance(pending, list) or not pending:
         return
-    transcript = row["provider_messages"] or ""
-    texts = [
-        chat_views.followup_text(item)
-        for item in pending
-        if chat_views.followup_text(item) and not chat_views._followup_delivered(item, transcript)
-    ]
+    queued = [item for item in pending if chat_views.followup_text(item)]
+    delivered = set()
+    if queued:
+        columns, args = _in_transcript(conn, [chat_views._followup_needle(item) for item in queued])
+        found = conn.execute(f"SELECT {columns} FROM chat_runs WHERE id=?", (*args, run_id)).fetchone()
+        delivered = {index for index in range(len(queued)) if found is not None and found[f"d{index}"]}
+    texts = [chat_views.followup_text(item) for index, item in enumerate(queued) if index not in delivered]
     reported = [str(t) for t in (agent.get("unconsumed_followups") or []) if str(t).strip()]
     for text in texts:
         if text not in reported:
@@ -555,8 +572,9 @@ def queue_steer(run_id: str, steer_id: str, text: str) -> bool:
     if not run_id or not steer_id or not str(text or "").strip():
         return False
     with chat_tx.transaction() as conn:
+        columns, args = _in_transcript(conn, [chat_tx._json_needle(f"(steer:{steer_id})")])
         row = conn.execute(
-            "SELECT id,status,request,provider_messages,cancel_requested FROM chat_runs WHERE id=?", (run_id,)
+            f"SELECT id,status,request,cancel_requested,{columns} FROM chat_runs WHERE id=?", (*args, run_id)
         ).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE or row["cancel_requested"]:
             return False
@@ -571,7 +589,7 @@ def queue_steer(run_id: str, steer_id: str, text: str) -> bool:
             pending = []
         if any(isinstance(item, dict) and item.get("id") == steer_id for item in pending):
             return True
-        if chat_tx._json_needle(f"(steer:{steer_id})") in (row["provider_messages"] or ""):
+        if row["d0"]:
             # Already delivered in an earlier round; idempotent no-op.
             return True
         from . import chats as chats_mod
@@ -658,21 +676,23 @@ def steer_display_deliveries(run_id):
 
 def seal_steer_display(run_id, steer_ids):
     """Called by the worker after flushing pre-delivery output, before new tokens."""
+    ids = list(dict.fromkeys(steer_ids))
     with chat_tx.transaction() as conn:
-        row = conn.execute("SELECT request,provider_messages,status FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+        columns, args = _in_transcript(conn, [chat_tx._json_needle(f"(steer:{ident})") for ident in ids])
+        row = conn.execute(f"SELECT request,status{',' + columns if columns else ''} FROM chat_runs WHERE id=?",
+                           (*args, run_id)).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return
         request = _stored_request(row["request"])
         if request is None:
             logger.warning("Run %s request is unreadable; steer display not sealed", run_id)
             return
-        ids = set(steer_ids)
+        delivered = {ident for index, ident in enumerate(ids) if row[f"d{index}"]}
         agent = request.get("agent") if isinstance(request.get("agent"), dict) else {}
         for part in agent.get("display_parts") or []:
             if not isinstance(part, dict):
                 continue
-            ident = part.get("steer_id")
-            if ident in ids and chat_tx._json_needle(f"(steer:{ident})") in (row["provider_messages"] or ""):
+            if part.get("steer_id") in delivered:
                 part["awaiting_delivery"] = False
         conn.execute("UPDATE chat_runs SET request=? WHERE id=?", (chat_tx.dumps(request), run_id))
 
@@ -1359,7 +1379,7 @@ def _start_child_run(
                 },
             )
             chat_tx.thread_event(conn, user_id, thread_id)
-            return chat_views.run_view(conn.execute("SELECT * FROM chat_runs WHERE id=?", (child_id,)).fetchone())
+            return chat_views.run_view(conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=?", (child_id,)).fetchone())
         child_id = str(uuid4())
         message_id = str(uuid4())
         assistant = chats.parse_messages(
@@ -1439,4 +1459,4 @@ def _start_child_run(
                 },
         )
         chat_tx.thread_event(conn, user_id, thread_id)
-        return chat_views.run_view(conn.execute("SELECT * FROM chat_runs WHERE id=?", (child_id,)).fetchone())
+        return chat_views.run_view(conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=?", (child_id,)).fetchone())

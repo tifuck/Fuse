@@ -1524,7 +1524,9 @@ async def resume_queued(user_id=None):
             continue
         # Queued runs about to launch need their full request; fetch it only
         # now so the periodic scan does not ship every blob every 60 s.
-        full = await asyncio.to_thread(db.fetchone, "SELECT * FROM chat_runs WHERE id=?", (row["id"],))
+        from .chat_views import RUN_COLUMNS
+
+        full = await asyncio.to_thread(db.fetchone, f"SELECT {RUN_COLUMNS} FROM chat_runs WHERE id=?", (row["id"],))
         run = chat_store.run_view(full)
         if run is None:
             continue

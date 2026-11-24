@@ -349,10 +349,10 @@ async def chat_run_get(request: Request, run_id: str):
             "cancel_requested": run["cancel_requested"],
             "cancel_requested_at": str(run.get("cancel_requested_at") or ""),
             "resume_count": int(run.get("resume_count") or 0),
-            "has_transcript": bool(run.get("provider_messages")),
+            "has_transcript": bool(run.get("has_transcript")),
             "resumable": bool(
                 run["status"] in ("interrupted", "cancelled")
-                and run.get("provider_messages")
+                and run.get("has_transcript")
                 and int(run.get("resume_count") or 0) < chat_store.MAX_RESUME_ATTEMPTS
                 and not (
                     not run.get("parent_run_id")
