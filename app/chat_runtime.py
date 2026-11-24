@@ -337,6 +337,20 @@ def _compact_focus(instructions: str = "", *, is_child: bool = False, agent: dic
 _PENDING_CHECKPOINTS: dict = {}
 _CHECKPOINT_TASKS: set = set()
 CHECKPOINT_LATER_DELAYS = (2, 10, 30, 120)
+_METER_TASKS: set = set()
+
+
+async def _drain_meter_saves(saves: dict) -> None:
+    """Wait for a run's queued context-meter saves. As with durable_call, a
+    cancellation waits out the write in flight before it propagates."""
+    cancelled = False
+    while (task := saves.get("task")) is not None and not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 async def _persist_checkpoint_later(key, apply, **kwargs) -> None:
@@ -394,12 +408,16 @@ async def _compact_current(
     # results with stubs, and the handoff would never see the evidence.
     system = [msg for msg in current_messages if isinstance(msg, dict) and msg.get("role") == "system"]
     source = [msg for msg in current_messages if isinstance(msg, dict) and msg.get("role") != "system"]
+
+    def _measure(messages):
+        return context_meter.meter_from_messages(
+            chat_history.for_model(messages, model), model=model, type_id=type_id, tools=tools,
+            override=override, calibration=calibration,
+        )
+
     # Measure what this model is sent: another model's retained reasoning
     # stays in the transcript but never reaches this request.
-    snap = context_meter.meter_from_messages(
-        chat_history.for_model(current_messages, model), model=model, type_id=type_id, tools=tools,
-        override=override, calibration=calibration,
-    )
+    snap = await asyncio.to_thread(_measure, current_messages)
     # The request being answered (trailing user rows, images included) is
     # re-sent verbatim after the handoff, so the request ends on a user row.
     dropped, kept = ctxmod.split_trailing_users(source, snap["limit"])
@@ -441,8 +459,7 @@ async def _compact_current(
             # Providers reject a request that ends on the ACK (assistant prefill).
             *(kept or [{"role": "user", "content": ctxmod.COMPACT_CONTINUE}]),
         ]
-        after = context_meter.meter_from_messages(chat_history.for_model(rebuilt, model), model=model, type_id=type_id,
-                                                  tools=tools, override=override, calibration=calibration)
+        after = await asyncio.to_thread(_measure, rebuilt)
         after["estimated"] = True
         after["standing"] = True
         after["scope"] = "transcript"
@@ -473,10 +490,8 @@ async def _compact_current(
     # rewrites the cached prefix and loses the evidence, and the next request
     # would re-send the full bodies anyway. Shrinking history is compaction's
     # job; a non-compactable transcript is returned untouched.
-    snap = context_meter.meter_from_messages(
-        chat_history.for_model(current_messages, model), model=model, type_id=type_id, tools=tools,
-        override=override, calibration=calibration,
-    )
+    if can_summarize:
+        snap = await asyncio.to_thread(_measure, current_messages)
     return current_messages, snap, None
 
 
@@ -502,30 +517,34 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     # each outgoing request. Stripping it here made the loss durable, so
     # switching back replayed different bytes than that model was sent.
     tools = parse_tool_names(raw.get("tools"))
-    # Only the server-owned run scheduler supplies this keyword, never JSON overrides.
-    prefs = frozen_context if frozen_context is not None else chats.get_user_context(user["id"])
     thread_context = ""
-    thread = None
     thread_id = raw.get("thread_id")
     if thread_id is not None:
         try:
             thread_id = int(thread_id)
         except (TypeError, ValueError):
             thread_id = None
-        thread = chats.get_thread(user["id"], thread_id) if thread_id else None
-        if thread:
-            thread_context = thread.get("context") or ""
-            if "tools" not in raw:
-                tools = parse_tool_names(thread.get("tools"))
     from .search import egress
+    from . import hosts as hosts_mod
 
-    if not egress.available(user["id"]):
+    def _turn_reads():
+        return (
+            # Only the server-owned run scheduler supplies this keyword, never JSON overrides.
+            frozen_context if frozen_context is not None else chats.get_user_context(user["id"]),
+            chats.get_thread(user["id"], thread_id) if thread_id else None,
+            egress.available(user["id"]),
+            hosts_mod.settings_for(user["id"]),
+        )
+
+    prefs, thread, web_available, settings_row = await asyncio.to_thread(_turn_reads)
+    if thread:
+        thread_context = thread.get("context") or ""
+        if "tools" not in raw:
+            tools = parse_tool_names(thread.get("tools"))
+    if not web_available:
         tools = [name for name in tools if name not in ("web_search", "read_url")]
     if isinstance(raw.get("thread_context"), str):
         thread_context = _clip(raw.get("thread_context"), chats.CONTEXT_MAX)
-    from . import hosts as hosts_mod
-
-    settings_row = hosts_mod.settings_for(user["id"])
     project_session = bool(agent.get("project_session")) or bool(thread and thread.get("kind") == "project")
     if agent.get("scheduled"):
         coding = bool(agent.get("coding"))
@@ -533,10 +552,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         coding = bool(agent.get("coding")) or bool(settings_row.get("agent_coding")) or project_session
     bound_host_id = agent.get("bound_host_id") if agent.get("bound_host_id") is not None else (thread.get("host_id") if thread else None)
     bound_cwd = str(agent.get("bound_cwd") or "")
-    if not bound_cwd and thread and thread.get("project_id"):
-        proj = hosts_mod.resolve_project_id(user["id"], thread.get("project_id"))
-        if proj:
-            bound_cwd = proj.get("remote_path") or ""
     nested = bool(agent.get("allow_nested_spawn") if agent else settings_row.get("allow_nested_spawn"))
     depth = int(agent.get("depth") or 0)
     max_depth = 3 if nested else 1
@@ -549,11 +564,37 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     from . import skills as skills_mod
 
     is_child = bool(agent.get("parent_run_id") or depth)
-    # Children are bounded tasks: scope the machine catalog to their bound host and
-    # skip the skills index (a parent that wants a skill used says so in the prompt).
-    # One host bundle per turn start, off the event loop: the catalog, the
-    # bound label and the SSH check below all read it.
-    host_bundle = await asyncio.to_thread(hosts_mod.list_bundle, user["id"]) if coding else None
+    # Site switch and the account's Settings › Chat defaults toggle.
+    artifacts_on = bool(settings.artifacts_enabled) and prefs.get("artifacts", True) is not False
+    # Memory is opt-in: the turn's mode comes from the run request (account
+    # switch, this chat's switch, unattended runs read only). Subagents get
+    # none; a parent passes what a child needs in its prompt.
+    memory_mode = prefs.get("memory_mode") if settings.memory_enabled and not is_child else None
+    if memory_mode not in ("read", "full"):
+        memory_mode = "off"
+    memory_project = thread.get("project_id") if thread else None
+    fresh_leg = not agent.get("resumed") and not agent.get("followup_continuation")
+
+    def _prompt_reads():
+        proj = (hosts_mod.resolve_project_id(user["id"], thread.get("project_id"))
+                if not bound_cwd and thread and thread.get("project_id") else None)
+        # Children are bounded tasks: scope the machine catalog to their bound host and
+        # skip the skills index (a parent that wants a skill used says so in the prompt).
+        # One host bundle per turn start: the catalog, the bound label and the
+        # SSH check below all read it.
+        bundle = hosts_mod.list_bundle(user["id"]) if coding else None
+        skills_index = skills_mod.catalog_for_prompt(user["id"]) if coding and not is_child else ""
+        memory_index = ""
+        if memory_mode != "off":
+            from . import memory as memory_mod
+
+            memory_index = memory_mod.index(user["id"], memory_project)
+        listed = artifacts.list_for_prompt(user["id"], thread_id) if artifacts_on and fresh_leg else []
+        return proj, bundle, skills_index, memory_index, listed
+
+    proj, host_bundle, skills_index, memory_index, artifact_rows = await asyncio.to_thread(_prompt_reads)
+    if proj:
+        bound_cwd = proj.get("remote_path") or ""
     host_catalog = (
         hosts_mod.catalog_for_prompt(
             user["id"],
@@ -565,7 +606,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         if coding
         else ""
     )
-    skills_index = skills_mod.catalog_for_prompt(user["id"]) if coding and not is_child else ""
     bound_label = ""
     if coding and bound_host_id:
         bound_row = next((h for h in host_bundle["hosts"] if str(h["id"]) == str(bound_host_id)), None)
@@ -584,8 +624,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     from .agent_catalog import CODE_MODE, sanitize_loaded
 
     loaded_tools: list[str] = sanitize_loaded(agent.get("loaded_tools") if isinstance(agent.get("loaded_tools"), list) else [])
-    # Site switch and the account's Settings › Chat defaults toggle.
-    artifacts_on = bool(settings.artifacts_enabled) and prefs.get("artifacts", True) is not False
     from .agent_catalog import ARTIFACT_NAMES
 
     if coding:
@@ -595,18 +633,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                                         *(["propose_skill"] if not is_child and not agent.get("auto") and not agent.get("scheduled") else [])])
     if not artifacts_on:
         loaded_tools[:] = [n for n in loaded_tools if n not in ARTIFACT_NAMES]
-    # Memory is opt-in: the turn's mode comes from the run request (account
-    # switch, this chat's switch, unattended runs read only). Subagents get
-    # none; a parent passes what a child needs in its prompt.
-    memory_mode = prefs.get("memory_mode") if settings.memory_enabled and not is_child else None
-    if memory_mode not in ("read", "full"):
-        memory_mode = "off"
-    memory_project = thread.get("project_id") if thread else None
-    memory_index = ""
-    if memory_mode != "off":
-        from . import memory as memory_mod
-
-        memory_index = memory_mod.index(user["id"], memory_project)
     if kind == "explore":
         from .agent_catalog import EXPLORE_TOOLS
 
@@ -724,9 +750,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
     model_messages = messages if agent.get("resumed") or agent.get("followup_continuation") else expand_slash_messages(
         messages, project_session=project_session, bound_cwd=bound_cwd)
     work = [{"role": "system", "content": system}, *model_messages]
-    if not agent.get("resumed") and not agent.get("followup_continuation"):
+    if fresh_leg:
         tail_block = _session_tail_block(
-            _artifact_lines(artifacts.list_for_prompt(user["id"], thread_id) if artifacts_on else []),
+            _artifact_lines(artifact_rows),
             vault_locked=bool(coding and ssh_any and not vault_ok),
         )
         work = _inject_session_tail(work, tail_block)
@@ -803,6 +829,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         payload["tools"] = schemas
         payload["tool_choice"] = "auto"
         payload["parallel_tool_calls"] = True
+
+    meter_saves: dict = {"snap": None, "task": None}
 
     async def gen():
         nonlocal completion_limit
@@ -893,7 +921,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
 
         invoke = agent.get("invoke_skill") if isinstance(agent.get("invoke_skill"), dict) else None
         if coding and invoke:
-            transcript, preload_event = apply_skill_preload(
+            transcript, preload_event = await asyncio.to_thread(
+                apply_skill_preload,
                 current_messages,
                 user_id=user["id"],
                 run_id=str(run_id or ""),
@@ -915,7 +944,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         if src_type_guess == "explabs":
             from .sources.explabs import cached_catalog
 
-            resolved_window = context_meter.window_for(model, "explabs", catalog=cached_catalog(user["id"]))
+            resolved_window = context_meter.window_for(model, "explabs", catalog=await asyncio.to_thread(cached_catalog, user["id"]))
         calibration = (stored_meter or {}).get("calibration")
         if calibration and calibration.get("model") != model:
             calibration = None
@@ -937,7 +966,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             try:
                 from .chat_checkpoint import load_compaction
 
-                stored_state = load_compaction(user["id"], thread_id) or {}
+                stored_state = await asyncio.to_thread(load_compaction, user["id"], thread_id) or {}
                 cache_prior, pool_prior = stored_state.get("cache"), stored_state.get("pool")
             except Exception:
                 logger.exception("Could not load the prompt-cache probe")
@@ -972,6 +1001,16 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 return None
             return projected[len(sent):]
 
+        # The last plain measurement. The same transcript list at the same length,
+        # with the same tools, source, calibration, window, anchor and settings,
+        # measures the same: a tool round's meter serves the next preflight, and
+        # its projection (handed out once) the request that follows.
+        measured_last: dict = {}
+
+        def _measure_key(measured):
+            return (id(measured), len(measured), id(current.get("tools")), src_type or src_type_guess, id(calibration),
+                    window_override or resolved_window, anchor["prompt"], id(anchor["sent"]), context_meter.config())
+
         def _live_meter(extra_tokens: int = 0, estimated: bool | None = None, usage=None, response=None):
             measured = current_messages
             if response:
@@ -980,6 +1019,34 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     assistant["tool_calls"] = _tool_messages(jobs_from_calls(response["calls"], 0))[0]["tool_calls"]
                 assistant.update(_native_reasoning(response.get("reasoning"), model, response.get("thinking"), source_type=src_type or src_type_guess))
                 measured = [*current_messages, assistant]
+            plain = not response and not extra_tokens and bool(window_override or resolved_window)
+            if plain and measured_last.get("key") == _measure_key(measured):
+                snap = dict(measured_last["snap"])
+            else:
+                projected, snap = _measure(measured, extra_tokens)
+                if plain:
+                    measured_last.update(key=_measure_key(measured), snap=dict(snap), projected=projected,
+                                         refs=(measured, current.get("tools"), calibration, anchor["sent"]))
+            # Usage is a diagnostic of the last request, never the displayed total.
+            # The meter reports retained context for the NEXT request, so the
+            # measured prompt is anchored and only the replayable suffix is
+            # added. prompt+completion would count billed output that never
+            # replays (truncated calls, provider-dropped reasoning).
+            if usage:
+                snap["provider_usage"] = dict(usage)
+            if calibration and "calibration" not in snap:
+                snap["calibration"] = dict(calibration)
+            if estimated is not None:
+                snap["estimated"] = estimated
+            snap["scope"] = "prompt"
+            snap["run_id"] = run_id
+            snap["source_type"] = src_type or src_type_guess
+            snap["history_info"] = raw.get("history_info") or {"mode": "legacy" if run_id and not raw.get("history_replay") and not is_child else "full"}
+            if snap.get("parts") and snap["parts"].get("total") != snap.get("used"):
+                snap["parts"] = context_meter._fit_parts(snap["parts"], snap["used"])
+            return snap
+
+        def _measure(measured, extra_tokens):
             projected = chat_history.for_model(measured, model)
             added = _anchored(projected)
             if added is not None:
@@ -1007,32 +1074,36 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     override=window_override or resolved_window,
                     calibration=calibration,
                 )
-            # Usage is a diagnostic of the last request, never the displayed total.
-            # The meter reports retained context for the NEXT request, so the
-            # measured prompt is anchored and only the replayable suffix is
-            # added. prompt+completion would count billed output that never
-            # replays (truncated calls, provider-dropped reasoning).
-            if usage:
-                snap["provider_usage"] = dict(usage)
-            if calibration and "calibration" not in snap:
-                snap["calibration"] = dict(calibration)
-            if estimated is not None:
-                snap["estimated"] = estimated
-            snap["scope"] = "prompt"
-            snap["run_id"] = run_id
-            snap["source_type"] = src_type or src_type_guess
-            snap["history_info"] = raw.get("history_info") or {"mode": "legacy" if run_id and not raw.get("history_replay") and not is_child else "full"}
-            if snap.get("parts") and snap["parts"].get("total") != snap.get("used"):
-                snap["parts"] = context_meter._fit_parts(snap["parts"], snap["used"])
-            return snap
+            return projected, snap
 
-        async def _persist_meter(snap: dict):
+        def _request_meter(messages, tools):
+            """(projected messages, request meter, raw estimate) for one request."""
+            if measured_last.get("projected") is not None and measured_last.get("key") == _measure_key(messages):
+                projected = measured_last.pop("projected")
+            else:
+                projected = chat_history.for_model(messages, model)
+            meter = context_meter.meter_from_messages(projected, model=model,
+                type_id=src_type or src_type_guess, tools=tools, override=window_override or resolved_window)
+            estimate = meter["used"]
+            added = _anchored(projected)
+            if added is not None:
+                meter = context_meter.next_request_meter(
+                    projected, model=model, type_id=src_type or src_type_guess,
+                    tools=tools, override=window_override or resolved_window,
+                    anchor_prompt=anchor["prompt"], added=added, calibration=calibration,
+                )
+            else:
+                meter = context_meter.calibrate_meter(meter, calibration)
+            meter.update(scope="prompt", run_id=run_id, source_type=src_type or src_type_guess)
+            return projected, meter, estimate
+
+        async def _save_meter(snap: dict):
             from .async_work import durable_call
             if is_child and run_id:
                 try:
                     from . import chat_store as store
 
-                    await durable_call(store.save_child_meter, str(run_id), {**snap, "scope": "prompt", "run_id": run_id})
+                    await durable_call(store.save_child_meter, str(run_id), snap)
                 except Exception:
                     logger.exception("Could not persist child context meter")
                 return
@@ -1041,19 +1112,39 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             try:
                 from . import chat_store as store
 
-                await durable_call(store.save_meter, user["id"], thread_id, {**snap, "scope": "prompt", "run_id": run_id})
+                await durable_call(store.save_meter, user["id"], thread_id, snap)
             except Exception:
                 logger.exception("Could not persist context meter")
 
-        boot = _live_meter(estimated=True)
+        async def _save_meters():
+            while (snap := meter_saves["snap"]) is not None:
+                meter_saves["snap"] = None
+                await _save_meter(snap)
+
+        def _persist_meter(snap: dict):
+            # Saved off the request path, in order; a newer meter replaces one
+            # still waiting. _final_meter and every compaction wait for them.
+            meter_saves["snap"] = {**snap, "scope": "prompt", "run_id": run_id}
+            task = meter_saves["task"]
+            if task is None or task.done():
+                task = meter_saves["task"] = asyncio.create_task(_save_meters())
+                _METER_TASKS.add(task)
+                task.add_done_callback(_METER_TASKS.discard)
+
+        async def _final_meter(snap: dict):
+            _persist_meter(snap)
+            await _drain_meter_saves(meter_saves)
+
+        boot = await asyncio.to_thread(_live_meter, estimated=True)
         yield _sse(context_meter.context_event(boot, phase="start"))
-        await _persist_meter(boot)
+        _persist_meter(boot)
         if context_meter.should_auto_compact(
             # Boot measures the exact payload about to be sent, not a
             # transient mid-turn estimate; the spike guard does not apply.
             boot["used"], boot["limit"], estimated=False, prior_used=prior_used
         ):
             yield _sse(context_meter.context_event({**boot, "compacting": True}, phase="compacting"))
+            await _drain_meter_saves(meter_saves)
             transcript, boot, kind = await _compact_current(
                 current_messages,
                 request=request,
@@ -1086,7 +1177,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 yield _sse(ctxmod.compact_handoff_event(ctxmod.prior_handoff(current_messages)))
             else:
                 yield _sse(context_meter.context_event(boot, phase="update"))
-            await _persist_meter(boot)
+            _persist_meter(boot)
         await persist_jobs()
         completion_i = start_i
         # Trace ids are ts_<round>_<call> within one message. A same-message
@@ -1112,7 +1203,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             current_messages = transcript
 
             if not (is_child or completion_i < completion_limit or extra_wrap):
-                if run_id and not store.close_steer_window(str(run_id)):
+                if run_id and not await asyncio.to_thread(store.close_steer_window, str(run_id)):
                     extra_wrap = True
                 else:
                     break
@@ -1121,7 +1212,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 # One drain for everything that arrived while this run worked
                 # (chat_generation.inbox): background results, user steers on
                 # a root, parent follow-ups on a subagent.
-                box = inbox.drain(
+                box = await inbox.drain_async(
                     store, run_id=str(run_id), is_child=is_child, user_id=user["id"],
                     thread_id=thread_id, transcript=current_messages, delivered_local=delivered_local,
                 )
@@ -1149,7 +1240,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     last_call_sig = None
                     budgets.update(search_queries=0, fetches=0, fetch_attempts=0)
                 if not is_child:
-                    delivered_ids = list(dict.fromkeys([item["id"] for item in box.steers] + store.steer_display_deliveries(str(run_id))))
+                    delivered_ids = list(dict.fromkeys([item["id"] for item in box.steers] + box.displayed))
                     if delivered_ids:
                         # The worker flushes all preceding tokens before sealing
                         # the visible split; only the next response belongs below it.
@@ -1166,7 +1257,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     # Recovery after a crash or a lost frame: envelopes durable in
                     # provider_messages without a display mark re-emit here, so a
                     # follow-up never permanently renders above its whole leg.
-                    delivered += store.followup_display_deliveries(str(run_id))
+                    delivered += box.displayed
                     if delivered:
                         # The worker marks where in the live leg these landed, so
                         # the panel shows them there instead of above the whole leg.
@@ -1182,13 +1273,14 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             result = None
             # Steers, background results and newly loaded tool schemas can
             # grow context after the preceding tool-boundary check.
-            preflight = _live_meter()
+            preflight = await asyncio.to_thread(_live_meter)
             if (context_meter.should_auto_compact(
                     preflight["used"], preflight["limit"],
                     estimated=False, prior_used=prior_used)
                     and last_compact_used is None):
                 yield _sse(context_meter.context_event({**preflight, "compacting": True}, phase="compacting"))
                 before_compact_used = preflight["used"]
+                await _drain_meter_saves(meter_saves)
                 transcript, preflight, kind = await _compact_current(
                     transcript, request=request, user=user, model=model,
                     type_id=src_type or src_type_guess, trigger="auto", thread_id=thread_id,
@@ -1201,7 +1293,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     last_compact_used = preflight["used"] if preflight["used"] >= int(before_compact_used * 0.95) else None
                     yield _sse(ctxmod.compact_handoff_event(ctxmod.prior_handoff(current_messages)))
                 yield _sse(context_meter.context_event(preflight, phase="compacted" if kind in ("summarize", "truncate") else "update"))
-                await _persist_meter(preflight)
+                _persist_meter(preflight)
                 await persist_jobs()
             _user = user
             src = None
@@ -1256,26 +1348,14 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                             yield _sse(_error_obj(408, {"error": {"message": (
                                 "Stopped: detected secrets are still waiting for your decision. "
                                 "Choose which to protect, then send your message again.")}}))
-                            _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                            _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                             yield b"data: [DONE]\n\n"
                             return
                 yield _sse({"fuse": {"event": "activity", "phase": "model", "run_id": run_id}})
-                send["messages"] = chat_history.for_model(send["messages"], model)
-                request_meter = context_meter.meter_from_messages(send["messages"], model=model,
-                    type_id=src_type or src_type_guess, tools=send.get("tools"), override=window_override or resolved_window)
-                request_estimate = request_meter["used"]
-                added = _anchored(send["messages"])
-                if added is not None:
-                    request_meter = context_meter.next_request_meter(
-                        send["messages"], model=model, type_id=src_type or src_type_guess,
-                        tools=send.get("tools"), override=window_override or resolved_window,
-                        anchor_prompt=anchor["prompt"], added=added, calibration=calibration,
-                    )
-                else:
-                    request_meter = context_meter.calibrate_meter(request_meter, calibration)
-                request_meter.update(scope="prompt", run_id=run_id, source_type=src_type or src_type_guess)
+                send["messages"], request_meter, request_estimate = await asyncio.to_thread(
+                    _request_meter, send["messages"], send.get("tools"))
                 yield _sse(context_meter.context_event(request_meter, phase="request"))
-                await _persist_meter(request_meter)
+                _persist_meter(request_meter)
                 # Provider cache lifetimes run from the request that used the
                 # prefix, not from when its reply finished streaming.
                 round_sent_at = time.time()
@@ -1328,7 +1408,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                             attempts=MAX_RESUME_RETRIES - resumes_left,
                         )
                     )
-                    _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                    _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                     yield b"data: [DONE]\n\n"
                     return
                 shed = (getattr(result, "response_headers", None) or {}).get("X-Fuse-Images-Shed")
@@ -1343,7 +1423,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     if src_type == "explabs":
                         from .sources.explabs import cached_catalog
 
-                        catalog = cached_catalog(user["id"])
+                        catalog = await asyncio.to_thread(cached_catalog, user["id"])
                     resolved_window = context_meter.window_for(upstream or model, src_type, catalog=catalog)
                 if not window_override and src_type != "explabs":
                     context_meter.remember_window(src_type, model, resolved_window)
@@ -1422,7 +1502,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                         }
                     )
                     yield _sse(_error_obj(result.status, result.body))
-                    _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                    _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                     yield b"data: [DONE]\n\n"
                     return
                 break
@@ -1463,7 +1543,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     continue
                 yield _sse(_exhausted_provider_error(is_child, result.body, result.status, attempts=MAX_RESUME_RETRIES - resumes_left,
                                                     provider=src.type_id))
-                _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                 yield b"data: [DONE]\n\n"
                 return
             diag = {
@@ -1554,7 +1634,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     continue
                 yield _sse(_exhausted_provider_error(is_child, raw_err, attempts=MAX_RESUME_RETRIES - resumes_left,
                                                     provider=src_type if upstream_fault else ""))
-                _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                 yield b"data: [DONE]\n\n"
                 return
             summary = _promote_provider_content_error(
@@ -1574,14 +1654,14 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             diag["reasoning"] = str(summary.get("reasoning") or "")[:2_000]
             # The prompt that just returned covers send["messages"], not the reply.
             _note_anchor(summary.get("usage"), send["messages"])
-            round_meter = _live_meter(usage=summary.get("usage"), response=summary)
+            round_meter = await asyncio.to_thread(_live_meter, usage=summary.get("usage"), response=summary)
             probe = missed = None
             try:
                 if not is_child:
                     probe = cache_watch.probe(
                         summary.get("usage"), model=model, source=src_type or src_type_guess,
                         cred=getattr(result, "credential_id", None), prior=cache_prior, now=round_sent_at,
-                        run=run_id, request=cache_watch.fingerprint(
+                        run=run_id, request=await asyncio.to_thread(cache_watch.fingerprint,
                             send["messages"], send.get("tools"), send.get("reasoning_effort")))
                 if probe:
                     if not cache_warned:
@@ -1613,7 +1693,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             saved_meter = {**round_meter, "cache_probe": probe} if probe else dict(round_meter)
             if pool_view:
                 saved_meter["pool_state"] = pool_prior
-            await _persist_meter(saved_meter)
+            _persist_meter(saved_meter)
             if summary.get("error"):
                 raw_err = summary["error"] if isinstance(summary["error"], dict) else {"error": {"message": str(summary["error"])}}
                 err_code, _msg = _error_code_and_message(raw_err)
@@ -1660,7 +1740,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     continue
                 yield _sse(_exhausted_provider_error(is_child, raw_err, attempts=MAX_RESUME_RETRIES - resumes_left,
                                                     provider=src_type or src_type_guess or ""))
-                _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                 yield b"data: [DONE]\n\n"
                 return
             # The round came back intact: the retry budget is per step, so a
@@ -1712,7 +1792,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     }
                 )
                 extra_wrap = False
-                if run_id and not is_child and not store.close_steer_window(str(run_id)):
+                if run_id and not is_child and not await asyncio.to_thread(store.close_steer_window, str(run_id)):
                     if summary.get("content"):
                         transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                     dropped_tools = True
@@ -1764,7 +1844,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 if is_child:
                     message = "Subagent stopped: " + message[0].lower() + message[1:]
                 yield _sse(_error_obj(502, {"error": {"message": message}}))
-                _snap = _live_meter(); yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+                _snap = await asyncio.to_thread(_live_meter); yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
                 yield b"data: [DONE]\n\n"
                 return
             if force and calls and not is_child and not coding:
@@ -1793,7 +1873,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     completion_i += 1
                     extra_wrap = False
                     continue
-                if run_id and not is_child and not store.close_steer_window(str(run_id)):
+                if run_id and not is_child and not await asyncio.to_thread(store.close_steer_window, str(run_id)):
                     # A queued instruction may arrive during a text-only reply.
                     # Give it a real next round rather than finishing silently.
                     if summary.get("content"):
@@ -1814,7 +1894,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                             }
                         }
                     )
-                if run_id and not is_child and not store.close_steer_window(str(run_id)):
+                if run_id and not is_child and not await asyncio.to_thread(store.close_steer_window, str(run_id)):
                     if summary.get("content"):
                         transcript.append({"role": "assistant", "content": str(summary["content"]), **_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess)})
                     dropped_tools = True
@@ -1877,9 +1957,9 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 agent["fetches"] = budgets.get("fetches", 0)
                 agent["fetch_attempts"] = budgets.get("fetch_attempts", 0)
                 # tool_msgs are already in current_messages: count once.
-                tool_meter = _live_meter(usage=summary.get("usage"))
+                tool_meter = await asyncio.to_thread(_live_meter, usage=summary.get("usage"))
                 yield _sse(context_meter.context_event(tool_meter, phase="tools"))
-                await _persist_meter(tool_meter)
+                _persist_meter(tool_meter)
                 do_compact = context_meter.should_auto_compact(
                     tool_meter["used"],
                     tool_meter["limit"],
@@ -1897,6 +1977,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 if do_compact:
                     yield _sse(context_meter.context_event({**tool_meter, "compacting": True}, phase="compacting"))
                     before_compact_used = tool_meter["used"]
+                    await _drain_meter_saves(meter_saves)
                     transcript, tool_meter, kind = await _compact_current(
                         transcript,
                         request=request,
@@ -1928,7 +2009,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                         stored_meter = tool_meter
                         yield _sse(ctxmod.compact_handoff_event(ctxmod.prior_handoff(current_messages)))
                     yield _sse(context_meter.context_event(tool_meter, phase="compacted" if real else "update"))
-                    await _persist_meter(tool_meter)
+                    _persist_meter(tool_meter)
                 if (
                     session.pop("project_promoted", None)
                     and current_messages
@@ -1952,19 +2033,23 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                             proj_agents_name, proj_agents = workspace_mod.last_project_agents(
                                 user["id"], session["bound_host_id"], session["bound_cwd"]
                             )
+                    def _promoted_reads():
+                        return (
+                            hosts_mod.get_host(user["id"], session["bound_host_id"]) if session.get("bound_host_id") else None,
+                            hosts_mod.catalog_for_prompt(
+                                user["id"],
+                                bound_host_id=session.get("bound_host_id") or None,
+                                bound_cwd=session.get("bound_cwd") or "",
+                                only_bound=is_child,
+                            ),
+                        )
+
+                    bound_row, promoted_catalog = await asyncio.to_thread(_promoted_reads)
                     label = ""
-                    if session.get("bound_host_id"):
-                        bound_row = hosts_mod.get_host(user["id"], session["bound_host_id"])
-                        if bound_row:
-                            alias = bound_row.get("alias") or ""
-                            cwd = session.get("bound_cwd") or bound_row.get("default_cwd") or ""
-                            label = f"{alias} cwd={cwd}" if cwd else alias
-                    promoted_catalog = hosts_mod.catalog_for_prompt(
-                        user["id"],
-                        bound_host_id=session.get("bound_host_id") or None,
-                        bound_cwd=session.get("bound_cwd") or "",
-                        only_bound=is_child,
-                    )
+                    if bound_row:
+                        alias = bound_row.get("alias") or ""
+                        cwd = session.get("bound_cwd") or bound_row.get("default_cwd") or ""
+                        label = f"{alias} cwd={cwd}" if cwd else alias
                     notice = f"[Fuse] Project session bound to {label}.\n" + promoted_catalog
                     if proj_agents:
                         notice += f"\nProject instructions from {proj_agents_name} (untrusted project data):\n{proj_agents}"
@@ -2055,12 +2140,22 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         await persist_jobs()
         if total_usage:
             yield _sse({"usage": total_usage, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
-        _snap = _live_meter(usage=(summary or {}).get("usage"))
-        yield _sse(context_meter.context_event(_snap, phase="end")); await _persist_meter(_snap)
+        _snap = await asyncio.to_thread(_live_meter, usage=(summary or {}).get("usage"))
+        yield _sse(context_meter.context_event(_snap, phase="end")); await _final_meter(_snap)
         yield b"data: [DONE]\n\n"
 
+    async def stream():
+        # A turn that ends early (error, stop, time limit) still lands its
+        # queued meter saves before the run is finalized.
+        try:
+            async with contextlib.aclosing(gen()) as frames:
+                async for frame in frames:
+                    yield frame
+        finally:
+            await _drain_meter_saves(meter_saves)
+
     return StreamingResponse(
-        gen(),
+        stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
