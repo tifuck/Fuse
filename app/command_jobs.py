@@ -742,7 +742,7 @@ def _apply_finish(rec: dict, *, status: str, exit_code: int | None, error: str) 
         rec["termination_confirmed"] = False
     duration = int((time.monotonic() - rec["started"]) * 1000)
     if status == "cancelled" and rec.get("user_cancelled"):
-        error = "Stopped by the user. " + error
+        error = "Stopped by the user; do not restart it unless the user asks. " + error
     rec.update(
         {
             "status": status,

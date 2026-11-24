@@ -267,9 +267,10 @@ function ccInterruptedText(trace) {
       return `${head}: ${trace.host ? `${trace.host} went offline` : "the machine went offline"}`;
     }
     if (state === "cancelled" || /cancel/.test(error) || (trace && trace.status === "cancelled")) {
+      const who = /stopped by the user/.test(error) ? `${head} by user` : head;
       return trace && trace.termination_confirmed === false && trace.name === "run_terminal_command"
-        ? `${head}: the process may still be running`
-        : head;
+        ? `${who}: the process may still be running`
+        : who;
     }
     if (state === "lost") return `${head}: the result was lost`;
     return `${head}: the run ended before it finished`;

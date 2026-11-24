@@ -274,9 +274,10 @@ function ccInterruptedText(trace) {
       return `${head} · ${trace.host ? `${trace.host} went offline` : "the host went offline"}`;
     }
     if (state === "cancelled" || /cancel/.test(error) || (trace && trace.status === "cancelled")) {
+      const how = /stopped by the user/.test(error) ? "stopped by user" : "stopped";
       return trace && trace.termination_confirmed === false && trace.name === "run_terminal_command"
-        ? `${head} · stopped; the process may still be running`
-        : `${head} · stopped`;
+        ? `${head} · ${how}; the process may still be running`
+        : `${head} · ${how}`;
     }
     if (state === "lost") return `${head} · the result was lost`;
     return `${head} · the run ended before it finished`;
