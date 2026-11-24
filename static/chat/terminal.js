@@ -151,10 +151,9 @@ export function createTerminal(ctx) {
 
   function projectParams() {
     const project = sidebar.sessionProject();
-    const thread = Number(S.currentId);
     // The server takes host and folder from the chat's binding; a project
     // session with no chat yet opens in the machine's home folder.
-    return Number.isInteger(thread) && thread > 0 && !S.pendingProject ? { thread_id: thread } : { host_id: Number(project?.host_id) };
+    return S.currentId && !S.pendingProject ? { thread_id: String(S.currentId) } : { host_id: Number(project?.host_id) };
   }
 
   // A first size so the shell starts close to its final one (fit corrects it).
