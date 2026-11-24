@@ -652,7 +652,16 @@ async def fetch_key_info(key: str) -> tuple[dict | None, str]:
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
         return None, "invalid JSON"
+    budget = data.get("effective_budget") if isinstance(data.get("effective_budget"), dict) else None
     return {
+        # The budget that blocks requests first (a guardrail, workspace or the key's own limit).
+        "effective_budget": {
+            "limit_usd": _as_float(budget.get("limit_usd")),
+            "remaining_usd": _as_float(budget.get("remaining_usd")),
+            "reset_interval": str(budget.get("reset_interval") or "")[:16],
+            "resets_at": str(budget.get("resets_at") or "")[:40],
+        } if budget else None,
+        "credits_remaining": await _credits_remaining(key),
         "label": str(data.get("label") or "")[:80],
         "limit": _as_float(data.get("limit")),
         "limit_remaining": _as_float(data.get("limit_remaining")),
@@ -662,6 +671,21 @@ async def fetch_key_info(key: str) -> tuple[dict | None, str]:
         "fetched_at": db.now(),
         "last_error": "",
     }, ""
+
+
+async def _credits_remaining(key: str) -> float | None:
+    """The account's balance (GET /credits). OpenRouter answers it only for
+    keys allowed to read credits; any other key gets None."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            r = await client.get(BASE_URL + "/credits", headers=_headers(key))
+        data = r.json().get("data") if r.status_code == 200 else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    total, used = _as_float(data.get("total_credits")), _as_float(data.get("total_usage"))
+    return None if total is None or used is None else total - used
 
 
 def _key_info_fresh(info: dict) -> bool:

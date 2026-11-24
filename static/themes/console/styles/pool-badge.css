@@ -30,6 +30,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-track { flex: none; width: 2rem; height: 5px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--mist) 14%, var(--ink)); }
   & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }
   & .chat-pool-meter b { min-width: 3ch; color: var(--pool-num); font-weight: 500; text-align: right; }
+  /* A prepaid key shows only the money left, across the capsule. */
+  & .chat-pool-row.is-balance b { grid-column: 1 / -1; font-size: 0.6875rem; line-height: 1; }
   & .chat-pool-wins { display: none; }
   /* A move to another account blinks the meter once. */
   & .chat-pool.is-hop .chat-pool-meter { animation: chat-pool-hop 480ms ease; }

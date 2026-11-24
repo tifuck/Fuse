@@ -193,3 +193,102 @@ def test_every_pool_refresh_names_a_function_of_its_source():
 
     for kind, name in pool_badge.POOL_REFRESH.items():
         assert callable(getattr(importlib.import_module(f"app.sources.{kind}"), name)), kind
+
+
+def test_money_left_shows_to_its_owner_only_and_a_spent_subscription_hides_it(fresh_db):
+    donor, me = user("donor@core.test"), user("me@core.test")
+    from app.sources import refuseless
+
+    prepaid = refuseless.parse_credits({"available": 12.5})
+    mine = pool_account("refuseless", me, {"billing": prepaid})
+    empty = pool_account("refuseless", me, {"billing": refuseless.parse_credits({"available": 0})})
+    view = pool_badge.public(me, pool_badge.state(None, mine, "refuseless", "m"))
+    assert view["windows"] == [] and view["balance"] == {"amount": 12.5, "currency": "USD"}
+    # Spent prepaid credit is all a Refuseless key reports, so its owner sees $0.
+    assert pool_badge.public(me, pool_badge.state(None, empty, "refuseless", "m"))["balance"] == {"amount": 0.0, "currency": "USD"}
+
+    theirs = _claude(10, 5)
+    theirs["billing"]["prepaid_cents"] = 500
+    theirs = pool_account("claude", donor, theirs, secret="donor-secret")
+    assert pool_badge.public(me, pool_badge.state(None, theirs, "claude", "m"))["balance"] is None
+    assert [a["balance"] for a in pool_badge.public(me, pool_badge.state(None, theirs, "claude", "m"))["accounts"]] == [None]
+    assert pool_badge.public(donor, pool_badge.state(None, theirs, "claude", "m"))["balance"] == {"amount": 5.0, "currency": "USD"}
+    # A subscription's usage is the gauge; an empty prepaid balance beside it is noise.
+    grok_sub = pool_account("grok", me, {"billing": {"credit_usage_percent": 20, "prepaid_cents": 0}})
+    assert pool_badge.public(me, pool_badge.state(None, grok_sub, "grok", "m"))["balance"] is None
+
+
+def test_plan_windows_listed_again_as_products_are_not_model_limits(fresh_db):
+    me = user("me@core.test")
+    cid = pool_account("zai", me, {"billing": {"windows": [{"name": "5-hour", "percent": 10, "seconds": 18000},
+                                                           {"name": "Weekly", "percent": 30, "seconds": 604800}],
+                                               "products": [{"product": "5-hour", "usage_percent": 10},
+                                                            {"product": "Weekly", "usage_percent": 30},
+                                                            {"product": "MCP", "usage_percent": 4}]}})
+
+    view = pool_badge.public(me, pool_badge.state(None, cid, "zai", "m"))
+
+    assert [w["label"] for w in view["windows"]] == ["5-hour", "Weekly"]
+    assert [(w["label"], w["percent"]) for w in view["limits"]] == [("MCP", 4)]
+
+
+def _picks(monkeypatch, src):
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "m"
+
+    import app.sources as sources
+    monkeypatch.setattr(sources, "pick", pick)
+
+
+def test_an_openrouter_key_shows_its_spend_limit_and_the_money_left(fresh_db, monkeypatch):
+    from app.sources import openrouter
+
+    me = user("me@core.test")
+    row = {"id": 7, "label": "My key", "donated_by": me}
+    info = {"limit": 50.0, "limit_remaining": 40.0, "credits_remaining": None,
+            "effective_budget": {"limit_usd": 20.0, "remaining_usd": 5.0, "reset_interval": "weekly", "resets_at": "2099-01-01T00:00:00Z"}}
+
+    async def refresh(cred, *, force=False):
+        return info
+
+    _picks(monkeypatch, type("Src", (), {"type_id": "openrouter", "source_id": 1})())
+    monkeypatch.setattr(openrouter, "pick_key_for", lambda user_id, source_id=None: (row, {}, "k", "user"))
+    monkeypatch.setattr(openrouter, "refresh_key_info", refresh)
+
+    view = asyncio.run(pool_badge.preview(me, "openrouter/x"))
+    assert (view["provider"], view["name"], view["own"], view["prefs"], view["accounts"]) == ("openrouter", "My key", True, None, [])
+    assert [(w["label"], w["percent"]) for w in view["windows"]] == [("Weekly limit", 75)]
+    assert view["balance"] == {"amount": 5.0, "currency": "USD"}
+    # The account's credits, when the key may read them, are the money left.
+    info["credits_remaining"] = 61.5
+    assert asyncio.run(pool_badge.preview(me, "openrouter/x"))["balance"] == {"amount": 61.5, "currency": "USD"}
+    # An unlimited key that cannot read credits reports nothing to show.
+    info.update(effective_budget=None, limit=None, limit_remaining=None, credits_remaining=None)
+    assert asyncio.run(pool_badge.preview(me, "openrouter/x")) is None
+
+
+def test_keyed_balances_parse_and_show_only_on_the_callers_own_key(fresh_db, monkeypatch):
+    from app.providers import registry
+    from app.sources import keyed
+
+    assert keyed.parse_balance({"is_available": True, "balance_infos": [
+        {"currency": "CNY", "total_balance": "70.00"}, {"currency": "USD", "total_balance": "9.80"}]}) == {"amount": 9.8, "currency": "USD"}
+    assert keyed.parse_balance({"code": 0, "data": {"available_balance": 49.58894}}) == {"amount": 49.58894, "currency": "USD"}
+    assert keyed.parse_balance({"error": {"message": "nope"}}) is None
+
+    me = user("me@core.test")
+    preset = registry.get("deepseek").key
+    rows = [{"id": 3, "label": "", "donated_by": me}]
+    src = type("Src", (), {"type_id": "deepseek", "preset": preset, "usable": lambda self, user_id: rows})()
+
+    async def refresh(p, row, *, force=False):
+        return {"amount": 9.8, "currency": "USD"}
+
+    _picks(monkeypatch, src)
+    monkeypatch.setattr(keyed, "refresh_balance", refresh)
+
+    view = asyncio.run(pool_badge.preview(me, "deepseek/x"))
+    assert (view["name"], view["balance"], view["windows"]) == ("DeepSeek key", {"amount": 9.8, "currency": "USD"}, [])
+    # A site key's balance is its admin's business.
+    rows[0] = {"id": 4, "label": "Site", "donated_by": None}
+    assert asyncio.run(pool_badge.preview(me, "deepseek/x")) is None

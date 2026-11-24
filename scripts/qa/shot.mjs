@@ -71,6 +71,9 @@
 //                                  --click '[data-pool-toggle]' opens its card,
 //                                  then '[data-pool-sharing]' its sharing panel
 //                                  (saving is refused: writes are aborted)
+//                         balance  the chat's model is an OpenRouter key that
+//                                  reports only money left ($14.20): the gauge
+//                                  shows the amount; its card has no sharing
 //                         terminal the terminal's machines (qa-box, a Windows
 //                                  win-box with three shells, an offline
 //                                  old-vps), its sessions and its socket answer

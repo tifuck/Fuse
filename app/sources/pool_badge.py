@@ -8,7 +8,13 @@ reach. The ids are the ones the Sources sharing dialog already lists.
 The thread keeps the raw record (compaction state "pool"); public() turns it
 into the page's view: the serving account's plan limits, its model and
 product limits, every account of the pool this user can reach, and the
-user's own sharing settings for the pool, which the card can change.
+user's own sharing settings for the pool, which the card can change. Money
+left on an account (a prepaid balance) shows only to its owner and admins,
+as on Sources.
+
+A model outside a pool gets the same view for the caller's own key when its
+provider reports what is left on it (OpenRouter, keyed presets with a
+balance route): one account, no sharing settings (prefs None).
 """
 
 from __future__ import annotations
@@ -150,17 +156,21 @@ def public(user_id: int, raw) -> dict | None:
     row = next((r for r in rows if int(r["id"]) == st["cred"]), None)
     billing = _billing(row)
     label = pool_policy.POOL_LABELS.get(kind, kind)
+    admin = _is_admin(user_id)
+    own = row is not None and pool_policy.donated_by(row) == int(user_id)
+    windows = _windows(billing)
     return {
         "model": st["model"],
         "provider": kind,
         "pool": label,
         "id": st["cred"],
         "name": names.get(st["cred"], f"{label} account"),
-        "own": row is not None and pool_policy.donated_by(row) == int(user_id),
+        "own": own,
         "plan": _plan(billing),
-        "windows": _windows(billing),
+        "windows": windows,
         "limits": _limits(billing),
-        "accounts": [_account(r, names, st["cred"], settings, user_id) for r in reachable[:MAX_ACCOUNTS]],
+        "balance": _balance(billing, bool(windows)) if own or admin else None,
+        "accounts": [_account(r, names, st["cred"], settings, user_id, admin) for r in reachable[:MAX_ACCOUNTS]],
         "ready": sum(1 for i in used if not pool_pick.cooling_down(i)),
         "size": len(used),
         "prefs": settings,
@@ -168,11 +178,13 @@ def public(user_id: int, raw) -> dict | None:
     }
 
 
-def _account(row, names: dict[int, str], current: int, settings: dict, user_id: int) -> dict:
+def _account(row, names: dict[int, str], current: int, settings: dict, user_id: int, admin: bool = False) -> dict:
     """One line of the card's account list."""
     cid = int(row["id"])
     billing = _billing(row)
-    peak = max((w["percent"] for w in _windows(billing)), default=None)
+    windows = _windows(billing)
+    peak = max((w["percent"] for w in windows), default=None)
+    own = pool_policy.donated_by(row) == int(user_id)
     until = None
     if cid == current:
         status = "current"
@@ -186,9 +198,29 @@ def _account(row, names: dict[int, str], current: int, settings: dict, user_id: 
         status = "full"
     else:
         status = "ready"
-    return {"id": cid, "name": names.get(cid, ""), "own": pool_policy.donated_by(row) == int(user_id),
+    return {"id": cid, "name": names.get(cid, ""), "own": own,
             "plan": _plan(billing), "percent": peak, "status": status, "until": until,
+            "balance": _balance(billing, bool(windows)) if own or admin else None,
             "primary": settings["primary"] == cid}
+
+
+def _is_admin(user_id: int) -> bool:
+    user = accounts.get_user(user_id)
+    return bool(user and user["is_admin"])
+
+
+def _money(amount, currency: str = "USD") -> dict | None:
+    value = _num(amount)
+    return {"amount": round(value, 2), "currency": str(currency or "USD")[:8]} if value is not None else None
+
+
+def _balance(billing: dict, has_windows: bool) -> dict | None:
+    """Money left on the account (prepaid_cents): shown when there is some,
+    or when it is all the account reports."""
+    cents = _num(billing.get("prepaid_cents"))
+    if cents is None or (cents <= 0 and has_windows):
+        return None
+    return _money(cents / 100)
 
 
 def _billing(row) -> dict:
@@ -286,12 +318,14 @@ def _limits(billing: dict) -> list[dict]:
     Codex models) or one product's share (Cursor's Auto, Grok's Build)."""
     now = time.time()
     out = [w for w in (_window(win, now, named_first=True) for win in billing.get("model_windows") or []) if w]
+    # Some providers list each plan window again as a product (ChatGPT, Z.AI, NanoGPT).
+    planned = {str(w.get("name") or w.get("label") or "") for w in billing.get("windows") or [] if isinstance(w, dict)}
     for product in billing.get("products") or []:
         if not isinstance(product, dict):
             continue
         pct = _num(product.get("usage_percent"))
         name = str(product.get("product") or product.get("name") or "")
-        if pct is None or not name:
+        if pct is None or not name or name in planned:
             continue
         name = PRODUCT_NAMES.get(name, name)[:40]
         out.append({"label": name, "short": _short(name), "percent": round(max(0.0, min(100.0, pct))), "reset_at": None})
@@ -316,7 +350,13 @@ async def preview(user_id: int, model: str, thread_id: str | None = None, *, ref
     from . import POOL_TYPES, pick
 
     picked = await pick(model, user_id=user_id)
-    if not picked or picked[0].type_id not in POOL_TYPES or not hasattr(picked[0], "_pick"):
+    if not picked:
+        return None
+    if picked[0].type_id == "openrouter":
+        return await _openrouter_view(picked[0], user_id, model)
+    if getattr(getattr(picked[0], "preset", None), "balance", ""):
+        return await _keyed_view(picked[0], user_id, model)
+    if picked[0].type_id not in POOL_TYPES or not hasattr(picked[0], "_pick"):
         return None
     kind = picked[0].type_id
     if refresh and kind in POOL_REFRESH:
@@ -345,3 +385,57 @@ def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None
     if view is not None:
         view["preview"] = int(got[0]["id"]) != pinned
     return view
+
+
+def _solo(kind: str, label: str, row, model: str, user_id: int, windows: list[dict], balance: dict | None) -> dict:
+    """The badge for one key outside a pool: no other accounts, no sharing."""
+    return {"model": model, "provider": kind, "pool": label, "id": int(row["id"]),
+            "name": str(row["label"] or f"{label} key")[:120], "own": pool_policy.donated_by(row) == int(user_id),
+            "plan": "", "windows": windows, "limits": [], "balance": balance, "accounts": [], "ready": 0, "size": 0,
+            "prefs": None, "hop": None}
+
+
+async def _openrouter_view(src, user_id: int, model: str) -> dict | None:
+    """The caller's OpenRouter key: its spend limit as a window and the money
+    left (the account's credits when the key may read them, else the limit's
+    remainder). None when OpenRouter reports neither."""
+    from . import openrouter
+
+    owned = await asyncio.to_thread(openrouter.pick_key_for, user_id, src.source_id)
+    if not owned:
+        return None
+    cred = owned[0]
+    info = await openrouter.refresh_key_info(cred) or {}
+    budget = info.get("effective_budget") if isinstance(info.get("effective_budget"), dict) else {}
+    limit = _num(budget.get("limit_usd")) if budget else _num(info.get("limit"))
+    left = _num(budget.get("remaining_usd")) if budget else _num(info.get("limit_remaining"))
+    windows = []
+    if limit and left is not None:
+        interval = str((budget.get("reset_interval") if budget else info.get("limit_reset")) or "")
+        win = _window({"percent": (1 - left / limit) * 100, "label": f"{interval.capitalize()} limit" if interval else "Key limit",
+                       "resets_at": budget.get("resets_at")}, time.time(), named_first=True)
+        windows = [win] if win else []
+    credits = _num(info.get("credits_remaining"))
+    balance = _money(credits if credits is not None else left)
+    if not windows and balance is None:
+        return None
+    return _solo("openrouter", "OpenRouter", cred, model, user_id, windows, balance)
+
+
+async def _keyed_view(src, user_id: int, model: str) -> dict | None:
+    """The key the caller's next request uses, for presets with a balance
+    route. A site key's balance is the admin's business."""
+    from . import keyed
+
+    probe = copy.copy(src)
+    rows = await asyncio.to_thread(probe.usable, user_id)
+    if not rows:
+        return None
+    row = rows[0]
+    if pool_policy.donated_by(row) != int(user_id) and not await asyncio.to_thread(_is_admin, user_id):
+        return None
+    stored = await keyed.refresh_balance(src.preset, row) or {}
+    balance = _money(stored.get("amount"), stored.get("currency") or "USD")
+    if balance is None:
+        return None
+    return _solo(src.type_id, src.preset.label, row, model, user_id, [], balance)
