@@ -295,6 +295,20 @@ def test_unopened_artifacts_expire_to_a_stub_that_goes_with_its_chats(fresh_db):
     assert artifacts.get_owned(uid, stale["identifier"]) is None
 
 
+def test_opening_skips_the_viewed_at_write_when_the_row_in_hand_was_viewed_this_hour(fresh_db):
+    uid = quick_user()
+    ident = make(uid)["identifier"]
+    old = "2026-01-01T00:00:00Z"
+    artifacts.touch(artifacts.get_owned(uid, ident))
+    seen = artifacts.get_owned(uid, ident)
+    assert seen["viewed_at"] > old
+    db.execute("UPDATE artifacts SET viewed_at=? WHERE id=?", (old, seen["id"]))
+    artifacts.touch(seen)
+    assert artifacts.get_owned(uid, ident)["viewed_at"] == old
+    artifacts.touch(artifacts.get_owned(uid, ident))
+    assert artifacts.get_owned(uid, ident)["viewed_at"] > old
+
+
 def test_a_model_cannot_publish_and_needs_an_answer_to_change_a_shared_page(fresh_db):
     uid = quick_user()
 
