@@ -61,7 +61,7 @@ def test_every_migration_reruns_from_the_old_shape_to_schema_sql():
 
 def test_provider_tail_finishes_after_stopping_between_its_statements():
     paths = [check_schema.MIGRATIONS / f"{name}.sql"
-             for name in ("2026-10-20-provider-tail", "2026-10-20-run-activity", "2026-11-20-run-sweeps")]
+             for name in ("2026-10-20-provider-tail", "2026-10-20-run-activity", "2026-11-20-run-sweeps", "2026-11-24-db-perf")]
     creates = {table: EXPECTED[table]["create"] for table in _touched(*paths)}
     creates["chat_runs"] = "\n".join(line for line in before_run_sweeps(creates["chat_runs"]).splitlines()
                                       if not line.strip().startswith(("`provider_messages`", "`activity`")))
