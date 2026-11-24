@@ -12,8 +12,9 @@ import json
 import httpx
 import pytest
 
-from app import context_meter, model_caps
-from app.sources import llama, ollama
+from app import accounts, context_meter, db, model_caps
+from app.sources import ensure_llama_source, llama, ollama
+from tests.core.auth._support import sign_in, web_client
 from tests.core.helpers import quick_user
 
 from ._support import completion, drain, frames_of, key, source
@@ -50,6 +51,21 @@ def test_llama_never_advertises_the_placeholder_name(fresh_db, upstream):
     assert asyncio.run(_llama(sid, {"base_url": "https://llama.test", "model": "local"}).models()) == []
     llama._models_cache.clear()
     assert asyncio.run(_llama(sid, {"base_url": "https://llama.test", "model": "qwen"}).models()) == ["qwen"]
+
+
+def test_a_new_llama_key_updates_its_credential_in_place(fresh_db):
+    admin = quick_user("admin@core.test", admin=True)
+    sid = ensure_llama_source()
+    form = {"base_url": "https://llama.test/v1", "enabled": "1"}
+    with web_client() as web:
+        sign_in(web, admin)
+        assert web.post("/admin/sources/llama", data={**form, "api_key": "llama-key-1"}, follow_redirects=False).status_code == 303
+        [first] = db.fetchall("SELECT id FROM credentials WHERE source_id=?", (sid,))
+        db.execute("UPDATE credentials SET disabled=1, pool_invokes=7 WHERE id=?", (first["id"],))
+        web.post("/admin/sources/llama", data={**form, "api_key": "llama-key-2"}, follow_redirects=False)
+    [row] = db.fetchall("SELECT * FROM credentials WHERE source_id=?", (sid,))
+    assert (row["id"], row["disabled"], row["pool_invokes"]) == (first["id"], 0, 7)
+    assert accounts.cred_secret(row) == "llama-key-2"
 
 
 # -- Ollama ------------------------------------------------------------------------

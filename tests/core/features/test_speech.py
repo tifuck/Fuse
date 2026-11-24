@@ -10,7 +10,7 @@ import wave
 import httpx
 import pytest
 
-from app import db, speech
+from app import accounts, db, speech
 
 
 def wav(seconds=0.5, channels=1, rate=16000, width=2):
@@ -75,6 +75,15 @@ def test_the_key_is_encrypted_and_kept_when_not_resent(fresh_db, monkeypatch, se
     assert str(request.url) == "https://stt.test:8000/v1/audio/transcriptions"
     assert request.headers["authorization"] == "Bearer sk-speech-secret"
     assert b'name="model"\r\n\r\nparakeet' in request.content and b'filename="audio.wav"' in request.content
+
+
+def test_a_new_key_updates_its_credential_in_place(fresh_db):
+    speech.save(base_url="https://stt.test", model="m", api_key="sk-speech-one", verify=True, enabled=True)
+    sid = speech.ensure_source()
+    [first] = db.fetchall("SELECT id FROM credentials WHERE source_id=?", (sid,))
+    speech.save(base_url="https://stt.test", model="m", api_key="sk-speech-two", verify=True, enabled=True)
+    [row] = db.fetchall("SELECT * FROM credentials WHERE source_id=?", (sid,))
+    assert row["id"] == first["id"] and accounts.cred_secret(row) == "sk-speech-two"
 
 
 def test_upstream_errors_and_a_switched_off_service_raise(fresh_db, monkeypatch, server):

@@ -151,12 +151,19 @@ async def admin_llama_save(
     with db.tx() as conn:
         conn.execute("UPDATE sources SET config=?, enabled=? WHERE id=?", (json.dumps(cfg), on, sid))
         if key:
-            conn.execute("DELETE FROM credentials WHERE source_id=?", (sid,))
-            conn.execute(
-                """INSERT INTO credentials (source_id, label, secret, extra, week_start, donated_by, created_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (sid, "llama", encrypt(key), encrypt("{}"), db.iso_week_start(), None, db.now()),
-            )
+            kept = conn.execute("SELECT id FROM credentials WHERE source_id=? ORDER BY id LIMIT 1", (sid,)).fetchone()
+            if kept:
+                conn.execute("DELETE FROM credentials WHERE source_id=? AND id<>?", (sid, kept["id"]))
+                conn.execute(
+                    "UPDATE credentials SET label=?, secret=?, extra=?, disabled=0 WHERE id=?",
+                    ("llama", encrypt(key), encrypt("{}"), kept["id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO credentials (source_id, label, secret, extra, week_start, donated_by, created_at)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (sid, "llama", encrypt(key), encrypt("{}"), db.iso_week_start(), None, db.now()),
+                )
     invalidate_model_cache("llama")
     _notices[user["id"]] = "Local llama saved."
     return RedirectResponse("/admin/sources", status_code=303)
