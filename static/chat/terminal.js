@@ -1,6 +1,5 @@
 // Interactive terminal: real shells on the user's machines, as tabs in a
-// place the theme gives it ([data-terminal]: a bottom dock, a pane tab, a
-// full-height sheet on a phone). Sessions live on the server
+// place the theme gives it ([data-terminal]: a bottom dock or a pane tab). Sessions live on the server
 // (/terminal/sessions) and outlive the page; a reload or a dropped socket
 // reattaches them. xterm.js loads on first open. Terminal text never enters
 // the page as HTML.
@@ -516,7 +515,7 @@ export function createTerminal(ctx) {
     const saved = Number(readStore().height);
     if (saved > 0) setHeight(saved, false);
     resizer.addEventListener("pointerdown", (event) => {
-      if (mobile.matches || event.button !== 0) return;
+      if (event.button !== 0) return;
       event.preventDefault();
       resizer.setPointerCapture?.(event.pointerId);
       const bottom = dock.getBoundingClientRect().bottom;

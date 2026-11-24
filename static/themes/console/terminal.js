@@ -1,5 +1,5 @@
-// Console: the terminal dock at the bottom, under the prompt (a
-// full-height sheet on a phone) and its header button. Markup only;
+// Console: the terminal dock at the bottom, under the prompt, and
+// its header button. Markup only;
 // static/chat/terminal.js fills the tabs, the machine list and the keys and
 // drives everything. Built here rather than in a template so the view's
 // static files carry it whole.

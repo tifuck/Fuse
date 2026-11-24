@@ -1,8 +1,9 @@
 @import url("../../../vendor/xterm/xterm.css");
 /* Tail: the terminal is a tab of the side pane (pane.js), on the pane's
    own surface. The pane is narrow, so the terminal has a wide mode (half
-   the window) and a full one (all of it). On a phone the pane becomes a
-   full-height sheet with the key bar above the keyboard
+   the window) and a full one (all of it). On a phone the pane is a panel
+   under the prompt (full: a full-height sheet) with the key bar above the
+   keyboard
    (static/chat/terminal.js; markup in ../terminal.js). */
 html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .term-dock {
@@ -98,25 +99,36 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .chat-stage { padding-right: 0; }
   }
 }
-/* A phone: the pane is a full-height sheet, sized to what the keyboard
-   leaves; the terminal's own header replaces the pane's tabs. */
+/* A phone: the pane is a panel under the prompt, half of what the keyboard
+   leaves, so the chat and the prompt stay in view above it; the ↔ button
+   makes it a full-height sheet and back. The terminal's own header replaces
+   the pane's tabs. */
 @media (max-width: 800px) {
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
-    &[data-tail-pane="terminal"] .tail-pane {
+    --tl-term: calc(var(--vv-height, 100dvh) * 0.5);
+    &[data-tail-pane="terminal"] .tail-pane-scrim { display: none; }
+    &[data-tail-pane="terminal"]:not([data-tail-wide="full"]) {
+      & .chat-stage { padding-bottom: var(--tl-term); }
+      & .tail-pane { position: absolute; top: auto; bottom: 0; height: var(--tl-term); padding: 0 var(--safe-right) 0 var(--safe-left); border-radius: 0; box-shadow: none; }
+      & .term-wide { background: none; color: var(--mute); }
+    }
+    &[data-tail-pane="terminal"][data-tail-wide="full"] .tail-pane {
       z-index: 70; top: var(--vv-offset, 0px); height: var(--vv-height, 100dvh); padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
       border: 0; border-radius: 0; box-shadow: none;
     }
-    &[data-tail-pane="terminal"] .tail-pane-tabs, & .term-wide { display: none; }
+    &[data-tail-pane="terminal"] .tail-pane-tabs { display: none; }
     & .term-head { height: 48px; padding: 0 4px; }
     & .term-tab { height: 48px; }
     & .term-tab-main { padding-left: 12px; }
     & .term-tab-close { width: 40px; height: 44px; margin: 0; }
     & .term-btn { min-width: 40px; height: 44px; padding: 0 4px; }
     & .term-find input { height: 36px; font-size: 16px; }
-    & .term-menu { position: fixed; top: calc(var(--safe-top) + 52px); left: 8px; right: 8px; min-width: 0; }
+    & .term-menu { position: fixed; top: auto; bottom: calc(var(--safe-bottom) + 8px); left: 8px; right: 8px; min-width: 0; max-height: 60dvh; }
     & .term-choice { min-height: 48px; align-items: center; }
   }
   body.is-keyboard.is-chat .chat[data-view="tail"] .term-keys { padding-bottom: 6px; }
+  /* Typing in it: all the room the prompt leaves. */
+  html[data-chat-view="tail"] body.is-keyboard.is-chat .chat[data-view="tail"]:has(.tail-pane .term-dock:focus-within) { --tl-term: calc(var(--vv-height, 100dvh) - 11rem); }
 }
 
 /* Motion: the terminal tab fades in when it is shown. */
