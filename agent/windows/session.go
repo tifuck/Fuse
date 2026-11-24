@@ -52,6 +52,7 @@ type session struct {
 	resultReady   *sync.Cond
 	droppedChunks map[string]bool
 	nextUpdate    time.Time
+	ptys          *ptyHub
 }
 
 // Chunks leave this many result slots free for terminal results.
@@ -153,6 +154,22 @@ func (s *session) write(conn *websocket.Conn, v any) error {
 	defer s.writeMu.Unlock()
 	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
 	return conn.WriteJSON(v)
+}
+
+func (s *session) writeBinary(conn *websocket.Conn, b []byte) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
+	return conn.WriteMessage(websocket.BinaryMessage, b)
+}
+
+// kickWriter wakes the writer for terminal output. Taking s.mu orders it
+// after the writer's pending check, so the wakeup is never lost.
+func (s *session) kickWriter() {
+	s.mu.Lock()
+	s.condsLocked()
+	s.resultReady.Broadcast()
+	s.mu.Unlock()
 }
 
 func (s *session) sendJSON(v any) error {
@@ -268,19 +285,31 @@ func (s *session) drainResults(send func(jobRes) error) error {
 	return nil
 }
 
-// writer delivers queued results on conn until it is replaced or closed. A
-// failed write closes conn, so the reader errors and the session reconnects
-// at once instead of waiting for a ping timeout.
+// writer delivers queued results on conn until it is replaced or closed,
+// then terminal output in bounded rounds, so a terminal flood never delays a
+// result. A failed write closes conn, so the reader errors and the session
+// reconnects at once instead of waiting for a ping timeout.
 func (s *session) writer(conn *websocket.Conn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.condsLocked()
 	for s.conn == conn {
-		if len(s.results) == 0 {
+		var err error
+		if len(s.results) > 0 {
+			err = s.drainResults(func(res jobRes) error { return s.write(conn, res.wire()) })
+		} else if s.ptys.pending() {
+			s.mu.Unlock()
+			err = s.ptys.flush(func(v any, bin []byte) error {
+				if bin != nil {
+					return s.writeBinary(conn, bin)
+				}
+				return s.write(conn, v)
+			})
+			s.mu.Lock()
+		} else {
 			s.resultReady.Wait()
-			continue
 		}
-		if err := s.drainResults(func(res jobRes) error { return s.write(conn, res) }); err != nil {
+		if err != nil {
 			s.mu.Unlock()
 			_ = conn.Close()
 			s.mu.Lock()
@@ -395,6 +424,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		wake: make(chan int, 8),
 		jobs: newJobHub(),
 	}
+	s.ptys = newPtyHub(s.kickWriter)
 	activeSession.Store(s)
 	startWatch(s)
 	host, userName := hostnameUser()
@@ -443,7 +473,10 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 			"v": 1, "t": "hello",
 			"hostname": host, "user": userName,
 			"os": "windows", "arch": archSKU(), "ver": version, "inst": processInst,
+			// Still open here: the server cancels those it has no session for.
+			"ptys": s.ptys.ids(),
 		}
+		ptyHello(hello)
 		if cfg.Code != "" {
 			hello["code"] = cfg.Code
 		}
@@ -539,6 +572,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 			s.nextUpdate = soon
 		}
 		s.mu.Unlock()
+		s.ptys.reconnected()
 		go s.writer(conn)
 		sessionStart := nowMonoMS()
 		replaced, drop, gotFrame := s.pump(conn, stop, cfg)
@@ -584,19 +618,23 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 	connWatchInit(&watch, nowMonoMS(), nowBootMS())
 	connWatchGotRx(&watch, nowMonoMS())
 	conn.SetReadDeadline(time.Time{})
-	incoming := make(chan []byte, 8)
+	type frame struct {
+		binary bool
+		data   []byte
+	}
+	incoming := make(chan frame, 8)
 	readErr := make(chan error, 1)
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
 		for {
-			_, data, err := conn.ReadMessage()
+			kind, data, err := conn.ReadMessage()
 			if err != nil {
 				readErr <- err
 				return
 			}
 			select {
-			case incoming <- data:
+			case incoming <- frame{kind == websocket.BinaryMessage, data}:
 			case <-done:
 				return
 			}
@@ -624,11 +662,15 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 			if err != nil {
 				return false, "socket closed", gotFrame
 			}
-		case data := <-incoming:
+		case in := <-incoming:
 			connWatchGotRx(&watch, nowMonoMS())
 			gotFrame = true
+			if in.binary {
+				s.ptys.input(in.data)
+				continue
+			}
 			var msg map[string]any
-			if json.Unmarshal(data, &msg) != nil {
+			if json.Unmarshal(in.data, &msg) != nil {
 				continue
 			}
 			switch fmt.Sprint(msg["t"]) {
@@ -636,6 +678,12 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 				s.jobs.handle(s, msg)
 			case "cancel":
 				s.jobs.cancel(fmt.Sprint(msg["id"]))
+			case "pty_resize":
+				s.ptys.resize(jsonStr(msg, "id", ""), jsonInt(msg, "cols", 0), jsonInt(msg, "rows", 0))
+			case "pty_ack":
+				if n, ok := msg["n"].(float64); ok {
+					s.ptys.ack(jsonStr(msg, "id", ""), n)
+				}
 			case "bye":
 				if fmt.Sprint(msg["reason"]) == "replaced" {
 					return true, "replaced", gotFrame
