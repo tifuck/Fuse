@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
+from collections import OrderedDict
 from .providers import registry
 from dataclasses import dataclass
 
@@ -361,13 +363,41 @@ def _positive_int(value) -> int | None:
 # and code about 1 per CHARS_PER_TOKEN. Each class rounds up.
 _WIDE_CHARS = re.compile(r"[\u0900-\u139f\u1780-\u17ff\u2e80-\U0010ffff]+")
 _HALF_CHARS = re.compile(r"[\u0370-\u08ff\u1c80-\u1c8f\u1f00-\u1fff]+")
+# Non-ASCII estimates by text, least recently used first: the script scan
+# costs 20-40 ms per MB and every model round re-measures the same rows.
+# Bounded by the characters held, not the entry count.
+_ESTIMATES: OrderedDict[str, int] = OrderedDict()
+_ESTIMATES_LOCK = threading.Lock()
+_ESTIMATE_MEMO_MIN = 1_024
+_ESTIMATE_MEMO_CHARS = 16_000_000
+_estimate_chars = 0
 
 
 def estimate_text(text: str) -> int:
+    global _estimate_chars
     if not text:
         return 0
     if text.isascii():
         return max(1, (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN)
+    if len(text) < _ESTIMATE_MEMO_MIN:
+        return _estimate_scripts(text)
+    with _ESTIMATES_LOCK:
+        tokens = _ESTIMATES.get(text)
+        if tokens is not None:
+            _ESTIMATES.move_to_end(text)
+            return tokens
+    tokens = _estimate_scripts(text)
+    with _ESTIMATES_LOCK:
+        if text not in _ESTIMATES:
+            _ESTIMATES[text] = tokens
+            _estimate_chars += len(text)
+            while _estimate_chars > _ESTIMATE_MEMO_CHARS:
+                old, _ = _ESTIMATES.popitem(last=False)
+                _estimate_chars -= len(old)
+    return tokens
+
+
+def _estimate_scripts(text: str) -> int:
     wide = sum(map(len, _WIDE_CHARS.findall(text)))
     half = sum(map(len, _HALF_CHARS.findall(text)))
     narrow = len(text) - wide - half
