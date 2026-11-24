@@ -30,6 +30,15 @@ type jobRes struct {
 	Stream               string `json:"stream,omitempty"`
 	Data                 string `json:"data,omitempty"`
 	seq                  uint64 // queue identity, never sent
+	nullExit             bool   // a terminal whose shell was never reaped: "exit":null
+}
+
+// wire is the frame to send for r.
+func (r jobRes) wire() any {
+	if r.nullExit {
+		return map[string]any{"v": r.V, "t": r.T, "id": r.ID, "ok": r.OK, "exit": nil}
+	}
+	return r
 }
 
 type liveJob struct {
@@ -287,6 +296,9 @@ func (h *jobHub) run(s *session, msg map[string]any) {
 			}
 		}
 		s.sendResFull(id, code == 0, code, out, errb, errText, timedOut, confirmed)
+	case "pty_open":
+		// Holds this job until the shell exits, so self-update waits.
+		s.ptyOpen(id, msg, jobCancel(job))
 	case "http":
 		s.httpOp(id, msg, jobCancel(job))
 	case "read_binary":
