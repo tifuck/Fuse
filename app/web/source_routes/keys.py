@@ -3,6 +3,7 @@ them. Users add and remove their own keys on Sources; admins switch each
 provider on or off, choose who may use its site keys, and manage those."""
 from __future__ import annotations
 
+import asyncio
 import json
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -33,7 +34,7 @@ def _back(user_id: int, kind: str, message: str, pid: str):
 @router.post("/sources/keys/{pid}/add")
 async def key_add(request: Request, pid: str, api_key: str = Form(""), label: str = Form(""),
                   method: str = Form(""), region: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     p = _preset(pid)
@@ -52,7 +53,7 @@ async def key_add(request: Request, pid: str, api_key: str = Form(""), label: st
 
 @router.post("/sources/keys/{pid}/{cred_id}/revoke")
 async def key_revoke(request: Request, pid: str, cred_id: int):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     p = _preset(pid)
@@ -64,7 +65,7 @@ async def key_revoke(request: Request, pid: str, cred_id: int):
 
 @router.post("/admin/providers/{pid}")
 async def admin_provider_save(request: Request, pid: str, enabled: str = Form("0"), site_access: str = Form("none")):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     p = _preset(pid)
@@ -83,7 +84,7 @@ async def admin_provider_save(request: Request, pid: str, enabled: str = Form("0
 @router.post("/admin/providers/{pid}/keys")
 async def admin_site_key_add(request: Request, pid: str, api_key: str = Form(""), label: str = Form(""),
                              region: str = Form("")):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     p = _preset(pid)
@@ -100,7 +101,7 @@ async def admin_site_key_add(request: Request, pid: str, api_key: str = Form("")
 
 @router.post("/admin/providers/{pid}/keys/{cred_id}/delete")
 async def admin_site_key_delete(request: Request, pid: str, cred_id: int):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     p = _preset(pid)

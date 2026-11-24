@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -20,7 +21,7 @@ router = APIRouter()
 @router.post("/sources/grok/start")
 @router.post("/pool/grok/start")
 async def grok_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"grok-start:{user['id']}", 5, 60):
@@ -49,7 +50,7 @@ async def grok_start(request: Request):
 @router.post("/sources/grok/poll")
 @router.post("/pool/grok/poll")
 async def grok_poll(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     pending = logins.get(user["id"], "grok", clamp=True)
@@ -100,7 +101,7 @@ async def grok_poll(request: Request):
 @router.post("/sources/grok/cancel")
 @router.post("/pool/grok/cancel")
 async def grok_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "grok")

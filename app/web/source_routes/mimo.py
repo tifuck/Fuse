@@ -3,6 +3,7 @@ add and revoke."""
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -27,7 +28,7 @@ def _mimo_redirect_uri(request: Request) -> str:
 @router.post("/sources/mimo/start")
 @router.post("/pool/mimo/start")
 async def mimo_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"mimo-start:{user['id']}", 5, 60):
@@ -73,7 +74,7 @@ async def _mimo_finish(user: dict, pending: dict, blob: str):
 @router.get("/sources/mimo/callback")
 @router.get("/pool/mimo/callback")
 async def mimo_callback(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "mimo")
@@ -99,7 +100,7 @@ async def mimo_callback(request: Request):
 @router.post("/sources/mimo/complete")
 @router.post("/pool/mimo/complete")
 async def mimo_complete(request: Request, code: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "mimo")
@@ -121,7 +122,7 @@ async def mimo_complete(request: Request, code: str = Form("")):
 @router.post("/sources/mimo/cancel")
 @router.post("/pool/mimo/cancel")
 async def mimo_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "mimo")
@@ -131,7 +132,7 @@ async def mimo_cancel(request: Request):
 @router.post("/sources/mimo/add")
 @router.post("/pool/mimo/add")
 async def mimo_add(request: Request, api_key: str = Form(""), label: str = Form(""), region: str = Form("cn")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"mimo-add:{user['id']}", 5, 60):

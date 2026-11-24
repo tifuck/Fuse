@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -17,7 +18,7 @@ router = APIRouter()
 @router.post("/sources/claude/start")
 @router.post("/pool/claude/start")
 async def claude_start(request: Request, console: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"claude-start:{user['id']}", 5, 60):
@@ -36,7 +37,7 @@ async def claude_start(request: Request, console: str = Form("")):
 @router.post("/sources/claude/complete")
 @router.post("/pool/claude/complete")
 async def claude_complete(request: Request, code: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "claude")
@@ -61,7 +62,7 @@ async def claude_complete(request: Request, code: str = Form("")):
 @router.post("/sources/claude/cancel")
 @router.post("/pool/claude/cancel")
 async def claude_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "claude")

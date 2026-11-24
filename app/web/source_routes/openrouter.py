@@ -3,6 +3,8 @@ providers and the account settings endpoint."""
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from ... import accounts, db
@@ -16,7 +18,7 @@ router = APIRouter()
 @router.post("/sources/openrouter/add")
 @router.post("/pool/openrouter/add")
 async def openrouter_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"openrouter-add:{user['id']}", 5, 60):
@@ -35,7 +37,7 @@ async def openrouter_add(request: Request, api_key: str = Form(""), label: str =
 @router.post("/sources/openrouter/{cred_id}/revoke")
 @router.post("/pool/openrouter/{cred_id}/revoke")
 async def openrouter_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     sid = openrouter_mod.ensure_openrouter_source()
@@ -56,7 +58,7 @@ async def openrouter_revoke(request: Request, cred_id: int):
 @router.post("/sources/openrouter/free-models")
 @router.post("/pool/openrouter/free-models")
 async def openrouter_free_models_toggle(request: Request, enabled: str = Form("0")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not openrouter_mod.user_has_openrouter(user["id"]):
@@ -80,7 +82,7 @@ async def openrouter_free_models_toggle(request: Request, enabled: str = Form("0
 @router.post("/sources/openrouter/paid-models/all")
 @router.post("/pool/openrouter/paid-models/all")
 async def openrouter_paid_models_all(request: Request, enabled: str = Form("0")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not openrouter_mod.user_has_openrouter(user["id"]):
@@ -102,7 +104,7 @@ async def openrouter_paid_models_all(request: Request, enabled: str = Form("0"))
 @router.post("/sources/openrouter/paid-models/select")
 @router.post("/pool/openrouter/paid-models/select")
 async def openrouter_paid_models_select(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not openrouter_mod.user_has_openrouter(user["id"]):
@@ -161,7 +163,7 @@ def _openrouter_model_rows(user_id: int) -> list[dict]:
 
 
 async def _openrouter_json(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return None, None, JSONResponse({"error": "auth"}, status_code=401)
     if not openrouter_mod.user_has_openrouter(user["id"]):

@@ -3,6 +3,8 @@ plus the per-user shared-pool preference toggle."""
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from ... import accounts, db, stats
@@ -90,7 +92,7 @@ def _sort_mine_first(cards: list[dict]) -> list[dict]:
 
 @router.get("/pool", response_class=HTMLResponse)
 async def pool_redirect(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     return RedirectResponse("/sources", status_code=303)
@@ -693,7 +695,7 @@ def _prefs_reply(request: Request, user, kind: str, level: str, message: str, sa
 
 @router.post("/sources/pool/{kind}/prefs")
 async def user_pool_prefs(request: Request, kind: str):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if kind not in pool_policy.POOL_KIND_SET:

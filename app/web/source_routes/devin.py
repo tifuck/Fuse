@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import time
 from fastapi import APIRouter, Form, Request
@@ -26,7 +27,7 @@ def _devin_redirect_uri(request: Request) -> str:
 @router.post("/sources/devin/start")
 @router.post("/pool/devin/start")
 async def devin_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"devin-start:{user['id']}", 5, 60):
@@ -50,7 +51,7 @@ async def devin_start(request: Request):
 @router.get("/sources/devin/callback")
 @router.get("/pool/devin/callback")
 async def devin_callback(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "devin")
@@ -89,7 +90,7 @@ async def devin_callback(request: Request):
 @router.post("/sources/devin/complete")
 @router.post("/pool/devin/complete")
 async def devin_complete(request: Request, code: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "devin")
@@ -113,7 +114,7 @@ async def devin_complete(request: Request, code: str = Form("")):
 @router.post("/sources/devin/cancel")
 @router.post("/pool/devin/cancel")
 async def devin_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "devin")
@@ -123,7 +124,7 @@ async def devin_cancel(request: Request):
 @router.post("/sources/devin/add")
 @router.post("/pool/devin/add")
 async def devin_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"devin-add:{user['id']}", 5, 60):

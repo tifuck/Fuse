@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -10,7 +12,7 @@ from .deps import _chat_auth, _json_object, _skill_fail, render, require_user
 router = APIRouter()
 
 @router.get("/skills/proposals/{proposal_id}")
-async def skills_proposal_get(request: Request, proposal_id: str):
+def skills_proposal_get(request: Request, proposal_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -22,21 +24,21 @@ async def skills_proposal_get(request: Request, proposal_id: str):
 
 @router.post("/skills/proposals/{proposal_id}/confirm")
 async def skills_proposal_confirm(request: Request, proposal_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"skills:{user['id']}", 30, 60):
         raise HTTPException(429, "Search is busy. Try again shortly.")
     raw = await _json_object(request)
     try:
-        row = skill_proposals.confirm_proposal(user["id"], proposal_id, raw)
+        row = await asyncio.to_thread(skill_proposals.confirm_proposal, user["id"], proposal_id, raw)
     except skills.SkillError as exc:
         return _skill_fail(exc)
     return JSONResponse(row, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/skills/proposals/{proposal_id}/reject")
-async def skills_proposal_reject(request: Request, proposal_id: str):
+def skills_proposal_reject(request: Request, proposal_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -48,7 +50,7 @@ async def skills_proposal_reject(request: Request, proposal_id: str):
 
 
 @router.get("/skills", response_class=HTMLResponse)
-async def skills_page(request: Request):
+def skills_page(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -56,7 +58,7 @@ async def skills_page(request: Request):
 
 
 @router.get("/skills/api")
-async def skills_api(request: Request):
+def skills_api(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -64,7 +66,7 @@ async def skills_api(request: Request):
 
 
 @router.get("/skills/index")
-async def skills_index(request: Request):
+def skills_index(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -76,19 +78,19 @@ async def skills_index(request: Request):
 
 @router.patch("/skills/{slug}")
 async def skills_patch(request: Request, slug: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     try:
-        data = skills.patch_skill(user["id"], slug, raw)
+        data = await asyncio.to_thread(skills.patch_skill, user["id"], slug, raw)
     except skills.SkillError as exc:
         return _skill_fail(exc)
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/skills/{slug}/review")
-async def skills_review(request: Request, slug: str):
+def skills_review(request: Request, slug: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -101,19 +103,19 @@ async def skills_review(request: Request, slug: str):
 
 @router.post("/skills/{slug}/approve")
 async def skills_approve(request: Request, slug: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     try:
-        data = skills.approve(user["id"], slug, str(raw.get("hash") or ""))
+        data = await asyncio.to_thread(skills.approve, user["id"], slug, str(raw.get("hash") or ""))
     except skills.SkillError as exc:
         return _skill_fail(exc)
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @router.delete("/skills/{slug}")
-async def skills_delete(request: Request, slug: str):
+def skills_delete(request: Request, slug: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -126,7 +128,7 @@ async def skills_delete(request: Request, slug: str):
 
 @router.post("/skills/upload")
 async def skills_upload(request: Request, file: UploadFile = File(...)):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"skills:{user['id']}", 30, 60):
@@ -137,8 +139,8 @@ async def skills_upload(request: Request, file: UploadFile = File(...)):
     if len(data) > MAX_ZIP:
         raise HTTPException(400, "zip too large")
     try:
-        slug, files = parse_upload(file.filename or "", data)
-        row = skills.install_files(user["id"], files, origin="upload", slug=slug)
+        slug, files = await asyncio.to_thread(parse_upload, file.filename or "", data)
+        row = await asyncio.to_thread(skills.install_files, user["id"], files, origin="upload", slug=slug)
     except skills.SkillError as exc:
         return _skill_fail(exc)
     return JSONResponse(row, headers={"Cache-Control": "no-store"})
@@ -146,7 +148,7 @@ async def skills_upload(request: Request, file: UploadFile = File(...)):
 
 @router.get("/skills/catalog")
 async def skills_catalog(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"skills:{user['id']}", 30, 60):
@@ -167,7 +169,7 @@ async def skills_catalog(request: Request):
 
 @router.post("/skills/install")
 async def skills_install(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -184,7 +186,7 @@ async def skills_install(request: Request):
         origin = "skills_sh"
     if not source or not skill_id:
         raise HTTPException(400, "source and skill_id are required")
-    existing = skills.find_by_source_id(user["id"], ident or f"{source}/{skill_id}")
+    existing = await asyncio.to_thread(skills.find_by_source_id, user["id"], ident or f"{source}/{skill_id}")
     if existing:
         # Already installed: return the row without touching GitHub or the
         # install budget, so repeat clicks are instant no-ops.
@@ -199,7 +201,8 @@ async def skills_install(request: Request):
     try:
         with egress.through(user["id"]):
             files = await fetch_github_skill(source, skill_id)
-        row = skills.install_files(
+        row = await asyncio.to_thread(
+            skills.install_files,
             user["id"],
             files,
             origin=origin,
