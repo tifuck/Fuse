@@ -60,16 +60,17 @@ def _carried_scratch(conn, thread_id, messages) -> dict:
     if not order:
         return {}
     rows = conn.execute(
-        f"SELECT message_id,request FROM chat_runs WHERE thread_id=? AND parent_run_id IS NULL "
+        f"SELECT id,message_id FROM chat_runs WHERE thread_id=? AND parent_run_id IS NULL "
         f"AND message_id IN ({','.join('?' for _ in order)})",
         (thread_id, *order),
     ).fetchall()
-    by_message = {row["message_id"]: row["request"] for row in rows}
+    by_message = {row["message_id"]: row["id"] for row in rows}
     for message_id in order:
         if message_id not in by_message:
             continue
+        row = conn.execute("SELECT request FROM chat_runs WHERE id=?", (by_message[message_id],)).fetchone()
         try:
-            req = json.loads(by_message[message_id] or "{}")
+            req = json.loads((row["request"] if row else "") or "{}")
         except (json.JSONDecodeError, TypeError):
             return {}
         agent = req.get("agent") if isinstance(req, dict) and isinstance(req.get("agent"), dict) else {}

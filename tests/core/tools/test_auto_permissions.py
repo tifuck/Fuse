@@ -106,6 +106,28 @@ def test_jev_never_sees_agent_prose_or_tool_output(chat, decisions):
     assert "upload" not in sent and "IGNORE" not in sent and "approved" not in sent
 
 
+def test_jev_parses_a_transcript_once_per_revision(chat, decisions, monkeypatch):
+    thread = chats.create_thread(chat.uid, model="offline", messages=[{"role": "user", "content": "build the site"}])
+    tid = chats.resolve_thread_pk(chat.uid, thread["id"])
+    decisions.reply = verdict_for(0.1)
+    action = {"tool": "read_file", "path": "/etc/hosts"}
+    parsed = []
+    real = chats.parse_messages
+    monkeypatch.setattr(chats, "parse_messages", lambda *a, **kw: parsed.append(1) or real(*a, **kw))
+
+    asyncio.run(jev.judge(chat.uid, tid, action))
+    asyncio.run(jev.judge(chat.uid, tid, action))
+    assert len(parsed) == 1
+    monkeypatch.setattr(chats, "parse_messages", real)
+
+    current = chats.get_thread(chat.uid, thread["id"])
+    chats.update_thread(chat.uid, thread["id"], expected_revision=current["revision"],
+                        messages=[*current["messages"], {"role": "user", "content": "now deploy it"}])
+    asyncio.run(jev.judge(chat.uid, tid, action))
+
+    assert [r["state"]["user_request"] for r in decisions.requests] == ["build the site", "build the site", "now deploy it"]
+
+
 @pytest.mark.parametrize("reply", [
     (500, {"error": "upstream"}),
     (500, {"model": jev.MODEL, "answers": {"dangerous": {"noul": 0.0}}}),  # a safe-looking body on an error status

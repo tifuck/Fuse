@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
-from app import agents, chat_children, chat_runs, chat_store, chats, db
+from app import agents, chat_children, chat_runs, chat_store, chats, db, mysql_compat
 from app.chat_store import SpawnCapError
 from tests.core.agents._support import (
     agent_of, child, children, coding_user, parent_and_thread, root_runs, routed_provider, set_running, start_root,
@@ -168,6 +168,44 @@ def test_a_quiet_running_child_shows_as_waiting_then_stalled(fresh_db):
     chat_store.finish_run(worker["id"], {"content": "done"}, "completed")
     db.execute("UPDATE chat_runs SET updated_at=? WHERE id=?", (_ago(10_000), worker["id"]))
     assert chat_store.list_thread_agents(uid, pk)[0]["current"] != "stalled"
+
+
+def _poll(uid, pk):
+    """list_thread_agents, plus the args of each statement that read a message."""
+    real = mysql_compat.Conn.native
+    reads = []
+
+    def native(conn, sql, args=()):
+        if "FROM `chat_runs`" in sql and "`message`" in sql:
+            reads.append(list(args))
+        return real(conn, sql, args)
+
+    with patch.object(mysql_compat.Conn, "native", native):
+        rows = chat_store.list_thread_agents(uid, pk)
+    return [{k: v for k, v in row.items() if k != "quiet_s"} for row in rows], reads
+
+
+def test_an_agents_poll_rereads_only_the_messages_that_changed(fresh_db):
+    uid = coding_user()
+    thread, parent = parent_and_thread(uid)
+    busy, done = child(uid, thread, parent, prompt="busy"), child(uid, thread, parent, prompt="done")
+    set_running(busy["id"])
+    chat_store.checkpoint(busy["id"], {"content": "Now writing", "segments": [{"type": "content", "text": "Now writing"}],
+                                       "tools": [{"id": "t1", "name": "grep", "status": "running", "pattern": "todo"}]})
+    chat_store.finish_run(done["id"], {"content": "the report", "tools": []}, "completed")
+    pk = parent["thread_id"]
+
+    first, reads = _poll(uid, pk)
+    assert reads
+    again, reads = _poll(uid, pk)
+    assert reads == [] and again == first
+    assert {r["id"]: r["current"] for r in again} == {busy["id"]: "grep", done["id"]: ""}
+
+    chat_store.checkpoint(busy["id"], {"content": "Now writing", "segments": [{"type": "content", "text": "Now writing"}],
+                                       "tools": [{"id": "t1", "name": "grep", "status": "done", "pattern": "todo"}]})
+    third, reads = _poll(uid, pk)
+    assert reads == [[busy["id"]]]
+    assert next(r for r in third if r["id"] == busy["id"])["current"] == "writing"
 
 
 def test_the_history_limit_never_hides_live_children(fresh_db):

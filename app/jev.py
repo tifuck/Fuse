@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 
 import httpx
 
@@ -111,11 +112,40 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
     command) go in, never the agent's prose or tool output. A prompt injection
     in fetched or read content cannot argue its own case to the gate.
     """
-    row = db.fetchone(
-        "SELECT messages FROM chat_threads WHERE id=? AND user_id=?",
-        (int(thread_id), int(user_id)),
-    )
-    messages = chats.parse_messages(row["messages"]) if row else []
+    act = dict(action or {})
+    command = str(act.get("command") or "")
+    if command:
+        act["command"] = command[:ACTION_CLIP]
+    user_request, recent = _thread_context(int(user_id), int(thread_id))
+    return {
+        "user_request": user_request,
+        "recent": [dict(rec) for rec in recent],
+        "action": act,
+        "allowed_roots": [str(r) for r in (roots or []) if r][:8],
+    }
+
+
+# (user_request, recent) per (user, thread, revision): every judgement of a
+# turn reads the same transcript, which can be megabytes.
+_CONTEXT_MAX = 64
+_contexts: dict[tuple[int, int, int], tuple[str, list[dict]]] = {}
+_contexts_lock = threading.Lock()
+
+
+def _thread_context(user_id: int, thread_id: int) -> tuple[str, list[dict]]:
+    row = db.fetchone("SELECT revision FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id))
+    if row is None:
+        return "", []
+    key = (user_id, thread_id, int(row["revision"]))
+    with _contexts_lock:
+        cached = _contexts.get(key)
+    if cached is not None:
+        return cached
+    row = db.fetchone("SELECT revision, messages FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id))
+    if row is None:
+        return "", []
+    key = (user_id, thread_id, int(row["revision"]))
+    messages = chats.parse_messages(row["messages"])
     user_request = ""
     for msg in reversed(messages):
         if msg.get("role") == "user":
@@ -144,16 +174,12 @@ def clip_thread_state(user_id: int, thread_id: int, action: dict, *, roots: list
                 if command:
                     rec["command"] = command[:COMMAND_CLIP]
                 recent.append(rec)
-    act = dict(action or {})
-    command = str(act.get("command") or "")
-    if command:
-        act["command"] = command[:ACTION_CLIP]
-    return {
-        "user_request": user_request,
-        "recent": recent[-RECENT_MAX:],
-        "action": act,
-        "allowed_roots": [str(r) for r in (roots or []) if r][:8],
-    }
+    context = (user_request, recent[-RECENT_MAX:])
+    with _contexts_lock:
+        _contexts[key] = context
+        while len(_contexts) > _CONTEXT_MAX:
+            _contexts.pop(next(iter(_contexts)))
+    return context
 
 
 async def evaluate(user_id: int, state: dict, questions: dict | None = None, timeout: float = TIMEOUT_S):

@@ -36,7 +36,7 @@ def abort_active(run_id, status="cancelled", notice=None):
     from . import chat_runs
 
     try:
-        row = db.fetchone("SELECT * FROM chat_runs WHERE id=?", (run_id,))
+        row = db.fetchone(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=?", (run_id,))
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return False
         # Before the row turns terminal: from then on a resume may requeue it.
@@ -113,7 +113,7 @@ def _force_terminal(run_id, status, message):
     if status not in chat_tx.TERMINAL:
         status = "interrupted"
     with chat_tx.transaction() as conn:
-        row = conn.execute("SELECT * FROM chat_runs WHERE id=?", (run_id,)).fetchone()
+        row = conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=?", (run_id,)).fetchone()
         if row is None or row["status"] not in chat_tx.ACTIVE:
             return
         payload = message if isinstance(message, dict) else {}
