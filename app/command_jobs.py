@@ -867,6 +867,18 @@ def _child_run_state(run_id) -> str | None:
     return "active" if row["status"] in ("queued", "running") else "finished"
 
 
+def _child_run_ids(run_ids) -> set[str]:
+    """The run ids among run_ids that _child_run_state calls a subagent's."""
+    ids = sorted({str(run_id) for run_id in run_ids if run_id})
+    if not ids:
+        return set()
+    return {str(row["id"]) for row in db.fetchall(
+        f"SELECT id FROM chat_runs WHERE id IN ({','.join('?' for _ in ids)})"
+        " AND parent_run_id IS NOT NULL AND parent_run_id<>''",
+        tuple(ids),
+    )}
+
+
 # A lock wait or deadlock on the parent's row is transient: retry before
 # treating the result as one its run cannot take.
 QUEUE_RETRY_DELAYS = (0.5, 2.0)
@@ -1057,10 +1069,11 @@ def pending_wake_threads() -> list[dict]:
         " AND delivered=0 AND status IN ('completed','timed_out','cancelled','interrupted','lost')"
         " AND NOT EXISTS (SELECT 1 FROM chat_runs r WHERE r.id=command_jobs.run_id AND r.parent_run_id IS NOT NULL)"
     )}
-    for rec in list(_live.values()):
-        if not rec.get("thread_id") or not _is_monitor(rec) or rec.get("status") in TERMINAL:
-            continue
-        if _child_run_state(rec.get("run_id")) is not None:
+    live = [rec for rec in list(_live.values())
+            if rec.get("thread_id") and _is_monitor(rec) and rec.get("status") not in TERMINAL]
+    children = _child_run_ids(rec.get("run_id") for rec in live)
+    for rec in live:
+        if rec.get("run_id") and str(rec["run_id"]) in children:
             continue
         acked = int(rec.get("delivered_event_seq") or 0)
         if any(not isinstance(item, dict) or int(item.get("seq") or 0) > acked for item in rec.get("pending_events") or []):
@@ -1088,13 +1101,13 @@ def pending_envelopes(user_id: int, thread_id: int) -> list[dict]:
         else:
             commands.append(item)
     # A copy: this runs in worker threads (wake, inbox drain) and reads the
-    # database per monitor, while the loop adds and prunes jobs.
-    for rec in list(_live.values()):
-        if rec.get("user_id") != int(user_id) or rec.get("thread_id") != int(thread_id):
-            continue
-        if not _is_monitor(rec) or rec.get("status") in TERMINAL:
-            continue
-        if _child_run_state(rec.get("run_id")) is not None:
+    # database, while the loop adds and prunes jobs.
+    live = [rec for rec in list(_live.values())
+            if rec.get("user_id") == int(user_id) and rec.get("thread_id") == int(thread_id)
+            and _is_monitor(rec) and rec.get("status") not in TERMINAL]
+    children = _child_run_ids(rec.get("run_id") for rec in live)
+    for rec in live:
+        if rec.get("run_id") and str(rec["run_id"]) in children:
             continue
         acked = int(rec.get("delivered_event_seq") or 0)
         pending = list(rec.get("pending_events") or [])
@@ -1303,7 +1316,8 @@ def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
     ensure_schema()
     rows = [dict(row) for row in db.fetchall(
         f"SELECT {_JOB_META_COLUMNS} FROM command_jobs"
-        " WHERE user_id=? AND thread_id=? AND background=1 AND status IN ('running','cancelling')"
+        " WHERE user_id=? AND thread_id=? AND background=1 AND finished_at IS NULL"
+        " AND status IN ('running','cancelling')"
         " ORDER BY created_at",
         (int(user_id), int(thread_id)),
     )]
