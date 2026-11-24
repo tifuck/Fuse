@@ -423,20 +423,27 @@ def _hour_floor(iso: str) -> str:
 
 def _window_rows(
     user_id: int, start: str, end: str, provider: str, all_users: bool, *, subject_id: int | None = None,
+    granule: int = 3600, bucket_seconds: int = 3600, utc_offset: int = 0,
 ) -> list:
     """The window per UTC hour, user, API key, provider and model: whole hours
     from usage_rollup_hourly, the partial hours at its edges from usage_events.
-    Same rows as _event_rows(3600, [(start, end)], ...)."""
+    Same rows as _event_rows(3600, [(start, end)], ...).
+
+    A sub-hour granule (a +5:30 viewer's midnight falls inside a UTC hour):
+    the edges and every whole hour a bucket boundary splits are read from
+    usage_events at that grain, and each other hour's row is dated at its
+    first event's granule, so the rows fold into the same buckets (and the
+    same first bucket) as _event_rows(granule, [(start, end)], ...)."""
     first = _hour_floor(start) if start else ""
     if first and first != start:
         first = _iso(datetime.fromisoformat(first.replace("Z", "+00:00")) + timedelta(hours=1))
     last = _hour_floor(end)
     if start and first >= last:
-        return list(_event_rows(3600, [(start, end)], user_id, provider, all_users, subject_id=subject_id))
+        return list(_event_rows(granule, [(start, end)], user_id, provider, all_users, subject_id=subject_id))
     edges = ([(start, first)] if start and start < first else []) + ([(last, end)] if last < end else [])
-    rows = list(_event_rows(3600, edges, user_id, provider, all_users, subject_id=subject_id)) if edges else []
+    rows = list(_event_rows(granule, edges, user_id, provider, all_users, subject_id=subject_id)) if edges else []
     where, args = _window_filters(user_id, first, last, provider, all_users, subject_id=subject_id, column="e.hour")
-    rows += db.fetchall(
+    hours = db.fetchall(
         f"""SELECT CAST(strftime('%s', e.hour) AS INTEGER) AS bucket, e.user_id,
                    NULLIF(e.api_key_id, 0) AS api_key_id, e.source_type AS provider, e.model,
                    {", ".join(f"e.{col} AS {col}" for col in db.ROLLUP_SUMS)},
@@ -446,6 +453,20 @@ def _window_rows(
             WHERE {where}""",
         tuple(args),
     )
+    if granule == 3600:
+        return rows + list(hours)
+    split = set()
+    for row in hours:
+        hour = int(row["bucket"])
+        if _bucket_of(hour, bucket_seconds, utc_offset) != _bucket_of(hour + 3600 - granule, bucket_seconds, utc_offset):
+            split.add(hour)
+            continue
+        offset = int(datetime.fromisoformat(row["first_at"].replace("Z", "+00:00")).timestamp()) - hour
+        rows.append({**row, "bucket": hour + offset // granule * granule})
+    if split:
+        ranges = [(_iso(datetime.fromtimestamp(hour, timezone.utc)), _iso(datetime.fromtimestamp(hour + 3600, timezone.utc)))
+                  for hour in sorted(split)]
+        rows += _event_rows(granule, ranges, user_id, provider, all_users, subject_id=subject_id)
     return rows
 
 
@@ -599,18 +620,20 @@ def usage_analytics(
     # providers, users, sources and the heatmap all fold out of these rows.
     # Whole hours come from usage_rollup_hourly (see _window_rows).
     # The grain divides the offset too: a +5:30 or +5:45 viewer's midnight
-    # falls inside a UTC hour.
+    # falls inside a UTC hour, and _window_rows reads such hours at that grain.
     granule = math.gcd(min(bucket_seconds, 3600), utc_offset)
     # A weekday x hour pattern needs a week of history even when the chosen
     # range is shorter, so short ranges scan seven days for the heatmap.
     short = not lifetime and duration < _HEATMAP_MIN
     prev_model_tokens: dict[str, int] = {}
     with ThreadPoolExecutor(max_workers=4) as scans:
-        if granule == 3600:
-            rows_job = scans.submit(_window_rows, user_id, start, end, provider, all_users, subject_id=subject_id)
+        if granule == 3600 or bucket_seconds > 3600:
+            rows_job = scans.submit(_window_rows, user_id, start, end, provider, all_users, subject_id=subject_id,
+                                    granule=granule, bucket_seconds=bucket_seconds, utc_offset=utc_offset)
         else:
-            # A sub-hour grain (short ranges, a +5:30 viewer's midnight) cannot
-            # come out of hourly rollups: those windows read the events.
+            # Sub-hour buckets (short ranges), or hourly ones a +5:30 viewer's
+            # boundaries split every hour of, cannot come out of hourly
+            # rollups: those windows read the events.
             rows_job = scans.submit(
                 _event_rows, granule, [(start, end)], user_id, provider, all_users, subject_id=subject_id,
             )
@@ -966,26 +989,23 @@ def pricing_views() -> list[dict]:
     return out
 
 
+_COVERAGE = {"api_equiv": "fuse_api_equiv_micros", "priced": "fuse_priced_events", "unpriced": "fuse_unpriced_events"}
+
+
 def fuse_coverage(rows) -> dict[int, dict]:
     """fuse_view's API-equivalent cost and priced/unpriced counts for many
-    credentials in one query (a credential without events is absent)."""
-    ids = sorted({int(row["id"]) for row in rows})
-    if not ids:
-        return {}
-    return {
-        int(row["credential_id"]): row
-        for row in db.fetchall(
-            f"""SELECT credential_id,
-                 COALESCE(SUM(estimated_cost_micros), 0) AS api_equiv,
-                 COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=0
-                                   THEN 1 ELSE 0 END), 0) AS unpriced,
-                 COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=1
-                                   THEN 1 ELSE 0 END), 0) AS priced
-               FROM usage_events WHERE credential_id IN ({",".join("?" * len(ids))})
-               GROUP BY credential_id""",
+    credentials, from their counters (credentials.fuse_*): read off the rows
+    when they carry them, else one query. A credential with nothing counted
+    is absent."""
+    rows = list(rows)
+    if rows and not all(column in row.keys() for row in rows for column in _COVERAGE.values()):
+        ids = sorted({int(row["id"]) for row in rows})
+        rows = db.fetchall(
+            f"SELECT id, {', '.join(_COVERAGE.values())} FROM credentials WHERE id IN ({','.join('?' * len(ids))})",
             tuple(ids),
         )
-    }
+    coverage = {int(row["id"]): {key: int(row[column] or 0) for key, column in _COVERAGE.items()} for row in rows}
+    return {cred_id: item for cred_id, item in coverage.items() if any(item.values())}
 
 
 def user_emails(ids) -> dict[int, str]:
