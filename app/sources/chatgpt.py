@@ -859,17 +859,18 @@ class ChatGPTSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("chatgpt", refresh_pool_usage)
-        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "chatgpt", user_id)
-        model = body.get("model") or CHATGPT_MODELS[0]
-        payload = build_responses_payload(body, model, session_id=session_id)
-        turn_key = _turn_key(session_id, payload)
-        wants_stream = bool(body.get("stream"))
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": "No ChatGPT accounts in the pool"})
-        prefer_id = lookup("chatgpt", session_id)
-        hint_id = lookup("chatgpt", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "chatgpt")
+        with db.read_memo():
+            self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "chatgpt", user_id)
+            model = body.get("model") or CHATGPT_MODELS[0]
+            payload = build_responses_payload(body, model, session_id=session_id)
+            turn_key = _turn_key(session_id, payload)
+            wants_stream = bool(body.get("stream"))
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": "No ChatGPT accounts in the pool"})
+            prefer_id = await asyncio.to_thread(lookup, "chatgpt", session_id)
+            hint_id = await asyncio.to_thread(lookup, "chatgpt", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "chatgpt")
         failover = Failover()
         why: list = []
         while True:

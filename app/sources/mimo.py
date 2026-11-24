@@ -562,19 +562,20 @@ class MimoSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("mimo", refresh_pool_quota)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
-            "mimo",
-            user_id,
-        )
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": "No Xiaomi accounts in the pool"})
-        model = body.get("model") or MIMO_MODELS[0]
-        prepared = _chat_payload(body)
-        prefer_id = lookup("mimo", session_id)
-        hint_id = lookup("mimo", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "mimo")
+        with db.read_memo():
+            self.creds = pool_policy.filter_credentials(
+                db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
+                "mimo",
+                user_id,
+            )
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": "No Xiaomi accounts in the pool"})
+            model = body.get("model") or MIMO_MODELS[0]
+            prepared = _chat_payload(body)
+            prefer_id = await asyncio.to_thread(lookup, "mimo", session_id)
+            hint_id = await asyncio.to_thread(lookup, "mimo", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "mimo")
         failover = Failover()
         why: list = []
         while True:
@@ -588,7 +589,7 @@ class MimoSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            note_pool_invoke(cred["id"])
+            await asyncio.to_thread(note_pool_invoke, cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
             key = extra.get("api_key") or accounts.cred_secret(cred)
             region = extra.get("region") if extra.get("region") in _REGIONS else "cn"
@@ -638,7 +639,7 @@ class MimoSource:
                     continue
                 if status == 200:
                     failover.served()
-                    bind("mimo", session_id, cred["id"])
+                    await asyncio.to_thread(bind, "mimo", session_id, cred["id"])
                 last.response_headers = response_headers
                 last.attempts = attempts
                 return last
