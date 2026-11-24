@@ -1,5 +1,7 @@
+import hashlib
 import json
 import logging
+import random
 import sqlite3
 import threading
 import time
@@ -8,6 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from .config import settings
+from .database_errors import is_lock_conflict
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +642,8 @@ def save_model_price(
     # One recorded at the new price meanwhile reprices to itself (no delta).
     with _price_lock(provider, model):
         with tx() as write_conn:
+            if provider != "openrouter":
+                _mark_reprice(write_conn, provider, model)
             write_conn.execute(
                 f"""INSERT INTO model_prices
                    (provider, model, input_micros_per_million, cached_input_micros_per_million,
@@ -725,21 +730,66 @@ _REPRICE_COLUMNS = """id, user_id, api_key_id, credential_id, reported_cost_micr
                       created_at"""
 
 
+# Tries per window: a deadlock victim or lock wait timeout rolled the window
+# back, and the new price has already committed.
+REPRICE_ATTEMPTS = 4
+# schema_meta key prefix of a walk not finished yet: written with the price
+# change, removed after its last window, resumed at boot (resume_reprices).
+_REPRICE_PENDING = "reprice_pending:"
+
+
+def _reprice_marker(provider: str, model: str) -> str:
+    return _REPRICE_PENDING + hashlib.md5(f"{provider}\0{model}".encode()).hexdigest()
+
+
+def _mark_reprice(conn, provider: str, model: str) -> None:
+    conn.execute(
+        "INSERT INTO schema_meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (_reprice_marker(provider, model), json.dumps([provider, model])),
+    )
+
+
+def resume_reprices() -> None:
+    """Finish reprice walks a restart cut short: each walks again at the
+    model's current price (None once deleted). Windows already done are
+    skipped row by row, so the rerun moves only what the walk had not. A walk
+    that fails again keeps its marker for the next boot and never stops this one."""
+    for row in fetchall("SELECT value FROM schema_meta WHERE key LIKE ?", (_REPRICE_PENDING + "%",)):
+        provider, model = json.loads(row["value"])
+        logger.warning("Resuming the reprice of %s/%s that a restart cut short", provider, model)
+        try:
+            with _price_lock(provider, model):
+                price = fetchone("SELECT * FROM model_prices WHERE provider=? AND model=?", (provider, model))
+                _reprice_history(provider, model, price)
+        except Exception:
+            logger.exception("Reprice of %s/%s did not finish; it resumes at the next start", provider, model)
+
+
 def _reprice_history(provider: str, model: str, price) -> None:
     span = fetchone("SELECT MIN(id) AS lo, MAX(id) AS hi FROM usage_events WHERE model=?", (model,))
-    if span is None or span["lo"] is None:
-        return
-    lo, hi = int(span["lo"]) - 1, int(span["hi"])
+    lo, hi = (int(span["lo"]) - 1, int(span["hi"])) if span and span["lo"] is not None else (0, 0)
     while lo < hi:
-        with tx() as conn:
-            rows = conn.execute(
-                f"""SELECT {_REPRICE_COLUMNS} FROM usage_events
-                    WHERE source_type=? AND model=? AND id>? AND id<=?""",
-                (provider, model, lo, lo + REPRICE_WINDOW),
-            ).fetchall()
-            if rows:
-                _reprice_batch(conn, provider, model, rows, price)
+        for attempt in range(REPRICE_ATTEMPTS):
+            try:
+                # A locking read: an account delete removing these events
+                # waits for the window, or the window for it, never both
+                # moving the rollups by the same events.
+                with tx() as conn:
+                    rows = conn.execute(
+                        f"""SELECT {_REPRICE_COLUMNS} FROM usage_events
+                            WHERE source_type=? AND model=? AND id>? AND id<=?""" + for_update(conn),
+                        (provider, model, lo, lo + REPRICE_WINDOW),
+                    ).fetchall()
+                    if rows:
+                        _reprice_batch(conn, provider, model, rows, price)
+                break
+            except Exception as exc:
+                if not is_lock_conflict(exc) or attempt == REPRICE_ATTEMPTS - 1:
+                    raise
+                logger.warning("Reprice of %s/%s hit lock contention; retrying the window", provider, model)
+                time.sleep(random.uniform(0.02, 0.1) * (attempt + 1))
         lo += REPRICE_WINDOW
+    execute("DELETE FROM schema_meta WHERE key=?", (_reprice_marker(provider, model),))
 
 
 def _price_measures(row, estimate: int, known: int) -> tuple[int, int, int, int, int]:
@@ -851,7 +901,9 @@ def _apply_cost_deltas(conn, provider, key_deltas, user_deltas, cred_deltas, rol
 def delete_model_price(provider: str, model: str) -> None:
     # Committed before the walk, like save_model_price's upsert.
     with _price_lock(provider, model):
-        execute("DELETE FROM model_prices WHERE provider=? AND model=?", (provider, model))
+        with tx() as conn:
+            _mark_reprice(conn, provider, model)
+            conn.execute("DELETE FROM model_prices WHERE provider=? AND model=?", (provider, model))
         _reprice_history(provider, model, None)
 
 
