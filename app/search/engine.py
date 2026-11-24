@@ -228,6 +228,25 @@ def _with_find(
     return replace(extract, used_find=False)
 
 
+# Above this many characters (a long PDF, a big page) the link filter and the
+# find/query ranking run off the event loop.
+_THREAD_TEXT_CHARS = 50_000
+
+
+def _links_and_window_sync(
+    extract: PageExtract, find: str | None, query: str | None, offset: int,
+) -> tuple[set[str], PageExtract]:
+    return _safe_links(extract), _with_find(extract, find, query=query, offset=offset)
+
+
+async def _links_and_window(
+    extract: PageExtract, find: str | None, query: str | None, offset: int,
+) -> tuple[set[str], PageExtract]:
+    if len(extract.full_text or extract.text) > _THREAD_TEXT_CHARS:
+        return await asyncio.to_thread(_links_and_window_sync, extract, find, query, offset)
+    return _links_and_window_sync(extract, find, query, offset)
+
+
 def _host_header(hostname: str, port: int) -> str:
     host = f"[{hostname}]" if ":" in hostname else hostname
     return host if port == 443 else f"{host}:{port}"
@@ -1083,9 +1102,9 @@ async def _fetch(
         cached = None
     if cached is not None:
         final_url, base_extract = cached
+        links, extract = await _links_and_window(base_extract, find, query, offset)
         allowed.add(final_url)
-        allowed.update(_safe_links(base_extract))
-        extract = _with_find(base_extract, find, query=query, offset=offset)
+        allowed.update(links)
         extract.bytes_in = base_extract.bytes_in
         return extract, pack_page(final_url, extract), ""
     if not _allow(user_id, rate_kind):
@@ -1126,13 +1145,13 @@ async def _fetch(
     if base_extract.kind == "empty" or (not base_extract.text and base_extract.kind != "spa"):
         msg = "The page had no extractable text."
         return None, msg, msg
-    allowed.add(final_url)
-    allowed.update(_safe_links(base_extract))
     final_key = scope + normalize_url(final_url)
     _page_cache.set(final_key, (final_url, base_extract), PAGE_CACHE_TTL)
     if scope + normalize_url(clean) != final_key:
         _page_cache.set(scope + normalize_url(clean), final_key, PAGE_CACHE_TTL)
-    extract = _with_find(base_extract, find, query=query, offset=offset)
+    links, extract = await _links_and_window(base_extract, find, query, offset)
+    allowed.add(final_url)
+    allowed.update(links)
     extract.bytes_in = received
     return extract, pack_page(final_url, extract), ""
 

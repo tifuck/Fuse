@@ -467,6 +467,27 @@ def test_cached_pages_serve_find_query_and_offset_reads_without_the_network(web,
     assert len(web.requests) == 1, "every later read came from the page cache, and spent no read budget"
 
 
+def test_find_query_and_links_work_on_a_page_too_large_to_window_on_the_loop(web, dns):
+    public(dns, "docs.example")
+    body = "".join(f'<h2>Part {i}</h2><p>{"filler words " * 500} <a href="https://docs.example/p{i}">p{i}</a></p>'
+                   for i in range(10))
+    body += "<h2>Limits</h2><p>The deep-cache-marker sits in the final section.</p>"
+    web.page("https://docs.example/guide", ARTICLE.format(body))
+
+    allowed = set()
+    first, _, err = read("https://docs.example/guide", allowed=allowed, find="deep-cache-marker")
+    assert not err and len(first.full_text) > 50_000
+    assert first.used_find and "deep-cache-marker" in first.text
+    assert {"https://docs.example/guide", "https://docs.example/p3"} <= allowed
+    ranked, _, err = read("https://docs.example/guide", query="limits section")
+    assert not err and "deep-cache-marker" in ranked.text
+    allowed = set()
+    rest, _, err = read("https://docs.example/guide", allowed=allowed, offset=FETCH_CHARS)
+    assert not err and rest.offset == FETCH_CHARS and rest.text == first.full_text[FETCH_CHARS:2 * FETCH_CHARS]
+    assert "https://docs.example/p3" in allowed  # a cached read allows the page's links too
+    assert len(web.requests) == 1
+
+
 def test_a_redirected_page_is_cached_under_both_urls_but_counted_once(web, dns, monkeypatch):
     public(dns, "docs.example")
     web.on("https://docs.example/old", lambda _r: httpx.Response(301, headers={"location": "/new"}))
