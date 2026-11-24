@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     available, locked = await _models_page_families(user)
@@ -89,11 +89,12 @@ async def chat_page(request: Request):
 
 @router.get("/chat/sync")
 async def chat_sync_snapshot(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
 
     def _snapshot():
+        changelog.announce(user["id"])
         with db.tx() as conn:
             conn.execute("BEGIN")
             rows = conn.execute(
@@ -124,11 +125,23 @@ async def chat_sync_snapshot(request: Request):
         data["projects"] = chats.list_sidebar_projects(user["id"])
         return data
 
-    await asyncio.to_thread(changelog.announce, user["id"])
     data = await asyncio.to_thread(_snapshot)
-    await asyncio.to_thread(chat_runs.reap_orphans, user["id"])
-    await chat_runs.resume_queued(user["id"])
+    # The snapshot is already taken; the maintenance loop repeats this every minute.
+    task = asyncio.create_task(_reap_and_resume(user["id"]))
+    _sync_tasks.add(task)
+    task.add_done_callback(_sync_tasks.discard)
     return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+
+_sync_tasks: set[asyncio.Task] = set()
+
+
+async def _reap_and_resume(user_id):
+    try:
+        await asyncio.to_thread(chat_runs.reap_orphans, user_id)
+        await chat_runs.resume_queued(user_id)
+    except Exception:
+        logger.exception("Chat sync reap/resume failed for user %s", user_id)
 
 
 def _chat_revision(raw):
@@ -170,10 +183,11 @@ def _chat_thread_pk(user, thread_id):
     return pk
 
 
-def _chat_public_thread(thread, user=None, pack=False):
+def _chat_public_thread(thread, user=None, pack=False, pk=None):
     public = {**thread, "run": _chat_public_run(thread.get("run"))}
     if user is not None and public.get("messages"):
-        pk = chats.resolve_thread_pk(user["id"], public["id"])
+        if pk is None:
+            pk = chats.resolve_thread_pk(user["id"], public["id"])
         public["messages"] = chat_images.link_attachments(pk, public["messages"])
     if pack:
         public["messages"] = chats.pack_segment_text(public.get("messages"))
@@ -181,9 +195,13 @@ def _chat_public_thread(thread, user=None, pack=False):
     return public
 
 
+def _public_thread_json(thread, user=None, status_code=200):
+    return _json(_chat_public_thread(thread, user), status_code=status_code)
+
+
 @router.post("/chat/threads/{thread_id}/turns")
 async def chat_turn(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
@@ -232,16 +250,20 @@ async def chat_turn(request: Request, thread_id: str):
         chat_titles.notify(pk)
     # Like the snapshot (?pack=1): the reply is the whole transcript.
     pack = request.query_params.get("pack") == "1"
-    thread = await asyncio.to_thread(_chat_public_thread, result["thread"], user, pack) if result["thread"] else None
-    return JSONResponse({**result, "thread": thread, "run": _chat_public_run(result["run"])},
-                        headers={"Cache-Control": "no-store"})
+
+    def _reply():
+        thread = _chat_public_thread(result["thread"], user, pack, pk) if result["thread"] else None
+        return _json({**result, "thread": thread, "run": _chat_public_run(result["run"])},
+                     headers={"Cache-Control": "no-store"})
+
+    return await asyncio.to_thread(_reply)
 
 
 @router.post("/chat/threads/{thread_id}/queue")
 async def chat_queue_put(request: Request, thread_id: str):
     """Hold a queued message on the server. It starts when the running turn
     ends, whether or not a tab is open; when the chat is idle it starts now."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
@@ -256,16 +278,20 @@ async def chat_queue_put(request: Request, thread_id: str):
         sent, held = await chat_runs.queue_message(user["id"], pk, raw, release=raw.get("release") is True)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
-    thread = await asyncio.to_thread(chats.get_thread, user["id"], pk) if sent else None
     pack = request.query_params.get("pack") == "1"
-    return JSONResponse({"ok": True, "sent": sent, "held": held,
-                         "thread": await asyncio.to_thread(_chat_public_thread, thread, user, pack) if thread else None},
-                        headers={"Cache-Control": "no-store"})
+
+    def _reply():
+        thread = chats.get_thread(user["id"], pk) if sent else None
+        return _json({"ok": True, "sent": sent, "held": held,
+                      "thread": _chat_public_thread(thread, user, pack, pk) if thread else None},
+                     headers={"Cache-Control": "no-store"})
+
+    return await asyncio.to_thread(_reply)
 
 
 @router.delete("/chat/threads/{thread_id}/queue/{item_id}")
 async def chat_queue_delete(request: Request, thread_id: str, item_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
@@ -275,7 +301,7 @@ async def chat_queue_delete(request: Request, thread_id: str, item_id: str):
 
 @router.get("/chat/runs/{run_id}/images/{event_id}")
 async def chat_run_image(request: Request, run_id: str, event_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     image = await asyncio.to_thread(chat_store.read_file_image, user["id"], run_id, event_id)
@@ -293,7 +319,7 @@ async def chat_run_image(request: Request, run_id: str, event_id: str):
 @router.get("/chat/images/{sha}")
 async def chat_image(request: Request, sha: str):
     """A user attachment image a thread view sent as this path (chat_images.link_attachments)."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     image = await asyncio.to_thread(chat_images.attachment_image, user["id"], sha)
@@ -311,17 +337,21 @@ async def chat_image(request: Request, sha: str):
 
 @router.get("/chat/runs/{run_id}")
 async def chat_run_get(request: Request, run_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    run = await asyncio.to_thread(chat_store.get_run_snapshot, user["id"], run_id)
+    return await asyncio.to_thread(_chat_run_reply, user, run_id)
+
+
+def _chat_run_reply(user, run_id):
+    run = chat_store.get_run_snapshot(user["id"], run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     req = run.get("request") if isinstance(run.get("request"), dict) else {}
     agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
     parent_description = ""
     if run.get("parent_run_id"):
-        parent = await asyncio.to_thread(chat_store.get_run, user["id"], run["parent_run_id"], transcript=False)
+        parent = chat_store.get_run(user["id"], run["parent_run_id"], transcript=False)
         preq = (parent or {}).get("request") if isinstance((parent or {}).get("request"), dict) else {}
         pagent = preq.get("agent") if isinstance(preq.get("agent"), dict) else {}
         parent_description = str(pagent.get("description") or "")[:200]
@@ -332,7 +362,7 @@ async def chat_run_get(request: Request, run_id: str):
         stored = agent.get("meter") if isinstance(agent.get("meter"), dict) else None
         same_model = stored and stored.get("model") == (req.get("model") or "") and stored.get("limit") and stored.get("used") is not None
         meter = stored if same_model else chat_store.child_context_meter(run)
-    return JSONResponse(
+    return _json(
         {
             "id": run["id"],
             "thread_id": chats.public_id_for(run["thread_id"]) or run["thread_id"],
@@ -379,7 +409,7 @@ async def chat_run_get(request: Request, run_id: str):
 
 @router.post("/chat/runs/{run_id}/cancel")
 async def chat_cancel(request: Request, run_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False)
@@ -409,13 +439,13 @@ async def chat_cancel(request: Request, run_id: str):
             tree = scope == "tree" if run.get("parent_run_id") else scope != "self"
             await chat_runs.cancel_wait(user["id"], run_id, tree=tree, force=force, by_user=True, agents=stop_all)
         run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
-    return JSONResponse({"ok": True, "run": _chat_public_run(run)}, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"ok": True, "run": await asyncio.to_thread(_chat_public_run, run)}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/runs/{run_id}/resume")
 async def chat_run_resume(request: Request, run_id: str):
     """User-initiated resume of an interrupted/stopped run from its transcript."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     try:
@@ -430,13 +460,13 @@ async def chat_run_resume(request: Request, run_id: str):
         except Exception:
             logger.exception("Resume start failed for %s", run_id)
         run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
-    return JSONResponse({"ok": True, "run": _chat_public_run(run)}, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"ok": True, "run": await asyncio.to_thread(_chat_public_run, run)}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/runs/{run_id}/message")
 async def chat_run_message(request: Request, run_id: str):
     """A message the user typed into a subagent's view, for that subagent."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
@@ -457,7 +487,7 @@ async def chat_run_message(request: Request, run_id: str):
         except Exception:
             logger.exception("Subagent continuation start failed for %s", run_id)
         run = await asyncio.to_thread(chat_store.get_run, user["id"], run_id, transcript=False) or run
-    return JSONResponse({"ok": True, "delivery": delivery, "run": _chat_public_run(run)},
+    return JSONResponse({"ok": True, "delivery": delivery, "run": await asyncio.to_thread(_chat_public_run, run)},
                         headers={"Cache-Control": "no-store"})
 
 
@@ -468,7 +498,7 @@ async def chat_steer(request: Request, thread_id: str):
     The message is a real thread message (visible bubble) and is queued on the
     active root run for mid-turn injection; command_id keeps retries idempotent.
     """
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
@@ -479,33 +509,41 @@ async def chat_steer(request: Request, thread_id: str):
     text = raw.get("text")
     if text is not None and not isinstance(text, str):
         raise HTTPException(422, "text cannot be empty")
-    pk = _chat_thread_pk(user, thread_id)
-    try:
-        attachments = chat_images.restore_attachments(user["id"], raw.get("attachments"))
-        result = chat_store.steer_turn(user["id"], pk, text, _chat_command(raw), attachments=attachments)
-    except chats.ChatValidationError as exc:
-        raise _chat_validation_error(exc) from None
+
+    def _steer():
+        pk = _chat_thread_pk(user, thread_id)
+        try:
+            attachments = chat_images.restore_attachments(user["id"], raw.get("attachments"))
+            return pk, chat_store.steer_turn(user["id"], pk, text, _chat_command(raw), attachments=attachments)
+        except chats.ChatValidationError as exc:
+            raise _chat_validation_error(exc) from None
+
+    pk, result = await asyncio.to_thread(_steer)
     active = result["thread"].get("run")
     if active and active["status"] == "queued":
         await chat_runs.start(request, user, active)
-    thread = _chat_public_thread(result["thread"], user)
-    return JSONResponse(
-        {
-            "ok": True,
-            "live": bool(result["thread"].get("run")),
-            "injected": True,
-            "idempotent": bool(result.get("idempotent")),
-            "revision": thread["revision"],
-            "run": thread["run"],
-            "thread": thread,
-        },
-        headers={"Cache-Control": "no-store"},
-    )
+
+    def _reply():
+        thread = _chat_public_thread(result["thread"], user, pk=pk)
+        return _json(
+            {
+                "ok": True,
+                "live": bool(result["thread"].get("run")),
+                "injected": True,
+                "idempotent": bool(result.get("idempotent")),
+                "revision": thread["revision"],
+                "run": thread["run"],
+                "thread": thread,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    return await asyncio.to_thread(_reply)
 
 
 @router.get("/chat/threads")
 async def chat_threads(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     q = (request.query_params.get("q") or "").strip()
@@ -533,7 +571,7 @@ async def chat_threads(request: Request):
 
 @router.post("/chat/threads")
 async def chat_thread_create(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -551,7 +589,8 @@ async def chat_thread_create(request: Request):
             raw["tools"] = chats.parse_thread_tools(raw["tools"], strict=True)
         except chats.ChatValidationError as exc:
             raise _chat_validation_error(exc) from None
-    try:
+
+    def _create():
         thread = chats.create_thread(
             user["id"],
             model=raw.get("model", ""),
@@ -567,14 +606,17 @@ async def chat_thread_create(request: Request):
             auto_permissions=raw.get("auto_permissions"),
             memory_off=raw.get("memory_off"),
         )
+        return _public_thread_json(thread, None, 201)
+
+    try:
+        return await asyncio.to_thread(_create)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
-    return JSONResponse(_chat_public_thread(thread), status_code=201)
 
 
 @router.post("/chat/threads/pin-order")
 async def chat_threads_pin_order(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -589,7 +631,7 @@ async def chat_threads_pin_order(request: Request):
 
 @router.get("/chat/threads/{thread_id}")
 async def chat_thread_get(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
 
@@ -607,23 +649,30 @@ async def chat_thread_get(request: Request, thread_id: str):
     observed_thread = _cursor_param("observed_thread_cursor")
     # Command ids the client still holds in its local send queue.
     queued = [item for item in (request.query_params.get("queued") or "").split(",") if item][:128]
-    thread = await asyncio.to_thread(
-        chats.get_thread, user["id"], thread_id,
-        observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued,
-    )
-    if not thread:
-        raise HTTPException(404, "Chat not found")
-    if thread.get("unchanged"):
-        return JSONResponse(thread, headers={"Cache-Control": "no-store"})
-    # Opening a thread is what clears its finished-run badge. Only full views
-    # reach here: an unchanged short-circuit means the finishing revision was
-    # already delivered, so the flag was cleared by that earlier view.
-    if thread.get("unread"):
-        await asyncio.to_thread(chats.mark_thread_read, user["id"], thread_id)
-        thread["unread"] = False
-    public = await asyncio.to_thread(_chat_public_thread, thread, user, request.query_params.get("pack") == "1")
-    if request.query_params.get("stream") != "1":
-        return JSONResponse(public, headers={"Cache-Control": "no-store"})
+    pack = request.query_params.get("pack") == "1"
+    stream = request.query_params.get("stream") == "1"
+
+    def _load():
+        thread = chats.get_thread(
+            user["id"], thread_id,
+            observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued,
+        )
+        if not thread:
+            raise HTTPException(404, "Chat not found")
+        if thread.get("unchanged"):
+            return JSONResponse(thread, headers={"Cache-Control": "no-store"})
+        # Opening a thread is what clears its finished-run badge. Only full views
+        # reach here: an unchanged short-circuit means the finishing revision was
+        # already delivered, so the flag was cleared by that earlier view.
+        if thread.get("unread"):
+            chats.mark_thread_read(user["id"], thread_id)
+            thread["unread"] = False
+        public = _chat_public_thread(thread, user, pack)
+        return public if stream else _json(public, headers={"Cache-Control": "no-store"})
+
+    public = await asyncio.to_thread(_load)
+    if isinstance(public, Response):
+        return public
     return _thread_stream(public)
 
 
@@ -632,8 +681,18 @@ async def chat_thread_get(request: Request, thread_id: str):
 THREAD_TAIL = 16
 
 
+def _json_bytes(value) -> bytes:
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+
+
 def _json_line(value) -> bytes:
-    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8") + b"\n"
+    return _json_bytes(value) + b"\n"
+
+
+def _json(value, status_code: int = 200, headers=None) -> Response:
+    """JSONResponse's exact body, for replies built off the event loop: a
+    transcript can be megabytes to serialize."""
+    return Response(_json_bytes(value), status_code=status_code, media_type="application/json", headers=headers)
 
 
 def _thread_stream(public):
@@ -654,13 +713,12 @@ def _thread_stream(public):
     return StreamingResponse(body(), media_type="application/x-ndjson", headers=headers)
 
 
-async def _project_binding(user, thread_id: str) -> tuple[int, str] | None:
+def _project_binding(user, thread_id: str) -> tuple[int, str] | None:
     """(host_id, cwd) of a project chat, or None for a plain chat."""
-    pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
+    pk = _chat_thread_pk(user, thread_id)
     # Only the binding columns matter here; a full thread view would parse the
     # whole transcript, which must stay off the event loop.
-    thread = await asyncio.to_thread(
-        db.fetchone,
+    thread = db.fetchone(
         "SELECT kind, host_id, project_id FROM chat_threads WHERE id=? AND user_id=?",
         (pk, user["id"]),
     )
@@ -682,10 +740,10 @@ async def _project_binding(user, thread_id: str) -> tuple[int, str] | None:
 
 @router.get("/chat/threads/{thread_id}/project-agents")
 async def chat_project_agents(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    binding = await _project_binding(user, thread_id)
+    binding = await asyncio.to_thread(_project_binding, user, thread_id)
     if binding is None:
         return JSONResponse({"applicable": False}, headers={"Cache-Control": "no-store"})
     return await _project_agents_payload(user, *binding)
@@ -696,7 +754,7 @@ async def chat_project_agents_put(request: Request, thread_id: str):
     """Write the project's instruction file from the Context sheet. Goes
     through write_file, so read-only projects, root confinement and the
     instruction cache behave as they do for the agent."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -705,7 +763,7 @@ async def chat_project_agents_put(request: Request, thread_id: str):
         raise HTTPException(422, "content must be a string")
     # The loader strips the body; keep the file newline-terminated.
     content = content.rstrip() + "\n" if content.strip() else ""
-    binding = await _project_binding(user, thread_id)
+    binding = await asyncio.to_thread(_project_binding, user, thread_id)
     if binding is None:
         raise HTTPException(400, "Not a project chat")
     host_id, cwd = binding
@@ -753,7 +811,7 @@ async def _project_agents_payload(user, host_id: int, cwd: str) -> JSONResponse:
 async def chat_pool_preview(request: Request, model: str = "", thread: str = "", refresh: bool = False):
     """The plan gauge before a reply (sources.pool_badge.preview): the pool
     account the chat's next request goes to, or null for a model outside a pool."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     model = model.strip()[:200]
@@ -768,7 +826,7 @@ async def chat_pool_preview(request: Request, model: str = "", thread: str = "",
 @router.post("/chat/pool/switch")
 async def chat_pool_switch(request: Request):
     """Move the chat to another account of its pool (sources.pool_badge.switch)."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     form = await request.form()
@@ -787,7 +845,7 @@ async def chat_pool_switch(request: Request):
 
 @router.get("/chat/threads/{thread_id}/agents")
 async def chat_thread_agents(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
@@ -801,7 +859,7 @@ async def chat_thread_agents(request: Request, thread_id: str):
 
 @router.get("/chat/threads/{thread_id}/jobs")
 async def chat_thread_jobs(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     from .. import command_jobs
@@ -824,12 +882,13 @@ async def chat_thread_jobs(request: Request, thread_id: str):
 
 @router.post("/chat/threads/{thread_id}/jobs/{job_id}/kill")
 async def chat_thread_job_kill(request: Request, thread_id: str, job_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    pk = _chat_thread_pk(user, thread_id)
+    pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
     from .. import command_jobs
 
+    # On the loop: kill cancels the job's asyncio task, which is not thread-safe.
     result = command_jobs.kill_thread_job(user["id"], pk, str(job_id))
     if result is None:
         raise HTTPException(404, "Job not found")
@@ -843,21 +902,24 @@ async def chat_thread_job_kill(request: Request, thread_id: str, job_id: str):
 async def chat_secret_offer(request: Request, thread_id: str):
     """Detected values a turn of this chat is waiting on, with their values:
     the owner decides which to protect (app/secret_guard.py)."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    pk = chats.resolve_thread_pk(user["id"], thread_id)
-    if pk is None:
-        raise HTTPException(404, "Chat not found")
     from .. import secret_guard
 
-    items = await asyncio.to_thread(secret_guard.offers, user["id"]) if secret_guard.waiting(user["id"], pk) else []
+    def _load():
+        pk = chats.resolve_thread_pk(user["id"], thread_id)
+        if pk is None:
+            raise HTTPException(404, "Chat not found")
+        return secret_guard.offers(user["id"]) if secret_guard.waiting(user["id"], pk) else []
+
+    items = await asyncio.to_thread(_load)
     return JSONResponse({"pending": bool(items), "items": items}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/chat/threads/{thread_id}/secrets/offer")
 async def chat_secret_decide(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"chat-secrets:{user['id']}", 30, 60):
@@ -869,69 +931,79 @@ async def chat_secret_decide(request: Request, thread_id: str):
             or any(not isinstance(one, list) or len(one) > 500
                    or any(not isinstance(i, int) or isinstance(i, bool) for i in one) for one in ids)):
         raise HTTPException(422, "Invalid decision")
-    if chats.resolve_thread_pk(user["id"], thread_id) is None:
-        raise HTTPException(404, "Chat not found")
     from .. import secret_guard
 
-    done = await asyncio.to_thread(secret_guard.decide, user["id"], protect, shown=shown, never=bool(raw.get("never")))
+    def _decide():
+        if chats.resolve_thread_pk(user["id"], thread_id) is None:
+            raise HTTPException(404, "Chat not found")
+        return secret_guard.decide(user["id"], protect, shown=shown, never=bool(raw.get("never")))
+
+    done = await asyncio.to_thread(_decide)
     return JSONResponse({"ok": True, "protected": done}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/chat/threads/{thread_id}/permissions")
 async def chat_thread_permissions(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    pk = chats.resolve_thread_pk(user["id"], thread_id)
-    if pk is None:
-        raise HTTPException(404, "Chat not found")
+
+    def _load():
+        pk = chats.resolve_thread_pk(user["id"], thread_id)
+        if pk is None:
+            raise HTTPException(404, "Chat not found")
+        return permissions_mod.panel_for(user["id"], pk)
+
     return JSONResponse(
-        permissions_mod.panel_for(user["id"], pk),
+        await asyncio.to_thread(_load),
         headers={"Cache-Control": "no-store"},
     )
 
 
 @router.post("/chat/threads/{thread_id}/permissions/{ask_id}")
 async def chat_permission_decide(request: Request, thread_id: str, ask_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"chat-perm:{user['id']}", 60, 60):
         raise HTTPException(429, "Too many permission decisions")
     raw = await _json_object(request)
     action = str(raw.get("action") or "")
-    pk = chats.resolve_thread_pk(user["id"], thread_id)
-    if pk is None:
-        raise HTTPException(404, "Chat not found")
-    try:
-        if action == "extend":
-            payload = permissions_mod.extend(user["id"], pk, ask_id)
-        else:
-            payload = permissions_mod.resolve(user["id"], pk, ask_id, action)
-    except ValueError:
-        raise HTTPException(422, "Invalid action") from None
-    except LookupError:
-        raise HTTPException(404, "Permission request not found") from None
+
+    def _decide():
+        pk = chats.resolve_thread_pk(user["id"], thread_id)
+        if pk is None:
+            raise HTTPException(404, "Chat not found")
+        try:
+            if action == "extend":
+                return permissions_mod.extend(user["id"], pk, ask_id)
+            return permissions_mod.resolve(user["id"], pk, ask_id, action)
+        except ValueError:
+            raise HTTPException(422, "Invalid action") from None
+        except LookupError:
+            raise HTTPException(404, "Permission request not found") from None
+
+    payload = await asyncio.to_thread(_decide)
     return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 @router.delete("/chat/permissions/grants/{grant_id}")
 async def chat_permission_grant_delete(request: Request, grant_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     try:
         gid = int(grant_id)
     except ValueError:
         raise HTTPException(404, "Grant not found") from None
-    if not permissions_mod.revoke_grant(user["id"], gid):
+    if not await asyncio.to_thread(permissions_mod.revoke_grant, user["id"], gid):
         raise HTTPException(404, "Grant not found")
     return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
 
 
 @router.patch("/chat/threads/{thread_id}")
 async def chat_thread_patch(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -991,7 +1063,7 @@ async def chat_thread_patch(request: Request, thread_id: str):
             "auto_permissions user=%s thread=%s wanted=%s stored=%s",
             user["id"], thread_id, kwargs["auto_permissions"], thread.get("auto_permissions"),
         )
-    return JSONResponse(await asyncio.to_thread(_chat_public_thread, thread, user))
+    return await asyncio.to_thread(_public_thread_json, thread, user)
 
 
 @router.post("/chat/threads/{thread_id}/title")
@@ -1001,7 +1073,7 @@ async def chat_thread_title_regen(request: Request, thread_id: str):
     Runs in the background as a standalone upstream request; the thread's
     messages are untouched so the conversation's prompt cache stays valid.
     """
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     def _load():
@@ -1037,10 +1109,10 @@ async def chat_thread_title_regen(request: Request, thread_id: str):
 
 @router.post("/chat/threads/{thread_id}/recap")
 async def chat_thread_recap(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    pk = _chat_thread_pk(user, thread_id)
+    pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
     if not limiter.allow(f"chat-recap:{user['id']}", 20, 3600):
         raise HTTPException(429, "Recap request limit reached")
     try:
@@ -1052,7 +1124,7 @@ async def chat_thread_recap(request: Request, thread_id: str):
 
 @router.delete("/chat/threads/{thread_id}")
 async def chat_thread_delete(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -1080,7 +1152,7 @@ async def chat_thread_delete(request: Request, thread_id: str):
 
 @router.post("/chat/threads/{thread_id}/compact")
 async def chat_compact(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"api-user:{user['id']}", settings.api_rate_per_minute, 60):
@@ -1096,35 +1168,46 @@ async def chat_compact(request: Request, thread_id: str):
     strategy = raw.get("strategy")
     if strategy is not None and (not isinstance(strategy, str) or strategy not in ctxmod.STRATEGIES):
         raise HTTPException(400, "Invalid strategy")
-    pk = _chat_thread_pk(user, thread_id)
-    revision = _chat_revision(raw)
-    try:
-        prepared = chat_store.prepare_compact(
-            user["id"],
-            pk,
-            revision,
-            _chat_command(raw),
-        )
-    except chats.ChatValidationError as exc:
-        raise _chat_validation_error(exc) from None
-    if prepared.get("idempotent"):
-        return JSONResponse(
-            {
-                "thread": _chat_public_thread(prepared["thread"], user),
-                "compacted": prepared.get("compacted", True),
-                "idempotent": True,
-            },
-            headers={"Cache-Control": "no-store"},
-        )
+
+    def _prepare():
+        pk = _chat_thread_pk(user, thread_id)
+        revision = _chat_revision(raw)
+        try:
+            prepared = chat_store.prepare_compact(
+                user["id"],
+                pk,
+                revision,
+                _chat_command(raw),
+            )
+        except chats.ChatValidationError as exc:
+            raise _chat_validation_error(exc) from None
+        if prepared.get("idempotent"):
+            return pk, revision, prepared, _json(
+                {
+                    "thread": _chat_public_thread(prepared["thread"], user, pk=pk),
+                    "compacted": prepared.get("compacted", True),
+                    "idempotent": True,
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+        return pk, revision, prepared, None
+
+    pk, revision, prepared, reply = await asyncio.to_thread(_prepare)
+    if reply is not None:
+        return reply
     thread = prepared["thread"]
     messages = prepared["history"]
     prompt_snapshot = (prepared.get("history_info") or {}).pop("prompt_snapshot", None)
-    if not ctxmod.compactable_transcript(messages, keep_tail=(thread.get("compaction") or {}).get("keep_tail")):
+
+    def _not_enough():
         chat_store.remember_compact(user["id"], _chat_command(raw), prepared["fingerprint"], thread, compacted=False)
-        return JSONResponse(
-            {"thread": _chat_public_thread(thread, user), "compacted": False, "reason": "not_enough"},
+        return _json(
+            {"thread": _chat_public_thread(thread, user, pk=pk), "compacted": False, "reason": "not_enough"},
             headers={"Cache-Control": "no-store"},
         )
+
+    if not ctxmod.compactable_transcript(messages, keep_tail=(thread.get("compaction") or {}).get("keep_tail")):
+        return await asyncio.to_thread(_not_enough)
 
     limit = ((thread.get("compaction") or {}).get("meter") or {}).get("limit")
 
@@ -1152,33 +1235,33 @@ async def chat_compact(request: Request, thread_id: str):
         raise HTTPException(502, "The model could not write a summary, so nothing was compacted. "
                                  "Try again, or pick another model and compact again.")
     if not checkpoint:
-        chat_store.remember_compact(user["id"], _chat_command(raw), prepared["fingerprint"], thread, compacted=False)
-        return JSONResponse(
-            {"thread": _chat_public_thread(thread, user), "compacted": False, "reason": "not_enough"},
+        return await asyncio.to_thread(_not_enough)
+
+    def _finish():
+        try:
+            view = chat_store.finish_compact(
+                user["id"],
+                pk,
+                checkpoint,
+                command_id=_chat_command(raw),
+                fingerprint=prepared["fingerprint"],
+                expected_revision=revision,
+                replay=messages,
+                history_info=prepared.get("history_info"),
+            )
+        except chats.ChatValidationError as exc:
+            raise _chat_validation_error(exc) from None
+        return _json(
+            {"thread": _chat_public_thread(view, user, pk=pk), "compacted": True},
             headers={"Cache-Control": "no-store"},
         )
-    try:
-        view = chat_store.finish_compact(
-            user["id"],
-            pk,
-            checkpoint,
-            command_id=_chat_command(raw),
-            fingerprint=prepared["fingerprint"],
-            expected_revision=revision,
-            replay=messages,
-            history_info=prepared.get("history_info"),
-        )
-    except chats.ChatValidationError as exc:
-        raise _chat_validation_error(exc) from None
-    return JSONResponse(
-        {"thread": _chat_public_thread(view, user), "compacted": True},
-        headers={"Cache-Control": "no-store"},
-    )
+
+    return await asyncio.to_thread(_finish)
 
 
 @router.post("/chat/threads/{thread_id}/fork")
 async def chat_thread_fork(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -1190,12 +1273,12 @@ async def chat_thread_fork(request: Request, thread_id: str):
         raise _chat_validation_error(exc) from None
     if not thread:
         raise HTTPException(404, "Chat not found")
-    return JSONResponse(_chat_public_thread(thread), status_code=201)
+    return await asyncio.to_thread(_public_thread_json, thread, None, 201)
 
 
 @router.post("/chat/threads/{thread_id}/project")
 async def chat_thread_move_project(request: Request, thread_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -1212,26 +1295,31 @@ async def chat_thread_move_project(request: Request, thread_id: str):
         raise _chat_validation_error(exc) from None
     if not thread:
         raise HTTPException(404, "Chat not found")
-    return JSONResponse(_chat_public_thread(thread))
+    return await asyncio.to_thread(_public_thread_json, thread)
 
 
 @router.get("/chat/context")
 async def chat_context_get(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    data = chats.get_user_context(user["id"])
     thread_id = request.query_params.get("thread_id")
-    thread_context = ""
-    tools = list(chat_tools.DEFAULT_TOOLS)
-    if thread_id:
-        # get_thread builds the full view (transcript parse + meter); keep it
-        # off the event loop.
-        thread = await asyncio.to_thread(chats.get_thread, user["id"], thread_id)
-        if thread:
-            thread_context = thread.get("context") or ""
-            if "tools" in thread and thread["tools"] is not None:
-                tools = thread["tools"]
+
+    def _load():
+        data = chats.get_user_context(user["id"])
+        thread_context = ""
+        tools = list(chat_tools.DEFAULT_TOOLS)
+        if thread_id:
+            # get_thread builds the full view (transcript parse + meter); keep it
+            # off the event loop.
+            thread = chats.get_thread(user["id"], thread_id)
+            if thread:
+                thread_context = thread.get("context") or ""
+                if "tools" in thread and thread["tools"] is not None:
+                    tools = thread["tools"]
+        return data, thread_context, tools
+
+    data, thread_context, tools = await asyncio.to_thread(_load)
     return JSONResponse(
         {
             **data,
@@ -1245,7 +1333,7 @@ async def chat_context_get(request: Request):
 
 @router.put("/chat/context")
 async def chat_context_put(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -1272,8 +1360,12 @@ async def chat_context_put(request: Request):
         if not isinstance(raw["memory"], bool):
             raise HTTPException(400, "Invalid memory")
         kwargs["memory"] = raw["memory"]
+
+    def _save():
+        return chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
+
     try:
-        data = chats.set_user_context(user["id"], **kwargs, strict=True) if kwargs else chats.get_user_context(user["id"])
+        data = await asyncio.to_thread(_save)
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
     return JSONResponse(data)
@@ -1281,7 +1373,7 @@ async def chat_context_put(request: Request):
 
 @router.put("/chat/drafts")
 async def chat_draft_put(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"chat-draft:{user['id']}", 240, 60):
@@ -1298,7 +1390,7 @@ async def chat_draft_put(request: Request):
 
 @router.put("/chat/favorites")
 async def chat_favorite_put(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -1313,7 +1405,7 @@ async def chat_favorite_put(request: Request):
 
 @router.post("/chat/notices/{notice_id}/dismiss")
 async def chat_notice_dismiss(request: Request, notice_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     await asyncio.to_thread(notices.dismiss, user["id"], notice_id)
@@ -1322,7 +1414,7 @@ async def chat_notice_dismiss(request: Request, notice_id: int):
 
 @router.post("/chat/completions")
 async def chat_web_completions(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     # Old open pages must not retain a second, browser-owned transcript writer.
