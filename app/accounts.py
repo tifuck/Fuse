@@ -486,6 +486,8 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
             [(int(row["week_tokens"]), int(row["week_requests"]), row["credential_id"]) for row in week],
         )
         conn.execute("DELETE FROM registration_whitelist WHERE email=?", (email,))
+        # No foreign key on command_jobs (adding one copies the large table).
+        conn.execute("DELETE FROM command_jobs WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM api_keys WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM provider_usage WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM usage_events WHERE user_id=?", (user_id,))
