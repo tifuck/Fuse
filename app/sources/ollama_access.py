@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import threading
@@ -72,6 +73,8 @@ KIND_LABELS = {
 
 _lock = threading.Lock()
 _cache: dict[int, dict[str, dict]] = {}
+# The server and site keys each source's verdicts were taken with.
+_fps: dict[int, str] = {}
 
 
 def _path(source_id: int) -> Path:
@@ -82,21 +85,55 @@ def _now() -> float:
     return time.time()
 
 
+def _fingerprint(source_id: int) -> str:
+    """A digest of the source's base URL and enabled site keys (each hashed,
+    never stored): verdicts taken with another server or key set do not apply."""
+    from .. import accounts, db
+
+    row = db.fetchone("SELECT config FROM sources WHERE id=?", (source_id,))
+    try:
+        cfg = json.loads((row["config"] if row else None) or "{}")
+    except (json.JSONDecodeError, TypeError):
+        cfg = {}
+    base = str((cfg.get("base_url") if isinstance(cfg, dict) else "") or "").rstrip("/")
+    keys = []
+    for c in db.fetchall("SELECT secret FROM credentials WHERE source_id=? AND donated_by IS NULL AND disabled=0",
+                         (source_id,)):
+        try:
+            keys.append(hashlib.sha256(accounts.cred_secret(c).encode()).hexdigest())
+        except Exception:
+            continue
+    return hashlib.sha256(json.dumps([base, sorted(keys)]).encode()).hexdigest()
+
+
 def load(source_id: int) -> dict[str, dict]:
     with _lock:
         if source_id in _cache:
             return _cache[source_id]
+        fp = _fingerprint(source_id)
         path = _path(source_id)
         data: dict[str, dict] = {}
         if path.exists():
             try:
                 raw = json.loads(path.read_text())
-                if isinstance(raw, dict):
+                # A file from before fingerprints were stored keeps its verdicts.
+                if isinstance(raw, dict) and raw.get("_fp", fp) == fp:
                     data = {str(k): v for k, v in raw.items() if isinstance(v, dict)}
             except Exception as e:
                 logger.warning("Failed to load ollama access cache: %s", e)
         _cache[source_id] = data
+        _fps[source_id] = fp
         return data
+
+
+def forget(source_id: int | None = None) -> None:
+    """Drop verdicts held in memory (all, or one source's); the next read
+    checks the saved ones against the source's current server and keys."""
+    with _lock:
+        if source_id is None:
+            _cache.clear()
+        else:
+            _cache.pop(source_id, None)
 
 
 def save(source_id: int) -> None:
@@ -106,7 +143,7 @@ def save(source_id: int) -> None:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data, indent=0, sort_keys=True))
+            tmp.write_text(json.dumps({**data, "_fp": _fps.get(source_id, "")}, indent=0, sort_keys=True))
             tmp.replace(path)
         except OSError:
             # The in-memory map stays authoritative; a served reply must not

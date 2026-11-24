@@ -367,6 +367,7 @@ async def admin_ollama_key_delete(request: Request, cred_id: int):
         raise HTTPException(404, "Not found")
     with db.tx() as conn:
         conn.execute("DELETE FROM credentials WHERE id=? AND source_id=? AND donated_by IS NULL", (cred_id, sid))
+    invalidate_model_cache("ollama")
     _notices[user["id"]] = "Ollama key removed."
     return RedirectResponse("/admin/sources", status_code=303)
 

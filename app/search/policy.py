@@ -10,6 +10,8 @@ _CACHE_TTL = 10.0
 
 _lock = threading.Lock()
 _cached: tuple[float, tuple[list[str], list[str]]] | None = None
+# Bumped by every save, so a read that raced a save is not cached.
+_gen = 0
 
 
 def domain_lists() -> tuple[list[str], list[str]]:
@@ -18,6 +20,7 @@ def domain_lists() -> tuple[list[str], list[str]]:
     with _lock:
         if _cached is not None and _cached[0] > now:
             return _cached[1]
+        gen = _gen
     from .. import db
     from .ssrf import parse_domain_list
 
@@ -31,12 +34,13 @@ def domain_lists() -> tuple[list[str], list[str]]:
         parse_domain_list(found.get(_WHITELIST_KEY, "")),
     )
     with _lock:
-        _cached = (now + _CACHE_TTL, lists)
+        if _gen == gen:
+            _cached = (now + _CACHE_TTL, lists)
     return lists
 
 
 def save_domain_lists(blacklist: list[str], whitelist: list[str]) -> None:
-    global _cached
+    global _cached, _gen
     from .. import db
 
     black = "\n".join(blacklist)
@@ -49,6 +53,7 @@ def save_domain_lists(blacklist: list[str], whitelist: list[str]) -> None:
                 (key, value),
             )
     with _lock:
+        _gen += 1
         _cached = None
 
 

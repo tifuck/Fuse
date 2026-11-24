@@ -57,6 +57,21 @@ def test_verdicts_from_a_personal_key_stay_out_of_the_shared_access_map(fresh_db
     assert ollama_access.of(sid, "qwen3") is None
 
 
+def test_access_verdicts_follow_the_server_and_site_keys_they_were_taken_with(fresh_db):
+    sid, _alice, _bob = _world()
+    ollama_access.note(sid, "qwen3", ollama_access.FREE, status=200)
+    sources.invalidate_model_cache("ollama")  # e.g. a personal key added
+    assert ollama_access.of(sid, "qwen3") == ollama_access.FREE
+
+    key(sid, "ollama-second-site-key")
+    sources.invalidate_model_cache("ollama")
+    assert ollama_access.of(sid, "qwen3") is None
+    ollama_access.note(sid, "qwen3", ollama_access.FREE, status=200)
+    db.execute("UPDATE sources SET config=? WHERE id=?", (json.dumps({"base_url": "https://other.test/api"}), sid))
+    ollama_access._cache.clear()  # a restart
+    assert ollama_access.of(sid, "qwen3") is None
+
+
 def test_a_rejected_personal_key_falls_back_to_the_site_keys(fresh_db, upstream):
     sid, alice, _bob = _world()
     upstream.on("POST", "ollama.test/api/chat", httpx.Response(401, json={"error": "unauthorized"}),

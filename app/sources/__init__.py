@@ -13,7 +13,7 @@ from ..providers.access import Access
 from .base import ChatResult, Source
 from .chatgpt import CHATGPT_MODELS, ChatGPTSource, ensure_chatgpt_source, refresh_due as chatgpt_refresh_due, user_has_chatgpt
 from .grok import GROK_MODELS, GrokSource, ensure_grok_source, grok_access_state, refresh_due, user_has_grok
-from . import keyed as keyed_mod, llama as llama_mod, ollama as ollama_mod
+from . import keyed as keyed_mod, llama as llama_mod, ollama as ollama_mod, ollama_access
 from .llama import LlamaSource
 from .openai_compat import OpenAICompatSource
 from .ollama import DEFAULT_BASE as OLLAMA_BASE, OllamaSource
@@ -433,6 +433,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         llama_mod._models_cache.clear()
         ollama_mod._tags_cache.clear()
         ollama_mod._own_tags.clear()
+        ollama_access.forget()
         keyed_mod.clear_catalogs()
         _forget_stored(None)
         return
@@ -446,6 +447,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         ollama_mod._tags_cache.pop(sid, None)
         for key in [k for k in ollama_mod._own_tags if k[0] == sid]:
             ollama_mod._own_tags.pop(key, None)
+        ollama_access.forget(sid)
         keyed_mod.clear_catalogs(sid)
     for key in [k for k in _model_cache if k[0] in sids]:
         _model_cache.pop(key, None)
