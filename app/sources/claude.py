@@ -298,14 +298,14 @@ def account_email(extra: dict | None) -> str:
 def _window_percent(raw) -> float | None:
     if not isinstance(raw, dict):
         return None
-    value = raw.get("utilization")
-    if value is None:
-        value = raw.get("used_ratio")
+    # utilization is already a percent (1.0 is 1%); used_ratio is 0..1.
+    ratio = raw.get("utilization") is None
+    value = raw.get("used_ratio") if ratio else raw.get("utilization")
     try:
         pct = float(value)
     except (TypeError, ValueError):
         return None
-    if pct <= 1:
+    if ratio:
         pct *= 100
     if pct < 0:
         return None
@@ -313,7 +313,7 @@ def _window_percent(raw) -> float | None:
 
 
 def parse_usage_payload(data: dict) -> dict:
-    """Claude Code's /api/oauth/usage windows. Utilization is 0..1 or 0..100."""
+    """Claude Code's /api/oauth/usage windows. Utilization is a percent, 0..100."""
     data = data if isinstance(data, dict) else {}
     windows = []
     for key, label in (("five_hour", "5-hour"), ("seven_day", "Weekly"), ("seven_day_overage_included", "Weekly extra")):

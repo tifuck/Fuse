@@ -358,8 +358,15 @@ def test_removing_an_account_revokes_upstream_only_where_this_database_owns_the_
     assert [r.url.path for r in calls.requests] == ["/v1/oauth/token/revoke"] * revokes
 
 
+def test_usage_utilization_is_a_percent_so_one_percent_is_not_read_as_full():
+    parsed = claude.parse_usage_payload({"five_hour": {"utilization": 1.0}, "seven_day": {"utilization": 0.5},
+                                         "seven_day_opus": {"used_ratio": 0.25}})
+    assert (parsed["five_hour_percent"], parsed["weekly_percent"], parsed["credit_usage_percent"]) == (1.0, 0.5, 1.0)
+    assert [w["percent"] for w in parsed["model_windows"]] == [25.0]
+
+
 def test_a_failed_quota_check_keeps_the_last_figures_and_is_not_retried_until_it_ages(fresh_db):
-    last_good = {**claude.parse_usage_payload({"five_hour": {"utilization": 0.4}}), "fetched_at": "2026-01-01T00:00:00Z"}
+    last_good = {**claude.parse_usage_payload({"five_hour": {"utilization": 40.0}}), "fetched_at": "2026-01-01T00:00:00Z"}
     cred = account("claude", user(), {"auth_kind": "oauth", "access_token": "at-1", "refresh_token": "rt-1",
                                       "expires_at": iso(8 * 3600), "billing": last_good})
     with patch.object(claude, "fetch_profile", AsyncMock(return_value=None)) as profile, \
