@@ -1,5 +1,5 @@
 @import url("../../../vendor/xterm/xterm.css");
-/* Console: the terminal dock under the transcript, above the prompt. Flat
+/* Console: the terminal dock at the bottom, under the prompt. Flat
    and dense like the rest of the view: the page's ink, hairlines, the accent
    for the active tab. On a phone it is a full-height sheet with the key bar
    above the keyboard (static/chat/terminal.js; markup in ../terminal.js). */

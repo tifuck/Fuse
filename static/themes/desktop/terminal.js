@@ -1,4 +1,4 @@
-// Desktop: the terminal panel docked under the transcript, above the
+// Desktop: the terminal panel docked at the bottom of the window, under the
 // composer (a full-height sheet on a phone), and its top-bar button. Markup only;
 // static/chat/terminal.js fills the tabs, the machine list and the keys and
 // drives everything. Built here rather than in a template so the view's
@@ -48,7 +48,7 @@ export function create() {
   const root = document.querySelector("[data-chat]");
   const form = root?.querySelector(".chat-stage > [data-chat-form]");
   if (!form || root.querySelector("[data-terminal]")) return {};
-  form.insertAdjacentHTML("beforebegin", dockHtml());
+  form.insertAdjacentHTML("afterend", dockHtml());
   root.querySelector(".dk-actions [data-artifact-toggle]")?.insertAdjacentHTML("beforebegin",
     `<button type="button" class="dk-ib" data-terminal-toggle aria-expanded="false" aria-controls="chat-terminal" aria-label="Terminal" title="Terminal">${ICONS.terminal.replace(/width="17" height="17"/, 'width="16" height="16"')}<span class="visually-hidden">Terminal</span></button>`);
   return {};

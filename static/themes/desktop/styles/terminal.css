@@ -1,6 +1,6 @@
 @import url("../../../vendor/xterm/xterm.css");
-/* Desktop: the terminal panel docked under the transcript, above the
-   composer, like an editor's bottom panel: the window's surfaces and
+/* Desktop: the terminal panel docked at the bottom, under the composer,
+   like an editor's bottom panel: the window's surfaces and
    hairlines, a sans header, the code font inside. On a phone it is a
    full-height sheet with the key bar above the keyboard
    (static/chat/terminal.js; markup in ../terminal.js). */
@@ -106,10 +106,4 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .term-choice { min-height: 48px; align-items: center; }
   }
   body.is-keyboard.is-chat .chat[data-view="desktop"] .term-keys { padding-bottom: 6px; }
-}
-/* The composer card overlaps the transcript's foot (--dk-under); over the
-   terminal it sits below it instead. */
-@media (min-width: 801px) {
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"][data-terminal-open]:not(.is-empty) .chat-dock { margin-top: 0; }
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .term-dock { margin-bottom: 4px; border-bottom: 1px solid var(--dk-card-line); }
 }
