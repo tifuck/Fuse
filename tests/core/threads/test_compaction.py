@@ -231,6 +231,19 @@ def test_token_estimates(meter_settings):
     assert context_meter.used_from_usage({"prompt_tokens": 900, "completion_tokens": 100, "total_tokens": 9_000}) == 1_000
 
 
+def test_long_non_latin_estimates_are_remembered_within_a_character_budget(monkeypatch):
+    monkeypatch.setattr(context_meter, "_ESTIMATES", type(context_meter._ESTIMATES)())
+    monkeypatch.setattr(context_meter, "_estimate_chars", 0)
+    text = "Привет " * 300  # 1,800 Cyrillic chars at 2 per token, 300 spaces at 4
+    assert context_meter.estimate_text(text) == 975
+    assert context_meter.estimate_text(text) == 975
+    assert len(context_meter._ESTIMATES) == 1
+    monkeypatch.setattr(context_meter, "_ESTIMATE_MEMO_CHARS", 3_000)
+    assert context_meter.estimate_text("你好 " * 500) == 1_000 + 125
+    assert list(context_meter._ESTIMATES.values()) == [1_125]
+    assert context_meter._estimate_chars <= 3_000
+
+
 def test_standing_meter_counts_retained_tool_results(meter_settings):
     rows = [{"role": "user", "content": "go"},
             {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "function": {"name": "grep", "arguments": "{}"}}]},

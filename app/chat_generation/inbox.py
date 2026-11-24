@@ -14,6 +14,7 @@ carry results while idle render the same rows from their own message.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -51,6 +52,9 @@ class Drain:
     command_ids: list[str] = field(default_factory=list)
     steers: list[dict] = field(default_factory=list)
     followups: list[str] = field(default_factory=list)
+    # Steer (root) or follow-up (subagent) ids durable in the transcript
+    # whose display split is not sealed yet.
+    displayed: list[str] = field(default_factory=list)
 
 
 def _command_result_ids(envelopes: list[str]) -> list[str]:
@@ -97,11 +101,18 @@ def drain(store, *, run_id: str, is_child: bool, user_id: int, thread_id, transc
         steers = store.take_steers(run_id)
         out.steers = [item for item in steers if f"(steer:{item.get('id')})" not in delivered_local]
         delivered_local.update(f"(steer:{item.get('id')})" for item in out.steers)
+        out.displayed = store.steer_display_deliveries(run_id)
     else:
         followups = [t for t in store.take_followups(run_id) if t not in delivered_local]
         delivered_local.update(followups)
         out.followups = followups
+        out.displayed = store.followup_display_deliveries(run_id)
     return out
+
+
+async def drain_async(store, **kwargs) -> Drain:
+    """drain() in one worker-thread hop: it is several queries and request parses."""
+    return await asyncio.to_thread(drain, store, **kwargs)
 
 
 def results_message(envelopes: list[str]) -> dict:
