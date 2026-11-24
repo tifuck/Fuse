@@ -421,19 +421,27 @@ def prune_events():
 # no receipt younger than COMMAND_RECEIPT_DAYS is ever dropped.
 COMMAND_RECEIPT_DAYS = 30
 _RECEIPT_MARK = "chat_commands_prune_mark"
+# Receipts per delete transaction: a month of them in one statement held
+# its locks and undo log for the whole delete.
+_RECEIPT_BATCH = 1000
 
 
 def prune_command_receipts(now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     cutoff = (now - timedelta(days=COMMAND_RECEIPT_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    row = db.fetchone("SELECT value FROM schema_meta WHERE key=?", (_RECEIPT_MARK,))
+    mark = json.loads(row["value"]) if row else None
+    if mark and mark["at"] > cutoff:
+        return 0
+    deleted = 0
+    while mark:
+        with transaction() as conn:
+            n = int(conn.execute("DELETE FROM chat_commands WHERE rowid<=? LIMIT ?",
+                                 (int(mark["rowid"]), _RECEIPT_BATCH)).rowcount or 0)
+        deleted += n
+        if n < _RECEIPT_BATCH:
+            break
     with transaction() as conn:
-        row = conn.execute("SELECT value FROM schema_meta WHERE key=?", (_RECEIPT_MARK,)).fetchone()
-        mark = json.loads(row["value"]) if row else None
-        if mark and mark["at"] > cutoff:
-            return 0
-        deleted = 0
-        if mark:
-            deleted = conn.execute("DELETE FROM chat_commands WHERE rowid<=?", (int(mark["rowid"]),)).rowcount
         hi = conn.execute("SELECT MAX(rowid) AS hi FROM chat_commands").fetchone()["hi"]
         conn.execute(
             "INSERT INTO schema_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
