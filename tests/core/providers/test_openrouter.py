@@ -176,3 +176,26 @@ def test_leftover_site_wide_keys_are_disabled_and_never_picked(setup):
     assert openrouter.pick_key_for(alice, sid) is None
     openrouter.clear_global_key(sid)
     assert cred_row(glob)["disabled"]
+
+
+def test_an_admin_save_that_fails_part_way_disables_no_site_key(setup, monkeypatch):
+    from app.web.source_routes import admin_actions
+    from tests.core.auth._support import sign_in, web_client
+    from tests.core.helpers import quick_user
+
+    sid, _users = setup
+    glob = key(sid, "sk-or-global-key")
+    real = openrouter.clear_global_key
+
+    def clear_then_fail(*args, **kwargs):
+        real(*args, **kwargs)
+        raise RuntimeError("save failed part way")
+
+    monkeypatch.setattr(admin_actions.openrouter_mod, "clear_global_key", clear_then_fail)
+    with web_client() as web:
+        sign_in(web, quick_user("root@core.test", admin=True))
+        try:
+            web.post("/admin/sources/openrouter", data={"enabled": "1"}, follow_redirects=False)
+        except RuntimeError:
+            pass
+    assert not cred_row(glob)["disabled"]

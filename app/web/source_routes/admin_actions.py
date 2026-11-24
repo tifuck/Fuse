@@ -328,8 +328,9 @@ async def admin_openrouter_save(
         return redir
     sid = openrouter_mod.ensure_openrouter_source()
     on = 1 if enabled in ("1", "on", "true") else 0
-    openrouter_mod.clear_global_key(sid)
-    db.execute("UPDATE sources SET enabled=? WHERE id=?", (on, sid))
+    with db.tx() as conn:
+        openrouter_mod.clear_global_key(sid, conn)
+        conn.execute("UPDATE sources SET enabled=? WHERE id=?", (on, sid))
     _notices[user["id"]] = "OpenRouter settings saved."
     return RedirectResponse("/admin/sources", status_code=303)
 
