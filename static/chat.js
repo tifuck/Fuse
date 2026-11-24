@@ -21,7 +21,7 @@ import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
 import { createTerminal } from './chat/terminal.js';
-import { bindPool } from './chat/poolbadge.js';
+import { bindPool, placePool } from './chat/poolbadge.js';
 import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
@@ -2294,9 +2294,13 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       if (S.pickerOpen) picker.placePicker();
       if (S.permsOpen) perms.placePermsMenu();
       if (S.contextPop && !S.contextPop.hidden) composer.placeComposerPop(S.contextPop, S.contextBtn, 30 * 16);
+      placePool();
       if (following && S.root.style.getPropertyValue("--dock-h") !== beforeDock) transcript.restoreThreadScroll(true, savedTop);
     });
     S.dockResizeObserver.observe(S.form);
+    // The dictation overlay may float over the composer without resizing it.
+    const dictationLid = S.form.querySelector(".dictation");
+    if (dictationLid) S.dockResizeObserver.observe(dictationLid);
     // Opening a side pane (or resizing the window) narrows the transcript and
     // reflows it taller without a scroll event; a reader following the bottom
     // would otherwise be left with the last reply hidden under the dock.

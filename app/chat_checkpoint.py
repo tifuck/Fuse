@@ -578,6 +578,25 @@ def save_child_meter(run_id, meter):
         conn.execute("UPDATE chat_runs SET request=?,updated_at=? WHERE id=?", (chat_tx.dumps(req), db.now(), run_id))
 
 
+def save_pool(user_id, thread_id, update):
+    """Replace the thread's pool record (compaction state "pool", see
+    sources.pool_badge) with update(prior). Returns the new record, or None
+    for a thread the user does not have."""
+    from . import context_compact as ctxmod, chats
+
+    with chat_tx.transaction() as conn:
+        pk = chats.resolve_thread_pk(user_id, thread_id, conn)
+        row = conn.execute("SELECT compaction FROM chat_threads WHERE id=? AND user_id=?" + db.for_update(conn),
+                           (pk, user_id)).fetchone() if pk is not None else None
+        if row is None:
+            return None
+        state = ctxmod.parse_state(row["compaction"])
+        state["pool"] = update(state.get("pool"))
+        conn.execute("UPDATE chat_threads SET compaction=? WHERE id=? AND user_id=?", (ctxmod.dump_state(state), pk, user_id))
+        chat_tx.thread_event(conn, user_id, pk)
+        return state["pool"]
+
+
 def save_meter(user_id, thread_id, meter):
     from . import context_compact as ctxmod, chats, hosts, context_meter
 

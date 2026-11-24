@@ -292,3 +292,39 @@ def test_keyed_balances_parse_and_show_only_on_the_callers_own_key(fresh_db, mon
     # A site key's balance is its admin's business.
     rows[0] = {"id": 4, "label": "Site", "donated_by": None}
     assert asyncio.run(pool_badge.preview(me, "deepseek/x")) is None
+
+
+def test_a_click_moves_the_chat_to_another_account_of_its_pool(fresh_db, monkeypatch):
+    from app import chats, context_compact, db
+
+    me, stranger = user("me@core.test"), user("stranger@core.test")
+    first = pool_account("claude", me, _claude(70, 60))
+    second = pool_account("claude", me, _claude(5, 1))
+    theirs = pool_account("claude", stranger, _claude(1, 1))
+    pool_policy.set_user_pref(stranger, "claude", share="private")
+    src = claude.ClaudeSource({"id": pool_policy.source_id("claude"), "name": "Claude"}, {}, [])
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "claude-opus-5-5"
+
+    import app.sources as sources
+    monkeypatch.setattr(sources, "pick", pick)
+    monkeypatch.setattr(pool_session, "persist", False)
+    thread = chats.create_thread(me, model="claude/claude-opus-5-5")["id"]
+    sid = pool_session.related_session_id(f"thread:{thread}", user_id=me, model="claude-opus-5-5")
+    pool_session.bind("claude", sid, first)
+    from app import chat_checkpoint
+    chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", "claude/claude-opus-5-5"))
+
+    view = asyncio.run(pool_badge.switch(me, "claude/claude-opus-5-5", thread, second))
+
+    assert view["id"] == second and view["hop"] == {"from": "claude", "reason": ""}
+    # The next request goes there, and the chat shows it before that reply.
+    assert pool_session.peek("claude", sid) == second
+    row = db.fetchone("SELECT compaction FROM chat_threads WHERE id=?", (chats.resolve_thread_pk(me, thread),))
+    stored = context_compact.parse_state(row["compaction"])["pool"]
+    assert (stored["cred"], stored["prev"]) == (second, first)
+    assert asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", thread))["id"] == second
+    # An account the caller's requests may not use is refused, and nothing moves.
+    assert asyncio.run(pool_badge.switch(me, "claude/claude-opus-5-5", thread, theirs)) is None
+    assert pool_session.peek("claude", sid) == second
