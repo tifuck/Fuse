@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import time
@@ -62,12 +63,24 @@ class _LazySource:
         self.type_id, self.source_id, self.name, self.cfg = row["type"], row["id"], row["name"], cfg
 
     def __getattr__(self, attr):
+        # copy and pickle probe dunders on an instance whose __init__ never
+        # ran: without this, reading self._built here recursed forever.
+        if attr.startswith("__") or attr in ("_row", "_built"):
+            raise AttributeError(attr)
         if self._built is None:
             if attr == "chat" and self.type_id in POOL_TYPES:
                 # A pool's chat reads its accounts itself (pool_refresh.pool_rows).
                 return _row_source(self._row, []).chat
             self._built = _row_source(self._row)
         return getattr(self._built, attr)
+
+    def __copy__(self):
+        """A copy of the source itself: callers copy to set attributes on it
+        (pool_badge sets creds), and on a copied proxy those would not reach
+        the methods it forwards to the source."""
+        if self._built is None:
+            self._built = _row_source(self._row)
+        return copy.copy(self._built)
 
 
 def all_enabled(*, lazy: bool = False) -> list[Source]:

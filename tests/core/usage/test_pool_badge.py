@@ -328,3 +328,24 @@ def test_a_click_moves_the_chat_to_another_account_of_its_pool(fresh_db, monkeyp
     # An account the caller's requests may not use is refused, and nothing moves.
     assert asyncio.run(pool_badge.switch(me, "claude/claude-opus-5-5", thread, theirs)) is None
     assert pool_session.peek("claude", sid) == second
+
+
+def test_the_badge_previews_a_lazily_routed_pool_from_the_callers_accounts(fresh_db, monkeypatch):
+    # Routing hands out sources._LazySource, and copying one recursed forever:
+    # every /chat/pool answered 500 in production after 2026-11-24's update.
+    from app import db
+    import app.sources as sources
+
+    me, stranger = user("me@core.test"), user("stranger@core.test")
+    mine = pool_account("claude", me, _claude(70, 60))
+    pool_account("claude", stranger, _claude(1, 1))
+    pool_policy.set_user_pref(stranger, "claude", share="private")
+    row = db.fetchone("SELECT * FROM sources WHERE id=?", (pool_policy.source_id("claude"),))
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return sources._LazySource(row), "claude-opus-5-5"
+
+    monkeypatch.setattr(sources, "pick", pick)
+    view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5"))
+
+    assert view["id"] == mine
