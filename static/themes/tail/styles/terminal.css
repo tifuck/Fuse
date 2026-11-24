@@ -118,3 +118,12 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   }
   body.is-keyboard.is-chat .chat[data-view="tail"] .term-keys { padding-bottom: 6px; }
 }
+
+/* Motion: the terminal tab fades in when it is shown. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"][data-tail-pane="terminal"] .tail-pane-view[data-tail-view="terminal"] {
+  transition: opacity var(--dur-2) ease;
+  @starting-style { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] .tail-pane-view[data-tail-view="terminal"] { transition: none; }
+}

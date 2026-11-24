@@ -105,3 +105,24 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
   }
   body.is-keyboard.is-chat .chat[data-view="console"] .term-keys { padding-bottom: 6px; }
 }
+
+/* Motion: opening slides the dock up from the bottom edge and closing slides
+   it back down (a phone's sheet rises from below). Its height never changes,
+   so the terminal is not refit mid-slide. display is transitioned discretely:
+   where that is unsupported it opens and closes at once, as before. */
+html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock {
+  --term-out: calc(-1 * max(var(--terminal-h, 38vh), 120px));
+  transition: margin-bottom var(--dur-3) var(--ease-glide), transform var(--dur-3) var(--ease-glide), display var(--dur-3) allow-discrete;
+  &[hidden] { margin-bottom: var(--term-out); }
+  @starting-style { margin-bottom: var(--term-out); }
+}
+@media (max-width: 800px) {
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock {
+    margin-bottom: 0;
+    &[hidden] { margin-bottom: 0; transform: translateY(100%); }
+    @starting-style { margin-bottom: 0; transform: translateY(100%); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock { transition: none; }
+}
