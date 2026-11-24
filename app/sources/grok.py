@@ -676,21 +676,18 @@ async def poll_device(device_code: str) -> dict:
         return r.json()
 
 
-def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_extra: dict, *, label: str | None = None, reenable: bool = False) -> bool:
+def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_extra: dict) -> bool:
     """Update tokens only if `extra` has not changed since it was read.
 
     A concurrent OAuth re-link (store_tokens) or another refresh landing in
     between would otherwise be silently overwritten with stale tokens.
     Returns False on conflict so the caller can re-read and re-merge.
     """
-    if reenable:
-        sql = "UPDATE credentials SET secret=?, extra=?, disabled=0, label=COALESCE(?, label) WHERE id=? AND extra=?"
-        args = (new_secret, encrypt(json.dumps(new_extra)), label, cred_id, old_extra_raw)
-    else:
-        sql = "UPDATE credentials SET secret=?, extra=? WHERE id=? AND extra=?"
-        args = (new_secret, encrypt(json.dumps(new_extra)), cred_id, old_extra_raw)
     with db.tx() as conn:
-        cur = conn.execute(sql, args)
+        cur = conn.execute(
+            "UPDATE credentials SET secret=?, extra=? WHERE id=? AND extra=?",
+            (new_secret, encrypt(json.dumps(new_extra)), cred_id, old_extra_raw),
+        )
         return cur.rowcount > 0
 
 
@@ -707,33 +704,23 @@ def store_tokens(source_id: int, tokens: dict, donated_by: int | None, label: st
     if extra.get("email"):
         label = label or extra["email"]
     if account_id:
-        rows = db.fetchall(
-            "SELECT * FROM credentials WHERE source_id=? AND donated_by IS ? ORDER BY disabled, id",
-            (source_id, donated_by),
-        )
-        for row in rows:
-            current = accounts.cred_extra(row)
-            current_id = current.get("account_id") or account_from_tokens(current)
-            if current_id != account_id:
-                continue
-            current.update(extra)
-            if _cas_update_tokens(
-                int(row["id"]), row["extra"], encrypt(tokens["access_token"]), current,
-                label=label or row["label"] or "Grok account", reenable=True,
-            ):
+        with db.tx() as conn:
+            for row in conn.execute(
+                "SELECT id, label, extra FROM credentials WHERE source_id=? AND donated_by IS ? ORDER BY disabled, id"
+                + db.for_update(conn),
+                (source_id, donated_by),
+            ).fetchall():
+                current = accounts.cred_extra(row)
+                current_id = current.get("account_id") or account_from_tokens(current)
+                if current_id != account_id:
+                    continue
+                current.update(extra)
+                conn.execute(
+                    "UPDATE credentials SET secret=?, extra=?, disabled=0, label=? WHERE id=?",
+                    (encrypt(tokens["access_token"]), encrypt(json.dumps(current)),
+                     label or row["label"] or "Grok account", row["id"]),
+                )
                 return int(row["id"])
-            # A concurrent token refresh changed `extra` under us: re-read
-            # and re-apply once so both the fresh tokens and whatever the
-            # refresh wrote survive.
-            retry = db.fetchone("SELECT * FROM credentials WHERE id=?", (row["id"],))
-            if retry is not None:
-                merged = accounts.cred_extra(retry)
-                merged.update(extra)
-                if _cas_update_tokens(
-                    int(row["id"]), retry["extra"], encrypt(tokens["access_token"]), merged,
-                    label=label or retry["label"] or "Grok account", reenable=True,
-                ):
-                    return int(row["id"])
     return accounts.add_credential(
         source_id,
         label or "Grok account",

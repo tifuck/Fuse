@@ -173,15 +173,12 @@ def _oauth_revoked(status: int, data) -> bool:
     return "invalid_grant" in text or "revoked" in text
 
 
-def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_extra: dict, *, label: str | None = None, reenable: bool = False) -> bool:
-    if reenable:
-        sql = "UPDATE credentials SET secret=?, extra=?, disabled=0, label=COALESCE(?, label) WHERE id=? AND extra=?"
-        args = (new_secret, encrypt(json.dumps(new_extra)), label, cred_id, old_extra_raw)
-    else:
-        sql = "UPDATE credentials SET secret=?, extra=? WHERE id=? AND extra=?"
-        args = (new_secret, encrypt(json.dumps(new_extra)), cred_id, old_extra_raw)
+def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_extra: dict) -> bool:
     with db.tx() as conn:
-        cur = conn.execute(sql, args)
+        cur = conn.execute(
+            "UPDATE credentials SET secret=?, extra=? WHERE id=? AND extra=?",
+            (new_secret, encrypt(json.dumps(new_extra)), cred_id, old_extra_raw),
+        )
         return cur.rowcount > 0
 
 
@@ -227,23 +224,21 @@ def store_tokens(source_id: int, tokens: dict, donated_by: int | None, label: st
             extra["account_id"] = str(profile.get("account_id") or "")[:128]
     account_id = extra.get("account_id") or ""
     if account_id:
-        rows = db.fetchall(
-            "SELECT * FROM credentials WHERE source_id=? AND donated_by IS ? ORDER BY disabled, id",
-            (source_id, donated_by),
-        )
-        for row in rows:
-            current = accounts.cred_extra(row)
-            if str(current.get("account_id") or "") != account_id:
-                continue
-            current.update(extra)
-            if _cas_update_tokens(
-                int(row["id"]),
-                row["extra"],
-                encrypt(tokens["access_token"]),
-                current,
-                label=label or row["label"] or extra["email"] or "Claude account",
-                reenable=True,
-            ):
+        with db.tx() as conn:
+            for row in conn.execute(
+                "SELECT id, label, extra FROM credentials WHERE source_id=? AND donated_by IS ? ORDER BY disabled, id"
+                + db.for_update(conn),
+                (source_id, donated_by),
+            ).fetchall():
+                current = accounts.cred_extra(row)
+                if str(current.get("account_id") or "") != account_id:
+                    continue
+                current.update(extra)
+                conn.execute(
+                    "UPDATE credentials SET secret=?, extra=?, disabled=0, label=? WHERE id=?",
+                    (encrypt(tokens["access_token"]), encrypt(json.dumps(current)),
+                     label or row["label"] or extra["email"] or "Claude account", row["id"]),
+                )
                 return int(row["id"])
     return accounts.add_credential(
         source_id,
