@@ -157,8 +157,12 @@ def set_settings(user_id: int, *, agent_coding=None, allow_nested_spawn=None, pe
                  default_chat_permissions=None, default_project_permissions=None) -> dict:
     with db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        # An upsert takes the row's exclusive lock (INSERT IGNORE only a shared
+        # one, and two saves deadlocked upgrading it): a concurrent save waits
+        # here, and the read below sees what it wrote.
         conn.execute(
-            "INSERT OR IGNORE INTO user_agent_settings(user_id) VALUES(?)",
+            "INSERT INTO user_agent_settings(user_id) VALUES(?)"
+            " ON CONFLICT(user_id) DO UPDATE SET user_id=user_agent_settings.user_id",
             (user_id,),
         )
         row = settings_for(user_id, conn)
@@ -593,6 +597,7 @@ def delete_host(user_id: int, host_id: int, *, reopen_pairing: str | None = None
                WHERE """ + bound,
             (host_id, user_id, user_id, host_id, host_id, user_id),
         )
+        _pause_schedules(conn, user_id, "SELECT id FROM user_projects WHERE host_id=? AND user_id=?", (host_id, user_id))
         conn.execute("DELETE FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
         if reopen_pairing is not None:
             conn.execute(
@@ -826,7 +831,7 @@ def set_project_logo(user_id: int, project_id: int, mime: str, data: bytes) -> d
             (project_id, user_id, mime, data, ts),
         )
         conn.execute(
-            "UPDATE user_projects SET logo_rev=logo_rev+1, updated_at=? WHERE id=? AND user_id=?",
+            "UPDATE user_projects SET logo_rev=ABS(logo_rev)+1, updated_at=? WHERE id=? AND user_id=?",
             (ts, project_id, user_id),
         )
         projects_changed(conn, user_id)
@@ -842,7 +847,10 @@ def clear_project_logo(user_id: int, project_id: int) -> dict:
         if row is None:
             raise HostError("project not found", 404)
         conn.execute("DELETE FROM project_logos WHERE project_id=? AND user_id=?", (project_id, user_id))
-        conn.execute("UPDATE user_projects SET logo_rev=0, updated_at=? WHERE id=? AND user_id=?", (db.now(), project_id, user_id))
+        # Negative: no logo, and the revision keeps counting. Logo URLs carry
+        # it (?v=) and are cached as immutable, so one is never reused.
+        conn.execute("UPDATE user_projects SET logo_rev=-ABS(logo_rev), updated_at=? WHERE id=? AND user_id=?",
+                     (db.now(), project_id, user_id))
         projects_changed(conn, user_id)
         row = conn.execute("SELECT * FROM user_projects WHERE id=?", (project_id,)).fetchone()
         return _project_view(row)
@@ -935,6 +943,7 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
         ).fetchone()
         if live is not None:
             raise HostError("project still has sessions; nothing was deleted", 409)
+        _pause_schedules(conn, user_id, "?", (project_id,))
         result = conn.execute(
             "DELETE FROM user_projects WHERE id=? AND user_id=? AND host_id=?",
             (project_id, user_id, host_id),
@@ -953,6 +962,15 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
         except Exception:
             logger.exception("Could not cancel command jobs of deleted thread %s", tid)
     return result.rowcount > 0
+
+
+def _pause_schedules(conn, user_id: int, projects_sql: str, args: tuple) -> None:
+    """Pause the schedules that run in the projects being deleted: they
+    outlive them (project_id goes NULL) and would fail every period."""
+    conn.execute(
+        f"UPDATE chat_schedules SET paused=1, next_fire_at=NULL, updated_at=? WHERE user_id=? AND project_id IN ({projects_sql})",
+        (db.now(), user_id, *args),
+    )
 
 
 def _delete_threads(conn, user_id: int, threads) -> None:
@@ -1005,6 +1023,7 @@ def _delete_archived_project(user_id: int, host_id: int, project_id: int, archiv
         ).fetchone():
             raise HostError("project has a running session; nothing was deleted", 409)
         _delete_threads(conn, user_id, threads)
+        _pause_schedules(conn, user_id, "?", (project_id,))
         result = conn.execute(
             "DELETE FROM user_projects WHERE id=? AND user_id=? AND host_id=?",
             (project_id, user_id, host_id),
@@ -1578,7 +1597,7 @@ def touch_agent(
         ).fetchone()
         if row is None:
             raise HostError("host not found", 404)
-        ver = version.strip()[:40] if isinstance(version, str) else (row["agent_version"] or "")
+        ver = version.strip()[:40] if isinstance(version, str) and version.strip() else (row["agent_version"] or "")
         hostn = row["hostname"]
         user = row["username"]
         if hostname:

@@ -749,13 +749,17 @@ def _find_key(source_id: int, key: str):
     return None
 
 
-def clear_global_key(source_id: int | None = None) -> None:
-    """Disable leftover site-wide OpenRouter keys. OpenRouter is per-account only."""
+def clear_global_key(source_id: int | None = None, conn=None) -> None:
+    """Disable leftover site-wide OpenRouter keys. OpenRouter is per-account only.
+    With conn, inside the caller's transaction."""
     sid = source_id or ensure_openrouter_source()
-    for row in db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (sid,)):
+    if conn is None:
+        with db.tx() as conn:
+            return clear_global_key(sid, conn)
+    for row in conn.execute("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (sid,)).fetchall():
         extra = accounts.cred_extra(row)
         if _is_global(row, extra):
-            db.execute("UPDATE credentials SET disabled=1 WHERE id=?", (row["id"],))
+            conn.execute("UPDATE credentials SET disabled=1 WHERE id=?", (row["id"],))
 
 
 async def add_user_key(source_id: int, raw: str, donated_by: int, *, label: str = "") -> tuple[int | None, str]:

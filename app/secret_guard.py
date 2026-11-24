@@ -38,6 +38,7 @@ from urllib.parse import quote
 from . import db, secret_fakes
 from .config import settings
 from .crypto import DecryptionError, decrypt, encrypt
+from .database_errors import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -492,6 +493,19 @@ def _insert(conn, user_id: int, value: str, taken: list, *, label: str, kind: st
     return int(row["id"]) if row else None
 
 
+def _add_place(conn, row, src: dict) -> None:
+    """A value already kept gains this place as a source."""
+    if row is None or row["status"] == "ignored":
+        return
+    sources = json.loads(row["sources"] or "[]")
+    if src not in sources:
+        # The same place again (its line moved, or it was kept
+        # before places had a folder) replaces the old entry.
+        rest = [s for s in sources
+                if not (src["key"] and _place({"root": src["root"], **s}) == _place(src))]
+        conn.execute("UPDATE user_secrets SET sources=? WHERE id=?", (json.dumps(([src] + rest)[:10]), row["id"]))
+
+
 def _place(src: dict) -> tuple:
     """A name in a file of a project: paths are relative to the scanned
     folder, so two projects on one machine both have a ".env"."""
@@ -538,15 +552,7 @@ def offer(user_id: int, host_id: int, alias: str, found: list, root: str = "") -
                                (user_id, digest)).fetchone()
             src = _source(host_id, alias, one, root)
             if row is not None:
-                if row["status"] != "ignored":
-                    sources = json.loads(row["sources"] or "[]")
-                    if src not in sources:
-                        # The same place again (its line moved, or it was kept
-                        # before places had a folder) replaces the old entry.
-                        rest = [s for s in sources
-                                if not (src["key"] and _place({"root": src["root"], **s}) == _place(src))]
-                        conn.execute("UPDATE user_secrets SET sources=? WHERE id=?",
-                                     (json.dumps(([src] + rest)[:10]), row["id"]))
+                _add_place(conn, row, src)
                 continue
             if count >= MAX_PER_USER:
                 break
@@ -573,6 +579,15 @@ def offer(user_id: int, host_id: int, alias: str, found: list, root: str = "") -
                                origin="scan", status=status, sources=[src])
             except ValueError:
                 made = None
+            except IntegrityError as exc:
+                if exc.errno not in (None, 1062):
+                    raise
+                # A scan of another folder kept this value after the lookup
+                # above (a snapshot read): this place joins its row.
+                made = None
+                _add_place(conn, conn.execute(
+                    "SELECT id, status, sources FROM user_secrets WHERE user_id=? AND real_hmac=?" + db.for_update(conn),
+                    (user_id, digest)).fetchone(), src)
             if made:
                 count += 1
                 if status == "protected":

@@ -62,30 +62,38 @@ def saved(source_id: int, provider: str, models: list[str], ttl: float, *, etag:
     )
 
 
-def failed(source_id: int, provider: str, error: str, ttl: float, *, now: float | None = None) -> float:
+def failed(source_id: int, provider: str, error: str, ttl: float, *, now: float | None = None,
+           started: float | None = None) -> float:
     """A failed fetch keeps the stored list; retries back off exponentially
     (60 s, 2 min, 4 min, ...) but never wait longer than the TTL. Returns the
-    delay chosen."""
+    delay chosen. started: when the failed fetch began; a success stored since
+    keeps its schedule and clean state."""
     now = time.time() if now is None else now
-    row = get(source_id)
-    failures = (row["failures"] if row else 0) + 1
-    delay = _jitter(min(ttl, BACKOFF_BASE * 2 ** (failures - 1)))
-    if row:
-        db.execute("UPDATE provider_catalogs SET failures=?, next_due=?, error=? WHERE source_id=?",
-                   (failures, now + delay, str(error)[:300], source_id))
-    else:
-        db.execute("INSERT INTO provider_catalogs (source_id, provider, models, fetched_at, next_due, failures, error)"
-                   " VALUES (?,?,'[]',0,?,?,?)", (source_id, provider, now + delay, failures, str(error)[:300]))
+    with db.tx() as conn:
+        row = conn.execute("SELECT failures, fetched_at, next_due FROM provider_catalogs WHERE source_id=?"
+                           + db.for_update(conn), (source_id,)).fetchone()
+        if row and started is not None and float(row["fetched_at"] or 0) >= started:
+            return max(0.0, float(row["next_due"] or 0) - now)
+        failures = (int(row["failures"] or 0) if row else 0) + 1
+        delay = _jitter(min(ttl, BACKOFF_BASE * 2 ** (failures - 1)))
+        if row:
+            conn.execute("UPDATE provider_catalogs SET failures=?, next_due=?, error=? WHERE source_id=?",
+                         (failures, now + delay, str(error)[:300], source_id))
+        else:
+            conn.execute("INSERT INTO provider_catalogs (source_id, provider, models, fetched_at, next_due, failures, error)"
+                         " VALUES (?,?,'[]',0,?,?,?) ON CONFLICT(source_id) DO UPDATE SET failures=failures+1,"
+                         " next_due=excluded.next_due, error=excluded.error",
+                         (source_id, provider, now + delay, failures, str(error)[:300]))
     return delay
 
 
 def forget(source_ids=None) -> None:
     """Drop stored lists (all, or these sources): the next read fetches."""
     if source_ids is None:
-        db.execute("UPDATE provider_catalogs SET models='[]', etag=NULL, last_modified=NULL, next_due=0")
+        db.execute("UPDATE provider_catalogs SET models='[]', etag=NULL, last_modified=NULL, detail=NULL, next_due=0")
         return
     for sid in source_ids:
-        db.execute("UPDATE provider_catalogs SET models='[]', etag=NULL, last_modified=NULL, next_due=0"
+        db.execute("UPDATE provider_catalogs SET models='[]', etag=NULL, last_modified=NULL, detail=NULL, next_due=0"
                    " WHERE source_id=?", (sid,))
 
 

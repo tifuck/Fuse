@@ -238,24 +238,25 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
         # forever. A healthy active pin is refreshed by every lookup.
         for key in [k for k, (_, updated, _saved) in _mem.items() if updated < cutoff]:
             _mem.pop(key, None)
-    if persist and not same:
-        # Pinning runs after the upstream already served the request: a DB
-        # error here must not turn a delivered (and billed) reply into a 502.
-        try:
-            db.execute(
-                """INSERT INTO pool_sessions (kind, session_id, credential_id, updated_at)
-                   VALUES (?,?,?,?)
-                   ON CONFLICT(kind, session_id) DO UPDATE SET
-                     credential_id=excluded.credential_id,
-                     updated_at=excluded.updated_at""",
-                (kind, session_id, cid, stamp),
-            )
-            # Full-table vacuum per bind scans updated_at on every chat turn; run
-            # it rarely — expired rows are harmless and refreshed on lookup anyway.
-            if random.random() < 0.02:
-                db.execute("DELETE FROM pool_sessions WHERE updated_at < ?", (cutoff,))
-        except Exception:
-            logger.warning("Could not persist pool session pin kind=%s credential=%s", kind, cid, exc_info=True)
+        if persist and not same:
+            # Under the lock, so the durable row ends on the pin memory holds.
+            # Pinning runs after the upstream already served the request: a DB
+            # error here must not turn a delivered (and billed) reply into a 502.
+            try:
+                db.execute(
+                    """INSERT INTO pool_sessions (kind, session_id, credential_id, updated_at)
+                       VALUES (?,?,?,?)
+                       ON CONFLICT(kind, session_id) DO UPDATE SET
+                         credential_id=excluded.credential_id,
+                         updated_at=excluded.updated_at""",
+                    (kind, session_id, cid, stamp),
+                )
+                # Full-table vacuum per bind scans updated_at on every chat turn; run
+                # it rarely — expired rows are harmless and refreshed on lookup anyway.
+                if random.random() < 0.02:
+                    db.execute("DELETE FROM pool_sessions WHERE updated_at < ?", (cutoff,))
+            except Exception:
+                logger.warning("Could not persist pool session pin kind=%s credential=%s", kind, cid, exc_info=True)
 
 
 def peek(kind: str, session_id: str | None) -> int | None:
@@ -302,8 +303,8 @@ def lookup(kind: str, session_id: str | None, *, now: datetime | None = None) ->
                 )
             return cid
         row = db.fetchone(
-            "SELECT credential_id, updated_at FROM pool_sessions WHERE kind=? AND session_id=?",
-            (kind, session_id),
+            "SELECT credential_id, updated_at FROM pool_sessions WHERE kind=? AND session_id=? AND updated_at >= ?",
+            (kind, session_id, _cutoff(now)),
         )
         if row:
             cid = int(row["credential_id"])

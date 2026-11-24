@@ -13,7 +13,7 @@ from ..providers.access import Access
 from .base import ChatResult, Source
 from .chatgpt import CHATGPT_MODELS, ChatGPTSource, ensure_chatgpt_source, refresh_due as chatgpt_refresh_due, user_has_chatgpt
 from .grok import GROK_MODELS, GrokSource, ensure_grok_source, grok_access_state, refresh_due, user_has_grok
-from . import keyed as keyed_mod, llama as llama_mod, ollama as ollama_mod
+from . import keyed as keyed_mod, llama as llama_mod, ollama as ollama_mod, ollama_access
 from .llama import LlamaSource
 from .openai_compat import OpenAICompatSource
 from .ollama import DEFAULT_BASE as OLLAMA_BASE, OllamaSource
@@ -172,9 +172,19 @@ def _store_models(key: tuple[int, int | None], names: list[str], *, sticky: bool
     _cache[key[0]] = (now, names)
 
 
+# Bumped by invalidate_model_cache (None: every source), so a fetch that raced
+# a key or server change does not store the list it got before the change.
+_catalog_gen: dict[int | None, int] = {}
+
+
+def _gen(source_id: int) -> tuple[int, int]:
+    return _catalog_gen.get(None, 0), _catalog_gen.get(source_id, 0)
+
+
 async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
     key = _cache_key(s, user_id)
     hit = _model_cache.get(key)
+    gen, started = _gen(s.source_id), time.time()
     try:
         async with _fetch_slot():
             m = await s.models()
@@ -192,7 +202,9 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
     except Exception as exc:
         _unavailable_types.add(s.type_id)
         logger.warning("Model catalog unavailable for source id=%s: %s", s.source_id, type(exc).__name__)
-        delay = _persist_failure(s, exc)
+        if _gen(s.source_id) != gen:
+            return hit[1] if hit else []
+        delay = _persist_failure(s, exc, started)
         if not (hit and hit[1]) and not _fallback_models(s):
             _model_cache[key] = (time.time() - _ttl(s) + delay, [])
         return hit[1] if hit else []
@@ -200,6 +212,8 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
         _unavailable_types.add(s.type_id)
     else:
         _unavailable_types.discard(s.type_id)
+    if _gen(s.source_id) != gen:
+        return m
     _store_models(key, m, sticky=s.type_id in POOL_TYPES)
     _live.add(key)
     _persist_success(s, _model_cache[key][1])
@@ -217,12 +231,12 @@ def _persist_success(s: Source, names: list[str]) -> None:
         logger.warning("Could not store the catalog of source id=%s", s.source_id, exc_info=True)
 
 
-def _persist_failure(s: Source, exc: Exception) -> float:
+def _persist_failure(s: Source, exc: Exception, started: float) -> float:
     """Record the failure; returns how long until the next try (backoff)."""
     from ..providers import catalogs
 
     try:
-        return catalogs.failed(s.source_id, s.type_id, type(exc).__name__, _ttl(s))
+        return catalogs.failed(s.source_id, s.type_id, type(exc).__name__, _ttl(s), started=started)
     except Exception:
         logger.warning("Could not store the catalog failure of source id=%s", s.source_id, exc_info=True)
         return _FAILED_RETRY_S
@@ -412,17 +426,20 @@ def metadata_effort(type_id: str, model: str | None = None, user_id: int | None 
 def invalidate_model_cache(source_type: str | None = None) -> None:
     """Drop cached model lists, e.g. after a per-user key or preference change."""
     if source_type is None:
+        _catalog_gen[None] = _catalog_gen.get(None, 0) + 1
         _model_cache.clear()
         _cache.clear()
         _live.clear()
         llama_mod._models_cache.clear()
         ollama_mod._tags_cache.clear()
         ollama_mod._own_tags.clear()
+        ollama_access.forget()
         keyed_mod.clear_catalogs()
         _forget_stored(None)
         return
     sids = [s.source_id for s in all_enabled() if s.type_id == source_type]
     for sid in sids:
+        _catalog_gen[sid] = _catalog_gen.get(sid, 0) + 1
         _cache.pop(sid, None)
         # Their own upstream lists: a changed server URL must not keep
         # advertising the previous server's models until the TTL.
@@ -430,6 +447,7 @@ def invalidate_model_cache(source_type: str | None = None) -> None:
         ollama_mod._tags_cache.pop(sid, None)
         for key in [k for k in ollama_mod._own_tags if k[0] == sid]:
             ollama_mod._own_tags.pop(key, None)
+        ollama_access.forget(sid)
         keyed_mod.clear_catalogs(sid)
     for key in [k for k in _model_cache if k[0] in sids]:
         _model_cache.pop(key, None)

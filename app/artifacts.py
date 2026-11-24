@@ -919,12 +919,21 @@ def set_shared_version(user_id: int, public_id: str, version: int | None) -> dic
     row = get_owned(user_id, public_id)
     if not row:
         raise ArtifactError("artifact not found", 404)
-    if version is not None and _version_row(row["id"], version) is None:
-        raise ArtifactError("version not found", 404)
-    db.execute(
-        "UPDATE artifacts SET shared_version=?, updated_at=? WHERE id=? AND user_id=?",
-        (version, db.now(), row["id"], user_id),
-    )
+    if version is None:
+        db.execute(
+            "UPDATE artifacts SET shared_version=NULL, updated_at=? WHERE id=? AND user_id=?",
+            (db.now(), row["id"], user_id),
+        )
+    else:
+        # One statement: update() prunes versions under the artifact row lock,
+        # so a check made before this write could pin a version pruned since.
+        pinned = db.execute(
+            "UPDATE artifacts SET shared_version=?, updated_at=? WHERE id=? AND user_id=?"
+            " AND EXISTS (SELECT 1 FROM artifact_versions WHERE artifact_id=artifacts.id AND version=?)",
+            (version, db.now(), row["id"], user_id, version),
+        )
+        if pinned.rowcount == 0:
+            raise ArtifactError("version not found", 404)
     return view(get_owned(user_id, public_id))
 
 

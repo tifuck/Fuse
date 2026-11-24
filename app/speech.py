@@ -91,12 +91,19 @@ def save(*, base_url: str, model: str, api_key: str, verify: bool, enabled: bool
     with db.tx() as conn:
         conn.execute("UPDATE sources SET config=?, enabled=? WHERE id=?", (json.dumps(cfg), 1 if enabled else 0, sid))
         if api_key:
-            conn.execute("DELETE FROM credentials WHERE source_id=?", (sid,))
-            conn.execute(
-                """INSERT INTO credentials (source_id, label, secret, extra, week_start, donated_by, created_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (sid, "speech", encrypt(api_key), encrypt("{}"), db.iso_week_start(), None, db.now()),
-            )
+            kept = conn.execute("SELECT id FROM credentials WHERE source_id=? ORDER BY id LIMIT 1", (sid,)).fetchone()
+            if kept:
+                conn.execute("DELETE FROM credentials WHERE source_id=? AND id<>?", (sid, kept["id"]))
+                conn.execute(
+                    "UPDATE credentials SET label=?, secret=?, extra=?, disabled=0 WHERE id=?",
+                    ("speech", encrypt(api_key), encrypt("{}"), kept["id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO credentials (source_id, label, secret, extra, week_start, donated_by, created_at)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (sid, "speech", encrypt(api_key), encrypt("{}"), db.iso_week_start(), None, db.now()),
+                )
 
 
 def check_wav(body: bytes) -> None:
