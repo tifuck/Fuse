@@ -20,6 +20,10 @@ DELETE g FROM chat_permission_grants g LEFT JOIN user_hosts h ON h.id = g.host_i
 DELETE a FROM skill_host_approvals a LEFT JOIN user_hosts h ON h.id = a.host_id WHERE h.id IS NULL;
 DELETE p FROM pool_sessions p LEFT JOIN credentials c ON c.id = p.credential_id WHERE c.id IS NULL;
 
+-- The thread column gets an index of its own: the db-perf migration of the
+-- same day drops and re-adds command_jobs_thread, which a constraint relying
+-- on it would refuse (1553).
+ALTER TABLE command_jobs ADD INDEX IF NOT EXISTS fk_command_jobs_thread (thread_id);
 ALTER TABLE command_jobs
   ADD CONSTRAINT fk_command_jobs_user FOREIGN KEY IF NOT EXISTS (user_id) REFERENCES users (id) ON DELETE CASCADE,
   ADD CONSTRAINT fk_command_jobs_thread FOREIGN KEY IF NOT EXISTS (thread_id) REFERENCES chat_threads (id) ON DELETE CASCADE;

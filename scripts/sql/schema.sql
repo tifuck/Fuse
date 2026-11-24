@@ -438,6 +438,7 @@ CREATE TABLE `command_jobs` (
   KEY `command_jobs_user_thread` (`user_id`,`thread_id`),
   KEY `command_jobs_finished` (`finished_at`(20)),
   KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`),
+  KEY `fk_command_jobs_thread` (`thread_id`),
   CONSTRAINT `fk_command_jobs_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_command_jobs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
