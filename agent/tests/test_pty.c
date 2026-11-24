@@ -19,7 +19,7 @@ struct seen {
     int ok, done, res_ok, exit; /* exit -1: null */
     char error[128];
     size_t n;
-    char out[700000];
+    char out[1800000];
 };
 static struct seen g_seen[TRACK];
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -157,6 +157,15 @@ static void input(const char *id, const char *text) {
     pty_input(frame, n);
 }
 
+/* Output of id reaches exactly n bytes and stays there (the window is shut). */
+static void stops_at(const char *id, size_t n) {
+    WAIT_FOR(id, s->n == n);
+    nanosleep(&(struct timespec){0, 300000000}, NULL);
+    pthread_mutex_lock(&g_mu);
+    assert(seen_for(id)->n == n && !seen_for(id)->done);
+    pthread_mutex_unlock(&g_mu);
+}
+
 int main(void) {
     /* Framing: kind, 12-char hex id, payload; anything else is malformed. */
     unsigned char frame[PTY_HDR + PTY_FRAME_MAX + 1];
@@ -204,6 +213,8 @@ int main(void) {
 
     pthread_t drain;
     assert(pthread_create(&drain, NULL, session, NULL) == 0);
+    char open_ids[PTY_MAX][PTY_ID_LEN + 1];
+    assert(pty_open_ids(open_ids) == 0);
 
     /* A shell: output, resize (stty sees it), input, exit code. */
     struct open_args a;
@@ -247,6 +258,26 @@ int main(void) {
     assert(s->res_ok && s->exit == 4 && memmem(s->out, s->n, "bye", 3));
     pthread_mutex_unlock(&g_mu);
 
+    /* Acks never credit bytes not yet sent, before or after the reconnect
+     * window reset: an over-crediting server cannot open the window. */
+    th = start(&a, "b2000000000b", "read x; head -c 1700000 /dev/zero | tr '\\000' x", NULL);
+    WAIT_FOR("b2000000000b", s->ok);
+    pty_ack("b2000000000b", 1e12); /* nothing sent yet: credits nothing */
+    input("b2000000000b", "\n");
+    stops_at("b2000000000b", PTY_WINDOW);
+    pty_reconnected(); /* everything was sent: one more window */
+    stops_at("b2000000000b", 2 * PTY_WINDOW);
+    pty_ack("b2000000000b", 1e12); /* after the reset: clamped to what was sent */
+    stops_at("b2000000000b", 3 * PTY_WINDOW);
+    pty_reconnected();
+    WAIT_FOR("b2000000000b", s->done);
+    pthread_join(th, NULL);
+    pthread_mutex_lock(&g_mu);
+    s = seen_for("b2000000000b");
+    assert(s->res_ok && s->exit == 0 && s->n >= 1700000 && s->n < 4 * PTY_WINDOW);
+    for (size_t i = s->n - 1700000; i < s->n; i++) assert(s->out[i] == 'x');
+    pthread_mutex_unlock(&g_mu);
+
     /* Cancel: SIGHUP to the group; one that ignores it is SIGKILLed 2 s later. */
     struct job *job = job_reserve("c0000000000c");
     th = start(&a, "c0000000000c", "trap '' HUP; printf ready; sleep 30", job);
@@ -280,6 +311,13 @@ int main(void) {
         ths[i] = start(&many[i], ids[i], "exec sleep 30", job_reserve(ids[i]));
     }
     for (int i = 0; i < PTY_MAX; i++) WAIT_FOR(ids[i], s->ok);
+    /* Every open terminal is listed once (the hello's "ptys"). */
+    assert(pty_open_ids(open_ids) == PTY_MAX);
+    for (int i = 0; i < PTY_MAX; i++) {
+        int hits = 0;
+        for (int j = 0; j < PTY_MAX; j++) hits += !strcmp(open_ids[j], ids[i]);
+        assert(hits == 1);
+    }
     struct open_args extra = {"f0000000000f", "/bin/sh", "true", NULL};
     open_pty(&extra);
     WAIT_FOR("f0000000000f", s->done);
@@ -293,6 +331,7 @@ int main(void) {
         pthread_join(ths[i], NULL);
     }
     assert(!pty_pending());
+    assert(pty_open_ids(open_ids) == 0);
 
     g_stop = 1;
     pthread_join(drain, NULL);

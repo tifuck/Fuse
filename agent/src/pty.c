@@ -506,6 +506,15 @@ int pty_pending(void) {
     return pending;
 }
 
+int pty_open_ids(char ids[PTY_MAX][PTY_ID_LEN + 1]) {
+    int n = 0;
+    pthread_mutex_lock(&g_pty_mu);
+    for (int i = 0; i < PTY_MAX; i++)
+        if (g_ptys[i].id[0]) memcpy(ids[n++], g_ptys[i].id, PTY_ID_LEN + 1);
+    pthread_mutex_unlock(&g_pty_mu);
+    return n;
+}
+
 int pty_flush_with(int (*send)(void *ctx, int opcode, const unsigned char *data, size_t n), void *ctx) {
     static unsigned char frame[PTY_HDR + PTY_FRAME_MAX]; /* network thread only */
     static int next = 0;

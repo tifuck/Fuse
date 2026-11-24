@@ -141,6 +141,14 @@ int session_loop(void) {
         cJSON_AddStringToObject(hello, "ver", FUSE_AGENT_VERSION);
         cJSON_AddStringToObject(hello, "inst", inst);
         cJSON_AddItemToObject(hello, "caps", cJSON_CreateStringArray((const char *[]){"pty"}, 1));
+        {
+            /* Shells still open, so a restarted server can cancel the ones
+             * it no longer knows. */
+            char ids[PTY_MAX][PTY_ID_LEN + 1];
+            int n = pty_open_ids(ids);
+            cJSON *ptys = cJSON_AddArrayToObject(hello, "ptys");
+            for (int i = 0; i < n; i++) cJSON_AddItemToArray(ptys, cJSON_CreateString(ids[i]));
+        }
         char *hs = cJSON_PrintUnformatted(hello);
         cJSON_Delete(hello);
         if (!hs || ws_send_text(&t, hs) != 0) {

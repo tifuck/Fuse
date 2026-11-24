@@ -64,6 +64,8 @@ void pty_wake(const char *id);
  * the server never saw what died in flight and would not ack it. */
 void pty_reconnected(void);
 int pty_pending(void);
+/* Copies the ids of the open terminals into ids; returns how many. */
+int pty_open_ids(char ids[PTY_MAX][PTY_ID_LEN + 1]);
 /* Sends pending pty_ok frames and up to PTY_FLUSH_BUDGET output bytes,
  * round-robin. A frame whose send fails stays queued. */
 int pty_flush_with(int (*send)(void *ctx, int opcode, const unsigned char *data, size_t n), void *ctx);
