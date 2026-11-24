@@ -27,13 +27,17 @@ ALTER TABLE command_jobs ADD INDEX IF NOT EXISTS fk_command_jobs_thread (thread_
 ALTER TABLE command_jobs
   ADD CONSTRAINT fk_command_jobs_user FOREIGN KEY IF NOT EXISTS (user_id) REFERENCES users (id) ON DELETE CASCADE,
   ADD CONSTRAINT fk_command_jobs_thread FOREIGN KEY IF NOT EXISTS (thread_id) REFERENCES chat_threads (id) ON DELETE CASCADE;
--- Re-added last, as 2026-11-24-db-perf.sql does, so SHOW CREATE TABLE
--- matches schema.sql whichever file ran last.
-ALTER TABLE command_jobs DROP INDEX IF EXISTS command_jobs_thread;
-ALTER TABLE command_jobs ADD INDEX command_jobs_thread (thread_id, background, finished_at);
 ALTER TABLE chat_permission_grants
   ADD CONSTRAINT fk_chat_permission_grants_host FOREIGN KEY IF NOT EXISTS (host_id) REFERENCES user_hosts (id) ON DELETE CASCADE;
 ALTER TABLE skill_host_approvals
   ADD CONSTRAINT skill_host_approvals_host FOREIGN KEY IF NOT EXISTS (host_id) REFERENCES user_hosts (id) ON DELETE CASCADE;
 ALTER TABLE pool_sessions
   ADD CONSTRAINT pool_sessions_credential FOREIGN KEY IF NOT EXISTS (credential_id) REFERENCES credentials (id) ON DELETE CASCADE;
+
+-- Last, dropped and re-added as 2026-11-24-db-perf.sql does (see there): an
+-- updater runs these after the new code starts, and SHOW CREATE TABLE
+-- matches schema.sql whichever file ran last.
+ALTER TABLE command_jobs DROP INDEX IF EXISTS command_jobs_thread;
+ALTER TABLE command_jobs
+  DROP INDEX IF EXISTS command_jobs_thread,
+  ADD INDEX command_jobs_thread (thread_id, background, finished_at);

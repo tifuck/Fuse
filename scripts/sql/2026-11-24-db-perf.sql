@@ -32,34 +32,20 @@
 --   uses the schema).
 --
 -- Index changes keep their names, so the runtime index probes still match.
--- Each is dropped and re-added in its own ALTER so it always lands last and
--- SHOW CREATE TABLE matches schema.sql whatever the table's history.
+-- Additive statements come first, then every statement that drops or
+-- modifies: an updater holds those back until the new code runs and refuses
+-- an additive statement after them (docs/development.md, Schema changes).
+-- A redefined index is dropped in one ALTER and re-added in the next, so it
+-- lands last and SHOW CREATE TABLE matches schema.sql whatever the table's
+-- history; the re-adding ALTER repeats the DROP ... IF EXISTS (a no-op by
+-- then) so it counts as destructive and runs after the drop.
 -- The MODIFY statements copy chat_threads, chat_schedules and command_jobs:
 -- writes to them wait while it runs.
 -- Apply as root, fuse_dev first, then fuse_live as its own reviewed step:
 --   mysql fuse_dev  < scripts/sql/2026-11-24-db-perf.sql
 --   mysql fuse_live < scripts/sql/2026-11-24-db-perf.sql
 -- Safe to rerun.
-ALTER TABLE chat_runs DROP INDEX IF EXISTS chat_runs_thread_children;
-ALTER TABLE chat_runs ADD INDEX chat_runs_thread_children (thread_id, status(16));
-
-ALTER TABLE chat_threads
-  MODIFY updated_at VARCHAR(32) NOT NULL,
-  DROP INDEX IF EXISTS chat_threads_user_updated,
-  ADD INDEX IF NOT EXISTS chat_threads_schedule (user_id, schedule_id);
-ALTER TABLE chat_threads ADD INDEX chat_threads_user_updated (user_id, archived, updated_at, id);
-
-ALTER TABLE chat_schedules
-  MODIFY next_fire_at VARCHAR(32) DEFAULT NULL,
-  MODIFY firing_at VARCHAR(32) DEFAULT NULL,
-  DROP INDEX IF EXISTS chat_schedules_due,
-  ADD INDEX IF NOT EXISTS chat_schedules_firing (firing_at);
-ALTER TABLE chat_schedules ADD INDEX chat_schedules_due (enabled, paused, next_fire_at);
-
-ALTER TABLE command_jobs
-  MODIFY finished_at VARCHAR(32) DEFAULT NULL,
-  DROP INDEX IF EXISTS command_jobs_thread;
-ALTER TABLE command_jobs ADD INDEX command_jobs_thread (thread_id, background, finished_at);
+ALTER TABLE chat_threads ADD INDEX IF NOT EXISTS chat_threads_schedule (user_id, schedule_id);
 
 ALTER TABLE usage_rollup_hourly
   ADD INDEX IF NOT EXISTS usage_rollup_hourly_source (source_type, hour);
@@ -68,3 +54,31 @@ ALTER TABLE credentials
   ADD COLUMN IF NOT EXISTS fuse_api_equiv_micros BIGINT(20) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS fuse_priced_events BIGINT(20) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS fuse_unpriced_events BIGINT(20) NOT NULL DEFAULT 0;
+
+ALTER TABLE chat_runs DROP INDEX IF EXISTS chat_runs_thread_children;
+ALTER TABLE chat_runs
+  DROP INDEX IF EXISTS chat_runs_thread_children,
+  ADD INDEX chat_runs_thread_children (thread_id, status(16));
+
+ALTER TABLE chat_threads
+  MODIFY updated_at VARCHAR(32) NOT NULL,
+  DROP INDEX IF EXISTS chat_threads_user_updated;
+ALTER TABLE chat_threads
+  DROP INDEX IF EXISTS chat_threads_user_updated,
+  ADD INDEX chat_threads_user_updated (user_id, archived, updated_at, id);
+
+ALTER TABLE chat_schedules
+  MODIFY next_fire_at VARCHAR(32) DEFAULT NULL,
+  MODIFY firing_at VARCHAR(32) DEFAULT NULL,
+  ADD INDEX IF NOT EXISTS chat_schedules_firing (firing_at),
+  DROP INDEX IF EXISTS chat_schedules_due;
+ALTER TABLE chat_schedules
+  DROP INDEX IF EXISTS chat_schedules_due,
+  ADD INDEX chat_schedules_due (enabled, paused, next_fire_at);
+
+ALTER TABLE command_jobs
+  MODIFY finished_at VARCHAR(32) DEFAULT NULL,
+  DROP INDEX IF EXISTS command_jobs_thread;
+ALTER TABLE command_jobs
+  DROP INDEX IF EXISTS command_jobs_thread,
+  ADD INDEX command_jobs_thread (thread_id, background, finished_at);
