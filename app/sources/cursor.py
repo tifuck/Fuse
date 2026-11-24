@@ -41,9 +41,9 @@ from . import cursor_agent as agent
 from .cursor_agent import TurnError
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
-from . import pool_policy, pool_refresh
-from .pool_session import bind, lookup
-from .token_store import log_refresh_failures, persist_rotated, shield_refresh
+from . import http_pool, pool_policy, pool_refresh
+from .pool_session import bind
+from .token_store import log_refresh_failures, persist_rotated, reread, shield_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ AUTO_UPSTREAM = "default"
 _models_cache: tuple[float, list[str]] | None = None
 _labels: dict[str, str] = {}
 _refresh_locks: dict[int, asyncio.Lock] = {}
+REFRESH_WINDOW = timedelta(minutes=10)
 _CHAT_TIMEOUT = httpx.Timeout(300.0, connect=15.0, write=30.0, pool=15.0)
 # The official installer pins the current cursor-agent build; the CLI sends
 # it as cli-<build>. Checked weekly, hourly after a failure.
@@ -387,10 +388,11 @@ async def add_api_key(source_id: int, raw: str, donated_by: int, *, label: str =
 # --- Token refresh --------------------------------------------------------------
 
 async def _refresh_one_unlocked(cred) -> bool:
-    row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
-    if not row or row["disabled"]:
+    row, extra, renewed = await asyncio.to_thread(reread, cred, REFRESH_WINDOW)
+    if not row:
         return False
-    extra = accounts.cred_extra(row)
+    if renewed:
+        return True
     if extra.get("api_key"):
         # A dashboard key is not a single-use refresh token: re-exchanging it
         # is always safe, so it is not gated on OAuth refresh ownership.
@@ -406,15 +408,14 @@ async def _refresh_one_unlocked(cred) -> bool:
         if not settings.oauth_refresh_enabled or not extra.get("refresh_token"):
             return False
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                r = await client.post(
-                    _base() + "/oauth/token",
-                    json={
-                        "grant_type": "refresh_token",
-                        "client_id": settings.cursor_client_id,
-                        "refresh_token": extra["refresh_token"],
-                    },
-                )
+            r = await http_pool.client(20).post(
+                _base() + "/oauth/token",
+                json={
+                    "grant_type": "refresh_token",
+                    "client_id": settings.cursor_client_id,
+                    "refresh_token": extra["refresh_token"],
+                },
+            )
             data = r.json()
         except (httpx.HTTPError, ValueError):
             note_failure(row["id"], cooldown_seconds=30)
@@ -454,33 +455,42 @@ def _due(extra: dict, *, within: timedelta) -> bool:
     return not when or when <= datetime.now(timezone.utc) + within
 
 
-def _due_accounts(rows) -> tuple[list, list[float]]:
-    """The accounts whose token is due, and when each one comes due."""
-    window = timedelta(minutes=10)
-    due, due_at = [], []
+def _due_accounts(rows) -> tuple[list, list, list[float]]:
+    """The accounts whose token is due, those of them a request waits for
+    (pool_refresh.URGENT), and when each account comes due."""
+    due, urgent, due_at = [], [], []
     for row in rows:
         extra = accounts.cred_extra(row)
         if not (extra.get("refresh_token") or extra.get("api_key")):
             continue
-        if _due(extra, within=window):
+        if _due(extra, within=REFRESH_WINDOW):
             due.append(row)
+            if _due(extra, within=pool_refresh.URGENT):
+                urgent.append(row)
         when = _parse_ts(str(extra.get("expires_at") or ""))
-        due_at.append((when - window).timestamp() if when else 0.0)
-    return due, due_at
+        due_at.append((when - REFRESH_WINDOW).timestamp() if when else 0.0)
+    return due, urgent, due_at
 
 
 async def refresh_due(rows=None) -> bool:
     """Refresh every due token; True when one was due. rows: a request's pool,
-    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
+    rescanned only once one of them changed or came due (pool_refresh.scan_due);
+    it waits only for urgent tokens and returns True when it did
+    (pool_refresh.refresh_tokens). The client version check runs off the
+    request."""
+    if rows is not None:
+        pool_refresh.start("cursor-version", refresh_client_version)
+        if not pool_refresh.scan_due("cursor", rows):
+            return False
+        due, urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
+        pool_refresh.scanned("cursor", rows, due_at)
+        return await pool_refresh.refresh_tokens("cursor", due, urgent, refresh_one, "Cursor token refresh")
     await refresh_client_version()
-    if rows is not None and not pool_refresh.scan_due("cursor", rows):
-        return False
-    if rows is None:
-        rows = await asyncio.to_thread(
-            db.fetchall,
-            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0",
-        )
-    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0",
+    )
+    due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("cursor", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
@@ -1142,9 +1152,8 @@ class CursorSource:
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Cursor accounts in the pool"})
         with db.read_memo():
-            prefer_id = conv.cred_id if conv else await asyncio.to_thread(lookup, "cursor", session_id)
-            hint_id = await asyncio.to_thread(lookup, "cursor", affinity_id) if prefer_id is None and affinity_id else None
-            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "cursor")
+            prefer_id, hint_id, primary_id = await asyncio.to_thread(
+                pool_refresh.pins, "cursor", session_id, affinity_id, user_id, conv.cred_id if conv else None)
         failover = Failover()
         refreshed: set[int] = set()
         why: list = []
@@ -1164,7 +1173,7 @@ class CursorSource:
                 agent.drop(plan[1])
                 plan = ("fresh", None, [])
             tried.add(cid)
-            await asyncio.to_thread(note_pool_invoke, cid)
+            pool_refresh.note_invoke(note_pool_invoke, cid)
             reserve(cid)
             try:
                 rnd = await self._open(extra, cid, user_id, body, sel, plan)

@@ -6,6 +6,8 @@ routes, which tests drive and patch directly on this module.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -40,7 +42,7 @@ router = APIRouter()
 
 @router.post("/sources/explabs/add")
 async def explabs_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"explabs-add:{user['id']}", 5, 60):
@@ -58,7 +60,7 @@ async def explabs_add(request: Request, api_key: str = Form(""), label: str = Fo
 
 @router.post("/sources/explabs/{cred_id}/revoke")
 async def explabs_revoke(request: Request, cred_id: int):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     sid = explabs_mod.ensure_explabs_source()
@@ -75,7 +77,7 @@ async def explabs_revoke(request: Request, cred_id: int):
 
 @router.post("/admin/sources/explabs")
 async def admin_explabs_save(request: Request, enabled: str = Form("0")):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     sid = explabs_mod.ensure_explabs_source()

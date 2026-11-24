@@ -1,5 +1,5 @@
 // Desktop: the terminal panel docked at the bottom of the window, under the
-// composer (a full-height sheet on a phone), and its top-bar button. Markup only;
+// composer, and its top-bar button. Markup only;
 // static/chat/terminal.js fills the tabs, the machine list and the keys and
 // drives everything. Built here rather than in a template so the view's
 // static files carry it whole.

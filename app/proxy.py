@@ -1,3 +1,4 @@
+import asyncio
 import json
 import math
 import re
@@ -315,6 +316,18 @@ def _rate_headers(headers) -> dict:
     return kept
 
 
+def _json_body(payload: dict) -> bytes:
+    """The bytes httpx sends for json=payload (httpx 0.28's encoding)."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+
+
+def _json_request(client: httpx.AsyncClient, url: str, content: bytes, headers: dict) -> httpx.Request:
+    """A POST carrying _json_body bytes, with the headers json= would set."""
+    req = client.build_request("POST", url, content=content, headers=headers)
+    req.headers.setdefault("Content-Type", "application/json")
+    return req
+
+
 def _chat_failure(status: int, message: str, phase: str, usage: dict | None = None) -> tuple:
     return status, {"error": {
         "message": message, "failure_phase": phase, "retryable": phase == "pre_generation",
@@ -345,7 +358,8 @@ async def openai_chat(
         payload["stream_options"] = opts
 
     if stream:
-        req = client.build_request("POST", url, json=payload, headers=headers)
+        # A long transcript takes a while to encode: off the event loop.
+        req = _json_request(client, url, await asyncio.to_thread(_json_body, payload), headers)
         try:
             resp = await client.send(req, stream=True)
         except httpx.TimeoutException as exc:
@@ -412,10 +426,12 @@ async def openai_chat(
                 async for chunk in resp.aiter_bytes():
                     buf += chunk
                     # Inspect complete lines first: a capped chunk may still
-                    # carry the usage and [DONE] frames after a huge one.
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        inspect(line)
+                    # carry the usage and [DONE] frames after a huge one. The
+                    # remainder holds no newline, so only this chunk can end one.
+                    if b"\n" in chunk:
+                        *lines, buf = buf.split(b"\n")
+                        for line in lines:
+                            inspect(line)
                     if len(buf) > 1_048_576:
                         buf = b""
                     yield chunk
@@ -433,8 +449,9 @@ async def openai_chat(
         return 200, None, UsageStream(gen(), collected), collected, {}
 
     try:
+        content = await asyncio.to_thread(_json_body, payload)
         try:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await client.send(_json_request(client, url, content, headers))
         except httpx.TimeoutException as exc:
             return _chat_failure(504, f"upstream timeout ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, (httpx.ConnectTimeout, httpx.PoolTimeout)) else "request_sent")

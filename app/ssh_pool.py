@@ -160,13 +160,19 @@ def _key_id(key) -> tuple[str, str]:
     return str(algo), digest
 
 
-async def _connect_once(user_id: int, host_id: int, *, probe: bool):
-    import asyncssh
-
+def _dial_target(user_id: int, host_id: int):
+    """(secret, passphrase, public host, addresses): the vault read and the
+    DNS checks, together off the event loop."""
     secret, passphrase, pub = secret_plain(user_id, host_id)
     if pub.get("auth_type") == "agent":
         raise SshError("connector hosts are not SSH")
-    addrs = resolve_public(pub["hostname"], pub["port"])
+    return secret, passphrase, pub, resolve_public(pub["hostname"], pub["port"])
+
+
+async def _connect_once(user_id: int, host_id: int, *, probe: bool):
+    import asyncssh
+
+    secret, passphrase, pub, addrs = await asyncio.to_thread(_dial_target, user_id, host_id)
     kwargs = {
         "host": addrs[0],
         "port": pub["port"],
@@ -222,7 +228,8 @@ async def _connect_once(user_id: int, host_id: int, *, probe: bool):
         kwargs["password"] = secret
         kwargs["client_keys"] = None
     else:
-        kwargs["client_keys"] = [asyncssh.import_private_key(secret, passphrase=passphrase or None)]
+        # A passphrase key runs bcrypt's KDF, which is CPU-heavy.
+        kwargs["client_keys"] = [await asyncio.to_thread(asyncssh.import_private_key, secret, passphrase or None)]
         kwargs["password"] = None
     conn = await asyncssh.connect(**kwargs)
     try:
@@ -259,10 +266,10 @@ async def probe(user_id: int, host_id: int) -> dict:
         if exc.status_code == 401:  # secret_plain's vault-locked HostError
             raise SshError("vault locked", 401) from exc
         if exc.status_code != 404:  # no such host for this user: nothing to record
-            set_host_status(user_id, host_id, ok=False, error=exc.detail)
+            await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error=exc.detail)
         raise SshError(exc.detail, exc.status_code) from exc
     except Exception as exc:
-        set_host_status(user_id, host_id, ok=False, error="probe failed")
+        await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error="probe failed")
         raise SshError("probe failed") from exc
     return {"algorithm": algo, "fingerprint": digest}
 
@@ -284,17 +291,17 @@ async def test(user_id: int, host_id: int) -> dict:
         if exc.status_code == 401:  # secret_plain's vault-locked HostError
             raise SshError("vault locked", 401) from exc
         if exc.status_code != 404:  # no such host for this user: nothing to record
-            set_host_status(user_id, host_id, ok=False, error=exc.detail)
+            await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error=exc.detail)
         raise SshError(exc.detail, exc.status_code) from exc
     except Exception as exc:
-        set_host_status(user_id, host_id, ok=False, error="test failed")
+        await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error="test failed")
         raise SshError("test failed") from exc
     conn.close()
     try:
         await conn.wait_closed()
     except Exception:
         pass
-    set_host_status(user_id, host_id, ok=True)
+    await asyncio.to_thread(set_host_status, user_id, host_id, ok=True)
     return {"ok": True, "algorithm": algo, "fingerprint": digest}
 
 

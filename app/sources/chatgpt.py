@@ -17,6 +17,7 @@ import json
 import logging
 import math
 import time
+import weakref
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -41,9 +42,9 @@ from .pool_pick import (
     reserve,
 )
 from . import http_pool, pool_policy, pool_refresh
-from .pool_session import bind, lookup
+from .pool_session import bind
 from .token_store import (
-    dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, revoked_grant, shield_refresh,
+    dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
 )
 
 from .chatgpt_catalog import (
@@ -82,6 +83,7 @@ from .chatgpt_stream import (
 logger = logging.getLogger(__name__)
 REFRESH_WINDOW = timedelta(minutes=5)
 _refresh_locks: dict[int, asyncio.Lock] = {}
+_auth_clients: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 # Codex's sticky-routing contract: the first response of a turn carries
 # x-codex-turn-state, every later request of that turn on that account sends
 # it back unchanged, and another turn or account must not. Without it a
@@ -145,11 +147,16 @@ def _client() -> httpx.AsyncClient:
 
 
 def _auth_client(timeout: float = 20) -> httpx.AsyncClient:
-    """Client for auth.openai.com. Chat/usage stay on `_client()` (no proxy)."""
+    """Shared client for auth.openai.com, per loop like http_pool (never close
+    it). Chat/usage stay on `_client()` (no proxy)."""
     proxy = (settings.openai_auth_proxy or "").strip()
-    if proxy:
-        return httpx.AsyncClient(timeout=timeout, proxy=proxy)
-    return httpx.AsyncClient(timeout=timeout)
+    if not proxy:
+        return http_pool.client(timeout)
+    per_loop = _auth_clients.setdefault(asyncio.get_running_loop(), {})
+    found = per_loop.get((proxy, timeout))
+    if found is None or found.is_closed:
+        found = per_loop[(proxy, timeout)] = httpx.AsyncClient(timeout=timeout, proxy=proxy)
+    return found
 
 
 def _auth_headers() -> dict:
@@ -347,28 +354,32 @@ def _drop_param(payload: dict, param: str) -> bool:
     return True
 
 
+def _json_body(payload: dict) -> bytes:
+    """The bytes httpx's json= would send (agent transcripts run to megabytes:
+    encoded off the loop)."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+
+
 def _note_invoke(cred_id: int) -> None:
     db.execute("UPDATE credentials SET pool_invokes = COALESCE(pool_invokes, 0) + 1 WHERE id=?", (cred_id,))
 
 
 async def start_device() -> dict:
-    async with _auth_client() as client:
-        r = await client.post(
-            _auth_base() + "/api/accounts/deviceauth/usercode",
-            json={"client_id": settings.openai_auth_client_id},
-            headers=_auth_headers(),
-        )
-        r.raise_for_status()
-        return r.json()
+    r = await _auth_client().post(
+        _auth_base() + "/api/accounts/deviceauth/usercode",
+        json={"client_id": settings.openai_auth_client_id},
+        headers=_auth_headers(),
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 async def poll_device(device_auth_id: str, user_code: str) -> dict:
-    async with _auth_client() as client:
-        r = await client.post(
-            _auth_base() + "/api/accounts/deviceauth/token",
-            json={"device_auth_id": device_auth_id, "user_code": user_code},
-            headers=_auth_headers(),
-        )
+    r = await _auth_client().post(
+        _auth_base() + "/api/accounts/deviceauth/token",
+        json={"device_auth_id": device_auth_id, "user_code": user_code},
+        headers=_auth_headers(),
+    )
     if r.status_code in (403, 404):
         return {"status": "pending"}
     if r.status_code != 200:
@@ -388,18 +399,17 @@ async def poll_device(device_auth_id: str, user_code: str) -> dict:
 
 
 async def exchange_code(code: str, verifier: str) -> dict:
-    async with _auth_client() as client:
-        r = await client.post(
-            _auth_base() + "/oauth/token",
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": _auth_base() + "/deviceauth/callback",
-                "client_id": settings.openai_auth_client_id,
-                "code_verifier": verifier,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": settings.openai_auth_user_agent},
-        )
+    r = await _auth_client().post(
+        _auth_base() + "/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": _auth_base() + "/deviceauth/callback",
+            "client_id": settings.openai_auth_client_id,
+            "code_verifier": verifier,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": settings.openai_auth_user_agent},
+    )
     if r.status_code != 200:
         return {}
     try:
@@ -458,10 +468,11 @@ def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_ex
 async def _refresh_one_unlocked(cred) -> bool:
     if not settings.oauth_refresh_enabled:
         return False
-    row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
-    if not row or row["disabled"]:
+    row, extra, renewed = await asyncio.to_thread(reread, cred, REFRESH_WINDOW)
+    if not row:
         return False
-    extra = accounts.cred_extra(row)
+    if renewed:
+        return True
     rt = extra.get("refresh_token")
     if not rt:
         return False
@@ -469,16 +480,15 @@ async def _refresh_one_unlocked(cred) -> bool:
         revoked_grant(row, extra, "chatgpt", disable_credential)
         return False
     try:
-        async with _auth_client() as client:
-            r = await client.post(
-                _auth_base() + "/oauth/token",
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": rt,
-                    "client_id": settings.openai_auth_client_id,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": settings.openai_auth_user_agent},
-            )
+        r = await _auth_client().post(
+            _auth_base() + "/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": rt,
+                "client_id": settings.openai_auth_client_id,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": settings.openai_auth_user_agent},
+        )
     except httpx.HTTPError:
         note_failure(row["id"], cooldown_seconds=30)
         return False
@@ -526,10 +536,12 @@ async def refresh_one(cred) -> bool:
     return await shield_refresh(run())
 
 
-def _due_accounts(rows) -> tuple[list, list[float]]:
-    """The accounts whose token is due, and when each one comes due."""
-    soon = datetime.now(timezone.utc) + REFRESH_WINDOW
-    due, due_at = [], []
+def _due_accounts(rows) -> tuple[list, list, list[float]]:
+    """The accounts whose token is due, those of them a request waits for
+    (pool_refresh.URGENT), and when each account comes due."""
+    now = datetime.now(timezone.utc)
+    soon, urgent_by = now + REFRESH_WINDOW, now + pool_refresh.URGENT
+    due, urgent, due_at = [], [], []
     for cred in rows:
         extra = accounts.cred_extra(cred)
         exp = extra.get("expires_at")
@@ -541,21 +553,28 @@ def _due_accounts(rows) -> tuple[list, list[float]]:
             continue
         if when <= soon:
             due.append(cred)
+            if when <= urgent_by:
+                urgent.append(cred)
         due_at.append((when - REFRESH_WINDOW).timestamp())
-    return due, due_at
+    return due, urgent, due_at
 
 
 async def refresh_due(rows=None) -> bool:
     """Refresh every due token; True when one was due. rows: a request's pool,
-    rescanned only once one of them changed or came due (pool_refresh.scan_due)."""
-    if rows is not None and not pool_refresh.scan_due("chatgpt", rows):
-        return False
-    if rows is None:
-        rows = await asyncio.to_thread(
-            db.fetchall,
-            "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='chatgpt' AND c.disabled=0",
-        )
-    due, due_at = await asyncio.to_thread(_due_accounts, rows)
+    rescanned only once one of them changed or came due (pool_refresh.scan_due);
+    it waits only for urgent tokens and returns True when it did
+    (pool_refresh.refresh_tokens)."""
+    if rows is not None:
+        if not pool_refresh.scan_due("chatgpt", rows):
+            return False
+        due, urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
+        pool_refresh.scanned("chatgpt", rows, due_at)
+        return await pool_refresh.refresh_tokens("chatgpt", due, urgent, refresh_one, "ChatGPT OAuth refresh")
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='chatgpt' AND c.disabled=0",
+    )
+    due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("chatgpt", rows, due_at)
     if due:
         results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
@@ -837,13 +856,13 @@ class ChatGPTSource:
         req = client.build_request(
             "POST",
             _backend_base() + "/responses",
-            json=payload,
+            content=await asyncio.to_thread(_json_body, payload),
             headers=_chat_headers(token, account_id, payload.get("prompt_cache_key"), turn_state),
         )
         return await client.send(req, stream=True)
 
     @staticmethod
-    def _bind_completed_stream(session_id: str | None, cred_id: int, collected: dict | None) -> None:
+    async def _bind_completed_stream(session_id: str | None, cred_id: int, collected: dict | None) -> None:
         """Pin only a fully completed stream.
 
         Cancelled or truncated streams keep the existing pin and must not
@@ -852,7 +871,7 @@ class ChatGPTSource:
         """
         status = (collected or {}).get("stream_status")
         if status == "complete":
-            bind("chatgpt", session_id, cred_id)
+            await asyncio.to_thread(bind, "chatgpt", session_id, cred_id)
         elif status == "failed":
             note_failure(cred_id, cooldown_seconds=5, affinity_safe=True)
 
@@ -868,9 +887,8 @@ class ChatGPTSource:
             tried: set[int] = set()
             attempts: list[dict] = []
             last = ChatResult(status=503, body={"error": "No ChatGPT accounts in the pool"})
-            prefer_id = await asyncio.to_thread(lookup, "chatgpt", session_id)
-            hint_id = await asyncio.to_thread(lookup, "chatgpt", affinity_id) if prefer_id is None and affinity_id else None
-            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "chatgpt")
+            prefer_id, hint_id, primary_id = await asyncio.to_thread(
+                pool_refresh.pins, "chatgpt", session_id, affinity_id, user_id)
         failover = Failover()
         why: list = []
         while True:
@@ -884,7 +902,7 @@ class ChatGPTSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            await asyncio.to_thread(_note_invoke, cred["id"])
+            pool_refresh.note_invoke(_note_invoke, cred["id"])
             token = extra.get("access_token") or accounts.cred_secret(cred)
             account_id = extra.get("account_id") or None
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
@@ -996,7 +1014,7 @@ class ChatGPTSource:
                             close = getattr(inner, "aclose", None)
                             if close is not None:
                                 await close()
-                            self._bind_completed_stream(session_id, cred["id"], collected)
+                            await self._bind_completed_stream(session_id, cred["id"], collected)
 
                     stream_reserved = True
                     failover.served()
@@ -1027,7 +1045,7 @@ class ChatGPTSource:
                     return last
                 failover.served()
                 usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
-                bind("chatgpt", session_id, cred["id"])
+                await asyncio.to_thread(bind, "chatgpt", session_id, cred["id"])
                 result = ChatResult(status=200, body=obj, usage=usage, credential_id=cred["id"], model=model)
                 result.attempts = attempts
                 return result

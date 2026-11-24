@@ -221,7 +221,7 @@ def _admin_web_ctx(error: str | None = None, notice: str | None = None) -> dict:
 
 
 @router.get("/admin/sources", response_class=HTMLResponse)
-async def admin_sources(request: Request):
+def admin_sources(request: Request):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -239,7 +239,7 @@ async def admin_sources(request: Request):
 
 
 @router.get("/admin/pools", response_class=HTMLResponse)
-async def admin_pools(request: Request):
+def admin_pools(request: Request):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -248,7 +248,7 @@ async def admin_pools(request: Request):
 
 
 @router.get("/admin/web", response_class=HTMLResponse)
-async def admin_web(request: Request):
+def admin_web(request: Request):
     user, redir = require_admin(request)
     if redir:
         return redir

@@ -544,11 +544,11 @@ class RefuselessSource:
         if rec is None:
             return ChatResult(status=404, body={"error": {"message": "That model is not in Refuseless's catalog."}}, model=upstream)
         with db.read_memo():
-            rows = pool_policy.filter_credentials(
+            rows = await asyncio.to_thread(lambda: pool_policy.filter_credentials(
                 db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
                 "refuseless",
                 user_id,
-            )
+            ))
             uid = int(user_id) if user_id is not None else None
             prepared = chat_payload(body, upstream, rec)
             tried: set[int] = set()
@@ -655,7 +655,7 @@ class RefuselessSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("refuseless", session_id, cid)
+                    await asyncio.to_thread(bind, "refuseless", session_id, cid)
                 elif status == "failed":
                     if _ran_out_of_credits(tail):
                         store_billing(cid, parse_credits({"available": 0}))

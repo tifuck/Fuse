@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 
@@ -98,8 +99,7 @@ class OpenAICompatSource:
         for cred in self._next_creds():
             key = accounts.cred_secret(cred)
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    r = await client.get(self._url() + "/models", headers=self._headers(key))
+                r = await http_pool.client(30).get(self._url() + "/models", headers=self._headers(key))
             except httpx.HTTPError:
                 continue
             if r.status_code != 200:
@@ -127,7 +127,7 @@ class OpenAICompatSource:
                 if close is not None:
                     await close()
                 if (collected or {}).get("stream_status") == "complete":
-                    bind(self.pin_kind, session_id, cid)
+                    await asyncio.to_thread(bind, self.pin_kind, session_id, cid)
 
         wrapped = UsageStream(_bind_on_finish(), collected)
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=model)
@@ -140,7 +140,9 @@ class OpenAICompatSource:
         tried: set[int] = set()
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "All keys failed"})
-        prefer_id = lookup(self.pin_kind, session_id) if session_id else None
+        # One key has nothing to choose between: no pin to read or keep.
+        pinned = bool(session_id) and len(self.creds) > 1
+        prefer_id = await asyncio.to_thread(lookup, self.pin_kind, session_id) if pinned else None
         model = body.get("model", "")
         failover = Failover()
         cache_key = bool(session_id) and self.send_cache_key
@@ -168,11 +170,11 @@ class OpenAICompatSource:
                 body = {k: v for k, v in body.items() if k != "prompt_cache_key"}
             if stream is not None:
                 failover.served()
-                return self._stream_result(stream, usage, cred, session_id, model, attempts)
+                return self._stream_result(stream, usage, cred, session_id if pinned else None, model, attempts)
             if status == 200:
                 failover.served()
-                if session_id:
-                    bind(self.pin_kind, session_id, cred["id"])
+                if pinned:
+                    await asyncio.to_thread(bind, self.pin_kind, session_id, cred["id"])
             last = ChatResult(
                 status=status,
                 body=obj,

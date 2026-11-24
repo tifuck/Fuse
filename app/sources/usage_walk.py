@@ -5,6 +5,7 @@ hops. Free ChatGPT plans are skipped. Page loads never call this.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -90,7 +91,7 @@ def _is_paid(kind: str, extra: dict) -> bool:
 def usage_targets() -> list[tuple[str, object]]:
     placeholders = ",".join("?" * len(WALK_KINDS))
     rows = db.fetchall(
-        f"""SELECT c.*, s.type AS source_type
+        f"""SELECT c.id, c.extra, s.type AS source_type
             FROM credentials c JOIN sources s ON s.id=c.source_id
             WHERE c.disabled=0 AND s.type IN ({placeholders})
             ORDER BY c.id""",
@@ -112,6 +113,19 @@ def usage_targets() -> list[tuple[str, object]]:
         targets.append((kind, row, when))
     targets.sort(key=lambda item: (item[2], int(item[1]["id"])))
     return [(kind, row) for kind, row, _ in targets]
+
+
+def _next_target() -> tuple[str, object] | None:
+    targets = usage_targets()
+    if not targets:
+        return None
+    kind, row = targets[0]
+    cred = db.fetchone(
+        """SELECT c.*, s.type AS source_type
+           FROM credentials c JOIN sources s ON s.id=c.source_id WHERE c.id=?""",
+        (row["id"],),
+    )
+    return (kind, cred) if cred else None
 
 
 async def refresh_one_usage(kind: str, cred) -> None:
@@ -139,10 +153,10 @@ async def refresh_one_usage(kind: str, cred) -> None:
 
 async def walk_next() -> str | None:
     """Refresh the stalest paid account. Returns 'kind:id' or None."""
-    targets = usage_targets()
-    if not targets:
+    target = await asyncio.to_thread(_next_target)
+    if target is None:
         return None
-    kind, cred = targets[0]
+    kind, cred = target
     try:
         await refresh_one_usage(kind, cred)
     except Exception:

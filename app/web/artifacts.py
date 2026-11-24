@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException, Request
@@ -64,7 +65,7 @@ def _wants_json(request: Request) -> bool:
 
 
 @router.get("/artifacts", response_class=HTMLResponse)
-async def artifacts_gallery(request: Request):
+def artifacts_gallery(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -85,7 +86,7 @@ async def artifacts_gallery(request: Request):
 
 
 @router.get("/artifacts/list")
-async def artifacts_list(request: Request):
+def artifacts_list(request: Request):
     """The chat's /artifacts list: this chat's artifacts only, oldest first."""
     user, err = _chat_auth(request)
     if err:
@@ -109,7 +110,7 @@ async def artifacts_list(request: Request):
 
 
 @router.get("/a/{public_id}", response_class=HTMLResponse)
-async def artifact_page(request: Request, public_id: str):
+def artifact_page(request: Request, public_id: str):
     user, row, owner = _viewer(request, public_id)
     if row and row["expired_at"]:
         return render(request, "artifact_missing.html", user, status_code=410, expired=artifacts.expired_notice())
@@ -136,7 +137,7 @@ async def artifact_page(request: Request, public_id: str):
 
 
 @router.get("/a/{public_id}/content")
-async def artifact_content(request: Request, public_id: str):
+def artifact_content(request: Request, public_id: str):
     version = _artifact_version(request.query_params.get("v"))
     if (request.headers.get("sec-fetch-dest") or "").lower() == "document":
         # Opened as a page of its own: show it inside the viewer, under its
@@ -161,7 +162,7 @@ async def artifact_content(request: Request, public_id: str):
 
 
 @router.get("/a/{public_id}/source")
-async def artifact_source(request: Request, public_id: str):
+def artifact_source(request: Request, public_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -174,7 +175,7 @@ async def artifact_source(request: Request, public_id: str):
 
 
 @router.get("/a/{public_id}/diff")
-async def artifact_diff(request: Request, public_id: str):
+def artifact_diff(request: Request, public_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -191,7 +192,7 @@ async def artifact_diff(request: Request, public_id: str):
 
 
 @router.get("/a/{public_id}/download")
-async def artifact_download(request: Request, public_id: str):
+def artifact_download(request: Request, public_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -204,7 +205,7 @@ async def artifact_download(request: Request, public_id: str):
 
 
 @router.get("/a/{public_id}/meta")
-async def artifact_meta(request: Request, public_id: str):
+def artifact_meta(request: Request, public_id: str):
     _, row, owner = _viewer(request, public_id)
     if not row:
         raise HTTPException(404, "Artifact not found")
@@ -251,12 +252,12 @@ async def _artifact_form_or_json(request: Request) -> dict:
 async def _owner_action(request: Request, public_id: str, act, result):
     """Run act(user, raw) for the owner: JSON in, JSON out; a form posts back
     to the artifact's page."""
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _artifact_form_or_json(request)
     try:
-        item = act(user, raw)
+        item = await asyncio.to_thread(act, user, raw)
     except artifacts.ArtifactError as exc:
         if _wants_json(request):
             raise _artifact_http_error(exc) from None
@@ -328,27 +329,27 @@ async def artifact_revert(request: Request, public_id: str):
 
 @router.post("/a/{public_id}/attach")
 async def artifact_attach(request: Request, public_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
-    item = artifacts.attach_thread(user["id"], public_id, raw.get("thread_id"))
+    item = await asyncio.to_thread(artifacts.attach_thread, user["id"], public_id, raw.get("thread_id"))
     if item is None:
         raise HTTPException(404, "Artifact or chat not found")
     return JSONResponse({"ok": True, **_summary(item)})
 
 
 @router.post("/a/{public_id}/archive")
-async def artifact_archive(request: Request, public_id: str):
-    return await _artifact_set_archived(request, public_id, True)
+def artifact_archive(request: Request, public_id: str):
+    return _artifact_set_archived(request, public_id, True)
 
 
 @router.post("/a/{public_id}/restore")
-async def artifact_restore(request: Request, public_id: str):
-    return await _artifact_set_archived(request, public_id, False)
+def artifact_restore(request: Request, public_id: str):
+    return _artifact_set_archived(request, public_id, False)
 
 
-async def _artifact_set_archived(request: Request, public_id: str, archived: bool):
+def _artifact_set_archived(request: Request, public_id: str, archived: bool):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -366,7 +367,7 @@ async def _artifact_set_archived(request: Request, public_id: str, archived: boo
 
 
 @router.post("/a/{public_id}/delete")
-async def artifact_delete(request: Request, public_id: str):
+def artifact_delete(request: Request, public_id: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -388,7 +389,7 @@ async def artifact_delete(request: Request, public_id: str):
 
 @router.post("/a/{public_id}/continue")
 async def artifact_continue(request: Request, public_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = {}
@@ -396,7 +397,7 @@ async def artifact_continue(request: Request, public_id: str):
     if "application/json" in ctype:
         raw = await _json_object(request)
     try:
-        result = artifacts.continue_in_chat(user["id"], public_id, model=str(raw.get("model") or ""))
+        result = await asyncio.to_thread(artifacts.continue_in_chat, user["id"], public_id, model=str(raw.get("model") or ""))
     except artifacts.ArtifactError as exc:
         if "application/json" in ctype:
             raise _artifact_http_error(exc) from None

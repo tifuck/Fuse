@@ -598,7 +598,7 @@ class OllamaSource:
         prefer_key = None
         pinned_cid = None
         if self.cfg.get("sticky_sessions", True) and session_id:
-            pinned_cid = lookup(self.pin_kind, session_id)
+            pinned_cid = await asyncio.to_thread(lookup, self.pin_kind, session_id)
             if pinned_cid:
                 for c in self.creds:
                     if c["id"] == pinned_cid:
@@ -689,7 +689,7 @@ class OllamaSource:
                         if close is not None:
                             await close()
                         if sticky and collected.get("stream_status") == "complete":
-                            bind(self.pin_kind, session_id, cid)
+                            await asyncio.to_thread(bind, self.pin_kind, session_id, cid)
 
                 gen = UsageStream(_bind_on_finish(), collected)
                 return ChatResult(
@@ -745,7 +745,7 @@ class OllamaSource:
             }
             usage = usage_from_obj(obj)
             if sticky:
-                bind(self.pin_kind, session_id, cid)
+                await asyncio.to_thread(bind, self.pin_kind, session_id, cid)
             return ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=model, attempts=attempts)
         finally:
             if not stream_returned:

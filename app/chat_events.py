@@ -1,5 +1,6 @@
 """Authenticated, replayable WebSocket observations; commands remain CSRF-protected HTTP."""
 import asyncio
+import itertools
 import logging
 import time
 from collections import defaultdict
@@ -15,6 +16,11 @@ _subscribers = defaultdict(dict)
 _loop = None
 _closing = False
 MAX_CONNECTIONS_PER_USER = 8
+# Per user, the generation of its latest wake; a read started since then is
+# current for every socket that wakes now, so they share it (_events_after).
+_wakes = {}
+_wake_gen = itertools.count(1)
+_reads = {}
 
 
 def notify(users):
@@ -22,9 +28,23 @@ def notify(users):
         return
     def wake():
         for uid in users:
+            if uid in _subscribers:
+                _wakes[uid] = next(_wake_gen)
             for signal in _subscribers.get(uid, {}).values():
                 signal.set()
     _loop.call_soon_threadsafe(wake)
+
+
+async def _events_after(uid, cursor):
+    if uid not in _wakes:
+        _wakes[uid] = next(_wake_gen)
+    key = (uid, cursor, _wakes[uid])
+    task = _reads.get(key)
+    if task is None:
+        task = asyncio.ensure_future(asyncio.to_thread(chat_store.events_after, uid, cursor, limit=64))
+        _reads[key] = task
+        task.add_done_callback(lambda done: _reads.pop(key) if _reads.get(key) is done else None)
+    return await asyncio.shield(task)
 
 
 def start():
@@ -201,7 +221,7 @@ async def events(ws: WebSocket):
         last_ping = time.monotonic()
         while not _closing and not reader.done():
             signal.clear()
-            rows = await asyncio.to_thread(chat_store.events_after, uid, cursor, limit=64)
+            rows = await _events_after(uid, cursor)
             # Validate after the read: a prune committed between a check and
             # the read deletes events past the cursor and moves the floor, so
             # only a floor read after the batch proves the batch is gap-free.
@@ -242,6 +262,7 @@ async def events(ws: WebSocket):
         _subscribers[uid].pop(ws, None)
         if not _subscribers[uid]:
             _subscribers.pop(uid, None)
+            _wakes.pop(uid, None)
         try:
             await ws.close()
         except (RuntimeError, WebSocketDisconnect, OSError):

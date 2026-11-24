@@ -817,24 +817,16 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
     def over_capacity() -> bool:
         # active_parent_thread (generated, indexed) is set exactly on live
         # root runs: at most 32 rows, so instr() reads only their requests.
-        n_sched = int(db.fetchone(
-            """SELECT COUNT(*) AS n FROM chat_runs r
-               WHERE r.user_id=? AND r.active_parent_thread IS NOT NULL
-                 AND instr(r.request, '"scheduled":true') > 0""",
-            (user_id,),
-        )["n"])
-        n_user = int(db.fetchone(
-            "SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL",
-            (user_id,),
-        )["n"])
-        n_global = int(db.fetchone(
-            "SELECT COUNT(*) AS n FROM chat_runs WHERE active_parent_thread IS NOT NULL"
-        )["n"])
-        n_sched_global = int(db.fetchone(
-            """SELECT COUNT(*) AS n FROM chat_runs r
-               WHERE r.active_parent_thread IS NOT NULL
-                 AND instr(r.request, '"scheduled":true') > 0"""
-        )["n"])
+        row = db.fetchone(
+            """SELECT COUNT(*) AS n_global,
+                      SUM(CASE WHEN user_id=? THEN 1 ELSE 0 END) AS n_user,
+                      SUM(CASE WHEN user_id=? AND instr(request, '"scheduled":true') > 0 THEN 1 ELSE 0 END) AS n_sched,
+                      SUM(CASE WHEN instr(request, '"scheduled":true') > 0 THEN 1 ELSE 0 END) AS n_sched_global
+               FROM chat_runs WHERE active_parent_thread IS NOT NULL""",
+            (user_id, user_id),
+        )
+        n_sched, n_user, n_global, n_sched_global = (
+            int(row[k] or 0) for k in ("n_sched", "n_user", "n_global", "n_sched_global"))
         return n_sched >= MAX_CONCURRENT_USER or n_sched_global >= MAX_CONCURRENT_GLOBAL or n_user >= 20 or n_global >= 32
 
     # The blocking steps run in worker threads. Their first result is
@@ -975,10 +967,15 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
         with _START_LOCK:
             return start(host, project)
 
+    async def finish(status, error, thread_id, run_id, *, consume):
+        alert = await asyncio.to_thread(_finish_fire, schedule, fire, status, error, thread_id, run_id, consume=consume)
+        if alert:
+            _alert_skipped(schedule, *alert)
+
     try:
         done, host, project = await asyncio.to_thread(prepare)
         if done:
-            _finish_fire(schedule, fire, done[0], done[1], None, None, consume=done[2])
+            await finish(done[0], done[1], None, None, consume=done[2])
             return
         from .sources import pick
 
@@ -989,12 +986,12 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
             raise ScheduleError("model unavailable", 400)
         done, run, user = await asyncio.to_thread(locked_start, host, project)
         if done:
-            _finish_fire(schedule, fire, done[0], done[1], thread_pk, None, consume=done[2])
+            await finish(done[0], done[1], thread_pk, None, consume=done[2])
             return
         if user and run_id:
             await chat_runs.start(chat_runs.internal_request(user_id), dict(user), run)
         status = "running"
-        _finish_fire(schedule, fire, status, "", thread_pk, run_id, consume=consume_slot and not slot.startswith("manual:"))
+        await finish(status, "", thread_pk, run_id, consume=consume_slot and not slot.startswith("manual:"))
         return
     except ScheduleError as exc:
         status = "failed" if exc.status_code != 401 else "vault_locked"
@@ -1014,22 +1011,22 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
             consume = False
         if schedule["recur_kind"] == "once" and status == "failed":
             consume = True
-        _finish_fire(schedule, fire, status, error, thread_pk, run_id, consume=consume)
+        await finish(status, error, thread_pk, run_id, consume=consume)
     except chats.ChatValidationError as exc:
         status = "failed"
         error = sanitize_schedule_error(exc.detail)
         if exc.status_code == 413:
             error = "thread_limit" if "limit of" in exc.detail else "message_limit"
-        _finish_fire(schedule, fire, status, error, thread_pk, run_id, consume=True)
+        await finish(status, error, thread_pk, run_id, consume=True)
     except Exception:
         logger.exception("schedule fire failed")
         if run_id:
             # The run is committed and will still execute (resume_queued);
             # sync_run_status records its real outcome, which a "failed" here
             # would block (it only updates queued/running fires).
-            _finish_fire(schedule, fire, "running", "", thread_pk, run_id, consume=consume_slot and not slot.startswith("manual:"))
+            await finish("running", "", thread_pk, run_id, consume=consume_slot and not slot.startswith("manual:"))
             return
-        _finish_fire(schedule, fire, "failed", "internal error", thread_pk, run_id, consume=True)
+        await finish("failed", "internal error", thread_pk, run_id, consume=True)
 
 
 def _thread_pk(thread) -> int | None:
@@ -1045,7 +1042,9 @@ def _thread_pk(thread) -> int | None:
 _FINISH_CONFIG_FIELDS = ("recur_kind", "cron_expr", "every_seconds", "timezone", "once_at", "enabled", "paused")
 
 
-def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: bool) -> None:
+def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: bool) -> tuple[str, str] | None:
+    """Record a fire's outcome (blocking DB work). Returns (status, error)
+    when the caller should send the skip alert, else None."""
     now = db.now()
     err = sanitize_schedule_error(error)
     slot = fire["slot_key"]
@@ -1064,7 +1063,7 @@ def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: b
         row = conn.execute("SELECT * FROM chat_schedules WHERE id=?" + db.for_update(conn),
                            (schedule["id"],)).fetchone()
         if row is None:
-            return
+            return None
         # A fire that never started a run sends no run-done alert: say so,
         # once per streak, or a task stays silently skipped.
         alert = (status in ("failed", "vault_locked") and not run_id
@@ -1104,8 +1103,7 @@ def _finish_fire(schedule, fire, status, error, thread_id, run_id, *, consume: b
             (now, status, err, run_id or "", next_at, 1 if enabled else 0,
              None if not manual else row["firing_at"], thread_id, now, schedule["id"]),
         )
-    if alert:
-        _alert_skipped(schedule, status, err)
+    return (status, err) if alert else None
 
 
 def _alert_skipped(schedule, status, err) -> None:
@@ -1314,17 +1312,22 @@ async def loop(app):
 async def run_now(user_id: int, token) -> dict:
     if not limiter.allow(f"schedules:{user_id}", 30, 60):
         raise ScheduleError("too many schedule changes", 429)
-    item = get_schedule(user_id, token)
-    if item is None:
-        raise ScheduleError("schedule not found", 404)
     fire_id = str(uuid4())
     slot = "manual:" + fire_id
-    now = db.now()
-    db.execute(
-        """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
-           VALUES(?,?, 'manual', 'queued', ?, ?, ?)""",
-        (item["id"], user_id, slot, fire_id, now),
-    )
+
+    def queue():
+        found = get_schedule(user_id, token)
+        if found is not None:
+            db.execute(
+                """INSERT INTO schedule_fires(schedule_id, user_id, trigger, status, slot_key, fire_id, started_at)
+                   VALUES(?,?, 'manual', 'queued', ?, ?, ?)""",
+                (found["id"], user_id, slot, fire_id, db.now()),
+            )
+        return found
+
+    item = await asyncio.to_thread(queue)
+    if item is None:
+        raise ScheduleError("schedule not found", 404)
     fire = {"slot_key": slot, "fire_id": fire_id, "status": "queued", "run_id": None}
     _inflight_enter(item["id"])
     try:
@@ -1333,4 +1336,4 @@ async def run_now(user_id: int, token) -> dict:
         # Manual fires never claim firing_at; leaving it alone keeps a
         # concurrent scheduled claim's marker intact.
         _inflight_exit(item["id"])
-    return get_schedule(user_id, item["public_id"]) or item
+    return await asyncio.to_thread(get_schedule, user_id, item["public_id"]) or item

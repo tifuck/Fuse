@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
+import asyncio
 import base64
 import re
 
@@ -22,7 +23,7 @@ from .deps import (
 router = APIRouter()
 
 @router.get("/hosts", response_class=HTMLResponse)
-async def hosts_page(request: Request):
+def hosts_page(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -30,7 +31,7 @@ async def hosts_page(request: Request):
 
 
 @router.get("/projects", response_class=HTMLResponse)
-async def projects_page(request: Request):
+def projects_page(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -53,7 +54,7 @@ def _projects_bundle(user_id: int) -> dict:
 
 
 @router.get("/projects/api")
-async def projects_api(request: Request):
+def projects_api(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -61,7 +62,7 @@ async def projects_api(request: Request):
 
 
 @router.get("/projects/{project_id}/logo")
-async def project_logo(request: Request, project_id: int):
+def project_logo(request: Request, project_id: int):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -82,7 +83,7 @@ _DATA_URL = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s
 
 @router.put("/hosts/{host_id}/projects/{project_id}/logo")
 async def hosts_project_logo_put(request: Request, host_id: int, project_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -93,17 +94,17 @@ async def hosts_project_logo_put(request: Request, host_id: int, project_id: int
         blob = base64.b64decode(match.group(2), validate=False)
     except ValueError:
         raise HTTPException(422, "logo is not valid base64") from None
-    if hosts.get_project(user["id"], host_id, project_id) is None:
+    if await asyncio.to_thread(hosts.get_project, user["id"], host_id, project_id) is None:
         raise HTTPException(404, "project not found")
     try:
-        item = hosts.set_project_logo(user["id"], project_id, match.group(1), blob)
+        item = await asyncio.to_thread(hosts.set_project_logo, user["id"], project_id, match.group(1), blob)
     except hosts.HostError as exc:
         return _host_fail(exc)
     return JSONResponse(item)
 
 
 @router.delete("/hosts/{host_id}/projects/{project_id}/logo")
-async def hosts_project_logo_delete(request: Request, host_id: int, project_id: int):
+def hosts_project_logo_delete(request: Request, host_id: int, project_id: int):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -127,7 +128,7 @@ async def projects_scheduled(request: Request):
 
 
 @router.get("/hosts/api")
-async def hosts_api(request: Request):
+def hosts_api(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -136,14 +137,14 @@ async def hosts_api(request: Request):
 
 @router.post("/hosts")
 async def hosts_create(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     if set(raw) - {"alias", "label", "hostname", "port", "username", "auth_type", "secret", "passphrase", "default_cwd"}:
         raise HTTPException(422, "Unsupported host fields")
     try:
-        item = hosts.add_host(user["id"], raw)
+        item = await asyncio.to_thread(hosts.add_host, user["id"], raw)
     except hosts.HostError as exc:
         return _host_fail(exc)
     return JSONResponse(item, status_code=201)
@@ -151,7 +152,7 @@ async def hosts_create(request: Request):
 
 @router.patch("/hosts/{host_id}")
 async def hosts_patch(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -183,7 +184,7 @@ async def hosts_patch(request: Request, host_id: int):
 
 @router.delete("/hosts/{host_id}")
 async def hosts_delete(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     # Delete first: a connector reconnects at once after the disconnect's
@@ -206,14 +207,14 @@ async def hosts_delete(request: Request, host_id: int):
 
 @router.post("/hosts/{host_id}/projects")
 async def hosts_project_create(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     if set(raw) - {"name", "remote_path", "notes", "default_model", "permission_mode", "default_permissions", "color"}:
         raise HTTPException(422, "Unsupported project fields")
     try:
-        item = hosts.add_project(user["id"], host_id, raw)
+        item = await asyncio.to_thread(hosts.add_project, user["id"], host_id, raw)
     except hosts.HostError as exc:
         return _host_fail(exc)
     return JSONResponse(item, status_code=201)
@@ -221,19 +222,19 @@ async def hosts_project_create(request: Request, host_id: int):
 
 @router.patch("/hosts/{host_id}/projects/{project_id}")
 async def hosts_project_patch(request: Request, host_id: int, project_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     try:
-        item = hosts.patch_project(user["id"], host_id, project_id, raw)
+        item = await asyncio.to_thread(hosts.patch_project, user["id"], host_id, project_id, raw)
     except hosts.HostError as exc:
         return _host_fail(exc)
     return JSONResponse(item)
 
 
 @router.delete("/hosts/{host_id}/projects/{project_id}")
-async def hosts_project_delete(request: Request, host_id: int, project_id: int):
+def hosts_project_delete(request: Request, host_id: int, project_id: int):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -249,21 +250,21 @@ async def hosts_project_delete(request: Request, host_id: int, project_id: int):
 
 @router.post("/hosts/pairings")
 async def hosts_pairing_create(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"host-pair:{user['id']}", 6, 60):
         raise HTTPException(429, "Too many install codes")
     raw = await _json_object(request)
     try:
-        item = hosts.mint_pairing(user["id"], raw.get("alias") or raw.get("alias_hint") or "")
+        item = await asyncio.to_thread(hosts.mint_pairing, user["id"], raw.get("alias") or raw.get("alias_hint") or "")
     except hosts.HostError as exc:
         return _host_fail(exc)
     return JSONResponse(item, status_code=201)
 
 
 @router.get("/hosts/pairings")
-async def hosts_pairing_list(request: Request):
+def hosts_pairing_list(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -271,7 +272,7 @@ async def hosts_pairing_list(request: Request):
 
 
 @router.delete("/hosts/pairings/{pairing_id}")
-async def hosts_pairing_delete(request: Request, pairing_id: int):
+def hosts_pairing_delete(request: Request, pairing_id: int):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -282,12 +283,12 @@ async def hosts_pairing_delete(request: Request, pairing_id: int):
 
 @router.post("/hosts/{host_id}/probe")
 async def hosts_probe(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"ssh-probe:{user['id']}", 6, 60):
         raise HTTPException(429, "Too many probe attempts")
-    row = hosts.get_host(user["id"], host_id)
+    row = await asyncio.to_thread(hosts.get_host, user["id"], host_id)
     if row and row.get("auth_type") == "agent":
         return _host_fail(hosts.HostError("connector hosts are not SSH"))
     from .. import ssh_pool
@@ -300,7 +301,7 @@ async def hosts_probe(request: Request, host_id: int):
 
 @router.post("/hosts/{host_id}/trust")
 async def hosts_trust(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -314,7 +315,7 @@ async def hosts_trust(request: Request, host_id: int):
 
 @router.post("/hosts/{host_id}/browse")
 async def hosts_browse(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"host-browse:{user['id']}", 30, 60):
@@ -333,7 +334,7 @@ async def hosts_browse(request: Request, host_id: int):
 
 @router.post("/hosts/{host_id}/mkdir")
 async def hosts_mkdir(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"host-mkdir:{user['id']}", 20, 60):
@@ -349,7 +350,7 @@ async def hosts_mkdir(request: Request, host_id: int):
 
 @router.post("/hosts/{host_id}/test")
 async def hosts_test(request: Request, host_id: int):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"ssh-test:{user['id']}", 6, 60):
@@ -378,14 +379,15 @@ async def hosts_test(request: Request, host_id: int):
 
 @router.post("/hosts/settings")
 async def hosts_settings(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     if set(raw) - {"agent_coding", "permission_mode", "allow_nested_spawn", "default_chat_permissions", "default_project_permissions"}:
         raise HTTPException(422, "Unsupported settings fields")
     try:
-        data = hosts.set_settings(
+        data = await asyncio.to_thread(
+            hosts.set_settings,
             user["id"],
             agent_coding=raw.get("agent_coding"),
             allow_nested_spawn=raw.get("allow_nested_spawn"),

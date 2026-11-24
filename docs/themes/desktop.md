@@ -62,7 +62,7 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 - Real shells on the user's machines (`static/chat/terminal.js`), not the inspector: a panel docked at the bottom, under the composer, full stage width, like an editor's bottom panel. `static/themes/desktop/terminal.js` builds it and the top-bar **Terminal** button; `styles/terminal.css` styles it.
 - Head 34px on `--dk-canvas`: session tabs (rounded, `--dk-sel` when active, a dot for live/connecting/ended, a "root" badge, ×), + (machine and shell menu), Find, A−/A+, hide. The grip on its top edge resizes it; the height is saved. The composer sits above the panel.
 - Body: the terminal on `--dk-side` (`--term-bg`), the code font. Ended or dropped sessions show a small card with Restart/Reconnect/Close.
-- ≤800px: a full-height sheet sized to what the keyboard leaves, 44px controls, and a two-row key bar above the keyboard (Esc, | ~ / -, ↑, more · Tab, Ctrl, Alt, ← ↓ →, hide keyboard; the second page has Home End PgUp PgDn Paste). Line mode swaps the keyboard field for a plain input.
+- ≤800px: still docked under the composer, so the chat and the composer stay in view: 45% of what the keyboard leaves (all but 11rem while the terminal has the focus with the keyboard up), a touch grip to resize, 44px controls, and a two-row key bar above the keyboard (Esc, | ~ / -, ↑, more · Tab, Ctrl, Alt, ← ↓ →, hide keyboard; the second page has Home End PgUp PgDn Paste). Line mode swaps the keyboard field for a plain input.
 
 ## Composer
 

@@ -69,7 +69,7 @@ async def home(request: Request):
 
 
 @router.get("/usage", response_class=HTMLResponse)
-async def dashboard(request: Request):
+def dashboard(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -77,7 +77,7 @@ async def dashboard(request: Request):
 
 
 @router.get("/keys", response_class=HTMLResponse)
-async def api_keys(request: Request):
+def api_keys(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -90,7 +90,7 @@ async def api_keys(request: Request):
 
 @router.get("/usage.json")
 async def usage_json(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     range_id = request.query_params.get("range", "24h")
@@ -104,7 +104,7 @@ async def usage_json(request: Request):
         except ValueError:
             subject_id = None
         else:
-            if subject_id < 1 or db.fetchone("SELECT id FROM users WHERE id=?", (subject_id,)) is None:
+            if subject_id < 1 or await asyncio.to_thread(db.fetchone, "SELECT id FROM users WHERE id=?", (subject_id,)) is None:
                 return JSONResponse({"error": "user"}, status_code=404)
     # Several window scans over usage_events: never on the event loop.
     data = await asyncio.to_thread(
@@ -120,7 +120,7 @@ async def usage_json(request: Request):
 
 
 @router.get("/admin/tool-failures")
-async def admin_tool_failures(request: Request):
+def admin_tool_failures(request: Request):
     """Analysis pack of every logged failed tool call, shaped for LLM triage."""
     user, redir = require_admin(request)
     if redir:
@@ -155,7 +155,7 @@ def _price_rate(value: str, *, optional: bool = False) -> int | None:
 
 
 @router.get("/admin/pricing", response_class=HTMLResponse)
-async def pricing_page(request: Request):
+def pricing_page(request: Request):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -173,7 +173,7 @@ async def save_pricing(
     output_rate: str = Form("0"),
     reasoning_rate: str = Form(""),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     provider = provider.strip()
@@ -202,7 +202,7 @@ async def save_pricing(
 
 @router.post("/admin/pricing/openrouter")
 async def sync_openrouter_pricing(request: Request):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     try:
@@ -215,7 +215,7 @@ async def sync_openrouter_pricing(request: Request):
 
 @router.post("/admin/pricing/delete")
 async def remove_pricing(request: Request, provider: str = Form(), model: str = Form()):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     if provider in TYPES and model:
@@ -224,7 +224,7 @@ async def remove_pricing(request: Request, provider: str = Form(), model: str = 
 
 
 @router.post("/keys")
-async def create_key(request: Request, name: str = Form()):
+def create_key(request: Request, name: str = Form()):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -243,7 +243,7 @@ async def create_key(request: Request, name: str = Form()):
 
 
 @router.post("/keys/{key_id}/delete")
-async def delete_key(request: Request, key_id: int):
+def delete_key(request: Request, key_id: int):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -269,7 +269,7 @@ _DESKTOP_BUILDS = (
 
 
 @router.get("/download", response_class=HTMLResponse)
-async def desktop_app(request: Request):
+def desktop_app(request: Request):
     user, redir = require_user(request)
     if redir:
         return redir
@@ -281,7 +281,7 @@ async def desktop_app(request: Request):
 
 @router.get("/docs", response_class=HTMLResponse)
 async def api_docs(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     groups = await models_by_source(user_id=user["id"])
@@ -356,7 +356,7 @@ def _admin_users_page(request: Request, user, *, error: str | None = None, notic
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
-async def admin_users(request: Request):
+def admin_users(request: Request):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -365,7 +365,7 @@ async def admin_users(request: Request):
 
 
 @router.post("/admin/users")
-async def admin_users_invite(request: Request, email: str = Form()):
+def admin_users_invite(request: Request, email: str = Form()):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -387,7 +387,7 @@ async def admin_users_invite(request: Request, email: str = Form()):
 
 
 @router.post("/admin/users/invites/{invite_id}/delete")
-async def admin_users_invite_delete(request: Request, invite_id: int):
+def admin_users_invite_delete(request: Request, invite_id: int):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -397,7 +397,7 @@ async def admin_users_invite_delete(request: Request, invite_id: int):
 
 
 @router.post("/admin/users/{user_id}/role")
-async def admin_users_role(request: Request, user_id: int, admin: str = Form("0")):
+def admin_users_role(request: Request, user_id: int, admin: str = Form("0")):
     user, redir = require_admin(request)
     if redir:
         return redir
@@ -417,7 +417,7 @@ async def admin_users_role(request: Request, user_id: int, admin: str = Form("0"
 
 @router.post("/admin/users/{user_id}/delete")
 async def admin_users_delete(request: Request, user_id: int):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     try:

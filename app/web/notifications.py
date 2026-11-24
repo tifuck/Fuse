@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
@@ -42,7 +43,7 @@ async def favicon():
 
 
 @router.get("/notifications/status")
-async def notifications_status(request: Request):
+def notifications_status(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -61,7 +62,7 @@ async def notifications_status(request: Request):
 
 @router.post("/notifications/subscribe")
 async def notifications_subscribe(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -81,27 +82,27 @@ async def notifications_subscribe(request: Request):
     if not limiter.allow(f"push-subscribe:{user['id']}", 20, 60):
         raise HTTPException(429, "Too many subscription updates")
     try:
-        push.save_subscription(user["id"], endpoint, p256dh, auth, agent[:300])
+        await asyncio.to_thread(push.save_subscription, user["id"], endpoint, p256dh, auth, agent[:300])
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
-    return JSONResponse({"ok": True, "count": push.count_for(user["id"])})
+    return JSONResponse({"ok": True, "count": await asyncio.to_thread(push.count_for, user["id"])})
 
 
 @router.post("/notifications/unsubscribe")
 async def notifications_unsubscribe(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     if set(raw) - {"endpoint"} or not isinstance(raw.get("endpoint"), str) or len(raw["endpoint"]) > 2048:
         raise HTTPException(422, "Invalid endpoint")
-    push.remove_subscription(user["id"], raw["endpoint"])
-    return JSONResponse({"ok": True, "count": push.count_for(user["id"])})
+    await asyncio.to_thread(push.remove_subscription, user["id"], raw["endpoint"])
+    return JSONResponse({"ok": True, "count": await asyncio.to_thread(push.count_for, user["id"])})
 
 
 @router.post("/notifications/test")
 async def notifications_test(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not limiter.allow(f"push-test:{user['id']}", 4, 300):
