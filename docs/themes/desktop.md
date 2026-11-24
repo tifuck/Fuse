@@ -18,7 +18,7 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 
 - Left: sidebar toggle (only while the sidebar is collapsed or a drawer) · breadcrumb: folder icon, project or "Chats" (`--dk-mute`), "/", title ▾ (`--dk-text`, 500, 13.5px).
 - The title is the only flexible item: `flex: 1 1 auto; min-width: 6rem`, ellipsis, full title in `title`. Crumb pieces clip their own overflow; nothing paints over the icons.
-- Right, at most five icons: **Todos** (only while a list exists) · **Artifacts** · **Context** · **Inspector** · **⋯**. Below 640px of bar width, Artifacts and Context move into ⋯.
+- Right, at most six icons: **Todos** (only while a list exists) · **Terminal** · **Artifacts** · **Context** · **Inspector** · **⋯**. Below 640px of bar width, Artifacts and Context move into ⋯.
 - No back/forward and no Chats|Code segment in the bar (the sidebar owns those).
 - **⋯ menu** (`role=menu`, arrow keys with wrap, Home/End, Tab or Escape closes and refocuses ⋯, rows 32px, 40px on touch): New chat · Open project… · Web search (checkbox item) · Command output · Skills · Appearance · Backdrop `/theme` · Light mode (checkbox item) · Alerts (only when push is supported) · separator · Scheduled · Projects. A sheet opened from ⋯ returns focus to ⋯ when it closes.
 - **Title menu** opens anchored under the title (Rename, Pin, Fork, Archive) with `aria-expanded`, works with the sidebar collapsed, and returns focus to the title.
@@ -51,11 +51,18 @@ A native coding-app window: quiet chrome, a centred transcript, a floating compo
 
 ## Inspector
 
-- **Open policy:** closed by default. Opens only on a user action (the Inspector button, Todos/Terminal in the bar or ⋯, opening an artifact). The open/closed choice is saved per user in localStorage and survives reloads, thread switches, breakpoint changes and subagent navigation. New agents, jobs, todos and edits never open it: they put a dot on the Inspector button (and on the card head once open).
+- **Open policy:** closed by default. Opens only on a user action (the Inspector button, Todos in the bar, Command output in ⋯, opening an artifact). The open/closed choice is saved per user in localStorage and survives reloads, thread switches, breakpoint changes and subagent navigation. New agents, jobs, todos and edits never open it: they put a dot on the Inspector button (and on the card head once open).
 - ≥1040: docked column, pushes the transcript. 801–1039: overlay `min(27rem, 88vw)` under the top bar, anchored to the viewport, with a scrim; Esc/outside click close it. ≤800: full-screen modal sheet (`role=dialog`, `aria-modal`, inert page, focus moves in and returns to the toggle).
-- Cards appear only with content (otherwise one quiet line): Tasks, Plan, Terminal, Diff. Card: radius 10, 1px line, ≥96% opaque over wallpapers; head 34px with title 13/600, mono sub in `--dk-mute`, × 28px flush right. × hides the card for that thread; new content only badges.
+- Cards appear only with content (otherwise one quiet line): Tasks, Plan, Command output, Diff. The read-only command output page's hooks are `data-theme-output` and `data-theme-out-*` ("terminal" names the interactive terminal below). Card: radius 10, 1px line, ≥96% opaque over wallpapers; head 34px with title 13/600, mono sub in `--dk-mute`, × 28px flush right. × hides the card for that thread; new content only badges.
 - Plan shows the todo list inline in its card, never as a bar at the window bottom. Diff folds unchanged runs over 6 lines, max-height 22rem, scrolls inside.
 - Subagent view: an always-visible "← Main" control in the bar.
+
+## Terminal
+
+- Real shells on the user's machines (`static/chat/terminal.js`), not the inspector: a panel docked between the transcript and the composer, full stage width, like an editor's bottom panel. `static/themes/desktop/terminal.js` builds it and the top-bar **Terminal** button; `styles/terminal.css` styles it.
+- Head 34px on `--dk-canvas`: session tabs (rounded, `--dk-sel` when active, a dot for live/connecting/ended, a "root" badge, ×), + (machine and shell menu), Find, A−/A+, hide. The grip on its top edge resizes it; the height is saved. Over it the composer card sits below the panel instead of overlapping the transcript's foot.
+- Body: the terminal on `--dk-side` (`--term-bg`), the code font. Ended or dropped sessions show a small card with Restart/Reconnect/Close.
+- ≤800px: a full-height sheet sized to what the keyboard leaves, 44px controls, and a two-row key bar above the keyboard (Esc, | ~ / -, ↑, more · Tab, Ctrl, Alt, ← ↓ →, hide keyboard; the second page has Home End PgUp PgDn Paste). Line mode swaps the keyboard field for a plain input.
 
 ## Composer
 

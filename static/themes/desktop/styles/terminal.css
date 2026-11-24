@@ -46,7 +46,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .term-choice-none { margin: 0; padding: 8px 10px; color: var(--dk-mute); }
   & .term-find { flex: none; display: flex; align-items: center; gap: 2px; padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--dk-card-line); }
   & .term-find[hidden] { display: none; }
-  & .term-find input { flex: 1; min-width: 0; height: 24px; padding: 0 8px; border: 1px solid var(--dk-card-line); border-radius: 4px; background: var(--dk-card); color: var(--dk-text); font: inherit; outline: 0; }
+  & .term-find input { flex: 0 1 24rem; min-width: 0; margin-right: auto; height: 24px; padding: 0 8px; border: 1px solid var(--dk-card-line); border-radius: 4px; background: var(--dk-card); color: var(--dk-text); font: inherit; outline: 0; }
   & .term-find input:focus { border-color: var(--dk-accent); }
   & .term-find.is-miss input { border-color: var(--fault); }
   & .term-body { position: relative; flex: 1; min-height: 0; }
@@ -56,7 +56,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .term-screen .xterm { height: 100%; }
   /* xterm paints its viewport once; the palette follows the theme live. */
   & .term-screen .xterm-viewport { background-color: var(--term-bg) !important; }
-  & .term-note { position: absolute; z-index: 4; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 6px 6px 6px 12px; border: 1px solid var(--dk-card-line); border-radius: 6px; background: var(--dk-card); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+  & .term-note { position: absolute; z-index: 4; left: 12px; right: 12px; bottom: 14px; width: fit-content; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 6px 6px 6px 12px; border: 1px solid var(--dk-card-line); border-radius: 6px; background: var(--dk-card); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
   & .term-note[hidden] { display: none; }
   & .term-note-text { margin: 0; color: var(--dk-text); }
   & .term-note[data-state="lost"] .term-note-text { color: var(--status-live); }
