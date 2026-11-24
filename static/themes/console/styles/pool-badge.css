@@ -8,6 +8,9 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   /* Its own composer column after the model, the tools' rhythm apart from it. */
   & .chat-pool { position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
   & .chat-pool[hidden] { display: none !important; }
+  /* The model's rule before the tools moves past the meter. */
+  & [data-chat-box] .chat-model:has(+ .chat-pool:not([hidden])) { padding-right: 0; margin-right: 0; border-right: 0; }
+  & [data-chat-box] .chat-pool { padding-right: 0.55rem; margin-right: 0.15rem; border-right: 1px solid var(--line); }
   /* The button is a full-height control like its neighbours; the capsule
      inside it stacks two windows, each a letter, a bar and the percent. */
   & .chat-pool-btn { display: inline-flex; align-items: center; height: var(--composer-row); padding: 0; border: 0; background: none; color: var(--mute); cursor: pointer; -webkit-tap-highlight-color: transparent; }
