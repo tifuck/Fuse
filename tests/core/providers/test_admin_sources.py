@@ -1,5 +1,5 @@
-"""Admin source routes: deleting a source with a legacy model route, and the
-pool access form saved all or nothing."""
+"""Admin source routes: toggling, deleting a source with a legacy model route,
+and the pool access form saved all or nothing."""
 import pytest
 from starlette.datastructures import ImmutableMultiDict
 
@@ -9,6 +9,17 @@ from tests.core.auth._support import sign_in, web_client
 from tests.core.helpers import quick_user
 
 from ._support import route, source
+
+
+def test_a_toggle_flips_the_stored_state(fresh_db):
+    sid = source("openai", {"base_url": "https://up.test/v1"})
+    with web_client() as web:
+        sign_in(web, quick_user("admin@core.test", admin=True))
+        states = []
+        for _ in range(2):
+            web.post(f"/admin/sources/{sid}/toggle", follow_redirects=False)
+            states.append(db.fetchone("SELECT enabled FROM sources WHERE id=?", (sid,))["enabled"])
+    assert states == [0, 1]
 
 
 def test_deleting_a_source_drops_its_legacy_model_routes(fresh_db_fk):
