@@ -350,6 +350,9 @@ def test_connector_read_of_an_exact_page_is_not_reported_as_continuing(agent_hos
     put(agent_host, "four.txt", "a\nb\nc\nd\n")
     body, _ = call(agent_host, "read_file", path="four.txt", limit=3)
     assert body.endswith("Use offset=4 to continue.)")
+    assert "4: d" not in body
+    # One look one line ahead answers both, not a second request per read.
+    assert [op for op, _ in agent_host.connector.calls].count("read") == 2
 
 
 def test_connector_write_creates_a_missing_parent_first(agent_host):

@@ -56,6 +56,17 @@ def test_a_symlink_inside_the_root_is_judged_by_its_real_target(ssh_host):
     assert rec["status"] == "done" and "private words" in body
 
 
+def test_the_symlink_probe_skips_the_login_profile_and_still_fails_closed(ssh_host):
+    ssh_host.fs.write("/srv/private.txt", "private words\n")
+    ssh_host.fs.symlink("/srv/private.txt", f"{ssh_host.root}/link.txt")
+
+    text, rec, _ = gated(ssh_host, "read_file", path="link.txt", unattended=True)
+
+    assert rec["status"] == "error" and "private words" not in text
+    probes = [raw for raw in ssh_host.shell.raw if "__fuse_realpath__" in raw]
+    assert probes and all(raw.startswith("bash --noprofile --norc -c ") for raw in probes)
+
+
 def test_an_approved_write_into_a_read_only_project_outside_the_root_is_refused(ssh_host):
     ssh_host.fs.makedirs("/srv/locked")
     make_project(ssh_host.uid, ssh_host.host_id, "/srv/locked", permission_mode="read_only")

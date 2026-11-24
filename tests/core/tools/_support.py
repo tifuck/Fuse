@@ -402,6 +402,8 @@ class FakeShell:
         """What a real host would do with `bash -lc <script>`; returns (user command, reply)."""
         self.raw.append(command)
         argv = shlex.split(command)
+        if argv[:3] == ["bash", "--noprofile", "--norc"]:
+            argv = [argv[0], *argv[3:]]
         if len(argv) != 3 or argv[0] not in ("bash", "sh") or argv[1] not in ("-c", "-lc"):
             raise AssertionError(f"FakeShell: unexpected invocation {command[:120]!r}")
         script = argv[2]

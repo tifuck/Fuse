@@ -208,6 +208,18 @@ def test_deep_listing_lists_but_does_not_expand_vendor_directories(ssh_host):
                    if name not in ("node_modules/", ".git/"))
 
 
+def test_a_deep_listing_across_many_directories_keeps_the_scan_cap(ssh_host):
+    for d in range(14):
+        for f in range(120):
+            ssh_host.fs.write(posixpath.join(ssh_host.root, f"d{d:02d}/f{f:03d}"), "")
+
+    body = call(ssh_host, "list_dir", depth=2)
+
+    # Breadth first: 14 dirs, d00-d11 whole, then d12 up to the scan cap.
+    assert len(rows(body)) == 400
+    assert "(showing 400 of at least 1501 entries to depth 2" in body
+
+
 def test_list_dir_caps_large_directories_alphabetically(ssh_host):
     for i in range(450):
         ssh_host.fs.write(posixpath.join(ssh_host.root, f"big/f{i:03d}"), "")

@@ -668,6 +668,18 @@ async def execute(name: str, arguments: str, *, user_id: int, bound_host_id=None
         _call_host.reset(token)
 
 
+def _call_settings_and_host(user_id: int, name: str, host, bound_host_id) -> tuple[str, dict | None, Exception | None]:
+    """The permission mode and the host row in one hop. The row's error is
+    returned, not raised: _execute raises it where it looked the row up."""
+    mode = hosts.settings_for(user_id).get("permission_mode") or "project"
+    if name == "kill_command" or (host is not None and not isinstance(host, str)):
+        return mode, None, None
+    try:
+        return mode, resolve_host_row(user_id, host, bound_host_id), None
+    except Exception as exc:
+        return mode, None, exc
+
+
 async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bound_cwd, run_id: str, thread_id: int | None, on_started, on_output, gate, raw: bool) -> tuple[str, dict]:
     try:
         args = _args(arguments)
@@ -675,7 +687,8 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         return exc.detail, _error_rec(name, exc.detail, kind="invalid_arguments")
     if name == "get_command_output":
         return await _job_output(user_id, args, thread_id=thread_id, run_id=run_id)
-    mode = (await asyncio.to_thread(hosts.settings_for, user_id)).get("permission_mode") or "project"
+    mode, row, row_error = await asyncio.to_thread(
+        _call_settings_and_host, user_id, name, args.get("host"), bound_host_id)
     writes = name in ("write_file", "search_replace", "run_terminal_command", "monitor", "kill_command")
     if mode == "read_only" and writes:
         msg = "permission mode is read_only"
@@ -694,16 +707,15 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
                 detail = exc.detail
         return detail, _error_rec(name, detail, kind="invalid_arguments")
     try:
-        row = await asyncio.to_thread(
-            resolve_host_row, user_id, args.get("host") if isinstance(args.get("host"), str) else None, bound_host_id
-        )
+        if row_error is not None:
+            raise row_error
     except WorkspaceError as exc:
         host = args.get("host") if isinstance(args.get("host"), str) else ""
         from . import monitor as monitor_mod
 
         url_only = (
             name == "monitor"
-            and monitor_mod.public_ws_url(str(args.get("url") or ""))
+            and await asyncio.to_thread(monitor_mod.public_ws_url, str(args.get("url") or ""))
             and not str(args.get("command") or "").strip()
             and not host
         )
@@ -1167,7 +1179,7 @@ async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
         for p in paths
     )
     try:
-        res = await _run_remote(user_id, host_id, script, "", 10, rate=False)
+        res = await _run_remote(user_id, host_id, script, "", 10, rate=False, login=False)
         out = str(res.stdout or "")
         # Login shells may print banners first; only what follows the marker counts.
         lines = out.split(marker + "\n", 1)[1].split("\n") if marker + "\n" in out else []
@@ -1178,10 +1190,11 @@ async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
     return [line.strip() or None for line in lines[:len(paths)]]
 
 
-async def _run_remote(user_id, host_id, command: str, cwd: str, seconds: int, *, rate: bool = True):
+async def _run_remote(user_id, host_id, command: str, cwd: str, seconds: int, *, rate: bool = True, login: bool = True):
     """Short synchronous exec used by internal helpers (browse fallback etc.).
     rate=False for Fuse's own bookkeeping, which must not spend the model's
-    per-host exec budget."""
+    per-host exec budget. login=False skips the login profile on SSH (a
+    helper that needs only coreutils need not pay for nvm/conda startup)."""
     if _is_agent(user_id, host_id):
         if rate:
             _rate_ok(user_id, host_id)
@@ -1198,7 +1211,8 @@ async def _run_remote(user_id, host_id, command: str, cwd: str, seconds: int, *,
     if rate:
         _rate_ok(user_id, host_id)
     conn = await ssh_pool.connection(user_id, host_id)
-    proc = await conn.create_process("bash -lc " + shlex.quote(_ssh_job_script(cwd, command)))
+    shell = "bash -lc " if login else "bash --noprofile --norc -c "
+    proc = await conn.create_process(shell + shlex.quote(_ssh_job_script(cwd, command)))
 
     async def drain(stream):
         # Keep at most _SSH_OUT_MAX but keep reading: communicate() buffered
@@ -1735,7 +1749,7 @@ async def _monitor(user_id, host_id, alias, args, root, *, windows: bool = False
 
     command = str(args.get("command") or "").strip()
     raw_url = str(args.get("url") or "").strip()
-    url = monitor_mod.public_ws_url(raw_url)
+    url = await asyncio.to_thread(monitor_mod.public_ws_url, raw_url) if raw_url else ""
     if command and raw_url:
         raise WorkspaceError("pass command or url, not both")
     if not command and not raw_url:
@@ -1866,7 +1880,7 @@ async def browse(user_id: int, host_id: int, path: str = "") -> dict:
     if len(raw) > 400 or any(ord(ch) < 32 for ch in raw):
         raise WorkspaceError("invalid path")
     needle = raw.strip() or "~"
-    if _is_agent(user_id, host_id):
+    if await asyncio.to_thread(_is_agent, user_id, host_id):
         data = await _agent_call(user_id, host_id, "browse", {"path": needle}, 20)
         if data.get("ok") and (data.get("out") or "").lstrip().startswith("{"):
             try:
@@ -1887,7 +1901,8 @@ async def browse(user_id: int, host_id: int, path: str = "") -> dict:
         try:
             from . import db as _db
 
-            row = _db.fetchone("SELECT * FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+            row = await asyncio.to_thread(
+                _db.fetchone, "SELECT * FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
         except Exception:
             row = None
         if _is_windows_row(row):
@@ -2273,6 +2288,32 @@ def _connector_read_too_big(data: dict) -> bool:
     return "exceeds 65536" in text or "output exceeds" in text or "byte limit" in text
 
 
+def _agent_read_clipped(data: dict, source: str) -> bool:
+    return (
+        bool(data.get("truncated"))
+        or source.endswith("\n[fuse-agent: output truncated]\n")
+        or len(source.encode()) >= _SSH_OUT_MAX - 4
+    )
+
+
+async def _agent_read_ahead(user_id, host_id, path: str, offset: int, limit: int) -> tuple[str, bool] | None:
+    """One read of limit+1 lines: (the first `limit` lines, whether more
+    follow). None when the connector caps the page below limit+1 or the read
+    did not come back whole; _agent_read_page then reads as before."""
+    if limit >= _READ_MAX_LINES:  # the connector's own cap per read
+        return None
+    data = await _agent_call(user_id, host_id, "read", {"path": path, "offset": offset, "limit": limit + 1}, 30)
+    source = str(data.get("out") or "")
+    if not data.get("ok") or _agent_read_clipped(data, source):
+        return None
+    lines = source.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if len(lines) <= limit:
+        return source, False
+    return "\n".join(lines[:limit]) + "\n", True
+
+
 async def _agent_read_page(user_id, host_id, path: str, offset: int, limit: int) -> tuple[str, int]:
     """Connector read that shrinks the page instead of failing when the slice
     exceeds the connector's 64KB frame. Returns (source, lines_requested)."""
@@ -2281,12 +2322,7 @@ async def _agent_read_page(user_id, host_id, path: str, offset: int, limit: int)
         data = await _agent_call(user_id, host_id, "read", {"path": path, "offset": offset, "limit": attempt}, 30)
         if data.get("ok"):
             source = str(data.get("out") or "")
-            clipped = (
-                bool(data.get("truncated"))
-                or source.endswith("\n[fuse-agent: output truncated]\n")
-                or len(source.encode()) >= _SSH_OUT_MAX - 4
-            )
-            if not clipped:
+            if not _agent_read_clipped(data, source):
                 return source, attempt
         elif not _connector_read_too_big(data):
             probe = await _agent_call(user_id, host_id, "list", {"path": path}, 15)
@@ -2483,7 +2519,11 @@ async def _read(user_id, host_id, alias, args, root, *, windows: bool = False, m
     if _is_agent(user_id, host_id):
         limit = min(limit, _READ_MAX_LINES)
         try:
-            source, got_limit = await _agent_read_page(user_id, host_id, path, offset, limit)
+            ahead = None if raw else await _agent_read_ahead(user_id, host_id, path, offset, limit)
+            if ahead is not None:
+                source, got_limit = ahead[0], limit
+            else:
+                source, got_limit = await _agent_read_page(user_id, host_id, path, offset, limit)
         except WorkspaceError as exc:
             if not raw and any(word in exc.detail.lower() for word in ("binary", "nul", "utf-8", "utf8")):
                 return await _image_read(user_id, host_id, alias, path, args)
@@ -2512,7 +2552,11 @@ async def _read(user_id, host_id, alias, args, root, *, windows: bool = False, m
             }
         more = False
         total = None
-        if len(chunk) >= got_limit:
+        if ahead is not None:
+            more = ahead[1]
+            if not more:
+                total = offset - 1 + len(chunk)
+        elif len(chunk) >= got_limit:
             # A full page: look one line past it rather than guessing, so a
             # file with exactly `limit` lines is not reported as continuing.
             nxt = await _agent_call(user_id, host_id, "read", {"path": path, "offset": offset + len(chunk), "limit": 1}, 15)
@@ -2597,6 +2641,21 @@ async def _read(user_id, host_id, alias, args, root, *, windows: bool = False, m
 _LIST_MAX_DEPTH = 5
 
 
+_LIST_SCAN_PARALLEL = 8
+
+
+async def _sftp_scan(sftp, full: str) -> list:
+    """One directory's entries without . and .., stopping past _LIST_SCAN_MAX
+    (the listing stops there anyway)."""
+    entries = []
+    async for entry in sftp.scandir(full):
+        if str(entry.filename or "") not in ("", ".", ".."):
+            entries.append(entry)
+            if len(entries) > _LIST_SCAN_MAX:
+                break
+    return entries
+
+
 async def _list_tree(user_id, host_id, path: str, depth: int, *, windows: bool) -> tuple[list[str], bool]:
     """Recursive listing to `depth` levels. Returns (relative names, more)."""
     names: list[str] = []
@@ -2635,24 +2694,30 @@ async def _list_tree(user_id, host_id, path: str, depth: int, *, windows: bool) 
             base = await _sftp_expand_home(sftp, path, int(host_id))
             queue: list[tuple[str, str, int]] = [("", base, 1)]
             while queue and not more:
-                rel, full, level = queue.pop(0)
-                async for entry in sftp.scandir(full):
-                    name = str(entry.filename or "")
-                    if not name or name in (".", ".."):
-                        continue
-                    try:
-                        perms = int(entry.attrs.permissions or 0)
-                    except Exception:
-                        perms = 0
-                    child = f"{rel}{name}"
-                    if stat.S_ISDIR(perms):
-                        names.append(child + "/")
-                        if level < depth and name not in _SEARCH_SKIP_DIRS:
-                            queue.append((child + "/", posixpath.join(full, name), level + 1))
-                    else:
-                        names.append(child)
-                    if len(names) > _LIST_SCAN_MAX:
-                        more = True
+                # A few directories at a time, merged in queue order: the same
+                # names, limit and first error as one scandir after another.
+                batch, queue = queue[:_LIST_SCAN_PARALLEL], queue[_LIST_SCAN_PARALLEL:]
+                scans = await asyncio.gather(*(_sftp_scan(sftp, full) for _, full, _ in batch), return_exceptions=True)
+                for (rel, full, level), entries in zip(batch, scans):
+                    if isinstance(entries, BaseException):
+                        raise entries
+                    for entry in entries:
+                        name = str(entry.filename or "")
+                        try:
+                            perms = int(entry.attrs.permissions or 0)
+                        except Exception:
+                            perms = 0
+                        child = f"{rel}{name}"
+                        if stat.S_ISDIR(perms):
+                            names.append(child + "/")
+                            if level < depth and name not in _SEARCH_SKIP_DIRS:
+                                queue.append((child + "/", posixpath.join(full, name), level + 1))
+                        else:
+                            names.append(child)
+                        if len(names) > _LIST_SCAN_MAX:
+                            more = True
+                            break
+                    if more:
                         break
         except WorkspaceError:
             raise
