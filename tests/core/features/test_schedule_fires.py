@@ -191,6 +191,21 @@ def test_a_capacity_skip_keeps_its_slot_and_retries_after_the_cooldown(fresh_db)
     assert stored(item["id"])["next_fire_at"] == "2030-03-04T08:00:00Z"
 
 
+def test_capacity_counts_scheduled_runs_per_user_and_across_users(fresh_db):
+    uid = quick_user()
+    first, second = hourly(uid, name="first"), hourly(uid, name="second")
+    thread = chats.create_thread(uid, model="offline", tools=[])
+    chat_store.start_turn(uid, thread["id"], "not scheduled", thread["revision"], None)
+    busy_scheduled_runs(quick_user("other@core.test"), schedules.MAX_CONCURRENT_USER)
+    busy_scheduled_runs(quick_user("third@core.test"), schedules.MAX_CONCURRENT_GLOBAL - schedules.MAX_CONCURRENT_USER - 1)
+    with clock("2030-03-04T07:00:10Z"), picked(), patch.object(chat_runs, "start", new=AsyncMock()):
+        run_async(schedules.tick())
+    # Other users' scheduled runs count only toward the global cap and an
+    # unscheduled run toward neither: the first fire fills the global cap.
+    statuses = sorted(fire_row(item["id"], SLOT)["status"] for item in (first, second))
+    assert statuses == ["running", "skipped_capacity"]
+
+
 def test_a_capacity_skip_past_its_grace_is_given_up(fresh_db):
     uid = quick_user()
     item = hourly(uid)
