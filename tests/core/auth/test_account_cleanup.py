@@ -36,3 +36,18 @@ def test_deleting_an_account_removes_its_skill_files_and_its_invite(fresh_db):
     assert not (skill_install.data_dir() / str(uid)).exists()
     assert kept.is_dir()
     assert db.fetchone("SELECT COUNT(*) AS n FROM registration_whitelist")["n"] == 0
+
+
+def test_deleting_an_account_removes_its_command_jobs(fresh_db):
+    admin = quick_user("root@core.test", admin=True)
+    uid = quick_user("leaver@core.test")
+    for job_id, owner in (("gone", uid), ("kept", admin)):
+        db.execute(
+            "INSERT INTO command_jobs (id, user_id, host_id, command, timeout_ms, status, created_at)"
+            " VALUES (?,?,0,'true',1000,'completed',?)",
+            (job_id, owner, db.now()),
+        )
+
+    accounts.delete_user(uid, actor_id=admin)
+
+    assert [r["id"] for r in db.fetchall("SELECT id FROM command_jobs")] == ["kept"]
