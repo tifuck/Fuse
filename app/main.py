@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI):
             except BlockingIOError:
                 raise RuntimeError("Dashboard runs require one Fuse worker per database.") from None
         db.connect()
+        db.resume_reprices()
         changelog.record_deploy()
         accounts.validate_credential_encryption()
         setup_token = accounts.ensure_setup_token()

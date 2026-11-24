@@ -1487,6 +1487,16 @@ def cancel_run(run_id: str) -> None:
         _kill_from_anywhere(rec)
 
 
+def cancel_user(user_id: int) -> None:
+    """Account delete: stop every live job of the user, including monitors."""
+    for rec in list(_live.values()):
+        if rec.get("user_id") != int(user_id):
+            continue
+        if rec.get("status") in TERMINAL or rec.get("status") == "cancelling":
+            continue
+        _kill_from_anywhere(rec)
+
+
 def cancel_thread(user_id: int, thread_id: int) -> None:
     """Thread delete: stop every live job on the thread, including monitors."""
     if not thread_id:

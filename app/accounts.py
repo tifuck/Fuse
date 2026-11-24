@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import time
 from datetime import datetime, timedelta, timezone
 from .database_errors import IntegrityError
@@ -82,9 +83,18 @@ def ensure_setup_token() -> str | None:
     if not token:
         token = secrets.token_urlsafe(24)
         SETUP_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(SETUP_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = SETUP_TOKEN_FILE.with_name(SETUP_TOKEN_FILE.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as handle:
             handle.write(token + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, SETUP_TOKEN_FILE)
+        dir_fd = os.open(SETUP_TOKEN_FILE.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     os.chmod(SETUP_TOKEN_FILE, 0o600)
     return token
 
@@ -461,6 +471,21 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
             f"UPDATE credentials SET {', '.join(f'{col}={col}-?' for col in rollup_cols)} WHERE id=?",
             [(*(int(row[col]) for col in rollup_cols), row["credential_id"]) for row in spent],
         )
+        # Week counters hold what record_usage added since week_start. They
+        # only steer routing, so a counter that drifted low stops at 0.
+        week = conn.native(
+            """SELECT e.credential_id, COALESCE(SUM(e.total_tokens), 0) AS week_tokens,
+                      COALESCE(SUM(e.count_request), 0) AS week_requests
+               FROM usage_events e FORCE INDEX (usage_events_user_created)
+               JOIN credentials c ON c.id=e.credential_id
+               WHERE e.user_id=%s AND e.created_at >= c.week_start GROUP BY e.credential_id FOR UPDATE""",
+            (user_id,),
+        ).fetchall()
+        conn.executemany(
+            "UPDATE credentials SET week_tokens=MAX(week_tokens-?, 0), week_requests=MAX(week_requests-?, 0) WHERE id=?",
+            [(int(row["week_tokens"]), int(row["week_requests"]), row["credential_id"]) for row in week],
+        )
+        conn.execute("DELETE FROM registration_whitelist WHERE email=?", (email,))
         conn.execute("DELETE FROM api_keys WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM provider_usage WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM usage_events WHERE user_id=?", (user_id,))
@@ -472,6 +497,16 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
         vault.lock(user_id)
     except Exception:
         pass
+    from . import command_jobs, skill_install
+
+    try:
+        command_jobs.cancel_user(user_id)
+    except Exception:
+        logger.exception("Could not cancel command jobs of deleted account %s", user_id)
+    try:
+        shutil.rmtree(skill_install.data_dir() / str(int(user_id)), ignore_errors=True)
+    except Exception:
+        logger.exception("Could not remove the skill files of deleted account %s", user_id)
     return email
 
 
