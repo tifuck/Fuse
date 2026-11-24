@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import nullcontext
 from uuid import uuid4
 
 from . import db, skills
@@ -254,11 +255,14 @@ def _creating_agent(run_id: str) -> dict:
     return agent if isinstance(agent, dict) else {}
 
 
-def _patch_permission(user_id: int, thread_id: int, proposal_id: str, status: str, extra: dict | None = None) -> None:
+def _patch_permission(user_id: int, thread_id: int, proposal_id: str, status: str, extra: dict | None = None,
+                      conn=None) -> None:
+    """The proposal's card in the chat shows status, in conn's transaction
+    when given (one that has not read chat_runs or locked a thread yet)."""
     from . import chat_store as store
     from . import chat_tx, chats
 
-    with store.transaction() as conn:
+    with nullcontext(conn) if conn is not None else store.transaction() as conn:
         # Runs before the thread (finalization's lock order), then the
         # current row: a snapshot read would revert a concurrent turn.
         conn.execute("SELECT id FROM chat_runs WHERE thread_id=?", (thread_id,)).fetchall()
@@ -341,22 +345,28 @@ def confirm_proposal(user_id: int, proposal_id: str, raw: dict) -> dict:
         raise
     # The skill is installed: a bookkeeping failure must not turn that into a
     # 500 the user reads as "not saved" (a retry then hits "skill exists").
+    # The proposal and its card change in one transaction: never saved on
+    # one side only.
+    from . import chat_store as store
+
     try:
-        db.execute(
-            """UPDATE skill_proposals SET status='saved', slug=?, description=?, body=?, argument_hint=?,
-                   files=?, enable=?, resolved_at=? WHERE id=? AND user_id=? AND status='resolving'""",
-            (
-                slug, description.strip()[:DESC_MAX], body, hint,
-                json.dumps(extra_files), 1 if enable else 0, db.now(), proposal_id, user_id,
-            ),
-        )
-        _patch_permission(
-            user_id,
-            item["thread_id"],
-            proposal_id,
-            "saved",
-            {"slug": slug, "description": description.strip()[:DESC_MAX], "enable": bool(enable), "overwrite": False},
-        )
+        with store.transaction() as conn:
+            _patch_permission(
+                user_id,
+                item["thread_id"],
+                proposal_id,
+                "saved",
+                {"slug": slug, "description": description.strip()[:DESC_MAX], "enable": bool(enable), "overwrite": False},
+                conn,
+            )
+            conn.execute(
+                """UPDATE skill_proposals SET status='saved', slug=?, description=?, body=?, argument_hint=?,
+                       files=?, enable=?, resolved_at=? WHERE id=? AND user_id=? AND status='resolving'""",
+                (
+                    slug, description.strip()[:DESC_MAX], body, hint,
+                    json.dumps(extra_files), 1 if enable else 0, db.now(), proposal_id, user_id,
+                ),
+            )
     except Exception:
         logger.exception("Skill %s saved but proposal %s could not be marked saved", slug, proposal_id)
     logger.info("confirmed skill proposal user=%s slug=%s", user_id, slug)
