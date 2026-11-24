@@ -58,7 +58,7 @@ export function create(deps) {
   let peekOpenTimer = 0;
   let peekCloseTimer = 0;
   const inertSaved = new Map();
-  const seen = { terminal: "" };
+  const seen = { output: "" };
   let chromeFrame = 0;
   let watch = null;
   const q = (sel) => deps.root.querySelector(sel);
@@ -400,20 +400,20 @@ export function create(deps) {
         page = "";
         syncChrome();
         q("[data-theme-inspector-close]")?.focus({ preventScroll: true });
-      } else if (t.matches("[data-theme-terminal]")) {
+      } else if (t.matches("[data-theme-output]")) {
         openPage("output", fromMenu ? q("[data-theme-more]") : t);
       } else if (t.matches("[data-show-job]")) {
         pickedJob = t.dataset.showJob;
-        seen.terminal = "";
+        seen.output = "";
         openPage("output", t);
       } else if (t.matches("[data-theme-pick-job]")) {
         pickedJob = t.dataset.themePickJob;
-        seen.terminal = "";
+        seen.output = "";
         syncChrome();
-      } else if (t.matches("[data-theme-term-stop]")) {
+      } else if (t.matches("[data-theme-out-stop]")) {
         const id = t.dataset.job;
         if (id) q(`[data-kill-job="${CSS.escape(id)}"]`)?.click();
-      } else if (t.matches("[data-theme-term-copy]")) {
+      } else if (t.matches("[data-theme-out-copy]")) {
         copyOutput();
       } else if (t.matches("[data-theme-tab]")) {
         goTab(t.dataset.themeTab, true);
@@ -518,7 +518,7 @@ export function create(deps) {
       if (menu && !menu.hidden && !event.target.closest?.(".dk-menu-wrap")) toggleMenu(false);
       // Over the chat, a click outside Activity closes it.
       if (mode() !== "dock" && isOpen() && !justDragged
-        && !event.target.closest?.("[data-theme-rail], [data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar], [data-theme-terminal], [data-show-job], .chat-pop, dialog")) {
+        && !event.target.closest?.("[data-theme-rail], [data-theme-inspector], [data-theme-art-live], [data-theme-art-live-bar], [data-theme-output], [data-show-job], .chat-pop, dialog")) {
         setOpen(false);
       }
     });
@@ -711,7 +711,7 @@ export function create(deps) {
     }
   }
 
-  function syncTerminal() {
+  function syncOutput() {
     const rows = deps.jobsRows || [];
     const job = rows.find((row) => jobId(row) === pickedJob) || rows.find(jobLive) || rows[0];
     if (job) pickedJob = jobId(job);
@@ -733,31 +733,31 @@ export function create(deps) {
     const events = Number(job.event_count);
     const status = state === "running" ? `Running for ${deps.formatActivityClock(secs)}` : state === "queued" ? "Queued" : state === "cancelling" ? "Stopping" : deps.jobStateLabel(state);
     const meta = [status, job.host || "", monitor && events > 0 ? `${events} event${events === 1 ? "" : "s"}` : ""].filter(Boolean);
-    setText(q("[data-theme-term-title]"), job.description || command || job.id);
-    const metaEl = q("[data-theme-term-meta]");
+    setText(q("[data-theme-out-title]"), job.description || command || job.id);
+    const metaEl = q("[data-theme-out-meta]");
     const metaHtml = meta.map((part, i) => `<span${i === 0 && jobLive(job) ? ' class="is-live"' : ""}>${esc(part)}</span>`).join("");
     if (metaEl && metaEl._html !== metaHtml) { metaEl._html = metaHtml; metaEl.innerHTML = metaHtml; }
-    const icon = q("[data-theme-term-icon]");
+    const icon = q("[data-theme-out-icon]");
     if (icon && icon.dataset.kind !== (monitor ? "monitor" : "command")) {
       icon.dataset.kind = monitor ? "monitor" : "command";
       icon.innerHTML = monitor ? EYE : TERM;
     }
-    const stop = q("[data-theme-term-stop]");
+    const stop = q("[data-theme-out-stop]");
     if (stop) {
       show(stop, jobLive(job) && state !== "cancelling");
       stop.dataset.job = jobId(job);
     }
-    setText(q("[data-theme-term-name]"), command ? `$ ${command}` : "");
+    setText(q("[data-theme-out-name]"), command ? `$ ${command}` : "");
     const output = String(job.output || job.preview || "");
     const key = `${jobId(job)}:${output.length}`;
     // Drawn only where it shows: the output page (every page, on a phone's sheet).
     const shown = store.open && (page === "output" || mode() === "sheet");
-    if (shown && key !== seen.terminal) {
-      seen.terminal = key;
-      const pre = q("[data-theme-term-out]");
+    if (shown && key !== seen.output) {
+      seen.output = key;
+      const pre = q("[data-theme-out-text]");
       if (pre) {
         const stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24;
-        pre.innerHTML = deps.renderAnsi(output.split("\n").slice(-400).join("\n")) || '<span class="dk-term-wait">No output yet.</span>';
+        pre.innerHTML = deps.renderAnsi(output.split("\n").slice(-400).join("\n")) || '<span class="dk-out-wait">No output yet.</span>';
         if (stick || !pre._seen) pre.scrollTop = pre.scrollHeight;
         pre._seen = true;
       }
@@ -875,8 +875,8 @@ export function create(deps) {
     if (deps.root.dataset.themeInsp !== how) deps.root.dataset.themeInsp = how;
     const counts = syncGroups();
     const busy = syncMainRow();
-    const terminal = syncTerminal();
-    if (!terminal && page === "output") page = "";
+    const output = syncOutput();
+    if (!output && page === "output") page = "";
     // A phone's sheet shows every page side by side; wider, one at a time.
     const rail = q("[data-theme-rail]");
     const shown = how === "sheet" ? "" : page;
@@ -914,7 +914,7 @@ export function create(deps) {
     if (deps.root.dataset.themeRailState !== next) deps.root.dataset.themeRailState = next;
     syncLayer(next, how);
     if (how === "sheet" && next === "open") syncTabs();
-    deps.root.classList.toggle("dk-has-term", terminal);
+    deps.root.classList.toggle("dk-has-output", output);
     const open = next === "open";
     setAttr(toggle, "aria-pressed", String(store.open));
     // New work while it is shut only puts a dot on the button.
