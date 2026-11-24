@@ -1,6 +1,6 @@
 {#- Desktop theme: the composer. One card: the message on top (stash at its
     top-left), the controls row under it (+ and the permission mode on the
-    left; the machine stats in the middle; the plan gauge, model and effort, the context ring, mic and send/stop on the
+    left; the machine stats in the middle; model and effort, the plan gauge, the context ring, mic and send/stop on the
     right). Popovers sit above the card. Every data-* hook
     but data-theme-* is a runtime contract (tests/chat_theme_markup.test.cjs). -#}
   <form class="chat-dock" data-chat-form>
@@ -72,10 +72,10 @@
           <div class="hs-pop" id="hs-pop" data-hs-pop role="dialog" aria-label="Machine usage" hidden></div>
         </div>
         <div class="dk-group-r" data-box-group>
+          <div class="chat-model dk-model" data-chat-picker></div>
           <div class="chat-pool" data-pool-badge hidden>
             <button type="button" class="chat-pool-btn" data-pool-toggle aria-haspopup="dialog" aria-expanded="false"></button>
           </div>
-          <div class="chat-model dk-model" data-chat-picker></div>
           <div class="dk-ring-wrap" data-context-wrap hidden>
             <button type="button" class="dk-ring" data-chat-context aria-label="Context usage" aria-expanded="false" aria-controls="chat-context-pop" title="Context usage">
               <svg viewBox="0 0 32 32" aria-hidden="true">

@@ -5,11 +5,8 @@
    from 75%, red from 95%: fixed status colors, never the accent or the
    palette's own. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
-  /* Before the model chip, its height: the meter; the context ring then sits
-     right of the model it measures. */
-  /* Its margin puts the model's logo as far from it as the model's chevron
-     sits from the ring. */
-  & .chat-pool { position: static; display: flex; flex: none; align-items: center; margin-right: 6px; }
+  /* After the model chip, its height: the meter, beside the context ring. */
+  & .chat-pool { position: static; display: flex; flex: none; align-items: center; }
   & .chat-pool[hidden] { display: none !important; }
   /* The button is a full-height control like its neighbours; the capsule
      inside it stacks two windows, each a letter, a bar and the percent. */
@@ -28,6 +25,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .chat-pool-btn[aria-expanded="true"] .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); }
   @media (hover: hover) { & .chat-pool-btn:hover .chat-pool-meter { border-color: color-mix(in srgb, var(--dk-mute) 50%, transparent); background: var(--dk-hover); } }
+  /* A third window (a model's own weekly cap): three tighter rows in the same capsule. */
+  & .chat-pool-meter:has(> :nth-child(3)) { row-gap: 1px; height: auto; padding-block: 2px; font-size: 8px; line-height: 7px; }
   & .chat-pool-meter em { color: var(--dk-mute); font-style: normal; font-weight: 400; opacity: 0.6; }
   & .chat-pool-track { flex: none; width: 32px; height: 5px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--dk-mute) 28%, transparent); }
   & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }

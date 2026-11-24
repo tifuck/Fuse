@@ -241,7 +241,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-box:focus-within { border-top-color: color-mix(in srgb, var(--tl-ac) 70%, var(--line)) !important; }
   & .chat-box::before { content: "›" !important; position: absolute; left: 0; top: 0; width: 2.25rem; height: 2.5rem; display: grid !important; place-items: center; margin: 0 !important; color: var(--tl-ac); font: 700 1.15rem/1 var(--mono); pointer-events: none; }
   & .chat-box > .chat-attach-list { order: -1; padding: 0.4rem 0.75rem 0; }
-  & .chat-box > .chat-compose { order: 0; margin: 0 !important; padding: 0.5rem 2.75rem 0.5rem 2.25rem !important; min-height: 2.5rem; }
+  & .chat-box > .chat-compose { order: 0; flex: none; margin: 0 !important; padding: 0.5rem 2.75rem 0.5rem 2.25rem !important; min-height: 2.5rem; }
   & .chat-box [data-chat-input] { padding: 0 !important; font: var(--tl-fs)/1.5rem var(--mono) !important; }
   & .chat-box > .chat-box-bar {
     order: 1; display: flex !important; align-items: stretch; min-height: 1.625rem; margin: 0 !important; padding: 0 !important;
@@ -281,7 +281,7 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-box > .chat-box-bar .chat-send:focus-visible { outline-offset: 2px; }
   & .chat-box > .chat-box-bar .chat-send:disabled { background: var(--tl-soft) !important; color: var(--tl-dim) !important; }
   & .chat-box > .chat-box-bar { position: relative; max-width: 100%; }
-  & .chat-box-bar > .tail-where:not([hidden]) { flex: 0 1 auto; display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0 0.7rem; border-left: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
+  & .chat-box-bar > .tail-where:not([hidden]) { flex: 0 999 auto; display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0 0.7rem; border-left: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
   & .chat-box-bar > .tail-where b { flex: none; font-weight: 400; color: var(--mist); }
   & .chat-box-bar > .tail-where > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   & .chat-box-bar > .chat-host-stats:not([hidden]) { flex: none; display: flex !important; align-items: center; gap: 0.9rem; margin: 0 !important; padding: 0 0.7rem !important; border: 0 !important; border-left: 1px solid var(--line) !important; background: none !important; color: var(--mute); font: inherit !important; white-space: nowrap; }
