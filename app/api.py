@@ -323,6 +323,7 @@ def _record_attempts(result, user, src, upstream: str, requested_model: str) -> 
             requested_model=requested_model,
             request_status="failed",
             count_request=False,
+            source_name=getattr(src, "name", ""),
         )
 
 
@@ -336,6 +337,7 @@ async def _tap(
     key_id=None,
     provider: str = "",
     requested_model: str = "",
+    source_name: str = "",
 ):
     usage = {}
     buf = b""
@@ -438,11 +440,11 @@ async def _tap(
             # inline; it is not a successful request even at HTTP 200.
             request_status = "failed"
         await _settle_tap(stream, usage, request_status, user_id, source_id, cred_id, model,
-                          key_id=key_id, provider=provider, requested_model=requested_model)
+                          key_id=key_id, provider=provider, requested_model=requested_model, source_name=source_name)
 
 
 async def _settle_tap(stream, usage: dict, request_status: str, user_id: int, source_id: int, cred_id, model: str, *,
-                      key_id=None, provider: str = "", requested_model: str = "") -> None:
+                      key_id=None, provider: str = "", requested_model: str = "", source_name: str = "") -> None:
     """Record a /v1 stream's usage row and close its upstream."""
     extra = getattr(stream, "usage", None)
     usage = merge_usage(usage, extra if isinstance(extra, dict) else None)
@@ -458,7 +460,7 @@ async def _settle_tap(stream, usage: dict, request_status: str, user_id: int, so
         usage.setdefault("usage_status", "complete")
     record = (user_id, source_id, cred_id, model, usage)
     options = {"key_id": key_id, "provider": provider, "requested_model": requested_model,
-               "request_status": request_status}
+               "request_status": request_status, "source_name": source_name}
     try:
         # Off the event loop, and finished even if this generator is being
         # cancelled or closed: anyio's shield stops scope re-cancellation,
@@ -717,7 +719,8 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
                        src.type_id, upstream, result.status, shed)
         await asyncio.to_thread(_safe_record_usage, user["id"], src.source_id, result.credential_id, upstream,
                                 result.usage, key_id=user.get("key_id"), provider=src.type_id,
-                                requested_model=requested, request_status="failed", count_request=False)
+                                requested_model=requested, request_status="failed", count_request=False,
+                                source_name=getattr(src, "name", ""))
         body["messages"], omitted = await asyncio.to_thread(model_caps.prepare, original, src.type_id, upstream,
                                                             user_id=user["id"], snapshot=images)
         if prepared is not None:
@@ -759,6 +762,7 @@ async def dispatch_chat(request: Request, user, body: dict):
             requested_model=requested,
             request_status="failed",
             count_request=True,
+            source_name=getattr(src, "name", ""),
         )
         if result.status in (402, 403) and isinstance(result.body, dict):
             msg = _error_message(result.body)
@@ -775,7 +779,8 @@ async def dispatch_chat(request: Request, user, body: dict):
     omitted = {k: v for k, v in result.response_headers.items() if k in ("X-Fuse-Images-Omitted", "X-Fuse-Images-Shed")}
     if result.stream is not None:
         record = (user["id"], src.source_id, result.credential_id, upstream)
-        options = {"key_id": key_id, "provider": src.type_id, "requested_model": requested}
+        options = {"key_id": key_id, "provider": src.type_id, "requested_model": requested,
+                   "source_name": getattr(src, "name", "")}
         return _TapResponse(
             _tap(result.stream, *record, **options),
             partial(_settle_tap, result.stream, {}, "cancelled", *record, **options),
@@ -792,6 +797,7 @@ async def dispatch_chat(request: Request, user, body: dict):
         key_id=key_id,
         provider=src.type_id,
         requested_model=requested,
+        source_name=getattr(src, "name", ""),
     )
     return JSONResponse(result.body or {}, headers=omitted)
 
