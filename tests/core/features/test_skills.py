@@ -4,6 +4,7 @@ isolation, load_skill path safety, crash recovery of a half-done swap, and
 chat-proposed skills confirmed once by the user. Files live in a per-test
 directory (``skills_dir``)."""
 import io
+import json
 import shutil
 import zipfile
 from unittest.mock import patch
@@ -334,3 +335,22 @@ def test_unattended_or_rejected_proposals_install_nothing(fresh_db, skills_dir):
         with pytest.raises(SkillError) as capped:
             skill_proposals.create(uid, thread_id=thread, name="second-one", description="d", body="b")
     assert capped.value.status_code == 429
+
+
+def test_a_confirm_marks_the_proposal_and_its_card_saved_together(fresh_db, skills_dir):
+    uid = quick_user()
+    item = _proposal(uid)
+    tid = skill_proposals.get_proposal(uid, item["id"])["thread_id"]
+
+    def thread_messages():
+        return chats.parse_messages(db.fetchone("SELECT messages FROM chat_threads WHERE id=?", (tid,))["messages"])
+
+    card = {"event": "permission", "kind": "skill_save", "status": "pending", "id": item["id"]}
+    messages = thread_messages() + [{"role": "assistant", "content": "", "permissions": [card]}]
+    db.execute("UPDATE chat_threads SET messages=? WHERE id=?", (json.dumps(messages), tid))
+    with patch.object(chat_store, "thread_event", side_effect=RuntimeError("connection lost")):
+        skill_proposals.confirm_proposal(uid, item["id"], {})
+    status = db.fetchone("SELECT status FROM skill_proposals WHERE id=?", (item["id"],))["status"]
+    shown = thread_messages()[-1]["permissions"][0]["status"]
+    # Never saved on one side only: the card would offer a confirm that can only fail.
+    assert (status == "saved") == (shown == "saved")

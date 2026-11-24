@@ -6,6 +6,7 @@ Project-delete cascades ride on foreign keys the core schema does not carry:
 see test_cascades.py.
 """
 import json
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -209,3 +210,36 @@ def test_an_unattended_turn_cannot_plant_a_memory(fresh_db):
     tool_reply = next(m for m in provider.bodies[1]["messages"] if m["role"] == "tool")
     assert "unattended" in str(tool_reply["content"])
     assert db.fetchone("SELECT COUNT(*) AS n FROM memories WHERE user_id=?", (uid,))["n"] == 0
+
+
+def test_two_first_saves_of_one_name_at_once_both_succeed(owner):
+    uid, _, _ = owner
+    real_tx = db.tx
+    raced = []
+
+    @contextmanager
+    def tx():
+        with real_tx() as conn:
+            if raced:
+                yield conn
+                return
+
+            class Interleave:
+                def __getattr__(_, name):
+                    return getattr(conn, name)
+
+                def execute(_, sql, args=()):
+                    cur = conn.execute(sql, args)
+                    if sql.startswith("SELECT COUNT(*) FROM memories") and not raced:
+                        raced.append(True)
+                        # Another chat saves the same new name after this one looked.
+                        save(uid, "db-policy", body="theirs")
+                    return cur
+
+            yield Interleave()
+
+    with patch.object(memory.db, "tx", tx):
+        result = save(uid, "db-policy", body="mine")
+    assert raced and result["created"] is False
+    rows = db.fetchall("SELECT body FROM memories WHERE user_id=? AND name='db-policy'", (uid,))
+    assert [r["body"] for r in rows] == ["mine"]

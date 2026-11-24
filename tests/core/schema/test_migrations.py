@@ -133,38 +133,20 @@ _EVENTS = [
     "1, 5, 9, 'grok', 'grok-4', '2026-11-20T10:20:00Z', 1, 0, 1, 0, 0, 0, 2, 1, 'cancelled', NULL, 0, 0",
     "1, NULL, NULL, '', NULL, '2026-11-20T11:30:00Z', 0, 0, 0, 0, 0, 0, 0, 1, 'success', NULL, 0, 0",
 ]
-# Summed by hand from _EVENTS: (user_id, hour, api_key_id, source_type, model,
-# tokens, requests, prompt, completion, output, reasoning, cached, cache_write,
-# ok_requests, failed, cancelled, cost, estimated_cost, priced, priced_tokens,
-# unpriced_events, first_at, last_at).
-_ROLLUP = [
-    (1, "2026-11-20T10:00:00Z", 0, "grok", "grok-4", 190, 2, 150, 20, 40, 10, 5, 2, 1, 1, 0, 1000, 800, 2, 190, 0,
-     "2026-11-20T10:15:00Z", "2026-11-20T10:45:00Z"),
-    (1, "2026-11-20T10:00:00Z", 9, "grok", "grok-4", 2, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-     "2026-11-20T10:20:00Z", "2026-11-20T10:20:00Z"),
-    (1, "2026-11-20T11:00:00Z", 0, "unknown", "Unknown", 10, 1, 7, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1,
-     "2026-11-20T11:05:00Z", "2026-11-20T11:30:00Z"),
-]
 
 
-def test_usage_rollups_are_backfilled_from_the_events_and_refilled_on_rerun():
+def test_usage_rollups_sets_source_type_and_leaves_the_rollup_to_the_rebuild():
     path = check_schema.MIGRATIONS / "2026-11-20-usage-rollups.sql"
     old = [EXPECTED["usage_events"]["create"], EXPECTED["sources"]["create"],
            "CREATE TABLE usage_hourly (id bigint(20) NOT NULL, PRIMARY KEY (id))"]
-    rollup = ("SELECT user_id, hour, api_key_id, source_type, model, tokens, requests, prompt, completion, output, "
-              "reasoning, cached, cache_write, ok_requests, failed, cancelled, cost, estimated_cost, priced, "
-              "priced_tokens, unpriced_events, first_at, last_at FROM usage_rollup_hourly ORDER BY hour, api_key_id")
     with scratch_schema(*old) as (url, _name):
         run(url, "INSERT INTO sources (id, type, name, created_at) VALUES (5, 'grok', 'Grok', 't')",
              *(f"INSERT INTO usage_events ({_EVENT_COLUMNS}) VALUES ({values})" for values in _EVENTS))
-        _apply(url, path)
-        assert _rows(url, rollup) == _ROLLUP
-        assert _rows(url, "SELECT source_type FROM usage_events ORDER BY id") == [
-            ("grok",), ("grok",), ("unknown",), ("grok",), ("unknown",)]
-        assert _rows(url, "SHOW TABLES LIKE 'usage_hourly'") == []
-        # Usage the old code recorded meanwhile is refilled by the second run:
-        # a stale row is rewritten and a missing one comes back.
-        run(url, "UPDATE usage_rollup_hourly SET tokens=999, requests=999, last_at='x' WHERE api_key_id=0 AND model='grok-4'",
-             "DELETE FROM usage_rollup_hourly WHERE api_key_id=9")
-        _apply(url, path)
-        assert _rows(url, rollup) == _ROLLUP
+        for _ in range(2):
+            _apply(url, path)
+            assert _rows(url, "SELECT source_type FROM usage_events ORDER BY id") == [
+                ("grok",), ("grok",), ("unknown",), ("grok",), ("unknown",)]
+            assert _rows(url, "SHOW TABLES LIKE 'usage_hourly'") == []
+            # scripts/rebuild_usage_rollups.py --apply fills it, with the service
+            # stopped: a refill here held every event while live usage waited.
+            assert _rows(url, "SELECT COUNT(*) FROM usage_rollup_hourly") == [(0,)]

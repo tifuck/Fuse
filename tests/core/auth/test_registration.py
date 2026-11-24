@@ -1,5 +1,6 @@
 """Who may create an account: the first-run setup token and first admin,
 invites, open registration, and the email/password rules."""
+import os
 import threading
 
 import pytest
@@ -23,6 +24,33 @@ def _accounts():
 @pytest.fixture
 def closed(monkeypatch):
     monkeypatch.setattr(settings, "allow_register", False)
+
+
+def test_a_setup_token_write_cut_short_leaves_no_partial_token(fresh_db, monkeypatch):
+    fdopen = os.fdopen
+
+    class CutShort:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.handle.close()
+
+        def write(self, text):
+            self.handle.write(text[:6])
+            self.handle.flush()
+            raise OSError("no space left on device")
+
+    monkeypatch.setattr(os, "fdopen", lambda fd, *args, **kwargs: CutShort(fdopen(fd, *args, **kwargs)))
+    with pytest.raises(OSError):
+        accounts.ensure_setup_token()
+    monkeypatch.setattr(os, "fdopen", fdopen)
+
+    token = accounts.ensure_setup_token()
+    assert len(token) == 32 and accounts.SETUP_TOKEN_FILE.read_text() == token + "\n"
 
 
 def test_the_first_account_needs_the_setup_token_and_becomes_admin(web, closed):

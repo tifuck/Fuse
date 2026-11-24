@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app import chat_runs, chat_store, chats, db, hosts, schedules
+from app import chat_runs, chat_store, chats, db, schedules
 from tests.core.helpers import fake_provider, quick_user, run_async, text_frames, wait_until, wait_until_async
 
 from ._support import (add_fire, at, clock, fire_row, fires, make_host, make_project, make_schedule, set_due, stored,
@@ -264,7 +264,9 @@ def test_a_project_schedule_whose_project_is_gone_fails_and_moves_on(fresh_db):
     host = make_host(uid)
     project = make_project(uid, host)
     item = hourly(uid, target="project", project_id=project)
-    hosts.delete_project(uid, host, project)
+    # Gone without hosts.delete_project, which pauses the schedule: as when
+    # the delete commits after this fire was claimed.
+    db.execute("DELETE FROM user_projects WHERE id=?", (project,))
     notify = AsyncMock()
     with clock("2030-03-04T07:00:05Z"), picked() as pick, patch("app.push.notify_user", new=notify):
         run_async(schedules.tick())

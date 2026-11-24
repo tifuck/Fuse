@@ -243,12 +243,19 @@ async def ensure(user_id: int, host_id: int, root: str, *, force: bool = False) 
         except Exception as exc:
             logger.info("Secret scan skipped for host %s: %s", host_id, str(exc)[:200])
             return 0
-        if known is None:
-            _files[key] = [path for path, _text in files]
         found: list[Found] = []
         for path, text in files:
             found += find(path, text)
-        return await asyncio.to_thread(secret_guard.offer, user_id, host_id, alias, found[:MAX_PER_SCAN], key[2])
+        try:
+            new = await asyncio.to_thread(secret_guard.offer, user_id, host_id, alias, found[:MAX_PER_SCAN], key[2])
+        except Exception:
+            # Nothing of this scan was kept: the next round lists the folder again.
+            logger.warning("Secret scan of host %s could not be kept", host_id, exc_info=True)
+            _last.pop(key, None)
+            return 0
+        if known is None:
+            _files[key] = [path for path, _text in files]
+        return new
 
 
 _scans: set[asyncio.Task] = set()

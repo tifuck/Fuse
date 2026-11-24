@@ -275,3 +275,25 @@ def test_trailing_requests_stay_verbatim_only_while_they_fit(meter_settings):
 
     assert context_compact.split_trailing_users(head + short, 100_000) == (head, short)
     assert context_compact.split_trailing_users(head + long, 100_000) == (head + long, [])
+
+
+def test_a_meter_write_keeps_a_pool_record_saved_after_its_read(fresh_db, monkeypatch):
+    from tests.core.helpers import quick_user
+
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline")["id"]
+    pool = {"cred": 7, "source": "claude", "model": "claude/x", "prev": None, "reason": ""}
+    real = chat_checkpoint._compaction_row
+
+    def read_then_pool_saves(conn, *args, **kwargs):
+        out = real(conn, *args, **kwargs)
+        # Committed on another connection after the meter's snapshot read;
+        # save_pool does not move the revision.
+        chat_checkpoint.save_pool(uid, thread, lambda prior: pool)
+        return out
+
+    monkeypatch.setattr(chat_checkpoint, "_compaction_row", read_then_pool_saves)
+    chat_checkpoint.save_meter(uid, thread, {"used": 10, "limit": 100000, "model": "offline"})
+
+    row = db.fetchone("SELECT compaction FROM chat_threads WHERE id=?", (chats.resolve_thread_pk(uid, thread),))
+    assert context_compact.parse_state(row["compaction"])["pool"] == pool

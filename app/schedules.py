@@ -534,12 +534,20 @@ def create_schedule(user_id: int, raw: dict) -> dict:
 def patch_schedule(user_id: int, token, raw: dict) -> dict:
     if not limiter.allow(f"schedules:{user_id}", 30, 60):
         raise ScheduleError("too many schedule changes", 429)
+    found = get_schedule(user_id, token)
+    if found is None:
+        raise ScheduleError("schedule not found", 404)
     with db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        # Read and write in one transaction: a fire finalizing concurrently
-        # (its _finish_fire advances next_fire_at/enabled) commits wholly
-        # before or after this PATCH, so neither can clobber the other.
-        existing = get_schedule(user_id, token, conn=conn)
+        # Lock the row, then read and write in one transaction: another PATCH
+        # or a fire finalizing concurrently (its _finish_fire advances
+        # next_fire_at/enabled under the same row lock) commits wholly before
+        # or after this one, so neither can clobber the other. The lock comes
+        # first: a plain read is a snapshot, and the one below is taken once
+        # the lock is held.
+        conn.execute("SELECT id FROM chat_schedules WHERE id=? AND user_id=?" + db.for_update(conn),
+                     (found["id"], user_id)).fetchone()
+        existing = get_schedule(user_id, found["id"], conn=conn)
         if existing is None:
             raise ScheduleError("schedule not found", 404)
         # _normalize falls back to existing per field. Pre-merging the stored

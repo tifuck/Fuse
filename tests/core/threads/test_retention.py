@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from app import chat_store, chats, db, hosts, retention
 from tests.core.features._support import make_host, make_project
-from tests.core.helpers import make_user
+from tests.core.helpers import make_user, quick_user
 
 from ._support import events, pk
 
@@ -211,3 +211,22 @@ def test_the_sweep_touches_only_its_user_and_off_means_off(fresh_db):
 
     assert _state(uid) == {"mine": "archived"}
     assert _state(other) == {"theirs": "open"}
+
+
+def test_two_saves_of_different_cleanup_settings_keep_both(fresh_db):
+    uid = quick_user()
+    real_get = retention.get_settings
+    raced = []
+
+    def get_settings(user_id):
+        current = real_get(user_id)
+        if not raced:
+            raced.append(True)
+            # Another tab saves the delete window while this save is under way.
+            retention.set_settings(user_id, {"delete_days": 9})
+        return current
+
+    with patch.object(retention, "get_settings", get_settings):
+        retention.set_settings(uid, {"archive_hours": 5})
+    prefs = real_get(uid)
+    assert (prefs["archive_hours"], prefs["delete_days"]) == (5, 9)

@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from app import chats, db, schedules
+from app import chats, db, hosts, schedules
 from app.schedules import ScheduleError
 from tests.core.helpers import quick_user
+from tests.core.threads.test_lock_order import _race
 
 from ._support import clock, iso_utc, make_host, make_project, make_schedule, stored
 
@@ -194,3 +195,33 @@ def test_a_once_schedule_refuses_a_past_instant_but_keeps_its_own_on_edit(fresh_
     with clock("2026-10-21T06:00:00Z"):
         renamed = schedules.patch_schedule(uid, item["public_id"], {"name": "renamed", "once_at": item["once_at"]})
     assert (renamed["name"], renamed["once_at"]) == ("renamed", "2026-10-20T05:59:30Z")
+
+
+def test_two_edits_at_once_keep_both_changes(fresh_db):
+    uid = quick_user()
+    made = make_schedule(uid)
+    _race(lambda: schedules.patch_schedule(uid, made["id"], {"name": "renamed"}), (schedules, "_normalize"),
+          lambda: schedules.patch_schedule(uid, made["id"], {"prompt": "new words"}))
+    row = stored(made["id"])
+    assert (row["name"], row["prompt"]) == ("renamed", "new words")
+
+
+def test_removing_a_project_or_its_machine_pauses_the_schedules_aimed_at_it(fresh_db):
+    """A project schedule whose project is gone would fail every period."""
+    uid = quick_user()
+    host = make_host(uid)
+    kept, gone, archived = (make_project(uid, host, name) for name in ("kept", "gone", "old"))
+    on_kept, on_gone, on_archived = (make_schedule(uid, name=f"on-{pid}", target="project", project_id=pid, every_seconds=900)
+                                     for pid in (kept, gone, archived))
+    chat = make_schedule(uid, name="chat")
+
+    def paused():
+        return [stored(s["id"])["paused"] for s in (on_kept, on_gone, on_archived, chat)]
+
+    assert hosts.delete_project(uid, host, gone)
+    assert paused() == [0, 1, 0, 0]
+    db.execute("UPDATE user_projects SET archived=1, archived_at='2020-01-01T00:00:00Z' WHERE id=?", (archived,))
+    assert hosts.delete_project(uid, host, archived, archived_before=db.now())
+    assert paused() == [0, 1, 1, 0]
+    assert hosts.delete_host(uid, host)
+    assert paused() == [1, 1, 1, 0]

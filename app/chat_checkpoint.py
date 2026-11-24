@@ -541,6 +541,17 @@ def _compaction_row(conn, user_id, thread_id, columns="id,revision,model,message
     return pk, row
 
 
+def _locked_state(conn, pk, user_id) -> dict:
+    """The thread's compaction state as committed now, under its row lock: a
+    writer that does not move the revision (save_pool) may have committed
+    since the snapshot read."""
+    from . import context_compact as ctxmod
+
+    row = conn.execute("SELECT compaction FROM chat_threads WHERE id=? AND user_id=?" + db.for_update(conn),
+                       (pk, user_id)).fetchone()
+    return ctxmod.parse_state(row["compaction"] if row else None)
+
+
 def _hold_revision(conn, pk, user_id, row) -> bool:
     """Row-lock the thread at the revision it was read at; False when another
     writer moved it. The read above is a plain (snapshot) read, so without this
@@ -637,6 +648,7 @@ def save_meter(user_id, thread_id, meter):
             # would erase its checkpoint. The next meter write catches up.
             if not _hold_revision(conn, pk, user_id, row):
                 return
+            state = _locked_state(conn, pk, user_id)
             state["meter"] = dict(meter)
             probe = state["meter"].pop("cache_probe", None)
             if probe:
@@ -662,6 +674,7 @@ def save_meter(user_id, thread_id, meter):
             messages = [current if msg.get("id") == run["message_id"] else msg for msg in messages]
         if not _hold_revision(conn, pk, user_id, row):
             return
+        state = _locked_state(conn, pk, user_id)
         from . import chat_history
         replay, _info = chat_history.build(conn, user_id, pk, messages, state)
         state["meter"] = context_meter.standing_meter(

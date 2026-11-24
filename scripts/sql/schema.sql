@@ -202,8 +202,10 @@ CREATE TABLE `chat_permission_grants` (
   UNIQUE KEY `chat_perm_grants_scope` (`thread_key`,`host_id`,`kind`,`value`) USING HASH,
   KEY `chat_perm_grants_user` (`user_id`,`host_id`),
   KEY `fk_chat_permission_grants_0` (`thread_id`),
+  KEY `fk_chat_permission_grants_host` (`host_id`),
   CONSTRAINT `fk_chat_permission_grants_0` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
-  CONSTRAINT `fk_chat_permission_grants_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
+  CONSTRAINT `fk_chat_permission_grants_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT `fk_chat_permission_grants_host` FOREIGN KEY (`host_id`) REFERENCES `user_hosts` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -435,7 +437,10 @@ CREATE TABLE `command_jobs` (
   KEY `command_jobs_undelivered` (`notify`,`delivered`,`thread_id`),
   KEY `command_jobs_user_thread` (`user_id`,`thread_id`),
   KEY `command_jobs_finished` (`finished_at`(20)),
-  KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`)
+  KEY `fk_command_jobs_thread` (`thread_id`),
+  KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`),
+  CONSTRAINT `fk_command_jobs_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_command_jobs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -563,7 +568,9 @@ CREATE TABLE `pool_sessions` (
   `credential_id` bigint(20) NOT NULL,
   `updated_at` longtext NOT NULL,
   PRIMARY KEY (`kind`,`session_id`),
-  KEY `pool_sessions_updated` (`updated_at`(191))
+  KEY `pool_sessions_updated` (`updated_at`(191)),
+  KEY `pool_sessions_credential` (`credential_id`),
+  CONSTRAINT `pool_sessions_credential` FOREIGN KEY (`credential_id`) REFERENCES `credentials` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -719,6 +726,8 @@ CREATE TABLE `skill_host_approvals` (
   `files_hash` char(64) NOT NULL,
   `created_at` varchar(32) NOT NULL,
   PRIMARY KEY (`user_id`,`host_id`,`slug`,`files_hash`),
+  KEY `skill_host_approvals_host` (`host_id`),
+  CONSTRAINT `skill_host_approvals_host` FOREIGN KEY (`host_id`) REFERENCES `user_hosts` (`id`) ON DELETE CASCADE,
   CONSTRAINT `skill_host_approvals_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
