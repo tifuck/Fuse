@@ -179,11 +179,33 @@ def test_a_fallback_pick_reads_the_enabled_sources_once(fresh_db, upstream, monk
     reads = []
     real = sources.all_enabled
 
-    def counted():
+    def counted(**kwargs):
         reads.append(1)
-        return real()
+        return real(**kwargs)
 
     monkeypatch.setattr(sources, "all_enabled", counted)
     # Every fallback step runs: OpenRouter, the union, the scan, the lone llama.
     assert _pick("anything") == ("llama", "anything")
     assert len(reads) == 1
+
+
+def test_a_pick_reads_no_credentials_until_the_chosen_source_needs_them(pools, monkeypatch):
+    uid = quick_user()
+    nano_id, refuse_id = pools
+    key(nano_id, "nano-key", owner=uid)
+    key(refuse_id, "refuse-key", owner=uid)
+    reads = []
+    real = db.fetchall
+
+    def spy(sql, args=()):
+        if "FROM credentials" in sql:
+            reads.append(tuple(args))
+        return real(sql, args)
+
+    monkeypatch.setattr(db, "fetchall", spy)
+    picked = asyncio.run(sources.pick("refuseless/glm-5.3-abliterated", user_id=uid,
+                                      access=_access(uid, {"allow_refuseless": True})))
+    assert (picked[0].type_id, picked[0].source_id) == ("refuseless", refuse_id)
+    # A pool's chat reads its own accounts; nothing read them for routing.
+    assert callable(picked[0].chat) and reads == []
+    assert [c["secret"] for c in picked[0].creds] and reads == [(refuse_id,)]
