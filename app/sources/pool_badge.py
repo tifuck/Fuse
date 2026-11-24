@@ -387,6 +387,35 @@ def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None
     return view
 
 
+
+async def switch(user_id: int, model: str, thread_id: str, cred_id: int) -> dict | None:
+    """Pin the chat to another account of its pool, as a reply served there
+    would: its next request goes to that account and starts a cold prompt
+    cache. Returns the badge for it, or None when the model is not a pool's or
+    the account is not one the caller's requests may use."""
+    from . import POOL_TYPES, pick
+    from .chatgpt_catalog import base_slug
+
+    picked = await pick(model, user_id=user_id)
+    if not picked or picked[0].type_id not in POOL_TYPES or not hasattr(picked[0], "_pick"):
+        return None
+    src, upstream = picked
+    kind = src.type_id
+    rows = await asyncio.to_thread(db.fetchall, "SELECT * FROM credentials WHERE source_id=? AND disabled=0 ORDER BY id",
+                                   (src.source_id,))
+    usable = await asyncio.to_thread(pool_policy.filter_credentials, rows, kind, user_id)
+    if int(cred_id) not in {int(r["id"]) for r in usable}:
+        return None
+    scope_model = base_slug(upstream) if kind == "chatgpt" else upstream
+    # The chat runtime's cache key for a conversation (chat_runtime: "thread:<id>").
+    pool_session.bind(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model), int(cred_id))
+    # The thread's record moves too, so the chat shows the new account before its next reply.
+    from .. import chat_checkpoint
+
+    record = await asyncio.to_thread(chat_checkpoint.save_pool, user_id, thread_id, lambda prior: state(prior, cred_id, kind, model))
+    return await asyncio.to_thread(public, user_id, record) if record else None
+
+
 def _solo(kind: str, label: str, row, model: str, user_id: int, windows: list[dict], balance: dict | None) -> dict:
     """The badge for one key outside a pool: no other accounts, no sharing."""
     return {"model": model, "provider": kind, "pool": label, "id": int(row["id"]),

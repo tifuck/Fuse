@@ -48,6 +48,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .chat-pool-menu .chat-pool-line:hover { background: none; color: inherit; }
   & .chat-pool-menu .chat-pool-line[data-status="current"] { background: var(--dk-hover); }
+  /* Another usable account: a click moves the chat there. */
+  & .chat-pool-menu .chat-pool-line[data-pool-switch] { cursor: pointer; }
+  & .chat-pool-menu .chat-pool-line[data-pool-switch]:is(:hover, :focus-visible) { background: var(--dk-hover); outline: none; }
   & .chat-pool-menu .chat-pool-line:is([data-status="off"], [data-status="paused"]) { opacity: 0.5; }
   & .chat-pool-name { display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; color: var(--dk-text); text-overflow: ellipsis; white-space: nowrap; }
   & .chat-pool-name b { flex: none; min-width: 1ch; font-weight: 700; }

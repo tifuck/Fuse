@@ -765,6 +765,27 @@ async def chat_pool_preview(request: Request, model: str = "", thread: str = "",
     return JSONResponse({"pool": view}, headers={"Cache-Control": "no-store"})
 
 
+
+@router.post("/chat/pool/switch")
+async def chat_pool_switch(request: Request):
+    """Move the chat to another account of its pool (sources.pool_badge.switch)."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    form = await request.form()
+    model = str(form.get("model") or "").strip()[:200]
+    thread = str(form.get("thread") or "").strip()[:80]
+    try:
+        account = int(str(form.get("account") or "0"))
+    except ValueError:
+        account = 0
+    if not model or not thread or account <= 0:
+        return JSONResponse({"pool": None}, status_code=400)
+    await asyncio.to_thread(_chat_thread_pk, user, thread)
+    view = await pool_badge.switch(user["id"], model, thread, account)
+    return JSONResponse({"pool": view}, status_code=200 if view else 409, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/chat/threads/{thread_id}/agents")
 async def chat_thread_agents(request: Request, thread_id: str):
     user, err = _chat_auth(request)

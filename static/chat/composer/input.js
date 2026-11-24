@@ -45,7 +45,9 @@ export function createInput(ctx) {
     menu.style.removeProperty("transform");
     const b = anchor.getBoundingClientRect();
     const box = anchor.closest("[data-chat-box]");
-    const top = (box ? box.getBoundingClientRect().top : b.top) - 6;
+    // The dictation overlay sits on the composer's top edge while it is live.
+    const lid = S.form?.querySelector(".dictation:not([hidden])");
+    const top = Math.min(box ? box.getBoundingClientRect().top : b.top, lid ? lid.getBoundingClientRect().top : Infinity) - 6;
     menu.style.maxHeight = Math.max(200, Math.min(maxHeight, Math.round(top - 48))) + "px";
     const width = menu.offsetWidth;
     const vw = document.documentElement.clientWidth;

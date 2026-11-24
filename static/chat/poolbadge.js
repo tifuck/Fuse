@@ -144,6 +144,11 @@ export function bindPool(next) {
   document.addEventListener("visibilitychange", refreshPool);
 }
 
+// Keeps an open card on the composer's top edge as the composer grows.
+export function placePool() {
+  if (menu && !menu.hidden) placeMenu();
+}
+
 export function acceptPool(pool) {
   const before = current();
   shownAt = Date.now();
@@ -235,6 +240,7 @@ function buildMenu() {
     else if (hit("data-pool-back")) back();
     else if (hit("data-pool-share")) save({ share: hit("data-pool-share").dataset.poolShare });
     else if (hit("data-pool-use")) save({ use: hit("data-pool-use").dataset.poolUse });
+    else if (hit("data-pool-switch")) switchTo(Number(hit("data-pool-switch").dataset.poolSwitch));
     else if (hit("data-pool-first")) {
       const id = Number(hit("data-pool-first").dataset.poolFirst);
       save({ primary: current()?.prefs?.primary === id ? null : id });
@@ -248,6 +254,12 @@ function buildMenu() {
     if (box.checked) skip.delete(Number(box.value));
     else skip.add(Number(box.value));
     save({ skip: [...skip] });
+  });
+  el.addEventListener("keydown", (event) => {
+    const row = event.target.closest("[data-pool-switch]");
+    if (!row || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    switchTo(Number(row.dataset.poolSwitch));
   });
   attachSheetSwipe(el, ".chat-picker-head", () => el.classList.contains("is-sheet"), () => setOpen(false));
   swipeBack(el);
@@ -380,7 +392,10 @@ function fillUsage(pool) {
     const meta = a.status === "current" && pool.preview ? "next" :
       a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
     const pct = a.percent == null ? null : clamp(a.percent);
-    return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"`, money(a.balance));
+    // Another usable account of a saved chat: a click moves the chat there.
+    const pick = S.currentId && !saving && (a.status === "ready" || a.status === "full")
+      ? ` data-pool-switch="${Number(a.id)}" role="button" tabindex="0" title="Use this account for this chat (its prompt cache starts cold)"` : "";
+    return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"${pick}`, money(a.balance));
   };
   const cash = money(pool.balance);
   const balance = cash ? line("Balance", null, "left", ` data-level="${moneyLevel(pool.balance)}"`, cash) : "";
@@ -400,6 +415,7 @@ function fillUsage(pool) {
       (windows.map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop) +
     (limits.length ? group("Model limits", "", limits.map(limit).join("")) : "") +
     (accounts.length ? group("Accounts", `${Number(pool.ready) || 0} of ${Number(pool.size) || 0} ready`, accounts.map(acct).join("")) : "") +
+    (notice ? `<p class="chat-perms-hint chat-pool-notice" role="status">${escapeHtml(notice)}</p>` : "") +
     "</div>" +
     `<div class="chat-perms-foot chat-pool-foot">${sharing}<a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
 }
@@ -435,6 +451,37 @@ function fillSharing(pool) {
     (accounts.length > 1 ? group("Rotation", "first choice", accounts.map(pick).join("")) : "") +
     note + "</div>" +
     `<div class="chat-perms-foot chat-pool-foot"><button type="button" class="chat-pool-share" data-pool-back><span aria-hidden="true">‹</span> Usage</button><a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
+}
+
+// Pins the chat to another account; the server answers with its badge.
+async function switchTo(id) {
+  const pool = current();
+  if (!pool || saving || !S.currentId || !(id > 0)) return;
+  const key = previewKey();
+  saving = { switch: id };
+  notice = "";
+  fillMenu(pool);
+  let fresh = null;
+  try {
+    const res = await fetch("/chat/pool/switch", {
+      method: "POST",
+      headers: { Accept: "application/json", "X-CSRF-Token": csrfToken() },
+      body: new URLSearchParams({ model: S.modelId, thread: S.currentId, account: String(id) }),
+    });
+    fresh = res.ok ? (await res.json()).pool : null;
+  } catch (_) {
+    fresh = null;
+  }
+  saving = null;
+  if (previewKey() !== key || !current()) return;
+  if (fresh?.name) {
+    notice = `The next reply uses ${short(fresh.name)}, so it starts a new prompt cache.`;
+    previews.set(key, { at: Date.now(), pool: fresh });
+    acceptPool(fresh);
+  } else {
+    notice = "Could not move this chat to that account.";
+    if (menu && !menu.hidden) fillMenu(current());
+  }
 }
 
 async function save(change) {

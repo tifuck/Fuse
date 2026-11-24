@@ -98,6 +98,9 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
      The rotation rows hold a checkbox, so they keep a full touch height. */
   & .chat-pool-menu :is(.chat-pool-line:not([data-status="current"]), .chat-pool-pick):hover { background: none !important; }
   & .chat-pool-menu .chat-pool-line[data-status="current"] { background: var(--tl-soft) !important; }
+  /* Another usable account: a click moves the chat there. */
+  & .chat-pool-menu .chat-pool-line[data-pool-switch] { cursor: pointer; }
+  & .chat-pool-menu .chat-pool-line[data-pool-switch]:is(:hover, :focus-visible) { background: var(--tl-soft) !important; outline: none; }
   & .chat-pool-menu.is-sheet .chat-pool-pick { min-height: 2.75rem !important; }
   /* Tail's group headings carry no space above them; the card's groups get
      the gap the other views give them. */
