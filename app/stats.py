@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone, tzinfo
 
@@ -597,6 +597,10 @@ def _recent_events(
             return rows
 
 
+# The window scans of usage_analytics, shared by every request.
+_SCANS = ThreadPoolExecutor(max_workers=8, thread_name_prefix="usage-scan")
+
+
 def usage_analytics(
     user_id: int,
     *,
@@ -626,27 +630,27 @@ def usage_analytics(
     # range is shorter, so short ranges scan seven days for the heatmap.
     short = not lifetime and duration < _HEATMAP_MIN
     prev_model_tokens: dict[str, int] = {}
-    with ThreadPoolExecutor(max_workers=4) as scans:
-        if granule == 3600 or bucket_seconds > 3600:
-            rows_job = scans.submit(_window_rows, user_id, start, end, provider, all_users, subject_id=subject_id,
-                                    granule=granule, bucket_seconds=bucket_seconds, utc_offset=utc_offset)
-        else:
-            # Sub-hour buckets (short ranges), or hourly ones a +5:30 viewer's
-            # boundaries split every hour of, cannot come out of hourly
-            # rollups: those windows read the events.
-            rows_job = scans.submit(
-                _event_rows, granule, [(start, end)], user_id, provider, all_users, subject_id=subject_id,
-            )
-        previous_job = None if lifetime else scans.submit(
-            _event_summary, user_id, _iso(end_dt - 2 * duration), start, provider, all_users,
-            subject_id=subject_id, model_tokens=prev_model_tokens,
+    if granule == 3600 or bucket_seconds > 3600:
+        rows_job = _SCANS.submit(_window_rows, user_id, start, end, provider, all_users, subject_id=subject_id,
+                                 granule=granule, bucket_seconds=bucket_seconds, utc_offset=utc_offset)
+    else:
+        # Sub-hour buckets (short ranges), or hourly ones a +5:30 viewer's
+        # boundaries split every hour of, cannot come out of hourly
+        # rollups: those windows read the events.
+        rows_job = _SCANS.submit(
+            _event_rows, granule, [(start, end)], user_id, provider, all_users, subject_id=subject_id,
         )
-        heat_job = None
-        if short:
-            heat_job = scans.submit(
-                _window_rows, user_id, _iso(end_dt - _HEATMAP_MIN), end, provider, all_users, subject_id=subject_id,
-            )
-        recent_job = scans.submit(_recent_events, user_id, start, end_dt, provider, all_users, subject_id)
+    previous_job = None if lifetime else _SCANS.submit(
+        _event_summary, user_id, _iso(end_dt - 2 * duration), start, provider, all_users,
+        subject_id=subject_id, model_tokens=prev_model_tokens,
+    )
+    heat_job = None
+    if short:
+        heat_job = _SCANS.submit(
+            _window_rows, user_id, _iso(end_dt - _HEATMAP_MIN), end, provider, all_users, subject_id=subject_id,
+        )
+    recent_job = _SCANS.submit(_recent_events, user_id, start, end_dt, provider, all_users, subject_id)
+    wait([job for job in (rows_job, previous_job, heat_job, recent_job) if job is not None])
     rows = [{**{key: row[key] for key in row.keys()}, **{key: int(row[key] or 0) for key in _METRICS}}
             for row in rows_job.result()]
     previous = previous_job.result() if previous_job else dict.fromkeys(_SUMMARY_KEYS, 0)
