@@ -756,6 +756,34 @@ CREATE TABLE `sources` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `terminal_sessions` (
+  `id` varchar(64) NOT NULL,
+  `user_id` bigint(20) NOT NULL,
+  `host_id` bigint(20) NOT NULL,
+  `alias` varchar(191) NOT NULL DEFAULT '',
+  `transport` varchar(8) NOT NULL DEFAULT '',
+  `remote_user` varchar(191) NOT NULL DEFAULT '',
+  `root` bigint(20) NOT NULL DEFAULT 0,
+  `thread_id` bigint(20) DEFAULT NULL,
+  `project_id` bigint(20) DEFAULT NULL,
+  `cwd` longtext NOT NULL DEFAULT '',
+  `shell` varchar(32) NOT NULL DEFAULT '',
+  `opened_at` varchar(32) NOT NULL,
+  `closed_at` varchar(32) DEFAULT NULL,
+  `close_reason` varchar(32) NOT NULL DEFAULT '',
+  `exit_code` bigint(20) DEFAULT NULL,
+  `client_ip` varchar(64) NOT NULL DEFAULT '',
+  `user_agent` varchar(255) NOT NULL DEFAULT '',
+  `bytes_in` bigint(20) NOT NULL DEFAULT 0,
+  `bytes_out` bigint(20) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `terminal_sessions_user` (`user_id`,`opened_at`),
+  KEY `terminal_sessions_closed` (`closed_at`),
+  CONSTRAINT `terminal_sessions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `tool_failures` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `created_at` longtext NOT NULL,
