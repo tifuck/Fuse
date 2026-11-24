@@ -171,6 +171,31 @@ def test_a_steer_committed_between_a_checkpoints_read_and_write_survives(fresh_d
     assert [s["id"] for s in steers] == ["steer-a", "steer-b"]
 
 
+def test_token_flushes_after_a_delivered_steer_are_throttled_and_patch_from_the_last_publish(fresh_db):
+    """Only an undelivered steer forces every flush to rewrite the row; after
+    delivery the patch base is the projection last published, not a re-read."""
+    from app import chat_children, chat_pub
+
+    uid = quick_user()
+    run = _turn(uid)
+    chat_checkpoint.checkpoint(run["id"], {"content": "working"}, [])
+    thread_id = chat_store.get_run(uid, run["id"])["thread_id"]
+    chat_store.steer_turn(uid, thread_id, "also do this", "steer-t")
+    chat_checkpoint.checkpoint(run["id"], {"content": "working; on it"}, [], durable=False)
+    chat_checkpoint.save_turn_progress(run["id"], _rows(run["request"]["messages"],
+                                                        {"role": "user", "content": "(steer:steer-t) also do this"}))
+    chat_children.seal_steer_display(run["id"], ["steer-t"])
+    chat_checkpoint.checkpoint(run["id"], {"content": "working; on it"}, [], durable=False)
+
+    with Statements() as tick, patch.object(chat_pub, "publish", wraps=chat_pub.publish) as published:
+        chat_checkpoint.checkpoint(run["id"], {"content": "working; on it. Done"}, [], durable=False)
+
+    assert tick.run_columns() == [], "throttled: no row rewrite"
+    assert not [sql for sql in tick.sql if "FROM `chat_runs`" in sql and "`message`" in sql]
+    patch_event = published.call_args.args[3]["events"][0]["fuse"]
+    assert patch_event["content"] == {"from": 0, "text": ". Done"}
+
+
 def test_checkpoints_write_only_changed_columns_and_keep_activity_apart(fresh_db):
     uid = quick_user()
     run = _turn(uid)
