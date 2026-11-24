@@ -442,10 +442,6 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
         if target["is_admin"] and len(admins) <= 1:
             raise ValueError("last_admin")
         email = target["email"]
-        job_threads = conn.execute(
-            "SELECT DISTINCT thread_id FROM command_jobs WHERE user_id=? AND thread_id IS NOT NULL AND finished_at IS NULL",
-            (user_id,),
-        ).fetchall()
         conn.execute(
             "UPDATE credentials SET donated_by=NULL, disabled=1 WHERE donated_by=?",
             (user_id,),
@@ -503,11 +499,10 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
         pass
     from . import command_jobs, skill_install
 
-    for row in job_threads:
-        try:
-            command_jobs.cancel_thread(user_id, row["thread_id"])
-        except Exception:
-            logger.exception("Could not cancel command jobs of deleted account %s", user_id)
+    try:
+        command_jobs.cancel_user(user_id)
+    except Exception:
+        logger.exception("Could not cancel command jobs of deleted account %s", user_id)
     try:
         shutil.rmtree(skill_install.data_dir() / str(int(user_id)), ignore_errors=True)
     except Exception:
