@@ -15,7 +15,7 @@ pthread_mutex_t g_out_mu = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_cond_t g_out_space = PTHREAD_COND_INITIALIZER;
 
-static void out_wake(void) {
+void out_wake(void) {
     /* Pure wakeup: byte 0 carries no wake reason. */
     if (g_wake_wr >= 0) {
         char x = 0;
@@ -41,6 +41,10 @@ static int out_push(int opcode, unsigned char *copy, size_t n, int reliable) {
     pthread_mutex_unlock(&g_out_mu);
     out_wake();
     return 0;
+}
+
+int out_push_text(char *s) {
+    return out_push(1, (unsigned char *)s, strlen(s), 1);
 }
 
 int out_enqueue(int opcode, const unsigned char *data, size_t n) {
