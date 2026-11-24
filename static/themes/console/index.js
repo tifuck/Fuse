@@ -24,6 +24,7 @@ import { create as createSidebar } from './sidebar.js';
 import { create as createTurnExtras } from './turn-extras.js';
 import { create as createProviderError } from './provider-error.js';
 import { create as createWallpaperPicker } from './wallpaper-picker.js';
+import { create as createTerminalDock } from './terminal.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
 export function createConsoleTheme(runtime) {
@@ -476,6 +477,7 @@ export function createConsoleTheme(runtime) {
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  createTerminalDock();
   return {
     ACTION_ICONS: theme.ACTION_ICONS,
     FILE_CHIP_ICON: theme.FILE_CHIP_ICON,

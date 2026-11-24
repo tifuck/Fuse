@@ -20,6 +20,7 @@ import { createTurns } from './chat/turns.js';
 import { createBoot } from './chat/boot.js';
 import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
+import { createTerminal } from './chat/terminal.js';
 import { bindPool } from './chat/poolbadge.js';
 import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
@@ -439,12 +440,15 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     ui,
   });
 
+  const terminal = createTerminal({ net, picker, sidebar });
+
   const boot = createBoot({
     agents,
     artifacts,
     composer,
     sidebar,
     sync,
+    terminal,
     transcript,
   });
 
@@ -1234,8 +1238,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     const field = "textarea, input, [contenteditable='true']";
     const moved =
       Boolean(target?.matches(field) || related?.matches(field) ||
-        target?.closest("[data-chat-sheet]") ||
-        related?.closest("[data-chat-sheet]"));
+        target?.closest("[data-chat-sheet], [data-terminal]") ||
+        related?.closest("[data-chat-sheet], [data-terminal]"));
     if (!moved) return;
     composer.pinVisualViewport();
     window.setTimeout(composer.pinVisualViewport, 100);
@@ -1801,6 +1805,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
         if (!S.messages.length) picker.setHint("Nothing to rewind.");
         else turns.openRewind();
       } else if (action === "agents") agents.setAgentsOpen(true);
+      else if (action === "terminal") terminal.toggle();
       else if (action === "fork" || action === "pin") {
         if (!S.currentId) picker.setHint("Nothing to " + action + " yet.");
         else (action === "fork" ? sidebar.forkThread(S.currentId) : sidebar.togglePin(S.currentId))

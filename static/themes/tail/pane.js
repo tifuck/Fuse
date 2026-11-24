@@ -89,13 +89,20 @@ export function create(deps) {
     if (badge.textContent !== String(running || "")) badge.textContent = String(running || "");
   }
 
+  // The terminal tab is the runtime's to open (static/chat/terminal.js): it
+  // asks for it, and the runtime's "fuse-terminal" brings it here.
+  const terminalOpen = () => "terminalOpen" in root.dataset;
+  const setTerminal = (open) => document.dispatchEvent(new CustomEvent("fuse-terminal-set", { detail: { open } }));
+
   function show(view, fromCall = false) {
+    if (view === "terminal" && !terminalOpen()) { setTerminal(true); return; }
     byCall = shown() ? byCall && fromCall : fromCall;
     root.dataset.tailPane = last = view;
     pane.querySelectorAll("[data-tail-tab]").forEach((tab) => tab.setAttribute("aria-pressed", String(tab.dataset.tailTab === view)));
     toggle?.setAttribute("aria-expanded", "true");
     renderChanges();
     syncAgents();
+    if (view !== "terminal" && terminalOpen()) setTerminal(false);
   }
 
   function hide() {
@@ -104,7 +111,23 @@ export function create(deps) {
     byCall = false;
     toggle?.setAttribute("aria-expanded", "false");
     paneCalls().forEach(closeCall);
+    if (terminalOpen()) setTerminal(false);
   }
+
+  document.addEventListener("fuse-terminal", (event) => {
+    if (event.detail?.open) { if (shown() !== "terminal") show("terminal"); }
+    else if (shown() === "terminal") hide();
+  });
+
+  // Wide and full: the terminal wants columns the side pane does not have.
+  const WIDE = "fuse.tail.terminalWide";
+  const setWide = (size) => {
+    if (size) root.dataset.tailWide = size;
+    else delete root.dataset.tailWide;
+    pane.querySelector("[data-tail-wide]")?.setAttribute("aria-pressed", String(Boolean(size)));
+    try { localStorage.setItem(WIDE, size); } catch (_) {}
+  };
+  try { const saved = localStorage.getItem(WIDE); setWide(saved === "wide" || saved === "full" ? saved : ""); } catch (_) {}
 
   // Opens the call behind a changed file: its burst, then the call itself.
   function showStep(step) {
@@ -129,6 +152,7 @@ export function create(deps) {
     setMore(Boolean(target.closest("[data-tail-more]")) && more.getAttribute("aria-expanded") !== "true");
     if (target.closest("[data-tail-pane-toggle]")) { if (shown()) hide(); else show(last); return; }
     if (target.closest("[data-tail-pane-close]")) { hide(); return; }
+    if (target.closest("[data-tail-wide]")) { setWide({ "": "wide", wide: "full" }[root.dataset.tailWide || ""] || ""); return; }
     const tab = target.closest("[data-tail-tab]");
     if (tab) { show(tab.dataset.tailTab); return; }
     const change = target.closest("[data-tail-change]");

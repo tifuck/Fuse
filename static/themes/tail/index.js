@@ -25,6 +25,7 @@ import { create as createTurnExtras } from './turn-extras.js';
 import { create as createProviderError } from './provider-error.js';
 import { create as createWallpaperPicker } from './wallpaper-picker.js';
 import { create as createPane } from './pane.js';
+import { create as createTerminalDock } from './terminal.js';
 
 // Each renderer sees only its declared callbacks/state; nothing is published globally.
 export function createTailTheme(runtime) {
@@ -486,6 +487,7 @@ export function createTailTheme(runtime) {
     get compactionMarkHtml() { return theme.compactionMarkHtml; },
     get escapeHtml() { return runtime.escapeHtml; },
   }));
+  createTerminalDock();
   createPane({
     get compactPath() { return theme.compactPath; },
     get consoleEditCounts() { return theme.consoleEditCounts; },

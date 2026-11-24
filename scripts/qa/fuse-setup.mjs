@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation', 'pool'];
+const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation', 'pool', 'terminal'];
 const SESSION = join(ROOT, 'data', 'dev-qa-session.json');
 
 // --fake: states no fixture can hold, made by rewriting what the page reads
@@ -104,6 +104,161 @@ const STATS_FAKE = `(() => {
     return new Response(JSON.stringify(data), { status: res.status, headers: { 'Content-Type': 'application/json' } });
   };
 })();`;
+// --fake terminal: runs in the page (before its scripts; it also works later,
+// as --eval, since the page asks only when the terminal opens). The machine
+// list, the session list and /terminal/ws answer in the page: a canned shell
+// with a prompt, colour samples and box drawing, that echoes what is typed,
+// draws a full-screen frame for "top" (q leaves it) and redraws it on resize.
+// window.__qaTerm: push(text) writes to the open terminals, frame() draws the
+// full-screen frame, close(code) ends their sockets (4410 sends an exit
+// first), and sessions, sent, acked and size say what the page did.
+function terminalFake() {
+  const E = '\x1b';
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const q = window.__qaTerm = { sessions: [], sockets: new Set(), sent: [], acked: 0, size: null, full: false };
+  const HOSTS = [
+    { id: 990, alias: 'qa-box', os: 'linux', transport: 'agent', online: true, shells: [{ id: 'login', label: 'Login shell' }], default_shell: 'login' },
+    { id: 992, alias: 'win-box', os: 'windows', transport: 'agent', online: true, default_shell: 'powershell',
+      shells: [{ id: 'powershell', label: 'PowerShell' }, { id: 'cmd', label: 'Command Prompt' }, { id: 'pwsh', label: 'PowerShell 7' }] },
+    { id: 993, alias: 'old-vps', os: 'linux', transport: 'ssh', online: false, shells: [{ id: 'login', label: 'Login shell' }], default_shell: 'login' },
+  ];
+  let seq = 0;
+  const prompt = (s) => s.os === 'windows' ? `PS C:\\Users\\qa> ` : `${E}[1;32m${s.user}@${s.alias}${E}[0m:${E}[1;34m${s.cwd}${E}[0m$ `;
+  const sgr = (code, text) => `${E}[${code}m${text}${E}[0m`;
+  function banner(s) {
+    const out = [`${E}]0;${s.user}@${s.alias}: ${s.cwd}\x07`, `Fuse QA shell on ${s.alias} (made up: nothing runs)\r\n\r\n`];
+    out.push('16 colours  ' + [30, 31, 32, 33, 34, 35, 36, 37].map((c) => sgr(c, '██')).join('') + '  ' + [90, 91, 92, 93, 94, 95, 96, 97].map((c) => sgr(c, '██')).join('') + '\r\n');
+    out.push('            ' + sgr(1, 'bold') + ' ' + sgr(2, 'dim') + ' ' + sgr(3, 'italic') + ' ' + sgr(4, 'underline') + ' ' + sgr(7, 'inverse') + ' ' + sgr('1;31', 'error') + ' ' + sgr('1;32', 'ok') + '\r\n');
+    for (let row = 0; row < 6; row += 1) {
+      let line = row === 0 ? '256 colours ' : '            ';
+      for (let i = 0; i < 36; i += 1) line += `${E}[48;5;${16 + row * 36 + i}m `;
+      out.push(line + `${E}[0m\r\n`);
+    }
+    let grey = '            ';
+    for (let i = 232; i < 256; i += 1) grey += `${E}[48;5;${i}m  `;
+    out.push(grey + `${E}[0m\r\n`);
+    let ramp = 'truecolor   ';
+    for (let i = 0; i < 72; i += 1) {
+      const t = i / 71;
+      ramp += `${E}[48;2;${Math.round(255 * Math.max(0, 1 - 2 * t))};${Math.round(255 * (1 - Math.abs(2 * t - 1)))};${Math.round(255 * Math.max(0, 2 * t - 1))}m `;
+    }
+    out.push(ramp + `${E}[0m\r\n\r\n`);
+    out.push('┌─ box ──────┬────────┐  ╔═══════╗  ╭──────╮  ▁▂▃▄▅▆▇█ ░▒▓\r\n');
+    out.push('│ ready      │ 12 ms  │  ║ 中文字 ║  │ ✓ ok │  ⣿⣷⣯⣟ ← ↑ → ↓\r\n');
+    out.push('└────────────┴────────┘  ╚═══════╝  ╰──────╯  https://example.com/docs\r\n\r\n');
+    out.push(prompt(s));
+    return out.join('');
+  }
+  function frame(cols, rows) {
+    const w = Math.max(20, cols);
+    const h = Math.max(6, rows);
+    const lines = [`${E}[?1049h${E}[H${E}[2J${E}[44;97m` + ' top - 12:00:01 up 3 days, load average: 0.42 0.38 0.31'.padEnd(w).slice(0, w) + `${E}[0m`];
+    const bar = (label, pct, tone) => {
+      const width = Math.max(4, w - 16);
+      const fill = Math.round((width * pct) / 100);
+      return ` ${label.padEnd(4)}[${E}[${tone}m${'|'.repeat(fill)}${E}[0m${' '.repeat(width - fill)}] ${String(pct).padStart(3)}%`;
+    };
+    lines.push(bar('cpu', 37, 32), bar('mem', 64, 33), bar('swp', 3, 31), '');
+    lines.push(`${E}[7m` + '  PID USER      %CPU %MEM COMMAND'.padEnd(w).slice(0, w) + `${E}[0m`);
+    const procs = [['1182', 'root', '12.0', '1.4', 'uvicorn app.main:app'], ['2210', 'qa', '4.1', '0.6', 'node build.mjs'], ['77', 'root', '0.3', '0.1', 'systemd-journald']];
+    procs.forEach((p) => lines.push(` ${p[0].padStart(4)} ${p[1].padEnd(8)} ${p[2].padStart(5)} ${p[3].padStart(4)} ${p[4]}`.slice(0, w)));
+    while (lines.length < h - 1) lines.push('');
+    lines.push(`${E}[7m q ${E}[0m Quit  ${E}[7m F6 ${E}[0m Sort  ${E}[7m / ${E}[0m Find   ${w}x${h}`);
+    return lines.slice(0, h).join('\r\n');
+  }
+  const bin = (text) => enc.encode(text).buffer;
+  const RealSocket = window.WebSocket;
+  window.WebSocket = function (url, protocols) {
+    if (new URL(url, location.href).pathname !== '/terminal/ws') return new RealSocket(url, protocols);
+    let session = null;
+    let line = '';
+    const sock = {
+      readyState: 0, binaryType: 'blob', onopen: null, onmessage: null, onclose: null, onerror: null,
+      send(data) {
+        if (typeof data === 'string') {
+          const msg = JSON.parse(data);
+          if (msg.t === 'attach') {
+            session = q.sessions.find((s) => s.id === msg.id);
+            if (!session) { sock.close(4404); return; }
+            q.size = [msg.cols, msg.rows];
+            emit(JSON.stringify({ t: 'ready', ...session }));
+            emit(bin(banner(session)));
+          } else if (msg.t === 'resize') {
+            q.size = [msg.cols, msg.rows];
+            if (q.full) emit(bin(frame(msg.cols, msg.rows)));
+          } else if (msg.t === 'ack') q.acked += msg.n;
+          else if (msg.t === 'close') sock.close(4410);
+          return;
+        }
+        const text = dec.decode(data);
+        q.sent.push(text);
+        if (q.full) {
+          if (text === 'q') { q.full = false; emit(bin(`${E}[?1049l`)); }
+          return;
+        }
+        let echo = '';
+        for (const ch of text) {
+          if (ch === '\r') {
+            const cmd = line.trim();
+            line = '';
+            if (cmd === 'top') { q.full = true; echo += frame(...(q.size || [80, 24])); continue; }
+            echo += '\r\n' + (cmd ? `${cmd.split(' ')[0]}: made-up shell, nothing ran\r\n` : '') + prompt(session);
+          } else if (ch === '\x7f') {
+            if (line) { line = line.slice(0, -1); echo += '\b \b'; }
+          } else if (ch === '\x03') { line = ''; echo += '^C\r\n' + prompt(session); }
+          else if (ch >= ' ') { line += ch; echo += ch; }
+        }
+        if (echo) emit(bin(echo));
+      },
+      close(code = 1000) {
+        if (sock.readyState === 3) return;
+        sock.readyState = 3;
+        q.sockets.delete(sock);
+        setTimeout(() => sock.onclose?.({ code, reason: '', wasClean: true }), 0);
+      },
+    };
+    const emit = (data) => setTimeout(() => { if (sock.readyState === 1) sock.onmessage?.({ data }); }, 0);
+    sock.push = (text) => emit(bin(text));
+    sock.frame = () => { q.full = true; emit(bin(frame(...(q.size || [80, 24])))); };
+    sock.end = (code) => {
+      if (code === 4410) emit(JSON.stringify({ t: 'exit', code: 0, reason: 'exit' }));
+      setTimeout(() => sock.close(code), 10);
+    };
+    q.sockets.add(sock);
+    setTimeout(() => { sock.readyState = 1; sock.onopen?.({}); }, 20);
+    return sock;
+  };
+  Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3, prototype: RealSocket.prototype });
+  q.push = (text) => q.sockets.forEach((s) => s.push(text));
+  q.frame = () => q.sockets.forEach((s) => s.frame());
+  q.close = (code = 1006) => [...q.sockets].forEach((s) => s.end(code));
+  const json = (data, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+  const realFetch = window.fetch;
+  window.fetch = function (input, init) {
+    const path = new URL(typeof input === 'string' ? input : input.url, location.href).pathname;
+    const method = (init?.method || 'GET').toUpperCase();
+    if (path === '/terminal/hosts') return json({ hosts: HOSTS });
+    if (path === '/terminal/sessions' && method === 'GET') return json({ sessions: q.sessions.map((s) => ({ ...s, attached: false, alive: true })) });
+    if (path === '/terminal/sessions' && method === 'POST') {
+      const body = JSON.parse(init.body || '{}');
+      const host = HOSTS.find((h) => h.id === body.host_id) || HOSTS[0];
+      const windows = host.os === 'windows';
+      seq += 1;
+      const s = { id: `qa-term-${seq}`, host_id: host.id, alias: host.alias, os: host.os, transport: host.transport, user: windows ? 'qa' : 'root', root: !windows,
+        cwd: body.thread_id ? '/srv/demo' : windows ? 'C:\\Users\\qa' : '/root', shell: body.shell || host.default_shell, title: '', created: new Date().toISOString() };
+      q.sessions.push(s);
+      return json(s);
+    }
+    const kill = /^\/terminal\/sessions\/(.+)$/.exec(path);
+    if (kill && method === 'DELETE') {
+      q.sessions = q.sessions.filter((s) => s.id !== decodeURIComponent(kill[1]));
+      return json({ ok: true });
+    }
+    return realFetch.call(this, input, init);
+  };
+}
+export const TERMINAL_FAKE = `(${terminalFake})();`;
 // --fake dictation: runs in the page before its own scripts. Dev has no speech
 // server, so its pages have no mic: the composer gets the one its view's
 // template draws when there is one. The microphone is four steady tones in
@@ -305,6 +460,7 @@ export default {
 
   async start(api) {
     if (fake.has('stats')) await api.send('Page.addScriptToEvaluateOnNewDocument', { source: STATS_FAKE });
+    if (fake.has('terminal')) await api.send('Page.addScriptToEvaluateOnNewDocument', { source: TERMINAL_FAKE });
   },
 
   async signIn(api) {

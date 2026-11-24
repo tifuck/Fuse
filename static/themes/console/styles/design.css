@@ -28,3 +28,5 @@
 @import url("secrets.css");
 /* The pool account badge beside the model. */
 @import url("pool-badge.css");
+/* The terminal dock (static/chat/terminal.js). */
+@import url("terminal.css");

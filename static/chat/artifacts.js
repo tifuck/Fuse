@@ -1190,6 +1190,8 @@ export function createArtifacts(ctx) {
       if (el.menu && !el.menu.hidden && !el.menu.contains(event.target) && event.target !== el.menuToggle) closeMenu();
     });
     document.addEventListener("keydown", (event) => {
+      // A terminal's keys are the shell's (Ctrl+] is telnet's escape).
+      if (event.target instanceof Element && event.target.closest("[data-terminal]")) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key === "]") {
         event.preventDefault();
         toggleLatest();

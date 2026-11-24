@@ -71,6 +71,20 @@
 //                                  --click '[data-pool-toggle]' opens its card,
 //                                  then '[data-pool-sharing]' its sharing panel
 //                                  (saving is refused: writes are aborted)
+//                         terminal the terminal's machines (qa-box, a Windows
+//                                  win-box with three shells, an offline
+//                                  old-vps), its sessions and its socket answer
+//                                  in the page: a made-up shell with colour
+//                                  samples and box drawing that echoes typing;
+//                                  "top" + Enter draws a full-screen frame (q
+//                                  leaves). --click '[data-terminal-toggle]'
+//                                  opens it (with stats, on the chat's project).
+//                                  --eval: __qaTerm.push(text) writes to it,
+//                                  __qaTerm.frame() the full-screen frame,
+//                                  __qaTerm.close(code) ends the socket (4410
+//                                  exits the shell; 1006 reconnects);
+//                                  __qaTerm.sent, .acked and .size say what
+//                                  the page sent
 //   --trace JSON        with --fake running: the reply's running calls become
 //                       these (an object, or an array of them), running unless
 //                       they say otherwise. A call with "parent": true is made

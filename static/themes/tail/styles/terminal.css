@@ -1,0 +1,120 @@
+@import url("../../../vendor/xterm/xterm.css");
+/* Tail: the terminal is a tab of the side pane (pane.js), on the pane's
+   own surface. The pane is narrow, so the terminal has a wide mode (half
+   the window) and a full one (all of it). On a phone the pane becomes a
+   full-height sheet with the key bar above the keyboard
+   (static/chat/terminal.js; markup in ../terminal.js). */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+  & .term-dock {
+    --term-bg: var(--panel);
+    --term-fg: var(--mist);
+    --term-accent: var(--tl-ac);
+    position: relative; display: flex; flex-direction: column; height: 100%;
+    border-top: 0; background: var(--term-bg); color: var(--mist);
+    font: var(--tl-fs)/1.4 var(--mono);
+  }
+  & .term-dock[hidden] { display: none; }
+  & .term-grip { position: absolute; z-index: 3; top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; touch-action: none; }
+  & .term-grip:is(:hover, :focus-visible), & .term-dock.is-resizing .term-grip { outline: 0; background: linear-gradient(transparent 3px, var(--tl-ac) 3px, var(--tl-ac) 5px, transparent 5px); }
+  & .term-head { flex: none; display: flex; align-items: center; gap: 2px; height: 2rem; padding: 0 0.3rem 0 0; border-bottom: 1px solid var(--line); }
+  & .term-tabs { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  & .term-tab { flex: 0 1 auto; min-width: 2.5rem; display: flex; align-items: center; height: 2rem; color: var(--mute); }
+  & .term-tab.is-active { color: var(--mist); box-shadow: inset 0 -1px 0 var(--tl-ac); }
+  & .term-tab-main { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 16rem; height: 100%; padding: 0 2px 0 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  & .term-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .term-tab-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+  & .term-tab[data-state="connecting"] .term-tab-dot { background: var(--status-live); }
+  & .term-tab:is([data-state="exited"], [data-state="lost"]) .term-tab-dot { background: var(--mute); }
+  & .term-tab-root { padding: 0 4px; border-radius: 3px; background: color-mix(in srgb, var(--fault) 20%, transparent); color: var(--fault); font-size: 10px; line-height: 15px; }
+  & .term-tab-close { flex: none; width: 22px; height: 22px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--mute); font: 14px/1 var(--code); cursor: pointer; }
+  & .term-tab-close:hover { background: var(--tl-soft); color: var(--mist); }
+  & .term-gap { flex: 1; }
+  & .term-btn { flex: none; display: grid; place-items: center; min-width: 28px; height: 26px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--mute); font: inherit; cursor: pointer; }
+  & .term-btn:hover, & .term-btn:is([aria-pressed="true"], [aria-expanded="true"]) { background: var(--tl-soft); color: var(--mist); }
+  & :is(.term-btn, .term-tab-main, .term-tab-close, .term-choice, .term-key, .term-note-btn):focus-visible { outline: 1px solid var(--tl-ac); outline-offset: -1px; }
+  & .term-touch { display: none; }
+  & .term-new { position: relative; flex: none; }
+  & .term-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; background: var(--ink) !important; min-width: 17rem; max-height: min(22rem, 50vh); overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); box-shadow: 0 10px 28px rgb(0 0 0 / 0.4); }
+  & .term-menu[hidden] { display: none; }
+  & .term-choices { display: flex; flex-direction: column; }
+  & .term-choice { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; min-height: 30px; padding: 6px 10px; border: 0; border-radius: 4px; background: none; color: var(--mist); font: inherit; text-align: left; cursor: pointer; }
+  & .term-choice:hover:not(:disabled) { background: var(--tl-soft); }
+  & .term-choice:disabled { color: var(--mute); cursor: default; }
+  & .term-choice-detail { flex: none; color: var(--mute); }
+  & .term-choice-none { margin: 0; padding: 8px 10px; color: var(--mute); }
+  & .term-find { flex: none; display: flex; align-items: center; gap: 2px; padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--line); }
+  & .term-find[hidden] { display: none; }
+  & .term-find input { flex: 0 1 24rem; min-width: 0; margin-right: auto; height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--mist); font: inherit; outline: 0; }
+  & .term-find input:focus { border-color: var(--tl-ac); }
+  & .term-find.is-miss input { border-color: var(--fault); }
+  & .term-body { position: relative; flex: 1; min-height: 0; }
+  & .term-pane { position: absolute; inset: 0; padding: 6px 2px 2px 10px; }
+  & .term-pane[hidden] { display: none; }
+  & .term-screen { width: 100%; height: 100%; }
+  & .term-screen .xterm { height: 100%; }
+  /* xterm paints its viewport once; the palette follows the theme live. */
+  & .term-screen .xterm-viewport { background-color: var(--term-bg) !important; }
+  & .term-note { position: absolute; z-index: 4; left: 12px; right: 12px; bottom: 14px; width: fit-content; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: calc(100% - 24px); padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+  & .term-note[hidden] { display: none; }
+  & .term-note-text { margin: 0; color: var(--mist); }
+  & .term-note[data-state="lost"] .term-note-text { color: var(--status-live); }
+  & .term-note-actions { display: flex; gap: 4px; }
+  & .term-note-actions:empty { display: none; }
+  & .term-note-btn { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--mist); font: inherit; cursor: pointer; }
+  & .term-note-btn:hover { background: var(--tl-soft); }
+  & .term-note-btn:first-child { border-color: var(--tl-ac); color: var(--tl-ac); }
+  & .term-empty { position: absolute; inset: 0; overflow: auto; padding: 14px 16px; }
+  & .term-empty-title { margin: 0 0 6px 10px; color: var(--mute); }
+  & .term-empty .term-choices { max-width: 30rem; }
+  & .term-empty-error { margin: 0 0 0 10px; color: var(--fault); }
+  & .term-line { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--line); color: var(--tl-ac); }
+  & .term-line[hidden] { display: none; }
+  & .term-line input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--mist); font: 16px var(--code); outline: 0; }
+  & .term-line input:focus { border-color: var(--tl-ac); }
+  & .term-keys { display: none; }
+  & .term-keys-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  & .term-key { min-width: 0; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--mist); font: 14px var(--code); touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  & .term-key:active { background: var(--tl-soft); }
+  & .term-key[data-term-state="once"] { border-color: var(--tl-ac); color: var(--tl-ac); }
+  & .term-key[data-term-state="lock"] { border-color: var(--tl-ac); background: var(--tl-ac); color: var(--on-brass, var(--ink)); }
+  & .term-key[data-term-key="page"], & .term-key[data-term-key="keyboard"] { color: var(--mute); }
+}
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+    & .term-touch { display: grid; }
+    & .term-keys { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 6px 6px calc(6px + var(--safe-bottom)); border-top: 1px solid var(--line); background: var(--ink); }
+  }
+}
+/* The pane's terminal view: no padding, the dock fills it. Wide and full
+   apply while the terminal shows. */
+html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+  &[data-tail-pane="terminal"] .tail-pane-view[data-tail-view="terminal"] { display: block; padding: 0; overflow: hidden; }
+  & .term-wide[aria-pressed="true"] { color: var(--tl-ac); }
+}
+@media (min-width: 801px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"][data-tail-pane="terminal"][data-tail-wide="wide"] { --tl-pane: min(60rem, 55vw); }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"][data-tail-pane="terminal"][data-tail-wide="full"] {
+    & .tail-pane { left: 0; width: auto; border-left: 0; }
+    & .chat-stage { padding-right: 0; }
+  }
+}
+/* A phone: the pane is a full-height sheet, sized to what the keyboard
+   leaves; the terminal's own header replaces the pane's tabs. */
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+    &[data-tail-pane="terminal"] .tail-pane {
+      z-index: 70; top: var(--vv-offset, 0px); height: var(--vv-height, 100dvh); padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+      border: 0; border-radius: 0; box-shadow: none;
+    }
+    &[data-tail-pane="terminal"] .tail-pane-tabs, & .term-wide { display: none; }
+    & .term-head { height: 48px; padding: 0 4px; }
+    & .term-tab { height: 48px; }
+    & .term-tab-main { padding-left: 12px; }
+    & .term-tab-close { width: 40px; height: 44px; margin: 0; }
+    & .term-btn { min-width: 40px; height: 44px; padding: 0 4px; }
+    & .term-find input { height: 36px; font-size: 16px; }
+    & .term-menu { position: fixed; top: calc(var(--safe-top) + 52px); left: 8px; right: 8px; min-width: 0; }
+    & .term-choice { min-height: 48px; align-items: center; }
+  }
+  body.is-keyboard.is-chat .chat[data-view="tail"] .term-keys { padding-bottom: 6px; }
+}

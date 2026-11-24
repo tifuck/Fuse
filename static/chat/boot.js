@@ -20,7 +20,7 @@ function takeResume() {
 }
 
 export function createBoot(ctx) {
-  const { agents, artifacts, composer, sidebar, sync, transcript } = ctx;
+  const { agents, artifacts, composer, sidebar, sync, terminal, transcript } = ctx;
     if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", composer.pinVisualViewport);
     window.visualViewport.addEventListener("scroll", composer.pinVisualViewport);
@@ -34,6 +34,9 @@ export function createBoot(ctx) {
   });
 
     const resume = takeResume();
+
+    // Terminal sessions outlive the page: an open dock reopens on its tabs.
+    if (resume?.terminal) terminal.resume(resume.terminal);
 
     // Opened disclosures, the sidebar and the draft text already survive a
     // reload (sessionStorage, localStorage, the server); this is the rest.
@@ -52,6 +55,7 @@ export function createBoot(ctx) {
       agentTop: agent && !S.agentStick && S.agentLogEl ? S.agentLogEl.scrollTop : null,
       fold: S.agentsFold,
       artifact: (S.artifactOpen && S.currentArtifact?.identifier) || "",
+      terminal: terminal.snapshot(),
       input: {
         key: draftKey(),
         text: S.input.value,
