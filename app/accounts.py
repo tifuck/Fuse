@@ -439,16 +439,24 @@ def delete_user(user_id: int, *, actor_id: int) -> str:
         # Credential rollups are SUM(usage_events); the user's events go below.
         # A locking read: the snapshot predates this point, so a plain SUM
         # would miss an event recorded since, which the DELETE then removes
-        # without its rollup share. The lock also holds new ones off.
-        spent = conn.execute(
+        # without its rollup share. The lock also holds new ones off. The
+        # forced index locks this user's events only: the planner preferred
+        # usage_events_credential, which spans every user's pooled events.
+        spent = conn.native(
             f"""SELECT credential_id, {", ".join(f"COALESCE(SUM({col}), 0) AS {col}" for col in _CRED_ROLLUP_EVENT_COLS)},
                        COALESCE(SUM(count_request), 0) AS requests,
-                       COALESCE(SUM(COALESCE(reported_cost_micros, estimated_cost_micros)), 0) AS cost_micros
-                FROM usage_events WHERE user_id=? AND credential_id IS NOT NULL GROUP BY credential_id"""
-            + db.for_update(conn),
+                       COALESCE(SUM(COALESCE(reported_cost_micros, estimated_cost_micros)), 0) AS cost_micros,
+                       COALESCE(SUM(estimated_cost_micros), 0) AS fuse_api_equiv_micros,
+                       COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=1 THEN 1 ELSE 0 END), 0)
+                         AS fuse_priced_events,
+                       COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=0 THEN 1 ELSE 0 END), 0)
+                         AS fuse_unpriced_events
+                FROM usage_events FORCE INDEX (usage_events_user_created)
+                WHERE user_id=%s AND credential_id IS NOT NULL GROUP BY credential_id FOR UPDATE""",
             (user_id,),
         ).fetchall()
-        rollup_cols = (*_CRED_ROLLUP_EVENT_COLS, "requests", "cost_micros")
+        rollup_cols = (*_CRED_ROLLUP_EVENT_COLS, "requests", "cost_micros", "fuse_api_equiv_micros",
+                       "fuse_priced_events", "fuse_unpriced_events")
         conn.executemany(
             f"UPDATE credentials SET {', '.join(f'{col}={col}-?' for col in rollup_cols)} WHERE id=?",
             [(*(int(row[col]) for col in rollup_cols), row["credential_id"]) for row in spent],

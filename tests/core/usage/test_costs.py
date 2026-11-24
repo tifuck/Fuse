@@ -5,7 +5,11 @@ Sample for the money pattern: assert exact integer micros computed by hand
 from the published rates, and the invariant that every rollup equals the sum
 of its events. Rates are micros per million tokens: 1_000_000 is $1/M.
 """
+import threading
+
 from app import accounts, db, stats
+from tests.core.features._support import waiting_on
+from tests.core.helpers import wait_until
 from tests.core.usage._support import api_key, cost_sums, rollup_drift, source, user
 
 # $1 per million input tokens, $2 per million output tokens (micros per million).
@@ -246,4 +250,81 @@ def test_token_counts_are_clamped_and_totals_never_undercount(fresh_db):
     # The uncounted attempt adds tokens but no request.
     assert int(db.fetchone("SELECT requests FROM provider_usage")["requests"]) == 1
     assert int(db.fetchone("SELECT requests FROM credentials WHERE id=?", (cred,))["requests"]) == 1
+    assert rollup_drift() == {}
+
+
+def _in_thread(fn, *args):
+    out = {"done": threading.Event()}
+
+    def body():
+        try:
+            fn(*args)
+        except BaseException as exc:  # noqa: BLE001 - reported by the test
+            out["error"] = exc
+        finally:
+            out["done"].set()
+
+    worker = threading.Thread(target=body, daemon=True)
+    worker.start()
+    return worker, out
+
+
+def _waiting_for_price_lock():
+    with db.tx() as conn:
+        return conn.native(
+            "SELECT 1 FROM information_schema.PROCESSLIST WHERE ID<>CONNECTION_ID() AND DB=DATABASE()"
+            " AND COMMAND='Query' AND INFO LIKE '%%GET_LOCK%%'"
+        ).fetchone() is not None
+
+
+def test_usage_is_recorded_while_a_price_change_reprices_history(fresh_db):
+    uid = user()
+    source_id, cred = _pool_credential(uid)
+    first = _record(uid, source_id, cred, prompt_tokens=1000)
+    _record(uid, source_id, cred, prompt_tokens=2000)
+
+    # A held event row stalls the reprice walk after the new price committed.
+    with db.tx() as conn:
+        conn.execute("SELECT id FROM usage_events WHERE id=?" + db.for_update(conn), (first["id"],))
+        save, saved = _in_thread(db.save_model_price, "zai", "glm-x", INPUT, None, OUTPUT, None)
+        wait_until(lambda: waiting_on("usage_events"))
+        # A second change of the same price waits for the first walk to end.
+        resave, resaved = _in_thread(db.save_model_price, "zai", "glm-x", INPUT * 2, None, OUTPUT, None)
+        wait_until(_waiting_for_price_lock)
+        # Usage of that model is neither blocked nor dropped meanwhile.
+        record, recorded = _in_thread(lambda: _record(uid, source_id, cred, prompt_tokens=500))
+        wait_until(lambda: recorded["done"].is_set())
+        assert "error" not in recorded and not saved["done"].is_set() and not resaved["done"].is_set()
+    for worker in (save, resave, record):
+        worker.join(10)
+    assert "error" not in saved and "error" not in resaved
+
+    costs = [int(r["estimated_cost_micros"]) for r in db.fetchall(
+        "SELECT estimated_cost_micros FROM usage_events WHERE total_tokens>0 ORDER BY id")]
+    assert costs == [2000, 4000, 1000]
+    assert rollup_drift() == {}
+
+
+def test_credential_coverage_counters_follow_every_event_write(fresh_db):
+    uid, other = user(), user("other@core.test")
+    source_id, cred = _pool_credential(uid)
+    db.save_model_price("zai", "glm-x", INPUT, None, OUTPUT, None)
+    _record(uid, source_id, cred, prompt_tokens=1000, completion_tokens=400)
+    _record(uid, source_id, cred, "new-model", prompt_tokens=10)
+    _record(uid, source_id, cred)  # no tokens: neither priced nor unpriced
+    _record(other, source_id, cred, prompt_tokens=500)
+
+    def coverage():
+        row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred,))
+        return stats.fuse_coverage([row]).get(cred)
+
+    assert coverage() == {"api_equiv": 2300, "priced": 2, "unpriced": 1}
+    db.save_model_price("zai", "new-model", INPUT, None, OUTPUT, None)
+    assert coverage() == {"api_equiv": 2310, "priced": 3, "unpriced": 0}
+    db.delete_model_price("zai", "glm-x")
+    assert coverage() == {"api_equiv": 10, "priced": 1, "unpriced": 2}
+    accounts.delete_user(other, actor_id=uid)
+    assert coverage() == {"api_equiv": 10, "priced": 1, "unpriced": 1}
+    # Rows without the counters are read by id.
+    assert stats.fuse_coverage([{"id": cred}]) == {cred: coverage()}
     assert rollup_drift() == {}

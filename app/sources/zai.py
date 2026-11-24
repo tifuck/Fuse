@@ -585,22 +585,23 @@ class ZaiSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("zai", refresh_pool_quota)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall(
-                "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
-                (self.source_id,),
-            ),
-            "zai",
-            user_id,
-        )
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": "No Z.AI accounts in the pool"})
-        model = body.get("model") or ZAI_MODELS[0]
-        prepared = _chat_payload(body)
-        prefer_id = lookup("zai", session_id)
-        hint_id = lookup("zai", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "zai")
+        with db.read_memo():
+            self.creds = pool_policy.filter_credentials(
+                db.fetchall(
+                    "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
+                    (self.source_id,),
+                ),
+                "zai",
+                user_id,
+            )
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": "No Z.AI accounts in the pool"})
+            model = body.get("model") or ZAI_MODELS[0]
+            prepared = _chat_payload(body)
+            prefer_id = await asyncio.to_thread(lookup, "zai", session_id)
+            hint_id = await asyncio.to_thread(lookup, "zai", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "zai")
         failover = Failover()
         why: list = []
         while True:
@@ -616,7 +617,7 @@ class ZaiSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            note_pool_invoke(cred["id"])
+            await asyncio.to_thread(note_pool_invoke, cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
             reserve(cred["id"])
             key = extra.get("api_key") or accounts.cred_secret(cred)
@@ -673,7 +674,7 @@ class ZaiSource:
                     continue
                 if status == 200:
                     failover.served()
-                    bind("zai", session_id, cred["id"])
+                    await asyncio.to_thread(bind, "zai", session_id, cred["id"])
                 last.response_headers = response_headers
                 last.attempts = attempts
                 return last

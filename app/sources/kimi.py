@@ -1002,15 +1002,16 @@ class KimiSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("kimi", refresh_pool_quota)
-        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "kimi", user_id)
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": "No Kimi accounts in the pool"})
-        model = body.get("model") or KIMI_MODELS[0]
-        prepared = _chat_payload(body, session_id)
-        prefer_id = lookup("kimi", session_id)
-        hint_id = lookup("kimi", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "kimi")
+        with db.read_memo():
+            self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "kimi", user_id)
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": "No Kimi accounts in the pool"})
+            model = body.get("model") or KIMI_MODELS[0]
+            prepared = _chat_payload(body, session_id)
+            prefer_id = await asyncio.to_thread(lookup, "kimi", session_id)
+            hint_id = await asyncio.to_thread(lookup, "kimi", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "kimi")
         failover = Failover()
         why: list = []
         while True:
@@ -1024,7 +1025,7 @@ class KimiSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            note_pool_invoke(cred["id"])
+            await asyncio.to_thread(note_pool_invoke, cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
             token = _bearer(cred, extra)
             region = extra.get("region") or "global"
@@ -1122,7 +1123,7 @@ class KimiSource:
                     continue
                 if status == 200:
                     failover.served()
-                    bind("kimi", session_id, cred["id"])
+                    await asyncio.to_thread(bind, "kimi", session_id, cred["id"])
                 last.response_headers = response_headers
                 last.attempts = attempts
                 return last

@@ -752,17 +752,18 @@ class ClaudeSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         rows = await pool_refresh.pool_rows(self.source_id, refresh_due)
         pool_refresh.start("claude", refresh_pool_quota)
-        self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "claude", user_id)
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": {"message": "No Claude accounts in the pool"}})
-        requested = str(body.get("model") or CLAUDE_MODELS[0])
-        upstream = upstream_id(requested)
-        want_stream = bool(body.get("stream"))
-        payload = build_messages_payload(body, upstream)
-        prefer_id = lookup("claude", session_id)
-        hint_id = lookup("claude", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "claude")
+        with db.read_memo():
+            self.creds = await asyncio.to_thread(pool_policy.filter_credentials, rows, "claude", user_id)
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": {"message": "No Claude accounts in the pool"}})
+            requested = str(body.get("model") or CLAUDE_MODELS[0])
+            upstream = upstream_id(requested)
+            want_stream = bool(body.get("stream"))
+            payload = build_messages_payload(body, upstream)
+            prefer_id = await asyncio.to_thread(lookup, "claude", session_id)
+            hint_id = await asyncio.to_thread(lookup, "claude", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "claude")
         failover = Failover()
         why: list = []
         while True:
@@ -776,7 +777,7 @@ class ClaudeSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            note_pool_invoke(cred["id"])
+            await asyncio.to_thread(note_pool_invoke, cred["id"])
             token = _bearer(cred, extra)
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             resp = None
@@ -896,7 +897,7 @@ class ClaudeSource:
                     return last
                 usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
                 failover.served()
-                bind("claude", session_id, cred["id"])
+                await asyncio.to_thread(bind, "claude", session_id, cred["id"])
                 remember()
                 last = ChatResult(status=200, body=obj, usage=usage if isinstance(usage, dict) else {}, credential_id=cred["id"], model=fuse_id(upstream))
                 last.attempts = attempts

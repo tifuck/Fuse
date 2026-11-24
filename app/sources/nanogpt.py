@@ -896,36 +896,37 @@ class NanoGPTSource:
                 user_id,
             )
 
-        rows = candidates()
-        if any(_stale_loan(row, uid) for row in rows):
-            # A lent key serves only on a recent reading: wait for the
-            # refresh rather than refuse the request.
-            await pool_refresh.wait(refresh)
+        with db.read_memo():
             rows = candidates()
+            if any(_stale_loan(row, uid) for row in rows):
+                # A lent key serves only on a recent reading: wait for the
+                # refresh rather than refuse the request.
+                await pool_refresh.wait(refresh)
+                rows = candidates()
 
-        def usable(cred, extra) -> bool:
-            # NanoGPT's own advice that this key can route nothing right now.
-            if not credential_is_authed(cred, extra) or _billing(extra).get("recommended") == "unavailable":
-                return False
-            # A lent key's reading must also be recent: the refresh above
-            # was awaited for a stale one unless it failed.
-            return pool_policy.donated_by(cred) == uid or (
-                rec["subscription"] and shareable(extra) and reading_recent(extra)
+            def usable(cred, extra) -> bool:
+                # NanoGPT's own advice that this key can route nothing right now.
+                if not credential_is_authed(cred, extra) or _billing(extra).get("recommended") == "unavailable":
+                    return False
+                # A lent key's reading must also be recent: the refresh above
+                # was awaited for a stale one unless it failed.
+                return pool_policy.donated_by(cred) == uid or (
+                    rec["subscription"] and shareable(extra) and reading_recent(extra)
+                )
+
+            body = {**body, "messages": await png_gifs(body.get("messages"))}
+            prefs = model_prefs(uid)
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            # A refusal, not an outage: a 503 here read as transient and was retried.
+            last = ChatResult(
+                status=403,
+                body={"error": {"message": "No NanoGPT account can serve this model for you.", "type": "permission_error"}},
+                model=upstream,
             )
-
-        body = {**body, "messages": await png_gifs(body.get("messages"))}
-        prefs = model_prefs(uid)
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        # A refusal, not an outage: a 503 here read as transient and was retried.
-        last = ChatResult(
-            status=403,
-            body={"error": {"message": "No NanoGPT account can serve this model for you.", "type": "permission_error"}},
-            model=upstream,
-        )
-        prefer_id = lookup("nanogpt", session_id)
-        hint_id = lookup("nanogpt", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(uid, "nanogpt")
+            prefer_id = await asyncio.to_thread(lookup, "nanogpt", session_id)
+            hint_id = await asyncio.to_thread(lookup, "nanogpt", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, uid, "nanogpt")
         failover = Failover()
         now = datetime.now(timezone.utc)
         why: list = []
@@ -954,7 +955,7 @@ class NanoGPTSource:
             cred, extra = picked
             cid = int(cred["id"])
             tried.add(cid)
-            note_pool_invoke(cid)
+            await asyncio.to_thread(note_pool_invoke, cid)
             owner = pool_policy.donated_by(cred) == uid
             covered = rec["subscription"] and billing_has_subscription(_billing(extra))
             payload = chat_payload(body, upstream, rec, owner=owner, prefs=prefs, covered=covered)
@@ -1005,7 +1006,7 @@ class NanoGPTSource:
                     continue
                 if status == 200:
                     failover.served()
-                    bind("nanogpt", session_id, cid)
+                    await asyncio.to_thread(bind, "nanogpt", session_id, cid)
                 last.attempts = attempts
                 return last
             finally:

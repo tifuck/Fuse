@@ -177,3 +177,44 @@ def test_batched_card_coverage_matches_one_credential_at_a_time(fresh_db):
 
     assert [stats.fuse_view(row, coverage=coverage) for row in rows] == [stats.fuse_view(row) for row in rows]
     assert set(coverage) == {creds[0], creds[1]}
+
+
+def test_a_half_hour_offset_viewer_gets_the_raw_event_page_from_the_rollup(fresh_db, monkeypatch):
+    uid, other = user(), user("other@core.test")
+    key = api_key(uid)
+    db.save_model_price("zai", "glm-x", 1_000_000, None, 2_000_000, None)
+    # A +5:30 viewer's midnight is 18:30 UTC: events on both sides of it, in
+    # hours it does not split, and at both edges of the windows.
+    for n, at in enumerate(("2026-11-10T18:10:00Z", "2026-11-10T18:40:00Z", "2026-11-10T20:15:00Z",
+                            "2026-11-09T00:45:00Z", "2026-11-09T06:20:00Z", "2026-11-04T18:29:59Z",
+                            "2026-10-13T18:30:00Z", _at(days=30, minutes=-5), _at(days=7, minutes=-5),
+                            _at(minutes=5))):
+        db.record_usage(uid, None, None, "glm-x" if n % 3 else "glm-y", {"prompt_tokens": 1000 + 37 * n},
+                        at, provider="zai", key_id=key if n % 2 else None)
+    db.record_usage(other, None, None, "glm-x", {"prompt_tokens": 5}, "2026-11-10T18:50:00Z", provider="zai")
+
+    def pages():
+        token = stats.display_zone.set(timezone(timedelta(hours=5, minutes=30)))
+        try:
+            return [stats.usage_analytics(uid, range_id=range_id, **scope)
+                    for range_id in ("24h", "3d", "7d", "30d", "all") for scope in ({}, {"all_users": True})]
+        finally:
+            stats.display_zone.reset(token)
+
+    raw_spans = []
+    real_events = stats._event_rows
+
+    def spy(granule, ranges, *args, **kwargs):
+        raw_spans.extend(ranges)
+        return real_events(granule, ranges, *args, **kwargs)
+
+    monkeypatch.setattr(stats, "_event_rows", spy)
+    got = pages()
+    monkeypatch.setattr(stats, "_window_rows", lambda user_id, start, end, provider, all_users, *, subject_id=None,
+                        granule=3600, **_: real_events(granule, [(start, end)], user_id, provider, all_users,
+                                                       subject_id=subject_id))
+    assert got == pages()
+    # Day buckets: only the hour a viewer's midnight splits (18:00 UTC) is
+    # read from the events; the whole hours around it stay rollup rows.
+    assert ("2026-11-10T18:00:00Z", "2026-11-10T19:00:00Z") in raw_spans
+    assert ("2026-11-10T20:00:00Z", "2026-11-10T21:00:00Z") not in raw_spans
