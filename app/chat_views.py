@@ -922,12 +922,25 @@ RUN_COLUMNS = ("id, thread_id, user_id, status, request, message_id, message, cr
                "cancel_requested_at, activity")
 
 
+_view_columns: str | None = None
+
+
+def _thread_view_columns(conn) -> str:
+    """chat_threads' columns but retained_history (often hundreds of KB): the
+    view keys its meter on the digest and the replay build reads it on a miss."""
+    global _view_columns
+    if _view_columns is None:
+        names = [row[1] for row in conn.execute("PRAGMA table_info(chat_threads)").fetchall()]
+        _view_columns = ", ".join(f"t.{name}" for name in names if name != "retained_history")
+    return _view_columns
+
+
 def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
     from . import chat_checkpoint
     from . import chats
 
     row = conn.execute(
-        """SELECT t.*, h.alias AS host_alias, p.name AS project_name, p.color AS project_color,
+        f"""SELECT {_thread_view_columns(conn)}, MD5(t.retained_history) AS retained_digest, h.alias AS host_alias, p.name AS project_name, p.color AS project_color,
                   p.logo_rev AS project_logo_rev, p.archived AS project_archived, s.name AS schedule_name
            FROM chat_threads t
            LEFT JOIN user_hosts h ON h.id=t.host_id

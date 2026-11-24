@@ -337,8 +337,9 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
         model = data.get("model") or ""
         stored = state.get("meter") if isinstance(state.get("meter"), dict) else {}
         type_id = context_meter.source_type_for_model(model, stored)
-        retained = row["retained_history"] if "retained_history" in keys else "{}"
-        meter_key = (row["id"], row["user_id"], model, _digest(row["messages"]), _digest(raw_comp), _digest(retained))
+        retained = row["retained_history"] if "retained_history" in keys else None if "retained_digest" in keys else "{}"
+        retained_key = row["retained_digest"] if "retained_digest" in keys else _digest(retained)
+        meter_key = (row["id"], row["user_id"], model, _digest(row["messages"]), _digest(raw_comp), retained_key)
         cached = _cached_meter(meter_key)
         if cached is None:
             # Measure the validated replay projection, including saved tool pairs,
@@ -1117,6 +1118,10 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
             if expected_revision != int(row["revision"]):
                 return False
         public = str(row["public_id"]) if "public_id" in row.keys() and row["public_id"] else public_id_for(pk, conn)
+        # All of this thread's runs first, through the same index walk as
+        # update_thread: locking only the active ones let a rename hold the
+        # thread's other runs that the DELETE below needs (deadlock).
+        conn.execute("SELECT id FROM chat_runs WHERE thread_id=?", (pk,)).fetchall()
         active = conn.execute("SELECT id, message_id, status, parent_run_id FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running')", (pk, user_id)).fetchall()
         # After the chat_runs read and before the cancel events: run, thread,
         # then the event cursor, the order finalizers and thread writers use.
