@@ -22,7 +22,7 @@ One OpenAI-compatible endpoint, a chat that searches the web and writes code on 
 
 <br>
 
-<img src="docs/screenshots/hero.png" alt="Fuse chat: the agent edits a Python file on a connected machine, with inline diffs, file writes and shell commands in the transcript" width="900">
+<img src="docs/screenshots/hero.png" alt="Fuse chat in the Desktop view: a sessions sidebar, and a reply whose 15 opened steps read, search, edit, create files and run commands, two of them failed" width="900">
 
 </div>
 
@@ -113,9 +113,16 @@ Installable web app, a desktop app, and live sync across tabs and devices.
 
 ## Features
 
-### Edits your code, shows every diff
+### Three views, one agent
 
-<img src="docs/screenshots/edits.png" alt="Agent transcript: an Update with a numbered red and green diff, then a Write creating a new file on the connected machine" width="100%">
+<img src="docs/screenshots/view-console.png" alt="The same chat in the Console view: Update, Bash and Web Search rows opened, with a red and green diff and a failed command's output" width="49%"> <img src="docs/screenshots/view-tail.png" alt="The same chat in the Tail view: one line per call, and the edit's diff in the side pane" width="49%">
+
+Pick how the chat looks under Appearance › Layout: **Console**, dense and
+terminal-like (left); **Tail**, one line per call with its output in a side
+pane (right); or **Desktop**, a native coding-app window with a sessions
+sidebar and an inspector (top).
+
+### Edits your code, shows every diff
 
 Open a project from chat and the agent reads, edits and runs commands in it.
 Every change lands in the transcript as a real diff, tagged with the machine
@@ -123,30 +130,32 @@ it ran on, and nothing runs without a permission prompt.
 
 ### One prompt, many machines
 
-<img src="docs/screenshots/hosts.png" alt="One shell command fanned out to web06 through web10 and a Windows build box, each with its own output row; web09 fails with an I/O error" width="100%">
-
 Connect Linux and Windows machines with the `fuse-agent` connector (outbound
 HTTPS only, no ports to open) or over SSH. One command runs on a whole list of
 hosts at once, with a row per host so a failing box stands out.
 
 ### Subagents that fan out
 
-<img src="docs/screenshots/subagents.png" alt="Three Explore subagents finished, each with tool uses, tokens, time and speed, then a fourth agent" width="640">
+<img src="docs/screenshots/subagents.png" alt="Desktop view with the Activity inspector: one subagent running with its context and time, three finished, one failed and one stopped" width="100%">
 
 Hand work to parallel subagents and get their reports back in the chat.
 Background commands and log monitors report in the same way, even while the
 main reply is still going.
 
-### Projects on every machine
+### A terminal on every machine
 
-<img src="docs/screenshots/machines.png" alt="A connector machine with four project folders, one read-only and one archived" width="760">
+<img src="docs/screenshots/terminal.png" alt="A terminal docked under the chat running top on qa-box, with live CPU, memory, disk and network figures above it" width="100%">
+
+Open a shell on the chat's machine, Linux or Windows, right under the
+conversation, with live CPU, memory, disk and network figures beside the
+prompt.
 
 Each machine keeps its own projects. Mark one read-only, archive it, or start
 a new chat in it with one click.
 
 ### Every model in one place
 
-<img src="docs/screenshots/models.png" alt="Models page: available models grouped by provider, Local inference, Ollama Cloud and Devin" width="100%">
+<img src="docs/screenshots/models.png" alt="Models page, Locked tab: the models that linking a Grok, Claude, ChatGPT, Cursor or NanoGPT account would unlock" width="100%">
 
 - **Model sources**: a llama.cpp server, any OpenAI-compatible endpoint (with
   key rotation), Ollama Cloud, and per-user OpenRouter and Experiential Labs
@@ -160,21 +169,17 @@ a new chat in it with one click.
 
 ### Artifacts beside the chat
 
-<img src="docs/screenshots/artifacts.png" alt="A reply publishing four artifacts as cards with version numbers and Open links" width="100%">
+<img src="docs/screenshots/artifacts.png" alt="Replies with inline artifacts: four key numbers compared with last week, and a bar chart of requests by model" width="100%">
 
 Replies can publish live HTML or Markdown pages: dashboards, docs, small
 tools. Every edit is a new version, and any one can be shared by link.
 
 ### Memory you control
 
-<img src="docs/screenshots/memory.png" alt="Recall, Remember and Forget calls; a memory holding an API key is refused" width="720">
-
 Opt-in notes that chats save and recall later, per project or global. Fuse
 refuses to remember anything that looks like a secret.
 
 ### Skills
-
-<img src="docs/screenshots/skills.png" alt="Installed skills with on/off switches, a skills.sh catalog search and a zip upload" width="100%">
 
 Procedures the agent follows, run with `/name`. Install from GitHub or
 skills.sh, upload a zip, or have the agent write one. Skills that are off cost
@@ -182,14 +187,12 @@ no tokens.
 
 ### Make it yours
 
-<img src="docs/screenshots/themes.png" alt="Theme picker: Fuse (black and ice blue) selected, plus 15 other themes and Custom" width="760">
-
 Sixteen themes plus your own colors, animated backdrops and a choice of
 reading fonts. The default is black with an ice-blue accent.
 
 ### Take it with you
 
-<img src="docs/screenshots/mobile.png" alt="Fuse chat on a phone with the subagent tree and composer" width="280" align="right">
+<img src="docs/screenshots/mobile.png" alt="Fuse chat on a phone in the Desktop view: a reply's opened steps and the composer" width="280" align="right">
 
 - **Installable web app** on phones and tablets, with Web Push when a reply
   finishes or needs your approval.
