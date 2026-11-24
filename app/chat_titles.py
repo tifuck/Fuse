@@ -236,6 +236,10 @@ PROVISIONAL_TITLE_CHARS = 48
 # A failed title is retried by the sweep with backoff, then only when the
 # user sends another message (Claude Code retries on the next prompt).
 TITLE_SWEEP_ATTEMPTS = 3
+# title_attempted_at of a chat with no qualifying prompt: later than every
+# backoff cutoff, so the sweep stops re-reading its transcript; only a due
+# chat (the user sent a message) is checked again.
+TITLE_PARKED = "9999-12-31T23:59:59Z"
 _TITLE_THINK = re.compile(r"</?(?:think|thinking|thought|reasoning)>", re.I)
 _TITLE_THINK_BLOCK = re.compile(
     r"<(?:think|thinking|thought|reasoning)>.*?</(?:think|thinking|thought|reasoning)>",
@@ -626,7 +630,7 @@ def pending_title_threads(limit=3, *, attempted_before="", due=()):
             unqualified.append(int(row["id"]))
     if unqualified:
         db.execute(f"UPDATE chat_threads SET title_attempted_at=? WHERE id IN ({','.join('?' for _ in unqualified)})",
-                   (db.now(), *unqualified))
+                   (TITLE_PARKED, *unqualified))
     return out
 
 

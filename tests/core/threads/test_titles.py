@@ -94,6 +94,25 @@ def test_prompts_too_short_or_commands_wait(fresh_db):
     assert chat_titles.pending_title_threads(attempted_before=chat_titles._backoff_cutoff()) == []
 
 
+def test_an_unqualified_chat_is_not_reread_until_the_next_message(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    first = chat_store.start_turn(uid, thread["id"], "hi", thread["revision"], None)
+    numeric = pk(uid, thread["id"])
+    assert chat_titles.pending_title_threads(attempted_before=chat_titles._backoff_cutoff()) == []
+
+    # Long after the backoff the sweep still leaves it alone.
+    with patch.object(chats, "parse_messages", wraps=chats.parse_messages) as parsed:
+        assert chat_titles.pending_title_threads(attempted_before="3000-01-01T00:00:00Z") == []
+    assert not parsed.called
+
+    chat_store.finish_run(first["run"]["id"], {"content": "hello"}, "completed")
+    current = chats.get_thread(uid, thread["id"])
+    chat_store.start_turn(uid, thread["id"], "Plan a three day trip to Lisbon in spring", current["revision"], None)
+    due = chat_titles.pending_title_threads(attempted_before=chat_titles._backoff_cutoff(), due=[numeric])
+    assert [item["id"] for item in due] == [numeric]
+
+
 def test_a_lease_lets_only_one_job_name_the_chat(fresh_db):
     uid = make_user()
     thread = _chat_with_prompt(uid)
