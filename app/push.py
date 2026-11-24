@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit, urlunsplit
 
 from . import db
@@ -26,13 +27,20 @@ logger = logging.getLogger(__name__)
 _KEY_PATH = ROOT / "data" / "vapid.json"
 
 try:
+    import requests
     from pywebpush import WebPushException, webpush
 
     HAVE_PYWEBPUSH = True
+    _session = requests.Session()
 except Exception:  # pragma: no cover - dependency missing
     webpush = None
     WebPushException = Exception
     HAVE_PYWEBPUSH = False
+    _session = None
+
+# Sends block up to their 15 s socket timeout: a pool of their own keeps
+# them from taking default-executor threads the database calls need.
+_send_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="fuse-push")
 
 _keys: dict | None = None
 MAX_SUBSCRIPTIONS = 20
@@ -277,6 +285,7 @@ def _send_one(row, payload: str) -> bool:
             # The caller's wait_for cannot stop this worker thread: without a
             # socket timeout a stalled endpoint pins a shared executor slot.
             timeout=15,
+            requests_session=_session,
         )
         db.execute(
             "UPDATE push_subscriptions SET last_push_at=? WHERE id=?",
@@ -298,7 +307,8 @@ def _send_one(row, payload: str) -> bool:
 
 async def _send_bounded(row: dict, payload: str) -> bool:
     try:
-        return bool(await asyncio.wait_for(asyncio.to_thread(_send_one, row, payload), 20))
+        loop = asyncio.get_running_loop()
+        return bool(await asyncio.wait_for(loop.run_in_executor(_send_pool, _send_one, row, payload), 20))
     except Exception:
         return False
 
