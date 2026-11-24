@@ -117,13 +117,14 @@ def _commit_publications(batch, attempts=3):
             # locks across the batch is safe (they are released only at
             # commit); acquiring a run row while holding a cursor row would
             # invert finish_run's lock order and deadlock under load.
-            alive = []
-            for _user_id, _type, _thread_id, _payload, guard_run, _future in batch:
-                if guard_run is None:
-                    alive.append(True)
-                    continue
-                row = conn.execute("SELECT status FROM chat_runs WHERE id=?", (guard_run,)).fetchone()
-                alive.append(row is not None and row["status"] in chat_tx.ACTIVE)
+            guards = list(dict.fromkeys(item[4] for item in batch if item[4] is not None))
+            status = {}
+            if guards:
+                marks = ",".join("?" * len(guards))
+                rows = conn.execute(f"SELECT id, status FROM chat_runs WHERE id IN ({marks})", guards).fetchall()
+                status = {row["id"]: row["status"] for row in rows}
+            alive = [guard_run is None or status.get(guard_run) in chat_tx.ACTIVE
+                     for _user_id, _type, _thread_id, _payload, guard_run, _future in batch]
             # Phase 2: FIFO event allocation under the per-user cursor locks.
             for index, (user_id, type, thread_id, payload, guard_run, _future) in enumerate(batch):
                 if not alive[index]:
