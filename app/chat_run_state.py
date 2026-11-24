@@ -1003,27 +1003,49 @@ def list_thread_agents(user_id, thread_id, limit=100):
             [row["id"] for row in rows],
         ):
             counts[item["pid"]] = int(item["c"])
+    reqs, fields, needed = {}, {}, []
+    with _agent_fields_lock:
+        for row in rows:
+            req = chat_views.with_activity({"agent": _json_field(row["agent_json"]), "model": _json_field(row["model_json"])}, row)
+            reqs[row["id"]] = req
+            agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
+            known = _agent_fields.get((row["id"], row["message_digest"]))
+            if known is not None:
+                fields[row["id"]] = known
+            if known is None or (row["status"] not in chat_tx.ACTIVE and _summary_key(row["status"], agent) not in known["summaries"]):
+                needed.append(row["id"])
+    messages = {}
+    for start in range(0, len(needed), 200):
+        batch = needed[start:start + 200]
+        for item in db.fetchall(f"SELECT id, message, {digest} AS message_digest FROM chat_runs WHERE id IN ({','.join('?' * len(batch))})", batch):
+            try:
+                message = json.loads(item["message"])
+            except (json.JSONDecodeError, TypeError):
+                message = {}
+            message = message if isinstance(message, dict) else {}
+            messages[item["id"]] = message
+            with _agent_fields_lock:
+                entry = _agent_fields.get((item["id"], item["message_digest"]))
+                if entry is None:
+                    entry = _agent_message_fields(message)
+                    _agent_fields[(item["id"], item["message_digest"])] = entry
+                    while len(_agent_fields) > _AGENT_FIELDS_MAX:
+                        _agent_fields.pop(next(iter(_agent_fields)))
+            fields[item["id"]] = entry
     out = []
     for row in rows:
-        req = chat_views.with_activity({"agent": _json_field(row["agent_json"]), "model": _json_field(row["model_json"])}, row)
+        req = reqs[row["id"]]
         agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
-        try:
-            message = json.loads(row["message"])
-        except (json.JSONDecodeError, TypeError):
-            message = {}
-        message = message if isinstance(message, dict) else {}
-        tools = message.get("tools") if isinstance(message.get("tools"), list) else []
-        tool_counts: dict[str, int] = {}
-        for trace in tools:
-            if not isinstance(trace, dict):
-                continue
-            name = str(trace.get("name") or "")
-            if not name:
-                continue
-            tool_counts[name] = tool_counts.get(name, 0) + 1
-        recent = chat_views.agent_recent_calls(tools)
+        derived = fields.get(row["id"]) or _agent_message_fields({})
+        summary = ""
+        if row["status"] not in chat_tx.ACTIVE:
+            key = _summary_key(row["status"], agent)
+            summary = derived["summaries"].get(key)
+            if summary is None:
+                summary = chat_views.child_writeup({"status": row["status"], "message": messages.get(row["id"], {}), "request": req})[:200]
+                derived["summaries"][key] = summary
         quiet_s = chat_views._iso_age(row["updated_at"] or row["created_at"])
-        current = chat_views.agent_current_activity(message, agent.get("activity"), row["status"])
+        current = chat_views.agent_current_activity(derived["slim"], agent.get("activity"), row["status"])
         if row["status"] in chat_tx.ACTIVE:
             if quiet_s >= STALL_IDLE_SECONDS:
                 current = "stalled"
@@ -1051,21 +1073,18 @@ def list_thread_agents(user_id, thread_id, limit=100):
             "root_run_id": row["root_run_id"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "summary": (chat_views.child_writeup({"status": row["status"], "message": message, "request": req})
-                        if row["status"] not in chat_tx.ACTIVE else "")[:200],
-            "error": str(message.get("error") or "")[:400],
+            "summary": summary,
+            "error": derived["error"],
             "children": counts.get(row["id"], 0),
-            "tool_counts": tool_counts,
-            "recent": recent,
+            "tool_counts": dict(derived["tool_counts"]),
+            "recent": [dict(call) for call in derived["recent"]],
             "current": current,
             "quiet_s": round(quiet_s, 1),
             "wake_state": _agent_wake_state(agent, row["status"], stopped_at, row["cancel_requested"]),
             "context": chat_views._agent_context_chip(req, agent, row),
             # The child's own tok/s (gen_ms/gen_out/gen_est, see consume.GenClock).
-            "gen": {key: value for key, value in usage.items()
-                    if key in ("gen_ms", "gen_out", "gen_est") and type(value) is int}
-            if isinstance(usage := message.get("usage"), dict) else {},
-            **run_work_fields(row["id"], agent, message),
+            "gen": dict(derived["gen"]),
+            **run_work_fields(row["id"], agent, derived["slim"]),
         }
         out.append(entry)
     return out
