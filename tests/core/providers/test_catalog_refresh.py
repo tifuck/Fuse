@@ -82,6 +82,36 @@ def test_a_failing_fetch_backs_off_and_keeps_the_saved_list(fresh_db, upstream):
     assert catalogs.failed(sid, "deepseek", "again", 100) <= 110  # never past the TTL
 
 
+def test_a_failure_that_began_before_a_newer_success_leaves_that_success_alone(fresh_db, monkeypatch):
+    sid = keyed.ensure_source("deepseek")
+    key(sid, "sk-deepseek-key-123")
+
+    async def fails_after_another_fetch_succeeded(self, stored=None):
+        catalogs.saved(sid, "deepseek", ["deepseek/deepseek-chat"], 21600)
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(keyed.KeyedSource, "shared_models", fails_after_another_fetch_succeeded)
+    asyncio.run(sources.refresh_due_catalogs())
+    row = catalogs.get(sid)
+    assert (row["failures"], row["error"], row["models"]) == (0, "", ["deepseek/deepseek-chat"])
+    assert row["next_due"] > time.time() + 3600
+
+
+def test_a_key_change_during_a_fetch_drops_the_list_that_fetch_got(fresh_db, monkeypatch):
+    sid = keyed.ensure_source("deepseek")
+    key(sid, "sk-deepseek-key-123")
+    catalogs.save_detail(sid, "deepseek", {"m": {"price": 1}}, 1.0)
+
+    async def key_changes_mid_fetch(self, stored=None):
+        sources.invalidate_model_cache("deepseek")
+        return ["deepseek/old-key-model"]
+
+    monkeypatch.setattr(keyed.KeyedSource, "shared_models", key_changes_mid_fetch)
+    asyncio.run(sources.refresh_due_catalogs())
+    assert catalogs.get(sid)["models"] == [] and catalogs.load_detail(sid) is None
+    assert not [k for k in sources._model_cache if k[0] == sid]
+
+
 def test_an_unchanged_catalog_answers_304_and_keeps_its_list(fresh_db, upstream):
     uid = quick_user()
     sid = keyed.ensure_source("deepseek")
