@@ -175,8 +175,11 @@ export function createInput(ctx) {
       const composerFocus = S.form.contains(document.activeElement) &&
         document.activeElement.matches("textarea, input, [contenteditable='true']");
       const mobile = window.matchMedia("(max-width: 800px)").matches;
-      const sheetFocus = document.activeElement instanceof Element &&
-        Boolean(document.activeElement.closest("[data-chat-sheet], .fp-dialog"));
+      // A terminal sizes itself to what the keyboard leaves, like a sheet.
+      const terminalFocus = document.activeElement instanceof Element &&
+        Boolean(document.activeElement.closest("[data-terminal]"));
+      const sheetFocus = terminalFocus || (document.activeElement instanceof Element &&
+        Boolean(document.activeElement.closest("[data-chat-sheet], .fp-dialog")));
       const editing = composerFocus || sheetFocus;
       if (Math.abs(window.innerWidth - viewportWidth) > 1) {
         viewportWidth = window.innerWidth;
@@ -226,7 +229,8 @@ export function createInput(ctx) {
       else rootStyle.removeProperty("--vv-height");
       rootStyle.setProperty("--vv-offset", offset + "px");
       document.body.classList.toggle("is-keyboard", keyboard);
-      if (keyboard && sheetFocus && document.activeElement instanceof Element) {
+      // Not xterm's hidden field: scrolling it into view shifts the screen.
+      if (keyboard && sheetFocus && !terminalFocus && document.activeElement instanceof Element) {
         document.activeElement.scrollIntoView({ block: "nearest" });
       }
       if (composerFocus || keyboard) resizeInput();

@@ -315,6 +315,8 @@ export function createDictation({ picker }) {
 
   let hotkeyAt = 0;
   document.addEventListener("keydown", (event) => {
+    // A terminal's keys are the shell's.
+    if (event.target instanceof Element && event.target.closest("[data-terminal]")) return;
     const hotkey = event.code === "Space" && event.shiftKey && (MAC ? event.metaKey : event.ctrlKey) && !event.altKey;
     if (hotkey) {
       event.preventDefault();

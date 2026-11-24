@@ -526,6 +526,8 @@ export function create(deps) {
     // the runtime would also close the drawer or arm Stop on the same key.
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
+      // Escape in a terminal is the shell's.
+      if (event.target.closest?.("[data-terminal]")) return;
       const menu = q("[data-theme-menu]");
       const account = q("[data-account-menu]");
       const ctx = q("[data-context-pop]");
