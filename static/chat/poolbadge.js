@@ -175,9 +175,9 @@ export function renderPool(hopped = false) {
     requestPreview();
     return;
   }
-  // Two rows: the plan's windows (5-hour, weekly), topped up with a model or
-  // product limit when the plan has only one (Cursor's monthly and Auto).
-  const shown = windowsOf(pool.windows).concat(windowsOf(pool.limits)).slice(0, 2);
+  // Up to three rows: the plan's windows (5-hour, weekly), then model or
+  // product limits (Claude's Fable weekly, Cursor's Auto).
+  const shown = windowsOf(pool.windows).concat(windowsOf(pool.limits)).slice(0, 3);
   const name = pool.prefs ? `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}` : `${pool.pool}, ${pool.name}`;
   const cash = money(pool.balance);
   const label = shown.length ? `${name}: ${shown.map((w) => `${w.label} ${w.percent}%`).join(", ")} used${cash ? `, ${cash} left` : ""}`

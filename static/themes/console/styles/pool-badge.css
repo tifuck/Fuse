@@ -5,9 +5,8 @@
    from 75%, red from 95%: fixed status colors, never the accent or the
    palette's own. */
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
-  /* Its own composer column before the model, the tools' rhythm apart from it. */
+  /* Its own composer column after the model, the tools' rhythm apart from it. */
   & .chat-pool { position: relative; display: flex; align-items: center; height: var(--composer-row); margin-left: 0.75rem; }
-  & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.75rem; }
   & .chat-pool[hidden] { display: none !important; }
   /* The button is a full-height control like its neighbours; the capsule
      inside it stacks two windows, each a letter, a bar and the percent. */
@@ -26,6 +25,8 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   }
   & .chat-pool-btn[aria-expanded="true"] .chat-pool-meter { border-color: color-mix(in srgb, var(--mist) 32%, var(--ink)); background: var(--raise); }
   @media (hover: hover) { & .chat-pool-btn:hover .chat-pool-meter { border-color: color-mix(in srgb, var(--mist) 32%, var(--ink)); background: var(--raise); } }
+  /* A third window (a model's own weekly cap): three tighter rows in the same capsule. */
+  & .chat-pool-meter:has(> :nth-child(3)) { row-gap: 1px; height: auto; padding-block: 2px; font-size: 0.5rem; line-height: 0.4375rem; }
   & .chat-pool-meter em { color: var(--mute); font-style: normal; opacity: 0.6; }
   & .chat-pool-track { flex: none; width: 2rem; height: 5px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--mist) 14%, var(--ink)); }
   & .chat-pool-track i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); transition: width 220ms ease, background-color 220ms ease; }
@@ -107,10 +108,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
 }
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
-    /* The meter's border sits the icons' 1rem from +; the model's margin
-       evens the free space around it against the tool's padding on the right. */
     & .chat-pool { margin-left: 0.55rem; margin-top: 0.15rem; }
-    & .chat-pool:not([hidden]) + .chat-model { margin-left: 0.75rem; }
     /* The model's name needs the row: shorter bars. */
     & .chat-pool-meter { column-gap: 0.3rem; padding: 0 0.35rem; }
     & .chat-pool-track { width: 1rem; }
