@@ -354,36 +354,54 @@ def prune_history(*, now: datetime | None = None) -> dict:
     """Age out terminal fire/command history older than HISTORY_DAYS."""
     cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=HISTORY_DAYS))
     counts = {"fires": 0, "jobs": 0, "terminals": 0, "orphan_runs": 0}
+    fires = "status NOT IN ('queued','running') AND finished_at IS NOT NULL AND finished_at < ?"
+    counts["fires"] = _delete_ids("schedule_fires", db.fetchall(f"SELECT id FROM schedule_fires WHERE {fires}", (cutoff,)),
+                                  fires, (cutoff,))
+    if db.fetchone("SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'"):
+        jobs = "status NOT IN ('running','cancelling') AND finished_at IS NOT NULL AND finished_at < ?"
+        counts["jobs"] = _delete_ids("command_jobs", db.fetchall(f"SELECT id FROM command_jobs WHERE {jobs}", (cutoff,)),
+                                     jobs, (cutoff,))
     with db.tx() as conn:
-        cur = conn.execute(
-            """DELETE FROM schedule_fires
-               WHERE status NOT IN ('queued','running') AND finished_at IS NOT NULL AND finished_at < ?""",
-            (cutoff,),
-        )
-        counts["fires"] = int(cur.rowcount or 0)
-        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'").fetchone():
-            cur = conn.execute(
-                """DELETE FROM command_jobs
-                   WHERE status NOT IN ('running','cancelling') AND finished_at IS NOT NULL AND finished_at < ?""",
-                (cutoff,),
-            )
-            counts["jobs"] = int(cur.rowcount or 0)
         if conn.native("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE()"
                        " AND table_name='terminal_sessions'").fetchone():
             cur = conn.execute(
                 "DELETE FROM terminal_sessions WHERE closed_at IS NOT NULL AND closed_at < ?", (cutoff,)
             )
             counts["terminals"] = int(cur.rowcount or 0)
-        # chat_runs has no foreign key to its thread: runs some old path left
-        # behind when it deleted the thread.
-        cur = conn.execute(
-            """DELETE FROM chat_runs
-               WHERE status NOT IN ('queued','running') AND updated_at < ? AND thread_id IS NOT NULL
-                 AND thread_id NOT IN (SELECT id FROM chat_threads)""",
-            (cutoff,),
-        )
-        counts["orphan_runs"] = int(cur.rowcount or 0)
+    # chat_runs has no foreign key to its thread: runs some old path left
+    # behind when it deleted the thread. Their threads come from a loose
+    # scan of the thread index; a plain read, so nothing is locked.
+    orphans = db.fetchall(
+        """SELECT r.id FROM (SELECT DISTINCT thread_id FROM chat_runs WHERE thread_id IS NOT NULL
+                                AND NOT EXISTS (SELECT 1 FROM chat_threads t WHERE t.id=chat_runs.thread_id)) o
+           JOIN chat_runs r ON r.thread_id=o.thread_id
+           WHERE r.status NOT IN ('queued','running') AND r.updated_at < ?""",
+        (cutoff,),
+    )
+    counts["orphan_runs"] = _delete_ids(
+        "chat_runs", orphans,
+        """status NOT IN ('queued','running') AND updated_at < ? AND thread_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM chat_threads t WHERE t.id=chat_runs.thread_id)""",
+        (cutoff,),
+    )
     return counts
+
+
+_DELETE_BATCH = 500
+
+
+def _delete_ids(table: str, rows, where: str, args: tuple) -> int:
+    """Delete rows by primary key, _DELETE_BATCH per short transaction.
+    where repeats the selection, so a row that changed since is kept."""
+    ids = [row["id"] for row in rows]
+    deleted = 0
+    for start in range(0, len(ids), _DELETE_BATCH):
+        batch = ids[start:start + _DELETE_BATCH]
+        with db.tx() as conn:
+            cur = conn.execute(f"DELETE FROM {table} WHERE id IN ({','.join('?' * len(batch))}) AND {where}",
+                               (*batch, *args))
+        deleted += int(cur.rowcount or 0)
+    return deleted
 
 
 def _days(name: str) -> int:
@@ -405,11 +423,16 @@ def _clear_transcripts(where: str, args: tuple) -> int:
     held = "(r.provider_base IS NOT NULL OR r.provider_tail IS NOT NULL)" if split else "r.provider_messages IS NOT NULL"
     clear = "provider_base=NULL, provider_tail=NULL" if split else "provider_messages=NULL"
     total = 0
+    after = ""
     while total < _CLEAR_MAX:
+        # Keyset on the primary key: a batch resumes where the last ended
+        # instead of rescanning the runs it already passed.
         ids = [row["id"] for row in db.fetchall(
-            f"SELECT r.id FROM chat_runs r WHERE r.status IN {_TERMINAL} AND {held} AND {where} LIMIT {_CLEAR_BATCH}", args)]
+            f"SELECT r.id FROM chat_runs r WHERE r.status IN {_TERMINAL} AND {held} AND {where} AND r.id > ?"
+            f" ORDER BY r.id LIMIT {_CLEAR_BATCH}", (*args, after))]
         if not ids:
             return total
+        after = ids[-1]
         with db.tx() as conn:
             cur = conn.execute(
                 f"UPDATE chat_runs SET {clear} WHERE status IN {_TERMINAL} AND id IN ({','.join('?' * len(ids))})", ids)
@@ -569,7 +592,19 @@ def purge_idle_media(*, now: datetime | None = None) -> dict:
     days = _days("chat_media_idle_days")
     counts = {"threads": 0, "images": 0}
     cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=days)) if days else ""
-    for user in db.fetchall("SELECT DISTINCT user_id FROM chat_threads"):
+    # Only users with a thread that may be due. The thread's own timestamps
+    # bound last_active from below (it also takes its runs' updated_at), so
+    # this finds every due thread and some that the check below skips.
+    # active_at alone is not enough: run activity does not move it.
+    for user in db.fetchall(
+        """SELECT DISTINCT t.user_id FROM chat_threads t
+           LEFT JOIN chat_media_purges m ON m.thread_id=t.id
+           WHERE (t.archived<>0 OR (COALESCE(NULLIF(t.active_at,''), t.updated_at) < ? AND t.created_at < ?))
+             AND (m.purged_at IS NULL OR m.purged_at <= COALESCE(NULLIF(t.active_at,''), t.updated_at)
+                  OR m.purged_at <= t.created_at
+                  OR EXISTS (SELECT 1 FROM chat_runs r WHERE r.thread_id=t.id AND r.updated_at >= m.purged_at))""",
+        (cutoff, cutoff),
+    ):
         if counts["threads"] >= _PURGE_MAX:
             break
         uid = int(user["user_id"])

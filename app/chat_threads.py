@@ -504,12 +504,20 @@ def _head_snippet(head: str, needle: str) -> str | None:
 # ponytail: real transcript search needs a FTS column (schema change); widen
 # the window if users miss older hits before then.
 _SEARCH_MESSAGE_WINDOW = 500
+# shortcut: the window also stops at 32 MB of transcripts per list (the newest
+# thread is always in), so a few huge chats cannot make every keystroke
+# lowercase hundreds of MB; older hits past it need a real search index.
+_SEARCH_MESSAGE_BYTES = 32 * 1024 * 1024
 def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict]:
+    return search_thread_lists(user_id, q)[1 if archived else 0]
+def search_thread_lists(user_id: int, q: str) -> tuple[list[dict], list[dict]]:
+    """(active, archived) search hits, newest first, up to 50 each, from one
+    pass over the transcripts."""
     from . import chat_tx
 
     needle = q.strip()
     if not needle:
-        return []
+        return [], []
 
     def pattern(text):
         return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -524,20 +532,35 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
     bodies = list(dict.fromkeys(pattern(chat_tx._json_needle(text)).lower() for text in (needle, lower, needle.capitalize())))
     rows = db.fetchall(
         f"""SELECT {_THREAD_LIST_COLS}, SUBSTRING(t.messages, 1, {_SNIPPET_HEAD + 1}) AS messages_head
-           FROM chat_threads t
+           FROM (SELECT id FROM (
+                SELECT t.id, ROW_NUMBER() OVER (PARTITION BY t.archived ORDER BY t.updated_at DESC, t.id DESC) AS n
+                FROM chat_threads t
+                LEFT JOIN user_hosts h ON h.id=t.host_id
+                LEFT JOIN user_projects p ON p.id=t.project_id
+                WHERE t.user_id=? AND t.archived IN (0,1) AND (
+                    LOWER(t.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(p.name,'')) LIKE LOWER(?) ESCAPE '\\'
+                    OR LOWER(IFNULL(h.alias,'')) LIKE LOWER(?) ESCAPE '\\'
+                    OR (t.id IN (SELECT id FROM (
+                            SELECT c.id, SUM(LENGTH(c.messages)) OVER (
+                                PARTITION BY c.archived ORDER BY c.updated_at DESC, c.id DESC ROWS UNBOUNDED PRECEDING
+                            ) - LENGTH(c.messages) AS before_bytes
+                            FROM ((SELECT id FROM chat_threads WHERE user_id=? AND archived=0
+                                   ORDER BY updated_at DESC, id DESC LIMIT ?)
+                                  UNION ALL
+                                  (SELECT id FROM chat_threads WHERE user_id=? AND archived=1
+                                   ORDER BY updated_at DESC, id DESC LIMIT ?)) newest
+                            JOIN chat_threads c ON c.id=newest.id) recent
+                         WHERE before_bytes < ?)
+                        AND ({" OR ".join("LOWER(t.messages) LIKE ? ESCAPE '\\'" for _ in bodies)}))
+                )) ranked
+             WHERE n <= 50) hit
+           JOIN chat_threads t ON t.id=hit.id
            LEFT JOIN user_hosts h ON h.id=t.host_id
            LEFT JOIN user_projects p ON p.id=t.project_id
            LEFT JOIN chat_schedules s ON s.id=t.schedule_id
-           WHERE t.user_id=? AND t.archived=? AND (
-                LOWER(t.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(p.name,'')) LIKE LOWER(?) ESCAPE '\\'
-                OR LOWER(IFNULL(h.alias,'')) LIKE LOWER(?) ESCAPE '\\'
-                OR (t.id IN (SELECT id FROM (SELECT id FROM chat_threads WHERE user_id=? AND archived=?
-                             ORDER BY updated_at DESC, id DESC LIMIT ?) recent)
-                    AND ({" OR ".join("LOWER(t.messages) LIKE ? ESCAPE '\\'" for _ in bodies)}))
-           )
-           ORDER BY t.updated_at DESC, t.id DESC LIMIT 50""",
-        (user_id, 1 if archived else 0, like, like, like,
-         user_id, 1 if archived else 0, _SEARCH_MESSAGE_WINDOW, *bodies),
+           ORDER BY t.updated_at DESC, t.id DESC""",
+        (user_id, like, like, like, user_id, _SEARCH_MESSAGE_WINDOW, user_id, _SEARCH_MESSAGE_WINDOW,
+         _SEARCH_MESSAGE_BYTES, *bodies),
     )
     snippets = {}
     for row in rows:
@@ -549,11 +572,11 @@ def search_threads(user_id: int, q: str, *, archived: bool = False) -> list[dict
         for row in db.fetchall(f"SELECT id, messages FROM chat_threads WHERE user_id=? AND id IN ({','.join('?' for _ in rest)})",
                                (user_id, *rest)):
             snippets[row["id"]] = _snippet(row["messages"], lower)
-    out = []
+    out = ([], [])
     for row in rows:
         view = _view(row)
         view["snippet"] = snippets.get(row["id"]) or ""
-        out.append(view)
+        out[1 if row["archived"] else 0].append(view)
     return out
 def get_thread(user_id: int, thread_id, *, observed_cursor: int | None = None, observed_thread_cursor: int | None = None,
                queued=()):

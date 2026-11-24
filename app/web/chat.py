@@ -516,11 +516,10 @@ async def chat_threads(request: Request):
         if request.query_params.get("archived") == "1":
             return {"archived": chats.list_threads(user["id"], archived=True)}
         if q:
-            return {
-                "threads": chats.search_threads(user["id"], q, archived=False),
-                "archived": chats.search_threads(user["id"], q, archived=True),
-                "projects": chats.search_projects(user["id"], q),
-            }
+            from ..chat_threads import search_thread_lists
+
+            threads, archived = search_thread_lists(user["id"], q)
+            return {"threads": threads, "archived": archived, "projects": chats.search_projects(user["id"], q)}
         return {
             "threads": chats.list_threads(user["id"], archived=False),
             "archived": chats.list_threads(user["id"], archived=True),

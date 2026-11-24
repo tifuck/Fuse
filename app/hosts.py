@@ -893,7 +893,8 @@ def delete_project(user_id: int, host_id: int, project_id: int, *, sessions: str
             ids = [int(t["id"]) for t in threads]
             if ids:
                 active = conn.execute(
-                    "SELECT * FROM chat_runs WHERE user_id=? AND status IN ('queued','running') AND thread_id IN ("
+                    "SELECT id, thread_id, parent_run_id, message_id, status FROM chat_runs"
+                    " WHERE user_id=? AND status IN ('queued','running') AND thread_id IN ("
                     + ",".join("?" for _ in ids) + ")",
                     (user_id, *ids),
                 ).fetchall()

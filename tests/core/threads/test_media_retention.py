@@ -133,6 +133,22 @@ def test_an_archived_chat_loses_its_media_however_recent(fresh_db, monkeypatch):
     assert retention.purge_idle_media() == {"threads": 0, "images": 0}
 
 
+def test_run_activity_after_a_purge_makes_an_archived_chat_due_again(fresh_db, monkeypatch):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    _turn(uid, thread)
+    chats.update_thread(uid, thread["id"], archived=True)
+    _age(uid, thread, 1)
+    monkeypatch.setattr(retention.settings, "chat_media_idle_days", 0)
+    assert retention.purge_idle_media() == {"threads": 1, "images": 1}
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+
+    # A run settling after the purge moves no timestamp of the thread itself.
+    later = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    db.execute("UPDATE chat_runs SET updated_at=? WHERE thread_id=?", (later, pk(uid, thread["id"])))
+    assert retention.purge_idle_media() == {"threads": 1, "images": 0}
+
+
 def test_media_retention_off_keeps_everything(fresh_db, monkeypatch):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
@@ -173,6 +189,18 @@ def test_finished_subagent_and_replaced_root_transcripts_are_dropped(fresh_db):
     assert retention.prune_transcripts() == {"agent_runs": 0, "replaced_runs": 0}
 
 
+def test_replaced_transcripts_clear_across_batches(fresh_db, monkeypatch):
+    monkeypatch.setattr(retention, "_CLEAR_BATCH", 1)
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    runs = [_turn(uid, thread, seed=n) for n in range(4)]
+    for days, run in zip((5, 4, 3, 2), runs):
+        _set(run["id"], days=days, created=days)
+
+    assert retention.prune_transcripts()["replaced_runs"] == 3
+    assert [_kept(run["id"]) for run in runs] == [False, False, False, True]
+
+
 def test_runs_whose_thread_is_gone_are_deleted(fresh_db):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
@@ -182,6 +210,22 @@ def test_runs_whose_thread_is_gone_are_deleted(fresh_db):
 
     assert retention.prune_history()["orphan_runs"] == 1
     assert db.fetchone("SELECT 1 FROM chat_runs WHERE id=?", (run["id"],)) is None
+
+
+def test_orphan_runs_delete_in_batches_and_young_or_owned_runs_stay(fresh_db, monkeypatch):
+    monkeypatch.setattr(retention, "_DELETE_BATCH", 1)
+    uid = make_user()
+    gone, kept = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    old = [_turn(uid, gone, seed=n) for n in (1, 2)]
+    young = _turn(uid, gone, seed=3)
+    owned = _turn(uid, kept, seed=4)
+    for run in (*old, owned):
+        db.execute("UPDATE chat_runs SET updated_at=? WHERE id=?", (_iso(40), run["id"]))
+    db.execute("DELETE FROM chat_threads WHERE id=?", (pk(uid, gone["id"]),))
+
+    assert retention.prune_history()["orphan_runs"] == 2
+    left = {row["id"] for row in db.fetchall("SELECT id FROM chat_runs WHERE user_id=?", (uid,))}
+    assert left == {young["id"], owned["id"]}
 
 
 def test_deleting_a_chat_or_project_deletes_its_media(fresh_db_fk):
