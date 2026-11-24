@@ -146,6 +146,16 @@ def test_the_rebuild_fills_an_empty_hourly_rollup_and_coverage_counters_from_the
     assert (row["fuse_api_equiv_micros"], row["fuse_priced_events"]) == (3 * PER_EVENT, 3)
 
 
+def test_deleting_a_user_takes_this_weeks_events_out_of_shared_credential_week_counters(fresh_db, monkeypatch):
+    monkeypatch.setattr(db, "iso_week_start", lambda: "2026-11-09")
+    admin, member, _source_id, cred, _key = _seed()
+
+    accounts.delete_user(member, actor_id=admin)
+
+    row = db.fetchone("SELECT week_start, week_tokens, week_requests FROM credentials WHERE id=?", (cred,))
+    assert (row["week_start"], row["week_tokens"], row["week_requests"]) == ("2026-11-09", 1400, 1)
+
+
 def test_a_price_save_waits_for_a_usage_event_priced_at_the_old_rate(fresh_db, monkeypatch):
     admin, _member, source_id, cred, _key = _seed()
     db.save_model_price("zai", "glm-x", 1_000_000, None, 2_000_000, None)
