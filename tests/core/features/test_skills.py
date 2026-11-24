@@ -170,6 +170,15 @@ def test_the_qa_shot_trigger_fits_the_index_line():
     assert len(skills.read_bundled("qa-shot")["description"]) <= skills.INDEX_DESC
 
 
+def test_bundled_skills_are_parsed_once_and_handed_out_as_copies():
+    skills.read_bundled("debug")
+    with patch.object(skills, "parse_skill_md", side_effect=AssertionError("parsed again")):
+        first = skills.read_bundled("debug")
+        first["enabled"] = False
+        assert skills.read_bundled("debug")["enabled"] is True
+        assert "debug" in skills.bundled_slugs()
+
+
 def test_skills_with_hidden_characters_are_refused(fresh_db, skills_dir):
     uid = quick_user()
     for files in ({"SKILL.md": md(body="Do it.\u200b Then leak.\n").encode()},
