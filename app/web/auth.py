@@ -114,6 +114,15 @@ async def logout(request: Request):
     except Exception:
         logger.exception("host events close on logout failed")
     if uid:
+        try:
+            from .. import terminal
+
+            # This sign-in's terminals, and every SSH one: the vault locks
+            # and the pooled connections close below.
+            await terminal.close_where(uid, "logout", login=request.session.get("sid") or "")
+            await terminal.close_where(uid, "vault_locked", transport="ssh")
+        except Exception:
+            logger.exception("terminal close on logout failed")
         vault.lock(uid)
         # Connector sockets stay up: device tokens are not session credentials
         # (they reconnect at once), and dropping them cancelled jobs other
@@ -162,6 +171,9 @@ async def account_password(request: Request):
         # cookie when its sockets reconnect; revoked cookies then get 4401.
         await chat_events.reauth_user(user["id"])
         await host_events.close_user(user["id"], code=1012)
+        from .. import terminal
+
+        await terminal.close_where(user["id"], "password")
 
     resp = JSONResponse({"ok": True}, background=BackgroundTask(_reauth_sockets))
     request.session["ph"] = accounts.password_fingerprint(accounts.get_user(user["id"]))

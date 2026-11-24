@@ -169,6 +169,7 @@ class ConnectorWS:
     def __init__(self, hello, answer=None):
         self.inbox: asyncio.Queue = asyncio.Queue()
         self.sent: list[dict] = []
+        self.binary: list[bytes] = []
         self.closed: list = []
         self.answer = answer
         if hello is not None:
@@ -179,6 +180,17 @@ class ConnectorWS:
         if isinstance(item, BaseException):
             raise item
         return item
+
+    async def receive(self):
+        """The hub's loop after hello: str items are text frames, bytes items
+        binary ones."""
+        item = await self.receive_text()
+        if isinstance(item, bytes):
+            return {"type": "websocket.receive", "bytes": item}
+        return {"type": "websocket.receive", "text": item}
+
+    async def send_bytes(self, data):
+        self.binary.append(bytes(data))
 
     async def send_json(self, obj):
         self.sent.append(obj)
