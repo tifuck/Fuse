@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 
 from . import db
+from .database_errors import IntegrityError
 
 TYPES = ("user", "feedback", "project", "reference")
 TOOL_NAMES = ("remember", "recall", "forget")
@@ -138,7 +139,8 @@ def save(user_id: int, *, name, type, description, body, project_id=None, scope=
         count = conn.execute(
             "SELECT COUNT(*) FROM memories WHERE user_id=? AND scope_key=?", (int(user_id), pid or 0)
         ).fetchone()[0]
-        if row is None:
+        created = row is None
+        if created:
             # ponytail: two parallel saves can both pass this check and land
             # one over the cap; the cap bounds prompt size, not correctness.
             if count >= MAX_PER_SCOPE:
@@ -146,18 +148,26 @@ def save(user_id: int, *, name, type, description, body, project_id=None, scope=
                     f"{'this project' if pid else 'global'} memory is full ({MAX_PER_SCOPE}). "
                     "Update an existing memory by reusing its name, or forget one that is no longer needed."
                 )
+            try:
+                conn.execute(
+                    "INSERT INTO memories (user_id,project_id,scope_key,name,type,description,body,thread_id,created_at,updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (int(user_id), pid, pid or 0, key, kind, desc, text, thread_id, ts, ts),
+                )
+                count += 1
+            except IntegrityError as exc:
+                # A parallel save of the same new name committed after the
+                # read above: replace it, as a later save would.
+                if exc.errno not in (None, 1062):
+                    raise
+                created = False
+        if not created:
             conn.execute(
-                "INSERT INTO memories (user_id,project_id,scope_key,name,type,description,body,thread_id,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (int(user_id), pid, pid or 0, key, kind, desc, text, thread_id, ts, ts),
+                "UPDATE memories SET type=?,description=?,body=?,thread_id=?,updated_at=? "
+                "WHERE user_id=? AND scope_key=? AND name=?",
+                (kind, desc, text, thread_id, ts, int(user_id), pid or 0, key),
             )
-            count += 1
-        else:
-            conn.execute(
-                "UPDATE memories SET type=?,description=?,body=?,thread_id=?,updated_at=? WHERE id=?",
-                (kind, desc, text, thread_id, ts, row["id"]),
-            )
-    return {"name": key, "scope": "project" if pid else "global", "created": row is None, "count": count}
+    return {"name": key, "scope": "project" if pid else "global", "created": created, "count": count}
 
 
 def read(user_id: int, names, project_id=None) -> tuple[list[dict], list[str]]:
