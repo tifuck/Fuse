@@ -1141,9 +1141,10 @@ class CursorSource:
         tried: set[int] = set()
         attempts: list[dict] = []
         last = ChatResult(status=503, body={"error": "No Cursor accounts in the pool"})
-        prefer_id = conv.cred_id if conv else lookup("cursor", session_id)
-        hint_id = lookup("cursor", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "cursor")
+        with db.read_memo():
+            prefer_id = conv.cred_id if conv else await asyncio.to_thread(lookup, "cursor", session_id)
+            hint_id = await asyncio.to_thread(lookup, "cursor", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "cursor")
         failover = Failover()
         refreshed: set[int] = set()
         why: list = []
@@ -1163,7 +1164,7 @@ class CursorSource:
                 agent.drop(plan[1])
                 plan = ("fresh", None, [])
             tried.add(cid)
-            note_pool_invoke(cid)
+            await asyncio.to_thread(note_pool_invoke, cid)
             reserve(cid)
             try:
                 rnd = await self._open(extra, cid, user_id, body, sel, plan)
@@ -1229,7 +1230,7 @@ class CursorSource:
                 return last
             finally:
                 release(cid)
-            bind("cursor", session_id, cid)
+            await asyncio.to_thread(bind, "cursor", session_id, cid)
             result = ChatResult(status=200, body=obj, usage=usage, credential_id=cid, model=sel["slug"])
             result.attempts = attempts
             return result

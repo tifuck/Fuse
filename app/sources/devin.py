@@ -577,41 +577,42 @@ class DevinSource:
 
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("devin", refresh_pool_status)
-        self.creds = pool_policy.filter_credentials(
-            db.fetchall(
-                "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
-                (self.source_id,),
-            ),
-            "devin",
-            user_id,
-        )
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(status=503, body={"error": "No Devin accounts in the pool"})
-        requested = body.get("model") or DEVIN_MODELS[0]
-        model = listed_upstream(requested) or upstream_id(requested)
-        if _has_remote_image(body.get("messages")):
-            return ChatResult(
-                status=400,
-                body={"error": {"message": "Devin accepts only base64 data-URI images, not image URLs"}},
-                model=model,
+        with db.read_memo():
+            self.creds = pool_policy.filter_credentials(
+                db.fetchall(
+                    "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
+                    (self.source_id,),
+                ),
+                "devin",
+                user_id,
             )
-        payload = drop_cache_routing_fields(body)
-        effort = payload.get("reasoning_effort")
-        if not isinstance(effort, str):
-            effort = None
-        probe_uid = resolve_wire_uid(model, effort)
-        if sku_dead(probe_uid):
-            # This exact SKU failed upstream moments ago (circuit breaker).
-            # Do not burn a pool attempt on it; fail fast with a clear reason.
-            return ChatResult(
-                status=503,
-                body={"error": {"message": _sku_unavailable_message(requested, effort)}},
-                model=model,
-            )
-        prefer_id = lookup("devin", session_id)
-        hint_id = lookup("devin", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(user_id, "devin")
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(status=503, body={"error": "No Devin accounts in the pool"})
+            requested = body.get("model") or DEVIN_MODELS[0]
+            model = listed_upstream(requested) or upstream_id(requested)
+            if _has_remote_image(body.get("messages")):
+                return ChatResult(
+                    status=400,
+                    body={"error": {"message": "Devin accepts only base64 data-URI images, not image URLs"}},
+                    model=model,
+                )
+            payload = drop_cache_routing_fields(body)
+            effort = payload.get("reasoning_effort")
+            if not isinstance(effort, str):
+                effort = None
+            probe_uid = resolve_wire_uid(model, effort)
+            if sku_dead(probe_uid):
+                # This exact SKU failed upstream moments ago (circuit breaker).
+                # Do not burn a pool attempt on it; fail fast with a clear reason.
+                return ChatResult(
+                    status=503,
+                    body={"error": {"message": _sku_unavailable_message(requested, effort)}},
+                    model=model,
+                )
+            prefer_id = await asyncio.to_thread(lookup, "devin", session_id)
+            hint_id = await asyncio.to_thread(lookup, "devin", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, user_id, "devin")
         failover = Failover()
         why: list = []
         while True:
@@ -628,7 +629,7 @@ class DevinSource:
                 return last
             cred, extra = picked
             tried.add(int(cred["id"]))
-            note_pool_invoke(cred["id"])
+            await asyncio.to_thread(note_pool_invoke, cred["id"])
             token = extra.get("api_key") or accounts.cred_secret(cred)
             stream_reserved = False
             try:
@@ -673,7 +674,7 @@ class DevinSource:
                     continue
                 if result.status == 200:
                     failover.served()
-                    bind("devin", session_id, cred["id"])
+                    await asyncio.to_thread(bind, "devin", session_id, cred["id"])
                 last.attempts = attempts
                 return last
             finally:

@@ -48,12 +48,35 @@ def _row_source(row, creds=None) -> Source:
     return _BUILDERS[row["type"]](row, cfg, creds)
 
 
-def all_enabled() -> list[Source]:
+class _LazySource:
+    """An enabled source as routing sees it: type, id, name and config from
+    its sources row. The source itself, and the read of its credentials, wait
+    until something else is asked of it, so a routed request reads only the
+    chosen source's credentials."""
+
+    def __init__(self, row):
+        cfg = json.loads(row["config"] or "{}")
+        if not isinstance(cfg, dict):
+            raise ValueError("source config must be a JSON object")
+        self._row, self._built = row, None
+        self.type_id, self.source_id, self.name, self.cfg = row["type"], row["id"], row["name"], cfg
+
+    def __getattr__(self, attr):
+        if self._built is None:
+            if attr == "chat" and self.type_id in POOL_TYPES:
+                # A pool's chat reads its accounts itself (pool_refresh.pool_rows).
+                return _row_source(self._row, []).chat
+            self._built = _row_source(self._row)
+        return getattr(self._built, attr)
+
+
+def all_enabled(*, lazy: bool = False) -> list[Source]:
+    """lazy: _LazySource each, with no credentials read."""
     rows = [row for row in db.fetchall("SELECT * FROM sources WHERE enabled=1 ORDER BY id") if row["type"] in _BUILDERS]
     # One credentials read for every source, not one per source: this runs
-    # on every model listing and every routed request.
+    # on every model listing.
     creds: dict[int, list] = {row["id"]: [] for row in rows}
-    if creds:
+    if creds and not lazy:
         marks = ",".join("?" for _ in creds)
         for cred in db.fetchall(
             f"SELECT * FROM credentials WHERE disabled=0 AND source_id IN ({marks}) ORDER BY id", tuple(creds)
@@ -62,7 +85,7 @@ def all_enabled() -> list[Source]:
     out = []
     for row in rows:
         try:
-            out.append(_row_source(row, creds[row["id"]]))
+            out.append(_LazySource(row) if lazy else _row_source(row, creds[row["id"]]))
         except Exception as exc:
             logger.warning(
                 "Skipping malformed source id=%s type=%s: %s",
@@ -537,7 +560,7 @@ async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Sou
     from . import explabs as explabs_mod
 
     if model.startswith(explabs_mod.PUBLIC_PREFIX):
-        for src in all_enabled():
+        for src in all_enabled(lazy=True):
             if src.type_id == "explabs":
                 resolved = await explabs_mod.resolve(model, user_id)
                 return (src, resolved) if resolved else None
@@ -554,9 +577,9 @@ async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Sou
             if await openrouter_mod.resolve(openrouter_mod.public_id(upstream), user_id):
                 return src, upstream
             return None
-    # One read of the enabled sources serves every lookup below (two queries
-    # each, and this runs on every routed request).
-    enabled = all_enabled()
+    # One read of the enabled sources serves every lookup below (this runs on
+    # every routed request); credentials only for a source that needs them.
+    enabled = all_enabled(lazy=True)
     # Claims by name (registry order). A hard claim never leaves its provider;
     # a soft one falls through when its provider cannot take the id.
     for spec in registry.claim_order():

@@ -32,6 +32,10 @@ _state_cursors: dict[str, int] = {}
 # Runs whose latest flush published events but skipped the durable row
 # rewrite; their flush loop owes a trailing snapshot once the burst ends.
 _state_dirty: set[str] = set()
+# Steered runs: the display projection last published, with the request and
+# message digests the row held then. While the row still holds them it is the
+# next patch's base, so a throttled tick need not read the message back.
+_display_previous: dict[str, tuple[str, str, dict]] = {}
 
 
 def durable_state_cursor(run_id: str) -> int | None:
@@ -146,7 +150,8 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         if request["agent"].pop("steer_closed", None) is not None:
             request_changed = True
     steer_parts = (request.get("agent") or {}).get("display_parts") or []
-    if any(part.get("awaiting_delivery") for part in steer_parts):
+    awaiting_steer = any(part.get("awaiting_delivery") for part in steer_parts)
+    if awaiting_steer:
         chat_views._advance_steer_display(request, message)
         request_changed = True
     payload = {"run_id": run_id, "message_id": row["message_id"]}
@@ -157,7 +162,11 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
     if (request.get("agent") or {}).get("display_parts"):
         from .chat_runs import _segments_patch
 
-        previous = chat_views.display_messages(stored_request, _checkpoint_message(run_id, row), row["message_id"], live=True)
+        cached = _display_previous.get(run_id)
+        if cached is not None and "message_digest" in row.keys() and cached[:2] == (guard, row["message_digest"]):
+            previous = cached[2]
+        else:
+            previous = chat_views.display_messages(stored_request, _checkpoint_message(run_id, row), row["message_id"], live=True)
         if set(projected) != set(previous):
             materialize_thread = True
         old, current = previous[row["message_id"]], projected[row["message_id"]]
@@ -199,7 +208,7 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
     force_state = (
         durable
         or row["status"] == "queued"
-        or bool((request.get("agent") or {}).get("display_parts"))
+        or awaiting_steer
         or materialize_thread
     )
     if not force_state:
@@ -214,6 +223,7 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
                     _state_dirty.discard(ident)
                     _request_cache.pop(ident, None)
                     _state_sizes.pop(ident, None)
+                    _display_previous.pop(ident, None)
     if request_changed and request == stored_request:
         # e.g. a repeated heartbeat: rewriting identical bytes is pure cost.
         request_changed = False
@@ -259,7 +269,10 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         if wrote:
             stamp_state_cursor(run_id, row["user_id"])
             _state_dirty.discard(run_id)
+            if steer_parts and run_id in _request_cache:
+                _display_previous[run_id] = (_request_cache[run_id][0], hashlib.md5(message_json.encode("ascii")).hexdigest(), projected)
         else:
+            _display_previous.pop(run_id, None)
             # Superseded: the row does not hold this state, so the cursor must
             # not claim it does. Keep the debt; the flush loop retries.
             _state_dirty.add(run_id)
@@ -269,6 +282,8 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         # row now lags them; the run's flush loop must catch it up (see
         # flush_pending_state) or a quiet stream leaves the tail undurable.
         _state_dirty.add(run_id)
+        if steer_parts and "message_digest" in row.keys():
+            _display_previous[run_id] = (guard, row["message_digest"], projected)
 
     # 2) Publication through the group committer (tiny batched transaction).
     # The guard drops progress for a run that finalized while this checkpoint
@@ -316,6 +331,10 @@ def flush_pending_state(run_id, message, future=None):
     if wrote:
         stamp_state_cursor(run_id, row["user_id"])
         _state_dirty.discard(run_id)
+        cached = _display_previous.get(run_id)
+        if cached is not None:
+            # Same output as the last publish: clients still hold its projection.
+            _display_previous[run_id] = (cached[0], hashlib.md5(message_json.encode("ascii")).hexdigest(), cached[2])
     if future is not None:
         chat_pub._resolve_future(future, None)
 
@@ -405,6 +424,7 @@ def _checkpoint_row(run_id):
     )
     if row is None or row["status"] not in chat_tx.ACTIVE:
         _request_cache.pop(run_id, None)
+        _display_previous.pop(run_id, None)
     return row
 
 

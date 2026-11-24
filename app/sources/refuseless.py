@@ -543,23 +543,24 @@ class RefuselessSource:
         rec = catalog["by_id"].get(upstream)
         if rec is None:
             return ChatResult(status=404, body={"error": {"message": "That model is not in Refuseless's catalog."}}, model=upstream)
-        rows = pool_policy.filter_credentials(
-            db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
-            "refuseless",
-            user_id,
-        )
-        uid = int(user_id) if user_id is not None else None
-        prepared = chat_payload(body, upstream, rec)
-        tried: set[int] = set()
-        attempts: list[dict] = []
-        last = ChatResult(
-            status=403,
-            body={"error": {"message": "No Refuseless key can serve this request for you. Link your own key on Sources.", "type": "permission_error"}},
-            model=upstream,
-        )
-        prefer_id = lookup("refuseless", session_id)
-        hint_id = lookup("refuseless", affinity_id) if prefer_id is None and affinity_id else None
-        primary_id = pool_policy.primary_account(uid, "refuseless")
+        with db.read_memo():
+            rows = pool_policy.filter_credentials(
+                db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
+                "refuseless",
+                user_id,
+            )
+            uid = int(user_id) if user_id is not None else None
+            prepared = chat_payload(body, upstream, rec)
+            tried: set[int] = set()
+            attempts: list[dict] = []
+            last = ChatResult(
+                status=403,
+                body={"error": {"message": "No Refuseless key can serve this request for you. Link your own key on Sources.", "type": "permission_error"}},
+                model=upstream,
+            )
+            prefer_id = await asyncio.to_thread(lookup, "refuseless", session_id)
+            hint_id = await asyncio.to_thread(lookup, "refuseless", affinity_id) if prefer_id is None and affinity_id else None
+            primary_id = await asyncio.to_thread(pool_policy.primary_account, uid, "refuseless")
         failover = Failover()
         why: list = []
         while True:
@@ -585,7 +586,7 @@ class RefuselessSource:
             cred, _extra = picked
             cid = int(cred["id"])
             tried.add(cid)
-            note_pool_invoke(cid)
+            await asyncio.to_thread(note_pool_invoke, cid)
             payload = pool_policy.lent_payload(prepared, cred, uid)
             request_ids: list[str] = []
 
@@ -634,7 +635,7 @@ class RefuselessSource:
                     continue
                 if status == 200:
                     failover.served()
-                    bind("refuseless", session_id, cid)
+                    await asyncio.to_thread(bind, "refuseless", session_id, cid)
                 last.attempts = attempts
                 return last
             finally:

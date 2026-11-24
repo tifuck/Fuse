@@ -349,10 +349,10 @@ async def chat_run_get(request: Request, run_id: str):
             "cancel_requested": run["cancel_requested"],
             "cancel_requested_at": str(run.get("cancel_requested_at") or ""),
             "resume_count": int(run.get("resume_count") or 0),
-            "has_transcript": bool(run.get("provider_messages")),
+            "has_transcript": bool(run.get("has_transcript")),
             "resumable": bool(
                 run["status"] in ("interrupted", "cancelled")
-                and run.get("provider_messages")
+                and run.get("has_transcript")
                 and int(run.get("resume_count") or 0) < chat_store.MAX_RESUME_ATTEMPTS
                 and not (
                     not run.get("parent_run_id")
@@ -516,11 +516,10 @@ async def chat_threads(request: Request):
         if request.query_params.get("archived") == "1":
             return {"archived": chats.list_threads(user["id"], archived=True)}
         if q:
-            return {
-                "threads": chats.search_threads(user["id"], q, archived=False),
-                "archived": chats.search_threads(user["id"], q, archived=True),
-                "projects": chats.search_projects(user["id"], q),
-            }
+            from ..chat_threads import search_thread_lists
+
+            threads, archived = search_thread_lists(user["id"], q)
+            return {"threads": threads, "archived": archived, "projects": chats.search_projects(user["id"], q)}
         return {
             "threads": chats.list_threads(user["id"], archived=False),
             "archived": chats.list_threads(user["id"], archived=True),

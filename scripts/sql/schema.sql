@@ -282,12 +282,12 @@ CREATE TABLE `chat_runs` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_runs_active_parent` (`active_parent_thread`),
   KEY `chat_runs_user_message` (`user_id`,`message_id`(191)),
-  KEY `chat_runs_thread_children` (`thread_id`),
   KEY `chat_runs_parent` (`parent_run_id`(191)),
   KEY `chat_runs_root` (`root_run_id`(191)),
   KEY `chat_runs_user_status` (`user_id`,`status`(191)),
   KEY `chat_runs_wake` (`wake_pending`,`user_id`,`thread_id`),
   KEY `chat_runs_status_created` (`status`(16),`created_at`(20)),
+  KEY `chat_runs_thread_children` (`thread_id`,`status`(16)),
   CONSTRAINT `fk_chat_runs_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -317,20 +317,21 @@ CREATE TABLE `chat_schedules` (
   `weekdays` bigint(20) NOT NULL DEFAULT 0,
   `at_local` longtext NOT NULL DEFAULT '',
   `once_at` longtext DEFAULT NULL,
-  `next_fire_at` longtext DEFAULT NULL,
+  `next_fire_at` varchar(32) DEFAULT NULL,
   `last_fire_at` longtext DEFAULT NULL,
   `last_status` longtext NOT NULL DEFAULT '',
   `last_error` longtext NOT NULL DEFAULT '',
   `last_run_id` longtext DEFAULT NULL,
-  `firing_at` longtext DEFAULT NULL,
+  `firing_at` varchar(32) DEFAULT NULL,
   `created_at` longtext NOT NULL,
   `updated_at` longtext NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_chat_schedules_1` (`public_id`) USING HASH,
   KEY `chat_schedules_user` (`user_id`),
-  KEY `chat_schedules_due` (`enabled`,`paused`,`next_fire_at`(191)),
   KEY `fk_chat_schedules_0` (`thread_id`),
   KEY `fk_chat_schedules_1` (`project_id`),
+  KEY `chat_schedules_firing` (`firing_at`),
+  KEY `chat_schedules_due` (`enabled`,`paused`,`next_fire_at`),
   CONSTRAINT `fk_chat_schedules_0` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
   CONSTRAINT `fk_chat_schedules_1` FOREIGN KEY (`project_id`) REFERENCES `user_projects` (`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
   CONSTRAINT `fk_chat_schedules_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION
@@ -353,7 +354,7 @@ CREATE TABLE `chat_threads` (
   `archived` bigint(20) NOT NULL DEFAULT 0,
   `messages` longtext NOT NULL DEFAULT '[]',
   `created_at` longtext NOT NULL,
-  `updated_at` longtext NOT NULL,
+  `updated_at` varchar(32) NOT NULL,
   `context` longtext NOT NULL DEFAULT '',
   `tools` longtext NOT NULL DEFAULT '["web_search"]',
   `revision` bigint(20) NOT NULL DEFAULT 0,
@@ -383,12 +384,13 @@ CREATE TABLE `chat_threads` (
   `memory_off` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
-  KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),
   KEY `chat_threads_user_archived_at` (`user_id`,`archived`,`archived_at`),
   KEY `fk_chat_threads_project` (`project_id`),
   KEY `fk_chat_threads_host` (`host_id`),
   KEY `chat_threads_public_id_lookup` (`public_id`(32)),
   KEY `chat_threads_title_sweep` (`title_state`(8),`title_attempted_at`(20)),
+  KEY `chat_threads_schedule` (`user_id`,`schedule_id`),
+  KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`,`id`),
   CONSTRAINT `fk_chat_threads_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT `fk_chat_threads_host` FOREIGN KEY (`host_id`) REFERENCES `user_hosts` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_chat_threads_project` FOREIGN KEY (`project_id`) REFERENCES `user_projects` (`id`) ON DELETE SET NULL
@@ -417,7 +419,7 @@ CREATE TABLE `command_jobs` (
   `delivered` bigint(20) NOT NULL DEFAULT 0,
   `created_at` longtext NOT NULL,
   `started_at` longtext DEFAULT NULL,
-  `finished_at` longtext DEFAULT NULL,
+  `finished_at` varchar(32) DEFAULT NULL,
   `out_chars` bigint(20) DEFAULT NULL,
   `output_incomplete` bigint(20) NOT NULL DEFAULT 0,
   `termination_confirmed` bigint(20) DEFAULT NULL,
@@ -430,10 +432,10 @@ CREATE TABLE `command_jobs` (
   `delivered_event_seq` bigint(20) NOT NULL DEFAULT 0,
   `description` text NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
-  KEY `command_jobs_thread` (`thread_id`),
   KEY `command_jobs_undelivered` (`notify`,`delivered`,`thread_id`),
   KEY `command_jobs_user_thread` (`user_id`,`thread_id`),
-  KEY `command_jobs_finished` (`finished_at`(20))
+  KEY `command_jobs_finished` (`finished_at`(20)),
+  KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -464,6 +466,9 @@ CREATE TABLE `credentials` (
   `output_tokens` bigint(20) NOT NULL DEFAULT 0,
   `visible_tokens` bigint(20) NOT NULL DEFAULT 0,
   `cache_write_tokens` bigint(20) NOT NULL DEFAULT 0,
+  `fuse_api_equiv_micros` bigint(20) NOT NULL DEFAULT 0,
+  `fuse_priced_events` bigint(20) NOT NULL DEFAULT 0,
+  `fuse_unpriced_events` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `fk_credentials_0` (`donated_by`),
   KEY `fk_credentials_1` (`source_id`),
@@ -877,7 +882,8 @@ CREATE TABLE `usage_rollup_hourly` (
   `first_at` varchar(32) NOT NULL,
   `last_at` varchar(32) NOT NULL,
   PRIMARY KEY (`user_id`,`hour`,`api_key_id`,`source_type`,`model`),
-  KEY `usage_rollup_hourly_hour` (`hour`)
+  KEY `usage_rollup_hourly_hour` (`hour`),
+  KEY `usage_rollup_hourly_source` (`source_type`,`hour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

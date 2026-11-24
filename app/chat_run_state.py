@@ -101,7 +101,7 @@ def steer_turn(user_id, thread_id, text, command_id, attachments=None):
         fingerprint, previous = chat_tx.command(conn, user_id, command_id, identity)
         if previous is not None:
             return {"idempotent": True, "thread": chat_views.thread_view(conn, user_id, pk)}
-        run = conn.execute("SELECT * FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running') AND parent_run_id IS NULL",
+        run = conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE thread_id=? AND user_id=? AND status IN ('queued','running') AND parent_run_id IS NULL",
                            (pk, user_id)).fetchone()
         if run is None or run["cancel_requested"]:
             raise chats.ChatValidationError("No active run; send a turn instead.", 409)
@@ -226,13 +226,13 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
             identity = legacy
         fingerprint, previous = chat_tx.command(conn, user_id, command_id, identity)
         if previous is not None:
-            run = chat_views.run_view(conn.execute("SELECT * FROM chat_runs WHERE id=? AND user_id=?", (previous["run_id"], user_id)).fetchone())
+            run = chat_views.run_view(conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=? AND user_id=?", (previous["run_id"], user_id)).fetchone())
             view_id = pk if pk is not None else previous.get("thread_id")
             return {"thread": chat_views.thread_view(conn, user_id, view_id) if view_id is not None else None, "run": run, "idempotent": True}
         if pk is None:
             raise chats.ChatValidationError("chat not found", 404)
         thread_id = pk
-        row = conn.execute("SELECT * FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone()
+        row = conn.execute("SELECT revision FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone()
         if row is None:
             raise chats.ChatValidationError("chat not found", 404)
         chat_tx.check_revision(row["revision"], expected_revision)
@@ -319,7 +319,8 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         send_type_id = context_meter.source_type_for_model(send_model, prior_meter)
         from . import chat_history
         history_cutoffs = []
-        request_messages, history_info = chat_history.build(conn, user_id, thread_id, messages, state, cutoffs_out=history_cutoffs)
+        request_messages, history_info = chat_history.build(conn, user_id, thread_id, messages, state, retained=row["retained_history"],
+                                                             cutoffs_out=history_cutoffs)
         # The request is stored and re-read on every progress save: large
         # images go to chat_images once instead of riding along inline.
         request_messages = chat_images.store(conn, thread_id, user_id, request_messages)
@@ -500,13 +501,18 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         conn.execute("""UPDATE chat_threads SET messages=?,title=?,model=?,tools=?,context=?,compaction=?,revision=revision+1,updated_at=? WHERE id=?""",
                      (chat_tx.dumps(messages), title, request["model"], chat_tx.dumps(request["tools"]), request["thread_context"], ctxmod.dump_state(state), ts, thread_id))
         chats.unarchive_on_activity(conn, row, ts)
+        # Built before publishing, as publish_thread_view does: the events hold
+        # the user's event cursor row to commit.
+        thread = chat_views.thread_view(conn, user_id, thread_id)
         chat_tx.thread_event(conn, user_id, thread_id)
-        chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
-        from . import command_jobs as command_jobs_mod
+        eid = chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
+        from . import chat_recaps, command_jobs as command_jobs_mod
 
         command_jobs_mod.mark_delivered([str(ident) for ident in command_receipt_ids or []], conn=conn)
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"run_id": run_id, "thread_id": thread_id})
-        thread = chat_views.thread_view(conn, user_id, thread_id)
+        # run.started staled the thread's ready recaps.
+        chat_recaps.attach(conn, user_id, thread_id, thread)
+        chat_views._stamp_cursors(thread, user_id, thread_id, eid, None)
         return {"thread": thread, "run": thread["run"], "idempotent": False}
 
 
@@ -957,6 +963,49 @@ def _json_field(value):
         return value
 
 
+# What the agents pane derives from a child's message, per (run id, message
+# digest): a poll re-reads only the messages that changed since the last one.
+_AGENT_FIELDS_MAX = 1024
+_agent_fields: dict[tuple[str, str], dict] = {}
+_agent_fields_lock = threading.Lock()
+_ACTIVITY_TRACE_KEYS = ("name", "status", "state", "execution_status", "background", "child_id", "command_id")
+
+
+def _agent_message_fields(message) -> dict:
+    tools = message.get("tools") if isinstance(message.get("tools"), list) else []
+    tool_counts: dict[str, int] = {}
+    for trace in tools:
+        if not isinstance(trace, dict):
+            continue
+        name = str(trace.get("name") or "")
+        if not name:
+            continue
+        tool_counts[name] = tool_counts.get(name, 0) + 1
+    segments = message.get("segments") or []
+    last = next((part for part in reversed(segments) if isinstance(part, dict) and (part.get("type") == "tool" or str(part.get("text") or "").strip())), None)
+    return {
+        "tool_counts": tool_counts,
+        "recent": chat_views.agent_recent_calls(tools),
+        "error": str(message.get("error") or "")[:400],
+        "gen": {key: value for key, value in usage.items()
+                if key in ("gen_ms", "gen_out", "gen_est") and type(value) is int}
+        if isinstance(usage := message.get("usage"), dict) else {},
+        # As much of the message as agent_current_activity and run_work_fields read.
+        "slim": {
+            "tools": [{key: trace[key] for key in _ACTIVITY_TRACE_KEYS if key in trace} for trace in message.get("tools") or []
+                      if isinstance(trace, dict) and trace.get("status") in ("running", "progress", "queued")],
+            "segments": [last] if last is not None else [],
+            "elapsedMs": message.get("elapsedMs"),
+        },
+        # child_writeup()[:200] per (status, follow-up fields it reads).
+        "summaries": {},
+    }
+
+
+def _summary_key(status, agent) -> str:
+    return chat_tx.dumps([status, agent.get("unconsumed_followups"), agent.get("carried_report")])
+
+
 def list_thread_agents(user_id, thread_id, limit=100):
     """Child runs (subagents) of a thread, newest first, with spawned-child counts."""
     # Only agent and model from each request: a subagent's request also
@@ -964,7 +1013,7 @@ def list_thread_agents(user_id, thread_id, limit=100):
     # MariaDB's JSON_EXTRACT returns objects (the translator would emit
     # JSON_VALUE, which returns NULL for them), so it goes out natively.
     sql = """SELECT id, status, {agent} AS agent_json, {model} AS model_json,
-                  message, activity, created_at, updated_at, cancel_requested, cancel_requested_at,
+                  {digest} AS message_digest, activity, created_at, updated_at, cancel_requested, cancel_requested_at,
                   resume_count, ({has}) AS has_transcript, parent_run_id, root_run_id, agent_depth
            FROM chat_runs
            WHERE user_id={p} AND thread_id={p} AND parent_run_id IS NOT NULL
@@ -978,14 +1027,15 @@ def list_thread_agents(user_id, thread_id, limit=100):
     args = (user_id, thread_id, user_id, thread_id, max(1, min(int(limit), 200)))
     # Not the virtual provider_messages: testing it builds each transcript.
     has = "provider_base IS NOT NULL OR provider_tail IS NOT NULL" if db.provider_split() else "provider_messages IS NOT NULL"
+    digest = "message_digest" if "message_digest" in chat_checkpoint._run_columns() else "MD5(message)"
     with db.tx() as conn:
         native = getattr(conn, "native", None)
         if native is not None:
-            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", has=has, p="%s"),
-                          args).fetchall()
+            rows = native(sql.format(agent="JSON_EXTRACT(request, '$.agent')", model="JSON_EXTRACT(request, '$.model')", has=has,
+                                     digest=digest, p="%s"), args).fetchall()
         else:
-            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", has=has, p="?"),
-                                args).fetchall()
+            rows = conn.execute(sql.format(agent="json_extract(request, '$.agent')", model="json_extract(request, '$.model')", has=has,
+                                           digest=digest, p="?"), args).fetchall()
     counts: dict[str, int] = {}
     root = thread_root_run(user_id, thread_id) if rows else None
     stopped_at = str(root.get("stopped_at") or "") if root else ""
@@ -997,27 +1047,49 @@ def list_thread_agents(user_id, thread_id, limit=100):
             [row["id"] for row in rows],
         ):
             counts[item["pid"]] = int(item["c"])
+    reqs, fields, needed = {}, {}, []
+    with _agent_fields_lock:
+        for row in rows:
+            req = chat_views.with_activity({"agent": _json_field(row["agent_json"]), "model": _json_field(row["model_json"])}, row)
+            reqs[row["id"]] = req
+            agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
+            known = _agent_fields.get((row["id"], row["message_digest"]))
+            if known is not None:
+                fields[row["id"]] = known
+            if known is None or (row["status"] not in chat_tx.ACTIVE and _summary_key(row["status"], agent) not in known["summaries"]):
+                needed.append(row["id"])
+    messages = {}
+    for start in range(0, len(needed), 200):
+        batch = needed[start:start + 200]
+        for item in db.fetchall(f"SELECT id, message, {digest} AS message_digest FROM chat_runs WHERE id IN ({','.join('?' * len(batch))})", batch):
+            try:
+                message = json.loads(item["message"])
+            except (json.JSONDecodeError, TypeError):
+                message = {}
+            message = message if isinstance(message, dict) else {}
+            messages[item["id"]] = message
+            with _agent_fields_lock:
+                entry = _agent_fields.get((item["id"], item["message_digest"]))
+                if entry is None:
+                    entry = _agent_message_fields(message)
+                    _agent_fields[(item["id"], item["message_digest"])] = entry
+                    while len(_agent_fields) > _AGENT_FIELDS_MAX:
+                        _agent_fields.pop(next(iter(_agent_fields)))
+            fields[item["id"]] = entry
     out = []
     for row in rows:
-        req = chat_views.with_activity({"agent": _json_field(row["agent_json"]), "model": _json_field(row["model_json"])}, row)
+        req = reqs[row["id"]]
         agent = req.get("agent") if isinstance(req.get("agent"), dict) else {}
-        try:
-            message = json.loads(row["message"])
-        except (json.JSONDecodeError, TypeError):
-            message = {}
-        message = message if isinstance(message, dict) else {}
-        tools = message.get("tools") if isinstance(message.get("tools"), list) else []
-        tool_counts: dict[str, int] = {}
-        for trace in tools:
-            if not isinstance(trace, dict):
-                continue
-            name = str(trace.get("name") or "")
-            if not name:
-                continue
-            tool_counts[name] = tool_counts.get(name, 0) + 1
-        recent = chat_views.agent_recent_calls(tools)
+        derived = fields.get(row["id"]) or _agent_message_fields({})
+        summary = ""
+        if row["status"] not in chat_tx.ACTIVE:
+            key = _summary_key(row["status"], agent)
+            summary = derived["summaries"].get(key)
+            if summary is None:
+                summary = chat_views.child_writeup({"status": row["status"], "message": messages.get(row["id"], {}), "request": req})[:200]
+                derived["summaries"][key] = summary
         quiet_s = chat_views._iso_age(row["updated_at"] or row["created_at"])
-        current = chat_views.agent_current_activity(message, agent.get("activity"), row["status"])
+        current = chat_views.agent_current_activity(derived["slim"], agent.get("activity"), row["status"])
         if row["status"] in chat_tx.ACTIVE:
             if quiet_s >= STALL_IDLE_SECONDS:
                 current = "stalled"
@@ -1045,21 +1117,18 @@ def list_thread_agents(user_id, thread_id, limit=100):
             "root_run_id": row["root_run_id"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "summary": (chat_views.child_writeup({"status": row["status"], "message": message, "request": req})
-                        if row["status"] not in chat_tx.ACTIVE else "")[:200],
-            "error": str(message.get("error") or "")[:400],
+            "summary": summary,
+            "error": derived["error"],
             "children": counts.get(row["id"], 0),
-            "tool_counts": tool_counts,
-            "recent": recent,
+            "tool_counts": dict(derived["tool_counts"]),
+            "recent": [dict(call) for call in derived["recent"]],
             "current": current,
             "quiet_s": round(quiet_s, 1),
             "wake_state": _agent_wake_state(agent, row["status"], stopped_at, row["cancel_requested"]),
             "context": chat_views._agent_context_chip(req, agent, row),
             # The child's own tok/s (gen_ms/gen_out/gen_est, see consume.GenClock).
-            "gen": {key: value for key, value in usage.items()
-                    if key in ("gen_ms", "gen_out", "gen_est") and type(value) is int}
-            if isinstance(usage := message.get("usage"), dict) else {},
-            **run_work_fields(row["id"], agent, message),
+            "gen": dict(derived["gen"]),
+            **run_work_fields(row["id"], agent, derived["slim"]),
         }
         out.append(entry)
     return out
