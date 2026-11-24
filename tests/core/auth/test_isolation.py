@@ -531,6 +531,8 @@ ISOLATED = {
     ("POST", "/settings/secrets/{secret_id}/reveal"), ("DELETE", "/settings/secrets/{secret_id}"),
     # agents/test_pairing_http.py::test_the_stats_socket_opens_only_for_the_users_own_enabled_connector
     ("WS", "/hosts/{host_id}/stats"),
+    # terminal/test_routes.py::test_the_socket_refuses_other_origins_strangers_and_unknown_sessions
+    ("DELETE", "/terminal/sessions/{session_id}"),
 }
 # The id names a provider or pool kind, not an account's object.
 NOT_AN_OBJECT = {("POST", "/sources/keys/{pid}/add"), ("POST", "/sources/models/{provider}"),
