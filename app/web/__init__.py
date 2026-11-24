@@ -21,6 +21,7 @@ from . import sources as sources_routes
 from . import schedules as schedules_routes
 from . import settings as settings_routes
 from . import speech as speech_routes
+from . import terminal as terminal_routes
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
 router.include_router(auth.router)
@@ -36,6 +37,7 @@ router.include_router(backdrops_routes.router)
 router.include_router(sources_routes.router)
 router.include_router(settings_routes.router)
 router.include_router(speech_routes.router)
+router.include_router(terminal_routes.router)
 
 __all__ = [
     "router",

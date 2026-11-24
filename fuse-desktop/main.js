@@ -309,12 +309,17 @@ function sendFrameState() {
   });
 }
 
+// A focused chat terminal ([data-terminal]) owns Ctrl+R (history search),
+// Alt+arrows (word moves) and the menu's shortcuts (Ctrl+W, …).
+let terminalFocused = false;
+
 function handleShortcuts(event, input) {
   if (input.type !== "keyDown") return;
   const mod = input.control || input.meta;
   const key = input.key.toLowerCase();
   const wc = site.webContents;
-  if (input.key === "F5" || (mod && key === "r")) {
+  const term = terminalFocused && event.sender === wc;
+  if (input.key === "F5" || (mod && key === "r" && !(term && input.control))) {
     input.shift ? wc.reloadIgnoringCache() : wc.reload();
   } else if (input.control && input.key === "\\") {
     // Push-to-talk chord owned by an external listener; no view should act on it.
@@ -326,9 +331,9 @@ function handleShortcuts(event, input) {
     wc.setZoomLevel(wc.getZoomLevel() - 0.5);
   } else if (mod && key === "0") {
     wc.setZoomLevel(0);
-  } else if (input.alt && input.key === "ArrowLeft" && wc.navigationHistory.canGoBack()) {
+  } else if (!term && input.alt && input.key === "ArrowLeft" && wc.navigationHistory.canGoBack()) {
     wc.navigationHistory.goBack();
-  } else if (input.alt && input.key === "ArrowRight" && wc.navigationHistory.canGoForward()) {
+  } else if (!term && input.alt && input.key === "ArrowRight" && wc.navigationHistory.canGoForward()) {
     wc.navigationHistory.goForward();
   } else {
     return;
@@ -457,6 +462,9 @@ function createWindow() {
   wc.on("before-input-event", handleShortcuts);
   win.on("focus", restoreFocus);
   if (bar) bar.webContents.on("focus", restoreFocus);
+  wc.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) setTerminalFocus(false);
+  });
   wc.on("did-finish-load", flushToasts);
   wc.on("did-finish-load", () => {
     if (originOf(wc.getURL()) === APP_ORIGIN) loadFailures = 0;
@@ -582,6 +590,15 @@ ipcMain.on("titlebar", (event, action) => {
   if (action === "minimize") win.minimize();
   else if (action === "maximize") win.isMaximized() ? win.unmaximize() : win.maximize();
   else if (action === "close") win.close();
+});
+
+function setTerminalFocus(on) {
+  terminalFocused = Boolean(on);
+  if (alive(site)) site.webContents.setIgnoreMenuShortcuts(terminalFocused);
+}
+
+ipcMain.on("site-terminal-focus", (event, on) => {
+  if (site && event.sender === site.webContents) setTerminalFocus(on);
 });
 
 ipcMain.on("site-theme", (event) => {

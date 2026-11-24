@@ -364,8 +364,8 @@ def parse_credits(data: dict) -> dict:
         "reserved": reserved,
         "key_limit": limit,
     }
-    if available is not None and available > 0:
-        parsed["prepaid_cents"] = int(round(available * 100))
+    if available is not None:
+        parsed["prepaid_cents"] = int(round(max(0.0, available) * 100))
     return parsed
 
 

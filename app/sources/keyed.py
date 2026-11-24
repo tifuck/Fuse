@@ -18,7 +18,7 @@ import httpx
 
 from .. import accounts, db
 from ..crypto import encrypt
-from ..providers import registry
+from ..providers import creds, registry
 from ..proxy import UsageStream
 from . import http_pool
 from .base import ChatResult, map_effort
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 SITE_ACCESS = ("none", "admins", "everyone")
 CATALOG_TTL = 21600.0  # per-key catalogs (presets with per_key)
 FAILED_TTL = 60.0
+BALANCE_TTL = 300.0
 # Message fields every OpenAI-compatible API takes; Fuse's own replay fields
 # (claude_thinking, reasoning_content, ...) are a 400 on strict ones.
 _MESSAGE_KEYS = frozenset({"role", "content", "name", "tool_calls", "tool_call_id"})
@@ -335,6 +336,45 @@ class KeyedSource(OpenAICompatSource):
             attempts.pop()
         last.attempts = attempts
         return last
+
+
+def parse_balance(data) -> dict | None:
+    """A balance reply as {amount, currency}: DeepSeek's balance_infos (USD
+    first) or Moonshot's data.available_balance (USD)."""
+    if not isinstance(data, dict):
+        return None
+    infos = data.get("balance_infos")
+    if isinstance(infos, list):
+        rows = [r for r in infos if isinstance(r, dict) and creds.as_float(r.get("total_balance")) is not None]
+        rows.sort(key=lambda r: r.get("currency") != "USD")
+        return {"amount": creds.as_float(rows[0]["total_balance"]), "currency": str(rows[0].get("currency") or "USD")[:8]} if rows else None
+    inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+    amount = creds.as_float(inner.get("available_balance"))
+    return {"amount": amount, "currency": "USD"} if amount is not None else None
+
+
+async def refresh_balance(p, row, *, force: bool = False) -> dict | None:
+    """The key's account balance, read at most once per BALANCE_TTL and kept
+    in extra["balance"]. A failed read keeps the last amount."""
+    if not p.balance:
+        return None
+    extra = _extra(row)
+    stored = extra.get("balance") if isinstance(extra.get("balance"), dict) else {}
+    if not force and creds.usage_fresh(stored, BALANCE_TTL):
+        return stored
+    url = p.base(str(extra.get("region") or "")).rstrip("/") + p.balance
+    parsed, err = None, ""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(url, headers=auth_headers(p, accounts.cred_secret(row)))
+        parsed = parse_balance(r.json()) if r.status_code == 200 else None
+        err = "" if parsed else f"balance http {r.status_code}"
+    except (httpx.HTTPError, ValueError):
+        err = "balance request failed"
+    stored = {**stored, **(parsed or {}), "checked_at": db.now(), "last_error": err}
+    extra["balance"] = stored
+    accounts.update_extra(int(row["id"]), extra)
+    return stored
 
 
 async def validate_key(p, key: str, region: str = "") -> str:

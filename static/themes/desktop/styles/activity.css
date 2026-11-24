@@ -571,7 +571,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-btn[hidden] { display: none; }
   & .dk-out-cmd { padding: 8px 10px; border: 1px solid var(--dk-card-line); border-radius: 8px; background: var(--dk-card); color: var(--dk-text); font: 12px/1.45 var(--code); overflow-wrap: anywhere; }
   & .dk-out-cmd:empty { display: none; }
-  & .dk-term {
+  & .dk-out-text {
     flex: 1;
     min-height: 10rem;
     margin: 0;
@@ -586,7 +586,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  & .dk-term-wait { color: var(--dk-mute); font-family: var(--sans); }
+  & .dk-out-wait { color: var(--dk-mute); font-family: var(--sans); }
   & .dk-out-picks { display: flex; flex: none; gap: 6px; overflow-x: auto; scrollbar-width: none; }
   & .dk-out-picks:empty, &:not([data-theme-insp="sheet"]) .dk-out-picks { display: none; }
   & .dk-pick { flex: none; height: 34px; padding: 0 12px; border: 1px solid var(--dk-card-line); border-radius: 999px; background: none; color: var(--dk-text); font: 13px var(--sans); white-space: nowrap; cursor: pointer; }

@@ -46,6 +46,19 @@ document.addEventListener("change", (event) => {
 // restores a minimized Electron window nor raises it over other apps.
 window.addEventListener("fuse:raise", () => ipcRenderer.send("site-raise"));
 
+// Tell main.js while a chat terminal has focus, so it lets the terminal
+// have Ctrl+R, Alt+arrows and the menu's shortcuts.
+let inTerminal = false;
+function terminalFocus() {
+  const el = document.activeElement;
+  const now = Boolean(el && el.closest && el.closest("[data-terminal]"));
+  if (now === inTerminal) return;
+  inTerminal = now;
+  ipcRenderer.send("site-terminal-focus", now);
+}
+document.addEventListener("focusin", terminalFocus);
+document.addEventListener("focusout", () => setTimeout(terminalFocus, 0));
+
 // The update toast's Restart button; main ignores it until an update is downloaded.
 window.addEventListener("fuse:restart", () => ipcRenderer.send("site-restart"));
 

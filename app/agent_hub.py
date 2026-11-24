@@ -5,8 +5,11 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from uuid import uuid4
+
+from starlette.websockets import WebSocketDisconnect
 
 from . import hosts
 from .hosts import HostError
@@ -45,6 +48,21 @@ _stat_off: dict[tuple[int, int], asyncio.TimerHandle] = {}
 RESULT_CHARS = 262_144  # transport budget, not the model's display budget
 # Connector frame limit is 1 MiB. Measure encoded JSON bytes before sending.
 MAX_PAYLOAD_CHARS = 900_000
+# Interactive terminals (app/terminal.py). A pty_open job stays open until
+# the shell exits; its bytes travel as binary frames [kind][12-char job
+# id][payload], output routed here by job id without awaiting anyone.
+PTY_OUT = 0x01
+PTY_IN = 0x02
+PTY_FRAME = 32 * 1024
+PTY_UPDATE = "Update the connector on this machine to use the terminal (connector 1.12.0 or newer)."
+_ptys: dict[tuple[int, int], dict[str, dict]] = {}
+# Orphans: a PTY the connector still runs that no terminal owns (Fuse
+# restarted, a close was lost). Hello lists them and frames for unknown ids
+# are answered with one cancel per id per ORPHAN_CANCEL_SECONDS.
+ORPHAN_HELLO_CAP = 16
+ORPHAN_CANCEL_SECONDS = 5.0
+_orphan_cancels: dict[tuple[int, int, str], float] = {}
+_JOB_ID = re.compile(r"[0-9a-f]{12}")
 
 
 class AgentError(HostError):
@@ -108,6 +126,24 @@ def connector_version(user_id: int, host_id: int) -> str:
     """The live socket's hello version (no DB read); "" when offline."""
     rec = _conns.get((int(user_id), int(host_id)))
     return str((rec or {}).get("ver") or "")
+
+
+def has_cap(user_id: int, host_id: int, cap: str) -> bool:
+    """Whether the live connector's hello listed this capability ("pty")."""
+    rec = _conns.get((int(user_id), int(host_id)))
+    return bool(rec and not rec.get("closed") and cap in rec.get("caps", ()))
+
+
+def shells(user_id: int, host_id: int) -> tuple[str, ...] | None:
+    """The shells a live Windows connector reported; None when unknown."""
+    rec = _conns.get((int(user_id), int(host_id)))
+    return (rec or {}).get("shells")
+
+
+def _names(value) -> tuple[str, ...] | None:
+    if not isinstance(value, list):
+        return None
+    return tuple(str(v)[:32] for v in value[:16] if isinstance(v, str))
 
 
 async def disconnect(user_id: int, host_id: int, reason: str = "disabled") -> None:
@@ -364,6 +400,177 @@ async def cancel(user_id: int, host_id: int, job_id: str) -> None:
         pass
 
 
+async def open_pty(user_id: int, host_id: int, *, cols: int, rows: int, cwd: str = "", shell: str = "",
+                   on_output, timeout: float = 30.0) -> dict:
+    """Start an interactive shell on the connector (job op pty_open) and
+    return once it runs: {"id", "shell", "pid", "done"}. "done" is the job's
+    result future: it resolves when the shell exits, or fails with AgentError
+    when the connector goes away for good. Output bytes go to
+    on_output(bytes), called inline in the receive loop: it must not block.
+    Unlike call(), nothing here ends the job; close_pty() does."""
+    key = (int(user_id), int(host_id))
+    rec = _conns.get(key)
+    if rec is None or rec.get("closed"):
+        raise AgentError("agent is offline", 409)
+    if "pty" not in rec.get("caps", ()):
+        raise AgentError(PTY_UPDATE, 409)
+    pending = rec.setdefault("pending", {})
+    if len(pending) >= MAX_INFLIGHT:
+        raise AgentError("agent is busy", 429)
+    job_id = uuid4().hex[:12]
+    loop = asyncio.get_running_loop()
+    done: asyncio.Future = loop.create_future()
+    ready: asyncio.Future = loop.create_future()
+    pending[job_id] = done
+    _ptys.setdefault(key, {})[job_id] = {"out": on_output, "ready": ready, "done": done}
+    done.add_done_callback(lambda _fut: _forget_pty(key, job_id))
+    payload = {"v": 1, "t": "job", "id": job_id, "op": "pty_open", "cols": int(cols), "rows": int(rows),
+               "cwd": str(cwd or ""), "shell": str(shell or "")}
+    try:
+        async with asyncio.timeout(max(1.0, float(timeout))):
+            try:
+                await rec["ws"].send_json(payload)
+            except Exception as exc:
+                raise AgentError("agent is offline", 409) from exc
+            await asyncio.wait({ready, done}, return_when=asyncio.FIRST_COMPLETED)
+    except (asyncio.TimeoutError, asyncio.CancelledError, AgentError) as exc:
+        await close_pty(user_id, host_id, job_id, wait=0)
+        if isinstance(exc, asyncio.TimeoutError):
+            raise AgentError("agent timed out") from exc
+        raise
+    if not ready.done():
+        result = done.result()  # AgentError when the connector went away
+        raise AgentError(_clip(result.get("error"))[:300] or "the shell did not start", 502)
+    info = ready.result()
+    return {"id": job_id, "shell": info["shell"], "pid": info["pid"], "done": done}
+
+
+def _forget_pty(key: tuple[int, int], job_id: str) -> None:
+    jobs = _ptys.get(key)
+    if jobs is not None:
+        jobs.pop(job_id, None)
+        if not jobs:
+            _ptys.pop(key, None)
+
+
+async def close_pty(user_id: int, host_id: int, job_id: str, wait: float = 5.0) -> None:
+    """Kill a terminal's shell (cancel; the connector answers with the job's
+    result). A connector that never answers is forgotten after `wait`."""
+    key = (int(user_id), int(host_id))
+    await cancel(user_id, host_id, job_id)
+    entry = (_ptys.get(key) or {}).get(job_id)
+    if entry is None:
+        return
+    done = entry["done"]
+    if wait > 0:
+        with contextlib.suppress(asyncio.TimeoutError, AgentError):
+            await asyncio.wait_for(asyncio.shield(done), wait)
+    for owner in (_conns.get(key), _held.get(key)):
+        if owner is not None:
+            owner.get("pending", {}).pop(job_id, None)
+    if not done.done():
+        done.set_exception(AgentError("terminal closed"))
+        done.exception()  # retrieved: nobody else waits on a forgotten job
+    _forget_pty(key, job_id)
+
+
+async def _send_pty(user_id: int, host_id: int, message) -> bool:
+    rec = _conns.get((int(user_id), int(host_id)))
+    if rec is None or rec.get("closed"):
+        return False
+    try:
+        async with asyncio.timeout(5):
+            if isinstance(message, bytes):
+                await rec["ws"].send_bytes(message)
+            else:
+                await rec["ws"].send_json(message)
+    except Exception:
+        return False
+    return True
+
+
+async def pty_input(user_id: int, host_id: int, job_id: str, data: bytes) -> bool:
+    """Keystrokes for a terminal, in frames of at most PTY_FRAME bytes.
+    False when the connector is not there to take them."""
+    head = bytes([PTY_IN]) + job_id.encode("ascii")
+    for start in range(0, len(data), PTY_FRAME):
+        if not await _send_pty(user_id, host_id, head + data[start:start + PTY_FRAME]):
+            return False
+    return True
+
+
+async def pty_resize(user_id: int, host_id: int, job_id: str, cols: int, rows: int) -> bool:
+    return await _send_pty(user_id, host_id, {"v": 1, "t": "pty_resize", "id": job_id, "cols": int(cols), "rows": int(rows)})
+
+
+async def pty_ack(user_id: int, host_id: int, job_id: str, n: int) -> bool:
+    """Credit for n output bytes: the connector stops reading the PTY while
+    more than its window is unacked."""
+    return await _send_pty(user_id, host_id, {"v": 1, "t": "pty_ack", "id": job_id, "n": int(n)})
+
+
+def _is_orphan(rec: dict, job_id: str) -> bool:
+    """A well-formed job id that is neither a live terminal nor any pending
+    job (a replaced socket's jobs live on in the session that replaced it)."""
+    key = (rec["user_id"], rec["host_id"])
+    if not _JOB_ID.fullmatch(job_id) or job_id in (_ptys.get(key) or {}):
+        return False
+    return not any(job_id in (owner.get("pending") or {}) for owner in (rec, _conns.get(key), _held.get(key)) if owner)
+
+
+def _cancel_orphan(rec: dict, job_id: str) -> None:
+    """One cancel for a PTY nobody owns, at most once per id per
+    ORPHAN_CANCEL_SECONDS however many frames it sends. Never awaits."""
+    now = time.monotonic()
+    mark = (rec["user_id"], rec["host_id"], job_id)
+    if now - _orphan_cancels.get(mark, -ORPHAN_CANCEL_SECONDS) < ORPHAN_CANCEL_SECONDS:
+        return
+    if len(_orphan_cancels) >= CANCEL_REPLAY_CAP:
+        for old, at in list(_orphan_cancels.items()):
+            if now - at >= ORPHAN_CANCEL_SECONDS:
+                _orphan_cancels.pop(old, None)
+        if len(_orphan_cancels) >= CANCEL_REPLAY_CAP:
+            return
+    _orphan_cancels[mark] = now
+    _spawn(_cancel_pending(rec.get("ws"), {job_id: None}))
+
+
+def _pty_output(rec: dict, frame: bytes) -> None:
+    """A binary frame from the connector. Anything malformed (short, another
+    kind, a bad id, an empty or oversized payload) is skipped like bad JSON;
+    output for a PTY no terminal owns is answered with a cancel."""
+    if len(frame) < 13 or frame[0] != PTY_OUT:
+        return
+    try:
+        job_id = frame[1:13].decode("ascii")
+    except UnicodeDecodeError:
+        return
+    entry = (_ptys.get((rec["user_id"], rec["host_id"])) or {}).get(job_id)
+    if entry is None:
+        if _is_orphan(rec, job_id):
+            _cancel_orphan(rec, job_id)
+        return
+    if len(frame) == 13 or len(frame) - 13 > PTY_FRAME:
+        return
+    try:
+        entry["out"](frame[13:])
+    except Exception:
+        logger.debug("pty output callback failed", exc_info=True)
+
+
+def _pty_ok(rec: dict, data: dict) -> None:
+    job_id = str(data.get("id") or "")
+    entry = (_ptys.get((rec["user_id"], rec["host_id"])) or {}).get(job_id)
+    if entry is None:
+        if _is_orphan(rec, job_id):
+            _cancel_orphan(rec, job_id)
+        return
+    if entry["ready"].done():
+        return
+    shell = data.get("shell")
+    entry["ready"].set_result({"shell": shell[:200] if isinstance(shell, str) else "", "pid": _num(data.get("pid"))})
+
+
 def _exit_code(value) -> int | None:
     """The connector's exit status; anything that is not an integer (1e999,
     a string) is unknown rather than a crash further down."""
@@ -521,7 +728,8 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
     key = (int(user_id), int(host_id))
     inst = str(msg.get("inst") or "")[:64]
     version = str(msg.get("ver") or msg.get("version") or "")
-    rec = {"ws": ws, "pending": {}, "user_id": int(user_id), "host_id": int(host_id), "inst": inst, "ver": version[:32]}
+    rec = {"ws": ws, "pending": {}, "user_id": int(user_id), "host_id": int(host_id), "inst": inst, "ver": version[:32],
+           "caps": frozenset(_names(msg.get("caps")) or ()), "shells": _names(msg.get("shells"))}
     orphaned: dict = {}
     async with _lock:
         old = _conns.pop(key, None)
@@ -546,13 +754,21 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
     try:
         replay = _cancel_replay.get(key, {})
         await _cancel_pending(ws, {i: None for i, deadline in replay.items() if deadline > time.monotonic()})
+        listed = msg.get("ptys") if isinstance(msg.get("ptys"), list) else []
+        orphans = {str(i): None for i in listed[:ORPHAN_HELLO_CAP] if isinstance(i, str) and _is_orphan(rec, i)}
+        await _cancel_pending(ws, orphans)
         if _stat_watch.get(key) or key in _stat_off:
             await _send_stats(key, True)  # a connector forgets its sampling when its session ends
         while True:
-            try:
-                text = await ws.receive_text()
-            except KeyError:
-                continue  # a binary frame: malformed, skipped like bad JSON
+            message = await ws.receive()
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code") or 1000)
+            if message.get("bytes") is not None:
+                _pty_output(rec, message["bytes"])
+                continue
+            text = message.get("text")
+            if text is None:
+                continue
             try:
                 data = json.loads(text)
             except (ValueError, RecursionError):
@@ -572,6 +788,9 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                     rec["stats"] = frame
                     for queue in _stat_watch.get(key, ()):
                         _offer(queue, frame)
+                continue
+            if kind == "pty_ok":
+                _pty_ok(rec, data)
                 continue
             if kind == "chunk":
                 job_id = str(data.get("id") or "")
@@ -622,8 +841,6 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                 }
             )
     except Exception as exc:
-        from starlette.websockets import WebSocketDisconnect
-
         if isinstance(exc, WebSocketDisconnect):
             logger.debug("agent socket ended", exc_info=True)
         else:

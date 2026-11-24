@@ -46,6 +46,16 @@ let saving = null;
 let notice = "";
 
 const level = (pct) => (pct >= 95 ? "hot" : pct >= 75 ? "warn" : pct >= 50 ? "mid" : "ok");
+const CURRENCY = { USD: "$", CNY: "¥", EUR: "€" };
+// Money left on an account ({amount, currency}), or "" when none is reported.
+function money(b) {
+  const amount = Number(b?.amount);
+  if (!b || !Number.isFinite(amount)) return "";
+  const text = Math.abs(amount).toFixed(2);
+  const sign = CURRENCY[b.currency];
+  return (amount < 0 ? "-" : "") + (sign ? sign + text : `${text} ${b.currency}`);
+}
+const moneyLevel = (b) => (Number(b?.amount) > 0 ? "ok" : "hot");
 // A window's one-letter tag: 5-hour H, Weekly W, Fable weekly F, Auto A.
 const letter = (w) => (String(w.label || "").replace(/^[\d\s-]+/, "")[0] || "·").toUpperCase();
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
@@ -163,12 +173,20 @@ export function renderPool(hopped = false) {
   // Two rows: the plan's windows (5-hour, weekly), topped up with a model or
   // product limit when the plan has only one (Cursor's monthly and Auto).
   const shown = windowsOf(pool.windows).concat(windowsOf(pool.limits)).slice(0, 2);
-  const name = `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}`;
-  const label = shown.length ? `${name}: ${shown.map((w) => `${w.label} ${w.percent}%`).join(", ")} used` : `${name}: no usage reported yet`;
+  const name = pool.prefs ? `${pool.pool}${pool.plan ? " " + pool.plan : ""} plan, ${pool.name}` : `${pool.pool}, ${pool.name}`;
+  const cash = money(pool.balance);
+  const label = shown.length ? `${name}: ${shown.map((w) => `${w.label} ${w.percent}%`).join(", ")} used${cash ? `, ${cash} left` : ""}`
+    : cash ? `${name}: ${cash} left` : `${name}: no usage reported yet`;
   btn.setAttribute("aria-label", label);
   btn.title = label;
   const rows = shown.length ? shown : [{ percent: 0, empty: true }];
-  btn.innerHTML =
+  // An account that reports only money left (a prepaid key) shows the amount.
+  if (!shown.length && cash) {
+    const lvl = moneyLevel(pool.balance);
+    btn.innerHTML =
+      `<span class="chat-pool-meter" aria-hidden="true"><span class="chat-pool-row is-balance" data-level="${lvl}"><b>${escapeHtml(cash)}</b></span></span>` +
+      `<span class="chat-pool-wins" aria-hidden="true"><span class="chat-pool-win is-balance" data-level="${lvl}"><b>${escapeHtml(cash)}</b></span></span>`;
+  } else btn.innerHTML =
     `<span class="chat-pool-meter" aria-hidden="true">${rows.map((w) =>
       `<span class="chat-pool-row" data-level="${level(w.percent)}"><em>${w.empty ? "" : letter(w)}</em>` +
       `<span class="chat-pool-track"><i style="width: ${w.percent}%"></i></span><b>${w.empty ? "–" : w.percent + "%"}</b></span>`).join("")}</span>` +
@@ -326,11 +344,12 @@ function nameHtml(name) {
   return `<b title="${escapeHtml(name)}">${escapeHtml(short(name))}</b>`;
 }
 
-function line(name, pct, meta, attrs = "") {
+// pct null with cash: the account reports money left, not a share used.
+function line(name, pct, meta, attrs = "", cash = "") {
   const bar = pct == null ? '<span class="chat-pool-bar is-empty"></span>' : `<span class="chat-pool-bar"><i style="width:${pct}%"></i></span>`;
   return `<li class="chat-perms-row chat-pool-line"${pct == null ? "" : ` data-level="${level(pct)}"`}${attrs}>` +
     `<span class="chat-perms-path chat-pool-name">${name}</span>${bar}` +
-    `<span class="chat-pool-pct">${pct == null ? "–" : pct + "%"}</span>` +
+    `<span class="chat-pool-pct">${pct == null ? escapeHtml(cash) || "–" : pct + "%"}</span>` +
     `<span class="chat-perms-tag chat-pool-meta">${meta}</span></li>`;
 }
 
@@ -361,21 +380,24 @@ function fillUsage(pool) {
     const meta = a.status === "current" && pool.preview ? "next" :
       a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
     const pct = a.percent == null ? null : clamp(a.percent);
-    return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"`);
+    return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"`, money(a.balance));
   };
+  const cash = money(pool.balance);
+  const balance = cash ? line("Balance", null, "left", ` data-level="${moneyLevel(pool.balance)}"`, cash) : "";
   const hop = pool.hop && pool.hop.from
     ? `<li class="chat-perms-hint chat-pool-note">Moved here from ${escapeHtml(short(pool.hop.from))}${WHY[pool.hop.reason] ? `: ${WHY[pool.hop.reason]}` : ""}.</li>`
     : "";
   const prefs = pool.prefs || {};
   const shareName = (SHARE.find(([id]) => id === prefs.share) || SHARE[0])[1];
-  const sharing = prefs.can_override === false
+  // A key outside a pool (prefs null) has no sharing settings.
+  const sharing = !pool.prefs ? "<span></span>" : prefs.can_override === false
     ? '<span class="chat-pool-share is-locked" title="The admin has turned sharing off for this pool">Sharing <b>off site-wide</b></span>'
     : `<button type="button" class="chat-pool-share" data-pool-sharing aria-haspopup="true">Sharing <b>${shareName}</b><span aria-hidden="true">›</span></button>`;
-  menu.setAttribute("aria-label", `${pool.pool} plan usage`);
-  menu.innerHTML = head("Plan usage") +
+  menu.setAttribute("aria-label", `${pool.pool} ${pool.prefs ? "plan " : ""}usage`);
+  menu.innerHTML = head(pool.prefs ? "Plan usage" : "Usage") +
     '<div class="chat-perms-list">' +
     group(plan, `<span title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</span>`,
-      (windows.map(limit).join("") || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop) +
+      (windows.map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop) +
     (limits.length ? group("Model limits", "", limits.map(limit).join("")) : "") +
     (accounts.length ? group("Accounts", `${Number(pool.ready) || 0} of ${Number(pool.size) || 0} ready`, accounts.map(acct).join("")) : "") +
     "</div>" +

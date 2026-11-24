@@ -65,6 +65,9 @@ class KeyedPreset:
     # Each key lists models of its own account (fine-tunes, deployments):
     # the catalog is read per user, never shared.
     per_key: bool = False
+    # The account balance route (a path under the base URL), read with the
+    # key for the chat's usage badge; keyed.parse_balance reads its reply.
+    balance: str = ""
 
     @property
     def public_prefix(self) -> str:
@@ -108,7 +111,7 @@ PRESETS: tuple[KeyedPreset, ...] = (
     KeyedPreset("gemini", "Gemini API", base_url="https://generativelanguage.googleapis.com/v1beta/openai",
                 id_strip="models/", hide=r"embedding|imagen|veo|aqa|tts|image",
                 efforts=((r"^gemini-(2\.5|[3-9])", _LOW_HIGH),), key_url="https://aistudio.google.com/apikey"),
-    KeyedPreset("deepseek", "DeepSeek", base_url="https://api.deepseek.com",
+    KeyedPreset("deepseek", "DeepSeek", base_url="https://api.deepseek.com", balance="/user/balance",
                 key_url="https://platform.deepseek.com/api_keys"),
     KeyedPreset("minimax", "MiniMax", regions=(
                 Region("global", "Global (minimax.io)", "https://api.minimax.io/v1"),
@@ -129,7 +132,7 @@ PRESETS: tuple[KeyedPreset, ...] = (
                 hide=r"embed|flux|whisper|stable-diffusion", per_key=True, key_url="https://fireworks.ai/account/api-keys"),
     KeyedPreset("deepinfra", "DeepInfra", base_url="https://api.deepinfra.com/v1/openai",
                 hide=r"embed|whisper|flux|stable-diffusion|sdxl|rerank", per_key=True, key_url="https://deepinfra.com/dash/api_keys"),
-    KeyedPreset("moonshot", "Moonshot AI", base_url="https://api.moonshot.ai/v1", vendor="kimi",
+    KeyedPreset("moonshot", "Moonshot AI", base_url="https://api.moonshot.ai/v1", vendor="kimi", balance="/users/me/balance",
                 key_url="https://platform.moonshot.ai/console/api-keys"),
     KeyedPreset("huggingface", "Hugging Face", base_url="https://router.huggingface.co/v1", group="aggregator",
                 key_url="https://huggingface.co/settings/tokens"),

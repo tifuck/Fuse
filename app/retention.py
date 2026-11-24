@@ -353,7 +353,7 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
 def prune_history(*, now: datetime | None = None) -> dict:
     """Age out terminal fire/command history older than HISTORY_DAYS."""
     cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=HISTORY_DAYS))
-    counts = {"fires": 0, "jobs": 0, "orphan_runs": 0}
+    counts = {"fires": 0, "jobs": 0, "terminals": 0, "orphan_runs": 0}
     with db.tx() as conn:
         cur = conn.execute(
             """DELETE FROM schedule_fires
@@ -368,6 +368,12 @@ def prune_history(*, now: datetime | None = None) -> dict:
                 (cutoff,),
             )
             counts["jobs"] = int(cur.rowcount or 0)
+        if conn.native("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE()"
+                       " AND table_name='terminal_sessions'").fetchone():
+            cur = conn.execute(
+                "DELETE FROM terminal_sessions WHERE closed_at IS NOT NULL AND closed_at < ?", (cutoff,)
+            )
+            counts["terminals"] = int(cur.rowcount or 0)
         # chat_runs has no foreign key to its thread: runs some old path left
         # behind when it deleted the thread.
         cur = conn.execute(

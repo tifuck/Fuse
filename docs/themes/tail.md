@@ -71,6 +71,16 @@ base.
   (`data-agents-list`, `data-jobs-list`), drawn as rows: name, state and what
   it is doing, model, clock and one action. The tab counts them all; the
   top-bar button's badge counts what is still running.
+- **terminal:** real shells on the user's machines, as tabs
+  (`static/chat/terminal.js` drives it; `static/themes/tail/terminal.js`
+  adds the tab, the view and the top-bar Terminal button). Opening it from the
+  tab, the button or the pane toggle asks the runtime (`fuse-terminal-set`);
+  the runtime's `fuse-terminal` event shows or hides the tab, and leaving
+  the tab or closing the pane hides the terminal (its shells keep running).
+  The ↔ button cycles the pane's width while the terminal shows: normal,
+  wide (min(60rem, 55vw)), full (the whole window). On a phone the pane is a
+  full-height sheet sized to what the keyboard leaves, the pane's tabs give
+  way to the terminal's own header, and the key bar sits above the keyboard.
 
 ## Composer and status bar
 

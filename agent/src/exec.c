@@ -16,7 +16,7 @@
 #define EXEC_READ 32768
 
 /* Readable once the child exits (Linux 5.3+); -1 falls back to polling. */
-static int open_pidfd(pid_t pid) {
+int open_pidfd(pid_t pid) {
 #ifdef SYS_pidfd_open
     return (int)syscall(SYS_pidfd_open, pid, 0);
 #else
@@ -44,7 +44,7 @@ extern char **environ;
 
 /* The agent's environment plus extra. Built before fork, so the child only
  * execs. NULL when out of memory. */
-static char **env_with(char *const *extra) {
+char **env_with(char *const *extra) {
     size_t n = 0, m = 0, k = 0;
     while (environ && environ[n]) n++;
     while (extra[m]) m++;

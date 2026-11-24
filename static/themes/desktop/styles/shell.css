@@ -451,7 +451,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-mi[hidden] { display: none; }
   & .dk-mi kbd { margin-left: auto; color: var(--dk-mute); font: 11px var(--mono); }
   & .dk-mi[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--dk-mute); }
-  &:not(.dk-has-term) .dk-mi[data-theme-terminal] { display: none; }
+  &:not(.dk-has-output) .dk-mi[data-theme-output] { display: none; }
   & .dk-menu-sep { flex: none; height: 1px; margin: 4px 6px; background: var(--dk-card-line); }
   & .dk-narrow-only { display: none; }
   /* The bar adapts to its own width (the sidebar and inspector change it). */

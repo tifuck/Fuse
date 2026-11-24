@@ -14,6 +14,7 @@
 #include "jobs.h"
 #include "net.h"
 #include "outq.h"
+#include "pty.h"
 
 struct job g_jobs[MAX_JOBS];
 
@@ -250,6 +251,11 @@ static void handle_job_impl(struct tls *t, cJSON *msg) {
             if (timed_out) emsg = "timed out";
             send_res_tmo_len(t, id, code == 0, code, out, out_len, err, err_len, emsg, timed_out, clipped);
         }
+        return;
+    }
+    if (strcmp(op, "pty_open") == 0) {
+        /* Holds this worker until the shell exits, so self-update waits. */
+        pty_run(id, msg, job_reserve(id));
         return;
     }
     if (strcmp(op, "http") == 0) {

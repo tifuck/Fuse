@@ -430,6 +430,12 @@ async def admin_users_delete(request: Request, user_id: int):
             status_code=400,
         )
     try:
+        from .. import terminal
+
+        await terminal.close_where(user_id, "account_deleted")
+    except Exception:
+        logger.exception("terminal close on account delete failed")
+    try:
         from .. import agent_hub
 
         await agent_hub.close_user(user_id)

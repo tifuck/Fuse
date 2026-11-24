@@ -10,6 +10,7 @@
 #include "lifecycle.h"
 #include "net.h"
 #include "outq.h"
+#include "pty.h"
 #include "reconnect.h"
 #include "session.h"
 #include "stats.h"
@@ -139,6 +140,15 @@ int session_loop(void) {
         cJSON_AddStringToObject(hello, "arch", arch_sku());
         cJSON_AddStringToObject(hello, "ver", FUSE_AGENT_VERSION);
         cJSON_AddStringToObject(hello, "inst", inst);
+        cJSON_AddItemToObject(hello, "caps", cJSON_CreateStringArray((const char *[]){"pty"}, 1));
+        {
+            /* Shells still open, so a restarted server can cancel the ones
+             * it no longer knows. */
+            char ids[PTY_MAX][PTY_ID_LEN + 1];
+            int n = pty_open_ids(ids);
+            cJSON *ptys = cJSON_AddArrayToObject(hello, "ptys");
+            for (int i = 0; i < n; i++) cJSON_AddItemToArray(ptys, cJSON_CreateString(ids[i]));
+        }
         char *hs = cJSON_PrintUnformatted(hello);
         cJSON_Delete(hello);
         if (!hs || ws_send_text(&t, hs) != 0) {
@@ -213,6 +223,7 @@ int session_loop(void) {
             fprintf(stderr, "fuse-agent: connected as %s\n", alias);
         }
         cJSON_Delete(reply);
+        pty_reconnected();
         auth_backoff = 0;
         attempts = 0;
         ever_connected = 1;
@@ -242,7 +253,9 @@ int session_loop(void) {
                 conn_watch_sent_ping(&watch, now_mono_ms());
             }
             stats_tick(now_mono_ms());
-            if (out_flush(&t) != 0) {
+            /* Terminal output after the job frames: a flood never delays a
+             * result, chunk or pong. */
+            if (out_flush(&t) != 0 || pty_flush(&t) != 0) {
                 drop_reason = "io error";
                 break;
             }
@@ -262,6 +275,7 @@ int session_loop(void) {
                 pthread_mutex_lock(&g_out_mu);
                 int pending_out = g_out_n;
                 pthread_mutex_unlock(&g_out_mu);
+                if (!pending_out) pending_out = pty_pending();
                 struct pollfd p[3];
                 int n = 1;
                 int wake_i = -1, stop_i = -1;
@@ -323,6 +337,11 @@ int session_loop(void) {
                 free(msg);
                 continue;
             }
+            if (opcode == 2) {
+                pty_input((const unsigned char *)msg, n_in);
+                free(msg);
+                continue;
+            }
             cJSON *o = cJSON_Parse(msg);
             free(msg);
             if (!o) continue;
@@ -353,7 +372,13 @@ int session_loop(void) {
                          }
                      }
                      pthread_mutex_unlock(&g_job_mu);
+                     pty_wake(cid); /* a terminal hangs up, then SIGKILL 2 s later */
                  }
+             } else if (strcmp(tt, "pty_resize") == 0) {
+                pty_resize(json_cstr(o, "id", ""), json_int(o, "cols", 0), json_int(o, "rows", 0));
+            } else if (strcmp(tt, "pty_ack") == 0) {
+                cJSON *n = cJSON_GetObjectItemCaseSensitive(o, "n");
+                if (cJSON_IsNumber(n)) pty_ack(json_cstr(o, "id", ""), n->valuedouble);
              } else if (strcmp(tt, "bye") == 0) {
                 if (strcmp(json_cstr(o, "reason", ""), "replaced") == 0) replaced = 1;
                 drop_reason = replaced ? "replaced" : "server bye";

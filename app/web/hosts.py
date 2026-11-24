@@ -159,6 +159,18 @@ async def hosts_patch(request: Request, host_id: int):
         item = hosts.patch_host(user["id"], host_id, raw)
     except hosts.HostError as exc:
         return _host_fail(exc)
+    if item.get("disabled"):
+        try:
+            from .. import terminal
+
+            await terminal.close_where(user["id"], "host_disabled", host_id=host_id)
+        except Exception:
+            logger.exception("terminal close on host disable failed")
+    if item.get("auth_type") != "agent" and item.get("disabled"):
+        from .. import ssh_pool
+
+        # A pooled connection outlives the row's state: drop it with the host.
+        ssh_pool.evict(user["id"], host_id)
     if item.get("auth_type") == "agent" and item.get("disabled"):
         try:
             from .. import agent_hub
@@ -178,6 +190,12 @@ async def hosts_delete(request: Request, host_id: int):
     # bye, and its token must already be dead when it does.
     if not hosts.delete_host(user["id"], host_id):
         raise HTTPException(404, "host not found")
+    try:
+        from .. import terminal
+
+        await terminal.close_where(user["id"], "host_removed", host_id=host_id)
+    except Exception:
+        logger.exception("terminal close on host delete failed")
     try:
         from .. import agent_hub
         await agent_hub.disconnect(user["id"], host_id, "disabled")

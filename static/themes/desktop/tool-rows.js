@@ -207,7 +207,7 @@ function stopWord(text) {
   }
 function stopNote(text) {
     const rest = String(text).replace(/^Interrupted · /, "");
-    if (/^stopped/.test(rest)) return `Stopped before it finished.${/may still be running/.test(rest) ? " The process may still be running." : ""}`;
+    if (/^stopped/.test(rest)) return `${/^stopped by user/.test(rest) ? "Stopped by user" : "Stopped before it finished"}.${/may still be running/.test(rest) ? " The process may still be running." : ""}`;
     return `${rest.charAt(0).toUpperCase()}${rest.slice(1)}.`;
   }
 

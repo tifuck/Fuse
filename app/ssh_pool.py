@@ -376,6 +376,23 @@ async def connection(user_id: int, host_id: int):
         return conn
 
 
+async def open_pty(user_id: int, host_id: int, *, cols: int, rows: int, command: str | None = None):
+    """An interactive terminal (app/terminal.py): a PTY channel on the pooled
+    connection, bytes both ways. No command runs the account's login shell.
+    The open channel keeps the connection out of the idle reaper."""
+    try:
+        conn = await connection(user_id, host_id)
+        return await conn.create_process(command, term_type="xterm-256color", term_size=(cols, rows), encoding=None)
+    except VaultLocked as exc:
+        raise SshError("vault locked", 401) from exc
+    except HostError as exc:
+        if exc.status_code == 401:  # secret_plain's vault-locked HostError
+            raise SshError("vault locked", 401) from exc
+        raise
+    except Exception as exc:
+        raise SshError("could not open a terminal on this host", 502) from exc
+
+
 # Channels a cache holds open on purpose (workspace's pooled SFTP client).
 # They do not make a connection busy, or it could never be reaped.
 _cached_channels: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()

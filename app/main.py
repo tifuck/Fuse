@@ -21,6 +21,7 @@ from . import cron, stats
 from . import accounts, changelog, db, chat_store, chat_runs, chat_events, chat_recaps, chat_titles, host_events, retention, sources as sources_module
 from .api import http_errors, router as api_router
 from .web import router as web_router
+from .web.terminal import ws_router as terminal_ws_router
 from .agent_http import router as agent_http_router
 from .sources import bootstrap, refresh_due_catalogs, start_pools, warm_catalogs
 from .sources.chatgpt import refresh_due as chatgpt_refresh_due
@@ -243,6 +244,9 @@ async def lifespan(app: FastAPI):
         from . import command_jobs
 
         command_jobs.recover()
+        from . import terminal
+
+        terminal.recover()
         from . import skill_install, skills
 
         recovered_skills = skill_install.sweep_partial_swaps(
@@ -311,7 +315,8 @@ async def lifespan(app: FastAPI):
         # waiters resolve and terminal events are not lost mid-shutdown.
         await chat_store.stop_publisher()
         try:
-            from . import ssh_pool, vault, agent_hub
+            from . import ssh_pool, vault, agent_hub, terminal
+            await terminal.drain()
             await agent_hub.drain()
             await ssh_pool.drain()
             vault.lock_all()
@@ -493,6 +498,7 @@ app.include_router(api_router)
 app.include_router(web_router)
 app.include_router(chat_events.router)
 app.include_router(host_events.router)
+app.include_router(terminal_ws_router)
 app.include_router(agent_http_router)
 
 app.add_exception_handler(StarletteHTTPException, http_errors)
