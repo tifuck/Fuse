@@ -120,7 +120,9 @@ export function create(deps) {
   });
 
   // Wide and full: the terminal wants columns the side pane does not have.
+  // A phone has no wide: the terminal is a panel under the prompt, or full.
   const WIDE = "fuse.tail.terminalWide";
+  const phone = window.matchMedia("(max-width: 800px)");
   const setWide = (size) => {
     if (size) root.dataset.tailWide = size;
     else delete root.dataset.tailWide;
@@ -152,7 +154,7 @@ export function create(deps) {
     setMore(Boolean(target.closest("[data-tail-more]")) && more.getAttribute("aria-expanded") !== "true");
     if (target.closest("[data-tail-pane-toggle]")) { if (shown()) hide(); else show(last); return; }
     if (target.closest("[data-tail-pane-close]")) { hide(); return; }
-    if (target.closest("[data-tail-wide]")) { setWide({ "": "wide", wide: "full" }[root.dataset.tailWide || ""] || ""); return; }
+    if (target.closest("[data-tail-wide]")) { setWide((phone.matches ? { "": "full", wide: "full" } : { "": "wide", wide: "full" })[root.dataset.tailWide || ""] || ""); return; }
     const tab = target.closest("[data-tail-tab]");
     if (tab) { show(tab.dataset.tailTab); return; }
     const change = target.closest("[data-tail-change]");

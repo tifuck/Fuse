@@ -1,8 +1,8 @@
 @import url("../../../vendor/xterm/xterm.css");
 /* Console: the terminal dock at the bottom, under the prompt. Flat
    and dense like the rest of the view: the page's ink, hairlines, the accent
-   for the active tab. On a phone it is a full-height sheet with the key bar
-   above the keyboard (static/chat/terminal.js; markup in ../terminal.js). */
+   for the active tab. On a phone it stays docked under the prompt, with the
+   key bar above the keyboard (static/chat/terminal.js; markup in ../terminal.js). */
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
   & .term-dock {
     --term-bg: var(--ink);
@@ -85,29 +85,34 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
     & .term-keys { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 6px 6px calc(6px + var(--safe-bottom)); border-top: 1px solid var(--line); background: var(--ink); }
   }
 }
-/* A phone: a sheet over everything, sized to what the keyboard leaves. */
+/* A phone: still docked under the composer, so the chat and the prompt stay
+   in view above it. It takes about half of what the keyboard leaves; the
+   grip resizes it, and the chat always keeps room for the prompt. */
 @media (max-width: 800px) {
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
     & .term-dock {
-      position: fixed; z-index: 70; left: 0; right: 0; top: var(--vv-offset, 0px);
-      height: var(--vv-height, 100dvh); min-height: 0; padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
-      border-top: 0; overscroll-behavior: contain;
+      height: var(--terminal-h, calc(var(--vv-height, 100dvh) * 0.45)); min-height: 0;
+      max-height: calc(var(--vv-height, 100dvh) - 11rem); padding: 0 var(--safe-right) 0 var(--safe-left);
+      overscroll-behavior: contain;
     }
-    & .term-grip { display: none; }
+    & .term-grip { top: -8px; height: 22px; }
+    & .term-grip::after { content: ""; position: absolute; top: 10px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line); }
     & .term-head { height: 48px; padding: 0 4px; }
     & .term-tab { height: 48px; }
     & .term-tab-main { padding-left: 12px; }
     & .term-tab-close { width: 40px; height: 44px; margin: 0; }
     & .term-btn { min-width: 40px; height: 44px; padding: 0 4px; }
     & .term-find input { height: 36px; font-size: 16px; }
-    & .term-menu { position: fixed; top: calc(var(--safe-top) + 52px); left: 8px; right: 8px; min-width: 0; }
+    & .term-menu { position: fixed; top: auto; bottom: calc(var(--safe-bottom) + 8px); left: 8px; right: 8px; min-width: 0; max-height: 60dvh; }
     & .term-choice { min-height: 48px; align-items: center; }
   }
   body.is-keyboard.is-chat .chat[data-view="console"] .term-keys { padding-bottom: 6px; }
+  /* Typing in it: all the room the prompt leaves. */
+  html[data-chat-view="console"] body.is-keyboard.is-chat .chat[data-view="console"] .term-dock:focus-within { height: calc(var(--vv-height, 100dvh) - 11rem); }
 }
 
 /* Motion: opening slides the dock up from the bottom edge and closing slides
-   it back down (a phone's sheet rises from below). Its height never changes,
+   it back down. Its height never changes,
    so the terminal is not refit mid-slide. display is transitioned discretely:
    where that is unsupported it opens and closes at once, as before. */
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock {
@@ -117,11 +122,7 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-doc
   @starting-style { margin-bottom: var(--term-out); }
 }
 @media (max-width: 800px) {
-  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock {
-    margin-bottom: 0;
-    &[hidden] { margin-bottom: 0; transform: translateY(100%); }
-    @starting-style { margin-bottom: 0; transform: translateY(100%); }
-  }
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock { --term-out: calc(-1 * var(--terminal-h, calc(var(--vv-height, 100dvh) * 0.45))); }
 }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .term-dock { transition: none; }

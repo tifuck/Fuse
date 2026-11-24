@@ -673,6 +673,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   &:not(.is-empty) .dk-welcome { display: none; opacity: 0; }
   & .chat-stage { position: relative; }
   &.is-empty .dk-hero { position: absolute; inset: calc(var(--chat-bar-h) + 6vh) 0 auto; z-index: 1; display: grid; place-items: center; pointer-events: none; }
+  /* The terminal takes the room the mark sits in. */
+  &.is-empty[data-terminal-open] .dk-hero { display: none; }
   & .dk-mark { display: block; width: 44px; height: 44px; background: var(--dk-dim); -webkit-mask: url("../../../icon.svg") center / contain no-repeat; mask: url("../../../icon.svg") center / contain no-repeat; opacity: 0.6; }
 
   /* ---- Live status: what is happening, shimmering, on the prose edge;

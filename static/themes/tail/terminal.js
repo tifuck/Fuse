@@ -1,5 +1,5 @@
 // Tail: the terminal as a tab of the side pane (pane.js shows it), with a
-// wide and a full mode, a full-height sheet on a phone, and its top-bar
+// wide and a full mode, a panel under the prompt on a phone, and its top-bar
 // button. Markup only;
 // static/chat/terminal.js fills the tabs, the machine list and the keys and
 // drives everything. Built here rather than in a template so the view's

@@ -79,8 +79,11 @@ base.
   the tab or closing the pane hides the terminal (its shells keep running).
   The ↔ button cycles the pane's width while the terminal shows: normal,
   wide (min(60rem, 55vw)), full (the whole window). On a phone the pane is a
-  full-height sheet sized to what the keyboard leaves, the pane's tabs give
-  way to the terminal's own header, and the key bar sits above the keyboard.
+  panel under the prompt, half of what the keyboard leaves (all but room for
+  the prompt while the terminal has the focus), so the chat and the prompt
+  stay in view; ↔ switches it to a full-height sheet and back. The pane's
+  tabs give way to the terminal's own header, and the key bar sits above the
+  keyboard.
 
 ## Composer and status bar
 
