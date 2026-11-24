@@ -226,13 +226,13 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
             identity = legacy
         fingerprint, previous = chat_tx.command(conn, user_id, command_id, identity)
         if previous is not None:
-            run = chat_views.run_view(conn.execute("SELECT * FROM chat_runs WHERE id=? AND user_id=?", (previous["run_id"], user_id)).fetchone())
+            run = chat_views.run_view(conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=? AND user_id=?", (previous["run_id"], user_id)).fetchone())
             view_id = pk if pk is not None else previous.get("thread_id")
             return {"thread": chat_views.thread_view(conn, user_id, view_id) if view_id is not None else None, "run": run, "idempotent": True}
         if pk is None:
             raise chats.ChatValidationError("chat not found", 404)
         thread_id = pk
-        row = conn.execute("SELECT * FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone()
+        row = conn.execute("SELECT revision FROM chat_threads WHERE id=? AND user_id=?", (thread_id, user_id)).fetchone()
         if row is None:
             raise chats.ChatValidationError("chat not found", 404)
         chat_tx.check_revision(row["revision"], expected_revision)
@@ -319,7 +319,8 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         send_type_id = context_meter.source_type_for_model(send_model, prior_meter)
         from . import chat_history
         history_cutoffs = []
-        request_messages, history_info = chat_history.build(conn, user_id, thread_id, messages, state, cutoffs_out=history_cutoffs)
+        request_messages, history_info = chat_history.build(conn, user_id, thread_id, messages, state, retained=row["retained_history"],
+                                                             cutoffs_out=history_cutoffs)
         # The request is stored and re-read on every progress save: large
         # images go to chat_images once instead of riding along inline.
         request_messages = chat_images.store(conn, thread_id, user_id, request_messages)
@@ -500,13 +501,18 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         conn.execute("""UPDATE chat_threads SET messages=?,title=?,model=?,tools=?,context=?,compaction=?,revision=revision+1,updated_at=? WHERE id=?""",
                      (chat_tx.dumps(messages), title, request["model"], chat_tx.dumps(request["tools"]), request["thread_context"], ctxmod.dump_state(state), ts, thread_id))
         chats.unarchive_on_activity(conn, row, ts)
+        # Built before publishing, as publish_thread_view does: the events hold
+        # the user's event cursor row to commit.
+        thread = chat_views.thread_view(conn, user_id, thread_id)
         chat_tx.thread_event(conn, user_id, thread_id)
-        chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
-        from . import command_jobs as command_jobs_mod
+        eid = chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
+        from . import chat_recaps, command_jobs as command_jobs_mod
 
         command_jobs_mod.mark_delivered([str(ident) for ident in command_receipt_ids or []], conn=conn)
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"run_id": run_id, "thread_id": thread_id})
-        thread = chat_views.thread_view(conn, user_id, thread_id)
+        # run.started staled the thread's ready recaps.
+        chat_recaps.attach(conn, user_id, thread_id, thread)
+        chat_views._stamp_cursors(thread, user_id, thread_id, eid, None)
         return {"thread": thread, "run": thread["run"], "idempotent": False}
 
 
