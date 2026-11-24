@@ -356,3 +356,17 @@ def test_a_parked_final_write_that_keeps_failing_settles_with_its_status(fresh_d
     assert run_row(run["id"])["status"] == "completed"
     assert run_row(run["id"])["resume_count"] == 0
     assert run["id"] not in chat_runs._unsettled
+
+
+def test_an_abandon_that_requeues_a_pending_send_now_leaves_it_queued(fresh_db):
+    from app import chat_children
+
+    uid = quick_user()
+    _, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "p"}))
+    assert chat_children.queue_steer(run["id"], "steer-1", "also this")
+
+    chat_store.abort_active(run["id"], "failed")
+
+    # finish_run requeued the accepted message; the abandon path must not
+    # then force the row terminal and strand it.
+    assert run_row(run["id"])["status"] == "queued"

@@ -101,6 +101,10 @@ def _finalize_abandoned(row, status, notice=None):
             # Abandoned, not finalized: no worker will drain queued follow-ups.
             chat_children.settle_abandoned_followups(row["id"])
             return
+        if current["status"] == "queued":
+            # finish_run requeued the run for an accepted Send now; resume_queued
+            # starts it, and forcing it terminal would strand that message.
+            return
     except Exception:
         logger.exception("finish_run failed for %s; forcing terminal status", row["id"])
     _force_terminal(row["id"], status, message)
