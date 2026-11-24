@@ -28,6 +28,11 @@ extern pthread_mutex_t g_out_mu;
 extern pthread_cond_t g_out_space;
 
 int out_enqueue(int opcode, const unsigned char *data, size_t n);
+/* A worker's terminal text frame: waits for queue space like send_res(NULL,
+ * ...). Takes ownership of s. */
+int out_push_text(char *s);
+/* Wakes the session loop to flush. */
+void out_wake(void);
 int out_flush(struct tls *t);
 int out_has_room(void);
 /* Wait up to ms for stream room (out_has_room) to open. */
