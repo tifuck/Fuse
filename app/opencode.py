@@ -1,6 +1,7 @@
 """OpenCode catalog, config merge, and curl|sh installer."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
@@ -31,32 +32,48 @@ def opencode_display_name(type_id: str, name: str) -> str:
     return f"{prefix} {label}"
 
 
+def _explabs_state(user_id: int) -> tuple[bool, dict | None]:
+    if not explabs_mod.user_has_explabs(user_id):
+        return False, None
+    return True, explabs_mod.cached_catalog(user_id)
+
+
 async def model_options(user_id: int, groups: list[dict] | None = None) -> list[dict]:
     if groups is None:
         groups = await models_by_source(user_id=user_id)
+    listed = {group["type"] for group in groups if group.get("models")}
+    openrouter_catalog = None
+    if "openrouter" in listed:
+        openrouter_catalog = openrouter_mod.cached_catalog()
+        if openrouter_catalog is None:
+            openrouter_catalog = await openrouter_mod.fetch_catalog()
+    explabs, explabs_catalog = False, None
+    if "explabs" in listed:
+        explabs, explabs_catalog = await asyncio.to_thread(_explabs_state, user_id)
+        if explabs and explabs_catalog is None:
+            explabs_catalog = await explabs_mod.fetch_catalog(user_id)
+    # Per-model names, efforts and capabilities: off the event loop.
+    return await asyncio.to_thread(_entries, user_id, groups, openrouter_catalog, explabs, explabs_catalog)
+
+
+def _entries(user_id: int, groups: list[dict], openrouter_catalog: dict | None, explabs: bool,
+             explabs_catalog: dict | None) -> list[dict]:
     entries: list[dict] = []
     seen: set[str] = set()
-    openrouter_catalog = None
-    explabs_catalog = None
+    # Other groups get the OpenRouter catalog for names once its group is listed.
+    after_openrouter = False
     for group in groups:
         if not group.get("models"):
             continue
-        if group["type"] == "openrouter" and openrouter_catalog is None:
-            openrouter_catalog = openrouter_mod.cached_catalog()
-            if openrouter_catalog is None:
-                openrouter_catalog = await openrouter_mod.fetch_catalog()
-        if group["type"] == "explabs":
-            if not explabs_mod.user_has_explabs(user_id):
-                continue
-            if explabs_catalog is None:
-                explabs_catalog = explabs_mod.cached_catalog(user_id)
-                if explabs_catalog is None:
-                    explabs_catalog = await explabs_mod.fetch_catalog(user_id)
+        if group["type"] == "openrouter":
+            after_openrouter = True
+        if group["type"] == "explabs" and not explabs:
+            continue
         catalog = (
             explabs_catalog if group["type"] == "explabs"
             else nanogpt_mod.cached_catalog() if group["type"] == "nanogpt"
             else refuseless_mod.cached_catalog() if group["type"] == "refuseless"
-            else openrouter_catalog
+            else openrouter_catalog if after_openrouter else None
         )
         for model in group["models"]:
             mid = model

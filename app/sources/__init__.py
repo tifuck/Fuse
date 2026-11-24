@@ -59,19 +59,19 @@ class _LazySource:
         cfg = json.loads(row["config"] or "{}")
         if not isinstance(cfg, dict):
             raise ValueError("source config must be a JSON object")
-        self._row, self._built = row, None
+        self._row, self._built, self._creds = row, None, None
         self.type_id, self.source_id, self.name, self.cfg = row["type"], row["id"], row["name"], cfg
 
     def __getattr__(self, attr):
         # copy and pickle probe dunders on an instance whose __init__ never
         # ran: without this, reading self._built here recursed forever.
-        if attr.startswith("__") or attr in ("_row", "_built"):
+        if attr.startswith("__") or attr in ("_row", "_built", "_creds"):
             raise AttributeError(attr)
         if self._built is None:
             if attr == "chat" and self.type_id in POOL_TYPES:
                 # A pool's chat reads its accounts itself (pool_refresh.pool_rows).
                 return _row_source(self._row, []).chat
-            self._built = _row_source(self._row)
+            self._built = _row_source(self._row, self._creds)
         return getattr(self._built, attr)
 
     def __copy__(self):
@@ -79,12 +79,20 @@ class _LazySource:
         (pool_badge sets creds), and on a copied proxy those would not reach
         the methods it forwards to the source."""
         if self._built is None:
-            self._built = _row_source(self._row)
+            self._built = _row_source(self._row, self._creds)
         return copy.copy(self._built)
 
 
-def all_enabled(*, lazy: bool = False) -> list[Source]:
-    """lazy: _LazySource each, with no credentials read."""
+def read_credentials(src: Source) -> None:
+    """Read a routed _LazySource's credentials now, from a worker thread: it
+    is still built at its first use, on the loop (Ollama's key pool lives
+    there), without a database read. A pool's chat reads its own."""
+    if isinstance(src, _LazySource) and src._built is None and src.type_id not in POOL_TYPES:
+        src._creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (src.source_id,))
+
+
+def _enabled_rows(*, lazy: bool = False) -> tuple[list, dict[int, list]]:
+    """The enabled sources rows and, unless lazy, their credentials."""
     rows = [row for row in db.fetchall("SELECT * FROM sources WHERE enabled=1 ORDER BY id") if row["type"] in _BUILDERS]
     # One credentials read for every source, not one per source: this runs
     # on every model listing.
@@ -95,6 +103,15 @@ def all_enabled(*, lazy: bool = False) -> list[Source]:
             f"SELECT * FROM credentials WHERE disabled=0 AND source_id IN ({marks}) ORDER BY id", tuple(creds)
         ):
             creds[cred["source_id"]].append(cred)
+    return rows, creds
+
+
+def all_enabled(*, lazy: bool = False) -> list[Source]:
+    """lazy: _LazySource each, with no credentials read."""
+    return _built(*_enabled_rows(lazy=lazy), lazy=lazy)
+
+
+def _built(rows: list, creds: dict[int, list], *, lazy: bool = False) -> list[Source]:
     out = []
     for row in rows:
         try:
@@ -110,13 +127,23 @@ def all_enabled(*, lazy: bool = False) -> list[Source]:
 
 
 def get(source_id: int) -> Source | None:
+    found = _source_row(source_id)
+    return _build(*found) if found else None
+
+
+def _source_row(source_id: int) -> tuple | None:
+    """get's database reads: an enabled source's row and credentials."""
     row = db.fetchone("SELECT * FROM sources WHERE id=?", (source_id,))
     if not row or row["type"] not in _BUILDERS or not row["enabled"]:
         return None
+    return row, db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (row["id"],))
+
+
+def _build(row, creds) -> Source | None:
     try:
-        return _row_source(row)
+        return _row_source(row, creds)
     except Exception as exc:
-        logger.warning("Could not load source id=%s: %s", source_id, type(exc).__name__)
+        logger.warning("Could not load source id=%s: %s", row["id"], type(exc).__name__)
         return None
 
 
@@ -374,15 +401,22 @@ def _remember_saved(s: Source, row: dict) -> None:
     _live.add(key)
 
 
-async def _user_source_models(s: Source, user_id: int | None) -> list[str]:
-    """What this user lists from one source: what they could run, minus the
+def _visible(sources: list[Source], user_id: int | None, results: list[list[str]]) -> list[list[str]]:
+    """What this user lists from each source: what they could run, minus the
     models they turned off on Sources."""
     from ..providers import model_prefs
 
-    names = await _source_models(s, user_id)
-    spec = registry.get(s.type_id)
-    names = spec.listable(names, user_id) if spec and spec.listable else names
-    return model_prefs.visible(s.type_id, user_id, names)
+    out = []
+    for s, names in zip(sources, results):
+        spec = registry.get(s.type_id)
+        names = spec.listable(names, user_id) if spec and spec.listable else names
+        out.append(model_prefs.visible(s.type_id, user_id, names))
+    return out
+
+
+async def _user_models(sources: list[Source], user_id: int | None) -> list[list[str]]:
+    results = await asyncio.gather(*(_source_models(s, user_id) for s in sources))
+    return await asyncio.to_thread(_visible, sources, user_id, results)
 
 
 def choosable_models(user_id: int, type_ids) -> dict[str, list[str]]:
@@ -512,6 +546,24 @@ def _sources(access: Access, enabled: list[Source] | None = None) -> list[Source
     return [s for s in (all_enabled() if enabled is None else enabled) if access.allows(s.type_id)]
 
 
+def _listing_rows(access: Access) -> tuple[list, dict[int, list]]:
+    """The database half of _sources(access): rows, credentials and every
+    enabled provider's access verdict."""
+    rows, creds = _enabled_rows()
+    for row in rows:
+        access.allows(row["type"])
+    return rows, creds
+
+
+async def _listed(access: Access, enabled: list[Source] | None = None) -> list[Source]:
+    """_sources off the loop: reads and access verdicts in a worker thread;
+    sources are built on the loop, where Ollama's key pool lives."""
+    if enabled is not None:
+        return await asyncio.to_thread(_sources, access, enabled)
+    rows, creds = await asyncio.to_thread(_listing_rows, access)
+    return _sources(access, _built(rows, creds))
+
+
 def _openrouter_source(enabled: list[Source] | None = None) -> Source | None:
     for s in all_enabled() if enabled is None else enabled:
         if s.type_id == "openrouter":
@@ -545,16 +597,22 @@ def _seed_pool_catalogs() -> None:
             _cache[s.source_id] = (stale, list(names))
 
 
-async def models_union(*, user_id: int | None = None, access: Access | None = None,
-                       enabled: list[Source] | None = None) -> list[str]:
-    sources = _sources(access or Access(user_id), enabled)
-    results = await asyncio.gather(*(_user_source_models(s, user_id) for s in sources))
+def union_names(lists) -> list[str]:
+    """Every name once, in first-seen order."""
     names: list[str] = []
-    for m in results:
+    seen: set[str] = set()
+    for m in lists:
         for n in m:
-            if n not in names:
+            if n not in seen:
+                seen.add(n)
                 names.append(n)
     return names
+
+
+async def models_union(*, user_id: int | None = None, access: Access | None = None,
+                       enabled: list[Source] | None = None) -> list[str]:
+    sources = await _listed(access or Access(user_id), enabled)
+    return union_names(await _user_models(sources, user_id))
 
 
 async def _claimed(spec, s: Source, model: str, user_id: int | None) -> tuple[Source, str] | None:
@@ -571,7 +629,8 @@ async def pick(model: str, *, user_id: int | None = None, access: Access | None 
     and a model the user turned off on Sources is refused (ignore_prefs:
     say where it would have gone, for the 403 that explains it)."""
     picked = await _pick(model, user_id=user_id, access=access or Access(user_id))
-    if picked and not ignore_prefs and not model_allowed(picked[0].type_id, user_id, model, picked[1]):
+    if picked and not ignore_prefs and not await asyncio.to_thread(
+            model_allowed, picked[0].type_id, user_id, model, picked[1]):
         return None
     return picked
 
@@ -586,28 +645,23 @@ def model_allowed(type_id: str, user_id: int | None, model: str, upstream: str) 
     return model_prefs.allowed(type_id, user_id, public)
 
 
-async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Source, str] | None:
-    from . import openrouter as openrouter_mod
-    from . import explabs as explabs_mod
+def _route(model: str, access: Access):
+    """_pick's database and access reads, for one worker-thread hop.
 
-    if model.startswith(explabs_mod.PUBLIC_PREFIX):
-        for src in all_enabled(lazy=True):
-            if src.type_id == "explabs":
-                resolved = await explabs_mod.resolve(model, user_id)
-                return (src, resolved) if resolved else None
-        return None
+    Returns (route, (source row, credentials), None, None) for a routed
+    model this user may use, else (None, None, *_claim(model, access))."""
     route = db.fetchone("SELECT * FROM model_routes WHERE model=?", (model,))
     if route:
-        src = get(route["source_id"])
-        if src and src.type_id != "explabs" and access.allows(src.type_id):
-            upstream = route["upstream_model"] or model
-            if src.type_id != "openrouter":
-                return src, upstream
-            # A route onto OpenRouter bills the caller's own key, so it obeys
-            # the same per-account free/paid enablement as a direct id.
-            if await openrouter_mod.resolve(openrouter_mod.public_id(upstream), user_id):
-                return src, upstream
-            return None
+        found = _source_row(route["source_id"])
+        if found and found[0]["type"] != "explabs" and access.allows(found[0]["type"]):
+            return route, found, None, None
+    return (None, None, *_claim(model, access))
+
+
+def _claim(model: str, access: Access):
+    """(enabled sources, claim): claim is the (spec, source) whose name
+    claim takes the id, (spec, None) for a hard claim the user cannot take,
+    or None when no claim decides it."""
     # One read of the enabled sources serves every lookup below (this runs on
     # every routed request); credentials only for a source that needs them.
     enabled = all_enabled(lazy=True)
@@ -619,9 +673,38 @@ async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Sou
         if access.allows(spec.id):
             for s in enabled:
                 if s.type_id == spec.id:
-                    return await _claimed(spec, s, model, user_id)
+                    return enabled, (spec, s)
         if spec.claim == "hard":
+            return enabled, (spec, None)
+    return enabled, None
+
+
+async def _pick(model: str, *, user_id: int | None, access: Access) -> tuple[Source, str] | None:
+    from . import openrouter as openrouter_mod
+    from . import explabs as explabs_mod
+
+    if model.startswith(explabs_mod.PUBLIC_PREFIX):
+        for src in await asyncio.to_thread(all_enabled, lazy=True):
+            if src.type_id == "explabs":
+                resolved = await explabs_mod.resolve(model, user_id)
+                return (src, resolved) if resolved else None
+        return None
+    route, found, enabled, claim = await asyncio.to_thread(_route, model, access)
+    if found:
+        # Built on the loop, where Ollama's key pool lives.
+        src, upstream = _build(*found), route["upstream_model"] or model
+        if src and src.type_id != "openrouter":
+            return src, upstream
+        if src:
+            # A route onto OpenRouter bills the caller's own key, so it obeys
+            # the same per-account free/paid enablement as a direct id.
+            if await openrouter_mod.resolve(openrouter_mod.public_id(upstream), user_id):
+                return src, upstream
             return None
+        enabled, claim = await asyncio.to_thread(_claim, model, access)
+    if claim:
+        spec, s = claim
+        return await _claimed(spec, s, model, user_id) if s else None
     or_src = _openrouter_source(enabled)
     if or_src:
         resolved = await openrouter_mod.resolve(model, user_id)
@@ -738,8 +821,8 @@ def ensure_chatgpt_source_row() -> int:
 
 
 async def models_by_source(*, user_id: int | None = None, access: Access | None = None) -> list[dict]:
-    sources = _sources(access or Access(user_id))
-    results = await asyncio.gather(*(_user_source_models(s, user_id) for s in sources))
+    sources = await _listed(access or Access(user_id))
+    results = await _user_models(sources, user_id)
     groups = [
         {
             "type": s.type_id,

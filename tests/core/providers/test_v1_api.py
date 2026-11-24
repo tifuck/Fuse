@@ -230,3 +230,17 @@ def test_the_key_lookup_runs_off_the_event_loop_and_still_rejects_bad_keys(v1, m
     assert anon.post("/v1/chat/completions", headers=bad, json={"model": "m1"}).status_code == 401
     assert client.get("/v1/models").status_code == 200
     assert on_loop == [False, False, False]
+
+
+def test_a_large_body_is_parsed_off_the_loop_by_the_same_strict_rules(v1, upstream):
+    client, _uid, _raw = v1
+    upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion("hey", usage=USAGE)))
+    big = "x" * (api._LARGE_BODY + 1)
+
+    got = client.post("/v1/chat/completions", json={"model": "m1", "messages": [{"role": "user", "content": big}]})
+    assert got.status_code == 200 and upstream.sent("/chat/completions")[0]["messages"][0]["content"] == big
+
+    lone_surrogate = b'{"model": "m1", "messages": [{"role": "user", "content": "' + big.encode() + b'\\ud800"}]}'
+    got = client.post("/v1/chat/completions", content=lone_surrogate, headers={"content-type": "application/json"})
+    assert got.status_code == 400 and got.json()["error"]["message"] == "Invalid JSON"
+    assert len(upstream.sent("/chat/completions")) == 1
