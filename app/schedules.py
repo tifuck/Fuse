@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import secrets
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -37,6 +38,9 @@ RECONCILE_SECONDS = 60
 # Per-schedule count of in-flight _fire coroutines (tick claims + run_now).
 # Keyed by schedule id; tick never claims a schedule with a nonzero count.
 _INFLIGHT: dict[int, int] = {}
+# Held by a fire from its schedule check to its committed run, and by
+# delete_schedule: that section runs in a worker thread, off the event loop.
+_START_LOCK = threading.Lock()
 _last_reconcile = 0.0
 _BANNED_EXACT = frozenset({"secret", "password", "token", "key", "dek", "cookie", "auth"})
 _BANNED_SUFFIX = ("_secret", "_password", "_token", "_key", "_dek", "_cookie", "_auth")
@@ -569,14 +573,15 @@ def patch_schedule(user_id: int, token, raw: dict) -> dict:
 
 
 def delete_schedule(user_id: int, token) -> None:
-    with db.tx() as conn:
+    with _START_LOCK, db.tx() as conn:
         conn.execute("BEGIN IMMEDIATE")
         existing = get_schedule(user_id, token, conn=conn)
         if existing is None:
             raise ScheduleError("schedule not found", 404)
         # One transaction: threads can never keep a schedule_id that points
         # past a deleted schedule.
-        conn.execute("UPDATE chat_threads SET schedule_id=NULL WHERE schedule_id=?", (existing["id"],))
+        conn.execute("UPDATE chat_threads SET schedule_id=NULL WHERE user_id=? AND schedule_id=?",
+                     (user_id, existing["id"]))
         conn.execute("DELETE FROM chat_schedules WHERE id=? AND user_id=?", (existing["id"], user_id))
 
 
@@ -726,6 +731,7 @@ def reconcile() -> None:
                            WHERE id=? AND last_run_id=? AND last_status IN ('queued','running')""",
                         (status, err, finished, row["schedule_id"], row["run_id"]),
                     )
+    updates = []
     for row in db.fetchall(
         """SELECT s.id AS sid, s.last_run_id, r.status AS run_status, r.updated_at AS run_updated
            FROM chat_schedules s
@@ -734,24 +740,28 @@ def reconcile() -> None:
     ):
         run_status = row["run_status"]
         if run_status in RUN_TERMINAL:
-            db.execute(
+            updates.append((
                 "UPDATE chat_schedules SET last_status=?, last_error=?, updated_at=? WHERE id=?",
                 (run_status, _run_error(row["last_run_id"]), row["run_updated"] or now, row["sid"]),
-            )
+            ))
         elif row["last_run_id"] and run_status is None:
-            db.execute(
+            updates.append((
                 "UPDATE chat_schedules SET last_status='interrupted', last_error='run lost', updated_at=? WHERE id=?",
                 (now, row["sid"]),
-            )
+            ))
         elif not row["last_run_id"]:
             # A fire that reached 'running' without a run id can never resolve
             # to a run; close it instead of leaving the badge on Running.
-            db.execute(
+            updates.append((
                 """UPDATE chat_schedules SET last_status='interrupted', last_error='no run started', updated_at=?
                    WHERE id=? AND last_status IN ('queued','running')
                      AND (last_run_id IS NULL OR last_run_id='')""",
                 (now, row["sid"]),
-            )
+            ))
+    if updates:
+        with db.tx() as conn:
+            for sql, params in updates:
+                conn.execute(sql, params)
 
 
 def _trim_schedule_threads(user_id: int, schedule_id: int, *, keep_id: int, cap: int) -> None:
@@ -795,14 +805,38 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
     error = ""
     thread_pk = None
     run_id = None
-    try:
+
+    def over_capacity() -> bool:
+        # active_parent_thread (generated, indexed) is set exactly on live
+        # root runs: at most 32 rows, so instr() reads only their requests.
+        n_sched = int(db.fetchone(
+            """SELECT COUNT(*) AS n FROM chat_runs r
+               WHERE r.user_id=? AND r.active_parent_thread IS NOT NULL
+                 AND instr(r.request, '"scheduled":true') > 0""",
+            (user_id,),
+        )["n"])
+        n_user = int(db.fetchone(
+            "SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL",
+            (user_id,),
+        )["n"])
+        n_global = int(db.fetchone(
+            "SELECT COUNT(*) AS n FROM chat_runs WHERE active_parent_thread IS NOT NULL"
+        )["n"])
+        n_sched_global = int(db.fetchone(
+            """SELECT COUNT(*) AS n FROM chat_runs r
+               WHERE r.active_parent_thread IS NOT NULL
+                 AND instr(r.request, '"scheduled":true') > 0"""
+        )["n"])
+        return n_sched >= MAX_CONCURRENT_USER or n_sched_global >= MAX_CONCURRENT_GLOBAL or n_user >= 20 or n_global >= 32
+
+    # The blocking steps run in worker threads. Their first result is
+    # (status, error, consume) when the fire ends there, else None; that
+    # finish stays on the loop, which the skip alert needs.
+    def prepare():
         if not slot.startswith("manual:") and _past_grace(schedule, slot) and not (
             schedule["recur_kind"] == "once" and fire.get("status") == "vault_locked"
         ):
-            status = "skipped_catchup"
-            error = "missed fire window"
-            _finish_fire(schedule, fire, status, error, None, None, consume=True)
-            return
+            return ("skipped_catchup", "missed fire window", True), None, None
         host = None
         project = None
         if schedule["target"] == "project":
@@ -816,68 +850,29 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
                 try:
                     get_dek(user_id)
                 except VaultLocked:
-                    status = "vault_locked"
-                    error = "Vault locked"
-                    _finish_fire(schedule, fire, status, error, None, None, consume=schedule["recur_kind"] != "once")
-                    return
-        from .sources import pick
-
+                    return ("vault_locked", "Vault locked", schedule["recur_kind"] != "once"), None, None
         if schedule["fresh_each_fire"] == 0 and schedule.get("thread_id"):
             if db.fetchone(
                 """SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN ('queued','running')
                    AND parent_run_id IS NULL""",
                 (schedule["thread_id"],),
             ):
-                status = "skipped_overlap"
-                _finish_fire(
-                    schedule, fire, status, "already running", None, None,
-                    consume=schedule["recur_kind"] != "once",
-                )
-                return
-        def over_capacity() -> bool:
-            # active_parent_thread (generated, indexed) is set exactly on live
-            # root runs: at most 32 rows, so instr() reads only their requests.
-            n_sched = int(db.fetchone(
-                """SELECT COUNT(*) AS n FROM chat_runs r
-                   WHERE r.user_id=? AND r.active_parent_thread IS NOT NULL
-                     AND instr(r.request, '"scheduled":true') > 0""",
-                (user_id,),
-            )["n"])
-            n_user = int(db.fetchone(
-                "SELECT COUNT(*) AS n FROM chat_runs WHERE user_id=? AND active_parent_thread IS NOT NULL",
-                (user_id,),
-            )["n"])
-            n_global = int(db.fetchone(
-                "SELECT COUNT(*) AS n FROM chat_runs WHERE active_parent_thread IS NOT NULL"
-            )["n"])
-            n_sched_global = int(db.fetchone(
-                """SELECT COUNT(*) AS n FROM chat_runs r
-                   WHERE r.active_parent_thread IS NOT NULL
-                     AND instr(r.request, '"scheduled":true') > 0"""
-            )["n"])
-            return n_sched >= MAX_CONCURRENT_USER or n_sched_global >= MAX_CONCURRENT_GLOBAL or n_user >= 20 or n_global >= 32
-
+                return ("skipped_overlap", "already running", schedule["recur_kind"] != "once"), None, None
         if over_capacity():
-            status = "skipped_capacity"
-            _finish_fire(schedule, fire, status, "capacity", None, None, consume=False)
-            return
-        # Model resolution last: capacity/overlap skips must not pay for it
-        # (and a capacity-skip retry loop would otherwise hammer pick).
-        chosen = await pick(schedule["model"], user_id=user_id)
-        if chosen is None:
-            raise ScheduleError("model unavailable", 400)
-        # Everything from here to start_turn runs without an await, so this
-        # check cannot be raced on the event loop. A schedule deleted while
-        # this fire was suspended (e.g. in pick) must not start its run.
+            return ("skipped_capacity", "capacity", False), None, None
+        return None, host, project
+
+    def start(host, project):
+        nonlocal thread_pk, run_id
+        # Runs under _START_LOCK, so this check and the recount cannot be
+        # raced by another fire or a delete. A schedule deleted while this
+        # fire was suspended (e.g. in pick) must not start its run.
         if db.fetchone("SELECT 1 FROM chat_schedules WHERE id=?", (schedule["id"],)) is None:
-            _finish_fire(schedule, fire, "cancelled", "schedule deleted", None, None, consume=False)
-            return
+            return ("cancelled", "schedule deleted", False), None, None
         # Recount after the awaited pick: other fires may have started runs
         # while this one was suspended there.
         if over_capacity():
-            status = "skipped_capacity"
-            _finish_fire(schedule, fire, status, "capacity", None, None, consume=False)
-            return
+            return ("skipped_capacity", "capacity", False), None, None
         prompt = expand_prompt(
             schedule, fire_id=fire_id,
             host_alias=(host or {}).get("alias") or "",
@@ -887,6 +882,7 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
         hid = (project or {}).get("host_id") if project else None
         pid = schedule.get("project_id") if project else None
         thread = None
+        reused = None
         if schedule["fresh_each_fire"]:
             n = db.fetchone(
                 "SELECT COUNT(*) AS n FROM chat_threads WHERE user_id=? AND schedule_id=?",
@@ -925,14 +921,14 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
                         )
                         _trim_schedule_threads(user_id, schedule["id"], keep_id=_thread_pk(thread), cap=CONTINUITY_KEEP)
                     else:
-                        thread = chats.get_thread(user_id, thread_pk)
-            if thread is None:
+                        reused = int(row["id"])
+            if thread is None and reused is None:
                 title = f"Scheduled: {schedule['name']}"[: chats.TITLE_MAX]
                 thread = chats.create_thread(
                     user_id, model=schedule["model"], title=title, tools=schedule["tools"],
                     kind=kind, host_id=hid, project_id=pid, schedule_id=schedule["id"],
                 )
-        thread_pk = _thread_pk(thread)
+        thread_pk = reused or _thread_pk(thread)
         db.execute("UPDATE chat_schedules SET thread_id=?, updated_at=? WHERE id=?", (thread_pk, db.now(), schedule["id"]))
         coding_override = schedule["target"] == "project" or bool(schedule["allow_coding"])
         # Claim the fire as running before the run row is committed. From here
@@ -952,14 +948,9 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
             )
         except chats.ChatValidationError as exc:
             if exc.status_code == 409:
-                status = "skipped_overlap"
-                _finish_fire(schedule, fire, status, str(exc.detail), thread_pk, None,
-                             consume=schedule["recur_kind"] != "once")
-                return
+                return ("skipped_overlap", str(exc.detail), schedule["recur_kind"] != "once"), None, None
             if exc.status_code == 429:
-                status = "skipped_capacity"
-                _finish_fire(schedule, fire, status, str(exc.detail), thread_pk, None, consume=False)
-                return
+                return ("skipped_capacity", str(exc.detail), False), None, None
             raise ScheduleError(str(exc.detail), exc.status_code) from exc
         run = result.get("run") or {}
         run_id = run.get("id")
@@ -970,7 +961,28 @@ async def _fire(schedule: dict, fire: dict, *, consume_slot: bool) -> None:
                     pin_run(user_id, run_id)
             except VaultLocked:
                 pass
-        user = accounts.get_user(user_id)
+        return None, run, accounts.get_user(user_id)
+
+    def locked_start(host, project):
+        with _START_LOCK:
+            return start(host, project)
+
+    try:
+        done, host, project = await asyncio.to_thread(prepare)
+        if done:
+            _finish_fire(schedule, fire, done[0], done[1], None, None, consume=done[2])
+            return
+        from .sources import pick
+
+        # Model resolution last: capacity/overlap skips must not pay for it
+        # (and a capacity-skip retry loop would otherwise hammer pick).
+        chosen = await pick(schedule["model"], user_id=user_id)
+        if chosen is None:
+            raise ScheduleError("model unavailable", 400)
+        done, run, user = await asyncio.to_thread(locked_start, host, project)
+        if done:
+            _finish_fire(schedule, fire, done[0], done[1], thread_pk, None, consume=done[2])
+            return
         if user and run_id:
             await chat_runs.start(chat_runs.internal_request(user_id), dict(user), run)
         status = "running"
@@ -1122,18 +1134,22 @@ def _retry_due(fire: dict) -> bool:
 
 def recover() -> None:
     now = utcnow()
-    rows = db.fetchall("SELECT * FROM chat_schedules WHERE firing_at IS NOT NULL")
-    for raw in rows:
-        item = _row(raw)
+    # Every tick: read only the firing index; a stale claim loads its row.
+    rows = db.fetchall("SELECT id, firing_at FROM chat_schedules WHERE firing_at IS NOT NULL")
+    for claim in rows:
         age = 0.0
-        fired = parse_iso_utc(item.get("firing_at") or "")
+        fired = parse_iso_utc(claim["firing_at"] or "")
         if fired:
             age = (now - fired).total_seconds()
-        if item["id"] in _INFLIGHT:
-            db.execute("UPDATE chat_schedules SET firing_at=? WHERE id=?", (iso_utc(now), item["id"]))
+        if claim["id"] in _INFLIGHT:
+            db.execute("UPDATE chat_schedules SET firing_at=? WHERE id=?", (iso_utc(now), claim["id"]))
             continue
         if age <= 120:
             continue
+        raw = db.fetchone("SELECT * FROM chat_schedules WHERE id=?", (claim["id"],))
+        if raw is None:
+            continue
+        item = _row(raw)
         db.execute("UPDATE chat_schedules SET firing_at=NULL WHERE id=?", (item["id"],))
         slot = item.get("next_fire_at") or ""
         if not slot:
