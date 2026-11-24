@@ -49,6 +49,9 @@ persist = True
 TOUCH_SECONDS = 3600
 
 _lock = threading.Lock()
+# Orders bind()'s durable writes, so the row ends on the pin memory holds,
+# without lookups and peeks waiting on _lock through a database write.
+_write_lock = threading.Lock()
 # (kind, session id) -> (credential id, last use, updated_at last written)
 _mem: dict[tuple[str, str], tuple[int, str, str]] = {}
 
@@ -229,17 +232,18 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
     now = now or datetime.now(timezone.utc)
     stamp = _ts(now)
     cutoff = _cutoff(now)
-    with _lock:
-        prev = _mem.get((kind, session_id))
-        # The same pin, written recently: the durable row already says so.
-        same = prev is not None and prev[0] == cid and prev[2] >= _ts(now - timedelta(seconds=TOUCH_SECONDS))
-        _mem[(kind, session_id)] = (cid, stamp, prev[2] if same else stamp)
-        # Bounded: pins idle past retention are dropped so the map can't grow
-        # forever. A healthy active pin is refreshed by every lookup.
-        for key in [k for k, (_, updated, _saved) in _mem.items() if updated < cutoff]:
-            _mem.pop(key, None)
+    with _write_lock:
+        with _lock:
+            prev = _mem.get((kind, session_id))
+            # The same pin, written recently: the durable row already says so.
+            same = prev is not None and prev[0] == cid and prev[2] >= _ts(now - timedelta(seconds=TOUCH_SECONDS))
+            _mem[(kind, session_id)] = (cid, stamp, prev[2] if same else stamp)
+            # Bounded: pins idle past retention are dropped so the map can't grow
+            # forever. A healthy active pin is refreshed by every lookup.
+            for key in [k for k, (_, updated, _saved) in _mem.items() if updated < cutoff]:
+                _mem.pop(key, None)
         if persist and not same:
-            # Under the lock, so the durable row ends on the pin memory holds.
+            # Under _write_lock, so the durable row ends on the pin memory holds.
             # Pinning runs after the upstream already served the request: a DB
             # error here must not turn a delivered (and billed) reply into a 502.
             try:

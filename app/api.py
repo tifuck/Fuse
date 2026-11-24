@@ -24,10 +24,13 @@ from .sources import (
     POOL_TYPES,
     catalog_unavailable_for,
     metadata_effort,
-    models_union,
+    model_allowed,
+    models_by_source,
     pick,
     pool_denial,
     pool_denial_message,
+    read_credentials,
+    union_names,
 )
 from .sources import pool_pick
 from .sources.base import ChatResult
@@ -55,6 +58,8 @@ _MAX_RETAINED_CHARS = 48_000_000
 # instead of failing the run.
 _MAX_IMAGE_CHARS = 48_000_000
 _REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+# Request bodies past this are decoded and validated off the event loop.
+_LARGE_BODY = 65_536
 logger = logging.getLogger(__name__)
 
 
@@ -381,14 +386,17 @@ async def _tap(
         async for chunk in stream:
             buf += chunk
             # Inspect complete lines first: a capped chunk may still carry the
-            # usage and [DONE] frames after a huge one.
-            out = b""
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                if skip_line:
-                    skip_line = False
-                    continue
-                out += inspect(line) + b"\n"
+            # usage and [DONE] frames after a huge one. The remainder holds no
+            # newline, so only this chunk can end a line.
+            parts = []
+            if b"\n" in chunk:
+                *lines, buf = buf.split(b"\n")
+                for line in lines:
+                    if skip_line:
+                        skip_line = False
+                        continue
+                    parts.append(inspect(line) + b"\n")
+            out = b"".join(parts)
             if len(buf) > _LINE_CAP:
                 if skip_line or _ERROR_FRAME_HEAD.match(buf):
                     if not skip_line:
@@ -511,10 +519,11 @@ class _TapResponse(StreamingResponse):
 @router.get("/v1/models")
 async def list_models(request: Request):
     user = await asyncio.to_thread(require_key, request)
-    names = await models_union(user_id=user["id"])
+    groups = await models_by_source(user_id=user["id"])
+    names = union_names(group["models"] for group in groups)
     if not names and catalog_unavailable_for(""):
         raise HTTPException(503, "Model catalog is temporarily unavailable")
-    image = {e["id"]: e["image"] for e in await opencode_mod.model_options(user["id"])}
+    image = {e["id"]: e["image"] for e in await opencode_mod.model_options(user["id"], groups)}
     data = []
     for n in names:
         row = {"id": n, "object": "model", "owned_by": "fuse"}
@@ -577,6 +586,45 @@ def _set_cheap_reasoning(body: dict, type_id: str, model: str, user_id: int) -> 
         # llama.cpp takes no effort, so thinking ate the whole title/recap
         # budget (empty content). Templates without this switch ignore it.
         body["chat_template_kwargs"] = {**(body.get("chat_template_kwargs") or {}), "enable_thinking": False}
+
+
+def _admitted(src, upstream: str, model: str, user_id: int, access: Access, body: dict, cheap_reasoning: bool) -> bool:
+    """A routed request's sync checks, in one worker-thread hop: False when
+    the user turned the model off; raises the 403/400 that refuses it."""
+    if not model_allowed(src.type_id, user_id, model, upstream):
+        return False
+    if not access.allows(src.type_id):
+        raise HTTPException(403, pool_denial_message(src.type_id, user_id))
+    _ensure_encodable(body)
+    if cheap_reasoning:
+        _set_cheap_reasoning(body, src.type_id, model, user_id)
+    try:
+        read_credentials(src)
+    except Exception:
+        pass  # src.chat reads them again, inside the attempt's error handling
+    return True
+
+
+def _refusal(model: str, user_id: int, access: Access, off) -> HTTPException:
+    """Why `model` did not route for this user (off: where it routes with
+    the user's model choices ignored), in one worker-thread hop."""
+    if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user_id):
+        return HTTPException(403, "Reconnect your Experiential Labs API key to use its models")
+    denied = nanogpt_mod.denied_reason(model, user_id) or openrouter_mod.denied_reason(model, user_id)
+    if denied:
+        return HTTPException(403, denied)
+    # Turned off on Sources: say so, not "Unknown model".
+    if off:
+        return HTTPException(403, f"{provider_errors.label(off[0].type_id)}: {model} is turned off for your account. "
+                                  "Turn it on in Sources.")
+    if catalog_unavailable_for(model):
+        return HTTPException(503, "Model catalog is temporarily unavailable")
+    # A model of a pool the user lost their account for (e.g. an OAuth
+    # grant revoked upstream) says what to reconnect, not "Unknown model".
+    denial = pool_denial(model, user_id, access)
+    if denial:
+        return HTTPException(403, denial)
+    return HTTPException(404, "Unknown model")
 
 
 def _prepare_images(original, type_id: str, upstream: str, user_id: int, images: dict) -> tuple[list, int, int]:
@@ -644,38 +692,19 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
     # many times; reuse them for this phase only (never across the upstream call).
     with db.read_memo():
         access = Access(user["id"])
-        if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
+        if model.startswith("explabs/") and not await asyncio.to_thread(explabs_mod.user_has_explabs, user["id"]):
             raise HTTPException(403, "Connect an Experiential Labs API key to use its models")
         try:
-            picked = await pick(model, user_id=user["id"], access=access)
+            # Where the model routes before the user's model choices, which
+            # _admitted applies: a model turned off is refused as such.
+            routed = await pick(model, user_id=user["id"], access=access, ignore_prefs=True)
         except explabs_mod.CatalogError:
             raise HTTPException(503, "Experiential Labs model catalog is temporarily unavailable") from None
-        if not picked:
-            if model.startswith("explabs/") and not explabs_mod.user_has_explabs(user["id"]):
-                raise HTTPException(403, "Reconnect your Experiential Labs API key to use its models")
-            denied = nanogpt_mod.denied_reason(model, user["id"]) or openrouter_mod.denied_reason(model, user["id"])
-            if denied:
-                raise HTTPException(403, denied)
-            # Turned off on Sources: say so, not "Unknown model".
-            off = await pick(model, user_id=user["id"], access=access, ignore_prefs=True)
-            if off:
-                raise HTTPException(403, f"{provider_errors.label(off[0].type_id)}: {model} is turned off for your account. "
-                                         "Turn it on in Sources.")
-            if catalog_unavailable_for(model):
-                raise HTTPException(503, "Model catalog is temporarily unavailable")
-            # A model of a pool the user lost their account for (e.g. an OAuth
-            # grant revoked upstream) says what to reconnect, not "Unknown model".
-            denial = pool_denial(model, user["id"], access)
-            if denial:
-                raise HTTPException(403, denial)
-            raise HTTPException(404, "Unknown model")
-        src, upstream = picked
-        if not access.allows(src.type_id):
-            raise HTTPException(403, pool_denial_message(src.type_id, user["id"]))
-        await asyncio.to_thread(_ensure_encodable, body)
+        if not routed or not await asyncio.to_thread(_admitted, *routed, model, user["id"], access, body,
+                                                     cheap_reasoning):
+            raise await asyncio.to_thread(_refusal, model, user["id"], access, routed)
+        src, upstream = routed
         requested = model
-        if cheap_reasoning:
-            _set_cheap_reasoning(body, src.type_id, model, user["id"])
         body["model"] = upstream
         original = body["messages"]
         images = image_snapshot if image_snapshot is not None else {}
@@ -706,7 +735,8 @@ async def _invoke_chat(request: Request, user, body: dict, *, cheap_reasoning: b
                 body={"error": {"message": f"upstream request failed ({type(exc).__name__})"}},
                 model=upstream,
             )
-        await asyncio.to_thread(_record_attempts, result, user, src, upstream, requested)
+        if getattr(result, "attempts", None):
+            await asyncio.to_thread(_record_attempts, result, user, src, upstream, requested)
         if result.status == 200 or not model_caps.image_refusal(result.status, _error_message(result.body)):
             break
         # The provider refused this many images or bytes: drop the older
@@ -846,7 +876,12 @@ async def chat_completions(request: Request):
             # Same strict parser as the dashboard: invalid UTF-8, lone surrogates,
             # NaN/Infinity and pathological nesting are client errors, not 500s or
             # upstream encode failures blamed on a pool account.
-            body = await _json_object(request)
+            if len(await request.body()) > _LARGE_BODY:
+                # The body is read already, so _json_object never waits on
+                # the request: its own loop in a worker thread runs it whole.
+                body = await asyncio.to_thread(asyncio.run, _json_object(request))
+            else:
+                body = await _json_object(request)
         except HTTPException as exc:
             logger.warning(
                 "Rejected chat request user=%s status=%s detail=%s", user["id"], exc.status_code, exc.detail

@@ -436,7 +436,7 @@ def _store_billing(cred_id: int, parsed: dict, *, error: str = "", region: str |
 
 async def refresh_quota(cred, *, force: bool = False, parsed: dict | None = None, region: str | None = None) -> dict | None:
     async with _refresh_lock(int(cred["id"])):
-        row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
+        row = await asyncio.to_thread(db.fetchone, "SELECT * FROM credentials WHERE id=?", (cred["id"],))
         if not row or row["disabled"]:
             return None
         extra = accounts.cred_extra(row)
@@ -445,7 +445,7 @@ async def refresh_quota(cred, *, force: bool = False, parsed: dict | None = None
             return billing
         key = extra.get("api_key") or accounts.cred_secret(row)
         if not key:
-            return _store_billing(row["id"], {}, error="missing key")
+            return await asyncio.to_thread(_store_billing, row["id"], {}, error="missing key")
         stored_region = region or extra.get("region") or "global"
         if stored_region not in _REGIONS:
             stored_region = "global"
@@ -464,13 +464,15 @@ async def refresh_quota(cred, *, force: bool = False, parsed: dict | None = None
                 else:
                     err = err or other_err
             if parsed is None:
-                return _store_billing(row["id"], {}, error=err or "fetch failed", region=stored_region)
-        return _store_billing(row["id"], parsed, region=stored_region)
+                return await asyncio.to_thread(_store_billing, row["id"], {}, error=err or "fetch failed",
+                                               region=stored_region)
+        return await asyncio.to_thread(_store_billing, row["id"], parsed, region=stored_region)
 
 
 async def refresh_pool_quota(*, force: bool = False) -> None:
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='zai' AND c.disabled=0"
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='zai' AND c.disabled=0",
     )
     if not rows:
         return
@@ -586,14 +588,14 @@ class ZaiSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("zai", refresh_pool_quota)
         with db.read_memo():
-            self.creds = pool_policy.filter_credentials(
+            self.creds = await asyncio.to_thread(lambda: pool_policy.filter_credentials(
                 db.fetchall(
                     "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
                     (self.source_id,),
                 ),
                 "zai",
                 user_id,
-            )
+            ))
             tried: set[int] = set()
             attempts: list[dict] = []
             last = ChatResult(status=503, body={"error": "No Z.AI accounts in the pool"})
@@ -695,7 +697,7 @@ class ZaiSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("zai", session_id, cid)
+                    await asyncio.to_thread(bind, "zai", session_id, cid)
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 

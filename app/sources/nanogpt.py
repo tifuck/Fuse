@@ -612,16 +612,16 @@ def parse_usage(data: dict) -> dict:
 async def fetch_usage(key: str) -> tuple[dict | None, str]:
     """Quota and routing advice, plus the USD balance. Never a completion."""
     balance = None
+    client = http_pool.client(15.0)
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get(_api() + "/subscription/v1/usage", headers=_headers(key))
-            if r.status_code == 200:
-                try:
-                    b = await client.post(_api() + "/check-balance", headers={"x-api-key": key})
-                    if b.status_code == 200 and isinstance(b.json(), dict):
-                        balance = _as_float(b.json().get("usd_balance"))
-                except (httpx.HTTPError, ValueError):
-                    pass
+        r = await client.get(_api() + "/subscription/v1/usage", headers=_headers(key))
+        if r.status_code == 200:
+            try:
+                b = await client.post(_api() + "/check-balance", headers={"x-api-key": key})
+                if b.status_code == 200 and isinstance(b.json(), dict):
+                    balance = _as_float(b.json().get("usd_balance"))
+            except (httpx.HTTPError, ValueError):
+                pass
     except httpx.HTTPError:
         return None, "fetch failed"
     if r.status_code != 200:
@@ -673,7 +673,7 @@ def _refresh_lock(cred_id: int) -> asyncio.Lock:
 
 async def refresh_usage(cred, *, force: bool = False) -> dict | None:
     async with _refresh_lock(int(cred["id"])):
-        row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
+        row = await asyncio.to_thread(db.fetchone, "SELECT * FROM credentials WHERE id=?", (cred["id"],))
         if not row or row["disabled"]:
             return None
         billing = _billing(accounts.cred_extra(row))
@@ -681,13 +681,14 @@ async def refresh_usage(cred, *, force: bool = False) -> dict | None:
             return billing
         parsed, err = await fetch_usage(accounts.cred_secret(row))
         if parsed is None:
-            return _store_billing(row["id"], {}, error=err or "fetch failed")
-        return _store_billing(row["id"], parsed)
+            return await asyncio.to_thread(_store_billing, row["id"], {}, error=err or "fetch failed")
+        return await asyncio.to_thread(_store_billing, row["id"], parsed)
 
 
 async def refresh_pool_usage(*, force: bool = False) -> None:
-    rows = db.fetchall(
-        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='nanogpt' AND c.disabled=0"
+    rows = await asyncio.to_thread(
+        db.fetchall,
+        "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='nanogpt' AND c.disabled=0",
     )
     if not rows:
         return
@@ -897,12 +898,12 @@ class NanoGPTSource:
             )
 
         with db.read_memo():
-            rows = candidates()
+            rows = await asyncio.to_thread(candidates)
             if any(_stale_loan(row, uid) for row in rows):
                 # A lent key serves only on a recent reading: wait for the
                 # refresh rather than refuse the request.
                 await pool_refresh.wait(refresh)
-                rows = candidates()
+                rows = await asyncio.to_thread(candidates)
 
             def usable(cred, extra) -> bool:
                 # NanoGPT's own advice that this key can route nothing right now.
@@ -1024,7 +1025,7 @@ class NanoGPTSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("nanogpt", session_id, cid)
+                    await asyncio.to_thread(bind, "nanogpt", session_id, cid)
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 

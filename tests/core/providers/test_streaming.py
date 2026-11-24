@@ -298,3 +298,32 @@ def test_completions_reuse_one_client_per_event_loop(upstream):
     # A new loop (each test, or a restarted app) never inherits another loop's client.
     assert asyncio.run(two_calls())[0] is not first
     assert len(upstream.requests) == 4
+
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_the_request_goes_out_as_the_same_bytes_and_headers_json_would_send(upstream, stream):
+    seen = []
+
+    def answer(request):
+        seen.append(request)
+        if stream:
+            return sse_response(delta("hi"), {"choices": [], "usage": USAGE})
+        return httpx.Response(200, json=completion())
+
+    upstream.on("POST", "/chat/completions", answer)
+    body = {"model": "m", "stream": stream, "messages": [{"role": "user", "content": "héllo ✓"}]}
+    headers = {"Authorization": "Bearer sk-test-key"}
+
+    async def go():
+        _status, _obj, out, _usage, _headers = await openai_chat(httpx.AsyncClient(), URL, headers, body,
+                                                                 close_client=True)
+        if out is not None:
+            await drain(out)
+
+    asyncio.run(go())
+    payload = {**body, "stream_options": {"include_usage": True}} if stream else body
+    expected = httpx.AsyncClient().build_request("POST", URL, json=payload, headers=headers)
+    (sent,) = seen
+    assert sent.content == expected.content
+    assert sent.headers.raw == expected.headers.raw

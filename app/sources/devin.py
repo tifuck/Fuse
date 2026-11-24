@@ -578,14 +578,14 @@ class DevinSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("devin", refresh_pool_status)
         with db.read_memo():
-            self.creds = pool_policy.filter_credentials(
+            self.creds = await asyncio.to_thread(lambda: pool_policy.filter_credentials(
                 db.fetchall(
                     "SELECT * FROM credentials WHERE source_id=? AND disabled=0",
                     (self.source_id,),
                 ),
                 "devin",
                 user_id,
-            )
+            ))
             tried: set[int] = set()
             attempts: list[dict] = []
             last = ChatResult(status=503, body={"error": "No Devin accounts in the pool"})
@@ -787,7 +787,7 @@ class DevinSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("devin", session_id, cid)
+                    await asyncio.to_thread(bind, "devin", session_id, cid)
                 elif status == "failed":
                     # A quota-exhausted account is spent for the whole daily
                     # window; cool it well past the generic failure blip so

@@ -563,11 +563,11 @@ class MimoSource:
     async def chat(self, body: dict, *, session_id: str | None = None, user_id: int | None = None, affinity_id: str | None = None) -> ChatResult:
         pool_refresh.start("mimo", refresh_pool_quota)
         with db.read_memo():
-            self.creds = pool_policy.filter_credentials(
+            self.creds = await asyncio.to_thread(lambda: pool_policy.filter_credentials(
                 db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (self.source_id,)),
                 "mimo",
                 user_id,
-            )
+            ))
             tried: set[int] = set()
             attempts: list[dict] = []
             last = ChatResult(status=503, body={"error": "No Xiaomi accounts in the pool"})
@@ -660,7 +660,7 @@ class MimoSource:
                     await close()
                 status = (collected or {}).get("stream_status")
                 if status == "complete":
-                    bind("mimo", session_id, cid)
+                    await asyncio.to_thread(bind, "mimo", session_id, cid)
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
