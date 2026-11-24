@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -25,7 +26,7 @@ def _fail(message: str, status: int) -> JSONResponse:
 
 @router.post("/speech/transcribe")
 async def speech_transcribe(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not speech.available():
@@ -50,7 +51,7 @@ async def speech_transcribe(request: Request):
 
 
 @router.post("/admin/speech")
-async def admin_speech_save(
+def admin_speech_save(
     request: Request,
     base_url: str = Form(""),
     api_key: str = Form(""),

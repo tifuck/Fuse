@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -19,7 +20,7 @@ router = APIRouter()
 @router.post("/sources/chatgpt/start")
 @router.post("/pool/chatgpt/start")
 async def chatgpt_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"chatgpt-start:{user['id']}", 5, 60):
@@ -48,7 +49,7 @@ async def chatgpt_start(request: Request):
 @router.post("/sources/chatgpt/poll")
 @router.post("/pool/chatgpt/poll")
 async def chatgpt_poll(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     pending = logins.get(user["id"], "chatgpt", clamp=True)
@@ -103,7 +104,7 @@ async def chatgpt_poll(request: Request):
 @router.post("/sources/chatgpt/cancel")
 @router.post("/pool/chatgpt/cancel")
 async def chatgpt_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "chatgpt")

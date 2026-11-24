@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from ...security import limiter
@@ -15,7 +17,7 @@ router = APIRouter()
 @router.post("/sources/zai/add")
 @router.post("/pool/zai/add")
 async def zai_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"zai-add:{user['id']}", 5, 60):

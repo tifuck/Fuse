@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -11,13 +13,18 @@ from .deps import _chat_auth, _json_object, render, require_user, vault_locked_j
 router = APIRouter()
 
 
+def _tasks_rows(user_id: int) -> tuple[dict, list[dict], int]:
+    return (hosts.list_bundle(user_id), [schedules.public(s) for s in schedules.list_schedules(user_id)],
+            schedules.failure_count(user_id))
+
+
 async def _tasks_page(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     from .models import _models_page_families
 
-    bundle = hosts.list_bundle(user["id"])
+    bundle, items, failures = await asyncio.to_thread(_tasks_rows, user["id"])
     families, _locked = await _models_page_families(user)
     models = []
     for fam in families:
@@ -36,10 +43,10 @@ async def _tasks_page(request: Request):
                 "auth_type": host.get("auth_type") or "",
             })
     schedule_bundle = {
-        "schedules": [schedules.public(s) for s in schedules.list_schedules(user["id"])],
+        "schedules": items,
         "projects": projects,
         "models": models,
-        "failures": schedules.failure_count(user["id"]),
+        "failures": failures,
         "vault": bundle.get("vault"),
     }
     return render(request, "tasks.html", user, schedule_bundle=schedule_bundle)
@@ -68,7 +75,7 @@ def _ok(item, *, fires=None, extra=None):
 
 
 @router.get("/schedules")
-async def schedules_list(request: Request):
+def schedules_list(request: Request):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -81,12 +88,12 @@ async def schedules_list(request: Request):
 
 @router.post("/schedules")
 async def schedules_create(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     body = await _json_object(request)
     try:
-        item = schedules.create_schedule(user["id"], body)
+        item = await asyncio.to_thread(schedules.create_schedule, user["id"], body)
     except (schedules.ScheduleError, CronError) as exc:
         if isinstance(exc, CronError):
             return _fail(schedules.ScheduleError(str(exc)))
@@ -95,7 +102,7 @@ async def schedules_create(request: Request):
 
 
 @router.get("/schedules/{token}")
-async def schedules_get(request: Request, token: str):
+def schedules_get(request: Request, token: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -109,12 +116,12 @@ async def schedules_get(request: Request, token: str):
 
 @router.patch("/schedules/{token}")
 async def schedules_patch(request: Request, token: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
     try:
-        item = schedules.patch_schedule(user["id"], token, raw)
+        item = await asyncio.to_thread(schedules.patch_schedule, user["id"], token, raw)
     except (schedules.ScheduleError, CronError) as exc:
         if isinstance(exc, CronError):
             return _fail(schedules.ScheduleError(str(exc)))
@@ -123,7 +130,7 @@ async def schedules_patch(request: Request, token: str):
 
 
 @router.delete("/schedules/{token}")
-async def schedules_delete(request: Request, token: str):
+def schedules_delete(request: Request, token: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -136,7 +143,7 @@ async def schedules_delete(request: Request, token: str):
 
 @router.post("/schedules/{token}/run")
 async def schedules_run(request: Request, token: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     try:
@@ -145,12 +152,12 @@ async def schedules_run(request: Request, token: str):
         if isinstance(exc, CronError):
             return _fail(schedules.ScheduleError(str(exc)))
         return _fail(exc)
-    fires = schedules.list_fires(user["id"], item["public_id"])
+    fires = await asyncio.to_thread(schedules.list_fires, user["id"], item["public_id"])
     return _ok(item, fires=fires)
 
 
 @router.get("/schedules/{token}/fires")
-async def schedules_fires(request: Request, token: str):
+def schedules_fires(request: Request, token: str):
     user, err = _chat_auth(request)
     if err:
         return err
@@ -163,7 +170,7 @@ async def schedules_fires(request: Request, token: str):
 
 @router.post("/schedules/preview")
 async def schedules_preview(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     # _normalize projects cron fires; without a limit that is repeatable CPU
@@ -172,10 +179,14 @@ async def schedules_preview(request: Request):
         return _fail(schedules.ScheduleError("too many requests", 429))
     raw = await _json_object(request)
     try:
-        item = schedules._normalize(user["id"], raw)
-        times = schedules.preview_fires(item)
+        item, times = await asyncio.to_thread(_preview, user["id"], raw)
     except (schedules.ScheduleError, CronError) as exc:
         if isinstance(exc, CronError):
             return _fail(schedules.ScheduleError(str(exc)))
         return _fail(exc)
     return JSONResponse({"preview": times, "when": schedules._when_label(item)}, headers={"Cache-Control": "no-store"})
+
+
+def _preview(user_id: int, raw: dict):
+    item = schedules._normalize(user_id, raw)
+    return item, schedules.preview_fires(item)

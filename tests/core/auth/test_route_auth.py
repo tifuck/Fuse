@@ -162,7 +162,7 @@ def test_chat_events_refuse_a_signed_in_caller_from_another_origin(web):
 
 
 # A handler that answers only admins, wherever it is mounted.
-_ADMIN_CHECK = re.compile(r"require_admin\(|^\s*if not user or not user\[\"is_admin\"\]:", re.M)
+_ADMIN_CHECK = re.compile(r"require_admin\(|to_thread\(require_admin, |^\s*if not user or not user\[\"is_admin\"\]:", re.M)
 
 
 def _admin_handler_routes():

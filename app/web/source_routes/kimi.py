@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -19,7 +20,7 @@ router = APIRouter()
 @router.post("/sources/kimi/start")
 @router.post("/pool/kimi/start")
 async def kimi_start(request: Request, region: str = Form("global")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"kimi-start:{user['id']}", 5, 60):
@@ -49,7 +50,7 @@ async def kimi_start(request: Request, region: str = Form("global")):
 @router.post("/sources/kimi/poll")
 @router.post("/pool/kimi/poll")
 async def kimi_poll(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     pending = logins.get(user["id"], "kimi", clamp=True)
@@ -111,7 +112,7 @@ async def kimi_poll(request: Request):
 @router.post("/sources/kimi/cancel")
 @router.post("/pool/kimi/cancel")
 async def kimi_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "kimi")
@@ -121,7 +122,7 @@ async def kimi_cancel(request: Request):
 @router.post("/sources/kimi/add")
 @router.post("/pool/kimi/add")
 async def kimi_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"kimi-add:{user['id']}", 5, 60):

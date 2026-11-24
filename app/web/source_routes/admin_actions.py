@@ -3,6 +3,7 @@ save llama/ollama/grok/zai/explabs/openrouter settings, probe, toggle, delete.""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -70,7 +71,7 @@ async def admin_sources_create(
     rotation: str = Form("sticky"),
     model: str = Form(""),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     if type != "openai":
@@ -116,7 +117,7 @@ async def admin_llama_save(
     enabled: str = Form("0"),
     insecure: str = Form("0"),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     from ...sources import ensure_llama_source
@@ -175,7 +176,7 @@ async def admin_fetch_domains(
     blacklist: str = Form(""),
     whitelist: str = Form(""),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     from ...search.policy import save_domain_lists
@@ -208,7 +209,7 @@ async def admin_ollama_save(
     enabled: str = Form("0"),
     site_access: str = Form(""),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     from ...sources import ensure_ollama_source
@@ -253,7 +254,7 @@ async def admin_ollama_save(
 @router.post("/admin/sources/pools")
 @router.post("/admin/pools")
 async def admin_pools_save(request: Request):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     form = await request.form()
@@ -287,7 +288,7 @@ async def admin_grok_save(
     request: Request,
     offpool_usage_guard: str = Form("0"),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     return _save_guard(user, "grok", offpool_usage_guard)
@@ -298,7 +299,7 @@ async def admin_zai_save(
     request: Request,
     offpool_usage_guard: str = Form("0"),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     return _save_guard(user, "zai", offpool_usage_guard)
@@ -310,7 +311,7 @@ async def admin_pool_guard_save(
     kind: str,
     offpool_usage_guard: str = Form("0"),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     if kind not in pool_policy.GUARD_KINDS:
@@ -323,7 +324,7 @@ async def admin_openrouter_save(
     request: Request,
     enabled: str = Form("0"),
 ):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     sid = openrouter_mod.ensure_openrouter_source()
@@ -337,7 +338,7 @@ async def admin_openrouter_save(
 
 @router.post("/admin/sources/{source_id}/test")
 async def admin_source_test(request: Request, source_id: int):
-    user = current_user(request)
+    user = await asyncio.to_thread(current_user, request)
     if not user or not user["is_admin"]:
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
     if not limiter.allow(f"probe:{user['id']}", 8, 60):
@@ -357,7 +358,7 @@ async def admin_source_test(request: Request, source_id: int):
 
 @router.post("/admin/sources/ollama/keys/{cred_id}/delete")
 async def admin_ollama_key_delete(request: Request, cred_id: int):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     from ...sources import ensure_ollama_source
@@ -375,7 +376,7 @@ async def admin_ollama_key_delete(request: Request, cred_id: int):
 
 @router.post("/admin/sources/{source_id}/toggle")
 async def admin_toggle(request: Request, source_id: int):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     db.execute("UPDATE sources SET enabled=1-enabled WHERE id=?", (source_id,))
@@ -384,7 +385,7 @@ async def admin_toggle(request: Request, source_id: int):
 
 @router.post("/admin/sources/{source_id}/delete")
 async def admin_delete(request: Request, source_id: int):
-    user, redir = require_admin(request)
+    user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
     with db.tx() as conn:

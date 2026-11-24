@@ -1,6 +1,7 @@
 """Account-global Agent Skills library."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -81,20 +82,29 @@ def _public(item: dict) -> dict:
     }
 
 
-def bundled_slugs() -> list[str]:
-    if not BUNDLED_DIR.is_dir():
-        return []
-    out = []
-    for path in sorted(BUNDLED_DIR.iterdir()):
+@functools.cache
+def _bundled(root: Path) -> dict[str, dict | None]:
+    """Every bundled skill, parsed once: they only change with a deploy,
+    which restarts the process."""
+    if not root.is_dir():
+        return {}
+    out = {}
+    for path in sorted(root.iterdir()):
         if path.is_dir() and (path / "SKILL.md").is_file():
-            out.append(path.name)
+            out[path.name] = _parse_bundled(path.name, path / "SKILL.md")
     return out
 
 
+def bundled_slugs() -> list[str]:
+    return list(_bundled(BUNDLED_DIR))
+
+
 def read_bundled(slug: str) -> dict | None:
-    path = BUNDLED_DIR / slug / "SKILL.md"
-    if not path.is_file():
-        return None
+    item = _bundled(BUNDLED_DIR).get(slug)
+    return dict(item) if item else None
+
+
+def _parse_bundled(slug: str, path: Path) -> dict | None:
     try:
         parsed = parse_skill_md(path.read_text(encoding="utf-8"), slug=slug)
     except SkillError:

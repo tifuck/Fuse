@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 
 from fastapi import APIRouter, Request
@@ -358,17 +359,35 @@ def _openrouter_locked_models(catalog: dict) -> list[str]:
     return [openrouter_mod.public_id(mid) for mid in ids][:24]
 
 
-async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
-    gates = Access(user["id"])
-    or_state = openrouter_mod.openrouter_access_state(user["id"])
-    access = {kind: gates.state(kind) for kind in pool_policy.POOL_KINDS}
-    groups = await models_by_source(user_id=user["id"], access=gates)
+def _access_states(user_id: int, gates: Access) -> tuple[dict, dict]:
+    return (openrouter_mod.openrouter_access_state(user_id),
+            {kind: gates.state(kind) for kind in pool_policy.POOL_KINDS})
+
+
+async def _openrouter_catalog(or_state: dict) -> dict | None:
     catalog = openrouter_mod.cached_catalog()
     if catalog is None and or_state["ok"]:
         catalog = await openrouter_mod.fetch_catalog()
-    explabs_catalog = explabs_mod.cached_catalog(user["id"])
-    if explabs_catalog is None and any(g["type"] == "explabs" and g.get("models") for g in groups):
-        explabs_catalog = await explabs_mod.fetch_catalog(user["id"])
+    return catalog
+
+
+async def _explabs_catalog(user_id: int, groups: list[dict]) -> dict | None:
+    catalog = await asyncio.to_thread(explabs_mod.cached_catalog, user_id)
+    if catalog is None and any(g["type"] == "explabs" and g.get("models") for g in groups):
+        catalog = await explabs_mod.fetch_catalog(user_id)
+    return catalog
+
+
+async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
+    gates = Access(user["id"])
+    or_state, access = await asyncio.to_thread(_access_states, user["id"], gates)
+    groups = await models_by_source(user_id=user["id"], access=gates)
+    catalog, explabs_catalog = await asyncio.gather(_openrouter_catalog(or_state), _explabs_catalog(user["id"], groups))
+    return await asyncio.to_thread(_families, user, groups, access, or_state, catalog, explabs_catalog)
+
+
+def _families(user, groups: list[dict], access: dict, or_state: dict, catalog: dict | None,
+              explabs_catalog: dict | None) -> tuple[list[dict], list[dict]]:
     available: list[dict] = []
     for group in groups:
         names = list(group.get("models") or [])
@@ -440,7 +459,7 @@ async def _models_page_families(user) -> tuple[list[dict], list[dict]]:
 
 @router.get("/models", response_class=HTMLResponse)
 async def models_page(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     available, locked = await _models_page_families(user)

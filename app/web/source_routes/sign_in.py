@@ -7,6 +7,7 @@ handler for every provider: revoke().
 """
 from __future__ import annotations
 
+import asyncio
 import importlib
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,7 +30,7 @@ async def revoke(request: Request, pid: str, cred_id: int, *, back: str = "/sour
     the grant upstream where the provider has a revoke call, then disables
     the row so it is never routed again. auth: the caller module's
     require_user (provider route modules pass their own)."""
-    user, redir = (auth or require_user)(request)
+    user, redir = await asyncio.to_thread(auth or require_user, request)
     if redir:
         return redir
     spec = registry.get(pid)

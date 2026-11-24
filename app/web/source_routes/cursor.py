@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -19,7 +20,7 @@ router = APIRouter()
 @router.post("/sources/cursor/start")
 @router.post("/pool/cursor/start")
 async def cursor_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"cursor-start:{user['id']}", 5, 60):
@@ -34,7 +35,7 @@ async def cursor_start(request: Request):
 @router.post("/sources/cursor/poll")
 @router.post("/pool/cursor/poll")
 async def cursor_poll(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     pending = logins.get(user["id"], "cursor", clamp=True)
@@ -73,7 +74,7 @@ async def cursor_poll(request: Request):
 @router.post("/sources/cursor/cancel")
 @router.post("/pool/cursor/cancel")
 async def cursor_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "cursor")
@@ -83,7 +84,7 @@ async def cursor_cancel(request: Request):
 @router.post("/sources/cursor/add")
 @router.post("/pool/cursor/add")
 async def cursor_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"cursor-add:{user['id']}", 5, 60):

@@ -582,9 +582,12 @@ def touch(row) -> None:
     """Someone opened it, in Fuse or by its share link: that keeps it from
     expiring. At most one write an hour per artifact."""
     now = datetime.now(timezone.utc)
+    cutoff = _iso(now - timedelta(hours=1))
+    if (row["viewed_at"] or "") >= cutoff:
+        return
     db.execute(
         "UPDATE artifacts SET viewed_at=? WHERE id=? AND viewed_at<?",
-        (_iso(now), row["id"], _iso(now - timedelta(hours=1))),
+        (_iso(now), row["id"], cutoff),
     )
 
 

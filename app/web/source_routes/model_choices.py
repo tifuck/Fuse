@@ -2,6 +2,8 @@
 the JSON endpoint behind each model list on Sources."""
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -17,7 +19,7 @@ async def model_choice(request: Request, provider: str):
     """One of {"model", "on"} (one model), {"group", "on"} (a group: every
     model in it, overrides cleared) or {"all": bool}. Answers with the state
     the list should show."""
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     if registry.get(provider) is None:

@@ -26,7 +26,7 @@ from .deps import (
 router = APIRouter()
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_get(request: Request):
+def login_get(request: Request):
     target = safe_next(request.query_params.get("next"))
     if current_user(request):
         return RedirectResponse(target, status_code=303)
@@ -48,7 +48,7 @@ async def login_post(request: Request, email: str = Form(), password: str = Form
     resp = RedirectResponse(target, status_code=303)
     try:
         await asyncio.to_thread(vault.unlock, user["id"], password)
-        _set_vault_cookie(resp, request, user["id"])
+        await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
     except Exception:
         logger.exception("vault unlock after login failed")
     return resp
@@ -63,7 +63,7 @@ def _register_page(request: Request, *, invite: str, setup: str, error=None, sta
 
 
 @router.get("/register", response_class=HTMLResponse)
-async def register_get(request: Request):
+def register_get(request: Request):
     if current_user(request):
         return RedirectResponse("/chat", status_code=303)
     return _register_page(request, invite=request.query_params.get("invite", ""),
@@ -96,7 +96,7 @@ async def register_post(request: Request, email: str = Form(), password: str = F
     resp = RedirectResponse("/chat", status_code=303)
     try:
         await asyncio.to_thread(vault.unlock, user["id"], password)
-        _set_vault_cookie(resp, request, user["id"])
+        await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
     except Exception:
         logger.exception("vault unlock after register failed")
     _stash_key_reveal(request, user["id"], user["new_key"])
@@ -140,7 +140,7 @@ async def logout(request: Request):
 
 @router.post("/account/password")
 async def account_password(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if _auth_limited(request, f"uid:{user['id']}"):
@@ -164,7 +164,7 @@ async def account_password(request: Request):
     from .. import host_events, push
 
     keep = raw.get("keep_endpoint")
-    push.remove_others(user["id"], keep if isinstance(keep, str) and len(keep) <= 2048 else "")
+    await asyncio.to_thread(push.remove_others, user["id"], keep if isinstance(keep, str) and len(keep) <= 2048 else "")
 
     async def _reauth_sockets():
         # After the response, so this browser already holds its re-stamped
@@ -176,14 +176,14 @@ async def account_password(request: Request):
         await terminal.close_where(user["id"], "password")
 
     resp = JSONResponse({"ok": True}, background=BackgroundTask(_reauth_sockets))
-    request.session["ph"] = accounts.password_fingerprint(accounts.get_user(user["id"]))
-    _set_vault_cookie(resp, request, user["id"])
+    request.session["ph"] = accounts.password_fingerprint(await asyncio.to_thread(accounts.get_user, user["id"]))
+    await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
     return resp
 
 
 @router.post("/account/vault/unlock")
 async def account_vault_unlock(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if _auth_limited(request, f"uid:{user['id']}"):
@@ -199,6 +199,6 @@ async def account_vault_unlock(request: Request):
             raise HTTPException(500, "Your account vault could not be decrypted.") from None
         raise HTTPException(401, "Password is wrong.") from None
     resp = JSONResponse({"ok": True, "vault": "unlocked"})
-    _set_vault_cookie(resp, request, user["id"])
+    await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
     return resp
 

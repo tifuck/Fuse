@@ -4,6 +4,7 @@ and provider pins."""
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 
@@ -71,7 +72,7 @@ async def nanogpt_start(request: Request):
     """A link, not a form: the CSP's form-action 'self' blocks a form whose
     redirect leaves the site. It only opens a PKCE round; nothing is linked
     until the user approves on NanoGPT and the callback's state matches."""
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"nanogpt-start:{user['id']}", 5, 60):
@@ -87,7 +88,7 @@ async def nanogpt_start(request: Request):
 
 @router.get("/sources/nanogpt/callback")
 async def nanogpt_callback(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     pending = logins.get(user["id"], "nanogpt", clamp=True)
@@ -113,7 +114,7 @@ async def nanogpt_callback(request: Request):
 
 @router.post("/sources/nanogpt/device")
 async def nanogpt_device_start(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"nanogpt-start:{user['id']}", 5, 60):
@@ -130,7 +131,7 @@ async def nanogpt_device_start(request: Request):
 
 @router.post("/sources/nanogpt/poll")
 async def nanogpt_poll(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return JSONResponse({"error": "auth"}, status_code=401)
     pending = logins.get(user["id"], "nanogpt", clamp=True)
@@ -159,7 +160,7 @@ async def nanogpt_poll(request: Request):
 
 @router.post("/sources/nanogpt/cancel")
 async def nanogpt_cancel(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     logins.drop(user["id"], "nanogpt")
@@ -168,7 +169,7 @@ async def nanogpt_cancel(request: Request):
 
 @router.post("/sources/nanogpt/add")
 async def nanogpt_add(request: Request, api_key: str = Form(""), label: str = Form("")):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"nanogpt-add:{user['id']}", 5, 60):
@@ -189,7 +190,7 @@ async def nanogpt_revoke(request: Request, cred_id: int):
 # --- The owner's model list (same JSON contract as OpenRouter's) -------------
 
 async def _owner_json(request: Request):
-    user, redir = require_user(request)
+    user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return None, None, JSONResponse({"error": "auth"}, status_code=401)
     if not nanogpt_mod.nanogpt_own_access(user["id"])["ok"]:
