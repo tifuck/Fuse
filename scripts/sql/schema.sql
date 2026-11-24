@@ -356,7 +356,7 @@ CREATE TABLE `chat_threads` (
   `archived` bigint(20) NOT NULL DEFAULT 0,
   `messages` longtext NOT NULL DEFAULT '[]',
   `created_at` longtext NOT NULL,
-  `updated_at` varchar(32) NOT NULL,
+  `updated_at` longtext NOT NULL,
   `context` longtext NOT NULL DEFAULT '',
   `tools` longtext NOT NULL DEFAULT '["web_search"]',
   `revision` bigint(20) NOT NULL DEFAULT 0,
@@ -386,13 +386,12 @@ CREATE TABLE `chat_threads` (
   `memory_off` bigint(20) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `chat_threads_public_id` (`public_id`) USING HASH,
+  KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`(191)),
   KEY `chat_threads_user_archived_at` (`user_id`,`archived`,`archived_at`),
   KEY `fk_chat_threads_project` (`project_id`),
   KEY `fk_chat_threads_host` (`host_id`),
   KEY `chat_threads_public_id_lookup` (`public_id`(32)),
   KEY `chat_threads_title_sweep` (`title_state`(8),`title_attempted_at`(20)),
-  KEY `chat_threads_schedule` (`user_id`,`schedule_id`),
-  KEY `chat_threads_user_updated` (`user_id`,`archived`,`updated_at`,`id`),
   CONSTRAINT `fk_chat_threads_0` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION,
   CONSTRAINT `fk_chat_threads_host` FOREIGN KEY (`host_id`) REFERENCES `user_hosts` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_chat_threads_project` FOREIGN KEY (`project_id`) REFERENCES `user_projects` (`id`) ON DELETE SET NULL
@@ -421,7 +420,7 @@ CREATE TABLE `command_jobs` (
   `delivered` bigint(20) NOT NULL DEFAULT 0,
   `created_at` longtext NOT NULL,
   `started_at` longtext DEFAULT NULL,
-  `finished_at` varchar(32) DEFAULT NULL,
+  `finished_at` longtext DEFAULT NULL,
   `out_chars` bigint(20) DEFAULT NULL,
   `output_incomplete` bigint(20) NOT NULL DEFAULT 0,
   `termination_confirmed` bigint(20) DEFAULT NULL,
@@ -434,13 +433,10 @@ CREATE TABLE `command_jobs` (
   `delivered_event_seq` bigint(20) NOT NULL DEFAULT 0,
   `description` text NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
+  KEY `command_jobs_thread` (`thread_id`),
   KEY `command_jobs_undelivered` (`notify`,`delivered`,`thread_id`),
   KEY `command_jobs_user_thread` (`user_id`,`thread_id`),
-  KEY `command_jobs_finished` (`finished_at`(20)),
-  KEY `fk_command_jobs_thread` (`thread_id`),
-  KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`),
-  CONSTRAINT `fk_command_jobs_thread` FOREIGN KEY (`thread_id`) REFERENCES `chat_threads` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_command_jobs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  KEY `command_jobs_finished` (`finished_at`(20))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin ROW_FORMAT=DYNAMIC;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

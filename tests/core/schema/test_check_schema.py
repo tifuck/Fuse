@@ -74,7 +74,7 @@ def test_additions_are_only_creates_and_adds():
     sql = check_schema.additions(FULL, actual, keys, fks)
     assert sql == [
         FULL["artifacts"]["create"],
-        "ALTER TABLE `command_jobs` ADD KEY `command_jobs_thread` (`thread_id`,`background`,`finished_at`)",
+        "ALTER TABLE `command_jobs` ADD KEY `command_jobs_thread` (`thread_id`)",
         "ALTER TABLE `user_projects` ADD COLUMN " + FULL["user_projects"]["columns"]["default_permissions"],
     ]
     assert not any(word in s for s in sql for word in ("DROP", "MODIFY", "CHANGE", "RENAME", "bug_reports"))

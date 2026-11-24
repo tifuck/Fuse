@@ -5,19 +5,12 @@
 --   thread-scoped active-run reads (status IN ('queued','running')) run
 --   inside write transactions as FOR UPDATE; on the global
 --   chat_runs_status_created index their next-key locks covered every
---   user's active runs.
--- chat_threads.updated_at LONGTEXT -> VARCHAR(32), and
---   chat_threads_user_updated becomes a full (user_id, archived, updated_at,
---   id) key: a 191-char prefix cannot serve ORDER BY updated_at, so every
---   sidebar, sync and search query filesorted the user's threads.
--- chat_threads_schedule (user_id, schedule_id): deleting a schedule cleared
---   schedule_id with a full scan that row-locked every user's threads.
+--   user's active runs. Online (LOCK=NONE): chat_runs is the largest table.
 -- chat_schedules next_fire_at/firing_at LONGTEXT -> VARCHAR(32) with full
 --   keys: the 5 s scheduler tick filesorted every future schedule and
---   full-scanned for firing_at.
--- command_jobs.finished_at LONGTEXT -> VARCHAR(32), and command_jobs_thread
---   (thread_id) becomes (thread_id, background, finished_at) for the 3 s
---   jobs poll.
+--   full-scanned for firing_at. chat_schedules_firing is added first on a
+--   32-character prefix, which becomes the full key once firing_at is
+--   VARCHAR(32), so the index exists before the code swap.
 -- usage_rollup_hourly_source (source_type, hour): the admin all-users usage
 --   view filtered by provider scanned the whole rollup table.
 -- credentials.fuse_api_equiv_micros/fuse_priced_events/fuse_unpriced_events:
@@ -31,6 +24,10 @@
 --   from the tree whose schema it is (it refuses while another connection
 --   uses the schema).
 --
+-- Left out: chat_threads (updated_at type, its sort key, a schedule key) and
+-- command_jobs (finished_at type, its poll key). Every change to those large
+-- tables copies them whole, and the production updater refuses that.
+--
 -- Index changes keep their names, so the runtime index probes still match.
 -- Additive statements come first, then every statement that drops or
 -- modifies: an updater holds those back until the new code runs and refuses
@@ -39,14 +36,10 @@
 -- lands last and SHOW CREATE TABLE matches schema.sql whatever the table's
 -- history; the re-adding ALTER repeats the DROP ... IF EXISTS (a no-op by
 -- then) so it counts as destructive and runs after the drop.
--- The MODIFY statements copy chat_threads, chat_schedules and command_jobs:
--- writes to them wait while it runs.
 -- Apply as root, fuse_dev first, then fuse_live as its own reviewed step:
 --   mysql fuse_dev  < scripts/sql/2026-11-24-db-perf.sql
 --   mysql fuse_live < scripts/sql/2026-11-24-db-perf.sql
 -- Safe to rerun.
-ALTER TABLE chat_threads ADD INDEX IF NOT EXISTS chat_threads_schedule (user_id, schedule_id);
-
 ALTER TABLE usage_rollup_hourly
   ADD INDEX IF NOT EXISTS usage_rollup_hourly_source (source_type, hour);
 
@@ -55,30 +48,17 @@ ALTER TABLE credentials
   ADD COLUMN IF NOT EXISTS fuse_priced_events BIGINT(20) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS fuse_unpriced_events BIGINT(20) NOT NULL DEFAULT 0;
 
+ALTER TABLE chat_schedules ADD INDEX IF NOT EXISTS chat_schedules_firing (firing_at(32));
+
 ALTER TABLE chat_runs DROP INDEX IF EXISTS chat_runs_thread_children;
 ALTER TABLE chat_runs
   DROP INDEX IF EXISTS chat_runs_thread_children,
   ADD INDEX chat_runs_thread_children (thread_id, status(16));
 
-ALTER TABLE chat_threads
-  MODIFY updated_at VARCHAR(32) NOT NULL,
-  DROP INDEX IF EXISTS chat_threads_user_updated;
-ALTER TABLE chat_threads
-  DROP INDEX IF EXISTS chat_threads_user_updated,
-  ADD INDEX chat_threads_user_updated (user_id, archived, updated_at, id);
-
 ALTER TABLE chat_schedules
   MODIFY next_fire_at VARCHAR(32) DEFAULT NULL,
   MODIFY firing_at VARCHAR(32) DEFAULT NULL,
-  ADD INDEX IF NOT EXISTS chat_schedules_firing (firing_at),
   DROP INDEX IF EXISTS chat_schedules_due;
 ALTER TABLE chat_schedules
   DROP INDEX IF EXISTS chat_schedules_due,
   ADD INDEX chat_schedules_due (enabled, paused, next_fire_at);
-
-ALTER TABLE command_jobs
-  MODIFY finished_at VARCHAR(32) DEFAULT NULL,
-  DROP INDEX IF EXISTS command_jobs_thread;
-ALTER TABLE command_jobs
-  DROP INDEX IF EXISTS command_jobs_thread,
-  ADD INDEX command_jobs_thread (thread_id, background, finished_at);
