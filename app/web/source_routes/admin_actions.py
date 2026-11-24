@@ -258,12 +258,14 @@ async def admin_pools_save(request: Request):
         return redir
     form = await request.form()
     on = ("1", "on", "true")
-    for kind in pool_policy.POOL_KINDS:
-        pool_policy.set_admin_policy(
-            kind,
-            pool_shared=form.get(f"{kind}_pool_shared", "0") in on,
-            open_access=form.get(f"{kind}_open_access", "0") in on,
-        )
+    sids = {kind: pool_policy.source_id(kind) for kind in pool_policy.POOL_KINDS}
+    # One transaction: a failure part way applies none of the pools.
+    with db.tx() as conn:
+        for kind, sid in sids.items():
+            cfg = _source_cfg(conn.execute("SELECT config FROM sources WHERE id=?" + db.for_update(conn), (sid,)).fetchone())
+            cfg["pool_shared"] = form.get(f"{kind}_pool_shared", "0") in on
+            cfg["open_access"] = form.get(f"{kind}_open_access", "0") in on
+            conn.execute("UPDATE sources SET config=? WHERE id=?", (json.dumps(cfg), sid))
     _notices[user["id"]] = "Shared pool access saved."
     return RedirectResponse("/admin/pools", status_code=303)
 
@@ -374,10 +376,7 @@ async def admin_toggle(request: Request, source_id: int):
     user, redir = require_admin(request)
     if redir:
         return redir
-    with db.tx() as conn:
-        row = conn.execute("SELECT enabled FROM sources WHERE id=?", (source_id,)).fetchone()
-        if row:
-            conn.execute("UPDATE sources SET enabled=? WHERE id=?", (0 if row["enabled"] else 1, source_id))
+    db.execute("UPDATE sources SET enabled=1-enabled WHERE id=?", (source_id,))
     return RedirectResponse("/admin/sources", status_code=303)
 
 
@@ -389,5 +388,6 @@ async def admin_delete(request: Request, source_id: int):
     with db.tx() as conn:
         row = conn.execute("SELECT type FROM sources WHERE id=?", (source_id,)).fetchone()
         if row and row["type"] not in _BUILTINS:
+            conn.execute("DELETE FROM model_routes WHERE source_id=?", (source_id,))
             conn.execute("DELETE FROM sources WHERE id=?", (source_id,))
     return RedirectResponse("/admin/sources", status_code=303)
