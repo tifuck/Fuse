@@ -7,6 +7,7 @@ import threading
 import pytest
 
 from app import accounts, db
+from scripts import rebuild_usage_rollups as rebuild
 from tests.core.helpers import wait_until
 from tests.core.usage._support import api_key, cost_sums, rollup_drift, source, user
 
@@ -124,6 +125,25 @@ def test_deleting_a_user_counts_an_event_recorded_after_its_snapshot(fresh_db, m
 
     assert rollup_drift() == {}
     assert int(db.fetchone("SELECT requests FROM credentials WHERE id=?", (cred,))["requests"]) == 1
+
+
+def test_the_rebuild_fills_an_empty_hourly_rollup_and_coverage_counters_from_the_events(fresh_db):
+    # What the migrations leave to the rebuild: an empty hourly rollup and
+    # credential coverage counters at 0.
+    admin, _member, source_id, cred, _key = _seed()
+    db.save_model_price("zai", "glm-x", 1_000_000, None, 2_000_000, None)
+    db.record_usage(admin, source_id, cred, "glm-x", {"usage_status": "unknown"}, "2026-11-10T11:00:00Z", provider="zai")
+    before = db.fetchall("SELECT * FROM usage_rollup_hourly ORDER BY user_id, hour, api_key_id")
+    db.execute("DELETE FROM usage_rollup_hourly")
+    db.execute("UPDATE credentials SET fuse_api_equiv_micros=0, fuse_priced_events=0, fuse_unpriced_events=0")
+
+    with db.tx() as conn:
+        rebuild.apply(conn)
+
+    assert rollup_drift() == {}
+    assert db.fetchall("SELECT * FROM usage_rollup_hourly ORDER BY user_id, hour, api_key_id") == before
+    row = db.fetchone("SELECT fuse_api_equiv_micros, fuse_priced_events FROM credentials WHERE id=?", (cred,))
+    assert (row["fuse_api_equiv_micros"], row["fuse_priced_events"]) == (3 * PER_EVENT, 3)
 
 
 def test_a_price_save_waits_for_a_usage_event_priced_at_the_old_rate(fresh_db, monkeypatch):

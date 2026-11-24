@@ -22,8 +22,14 @@
 --   view filtered by provider scanned the whole rollup table.
 -- credentials.fuse_api_equiv_micros/fuse_priced_events/fuse_unpriced_events:
 --   lifetime counters /sources summed from usage_events on every page load.
---   Backfilled below. Run this file once more after the code that maintains
---   them is live, so events recorded in between are counted.
+--   They start at 0 and record_usage keeps them from then on. This file does
+--   not fill them: an UPDATE from usage_events here would overwrite them
+--   from a snapshot and lose every event a live request records meanwhile.
+--   Fill them once, after this file and before starting the code that
+--   maintains them, with the service stopped:
+--     python -m scripts.rebuild_usage_rollups --apply
+--   from the tree whose schema it is (it refuses while another connection
+--   uses the schema).
 --
 -- Index changes keep their names, so the runtime index probes still match.
 -- Each is dropped and re-added in its own ALTER so it always lands last and
@@ -62,15 +68,3 @@ ALTER TABLE credentials
   ADD COLUMN IF NOT EXISTS fuse_api_equiv_micros BIGINT(20) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS fuse_priced_events BIGINT(20) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS fuse_unpriced_events BIGINT(20) NOT NULL DEFAULT 0;
-
-UPDATE credentials c
-  LEFT JOIN (
-    SELECT credential_id,
-           COALESCE(SUM(estimated_cost_micros), 0) AS api_equiv,
-           COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=1 THEN 1 ELSE 0 END), 0) AS priced,
-           COALESCE(SUM(CASE WHEN total_tokens > 0 AND pricing_known=0 THEN 1 ELSE 0 END), 0) AS unpriced
-    FROM usage_events WHERE credential_id IS NOT NULL GROUP BY credential_id
-  ) s ON s.credential_id = c.id
-SET c.fuse_api_equiv_micros = COALESCE(s.api_equiv, 0),
-    c.fuse_priced_events = COALESCE(s.priced, 0),
-    c.fuse_unpriced_events = COALESCE(s.unpriced, 0);
