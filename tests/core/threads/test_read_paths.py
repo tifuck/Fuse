@@ -49,6 +49,25 @@ def test_a_snippet_past_the_transcript_head_reads_the_whole_transcript(fresh_db)
     assert hits == {"Late": "the late needle is here", "Early": "an early needle first"}
 
 
+def test_search_answers_both_lists_in_one_pass_within_a_byte_window(fresh_db):
+    uid = quick_user()
+    text = [{"role": "user", "content": "a needle in here " + "x" * 300}]
+    chats.create_thread(uid, model="offline", title="Titled needle")
+    chats.create_thread(uid, model="offline", title="Old", messages=text)
+    chats.create_thread(uid, model="offline", title="New", messages=text)
+    shelved = chats.create_thread(uid, model="offline", title="Shelved", messages=text)
+    chats.update_thread(uid, shelved["id"], archived=True)
+
+    def titles(lists):
+        return [[t["title"] for t in hits] for hits in lists]
+
+    assert titles(chat_threads.search_thread_lists(uid, "needle")) == [["New", "Old", "Titled needle"], ["Shelved"]]
+    assert [t["title"] for t in chats.search_threads(uid, "needle", archived=True)] == ["Shelved"]
+    # Past the byte window only titles match; the newest transcript is always in.
+    with patch.object(chat_threads, "_SEARCH_MESSAGE_BYTES", 100):
+        assert titles(chat_threads.search_thread_lists(uid, "needle")) == [["New", "Titled needle"], ["Shelved"]]
+
+
 def test_the_list_marks_a_chat_with_a_live_background_job_running(fresh_db):
     uid = quick_user()
     busy = chats.create_thread(uid, model="offline", title="Job")
