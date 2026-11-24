@@ -23,6 +23,7 @@ def terminals(fresh_db):
     yield
     terminal._sessions.clear()
     agent_hub._ptys.clear()
+    agent_hub._orphan_cancels.clear()
     if created:
         with db.tx() as conn:
             conn.native("DROP TABLE IF EXISTS terminal_sessions")

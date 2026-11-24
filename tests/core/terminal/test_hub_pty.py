@@ -6,6 +6,7 @@ Real agent_hub.handle_socket against a fake connector socket; no network.
 """
 import asyncio
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -130,6 +131,58 @@ def test_a_shell_that_fails_to_start_raises_with_the_connectors_error(box):
         await _hang_up(ws, task)
 
     run_async(body())
+
+
+def test_hello_cancels_the_listed_ptys_no_terminal_owns(box):
+    uid, hid, token = box
+    orphans = [f"{n:012x}" for n in range(1, 20)]
+
+    async def body():
+        ws = PtyConnector(token, inst="proc-a")
+        task = await _connect(uid, hid, ws)
+        pty = await agent_hub.open_pty(uid, hid, cols=80, rows=24, on_output=lambda _data: None)
+        await _hang_up(ws, task)
+        # Same connector process back: its live terminal is kept, the rest
+        # of the list (first 16 entries, well-formed ids only) is cancelled.
+        listed = [pty["id"], "NOT-A-JOB-ID", 7, *orphans]
+        back = PtyConnector(token, inst="proc-a", ptys=listed)
+        task = await _connect(uid, hid, back)
+        await wait_until_async(lambda: back.cancels())
+        cancels = back.cancels()
+        await agent_hub.close_pty(uid, hid, pty["id"], wait=0)
+        await _hang_up(back, task)
+        return cancels
+
+    assert run_async(body()) == orphans[:13]
+
+
+def test_frames_for_an_unknown_pty_get_one_cancel_per_id(box):
+    uid, hid, token = box
+    stray = "abcdef012345"
+
+    async def body():
+        ws = PtyConnector(token)
+        task = await _connect(uid, hid, ws)
+        call = asyncio.create_task(agent_hub.call(uid, hid, "exec", {"cmd": "true"}))
+        await wait_until_async(lambda: ws.jobs())
+        busy = ws.jobs()[0]["id"]
+        ws.output(busy, b"not a terminal")  # a pending job is never cancelled for it
+        for _ in range(3):
+            ws.output(stray, b"flood")
+            ws.inbox.put_nowait(json.dumps({"v": 1, "t": "pty_ok", "id": stray, "shell": "sh", "pid": 1}))
+        await wait_until_async(lambda: ws.inbox.empty() and ws.cancels())
+        for _ in range(20):
+            await asyncio.sleep(0)
+        first = ws.cancels()
+        with patch.object(agent_hub, "ORPHAN_CANCEL_SECONDS", 0):
+            ws.output(stray, b"later")
+            await wait_until_async(lambda: len(ws.cancels()) == 2)
+        ws.reply(busy, ok=True, exit=0)
+        await asyncio.wait_for(call, 5)
+        await _hang_up(ws, task)
+        return first
+
+    assert run_async(body()) == [stray]
 
 
 def test_hello_shells_are_kept_for_the_host_picker(box):

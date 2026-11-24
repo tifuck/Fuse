@@ -62,6 +62,7 @@ def hello(token, caps=("pty",), **extra):
 
 class PtyConnector(ConnectorWS):
     def __init__(self, token, caps=("pty",), **extra):
+        extra.setdefault("ptys", [])
         super().__init__(hello(token, caps, **extra))
 
     async def send_json(self, obj):

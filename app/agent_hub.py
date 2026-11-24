@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from uuid import uuid4
 
@@ -55,6 +56,13 @@ PTY_IN = 0x02
 PTY_FRAME = 32 * 1024
 PTY_UPDATE = "Update the connector on this machine to use the terminal (connector 1.12.0 or newer)."
 _ptys: dict[tuple[int, int], dict[str, dict]] = {}
+# Orphans: a PTY the connector still runs that no terminal owns (Fuse
+# restarted, a close was lost). Hello lists them and frames for unknown ids
+# are answered with one cancel per id per ORPHAN_CANCEL_SECONDS.
+ORPHAN_HELLO_CAP = 16
+ORPHAN_CANCEL_SECONDS = 5.0
+_orphan_cancels: dict[tuple[int, int, str], float] = {}
+_JOB_ID = re.compile(r"[0-9a-f]{12}")
 
 
 class AgentError(HostError):
@@ -501,17 +509,48 @@ async def pty_ack(user_id: int, host_id: int, job_id: str, n: int) -> bool:
     return await _send_pty(user_id, host_id, {"v": 1, "t": "pty_ack", "id": job_id, "n": int(n)})
 
 
-def _pty_output(key: tuple[int, int], frame: bytes) -> None:
+def _is_orphan(rec: dict, job_id: str) -> bool:
+    """A well-formed job id that is neither a live terminal nor any pending
+    job (a replaced socket's jobs live on in the session that replaced it)."""
+    key = (rec["user_id"], rec["host_id"])
+    if not _JOB_ID.fullmatch(job_id) or job_id in (_ptys.get(key) or {}):
+        return False
+    return not any(job_id in (owner.get("pending") or {}) for owner in (rec, _conns.get(key), _held.get(key)) if owner)
+
+
+def _cancel_orphan(rec: dict, job_id: str) -> None:
+    """One cancel for a PTY nobody owns, at most once per id per
+    ORPHAN_CANCEL_SECONDS however many frames it sends. Never awaits."""
+    now = time.monotonic()
+    mark = (rec["user_id"], rec["host_id"], job_id)
+    if now - _orphan_cancels.get(mark, -ORPHAN_CANCEL_SECONDS) < ORPHAN_CANCEL_SECONDS:
+        return
+    if len(_orphan_cancels) >= CANCEL_REPLAY_CAP:
+        for old, at in list(_orphan_cancels.items()):
+            if now - at >= ORPHAN_CANCEL_SECONDS:
+                _orphan_cancels.pop(old, None)
+        if len(_orphan_cancels) >= CANCEL_REPLAY_CAP:
+            return
+    _orphan_cancels[mark] = now
+    _spawn(_cancel_pending(rec.get("ws"), {job_id: None}))
+
+
+def _pty_output(rec: dict, frame: bytes) -> None:
     """A binary frame from the connector. Anything malformed (short, another
-    kind, an unknown job, an oversized payload) is skipped like bad JSON."""
-    if len(frame) <= 13 or frame[0] != PTY_OUT or len(frame) - 13 > PTY_FRAME:
+    kind, a bad id, an empty or oversized payload) is skipped like bad JSON;
+    output for a PTY no terminal owns is answered with a cancel."""
+    if len(frame) < 13 or frame[0] != PTY_OUT:
         return
     try:
         job_id = frame[1:13].decode("ascii")
     except UnicodeDecodeError:
         return
-    entry = (_ptys.get(key) or {}).get(job_id)
+    entry = (_ptys.get((rec["user_id"], rec["host_id"])) or {}).get(job_id)
     if entry is None:
+        if _is_orphan(rec, job_id):
+            _cancel_orphan(rec, job_id)
+        return
+    if len(frame) == 13 or len(frame) - 13 > PTY_FRAME:
         return
     try:
         entry["out"](frame[13:])
@@ -519,9 +558,14 @@ def _pty_output(key: tuple[int, int], frame: bytes) -> None:
         logger.debug("pty output callback failed", exc_info=True)
 
 
-def _pty_ok(key: tuple[int, int], data: dict) -> None:
-    entry = (_ptys.get(key) or {}).get(str(data.get("id") or ""))
-    if entry is None or entry["ready"].done():
+def _pty_ok(rec: dict, data: dict) -> None:
+    job_id = str(data.get("id") or "")
+    entry = (_ptys.get((rec["user_id"], rec["host_id"])) or {}).get(job_id)
+    if entry is None:
+        if _is_orphan(rec, job_id):
+            _cancel_orphan(rec, job_id)
+        return
+    if entry["ready"].done():
         return
     shell = data.get("shell")
     entry["ready"].set_result({"shell": shell[:200] if isinstance(shell, str) else "", "pid": _num(data.get("pid"))})
@@ -710,6 +754,9 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
     try:
         replay = _cancel_replay.get(key, {})
         await _cancel_pending(ws, {i: None for i, deadline in replay.items() if deadline > time.monotonic()})
+        listed = msg.get("ptys") if isinstance(msg.get("ptys"), list) else []
+        orphans = {str(i): None for i in listed[:ORPHAN_HELLO_CAP] if isinstance(i, str) and _is_orphan(rec, i)}
+        await _cancel_pending(ws, orphans)
         if _stat_watch.get(key) or key in _stat_off:
             await _send_stats(key, True)  # a connector forgets its sampling when its session ends
         while True:
@@ -717,7 +764,7 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
             if message.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect(message.get("code") or 1000)
             if message.get("bytes") is not None:
-                _pty_output(key, message["bytes"])
+                _pty_output(rec, message["bytes"])
                 continue
             text = message.get("text")
             if text is None:
@@ -743,7 +790,7 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                         _offer(queue, frame)
                 continue
             if kind == "pty_ok":
-                _pty_ok(key, data)
+                _pty_ok(rec, data)
                 continue
             if kind == "chunk":
                 job_id = str(data.get("id") or "")

@@ -19,6 +19,7 @@ from app.security import AccessLogRedactor, redact_url
     ("/sources/nanogpt/callback?code=c0de&state=st4te", "/sources/nanogpt/callback?code=[redacted]&state=[redacted]"),
     ("/pool/mimo/callback?u=blob&state=s", "/pool/mimo/callback?u=[redacted]&state=[redacted]"),
     ("/x?TOKEN=t", "/x?TOKEN=[redacted]"),
+    ("/terminal/sessions/Ab-c_12", "/terminal/sessions/[redacted]"),
     # Lookalike names and ordinary paths pass through.
     ("/chat/threads?cursor=5&unicode=1", "/chat/threads?cursor=5&unicode=1"),
     ("/install.sh", "/install.sh"),

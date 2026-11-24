@@ -245,11 +245,13 @@ def safe_verify_url(url: str) -> str:
 # invite and setup tokens, OAuth callback codes/state and the Xiaomi login
 # blob (u=). Anyone who can read the journal or a log shipper must not get them.
 _SECRET_PATH = re.compile(r"^/i/[^?]*")
+_TERMINAL_PATH = re.compile(r"^/terminal/sessions/[^/?]+")
 _SECRET_QUERY = re.compile(r"([?&](?:invite|setup|code|state|token|u)=)[^&]*", re.IGNORECASE)
 
 
 def redact_url(path: str) -> str:
-    return _SECRET_QUERY.sub(r"\1[redacted]", _SECRET_PATH.sub("/i/[redacted]", path))
+    path = _TERMINAL_PATH.sub("/terminal/sessions/[redacted]", _SECRET_PATH.sub("/i/[redacted]", path))
+    return _SECRET_QUERY.sub(r"\1[redacted]", path)
 
 
 class AccessLogRedactor(logging.Filter):

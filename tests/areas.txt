@@ -109,6 +109,10 @@ app/opencode.py                  providers
 app/providers/*                  providers
 app/sources/*                    providers
 
+# interactive terminals (before the app/web/* catch-all)
+app/terminal.py                  terminal
+app/web/terminal.py              terminal
+
 # auth, security, accounts
 app/accounts.py                  auth
 app/security.py                  auth

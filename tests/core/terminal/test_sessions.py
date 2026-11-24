@@ -102,6 +102,30 @@ def test_connector_credit_follows_the_browser_and_runs_free_while_detached(fresh
     assert (s.reason, s.exit_code) == ("exit", 0)
 
 
+def test_a_shell_never_reaped_ends_the_terminal_with_no_exit_code(fresh_db):
+    uid = quick_user()
+    host, token = agent_host(uid)
+
+    async def body():
+        ws = PtyConnector(token)
+        task = asyncio.create_task(agent_hub.handle_socket(ws))
+        await wait_until_async(lambda: agent_hub.has_cap(uid, host["id"], "pty"))
+        s = await terminal.open_session(uid, "login", host_id=host["id"])
+        client = terminal.Client()
+        s.attach(client)
+        ws.reply(ws.opens()[0]["id"], ok=True, exit=None)
+        await wait_until_async(lambda: not s.alive)
+        await asyncio.gather(*terminal._background)
+        ws.drop()
+        await asyncio.wait_for(task, 5)
+        return s, client
+
+    s, client = run_async(body())
+    assert (s.reason, s.exit_code) == ("exit", None)
+    assert client.items[-1] == {"t": "exit", "code": None, "reason": "exit"} and client.close_code == 4410
+    assert audit(s.id)["exit_code"] is None and audit(s.id)["close_reason"] == "exit"
+
+
 def test_the_audit_row_holds_metadata_and_never_the_bytes(ssh_ptys):
     uid = quick_user()
     hid = make_host(uid, "web")
