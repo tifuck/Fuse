@@ -83,9 +83,18 @@ def ensure_setup_token() -> str | None:
     if not token:
         token = secrets.token_urlsafe(24)
         SETUP_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(SETUP_TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        tmp = SETUP_TOKEN_FILE.with_name(SETUP_TOKEN_FILE.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as handle:
             handle.write(token + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, SETUP_TOKEN_FILE)
+        dir_fd = os.open(SETUP_TOKEN_FILE.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     os.chmod(SETUP_TOKEN_FILE, 0o600)
     return token
 
