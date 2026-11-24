@@ -384,3 +384,29 @@ def test_only_writes_outside_temp_folders_create_a_project(uid):
     # Another account's machine id binds nothing.
     assert chats.promote_working_session(other, stranger["id"], host_id=host, cwd="/srv/x", tool="write_file") is None
     assert [p["name"] for p in chats.list_sidebar_projects(uid)] == ["api"]
+
+
+def test_a_logo_set_again_after_removal_gets_a_new_address(uid):
+    host = make_host(uid)
+    made = hosts.add_project(uid, host, {"name": "api", "remote_path": "/srv/api"})
+    first = hosts.set_project_logo(uid, made["id"], "image/png", PNG)["logo_url"]
+    assert hosts.clear_project_logo(uid, made["id"])["logo_url"] == ""
+    again = hosts.set_project_logo(uid, made["id"], "image/png", PNG)["logo_url"]
+    # Logos are cached for a year by address: a reused one shows the old image.
+    assert again and again != first
+
+
+def test_a_hello_without_a_version_keeps_the_known_one(uid):
+    host = make_host(uid)
+    hosts.touch_agent(uid, host, version="1.7.3")
+    hosts.touch_agent(uid, host, version="")
+    assert hosts.get_host(uid, host)["agent_version"] == "1.7.3"
+
+
+def test_two_saves_of_different_agent_settings_keep_both(uid):
+    hosts.set_settings(uid, agent_coding=False)
+    _race(lambda: hosts.set_settings(uid, agent_coding=True), (hosts, "settings_for"),
+          lambda: hosts.set_settings(uid, permission_mode="read_only"),
+          waiting=lambda info: "user_agent_settings" in info and not info.startswith("SELECT"))
+    saved = hosts.settings_for(uid)
+    assert (saved["agent_coding"], saved["permission_mode"]) == (True, "read_only")

@@ -140,6 +140,29 @@ def test_a_slow_host_does_not_hold_the_turn_and_its_scan_still_lands(fresh_db, m
     run_async(body())
 
 
+def test_a_scan_whose_offer_failed_reads_the_folder_again(fresh_db, monkeypatch):
+    uid = quick_user()
+    reads = scanned_from(monkeypatch, {".env": f"OPENAI_API_KEY={OPENAI}\n"})
+    real_offer = secret_guard.offer
+    calls = []
+
+    def offer(*args):
+        calls.append(args)
+        if len(calls) == 1:
+            raise RuntimeError("database went away")
+        return real_offer(*args)
+
+    monkeypatch.setattr(secret_guard, "offer", offer)
+
+    async def body():
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 0
+        # The next round reads the folder again instead of waiting for a tool to run.
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 1 and reads == [None, None]
+
+    run_async(body())
+    assert [o["value"] for o in secret_guard.offers(uid)] == [OPENAI]
+
+
 def test_nothing_is_scanned_while_detection_is_off(fresh_db, monkeypatch):
     uid = quick_user()
     reads = scanned_from(monkeypatch, {".env": f"OPENAI_API_KEY={OPENAI}\n"})

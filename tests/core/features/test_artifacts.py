@@ -417,3 +417,26 @@ def test_a_chart_call_is_inline_while_it_streams_and_runs():
     assert out.drafting()["display"] == "inline"
     out._draft["head"] = '{"title": "t", "display": "panel", "chart": {'
     assert "display" not in out.drafting()
+
+
+def test_a_pin_never_lands_on_a_version_pruned_meanwhile(fresh_db):
+    uid = quick_user()
+    ident = make(uid)["identifier"]
+    real_now = artifacts.db.now
+    raced = []
+
+    def now():
+        if not raced:
+            raced.append(True)
+            # A page update lands between the pin's check and its write, and prunes v1.
+            artifacts.update(uid, ident, html=PAGE.format("newest"))
+        return real_now()
+
+    with patch.object(artifacts, "WRITES_PER_MIN", 1000):
+        for n in range(2, artifacts.MAX_VERSIONS + 1):
+            artifacts.update(uid, ident, html=PAGE.format(f"v{n}"))
+        with patch.object(artifacts.db, "now", now), pytest.raises(ArtifactError) as gone:
+            artifacts.set_shared_version(uid, ident, 1)
+    assert raced and gone.value.status_code == 404
+    row = artifacts.get_owned(uid, ident)
+    assert row["shared_version"] is None and 1 not in artifacts.view(row)["versions"]

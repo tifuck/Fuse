@@ -356,6 +356,29 @@ def test_a_value_kept_before_places_had_a_folder_is_not_asked_about_again(fresh_
     assert GITHUB in {it.real for it in secret_guard.map_for(uid).items if it.masked}
 
 
+def test_a_value_a_parallel_scan_kept_first_only_gains_this_place(fresh_db, monkeypatch):
+    """Two folders of one machine scanned at once hold the same value: the
+    scan that loses the race to insert it keeps its other values and adds its
+    place to the row the other scan made."""
+    uid = quick_user()
+    real_decided = secret_guard._decided
+    raced = []
+
+    def decided(conn, user_id):
+        if not raced:
+            raced.append(True)
+            # The other folder's scan commits the same value after this one looked it up.
+            secret_guard.offer(uid, 3, "box", secret_scan.find(".env", f"OPENAI_API_KEY={OPENAI}\n"), "/srv/blog")
+        return real_decided(conn, user_id)
+
+    monkeypatch.setattr(secret_guard, "_decided", decided)
+    found = secret_scan.find(".env", f"OPENAI_API_KEY={OPENAI}\nDB_PASSWORD={PASSWORD}\n")
+    assert secret_guard.offer(uid, 3, "box", found, "/srv/shop") == 1
+    assert sorted(o["value"] for o in secret_guard.offers(uid)) == sorted([OPENAI, PASSWORD])
+    row = db.fetchone("SELECT sources FROM user_secrets WHERE user_id=? AND label='OPENAI_API_KEY'", (uid,))
+    assert {s["root"] for s in json.loads(row["sources"])} == {"/srv/blog", "/srv/shop"}
+
+
 def test_an_offer_says_which_values_read_like_text(fresh_db):
     uid = quick_user()
     text = f"RATELIMIT_BYPASS_KEY={WORDS}\nMETRICS_TOKEN={CUSTOM}\nDB_PASSWORD={PASSWORD}\n"
