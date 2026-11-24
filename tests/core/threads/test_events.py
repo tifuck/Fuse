@@ -2,13 +2,14 @@
 event for rolled-back writes, after-commit observers, retention floors and the
 group-commit publisher."""
 import asyncio
+import threading
 from unittest.mock import patch
 
 import pymysql
 import pytest
 
 from app import chat_events, chat_pub, chat_store, chat_tx, chats, db, mysql_compat
-from tests.core.helpers import make_user, run_async
+from tests.core.helpers import make_user, run_async, wait_until_async
 
 from ._support import events, pk
 
@@ -161,6 +162,33 @@ def test_group_commit_keeps_fifo_order_and_isolates_a_bad_payload(fresh_db):
     assert [e["type"] for e in events(uid, cursor)] == ["test.a", "test.b"]
 
 
+def test_group_commit_guards_each_item_by_its_own_run(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    done = chat_store.start_turn(uid, thread["id"], "go", thread["revision"], None)["run"]
+    chat_store.finish_run(done["id"], {"content": "done"}, "completed")
+    live = chat_store.start_turn(uid, thread["id"], "again", None, None)["run"]
+    cursor = chat_store.cursor(uid)
+
+    async def body():
+        chat_pub.start_publisher()
+        loop = asyncio.get_running_loop()
+        futures = [loop.create_future() for _ in range(4)]
+        chat_pub.publish(uid, "test.live", None, {"n": 0}, guard_run=live["id"], future=futures[0])
+        chat_pub.publish(uid, "test.stale", None, {"n": 1}, guard_run=done["id"], future=futures[1])
+        chat_pub.publish(uid, "test.gone", None, {"n": 2}, guard_run="no-such-run", future=futures[2])
+        chat_pub.publish(uid, "test.live", None, {"n": 3}, guard_run=live["id"], future=futures[3])
+        results = await asyncio.gather(*futures)
+        await chat_pub.stop_publisher()
+        return results
+
+    first, stale, gone, last = run_async(body())
+
+    assert stale is None and gone is None
+    assert first < last
+    assert [e["payload"]["n"] for e in events(uid, cursor)] == [0, 3]
+
+
 def test_a_batch_whose_commit_may_have_landed_is_not_published_again(fresh_db):
     """The connection drops during COMMIT after the server applied it: the
     publisher cannot know, and committing the items again would publish them
@@ -191,3 +219,41 @@ def test_a_batch_whose_commit_may_have_landed_is_not_published_again(fresh_db):
 
     assert lost and all(isinstance(result, RuntimeError) for result in results)
     assert [e["type"] for e in events(uid, cursor)] == ["test.a", "test.b"]
+
+
+def test_sockets_of_one_user_share_an_event_read_until_the_next_wake():
+    uid = 987654
+    calls, gate = [], threading.Event()
+
+    def read(user_id, cursor, limit):
+        calls.append((user_id, cursor, limit))
+        n = len(calls)
+        gate.wait(5)
+        return [{"id": cursor + 1, "n": n}]
+
+    async def body():
+        chat_events.start()
+        chat_events._subscribers[uid][object()] = asyncio.Event()
+        try:
+            first = [asyncio.create_task(chat_events._events_after(uid, 7)) for _ in range(3)]
+            await wait_until_async(lambda: len(calls) == 1)
+            before = chat_events._wakes[uid]
+            # A commit woke the user: a socket reading now must not join the
+            # read that started before it.
+            chat_events.notify([uid])
+            await wait_until_async(lambda: chat_events._wakes[uid] != before)
+            late = asyncio.create_task(chat_events._events_after(uid, 7))
+            await wait_until_async(lambda: len(calls) == 2)
+            gate.set()
+            return await asyncio.gather(*first), await late
+        finally:
+            chat_events._subscribers.pop(uid, None)
+            chat_events._wakes.pop(uid, None)
+
+    with patch.object(chat_store, "events_after", side_effect=read):
+        shared, late = run_async(body())
+
+    assert calls == [(uid, 7, 64), (uid, 7, 64)]
+    assert shared[0] is shared[1] is shared[2] and shared[0] == [{"id": 8, "n": 1}]
+    assert late == [{"id": 8, "n": 2}]
+    assert chat_events._reads == {}

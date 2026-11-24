@@ -113,6 +113,7 @@ def test_a_gone_subscription_is_pruned_and_a_failing_one_kept(fresh_db, status, 
             assert push._send_one(row, "{}") is True
             assert db.fetchone("SELECT last_push_at FROM push_subscriptions WHERE id=?", (row["id"],))["last_push_at"] != "2026-11-01T00:00:00Z"
             assert ok.call_args.kwargs["timeout"]  # a stalled endpoint cannot pin a worker forever
+            assert ok.call_args.kwargs["requests_session"] is push._session
 
 
 def test_keys_are_generated_once_and_reused(keys):
