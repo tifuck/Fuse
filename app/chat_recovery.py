@@ -300,8 +300,10 @@ def _with_resume_note(messages: list[dict], run_id: str, resume_count: int, by_u
     return [*messages, {"role": "user", "content": note}]
 
 
-def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
-    """Requeue row with a resume note; True when it was requeued."""
+def _requeue_for_resume(row, messages, allowed=None, *, by_user=False, latest_root=False):
+    """Requeue row with a resume note; True when it was requeued. latest_root
+    (a user's Continue of a root run) refuses, in the requeue's transaction,
+    when another root run is active or the run is no longer the latest turn."""
     from . import chats
 
     allowed = allowed or chat_tx.ACTIVE
@@ -398,6 +400,19 @@ def _requeue_for_resume(row, messages, allowed=None, *, by_user=False):
         if any(current[key] != row[key] for key in ("request", "message", "cancel_requested")):
             # A concurrent acceptance/checkpoint/Stop (or Continue) wins over stale recovery.
             return False
+        if latest_root:
+            # resume_run checked both before the admission lock; a turn started
+            # since would collide with this requeue (chat_runs_active_parent)
+            # or leave a stale run resumed after it.
+            if conn.execute(
+                "SELECT 1 FROM chat_runs WHERE thread_id=? AND id<>? AND status IN ('queued','running') AND parent_run_id IS NULL",
+                (row["thread_id"], row["id"]),
+            ).fetchone():
+                raise chats.ChatValidationError("this chat already has an active run", 409)
+            thread = chat_tx.lock_thread(conn, row["thread_id"], row["user_id"])
+            durable = chats.parse_messages(thread["messages"]) if thread else []
+            if not durable or durable[-1].get("id") != row["message_id"]:
+                raise chats.ChatValidationError("this run is no longer the latest turn; start a new turn instead", 409)
         from . import chat_history
         sealed = chat_history.upgrade_legacy_run(conn, row, req, sealed)
         req["messages"] = sealed
@@ -510,7 +525,8 @@ def resume_run(user_id, run_id):
     # concurrent resumes cannot all pass the cap before any is counted.
     with (chat_children._child_admission_lock if is_child else _root_admission_lock):
         _check_resume_admission(row, user_id, is_child)
-        if not _requeue_for_resume(row, messages, allowed=set(chat_tx.ACTIVE) | {"interrupted", "cancelled"}, by_user=True):
+        if not _requeue_for_resume(row, messages, allowed=set(chat_tx.ACTIVE) | {"interrupted", "cancelled"}, by_user=True,
+                                   latest_root=not is_child):
             raise chats.ChatValidationError("this run changed or was already resumed; reload the chat", 409)
     if not is_child:
         with chat_tx.transaction() as conn:
