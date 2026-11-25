@@ -134,36 +134,43 @@ func startDetached(bin string, args ...string) error {
 	return cmd.Start()
 }
 
+// queryService opens the service for status queries only. mgr.Connect and
+// mgr.OpenService ask for full access, which an unelevated tray never gets,
+// so the tray could not see the service at all.
+func queryService(fn func(windows.Handle)) error {
+	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseServiceHandle(m)
+	name, err := windows.UTF16PtrFromString(serviceName)
+	if err != nil {
+		return err
+	}
+	s, err := windows.OpenService(m, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseServiceHandle(s)
+	fn(s)
+	return nil
+}
+
 func serviceInstalled() bool {
-	m, err := mgr.Connect()
-	if err != nil {
-		return false
-	}
-	defer m.Disconnect()
-	s, err := m.OpenService(serviceName)
-	if err != nil {
-		return false
-	}
-	s.Close()
-	return true
+	err := queryService(func(windows.Handle) {})
+	// Denied query rights still means the service exists.
+	return err == nil || err == windows.ERROR_ACCESS_DENIED
 }
 
 func serviceRunning() bool {
-	m, err := mgr.Connect()
-	if err != nil {
-		return false
-	}
-	defer m.Disconnect()
-	s, err := m.OpenService(serviceName)
-	if err != nil {
-		return false
-	}
-	defer s.Close()
-	st, err := s.Query()
-	if err != nil {
-		return false
-	}
-	return st.State == svc.Running
+	running := false
+	_ = queryService(func(s windows.Handle) {
+		var st windows.SERVICE_STATUS
+		if windows.QueryServiceStatus(s, &st) == nil {
+			running = st.CurrentState == windows.SERVICE_RUNNING
+		}
+	})
+	return running
 }
 
 func installWindowsService(bin, cfg string) error {

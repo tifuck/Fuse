@@ -47,6 +47,7 @@ type session struct {
 	status        string
 	ready         bool
 	results       []jobRes
+	refusals      []jobRes // refusals that found the queue full and no link
 	resultSeq     uint64
 	resultSpace   *sync.Cond
 	resultReady   *sync.Cond
@@ -58,6 +59,9 @@ type session struct {
 // Chunks leave this many result slots free for terminal results.
 const streamReserve = 16
 
+// refusalMax bounds refusals held for the next link while results is full.
+const refusalMax = 32
+
 // reserveUpdateAdmission pauses job intake and verifies nothing is in flight.
 // The hold must span swapAndRelaunch plus process exit: intake refusal makes
 // the invariant durable for the minutes between the reservation and the
@@ -65,7 +69,7 @@ const streamReserve = 16
 func (s *session) reserveUpdateAdmission() (hold func(), ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.results) != 0 {
+	if len(s.results) != 0 || len(s.refusals) != 0 {
 		return nil, false
 	}
 	s.jobs.mu.Lock()
@@ -256,8 +260,25 @@ func (s *session) sendRefusal(id, reason string) {
 	c := s.conn
 	ready := s.ready
 	s.mu.Unlock()
-	if ready && c != nil {
-		_ = s.write(c, res)
+	if ready && c != nil && s.write(c, res) == nil {
+		return
+	}
+	// Dropped, the server would wait out its own timeout on a job that never
+	// ran: hold it for the writer, which queues it once results has room.
+	s.mu.Lock()
+	if len(s.refusals) < refusalMax {
+		s.refusals = append(s.refusals, res)
+	}
+	s.mu.Unlock()
+}
+
+// queueRefusalsLocked moves held refusals into results as room allows
+// (s.mu held).
+func (s *session) queueRefusalsLocked() {
+	for len(s.refusals) > 0 && len(s.results) < maxJobs {
+		s.enqueueLocked(s.refusals[0])
+		s.refusals[0] = jobRes{}
+		s.refusals = s.refusals[1:]
 	}
 }
 
@@ -295,6 +316,7 @@ func (s *session) writer(conn *websocket.Conn) {
 	s.condsLocked()
 	for s.conn == conn {
 		var err error
+		s.queueRefusalsLocked()
 		if len(s.results) > 0 {
 			err = s.drainResults(func(res jobRes) error { return s.write(conn, res.wire()) })
 		} else if s.ptys.pending() {
@@ -321,7 +343,7 @@ func (s *session) writer(conn *websocket.Conn) {
 func (s *session) idleForUpdate() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.results) != 0 {
+	if len(s.results) != 0 || len(s.refusals) != 0 {
 		return false
 	}
 	s.jobs.mu.Lock()

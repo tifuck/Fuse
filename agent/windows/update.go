@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -30,8 +31,28 @@ type manifestBinary struct {
 }
 
 func httpGet(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 60 * time.Second, CheckRedirect: httpsOnlyRedirect}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	return httpFetch(&http.Client{Timeout: 60 * time.Second, CheckRedirect: httpsOnlyRedirect}, url, 0)
+}
+
+// downloadStall fails a binary download that receives nothing for this long.
+const downloadStall = 60 * time.Second
+
+// httpGetBinary has no total deadline: up to 80 MB over a slow link takes
+// longer than any fixed one, and a 60 s cap failed such a machine forever.
+// Connect, TLS and response headers keep the transport's timeouts.
+func httpGetBinary(url string) ([]byte, error) {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ResponseHeaderTimeout = downloadStall
+	defer tr.CloseIdleConnections()
+	return httpFetch(&http.Client{Transport: tr, CheckRedirect: httpsOnlyRedirect}, url, downloadStall)
+}
+
+// httpFetch reads one GET body; stall > 0 aborts it once no bytes arrive for
+// that long.
+func httpFetch(client *http.Client, url string, stall time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +65,32 @@ func httpGet(url string) ([]byte, error) {
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("http %d", res.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(res.Body, 80<<20))
+	var body io.Reader = res.Body
+	if stall > 0 {
+		t := time.AfterFunc(stall, cancel)
+		defer t.Stop()
+		body = &stallReader{r: res.Body, t: t, stall: stall}
+	}
+	data, err := io.ReadAll(io.LimitReader(body, 80<<20))
+	if err != nil && ctx.Err() != nil {
+		return nil, fmt.Errorf("no data for %s", stall)
+	}
+	return data, err
+}
+
+// stallReader pushes its timer back on every read that brings bytes.
+type stallReader struct {
+	r     io.Reader
+	t     *time.Timer
+	stall time.Duration
+}
+
+func (s *stallReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if n > 0 {
+		s.t.Reset(s.stall)
+	}
+	return n, err
 }
 
 // httpsOnlyRedirect refuses any redirect off https: the manifest carries the
@@ -181,6 +227,13 @@ func stageUpdateBinary(self string, data []byte) (string, error) {
 		os.Remove(path)
 		return "", err
 	}
+	// Durable before the swap renames it over the binary: a crash must not
+	// leave an empty or partial exe in its place.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", err
+	}
 	if err := f.Close(); err != nil {
 		os.Remove(path)
 		return "", err
@@ -268,7 +321,7 @@ func maybeUpdate(cfg *agentConfig, force bool, admit func() (hold func(), ok boo
 	if fileHasSHA256(self, bin.SHA256) {
 		return errUpToDate
 	}
-	data, err := httpGet(path)
+	data, err := httpGetBinary(path)
 	if err != nil {
 		return fmt.Errorf("could not download the new binary: %w", err)
 	}
