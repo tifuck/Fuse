@@ -165,6 +165,9 @@ _INTERPRETER_SHELL = re.compile(
     r"|(?<![\w.-])(?:ba|z|da|k|a|c|tc|fi|mk)?sh(?:\.exe)?(?:\s+-\S*)*\s*<<<"
     r"|(?-i:(?<![\w.-])(?:python[\d.]*|pypy[\d.]*|node|nodejs|bun|deno|perl|ruby|php|lua(?:jit)?)(?:\.exe)?"
     r"(?:\s+-\S*)*?\s*(?:<<|\s-(?=\s|$)))"
+    # A script read from a pipe or a computed file: bash <(...), source /dev/stdin.
+    r"|(?:(?<![\w.-])(?:ba|z|da|k|a|c|tc|fi|mk)?sh(?:\.exe)?|(?:^|[;&|(\n{])\s*(?:source|\.))"
+    r"(?:\s+-\S*)*\s+(?:<\(|/dev/stdin\b|/dev/fd/|/proc/self/fd/)"
 )
 _FETCH_EXEC_SHELL = re.compile(
     r"(?is)\b(?:curl|wget|fetch|aria2c)\b[^\n;]*\|\s*(?:sudo\s+)?(?:ba|z|k|fi|a|c|tc|da)?sh\b"
@@ -196,6 +199,38 @@ _TREE_READ_SHELL = re.compile(
     rf"|{_CMD_AT}(?:cp|rsync)\b[^\n;&|]*\s(?:-[a-zA-Z]*[rRa]|--recursive|--archive)"
     rf"|{_CMD_AT}find\b[^\n;&|]*\s-exec(?:dir)?\b"
 )
+# Commands that turn text computed at run time into the names they act on:
+# xargs and parallel build a command line from their input, --files-from and
+# friends read the names from a file or stdin, and decoders or escaped
+# printf/echo spell a path no token shows (printf '\x2fetc\x2fshadow' | xargs
+# cat). Every literal operand may sit inside the roots while the real targets
+# do not.
+_COMPUTED_ARGS_SHELL = re.compile(
+    r"(?s)(?<![\w.-])xargs(?![\w.-])"
+    rf"|{_CMD_AT}(?:parallel|cpio|uudecode)(?=\s|$)"
+    r"|--(?:files0?-from|pathspec-from-file)\b"
+    r"|\btar\b[^\n;&|]*\s-[a-zA-Z]*T"
+    r"|\bzip\b[^\n;&|]*\s-@"
+    r"|\b(?:base64|base32|basenc)\b[^\n;&|]*\s(?:-[a-zA-Z]*[dD][a-zA-Z]*|--decode)\b"
+    r"|\bxxd\b[^\n;&|]*\s-[a-zA-Z]*r"
+    r"|\bopenssl\b[^\n;&|]*\s-(?:d|decrypt|decode)\b"
+    rf"|{_CMD_AT}(?:printf|echo)\b[^\n;&|]*\\(?:x[0-9a-fA-F]|[uU][0-9a-fA-F]|[0-7]{{2,3}})"
+)
+# The same in PowerShell: decoders and .NET calls ([Convert]::FromBase64String,
+# [Environment]::GetFolderPath), char casts, -join/-replace/-f and string
+# concatenation build a path (gc ('C'+':\Users\x\.ssh\id_rsa')).
+_PS_COMPUTED_ARGS = re.compile(
+    r"(?i)\[[\w.]+\]\s*::|\[char\b|frombase64string|\.getstring\s*\("
+    r"|(?<![\w-])-(?:join|[ic]?replace|split)\b|['\")]\s*-f(?![\w-])"
+    r"|['\")]\s*\+\s*['\"(\[]|\.(?:replace|substring|insert|remove)\s*\("
+    r"|\bcertutil\b[^\n;&|]*\s[-/]decode"
+)
+
+
+def _computes_arguments(command: str, windows: bool) -> bool:
+    return bool(_COMPUTED_ARGS_SHELL.search(command) or (windows and _PS_COMPUTED_ARGS.search(command)))
+
+
 # Searches that walk the working directory when they name no path (grep -r x).
 _TREE_SEARCH_SHELL = re.compile(rf"(?s){_CMD_AT}(?:(?:e|f)?grep\b[^\n;&|]*\s(?:-[a-zA-Z]*[rR]|--recursive)|rg\s|ag\s)")
 
@@ -1865,6 +1900,9 @@ async def review(*, tool: str, args: dict, user_id: int,
             restricted_why.append("it downloads a file and then runs it")
         if _NETWORK_SEND_SHELL.search(command):
             restricted_why.append("it sends data from this machine over the network")
+        if _computes_arguments(command, windows):
+            restricted_why.append("it builds its arguments from computed text (xargs, decoded or escaped strings), "
+                                  "so its targets cannot be checked")
         if deny_reason:
             restricted_why.append(deny_reason)
         if protected:
