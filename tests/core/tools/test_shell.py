@@ -8,6 +8,7 @@ output caps, the denylist and cwd confinement in front of the host.
 """
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -363,6 +364,36 @@ def test_a_connector_deadline_kill_is_a_timeout_not_an_exit(agent_host):
 
     assert rec["state"] == "timed_out" and rec["exit_code"] is None
     assert "partial" in rec["output"] and rec["termination_confirmed"] is True
+
+
+def test_a_command_the_connector_could_not_start_is_an_error_not_an_exit(agent_host):
+    agent_host.shell.on("make quiet", code=2)
+
+    _, rec = run_async(tool(agent_host, "run_terminal_command", command="make quiet"))
+    assert rec["state"] == "completed" and rec["exit_code"] == 2  # a silent failing command still ran
+
+    for error, code in (("invalid cwd", 127), ("invalid env", 1)):
+        agent_host.connector.overrides["exec_stream"] = {"ok": False, "exit": code, "out": "", "err": "", "error": error}
+        text, rec = run_async(tool(agent_host, "run_terminal_command", command="make"))
+        assert rec["state"] != "completed" and rec.get("exit_code") is None, error
+        assert f"connector could not execute command: {error}" in text
+
+
+def test_a_temp_dir_another_account_owns_is_refused(ssh_host):
+    cwd = "/tmp/fuse/c-1/s-1"
+    h = SimpleNamespace(**{**vars(ssh_host), "root": cwd})  # a chat working in its temp dir
+    h.shell.on("ls", out="a\n")
+
+    _, rec = run_async(tool(h, "run_terminal_command", command="ls"))
+    assert rec["state"] == "completed" and h.shell.reached == ["ls"]
+    assert h.fs.mode("/tmp/fuse") == 0o700 and h.fs.mode(cwd) == 0o700
+
+    h.fs.nodes["/tmp/fuse"].uid = 1001  # made first by another local user
+    text, rec = run_async(tool(h, "run_terminal_command", command="ls"))
+    assert rec["status"] == "error" and "refusing to use the Fuse temp dir: /tmp/fuse" in text
+    text, rec = run_async(tool(h, "write_file", path=cwd + "/new/run.sh", content="echo hi\n"))
+    assert rec["status"] == "error" and "refusing to use the Fuse temp dir" in text
+    assert h.shell.reached == ["ls"] and not h.fs.exists(cwd + "/new/run.sh")
 
 
 def test_an_older_connector_without_streaming_still_runs_the_command(agent_host):

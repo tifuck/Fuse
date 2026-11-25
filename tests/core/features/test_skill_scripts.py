@@ -25,8 +25,8 @@ class Machine:
     """Fakes the host lookup, the gated write and the permission card."""
 
     def __init__(self, monkeypatch, answer="allow", write_status="done"):
-        self.asks, self.writes = [], {}
-        self.answer, self.write_status = answer, write_status
+        self.asks, self.writes, self.folders = [], {}, []
+        self.answer, self.write_status, self.temp_error = answer, write_status, None
         hosts = {"blk": {"id": 7, "alias": "blk"}, "ghost": {"id": 8, "alias": "ghost"}}
         monkeypatch.setattr(workspace, "resolve_host_row", lambda uid, alias, bound: hosts[alias or "blk"])
 
@@ -41,7 +41,14 @@ class Machine:
             self.asks.append(payload)
             return self.answer
 
+        async def make_temp_dir(uid, host_id, path, *, windows):
+            if self.temp_error:
+                raise workspace.WorkspaceError(self.temp_error)
+            self.folders.append(path)
+            return True
+
         monkeypatch.setattr(workspace, "execute", execute)
+        monkeypatch.setattr(workspace, "_make_fuse_temp_dir", make_temp_dir)
         monkeypatch.setattr(permissions, "_ask_and_wait", ask)
         monkeypatch.setattr(permissions, "bypass_enabled", lambda uid, tid: False)
 
@@ -98,6 +105,17 @@ def test_unattended_runs_and_failed_writes_copy_nothing(fresh_db, skills_dir, mo
     assert machine.asks == [] and machine.writes == {}
     machine.write_status = "error"
     assert "not copied" in machine.sync(uid)
+
+
+def test_a_skill_folder_another_account_made_first_gets_no_files(fresh_db, skills_dir, monkeypatch):
+    uid = quick_user()
+    install(uid, {"run.sh": b"echo hi\n"})
+    machine = Machine(monkeypatch)
+    machine.temp_error = "refusing to use the Fuse temp dir: /tmp/fuse is not ..."
+    assert "not copied" in machine.sync(uid) and machine.writes == {}
+    machine.temp_error = None
+    machine.sync(uid)
+    assert machine.folders == [machine.asks[0]["path"]] and len(machine.writes) == 1
 
 
 def test_third_party_scripts_stay_off_until_exactly_those_files_are_approved(fresh_db, skills_dir, monkeypatch):

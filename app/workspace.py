@@ -104,6 +104,7 @@ from .workspace_ops.transport import (
     _PGID_DIR,
     _SSH_BEGIN,
     _agent_cwd,
+    _agent_exec_failure,
     _agent_job_output,
     _agent_output_complete,
     _agent_timed_out,
@@ -1135,14 +1136,14 @@ def _outdated_connector(user_id, host_id, feature: str) -> WorkspaceError:
     )
 
 
-async def _agent_call(user_id, host_id, op: str, args: dict, seconds: int = 30, on_chunk=None) -> dict:
+async def _agent_call(user_id, host_id, op: str, args: dict, seconds: int = 30, on_chunk=None, *, enrich: bool = True) -> dict:
     from . import agent_hub
 
     try:
         data = await agent_hub.call(user_id, host_id, op, args, timeout=seconds, on_chunk=on_chunk)
     except agent_hub.AgentError as exc:
         raise WorkspaceError(exc.detail) from exc
-    return _enrich_agent_data(data, op=op)
+    return _enrich_agent_data(data, op=op) if enrich else data
 
 
 def _host_failure(exc: BaseException) -> tuple[str, str] | None:
@@ -1365,7 +1366,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
 
         try:
             data = await _agent_call(
-                user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk,
+                user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk, enrich=False,
             )
         except asyncio.CancelledError:
             # Stopped (kill, background limit): keep the stderr held back so far.
@@ -1374,7 +1375,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
             raise
         if not data.get("ok") and str(data.get("error") or "").strip() == "unknown op":
             # Pre-exec_stream connector: buffered result only, no live chunks.
-            data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10)
+            data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10, enrich=False)
         res = _AgentExec(data)
         # A streamed result's err carries only the connector's own notes (clip
         # marker, signal death): append them to the streamed stderr, never
@@ -1392,8 +1393,9 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
             # Connectors flag deadline kills so a killed command is not
             # misreported as a completed exit-1 run (parity with SSH).
             raise command_jobs.CommandTimedOut(termination_confirmed=data.get("termination_confirmed") is True)
-        if not data.get("ok") and not (res.stdout or res.stderr or err_parts) and data.get("error") in ("agent is busy", "exec failed", "cancelled"):
-            raise WorkspaceError("connector could not execute command: " + data["error"])
+        failure = _agent_exec_failure(data)
+        if failure and not (streamed["out"] or err_parts):
+            raise WorkspaceError("connector could not execute command: " + failure)
         return _ExecResult(res.exit_status, "")
 
     return runner
@@ -1497,26 +1499,62 @@ def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, 
     return runner
 
 
+_TEMP_UNSAFE = "fuse-temp-unsafe:"
+
+
+def _fuse_temp_mkdir_cmd(path: str, windows: bool) -> str:
+    """mkdir -p for a folder in the Fuse temp dir. On POSIX, /tmp is shared:
+    new folders are made 700, and /tmp/fuse and every folder below it on the
+    way to `path` must be a real directory of this account that no one else
+    may write to, or another local user could swap files Fuse put there
+    (prints _TEMP_UNSAFE and the folder). %TEMP% on Windows is per account."""
+    if windows:
+        return f"New-Item -ItemType Directory -Force -Path ({_ps_path_expr(path)}) | Out-Null"
+    parts = posixpath.normpath(path).split("/")[2:]  # "/tmp/fuse/a" -> fuse, a
+    dirs = " ".join(shlex.quote("/tmp/" + "/".join(parts[:i + 1])) for i in range(len(parts)))
+    return (
+        f"umask 077 && mkdir -p -- {shlex.quote(posixpath.normpath(path))} || exit 1\n"
+        "u=$(id -u)\n"
+        f"for d in {dirs}; do\n"
+        '  set -- $(ls -ldn -- "$d" 2>/dev/null)\n'
+        '  case "$1" in d????w*|d???????w*) ok=0 ;; d*) ok=1 ;; *) ok=0 ;; esac\n'
+        f'  [ "$ok" = 1 ] && [ "$3" = "$u" ] || {{ echo "{_TEMP_UNSAFE}$d"; exit 3; }}\n'
+        "done\n"
+    )
+
+
+async def _make_fuse_temp_dir(user_id, host_id, path: str, *, windows: bool) -> bool:
+    """Create `path` in the Fuse temp dir with _fuse_temp_mkdir_cmd. False
+    when it could not be made; raises WorkspaceError when a folder on the way
+    is not this account's own."""
+    try:
+        res = await _tool_exec(user_id, host_id, _fuse_temp_mkdir_cmd(path, windows), "~", 8)
+    except Exception:
+        logger.debug("could not create temp dir %s on host %s", path, host_id, exc_info=True)
+        return False
+    out = res.get("out") or ""
+    if _TEMP_UNSAFE in out:
+        bad = out.split(_TEMP_UNSAFE, 1)[1].split("\n", 1)[0].strip()
+        raise WorkspaceError(
+            f"refusing to use the Fuse temp dir: {bad} is not a directory owned by this account "
+            "that only it can write to (another account may control it); remove or fix it, then retry"
+        )
+    return res.get("exit") == 0
+
+
 async def _ensure_fuse_temp(user_id, host_id, cwd: str, *, windows: bool) -> None:
     """Create a command's cwd when it is in the Fuse temp dir, where the prompt
     sends scratch work (connectors fail a missing cwd before the command runs).
 
     Checked on every command, never remembered: a reboot or a temp cleaner
     empties it under a live chat. Best effort: if this fails, the command's
-    own cwd error says why.
+    own cwd error says why. A temp dir another account controls is refused.
     """
     from .permissions import in_fuse_temp
 
     if not in_fuse_temp(cwd, windows):
         return
-    if windows:
-        cmd = f"New-Item -ItemType Directory -Force -Path ({_ps_path_expr(cwd)}) | Out-Null"
-    else:
-        cmd = f"mkdir -p -- {_quote_host_path(cwd)}"
-    try:
-        await _tool_exec(user_id, host_id, cmd, "~", 8)
-    except Exception:
-        logger.debug("could not create temp cwd %s on host %s", cwd, host_id, exc_info=True)
+    await _make_fuse_temp_dir(user_id, host_id, cwd, windows=windows)
 
 
 _LIVE_OUTPUT_S = 0.5
@@ -1705,8 +1743,9 @@ def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout
         incomplete(not _agent_output_complete(data))
         if _agent_timed_out(data):
             raise command_jobs.CommandTimedOut(termination_confirmed=data.get("termination_confirmed") is True)
-        if not data.get("ok") and not (leftover_out or leftover_err) and data.get("error") in ("agent is busy", "exec failed", "cancelled", "unknown op"):
-            raise WorkspaceError("connector could not execute command: " + data["error"])
+        failure = _agent_exec_failure(data)
+        if failure:
+            raise WorkspaceError("connector could not execute command: " + failure)
         return _ExecResult(res.exit_status, "")
 
     return runner
@@ -3136,6 +3175,10 @@ def _serialize_file_mutation(fn):
 
 
 async def _agent_mkdir_parent(user_id, host_id, path: str, *, windows: bool) -> bool:
+    from .permissions import in_fuse_temp
+
+    if not windows and in_fuse_temp(posixpath.dirname(path), False):
+        return await _make_fuse_temp_dir(user_id, host_id, posixpath.dirname(path), windows=False)
     if windows:
         cmd = (
             f"$p = {_ps_path_expr(path)}\n"
@@ -3234,11 +3277,16 @@ async def _write(user_id, host_id, alias, args, root, *, windows: bool = False):
         except WorkspaceError as exc:
             if attrs is not None or not exc.detail.startswith("parent directory"):
                 raise
+            from .permissions import in_fuse_temp
+
             parent = posixpath.dirname(path)
-            try:
-                await sftp.makedirs(parent, exist_ok=True)
-            except Exception as mk_exc:
-                raise _sftp_error(mk_exc, parent, "create directory") from mk_exc
+            if not windows and in_fuse_temp(parent, False):
+                await _make_fuse_temp_dir(user_id, host_id, parent, windows=False)
+            else:
+                try:
+                    await sftp.makedirs(parent, exist_ok=True)
+                except Exception as mk_exc:
+                    raise _sftp_error(mk_exc, parent, "create directory") from mk_exc
             await _sftp_atomic_write(sftp, path, data)
     receipt = _write_receipt(path, size, existed=attrs is not None, old_size=getattr(attrs, "size", None))
     return _label(alias, receipt), {"name": "write_file", "status": "done", "host": alias, "path": path}

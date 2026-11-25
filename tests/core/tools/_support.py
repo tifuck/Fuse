@@ -378,6 +378,17 @@ class FakeShell:
         if match:
             path = shlex.split(match.group(1))[0]
             return Reply(f"{self.fs.nlink(path)}\n" if self.fs.exists(path) else "", code=0 if self.fs.exists(path) else 1)
+        match = re.match(r"umask 077 && mkdir -p -- (\S+) \|\| exit 1\n", script.lstrip())
+        if match:  # a Fuse temp dir: made 700, then every folder on the way checked (uid 1000 is this account)
+            try:
+                self.fs.makedirs(shlex.split(match.group(1))[0], 0o700)
+            except OSError as exc:
+                return Reply("", f"mkdir: {exc}\n", 1)
+            for path in shlex.split(re.search(r"^for d in (.+); do$", script, re.M).group(1)):
+                node = self.fs.nodes.get(path)
+                if node is None or node.kind != "dir" or node.mode & 0o022 or node.uid != 1000:
+                    return Reply(f"fuse-temp-unsafe:{path}\n", code=3)
+            return Reply()
         match = re.fullmatch(r"mkdir -p -- (\S+)", script.strip())
         if match:
             self.fs.makedirs(shlex.split(match.group(1))[0])
