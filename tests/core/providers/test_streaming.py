@@ -230,6 +230,23 @@ def test_a_client_disconnect_still_records_what_was_used_as_cancelled(owner):
     assert json.loads(json.dumps(row["usage_status"])) == "complete"
 
 
+def test_a_tap_closed_between_chunks_is_recorded_as_cancelled(owner):
+    uid, sid = owner
+
+    async def held():
+        yield sse({"choices": [], "usage": USAGE}, done=False)
+        await asyncio.Event().wait()
+
+    async def go():
+        tap = api._tap(held(), uid, sid, None, "m-up", provider="openai")
+        await tap.__anext__()
+        await tap.aclose()
+
+    asyncio.run(go())
+    (row,) = events()
+    assert (row["request_status"], row["prompt_tokens"]) == ("cancelled", 100)
+
+
 def test_a_usage_write_that_loses_a_lock_conflict_is_retried_once(owner, monkeypatch):
     uid, sid = owner
     real, calls = db.record_usage, []
@@ -279,6 +296,53 @@ def test_a_request_that_may_have_generated_is_never_replayed_on_another_key(fres
     # A 5xx arrived before any output: it fails over, but to at most two keys.
     failed = chat()
     assert failed.status == 500 and len(upstream.requests) == 4
+
+
+class _Body(httpx.AsyncByteStream):
+    """An SSE body that records whether its connection was closed."""
+
+    def __init__(self):
+        self.closed = False
+
+    async def __aiter__(self):
+        yield sse(delta("hi"))
+
+    async def aclose(self):
+        self.closed = True
+
+
+def test_a_stream_closed_before_its_first_chunk_still_closes_the_upstream(upstream):
+    body = _Body()
+    upstream.on("POST", "/chat/completions", httpx.Response(200, stream=body))
+
+    async def go():
+        client = httpx.AsyncClient()
+        _s, _o, stream, _u, _h = await openai_chat(client, URL, {}, {"model": "m", "stream": True, "messages": []},
+                                                   close_client=True)
+        await stream.aclose()
+        return client
+
+    assert asyncio.run(go()).is_closed and body.closed
+
+
+def test_a_pinned_source_stream_closed_before_its_first_chunk_still_closes_the_upstream(fresh_db, upstream):
+    from app.sources import openai_compat
+    from ._support import key
+
+    sid = source("openai", {"base_url": "https://up.test"})
+    for i in range(2):
+        key(sid, f"sk-key-{i}")
+    creds = db.fetchall("SELECT * FROM credentials WHERE source_id=? ORDER BY id", (sid,))
+    src = openai_compat.OpenAICompatSource({"id": sid, "name": "o"}, {"base_url": "https://up.test"}, creds)
+    body = _Body()
+    upstream.on("POST", "/chat/completions", httpx.Response(200, stream=body))
+
+    async def go():
+        result = await src.chat({"model": "m", "stream": True, "messages": []}, session_id="s1")
+        await result.stream.aclose()
+
+    asyncio.run(go())
+    assert body.closed
 
 
 def test_completions_reuse_one_client_per_event_loop(upstream):

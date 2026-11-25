@@ -18,7 +18,7 @@ from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, p
 from .config import settings
 from .database_errors import is_lock_conflict
 from .providers.access import Access
-from .proxy import merge_usage, scrub_secrets, usage_from_obj
+from .proxy import STREAM_STALLED, merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
 from .sources import (
     POOL_TYPES,
@@ -424,11 +424,17 @@ async def _tap(
                 }
                 yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()
             yield b"data: [DONE]\n\n"
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as exc:
         # Client disconnected mid-stream. The provider may still have consumed
         # quota; record whatever usage we saw as a cancelled request instead of
-        # a silent zero-token success.
-        request_status = "cancelled"
+        # a silent zero-token success. A read abandoned on a stall failed.
+        request_status = "failed" if exc.args[:1] == (STREAM_STALLED,) else "cancelled"
+        raise
+    except GeneratorExit:
+        # Closed by its consumer: after [DONE] that is a normal end, before
+        # it a client gone between chunks.
+        if not saw_done:
+            request_status = "cancelled"
         raise
     except Exception as exc:
         request_status = "failed"

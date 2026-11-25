@@ -1022,6 +1022,7 @@ class ChatGPTSource:
                         _bind_on_finish(),
                         collected,
                         on_close=lambda: release(cred["id"]),
+                        cleanup=(resp.aclose,),
                     )
                     result = ChatResult(status=200, stream=stream, credential_id=cred["id"], model=model)
                     result.attempts = attempts

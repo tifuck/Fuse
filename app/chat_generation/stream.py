@@ -15,6 +15,7 @@ import contextlib
 import json
 import time
 
+from ..proxy import STREAM_STALLED
 from ..sources.base import ALIVE_MARK, THINKING_MARK
 from .parsing import strip_special_tokens
 
@@ -203,6 +204,7 @@ async def _paced_chunks(stream, first_s: float, gap_s: float, beat_s: float, cei
     phase = "waiting"
     last_output = last_heard = time.monotonic()
     carry = bytearray()
+    cancel_msg = None
 
     def stall_left(now: float) -> float:
         limit = gap_s if phase == "text" else first_s
@@ -251,12 +253,17 @@ async def _paced_chunks(stream, first_s: float, gap_s: float, beat_s: float, cei
                 if stall_left(now) <= 1e-9:
                     raise stalled(now)
                 yield ("beat", now - last_output)
+    except StreamStalled:
+        cancel_msg = STREAM_STALLED
+        raise
     finally:
         if not nxt.done():
-            # Cancel without awaiting: awaiting a cancelled task here would
-            # raise CancelledError out of the generator and mask the
-            # TimeoutError the caller needs to see.
-            nxt.cancel()
+            # Let the pending read unwind before the caller closes the stream:
+            # closing it while the read still runs fails ("already running").
+            # Suppressed so the TimeoutError the caller needs is not masked.
+            nxt.cancel(cancel_msg)
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await nxt
 
 
 async def _with_beats(awaitable):

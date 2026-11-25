@@ -324,7 +324,7 @@ class KeyedSource(OpenAICompatSource):
             if body.get("stream"):
                 collected: dict = {}
                 stream = _translated_stream(resp, upstream, collected, public_id=public)
-                return ChatResult(status=200, stream=UsageStream(stream, collected), credential_id=cred["id"],
+                return ChatResult(status=200, stream=UsageStream(stream, collected, cleanup=(resp.aclose,)), credential_id=cred["id"],
                                   model=public, attempts=attempts)
             obj = await _aggregate(resp, upstream, public_id=public)
             if isinstance(obj.get("error"), dict):

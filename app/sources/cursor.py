@@ -1260,7 +1260,7 @@ class CursorSource:
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid))
+        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), cleanup=(rnd.close,))
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=slug)
         result.attempts = attempts
         return result

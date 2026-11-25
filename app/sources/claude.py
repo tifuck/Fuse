@@ -892,7 +892,8 @@ class ClaudeSource:
                 remember = partial(claude_thread.record, session_id, int(cred["id"]), payload, mode, reply)
                 if want_stream:
                     collected: dict = {}
-                    stream = _translated_stream(resp, upstream, collected, reply)
+                    stream = UsageStream(_translated_stream(resp, upstream, collected, reply), collected,
+                                         cleanup=(resp.aclose,))
                     stream_reserved = True
                     failover.served()
                     return self._stream_result(stream, collected, cred, session_id, fuse_id(upstream), attempts, remember)
@@ -952,7 +953,7 @@ class ClaudeSource:
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid))
+        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), cleanup=(stream.aclose,))
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=model)
         result.attempts = attempts
         return result

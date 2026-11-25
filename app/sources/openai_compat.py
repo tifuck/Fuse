@@ -129,7 +129,7 @@ class OpenAICompatSource:
                 if (collected or {}).get("stream_status") == "complete":
                     await asyncio.to_thread(bind, self.pin_kind, session_id, cid)
 
-        wrapped = UsageStream(_bind_on_finish(), collected)
+        wrapped = UsageStream(_bind_on_finish(), collected, cleanup=(stream.aclose,))
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=model)
         result.attempts = attempts
         return result
