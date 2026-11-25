@@ -999,7 +999,7 @@ def save_turn_progress(run_id, messages, loaded_tools=None, extra=None):
             ):
                 confirmed.append(ident)
         if confirmed:
-            command_jobs_mod.mark_delivered(confirmed, conn=conn)
+            command_jobs_mod.mark_delivered(confirmed, conn=conn, user_id=row["user_id"], thread_id=row["thread_id"])
         if tools_json is not None:
             agent["loaded_tools"] = json.loads(tools_json)
         if extra.get("allowed_urls") is not None:

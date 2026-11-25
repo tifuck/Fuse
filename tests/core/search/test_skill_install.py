@@ -66,7 +66,7 @@ def test_a_zipball_redirect_is_followed_to_codeload_and_the_named_skill_is_taken
         "o-r-1a2b3c/plugins/p/skills/other/SKILL.md": md("other"),
     })))
 
-    files = run(fetch_github_skill("o/r", "wanted"))
+    files = run(fetch_github_skill("o/r", "wanted", user_id=1))
 
     assert name_of(files) == "wanted" and files["SKILL.md"] == md("wanted")
     assert sorted(files) == ["SKILL.md", "refs/notes.md"]
@@ -79,8 +79,21 @@ def test_the_zipball_repo_hash_prefix_is_stripped(github):
     github.on(ZIPBALL, httpx.Response(200, content=zipped({
         "o-r-1a2b3c/SKILL.md": md("wanted"), "o-r-1a2b3c/notes.md": b"n", "o-r-1a2b3c/docs/guide.md": b"g",
     })))
-    files = run(fetch_github_skill("o/r", "wanted"))
+    files = run(fetch_github_skill("o/r", "wanted", user_id=1))
     assert sorted(files) == ["SKILL.md", "notes.md"] and name_of(files) == "wanted"
+
+
+def test_one_user_cannot_spend_the_whole_github_budget(github, monkeypatch):
+    monkeypatch.setattr(skill_install, "_github_user_cap", lambda: 2)
+    monkeypatch.setattr(skill_install, "_github_cap", lambda: 4)
+    github.on(ZIPBALL, lambda _r: httpx.Response(200, content=zipped({"o-r-1a2b3c/SKILL.md": md("wanted")})))
+
+    assert name_of(run(fetch_github_skill("o/r", "wanted", user_id=1))) == "wanted"  # meta + zipball
+    with pytest.raises(SkillError) as refused:
+        run(fetch_github_skill("o/r", "wanted", user_id=1))
+    assert refused.value.status_code == 429
+    # The refused call spent none of the shared budget: another user still gets theirs.
+    assert name_of(run(fetch_github_skill("o/r", "wanted", user_id=2))) == "wanted"
 
 
 def test_a_zipball_redirect_off_github_is_never_requested(github, dns):
@@ -88,7 +101,7 @@ def test_a_zipball_redirect_off_github_is_never_requested(github, dns):
     github.on(REPO + "/git/trees/", lambda _r: httpx.Response(200, json={"truncated": False}))
     github.on(REPO + "/contents/", lambda _r: httpx.Response(404))
     with pytest.raises(SkillError, match="Could not find SKILL.md"):
-        run(fetch_github_skill("o/r", "wanted"))
+        run(fetch_github_skill("o/r", "wanted", user_id=1))
     assert not any("evil.example" in url for url in github.urls())
     assert "evil.example" not in dns.lookups
 
@@ -100,7 +113,7 @@ def test_a_truncated_tree_falls_back_to_the_contents_api(github):
     github.on(REPO + "/contents/skills/wanted/SKILL.md", httpx.Response(200, json={"download_url": raw}))
     github.on(raw, httpx.Response(200, content=md("wanted")))
 
-    assert run(fetch_github_skill("o/r", "wanted")) == {"SKILL.md": md("wanted")}
+    assert run(fetch_github_skill("o/r", "wanted", user_id=1)) == {"SKILL.md": md("wanted")}
     assert github.urls() == [REPO, ZIPBALL, REPO + "/git/trees/main?recursive=1",
                              REPO + "/contents/skills/wanted/SKILL.md?ref=main", raw]
 
@@ -113,7 +126,7 @@ def test_the_contents_fallback_refuses_a_root_skill_of_another_name(github):
     github.on(REPO + "/contents/SKILL.md", httpx.Response(200, json={"download_url": raw}))
     github.on(raw, httpx.Response(200, content=md("rootskill")))
     with pytest.raises(SkillError):
-        run(fetch_github_skill("o/r", "wanted"))
+        run(fetch_github_skill("o/r", "wanted", user_id=1))
 
 
 # -- skills.sh ----------------------------------------------------------------

@@ -12,6 +12,7 @@ from . import accounts, agent_hub, hosts
 
 router = APIRouter()
 _subscribers: dict[int, dict] = defaultdict(dict)
+_event_sockets: dict[int, int] = defaultdict(int)
 _stat_sockets: dict[int, int] = defaultdict(int)
 _loop = None
 _closing = False
@@ -67,6 +68,21 @@ async def close_session(uid, sid):
     await asyncio.gather(*(ws.close(code=4401) for ws in sockets), return_exceptions=True)
 
 
+def _reserve(counts: dict[int, int], uid) -> bool:
+    """Take one of uid's socket slots. Called before any await, so concurrent
+    opens cannot all pass the cap; every True needs one _release."""
+    if _closing or counts.get(uid, 0) >= MAX_CONNECTIONS_PER_USER:
+        return False
+    counts[uid] += 1
+    return True
+
+
+def _release(counts: dict[int, int], uid) -> None:
+    counts[uid] -= 1
+    if counts[uid] <= 0:
+        counts.pop(uid, None)
+
+
 def _origin(origin):
     try:
         parsed = urlsplit(origin)
@@ -87,10 +103,14 @@ async def events(ws: WebSocket):
     if not await asyncio.to_thread(accounts.session_user, ws.session):
         await ws.close(code=4401)
         return
-    if _closing or len(_subscribers.get(uid, {})) >= MAX_CONNECTIONS_PER_USER:
+    if not _reserve(_event_sockets, uid):
         await ws.close(code=4429)
         return
-    await ws.accept()
+    try:
+        await ws.accept()
+    except BaseException:
+        _release(_event_sockets, uid)
+        raise
     queue: asyncio.Queue = asyncio.Queue(maxsize=64)
     _subscribers[uid][ws] = queue
     last_pong = time.monotonic()
@@ -144,6 +164,7 @@ async def events(ws: WebSocket):
         _subscribers[uid].pop(ws, None)
         if not _subscribers[uid]:
             _subscribers.pop(uid, None)
+        _release(_event_sockets, uid)
         try:
             await ws.close()
         except (RuntimeError, WebSocketDisconnect, OSError):
@@ -166,11 +187,14 @@ async def stats(ws: WebSocket, host_id: int):
     if not host or host["kind"] != "agent" or host["disabled"]:
         await ws.close(code=4404)
         return
-    if _closing or _stat_sockets[uid] >= MAX_CONNECTIONS_PER_USER:
+    if not _reserve(_stat_sockets, uid):
         await ws.close(code=4429)
         return
-    await ws.accept()
-    _stat_sockets[uid] += 1
+    try:
+        await ws.accept()
+    except BaseException:
+        _release(_stat_sockets, uid)
+        raise
 
     async def receive():
         while True:
@@ -199,9 +223,7 @@ async def stats(ws: WebSocket, host_id: int):
     finally:
         reader.cancel()
         await asyncio.gather(reader, return_exceptions=True)
-        _stat_sockets[uid] -= 1
-        if _stat_sockets[uid] <= 0:
-            _stat_sockets.pop(uid, None)
+        _release(_stat_sockets, uid)
         try:
             await ws.close()
         except (RuntimeError, WebSocketDisconnect, OSError):

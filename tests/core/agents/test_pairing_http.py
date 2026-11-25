@@ -205,6 +205,55 @@ def test_host_events_keep_the_newest_updates_when_a_subscriber_lags():
     assert asyncio.run(body()) == [1, 2]
 
 
+def test_concurrent_host_event_sockets_cannot_pass_the_per_user_cap(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from app import accounts
+    from tests.core.helpers import wait_until_async
+
+    uid = 4242
+    monkeypatch.setattr(accounts, "session_user", lambda session: {"id": uid})
+    monkeypatch.setattr(hosts, "list_bundle", lambda user_id: {})
+
+    class Sock:
+        def __init__(self, gate):
+            self.url = SimpleNamespace(scheme="ws", netloc="testserver")
+            self.headers = {"origin": "http://testserver"}
+            self.session = {"uid": uid}
+            self.gate, self.accepting, self.closed = gate, False, None
+
+        async def accept(self):
+            self.accepting = True
+            await self.gate.wait()
+
+        async def close(self, code=1000):
+            if self.closed is None:
+                self.closed = code
+
+        async def receive_text(self):
+            await asyncio.Event().wait()
+
+        async def send_json(self, data):
+            raise OSError("gone")  # ends the socket right after it opens
+
+    async def body():
+        gate = asyncio.Event()
+        socks = [Sock(gate) for _ in range(host_events.MAX_CONNECTIONS_PER_USER + 2)]
+        tasks = [asyncio.create_task(host_events.events(s)) for s in socks]
+        # Every open is either refused or parked in accept(): none has been counted by a finished accept yet.
+        await wait_until_async(lambda: all(s.accepting or s.closed for s in socks))
+        refused = [s.closed for s in socks if not s.accepting]
+        held = host_events._event_sockets.get(uid)
+        gate.set()
+        await asyncio.gather(*tasks)
+        return refused, held, host_events._event_sockets.get(uid)
+
+    refused, held, after = asyncio.run(body())
+    assert refused == [4429, 4429]
+    assert held == host_events.MAX_CONNECTIONS_PER_USER and after is None
+
+
 # -- machine routes and the stats socket ------------------------------------------
 
 def _hello_token(ws, token):

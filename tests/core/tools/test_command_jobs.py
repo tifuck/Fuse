@@ -125,7 +125,7 @@ def test_a_result_for_a_live_run_is_queued_there_and_acknowledged_once(fresh_db,
     # Still undelivered until the run's transcript receipt: if the run dies
     # first, the thread's wake must still deliver it.
     assert [item["id"] for item in command_jobs.pending_envelopes(uid, tid)] == [job_id]
-    command_jobs.mark_delivered([job_id])
+    command_jobs.mark_delivered([job_id], user_id=uid, thread_id=tid)
     assert command_jobs.pending_envelopes(uid, tid) == []
     assert row(job_id)["delivered"] == 1
 
@@ -170,7 +170,7 @@ def test_an_idle_thread_is_woken_and_its_envelope_is_peek_only_until_receipt(fre
     assert [item["id"] for item in first] == [job_id]
     assert "exit_code: 2" in first[0]["envelope"]
     assert {"user_id": uid, "thread_id": tid, "resumed_at": ""} in command_jobs.pending_wake_threads()
-    command_jobs.mark_delivered([job_id])
+    command_jobs.mark_delivered([job_id], user_id=uid, thread_id=tid)
     assert command_jobs.pending_envelopes(uid, tid) == []
     assert all(t["thread_id"] != tid for t in command_jobs.pending_wake_threads())
 
@@ -373,6 +373,65 @@ def test_admission_refuses_past_the_running_cap_without_a_row(fresh_db, monkeypa
 
     run_async(body())
     assert db.fetchone("SELECT COUNT(*) AS n FROM command_jobs")["n"] == 2
+
+
+def test_one_user_cannot_take_every_running_slot(fresh_db, monkeypatch):
+    uid, other = quick_user(), quick_user("other@core.test")
+    monkeypatch.setattr(command_jobs, "JOB_USER_CAP", 2)
+
+    async def body():
+        runners = [ScriptedRunner() for _ in range(3)]
+        recs = [await launch(uid, runners[0]), await launch(uid, runners[1])]
+        with pytest.raises(ValueError, match="too many running commands for this user"):
+            await launch(uid, ScriptedRunner())
+        recs.append(await launch(other, runners[2]))
+        for r in runners:
+            r.release()
+        for rec in recs:
+            await settled(rec)
+
+    run_async(body())
+    assert db.fetchone("SELECT COUNT(*) AS n FROM command_jobs WHERE user_id=?", (uid,))["n"] == 2
+    assert db.fetchone("SELECT COUNT(*) AS n FROM command_jobs WHERE user_id=?", (other,))["n"] == 1
+
+
+def test_one_user_cannot_take_every_websocket_monitor(fresh_db, monkeypatch):
+    uid, other = quick_user(), quick_user("other@core.test")
+    monkeypatch.setattr(command_jobs, "WS_MONITOR_USER_CAP", 1)
+    ws = {"kind": "monitor", "command": "", "url": "wss://feed.example/live"}
+
+    async def body():
+        runners = [ScriptedRunner() for _ in range(3)]
+        recs = [await launch(uid, runners[0], **ws)]
+        with pytest.raises(ValueError, match="too many running websocket monitors for this user"):
+            await launch(uid, ScriptedRunner(), **ws)
+        recs.append(await launch(uid, runners[1]))  # plain commands still run
+        recs.append(await launch(other, runners[2], **ws))
+        for r in runners:
+            r.release()
+        for rec in recs:
+            await settled(rec)
+
+    run_async(body())
+
+
+def test_a_receipt_never_acknowledges_another_users_job(fresh_db):
+    uid, other = quick_user(), quick_user("other@core.test")
+    _, tid = new_thread(uid)
+    _, their_tid = new_thread(other)
+    for job_id, owner, thread, kind in (("myjob0000001", uid, tid, "command"), ("theirjob0001", other, their_tid, "command"),
+                                        ("theirmon0001", other, their_tid, "monitor")):
+        db.execute(
+            "INSERT INTO command_jobs (id,user_id,host_id,host,thread_id,command,cwd,background,timeout_ms,status,"
+            "created_at,kind,notify) VALUES (?,?,1,'box',?,'make','',1,60000,'completed',?,?,1)",
+            (job_id, owner, thread, db.now(), kind),
+        )
+
+    command_jobs.mark_delivered(["myjob0000001", "theirjob0001", "theirmon0001:e999999"], user_id=uid, thread_id=tid)
+
+    assert row("myjob0000001")["delivered"] == 1
+    assert row("theirjob0001")["delivered"] == 0
+    assert row("theirmon0001")["delivered_event_seq"] == 0
 
 
 def test_stopping_a_run_cancels_its_own_shell_jobs_only(fresh_db):
