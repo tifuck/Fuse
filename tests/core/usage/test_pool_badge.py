@@ -386,6 +386,36 @@ def test_a_pick_during_a_turn_survives_the_request_in_flight(fresh_db, monkeypat
     assert fresh["id"] == first and fresh["preview"] is True
 
 
+def test_a_pick_no_pin_backs_is_not_shown_as_waiting(fresh_db, monkeypatch):
+    from app import chat_checkpoint, chats
+
+    me = user("me@core.test")
+    first = pool_account("claude", me, _claude(70, 60))
+    second = pool_account("claude", me, _claude(5, 1))
+    src = claude.ClaudeSource({"id": pool_policy.source_id("claude"), "name": "Claude"}, {}, [])
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "claude-opus-5-5"
+
+    import app.sources as sources
+    monkeypatch.setattr(sources, "pick", pick)
+    monkeypatch.setattr(pool_session, "persist", False)
+    model = "claude/claude-opus-5-5"
+    # A pick saved before picks named their pin waited forever: it is dropped.
+    assert pool_badge.parse({"cred": first, "source": "claude", "next": second})["next"] is None
+    thread = chats.create_thread(me, model=model)["id"]
+    sid = _runtime_session(me, thread)
+    pool_session.bind("claude", sid, first)
+    chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", model))
+    asyncio.run(pool_badge.switch(me, model, thread, second, running=True))
+    # A restart forgets the pending pick, so the request in flight re-pins its
+    # account: the round it serves clears the pick instead of keeping it.
+    pool_session.reset_store()
+    pool_session.bind("claude", sid, first)
+    stored = chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", model))
+    assert (stored["cred"], stored["next"]) == (first, None)
+
+
 def test_the_badge_previews_a_lazily_routed_pool_from_the_callers_accounts(fresh_db, monkeypatch):
     # Routing hands out sources._LazySource, and copying one recursed forever:
     # every /chat/pool answered 500 in production after 2026-11-24's update.
