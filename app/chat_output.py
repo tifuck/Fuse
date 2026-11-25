@@ -8,10 +8,22 @@ import re
 import time
 
 from . import chat_schema, chats
-from .chat_generation.parsing import in_md_code
+from .chat_generation.parsing import HeldToolXml, in_md_code
 
 
 _THINK = re.compile(r"</?(?:think|thinking|thought|reasoning)>", re.I)
+# Text after an unclosed <tool_call> is held, and rescanning the whole held
+# tail on every chunk made a long call quadratic in its length. Chunks are now
+# only appended to it; it is rescanned when one may change what it holds: a
+# closing tag that may complete a call, or (a few times per call at most) a
+# think tag or a backtick that could quote the opener; otherwise each time it
+# has grown by a quarter.
+_XML_WAKE_TAIL = 16
+_XML_WAKES = 8
+_XML_RESCAN_MIN = 512
+# Past parsing's 400k argument limit the call would be refused anyway: the
+# held text is shown as written instead of being held without bound.
+_XML_HELD_MAX = 450_000
 # Artifact writes whose streaming arguments the chat shows as "Writing…"
 # before the call runs (the page itself can take minutes to stream).
 _DRAFT_TOOLS = ("create_artifact", "update_artifact", "edit_artifact")
@@ -65,6 +77,7 @@ class Output:
         self._think_ready = True
         self._think_from = 0
         self._xml_pending = ""
+        self._xml_reset()
         self._last_source = None
         # Aggregates (content/reasoning) are maintained incrementally on the
         # append-only fast path; any structural rewrite (tool-xml scrub that
@@ -142,9 +155,47 @@ class Output:
         self._think_pending = ""
         return pending
 
+    def _xml_reset(self):
+        self._xml_held = 0  # characters appended to _xml_pending since its last scan
+        self._xml_wakes = 0
+        self._xml_misses = 0  # closing tags that were expected to complete a call and did not
+        self._xml_track = None
+        self._xml_seg = None  # (count, last segment) when _xml_pending was cut
+        self._xml_tick = False  # a backtick precedes the held opener on its line
+        self._xml_newline = False
+
+    def _xml_holds(self, prefix):
+        segments = self.message["segments"]
+        return (
+            not prefix and not self._think_pending and not self._think_inside and self._xml_seg is not None
+            and self._xml_seg[0] == len(segments) and self._xml_seg[1] is (segments[-1] if segments else None)
+        )
+
+    def _xml_rescan_due(self, tail, text):
+        newline_before = self._xml_newline
+        self._xml_newline = newline_before or "\n" in text
+        if len(self._xml_pending) > _XML_HELD_MAX:
+            return True
+        if self._xml_track.closes(self._xml_pending) and self._xml_misses < _XML_WAKES:
+            self._xml_misses += 1
+            return True
+        if self._xml_wakes < _XML_WAKES and (
+            _THINK.search(tail) or ("`" in text and self._xml_tick and not newline_before)
+        ):
+            self._xml_wakes += 1
+            return True
+        return self._xml_held >= max(_XML_RESCAN_MIN, len(self._xml_pending) // 4)
+
     def _append_content(self, text, prefix=""):
         text = chat_runtime.strip_special_tokens(text or "")
         prefix = chat_runtime.strip_special_tokens(prefix or "")
+        if self._xml_pending and text and self._xml_holds(prefix):
+            tail = self._xml_pending[-_XML_WAKE_TAIL:] + text
+            self._xml_pending += text
+            self._xml_held += len(text)
+            if not self._xml_rescan_due(tail, text):
+                return
+            text = ""
         data = (self._xml_pending or "") + prefix + self._remove_pending() + text
         self._xml_pending = ""
         offset = 0
@@ -207,6 +258,9 @@ class Output:
         text = segments[-1].get("text") or ""
         stable = min(self._scrub_stable, len(text))
         merged, pending = chat_runtime.drop_tool_xml(text, stable)
+        if not pending or len(merged) != stable:
+            self._xml_reset()
+        self._xml_held = 0
         self._xml_pending = pending
         if pending and self._think_pending and pending.endswith(self._think_pending):
             # The held tail already carries the partial tag; restoring both on
@@ -223,6 +277,21 @@ class Output:
             # A dropped block is a middle removal, not a suffix trim; the
             # aggregates need one recompute from the segments.
             self._agg_dirty = True
+        if len(pending) > _XML_HELD_MAX:
+            self._xml_pending = ""
+            self._xml_reset()
+            self._append_text("content", pending, "tagged")
+            self._scrub_stable = len(segments[-1].get("text") or "")
+        elif pending and len(merged) + len(pending) == len(text):
+            # Held only after a scan that dropped no block: a drop joins the
+            # text around it, which can put the opener in code on the next scan.
+            self._xml_tick = "`" in merged[merged.rfind("\n") + 1:]
+            self._xml_newline = "\n" in pending
+            self._xml_seg = (len(segments), segments[-1] if segments else None)
+            self._xml_track = HeldToolXml()
+            self._xml_track.closes(pending)
+        else:
+            self._xml_seg = None
 
     def _ensure_aggregates(self):
         if not self._agg_dirty:
@@ -252,6 +321,7 @@ class Output:
         self._think_pending = ""
         self._think_ready = True
         self._xml_pending = ""
+        self._xml_reset()
         self._last_source = None
         self._agg_dirty = False
         self._scrub_stable = 0
@@ -269,7 +339,10 @@ class Output:
         <tool_call>). The provider transcript keeps that text; dropping it here
         cut the visible reply short, and finalize then replayed the short copy
         as a second assistant message."""
+        if self._xml_held and self._xml_holds(""):
+            self._append_content("")
         pending, self._xml_pending = self._xml_pending, ""
+        self._xml_reset()
         if not pending or chat_runtime.extract_text_tool_calls(pending)[1]:
             return
         self._append_text("content", pending, "tagged")

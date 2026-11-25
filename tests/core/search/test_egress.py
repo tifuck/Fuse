@@ -18,8 +18,8 @@ from app.search.engine import fetch_url, search_bulk
 from app.search.providers import ddg
 from app.search.providers.base import ProviderResponse
 
-from ..helpers import quick_user
-from ._support import hit, run
+from ..helpers import quick_user, wait_until_async
+from ._support import Engines, Hang, hit, run
 
 REAL_SELECTED = egress._selected
 PAGE = (
@@ -236,3 +236,32 @@ def test_one_flagged_exit_does_not_pause_duckduckgo_for_the_others(monkeypatch):
         ddg._record_challenge()
         assert ddg.ddg_circuit_open()
     assert not ddg.ddg_circuit_open()
+
+
+def test_a_stalled_connector_holds_only_a_few_of_the_shared_search_slots(monkeypatch):
+    pick(monkeypatch, [(5, "203.0.113.5")], only_user=1)
+    stalled = Hang()
+
+    async def ddg_search(query):
+        if egress.current():
+            return await stalled(query)
+        return ProviderResponse(hits=[hit("https://example.com/" + query.replace(" ", "-"))], status=200)
+
+    Engines(monkeypatch, ddg=ddg_search)
+    monkeypatch.setattr(engine, "QUERY_SOFT_DEADLINE", 0.0)
+    monkeypatch.setattr(engine, "QUERY_DEADLINE", 600.0)
+
+    async def body():
+        stuck = [asyncio.create_task(search_bulk([f"stuck query {n}"], user_id=1)) for n in range(6)]
+        await wait_until_async(lambda: stalled.started >= engine.CONNECTOR_SEARCH_CONCURRENCY)
+        for _ in range(50):
+            await asyncio.sleep(0)
+        assert stalled.started == engine.CONNECTOR_SEARCH_CONCURRENCY, "the rest wait for this user's own slots"
+        [other] = await asyncio.wait_for(search_bulk(["another users query"], user_id=2), 10)
+        assert other.kind == "ok"
+        for task in stuck:
+            task.cancel()
+        await asyncio.gather(*stuck, return_exceptions=True)
+        assert not engine._connector_sems, "an idle user keeps no entry"
+
+    run(body())

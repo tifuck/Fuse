@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import html as html_lib
-import re
 import httpx
 
 from ..client import TIMEOUT_WIKI
 from ..ssrf import host_of, public_http_url, wiki_page_url
-from .base import ProviderResponse, SearchHit, read_json, safe_get
+from .base import ProviderResponse, SearchHit, read_json, safe_get, strip_html
 
 _UA = "FuseChat/1.0 (dashboard search for signed-in users)"
 _SEARCH_HOSTS = {"en.wikipedia.org"}
-_TAG = re.compile(r"(?is)<[^>]+>")
 
 
 def _search_host_ok(url: str) -> bool:
@@ -18,9 +15,7 @@ def _search_host_ok(url: str) -> bool:
     return host in _SEARCH_HOSTS or host.endswith(".wikipedia.org")
 
 
-def _strip(text: str) -> str:
-    text = html_lib.unescape(_TAG.sub(" ", text or ""))
-    return re.sub(r"\s+", " ", text).strip()
+_strip = strip_html
 
 
 class WikipediaProvider:

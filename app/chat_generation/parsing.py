@@ -7,6 +7,7 @@ No I/O, no state, no provider calls."""
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 import re
@@ -33,6 +34,10 @@ _TOOL_XML_BLOCK = re.compile(
     re.I | re.S,
 )
 _TOOL_XML_OPEN = re.compile(r"<tool_calls?\b", re.I)
+_TOOL_XML_CLOSE = re.compile(r"</tool_calls?>", re.I)
+_TOOL_XML_CALL_END = re.compile(r"(?:</function>|</invoke>)\s*</tool_calls?>", re.I)
+_TOOL_XML_FN = re.compile(r"<function\s*=|<invoke\b", re.I)
+_GT = re.compile(">")
 _FUNCTION_XML = re.compile(
     r"<function\s*=\s*([A-Za-z][\w.-]*)>((?:(?!<function\s*=).)*?</parameter>\s*(?=</function>)|.*?)</function>",
     re.I | re.S,
@@ -41,6 +46,9 @@ _INVOKE_XML = re.compile(
     r"<invoke\s+name\s*=\s*[\"']([^\"']+)[\"']>((?:(?!<invoke\b).)*?</parameter>\s*(?=</invoke>)|.*?)</invoke>",
     re.I | re.S,
 )
+_FUNCTION_CLOSE = re.compile(r"</function>", re.I)
+_INVOKE_CLOSE = re.compile(r"</invoke>", re.I)
+_PARAM_CLOSE = re.compile(r"</parameter>", re.I)
 _PARAM_END = r"(?=</parameter>\s*(?:<parameter\b|</function>|</invoke>|\Z))"
 _PARAM_EQ_XML = re.compile(
     r"<parameter\s*=\s*([A-Za-z][\w.-]*)>((?:(?!<parameter\b).)*?" + _PARAM_END + r"|.*?)</parameter>",
@@ -50,6 +58,142 @@ _PARAM_NAME_XML = re.compile(
     r"<parameter\s+name\s*=\s*[\"']([^\"']+)[\"']>((?:(?!<parameter\b).)*?" + _PARAM_END + r"|.*?)</parameter>",
     re.I | re.S,
 )
+
+
+class _Next:
+    """Where `pattern` next matches in `text` at or after a position. Lookups
+    at growing positions reuse the last answer, so asking once per candidate
+    scans the text once instead of once per candidate."""
+
+    def __init__(self, text: str, pattern: re.Pattern):
+        self.text, self.pattern = text, pattern
+        self.since: int | None = None
+        self.found: re.Match | None = None
+
+    def __call__(self, pos: int) -> re.Match | None:
+        if self.since is not None and self.since <= pos and (self.found is None or self.found.start() >= pos):
+            return self.found
+        self.found = self.pattern.search(self.text, pos)
+        self.since = pos
+        return self.found
+
+
+def _tool_xml_blocks(text: str, start: int = 0):
+    """(start, end) of each match of _TOOL_XML_BLOCK.finditer(text, start),
+    in linear time. The regex retries from every opener and, for a call that
+    never closes, rescans to the end each time: quadratic in the openers."""
+    gt, inner, call_end, close, fn = (
+        _Next(text, pattern) for pattern in (_GT, _TOOL_XML_OPEN, _TOOL_XML_CALL_END, _TOOL_XML_CLOSE, _TOOL_XML_FN)
+    )
+    pos = start
+    while opener := _TOOL_XML_OPEN.search(text, pos):
+        head = gt(opener.end())
+        if not head:
+            return
+        body = head.end()
+        # A body that ends in </function> or </invoke> must not cross another
+        # opener; one that does not must hold no <function=/<invoke at all.
+        end = call_end(body)
+        nested = inner(body)
+        if not end or (nested and nested.start() < end.start()):
+            end = close(body)
+            named = fn(body)
+            if end and named and named.start() < end.start():
+                end = None
+        if end:
+            yield opener.start(), end.end()
+            pos = end.end()
+        else:
+            pos = opener.start() + 1
+
+
+_HELD_TOKEN = re.compile(r"(</tool_calls?>)|(<tool_calls?\b)|(<function\s*=|<invoke\b)|>", re.I)
+
+
+class HeldToolXml:
+    """Whether text appended to a held tool call (drop_tool_xml's tail) may
+    have completed a _TOOL_XML_BLOCK in it, in time linear in what was
+    appended.
+
+    A closing tag completes a block when no <function= or <invoke lies in the
+    body of the last opener whose body started before it, or when it follows
+    </function> or </invoke> after the last opener's body. An answer of False
+    is exact. A token split across calls is found on the next one (a short
+    overlap is rescanned), except a <function= with more whitespace before its
+    "=" than the overlap holds; missing that only answers True too often."""
+
+    _OVERLAP = 16
+
+    def __init__(self):
+        self.scanned = 0
+        self.opener = -1  # start of the last opener
+        self.body = -1  # body start of the last opener whose ">" has arrived
+        self.opener_body = False  # whether that is the last opener
+        self.named = -1  # start of the last <function= / <invoke
+
+    def closes(self, held: str) -> bool:
+        closed = False
+        for token in _HELD_TOKEN.finditer(held, self.scanned):
+            at = token.start()
+            self.scanned = token.end()
+            if token.group(2):
+                self.opener, self.opener_body = at, False
+                continue
+            if token.group(3):
+                self.named = at
+                continue
+            if token.group(1) and self.body >= 0:
+                end = at
+                while end > self.body and held[end - 1].isspace():
+                    end -= 1
+                call_end = next((end - len(tag) for tag in ("</function>", "</invoke>")
+                                 if held[end - len(tag):end].lower() == tag), -1)
+                if self.named < self.body or (self.opener_body and call_end >= self.body):
+                    closed = True
+            if self.opener >= 0 and not self.opener_body:
+                self.body, self.opener_body = token.end(), True
+        self.scanned = max(self.scanned, len(held) - self._OVERLAP)
+        return closed
+
+
+def _quoted_in(spans: list[tuple[int, int]]):
+    """index -> whether it falls in one of spans (sorted, disjoint)."""
+    starts = [lo for lo, _ in spans]
+
+    def quoted(index: int) -> bool:
+        at = bisect.bisect_right(starts, index) - 1
+        return at >= 0 and index < spans[at][1]
+
+    return quoted
+
+
+_WS = re.compile(r"\s*")
+
+
+def _bounded_finditer(pattern: re.Pattern, closer: re.Pattern, text: str, *, lookahead: int = 0):
+    """pattern.finditer(text) for a pattern whose every match ends with
+    closer, stopped after the last closer (plus whitespace and `lookahead`
+    characters a lookahead there reads): an opener past it cannot match, and
+    each such opener would otherwise rescan to the end of the text."""
+    last = None
+    for last in closer.finditer(text):
+        pass
+    if last is None:
+        return iter(())
+    endpos = last.end()
+    if lookahead:
+        endpos = min(len(text), _WS.match(text, endpos).end() + lookahead)
+    return pattern.finditer(text, 0, endpos)
+
+
+def _sub_spans(text: str, spans, repl) -> str:
+    parts, pos = [], 0
+    for lo, hi in spans:
+        parts.append(text[pos:lo])
+        parts.append(repl(lo, hi))
+        pos = hi
+    parts.append(text[pos:])
+    return "".join(parts)
 
 
 def strip_special_tokens(text: str) -> str:
@@ -72,16 +216,13 @@ def drop_tool_xml(text: str, start: int = 0) -> tuple[str, str]:
         return "", ""
     if not _TOOL_XML_OPEN.search(text, start):
         return text, ""
-    code = [match.span() for match in _MD_CODE.finditer(text)]
-
-    def quoted(index: int) -> bool:
-        return any(lo <= index < hi for lo, hi in code)
+    quoted = _quoted_in([match.span() for match in _MD_CODE.finditer(text)])
 
     parts, pos = [text[:start]], start
-    for block in _TOOL_XML_BLOCK.finditer(text, start):
-        if not quoted(block.start()):
-            parts.append(text[pos:block.start()])
-            pos = block.end()
+    for lo, hi in _tool_xml_blocks(text, start):
+        if not quoted(lo):
+            parts.append(text[pos:lo])
+            pos = hi
     # Held from the first unclosed opener: extract_text_tool_calls parses from
     # there, so text after it is part of that call.
     first = next((match for match in _TOOL_XML_OPEN.finditer(text, pos) if not quoted(match.start())), None)
@@ -142,9 +283,10 @@ def _xml_text(raw: str) -> str:
 def _xml_params(body: str) -> dict:
     """Raw parameter text; _xml_call types it against the tool's schema."""
     args = {}
-    for match in _PARAM_EQ_XML.finditer(body or ""):
+    # _PARAM_END reads past a closing tag: \s* then up to 11 characters.
+    for match in _bounded_finditer(_PARAM_EQ_XML, _PARAM_CLOSE, body or "", lookahead=12):
         args[match.group(1)] = match.group(2)
-    for match in _PARAM_NAME_XML.finditer(body or ""):
+    for match in _bounded_finditer(_PARAM_NAME_XML, _PARAM_CLOSE, body or "", lookahead=12):
         args[match.group(1)] = match.group(2)
     return args
 
@@ -180,13 +322,13 @@ def _xml_call(name: str, args: dict, index: int, *, coding: bool, raw: bool = Fa
 
 def _calls_from_xml_body(body: str, *, coding: bool, start: int = 0) -> list[dict]:
     calls = []
-    for match in _FUNCTION_XML.finditer(body or ""):
+    for match in _bounded_finditer(_FUNCTION_XML, _FUNCTION_CLOSE, body or ""):
         rec = _xml_call(match.group(1), _xml_params(match.group(2)), start + len(calls), coding=coding, raw=True)
         if rec:
             calls.append(rec)
     if calls:
         return calls
-    for match in _INVOKE_XML.finditer(body or ""):
+    for match in _bounded_finditer(_INVOKE_XML, _INVOKE_CLOSE, body or ""):
         rec = _xml_call(match.group(1), _xml_params(match.group(2)), start + len(calls), coding=coding, raw=True)
         if rec:
             calls.append(rec)
@@ -256,28 +398,28 @@ def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str,
     lowered = content.lower()
     if "<tool" not in lowered and "<function" not in lowered and "<invoke" not in lowered:
         return content, []
-    code = [match.span() for match in _MD_CODE.finditer(content)]
-
-    def quoted(index: int) -> bool:
-        return any(lo <= index < hi for lo, hi in code)
+    quoted = _quoted_in([match.span() for match in _MD_CODE.finditer(content)])
 
     calls: list[dict] = []
 
-    def _replace(match: re.Match) -> str:
-        if quoted(match.start()):
-            return match.group(0)
-        extracted = _calls_from_xml_body(match.group(0), coding=coding, start=len(calls))
+    def _replace(lo: int, hi: int) -> str:
+        block = content[lo:hi]
+        if quoted(lo):
+            return block
+        extracted = _calls_from_xml_body(block, coding=coding, start=len(calls))
         if not extracted:
             # Inner body without the outer tags, in case the regex included them.
-            inner = match.group(0)
-            inner = re.sub(r"^</?tool_calls?\b[^>]*>|</tool_calls?>$", "", inner, flags=re.I | re.S)
+            inner = re.sub(r"^</?tool_calls?\b[^>]*>|</tool_calls?>$", "", block, flags=re.I | re.S)
             extracted = _calls_from_xml_body(inner, coding=coding, start=len(calls))
         if extracted:
             calls.extend(extracted)
             return ""
-        return match.group(0)
+        return block
 
-    cleaned = _TOOL_XML_BLOCK.sub(_replace, content)
+    def _spans(matches):
+        return (match.span() for match in matches)
+
+    cleaned = _sub_spans(content, _tool_xml_blocks(content), _replace)
     if not calls:
         opener = next((m for m in _TOOL_XML_OPEN.finditer(content) if not quoted(m.start())), None)
         if opener:
@@ -286,9 +428,9 @@ def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str,
                 calls.extend(extracted)
                 cleaned = cleaned[: opener.start()]
     if not calls:
-        cleaned = _FUNCTION_XML.sub(_replace, content)
+        cleaned = _sub_spans(content, _spans(_bounded_finditer(_FUNCTION_XML, _FUNCTION_CLOSE, content)), _replace)
     if not calls:
-        cleaned = _INVOKE_XML.sub(_replace, content)
+        cleaned = _sub_spans(content, _spans(_bounded_finditer(_INVOKE_XML, _INVOKE_CLOSE, content)), _replace)
     return cleaned.strip(), calls
 
 

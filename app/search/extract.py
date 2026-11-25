@@ -826,10 +826,98 @@ def _collapse(text: str) -> str:
     return text.strip()
 
 
+# Lexbor's tree builder rescans the stack of open elements for many start
+# tags (a <div> looks for an open <p> in scope), so a page nested thousands
+# deep costs O(depth x tags) while holding the GIL: 400 KB of nested <div>
+# took 7 s. A linear pre-scan sums the open depth at every start tag (that
+# cost, ~2 ns a step) and refuses a page over budget before it is parsed;
+# real pages nest a few dozen deep, a 6 MB one costs well under 10M.
+HTML_MAX_WORK = 50_000_000
+HTML_MAX_DEPTH = 1_000
+_NO_NEST = frozenset({
+    # void
+    "area", "base", "basefont", "bgsound", "br", "col", "embed", "frame", "hr", "image", "img",
+    "input", "keygen", "link", "meta", "param", "source", "track", "wbr",
+    # end tag optional: the next sibling closes them
+    "p", "li", "dt", "dd", "option", "optgroup", "tr", "td", "th", "thead", "tbody", "tfoot",
+    "colgroup", "caption", "rb", "rp", "rt", "rtc", "html", "head", "body",
+})
+# End tags do not reach past these (HTML "has an element in scope").
+_SCOPE_FENCE = frozenset({"applet", "marquee", "object", "table", "template"})
+_RAW_TEXT_END = {
+    name: re.compile(rf"</{name}", re.I)
+    for name in ("script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes")
+}
+_SCAN_TAG = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9:-]*)[^>]*>|<!--")
+
+
+class PageTooComplex(ValueError):
+    pass
+
+
+def html_too_complex(raw: str) -> bool:
+    """Whether raw nests deeper than HTML_MAX_DEPTH or costs the tree builder
+    over HTML_MAX_WORK, by a linear walk over its tags with a model of the
+    open element stack (implied ends, scope fences, raw text, SVG
+    self-closing)."""
+    if raw.count("<") <= HTML_MAX_DEPTH:
+        return False
+    # No tag can close past the last ">": stopping there keeps each failed
+    # match from scanning on to the end of the page.
+    endpos = raw.rfind(">") + 1
+    stack: list[str] = []
+    where: dict[str, list[int]] = {}
+    fences: list[int] = []
+    work = pos = 0
+    while True:
+        tag = _SCAN_TAG.search(raw, pos, endpos)
+        if not tag:
+            return False
+        pos = tag.end()
+        if tag.group(2) is None:
+            end = raw.find("-->", pos)
+            if end < 0:
+                return False
+            pos = end + 3
+            continue
+        name = tag.group(2).lower()
+        if not tag.group(1):
+            work += len(stack)
+            if work > HTML_MAX_WORK:
+                return True
+        if name in _NO_NEST:
+            continue
+        if tag.group(1):
+            at = where.get(name)
+            if at and not (fences and fences[-1] > at[-1]):
+                top = at[-1]
+                while len(stack) > top:
+                    where[stack.pop()].pop()
+                    if fences and fences[-1] == len(stack):
+                        fences.pop()
+            continue
+        if tag.group(0).endswith("/>") and (name in ("svg", "math") or where.get("svg") or where.get("math")):
+            continue
+        if name in _RAW_TEXT_END:
+            end = _RAW_TEXT_END[name].search(raw, pos)
+            if not end:
+                return False
+            pos = end.start()
+            continue
+        if name in _SCOPE_FENCE:
+            fences.append(len(stack))
+        where.setdefault(name, []).append(len(stack))
+        stack.append(name)
+        if len(stack) > HTML_MAX_DEPTH:
+            return True
+
+
 def _clean_fragment(fragment: str) -> str:
     """Render HTML found inside structured data (JSON-LD articleBody)."""
     if "<" not in (fragment or ""):
         return _collapse(fragment or "")
+    if html_too_complex(fragment):
+        return ""
     tree = LexborHTMLParser(fragment)
     root = tree.body or tree.root
     if root is None:
@@ -840,6 +928,10 @@ def _clean_fragment(fragment: str) -> str:
 
 def _html_extract(raw: str, url: str) -> tuple[str, str, list[dict], dict[str, str], bool]:
     """(title, text, links, meta, structured) for an HTML document."""
+    if html_too_complex(raw):
+        raise PageTooComplex(
+            f"The page is too complex to read (its tags nest too deep for its size, or over {HTML_MAX_DEPTH} deep)."
+        )
     tree = LexborHTMLParser(raw)
     meta = _metadata(tree)
     title = meta.get("og_title") or meta.get("title") or ""

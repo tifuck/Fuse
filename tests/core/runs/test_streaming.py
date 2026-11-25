@@ -1,5 +1,9 @@
 """Streaming parse: deltas split across provider frames land intact in the
 stored reply, the reasoning, and the tool calls the executor receives."""
+import time
+
+import pytest
+
 from app import chat_output, chats
 from app.chat_generation import parsing
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
@@ -138,3 +142,54 @@ def test_named_tool_call_deltas_append_fragments_that_parse_alone():
 def test_text_tool_call_is_held_from_its_first_unclosed_opener():
     visible, held = parsing.drop_tool_xml('hi <tool_call>{"name": "a" <tool_call>{"name"')
     assert (visible, held) == ("hi ", '<tool_call>{"name": "a" <tool_call>{"name"')
+
+
+def test_a_long_text_tool_call_is_dropped_once_closed_and_text_after_it_shown():
+    call = '<tool_call>{"name": "read_file", "arguments": {"path": "' + "a" * 3000 + '"}}</tool_call>'
+    text = "Before " + call + " after `<tool_c" + "all>` quoted."
+    reply = _stream(*({"content": text[at:at + 16]} for at in range(0, len(text), 16)))
+    assert reply["content"] == "Before  after `<tool_call>` quoted."
+
+
+def test_a_held_tool_call_past_the_cap_is_shown_as_written(monkeypatch):
+    monkeypatch.setattr(chat_output, "_XML_HELD_MAX", 1_000)
+    text = "Hi <tool_call>" + "x" * 2_000
+    out = chat_output.Output({})
+    for at in range(0, len(text), 16):
+        out.apply({"choices": [{"delta": {"content": text[at:at + 16]}}]})
+    assert out.stored(light=True)["content"].startswith(text[:1_000])
+    out.apply({"choices": [{"delta": {"content": "</tool_call> done"}}]})
+    assert out.stored(light=True)["content"] == text + "</tool_call> done"
+
+
+def cpu_cost(work):
+    best = float("inf")
+    for _ in range(3):
+        started = time.thread_time()
+        work()
+        best = min(best, time.thread_time() - started)
+    return best
+
+
+@pytest.mark.parametrize("body", [
+    "x",
+    "<function=write_file><parameter=content>\n<p>a</p>\n",
+    "y</tool_call>",
+    "<tool_call>",
+    "<function=a>",
+])
+def test_streaming_and_parsing_a_long_text_tool_call_stay_linear(body):
+    # The held tail was rescanned on every chunk (40 KB took 2.5 s) and
+    # extract_text_tool_calls retried from every opener. Only the ratio is
+    # asserted: 8x the input costs ~8x when linear, ~64x when quadratic.
+    def stream(n):
+        text = "Hi.\n<tool_call>" + body * (n // len(body))
+        return lambda: _stream(*({"content": text[at:at + 16]} for at in range(0, len(text), 16)))
+
+    def parse(n):
+        text = "Hi.\n<tool_call>" + body * (n // len(body))
+        return lambda: (parsing.extract_text_tool_calls(text), parsing.drop_tool_xml(text))
+
+    for make in (stream, parse):
+        small, large = cpu_cost(make(12_500)), cpu_cost(make(100_000))
+        assert large < 24 * max(small, 0.002), f"8x input cost {large / max(small, 1e-9):.1f}x"

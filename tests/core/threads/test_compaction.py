@@ -310,3 +310,55 @@ def test_a_meter_write_keeps_a_pool_record_saved_after_its_read(fresh_db, monkey
 
     row = db.fetchone("SELECT compaction FROM chat_threads WHERE id=?", (chats.resolve_thread_pk(uid, thread),))
     assert context_compact.parse_state(row["compaction"])["pool"] == pool
+
+
+def _old_fit_summary_messages(messages, limit, *, tools=None, extra=0):
+    # The algorithm before per-row estimates, kept to check the result is the same.
+    rows = [dict(msg) for msg in messages]
+    budget = max(4_000, int(limit) - context_compact.config().output_reserve - 8_000
+                 - context_compact.estimate_tools(tools) - max(0, extra))
+    if context_meter.estimate_messages(rows) <= budget:
+        return rows
+    for index, msg in enumerate(rows):
+        if context_meter.estimate_messages(rows) <= budget:
+            break
+        if msg.get("role") != "tool":
+            continue
+        text = context_compact._plain_text(msg.get("content"))
+        if len(text) <= 800:
+            continue
+        cap = len(text)
+        while cap > 800 and context_meter.estimate_messages(rows) > budget:
+            cap = max(800, cap // 2)
+            rows[index] = {**msg, "content": context_compact._summary_span(text, cap)}
+            msg = rows[index]
+    if context_meter.estimate_messages(rows) > budget:
+        rows, _n = context_compact.clip_to_fit(rows, limit=budget, reserve=0)
+    return rows
+
+
+def _tool_transcript(count, size):
+    rows = [{"role": "system", "content": "sys"}]
+    for n in range(count):
+        rows += [{"role": "assistant", "content": "", "tool_calls": [
+                     {"id": f"c{n}", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]},
+                 {"role": "tool", "tool_call_id": f"c{n}", "content": f"file {n}\n" + "line of output " * size}]
+    return rows
+
+
+@pytest.mark.parametrize("count,size,limit", [(6, 2_000, 40_000), (12, 600, 30_000), (3, 50, 20_000), (4, 30_000, 20_000)])
+def test_summary_input_shrinks_old_tool_bodies_as_before(count, size, limit):
+    rows = _tool_transcript(count, size)
+    assert context_compact.fit_summary_messages(rows, limit) == _old_fit_summary_messages(rows, limit)
+
+
+def test_summary_input_estimates_each_row_a_bounded_number_of_times(monkeypatch):
+    # It re-estimated the whole transcript per row and per halving: 6k rows
+    # took 22 s. Each row is estimated once, plus once per halving of a body.
+    calls = []
+    real = context_compact.estimate_messages
+    monkeypatch.setattr(context_compact, "estimate_messages", lambda rows: calls.append(len(rows)) or real(rows))
+    rows = _tool_transcript(3_000, 200)
+    out = context_compact.fit_summary_messages(rows, 1_500_000)
+    assert out != rows, "bodies were shrunk"
+    assert sum(calls) < 4 * len(rows)
