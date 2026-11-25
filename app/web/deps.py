@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import logging
 import math
@@ -151,13 +152,43 @@ def render(request: Request, name: str, user=None, status_code: int = 200, **ext
     return resp
 
 
+_AUTH_ACCOUNT_WINDOW = 900
+
+
+def _auth_account_key(account: str) -> str:
+    return "auth-account:" + hashlib.sha256(account.strip().lower().encode()).hexdigest()
+
+
+def _auth_failure_key(request: Request) -> str:
+    ip = client_ip(request)
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return f"auth-fail:{ip}"
+    if addr.version == 6:
+        return f"auth-fail:{ipaddress.ip_network(f'{addr}/64', strict=False)}"
+    return f"auth-fail:{addr}"
+
+
 def _auth_limited(request: Request, account: str = "") -> bool:
-    """Per IP, and per account when one is named: guesses spread over many
-    addresses (or IPv6 /64 rotation) still hit the account's own budget."""
+    """Per IP, and per account when one is named: failed guesses spread over
+    many addresses still use up the account's own budget. Only failures count
+    (_auth_failed), and a full budget refuses only addresses (IPv6 by /64)
+    that failed themselves, so a stranger's guesses cannot lock the owner out."""
     if not limiter.allow(f"auth:{client_ip(request)}", settings.auth_rate_per_minute, 60):
         return True
-    account = account.strip().lower()
-    return bool(account) and not limiter.allow(f"auth-account:{account}", settings.auth_rate_per_minute * 3, 900)
+    if not account:
+        return False
+    budget = settings.auth_rate_per_minute * 3
+    return (limiter.retry_after(_auth_account_key(account), budget, _AUTH_ACCOUNT_WINDOW) > 0
+            and limiter.retry_after(_auth_failure_key(request), 1, _AUTH_ACCOUNT_WINDOW) > 0)
+
+
+def _auth_failed(request: Request, account: str = "") -> None:
+    """Record a wrong password against the address and the named account."""
+    limiter.allow(_auth_failure_key(request), 1, _AUTH_ACCOUNT_WINDOW)
+    if account:
+        limiter.allow(_auth_account_key(account), settings.auth_rate_per_minute * 3, _AUTH_ACCOUNT_WINDOW)
 
 
 def _public_base(request: Request) -> str:

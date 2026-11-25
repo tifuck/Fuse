@@ -11,7 +11,7 @@ from .database_errors import IntegrityError
 
 from . import db
 from .config import ROOT, settings
-from .crypto import DecryptionError, decrypt, encrypt, hash_password, verify_password
+from .crypto import DecryptionError, decrypt, encrypt, hash_password, password_needs_rehash, verify_password
 from .vault import VaultError, create_wrapped_dek, rewrap as vault_rewrap, unlock as vault_unlock
 
 logger = logging.getLogger(__name__)
@@ -289,7 +289,15 @@ def login(email: str, password: str):
     row = user_by_email(email)
     stored = row["password_hash"] if row else _dummy_hash()
     if not verify_password(password, stored) or not row:
+        if row and password_needs_rehash(stored):
+            # An old, cheaper hash must not time apart from an unknown email.
+            verify_password(password, _dummy_hash())
         return None
+    if password_needs_rehash(stored):
+        # The session fingerprint follows the hash, so return the row as stored.
+        db.execute("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?",
+                   (hash_password(password), row["id"], stored))
+        row = get_user(row["id"])
     return row
 
 
