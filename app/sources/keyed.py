@@ -107,6 +107,20 @@ def access_states(user_id: int) -> dict[str, dict]:
     return out
 
 
+def user_catalog(p, user_id: int | None) -> bool:
+    """True when this user's list is read with the key they route through:
+    the preset lists per key, or no site key reads a shared list."""
+    if not user_id:
+        return False
+    if p.per_key:
+        return True
+    return not db.fetchone_memo(
+        "SELECT c.id FROM credentials c JOIN sources s ON s.id=c.source_id"
+        " WHERE s.type=? AND c.donated_by IS NULL AND c.disabled=0 LIMIT 1",
+        (p.id,),
+    )
+
+
 def auth_headers(p, key: str) -> dict:
     headers = {"Content-Type": "application/json"}
     if p.auth == "x-api-key":
@@ -222,11 +236,10 @@ class KeyedSource(OpenAICompatSource):
         return auth_headers(self.preset, key)
 
     def catalog_creds(self) -> list:
-        """Keys the shared catalog may be read with: site keys first, then
-        personal ones (every key lists the same models unless the preset
-        says per_key)."""
-        site = [c for c in self.all_creds if c["donated_by"] is None]
-        return site + [c for c in self.all_creds if c["donated_by"] is not None]
+        """Keys the shared catalog may be read with: site keys only. A
+        personal key reads its owner's own list (user_catalog), never one
+        served to everyone."""
+        return [c for c in self.all_creds if c["donated_by"] is None]
 
     async def shared_models(self, stored: dict | None = None) -> list[str]:
         """The provider's catalog read with one working key, for every user
@@ -251,7 +264,7 @@ class KeyedSource(OpenAICompatSource):
         raise ValueError(f"{self.preset.label} catalog unavailable")
 
     async def models(self, *, user_id: int | None = None) -> list[str]:
-        if not (self.preset.per_key and user_id):
+        if not (user_id and (self.preset.per_key or not self.catalog_creds())):
             from ..providers import catalogs
 
             return await self.shared_models(catalogs.get(self.source_id))

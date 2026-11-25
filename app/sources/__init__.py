@@ -859,6 +859,8 @@ def _can_fetch(s: Source, spec) -> bool:
         return False
     if spec.catalog_keyless:
         return True
+    if hasattr(s, "catalog_creds"):
+        return bool(s.catalog_creds())
     return bool(getattr(s, "all_creds", None) or getattr(s, "creds", None))
 
 
