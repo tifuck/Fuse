@@ -1,7 +1,9 @@
 """APP_SECRET encryption of pool credentials, and the boot check that refuses
 to run with a key that cannot read them (a wrong key used to decrypt to
 nothing and write blank values back)."""
+import hashlib
 import json
+import os
 
 import pytest
 
@@ -119,8 +121,29 @@ def test_password_hashes_verify_only_the_right_password():
     stored = hash_password("password12")
     assert stored != hash_password("password12")  # salted
     assert verify_password("password12", stored)
+    assert stored.startswith("scrypt$131072$8$1$") and not crypto.password_needs_rehash(stored)
+    # Stored params past the current cost are refused, not run.
+    tampered = stored.replace("scrypt$131072$", "scrypt$1073741824$")
     for wrong, against in [("password13", stored), ("x" * 257, stored), ("password12", "garbage"),
-                           ("password12", "zz$zz")]:
+                           ("password12", "zz$zz"), ("password12", tampered)]:
         assert not verify_password(wrong, against)
     with pytest.raises(ValueError):
         hash_password("x" * 257)
+
+
+def test_an_old_hash_still_signs_in_and_is_rehashed_with_the_current_params(fresh_db):
+    from tests.core.helpers import quick_user
+
+    uid = quick_user("ada@core.test")
+    salt = os.urandom(16)
+    legacy = salt.hex() + "$" + hashlib.scrypt(b"password12", salt=salt, n=2**14, r=8, p=1, dklen=32).hex()
+    db.execute("UPDATE users SET password_hash=? WHERE id=?", (legacy, uid))
+    assert verify_password("password12", legacy) and crypto.password_needs_rehash(legacy)
+    # A wrong password leaves the old hash alone.
+    assert accounts.login("ada@core.test", "password13") is None
+    assert accounts.get_user(uid)["password_hash"] == legacy
+    user = accounts.login("ada@core.test", "password12")
+    stored = accounts.get_user(uid)["password_hash"]
+    assert stored.startswith("scrypt$131072$8$1$") and verify_password("password12", stored)
+    # The returned row is what is stored, so the new session's fingerprint holds.
+    assert user["password_hash"] == stored
