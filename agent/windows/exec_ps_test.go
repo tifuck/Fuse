@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -35,6 +37,79 @@ func TestStreamWriterKeepsSplitUTF8Whole(t *testing.T) {
 	_, _ = w.Write([]byte{0xff, 'x'})
 	if strings.Join(got, "") != "\xffx" || len(w.carry) != 0 {
 		t.Fatalf("invalid byte held: %q carry=%v", got, w.carry)
+	}
+}
+
+type slowWriter struct {
+	mu    sync.Mutex
+	delay time.Duration
+	got   []byte
+}
+
+func (w *slowWriter) Write(p []byte) (int, error) {
+	time.Sleep(w.delay)
+	w.mu.Lock()
+	w.got = append(w.got, p...)
+	w.mu.Unlock()
+	return len(p), nil
+}
+
+// Output whose copy waits on our own full result queue at exit is waited
+// for, not cut (exec's WaitDelay lost that tail); a pipe a background
+// process holds open, idle or busy, is still cut shortly after.
+func TestPipeCopyWaitsForQueueButCutsHeldPipe(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sw := &slowWriter{delay: 500 * time.Millisecond}
+	c := startCopy(r, sw)
+	_, _ = w.WriteString("tail")
+	w.Close()
+	time.Sleep(50 * time.Millisecond) // the copy is now inside the slow Write
+	if c.finish(100*time.Millisecond, time.Now().Add(time.Minute)) {
+		t.Fatal("copy blocked on the queue was cut")
+	}
+	if string(sw.got) != "tail" {
+		t.Fatalf("tail lost: %q", sw.got)
+	}
+
+	r, w, err = os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	c = startCopy(r, &slowWriter{})
+	start := time.Now()
+	if !c.finish(100*time.Millisecond, time.Now().Add(time.Minute)) {
+		t.Fatal("held pipe not reported cut")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("idle held pipe cut after %v", d)
+	}
+
+	r, w2, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w2.Close()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for !isStopped(stop) {
+			if _, err := w2.WriteString("log line\n"); err != nil {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	c = startCopy(r, &slowWriter{})
+	start = time.Now()
+	if !c.finish(100*time.Millisecond, time.Now().Add(time.Minute)) {
+		t.Fatal("busy held pipe not reported cut")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("busy held pipe cut after %v", d)
 	}
 }
 

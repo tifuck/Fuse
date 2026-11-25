@@ -258,6 +258,16 @@ func (s *session) sendResult(res jobRes) {
 	s.enqueueLocked(res)
 }
 
+// markOutputLost flags id's coming result truncated (sendResult).
+func (s *session) markOutputLost(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.droppedChunks == nil {
+		s.droppedChunks = make(map[string]bool)
+	}
+	s.droppedChunks[id] = true
+}
+
 // sendChunk waits for room like the C connector (the command blocks on its
 // pipe meanwhile), leaving streamReserve slots for terminal results. It
 // gives up - flagging the job's result truncated - once stop closes or
