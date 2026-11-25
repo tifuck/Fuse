@@ -16,6 +16,15 @@ HOME = "/home/dev"
 
 
 @pytest.fixture(autouse=True)
+def _unprivileged_run_code(monkeypatch):
+    """Tests run as an unprivileged user: run_code's worker has no uid to drop
+    to and would refuse every run (app/code_worker.py _confine)."""
+    from app import code_mode
+
+    monkeypatch.setattr(code_mode, "UNCONFINED", True)
+
+
+@pytest.fixture(autouse=True)
 def _clean_tool_state():
     """Process-wide tool state from an earlier test (jobs bound to a closed
     loop, cached SFTP clients, rate windows, a loop-bound semaphore)."""
