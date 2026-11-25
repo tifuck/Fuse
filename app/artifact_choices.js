@@ -127,6 +127,7 @@
 
   function currentIcon() {
     var p = project();
+    if (!state) return null;
     if (p.logo) return img(p.logo);
     return folder(p.color || "#8F978F");
   }
@@ -161,9 +162,11 @@
     button.setAttribute("aria-label", "Use " + what);
     var key = field + ":" + index;
     if (pending === key) button.setAttribute("aria-busy", "true");
-    button.disabled = !state || Boolean(pending) || Boolean(blocked(field));
+    // Until the chat answers (a frame that has just scrolled into view) the
+    // button looks ready and waits; with no chat at all it turns off.
+    button.disabled = (waited && !state) || Boolean(pending) || Boolean(blocked(field));
     button.addEventListener("click", function () {
-      if (!P || button.disabled) return;
+      if (!P || !state || button.disabled) return;
       pending = key;
       draw();
       P.postMessage({ fuseArtifact: 1, type: "choose", field: field, index: index }, "*");

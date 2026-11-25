@@ -407,6 +407,37 @@ async function openSteps(api, rows) {
   if (rows) await api.run(toggles('.chat-step:not(.is-console-group)'));
 }
 
+// --click-in 'FRAME|INNER': a real click on the first visible INNER inside the
+// first visible FRAME. An artifact page has an origin of its own, so page
+// script cannot reach into it; this asks the frame itself where INNER is.
+function frameIds(tree, url, out = []) {
+  if (tree.frame.url === url) out.push(tree.frame.id);
+  (tree.childFrames || []).forEach((child) => frameIds(child, url, out));
+  return out;
+}
+async function clickIn(api, value) {
+  const [outer, inner] = String(value).split('|');
+  if (!inner) api.bad("--click-in needs 'FRAME|INNER', e.g. '.chat-artifact-inline-frame|.cx-use'");
+  const frame = await api.run(`(() => { const f = ${api.PICK}(${JSON.stringify(outer)}); if (!f) return null;
+    f.scrollIntoView({ block: 'center' }); const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, src: f.src }; })()`);
+  if (!frame) throw new Error(`--click-in: nothing visible matches ${outer}`);
+  await api.sleep(1500);
+  const box = await api.run(`(() => { const f = ${api.PICK}(${JSON.stringify(outer)}); const r = f.getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
+  const { frameTree } = await api.send('Page.getFrameTree');
+  const [frameId] = frameIds(frameTree, frame.src);
+  if (!frameId) throw new Error(`--click-in: the frame ${outer} has not loaded`);
+  const { executionContextId } = await api.send('Page.createIsolatedWorld', { frameId, worldName: 'qa-click-in' });
+  const found = await api.send('Runtime.evaluate', { contextId: executionContextId, returnByValue: true, expression:
+    `(() => { const el = [...document.querySelectorAll(${JSON.stringify(inner)})].find((e) => e.getClientRects().length);
+      if (!el) return null; const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()` });
+  const at = found.result && found.result.value;
+  if (!at) throw new Error(`--click-in: nothing visible matches ${inner} inside ${outer}`);
+  const point = { x: box.x + at[0], y: box.y + at[1] };
+  await api.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+  await api.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+  await api.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
+}
+
 export default {
   help: join(ROOT, 'scripts', 'qa', 'shot.mjs'),
   base: 'https://127.0.0.1:8088',
@@ -417,6 +448,7 @@ export default {
   steps: {
     'open-groups': (api) => openSteps(api, false),
     'open-rows': (api) => openSteps(api, true),
+    'click-in:': clickIn,
   },
 
   configure(api) {

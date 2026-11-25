@@ -104,6 +104,9 @@
 //                       (its row, its menu): how to learn what to --shot
 //   --click CSS         click the first visible match; fails if something
 //                       else lies on top of it
+//   --click-in 'FRAME|CSS'  click CSS inside a frame (an artifact page, e.g.
+//                       '.chat-artifact-inline-frame|.cx-use'); page script
+//                       cannot reach into one
 //   --hover CSS         move the pointer onto it
 //   --type TEXT         type into whatever has focus (click it first)
 //   --key KEY           Enter, Escape, Tab, ArrowDown, a, Control+k ...
