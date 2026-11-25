@@ -11,6 +11,8 @@ import struct
 import zlib
 from typing import Any
 
+from ..proxy import UpstreamProtocolError
+
 
 CONNECT_COMPRESSED = 0x01
 CONNECT_END_STREAM = 0x02
@@ -120,13 +122,13 @@ class ProtoDecoder:
             if shift > 70:
                 break
         if self.strict:
-            raise ValueError("truncated protobuf varint")
+            raise UpstreamProtocolError("truncated protobuf varint")
         return result
 
     def _advance(self, n: int) -> int:
         start = self.pos
         if self.strict and start + n > len(self.bytes):
-            raise ValueError("protobuf field overruns its message")
+            raise UpstreamProtocolError("protobuf field overruns its message")
         self.pos = min(len(self.bytes), start + n)
         return start
 
@@ -172,12 +174,12 @@ def gunzip(data: bytes, *, cap: int = MAX_GUNZIP) -> bytes:
                     break
                 out.extend(chunk)
                 if len(out) > cap:
-                    raise ValueError("gzip payload exceeds decompression cap")
+                    raise UpstreamProtocolError("gzip payload exceeds decompression cap")
     except (OSError, EOFError, zlib.error) as exc:
         # Truncated (EOFError), bad header (BadGzipFile) or corrupt deflate
         # (zlib.error): one protocol error type, so every caller's
         # ValueError handling covers it.
-        raise ValueError(f"corrupt gzip payload ({type(exc).__name__})") from exc
+        raise UpstreamProtocolError(f"corrupt gzip payload ({type(exc).__name__})") from exc
     return bytes(out)
 
 
@@ -201,7 +203,7 @@ def iter_connect_frames(buf: bytes) -> tuple[list[tuple[int, bytes]], bytes]:
         flag = buf[pos]
         length = struct.unpack(">I", buf[pos + 1 : pos + 5])[0]
         if length > MAX_FRAME:
-            raise ValueError("connect frame too large")
+            raise UpstreamProtocolError("connect frame too large")
         if pos + 5 + length > len(buf):
             break
         payload = buf[pos + 5 : pos + 5 + length]

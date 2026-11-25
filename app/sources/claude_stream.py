@@ -13,16 +13,13 @@ import time
 
 import httpx
 
+from ..proxy import UpstreamProtocolError
 from .base import ALIVE_MARK, THINKING_MARK
 from .claude_catalog import fuse_id
 
 
 def _sse(obj: dict) -> bytes:
     return f"data: {json.dumps(obj, separators=(',', ':'))}\n\n".encode()
-
-
-class UpstreamProtocolError(ValueError):
-    pass
 
 
 SSE_EVENT_MAX = 32 * 1024 * 1024

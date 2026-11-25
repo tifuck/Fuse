@@ -12,7 +12,7 @@ import logging
 import time
 
 from ..chat_prompts import _text_of
-from ..proxy import merge_usage, usage_from_obj
+from ..proxy import UPSTREAM_STREAM_ERRORS, UpstreamProtocolError, merge_usage, usage_from_obj
 from ..sources.base import THINKING_MARK
 
 from .parsing import (
@@ -302,7 +302,7 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
             chunk = payload
             buf += chunk
             if len(buf) > 2_500_000:
-                raise ValueError("provider stream frame limit exceeded")
+                raise UpstreamProtocolError("provider stream frame limit exceeded")
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 if line.strip() == THINKING_MARK:
@@ -390,7 +390,10 @@ async def consume_round(result, user, src, upstream: str, requested: str, *, cod
     except TimeoutError as exc:
         if not error:
             error = _error_obj(502, {"error": {"message": _stall_message(exc), "fuse_kind": "stalled"}})
-    except Exception as exc:
+    except UPSTREAM_STREAM_ERRORS as exc:
+        # Anything else (this loop's own processing, the usage tap) is a
+        # Fuse bug: it propagates to the caller as a local error, never a
+        # resumable upstream failure retried as a paid round.
         logger.warning("Upstream stream read failed: %s", type(exc).__name__)
         if not error:
             # A socket read timeout is a silent stream; anything else broke it.

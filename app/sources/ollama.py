@@ -8,7 +8,7 @@ import httpx
 
 from .. import accounts, context_meter, db, model_caps
 from ..config import ROOT
-from ..proxy import UsageStream, usage_from_obj
+from ..proxy import UpstreamProtocolError, UsageStream, usage_from_obj
 from .base import ChatResult
 from .key_pool import KeyPool, NoAvailableKeyError
 from . import http_pool, ollama_access
@@ -778,9 +778,9 @@ async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | 
             try:
                 chunk = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError("upstream sent malformed stream JSON") from exc
+                raise UpstreamProtocolError("upstream sent malformed stream JSON") from exc
             if not isinstance(chunk, dict):
-                raise ValueError("upstream sent an invalid stream object")
+                raise UpstreamProtocolError("upstream sent an invalid stream object")
             if chunk.get("error"):
                 # Pass Ollama's own words on: a generic error reads as an
                 # interruption and is retried even when it cannot succeed.

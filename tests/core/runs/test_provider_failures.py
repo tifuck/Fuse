@@ -1,13 +1,15 @@
 """Provider failures mid-turn: transient ones re-run the same step (no
 duplicated text, no error on the reply), definitive ones fail the turn at
 once, and the retry budget is bounded."""
+import contextlib
 from unittest.mock import patch
 
 import httpx
 from fastapi import HTTPException
 
-from app import chat_runtime, chats
+from app import api, chat_runtime, chats
 from app.chat_generation.tool_runner import CheckpointFailed
+from app.proxy import UpstreamProtocolError
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, no_backoff, split_frames, status_provider, tool_thread
@@ -91,9 +93,9 @@ def test_midstream_drop_resumes_from_the_shown_text_without_repeating_it(fresh_d
 
 def test_a_malformed_frame_is_retried_but_a_fuse_error_is_not(fresh_db):
     uid = quick_user()
-    # A parser's ValueError for a malformed upstream frame is the provider's.
+    # A parser's protocol error for a malformed upstream frame is the provider's.
     with no_backoff(), fake_provider(
-        _dies_after("The answer is ", ValueError("upstream sent malformed SSE JSON")), text_frames("42."),
+        _dies_after("The answer is ", UpstreamProtocolError("upstream sent malformed SSE JSON")), text_frames("42."),
     ) as provider:
         _, run = run_async(run_turn(uid, "what is it?"))
     assert run["status"] == "completed" and len(provider.bodies) == 2
@@ -106,6 +108,21 @@ def test_a_malformed_frame_is_retried_but_a_fuse_error_is_not(fresh_db):
             _, run = run_async(run_turn(uid, "what is it?"))
         assert len(provider.bodies) == 1, type(exc).__name__
         assert run["status"] == "failed"
+
+
+def test_a_fuse_error_while_reading_the_stream_is_not_retried_as_the_providers(fresh_db):
+    uid = quick_user()
+    # A bug in a source adapter, and one in the usage tap around every stream.
+    for label, stream, tap in (
+        ("adapter", _dies_after("The answer is ", ValueError("unpacked the wrong field")), None),
+        ("tap", text_frames("42."), RuntimeError("usage tap bug")),
+    ):
+        with no_backoff(), fake_provider(stream, text_frames("42.")) as provider, \
+                patch.object(api, "usage_from_obj", side_effect=tap) if tap else contextlib.nullcontext():
+            thread_id, run = run_async(run_turn(uid, "what is it?"))
+        assert len(provider.bodies) == 1, label
+        assert run["status"] == "failed", label
+        assert "upstream stream failed" not in _reply(uid, thread_id)["error"], label
 
 
 def test_midstream_drop_inside_a_think_block_keeps_the_reasoning_out_of_the_reply(fresh_db):

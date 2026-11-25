@@ -165,7 +165,7 @@ def test_an_undecodable_frame_ends_the_stream_with_an_error_frame(pool, monkeypa
     with http(Upstream(msg("partial") + proto.connect_frame(b"\x0a\xff") + trailer()), monkeypatch):
         result, frames = chat(pool)
     assert text_of(frames) == "partial" and finish_of(frames) == []
-    assert frames[-1]["error"]["message"] == "upstream stream failed (ValueError)"
+    assert frames[-1]["error"]["message"] == "upstream stream failed (UpstreamProtocolError)"
     assert result.stream.usage["stream_status"] == "failed"
 
 

@@ -18,7 +18,7 @@ from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, p
 from .config import settings
 from .database_errors import is_lock_conflict
 from .providers.access import Access
-from .proxy import STREAM_STALLED, merge_usage, scrub_secrets, usage_from_obj
+from .proxy import STREAM_STALLED, UPSTREAM_STREAM_ERRORS, merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
 from .sources import (
     POOL_TYPES,
@@ -436,7 +436,7 @@ async def _tap(
         if not saw_done:
             request_status = "cancelled"
         raise
-    except Exception as exc:
+    except UPSTREAM_STREAM_ERRORS as exc:
         request_status = "failed"
         if not saw_done:
             error = {
@@ -448,6 +448,11 @@ async def _tap(
             }
             yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()
             yield b"data: [DONE]\n\n"
+    except Exception:
+        # Fuse's own bug (a source adapter, this wrapper): it propagates as a
+        # local error instead of reading as a resumable upstream failure.
+        request_status = "failed"
+        raise
     finally:
         if request_status == "success" and not saw_done:
             # A stream that never reached [DONE] was truncated or errored
