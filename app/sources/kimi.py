@@ -23,7 +23,7 @@ from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_fai
 from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, drop_cache_routing_fields
 from .token_store import (
-    dead_grant, expires_at, log_refresh_failures, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
+    dead_grant, expires_at, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
 )
 
 USAGE_TTL = 300
@@ -875,13 +875,13 @@ async def refresh_quota(cred, *, force: bool = False, parsed: dict | None = None
 
 
 async def refresh_pool_quota(*, force: bool = False) -> None:
-    rows = db.fetchall(
+    rows = await asyncio.to_thread(
+        db.fetchall,
         "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='kimi' AND c.disabled=0"
     )
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_quota(c, force=force) for c in rows), return_exceptions=True)
-    log_refresh_failures("Kimi quota refresh", rows, results)
+    await pool_refresh.sweep("kimi", rows, lambda c: refresh_quota(c, force=force), "Kimi quota refresh", ttl=USAGE_TTL, force=force)
 
 
 def _due_accounts(rows) -> tuple[list, list, list[float]]:
@@ -922,8 +922,7 @@ async def refresh_due(rows=None) -> bool:
     due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("kimi", rows, due_at)
     if due:
-        results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
-        log_refresh_failures("Kimi OAuth refresh", due, results)
+        await pool_refresh.each(due, refresh_one, "Kimi OAuth refresh", limit=pool_refresh.TOKEN_CONCURRENCY)
     return bool(due)
 
 

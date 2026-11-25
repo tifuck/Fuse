@@ -41,7 +41,6 @@ from .base import EFFORTS, ChatResult, map_effort
 from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
 from .pool_session import bind, drop_cache_routing_fields, lookup
-from .token_store import log_refresh_failures
 
 PUBLIC_PREFIX = "nanogpt/"
 SCOPE = "api.use models.read"
@@ -692,8 +691,7 @@ async def refresh_pool_usage(*, force: bool = False) -> None:
     )
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_usage(c, force=force) for c in rows), return_exceptions=True)
-    log_refresh_failures("NanoGPT usage refresh", rows, results)
+    await pool_refresh.sweep("nanogpt", rows, lambda c: refresh_usage(c, force=force), "NanoGPT usage refresh", ttl=USAGE_TTL, force=force)
 
 
 async def add_key(source_id: int, raw: str, donated_by: int, *, label: str = "") -> tuple[int | None, str]:

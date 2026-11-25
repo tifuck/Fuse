@@ -37,7 +37,7 @@ from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_fai
 from . import claude_thread, http_pool, pool_policy, pool_refresh
 from .pool_session import bind
 from .token_store import (
-    dead_grant, log_refresh_failures, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
+    dead_grant, oauth_reason, persist_rotated, reread, revoked_grant, shield_refresh,
 )
 
 from .claude_catalog import (
@@ -83,6 +83,8 @@ from .claude_stream import (
 )
 
 USAGE_TTL = 300
+# The profile (plan, email) changes rarely: a usage read refreshes it at most this often.
+PROFILE_TTL = 3600
 REFRESH_WINDOW = timedelta(minutes=5)
 _refresh_locks: dict[int, asyncio.Lock] = {}
 
@@ -461,7 +463,10 @@ async def refresh_quota(cred, *, force: bool = False) -> dict | None:
                     row = db.fetchone("SELECT * FROM credentials WHERE id=?", (cred["id"],))
                     extra = accounts.cred_extra(row)
         token = _bearer(row, extra)
-        profile, (parsed, err) = await asyncio.gather(fetch_profile(token), fetch_usage(token))
+        if creds.usage_fresh({"checked_at": billing.get("profile_at")}, PROFILE_TTL):
+            profile, (parsed, err) = None, await fetch_usage(token)
+        else:
+            profile, (parsed, err) = await asyncio.gather(fetch_profile(token), fetch_usage(token))
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if not profile and parsed is None:
             # Keep the last good figures; only the error and the check time change.
@@ -471,6 +476,7 @@ async def refresh_quota(cred, *, force: bool = False) -> dict | None:
         merged["checked_at"] = now
         if profile:
             merged.update(_profile_billing(profile))
+            merged["profile_at"] = now
         if parsed is not None:
             merged.update(parsed)
             merged["last_error"] = ""
@@ -610,12 +616,12 @@ async def refresh_one(cred) -> bool:
 
 
 async def refresh_pool_quota(*, force: bool = False) -> None:
-    rows = db.fetchall(
+    rows = await asyncio.to_thread(
+        db.fetchall,
         "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='claude' AND c.disabled=0"
     )
     if rows:
-        results = await asyncio.gather(*(refresh_quota(c, force=force) for c in rows), return_exceptions=True)
-        log_refresh_failures("Claude quota refresh", rows, results)
+        await pool_refresh.sweep("claude", rows, lambda c: refresh_quota(c, force=force), "Claude quota refresh", ttl=USAGE_TTL, force=force)
 
 
 def _due_accounts(rows) -> tuple[list, list, list[float]]:
@@ -655,8 +661,7 @@ async def refresh_due(rows=None) -> bool:
     due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("claude", rows, due_at)
     if due:
-        results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
-        log_refresh_failures("Claude OAuth refresh", due, results)
+        await pool_refresh.each(due, refresh_one, "Claude OAuth refresh", limit=pool_refresh.TOKEN_CONCURRENCY)
     return bool(due)
 
 

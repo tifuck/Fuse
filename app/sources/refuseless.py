@@ -24,11 +24,10 @@ from ..providers import creds
 from .. import accounts, db
 from ..crypto import DecryptionError, encrypt
 from ..proxy import UsageStream, openai_chat
-from . import http_pool, pool_policy
+from . import http_pool, pool_policy, pool_refresh
 from .base import EFFORTS, ChatResult, map_effort
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
 from .pool_session import bind, drop_cache_routing_fields, lookup
-from .token_store import log_refresh_failures
 
 BASE_URL = "https://api.refuseless.com/v1"
 PUBLIC_PREFIX = "refuseless/"
@@ -431,13 +430,13 @@ async def refresh_usage(cred, *, force: bool = False) -> dict | None:
 
 
 async def refresh_pool_usage(*, force: bool = False) -> None:
-    rows = db.fetchall(
+    rows = await asyncio.to_thread(
+        db.fetchall,
         "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='refuseless' AND c.disabled=0"
     )
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_usage(c, force=force) for c in rows), return_exceptions=True)
-    log_refresh_failures("Refuseless credits refresh", rows, results)
+    await pool_refresh.sweep("refuseless", rows, lambda c: refresh_usage(c, force=force), "Refuseless credits refresh", ttl=USAGE_TTL, force=force)
 
 
 async def add_key(source_id: int, raw: str, donated_by: int, *, label: str = "") -> tuple[int | None, str]:
