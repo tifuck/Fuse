@@ -410,6 +410,12 @@ def _is_home_marker(root: str) -> bool:
     return root in _HOME_MARKERS
 
 
+def _same_path(real: str, lexical: str, windows: bool) -> bool:
+    """A host-resolved path names the lexical one: exact on POSIX; on Windows
+    case and / vs \\ do not matter."""
+    return real == lexical or (windows and _norm(real, True) == _norm(lexical, True))
+
+
 def _under(path_n: str, root_n: str, windows: bool) -> bool:
     if not root_n:
         return False
@@ -835,13 +841,14 @@ def extract_shell_paths(command: str, cwd: str, windows: bool) -> list[tuple[str
     return resolved
 
 
-def _bare_shell_words(command: str, base: str) -> list[str]:
+def _bare_shell_words(command: str, base: str, windows: bool = False) -> list[str]:
     """Plain words extract_shell_paths does not list (`cat link`, `git status`),
     joined onto the directory they are read in (a cd moves it). Any of them may
     name a symlink that points out of the roots, so review probes where they
-    really resolve (POSIX hosts only)."""
+    really resolve."""
+    cds = ("cd", "pushd", "chdir", "sl", "set-location", "push-location") if windows else ("cd", "pushd")
     try:
-        tokens = _shell_tokens(_without_data_heredocs(str(command or "")), False)
+        tokens = _shell_tokens(_without_data_heredocs(str(command or "")), windows)
     except ValueError:
         return []
     out: list[str] = []
@@ -850,8 +857,8 @@ def _bare_shell_words(command: str, base: str) -> list[str]:
         next_base = base
         if after_cd and not (tok.startswith("-") and tok != "-"):
             after_cd = False
-            next_base = "~" if tok in (";", "&&", "||", "&", "|") else _resolve_for_scope(tok, base, False)
-        elif tok in ("cd", "pushd"):
+            next_base = "~" if tok in (";", "&&", "||", "&", "|") else _resolve_for_scope(tok, base, windows)
+        elif (tok.lower() if windows else tok) in cds:
             after_cd = True
         for piece in _REDIR_TOKENS.split(tok):
             piece = piece.strip("'\"")
@@ -861,9 +868,9 @@ def _bare_shell_words(command: str, base: str) -> list[str]:
                 piece = piece.split("=", 1)[1]
             for word in piece.split():
                 word = word.strip("'\"(){}[];,")
-                lexical = _resolve_for_scope(word, base, False, normalize=False)
+                lexical = _resolve_for_scope(word, base, windows, normalize=False)
                 if (word and word[0] not in "-+&|;" and "://" not in word and lexical not in out
-                        and not _token_paths(word, False)):
+                        and not _token_paths(word, windows)):
                     out.append(lexical)
         base = next_base
     return out
@@ -1963,11 +1970,11 @@ async def review(*, tool: str, args: dict, user_id: int,
         # `cat link` names no path, yet link may be a symlink out of the roots.
         # A plain word that does not resolve (`status`) is no file: it never asks.
         named = len(probe)
-        if realpath is not None and not windows and paths is not None:
-            for lexical in _bare_shell_words(command, base):
+        if realpath is not None and paths is not None:
+            for lexical in _bare_shell_words(command, base, windows):
                 if (lexical, False) not in probe:
                     probe.append((lexical, False))
-        if realpath is not None and not windows and probe:
+        if realpath is not None and probe:
             # As for file tools below: a symlink inside a root can point out
             # of it, and an unresolved target or root fails closed.
             reals = list(await realpath([p for p, _ in probe] + roots) or [])
@@ -1981,7 +1988,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                     unresolved.append(lexical)
                     reasons.append(f"cannot resolve where {lexical} points")
                     need = _path_grant("list_dir" if is_dir else "read_file", lexical, windows)
-                elif real == lexical:
+                elif _same_path(real, lexical, windows):
                     continue
                 else:
                     real_ok = _in_roots(real, real_roots, windows)
@@ -2019,7 +2026,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                 secret = True
                 reasons.append("secret-named file")
                 grant_kind, grant_value = "file", resolved
-        if realpath is not None and not windows:
+        if realpath is not None:
             reals = list(await realpath([resolved, *roots]) or [])
             real = reals[0] if reals else None
             real_roots = list(reals[1:])
@@ -2033,7 +2040,7 @@ async def review(*, tool: str, args: dict, user_id: int,
                 out_of_root = True
                 reasons.append(f"cannot resolve where {resolved} points")
                 grant_kind, grant_value = _path_grant(tool, resolved, windows)
-            elif real != resolved:
+            elif not _same_path(real, resolved, windows):
                 if not _in_roots(real, real_roots, windows):
                     in_roots = False
                     out_of_root = True

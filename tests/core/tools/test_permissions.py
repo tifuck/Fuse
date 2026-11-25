@@ -7,13 +7,16 @@ first read. "Would this ask?" is probed with an unattended gate, which denies
 exactly the calls that would raise a card.
 """
 import asyncio
+import base64
+import ntpath
 import posixpath
+import re
 import time
 from types import SimpleNamespace
 
 import pytest
 
-from app import db, permissions
+from app import db, permissions, workspace
 from tests.core.helpers import quick_user
 from tests.core.tools._support import CardUser, make_host, new_thread
 
@@ -478,6 +481,87 @@ def test_windows_paths_in_the_project_or_temp_do_not_ask(chat):
     assert not asks(chat, "run_terminal_command", command="Get-Content -Path:src\\a.txt", root=WIN_ROOT, windows=True)
     assert not asks(chat, "run_terminal_command", command="pwsh -ExecutionPolicy Bypass -File build.ps1",
                     root=WIN_ROOT, windows=True)
+
+
+def _win_host(links):
+    """A fake Windows realpath: %TEMP% and ~ expand, links (lowercase prefix ->
+    target) are followed, and the host answers in its own case."""
+    def realpath(paths):
+        async def resolve():
+            out = []
+            for p in paths:
+                p = "C:\\Users\\me\\AppData\\Local\\Temp" if p == "%TEMP%" else p
+                p = "C:\\Users\\me" + p[1:] if p[:1] == "~" else p
+                full = ntpath.normpath(p.replace("/", "\\"))
+                for link, target in links.items():
+                    if full.lower() == link or full.lower().startswith(link + "\\"):
+                        full = target + full[len(link):]
+                out.append(None if "unknown" in full.lower() else full.upper())
+            return out
+        return resolve()
+    return realpath
+
+
+def test_windows_a_junction_out_of_the_root_is_judged_by_its_target(chat):
+    realpath = _win_host({"c:\\proj\\node_modules\\pkg": "C:\\store\\pkg", "c:\\proj\\link": "C:\\Windows\\win.ini"})
+    win = {"root": WIN_ROOT, "windows": True, "realpath": realpath}
+
+    assert asks(chat, "write_file", path="node_modules\\pkg\\x.js", **win)
+    assert asks(chat, "read_file", path="C:/proj/Node_Modules/pkg/x.js", **win)
+    assert asks(chat, "run_terminal_command", command="Set-Content node_modules\\pkg\\x.js hi", **win)
+    assert asks(chat, "run_terminal_command", command="type link", **win)  # a bare word may be a junction
+    assert asks(chat, "run_terminal_command", command="cd node_modules; type pkg", **win)
+
+
+def test_windows_a_real_path_differing_only_in_case_or_slashes_does_not_ask(chat):
+    win = {"root": WIN_ROOT, "windows": True, "realpath": _win_host({})}
+
+    assert not asks(chat, "read_file", path="src/main.py", **win)
+    assert not asks(chat, "write_file", path="c:\\PROJ\\src\\a.txt", **win)
+    assert not asks(chat, "read_file", path="%TEMP%\\fuse\\x", **win)
+    assert not asks(chat, "run_terminal_command", command="Get-Content -Path:src/./a.txt", **win)
+    assert not asks(chat, "run_terminal_command", command="git status", cwd="src", **win)
+    assert not asks(chat, "run_terminal_command", command="cd node_modules; type pkg", **win)
+    assert not asks(chat, "read_file", path="~\\notes.txt", root="~", windows=True, realpath=_win_host({}))
+
+
+def test_windows_an_unresolvable_target_or_root_fails_closed(chat):
+    win = {"root": WIN_ROOT, "windows": True}
+
+    assert asks(chat, "read_file", path="unknown\\a.txt", realpath=_win_host({}), **win)
+    assert asks(chat, "run_terminal_command", command="type .\\unknown\\a.txt", realpath=_win_host({}), **win)
+    root_unknown = _win_host({"c:\\proj": "C:\\unknown"})
+    assert asks(chat, "read_file", path="src\\a.txt", realpath=root_unknown, **win)
+    assert asks(chat, "run_terminal_command", command="type link", realpath=root_unknown, **win)
+
+
+def test_windows_realpaths_send_paths_as_data_and_parse_crlf(chat, monkeypatch):
+    host = make_host(chat.uid, "win", auth_type="agent", agent_os="windows")
+    sent = []
+
+    async def run_remote(user_id, host_id, command, cwd, seconds, **kw):
+        sent.append(command)
+        return SimpleNamespace(stdout="banner\r\n__fuse_realpath__\r\nC:\\store\\pkg\r\n\r\nC:\\Users\\me\\AppData\\Local\\Temp\r\n")
+
+    monkeypatch.setattr(workspace, "_run_remote", run_remote)
+    paths = ["C:\\proj\\it's \u2019q\u2019 $(x)`", "~\\a", "%TEMP%"]
+
+    reals = asyncio.run(workspace._realpaths(chat.uid, host, paths))
+
+    assert reals == ["C:\\store\\pkg", None, "C:\\Users\\me\\AppData\\Local\\Temp"]
+    script = sent[0]
+    assert "readlink" not in script and "it's" not in script and "\u2019" not in script
+    data = re.search(r"foreach \(\$b in @\(([^)]*)\)\)", script).group(1)
+    assert [base64.b64decode(b.strip("'")).decode() for b in data.split(",")] == [
+        paths[0], "~\\a", permissions.WIN_TEMP_HOME]
+    assert "$out = @('__fuse_realpath__')" in script and "$hops -gt 40" in script
+
+    short = asyncio.run(workspace._realpaths(chat.uid, host, paths + ["C:\\x"]))
+    assert short[3] is None
+
+    sent.clear()
+    asyncio.run(workspace._realpaths(chat.uid, chat.host, ["/srv/app"]))
+    assert "readlink -m -- /srv/app" in sent[0]
 
 
 # -- ask records -----------------------------------------------------------

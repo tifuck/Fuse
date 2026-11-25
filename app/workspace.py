@@ -1168,9 +1168,76 @@ def _shell_path_arg(path: str) -> str:
     return shlex.quote(path)
 
 
+# readlink -m for Windows PowerShell 5.1: the absolute path is normalized the
+# way Win32 does (.., / and trailing dots, lexically), then walked left to
+# right; a symlink or junction replaces the prefix with its target (relative
+# symlinks against their parent, 40 hops at most) and the first missing
+# component ends the walk with the rest appended verbatim. Anything else
+# (another reparse type, a volume GUID or device target, ~name, an error)
+# prints an empty line: unresolved. Paths arrive as base64 UTF-8 data.
+_WIN_REALPATH_PS = r"""& {
+$fuseHome = $env:USERPROFILE
+function Resolve-FuseReal([string]$p) {
+    if ($p -eq '~') { $p = $fuseHome } elseif ($p -match '^~[\\/]') { $p = $fuseHome + '\' + $p.Substring(2) }
+    $hops = 0
+    try {
+        :walk while ($true) {
+            if ($p -notmatch '^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/?.])') { return $null }
+            $p = [IO.Path]::GetFullPath($p)
+            if ($p -match '^[A-Za-z]:\\') { $root = $p.Substring(0, 2) }
+            elseif ($p -match '^\\\\[^\\?.][^\\]*\\[^\\]+') { $root = $Matches[0] }
+            else { return $null }
+            $parts = @($p.Substring($root.Length).Split('\') | Where-Object { $_ })
+            $cur = $root
+            for ($i = 0; $i -lt $parts.Count; $i++) {
+                $next = $cur + '\' + $parts[$i]
+                try { $attr = [IO.File]::GetAttributes($next) } catch {
+                    $e = $_.Exception
+                    while ($e.InnerException) { $e = $e.InnerException }
+                    if ($e -is [IO.FileNotFoundException] -or $e -is [IO.DirectoryNotFoundException]) {
+                        return $cur + '\' + ($parts[$i..($parts.Count - 1)] -join '\')
+                    }
+                    return $null
+                }
+                if ($attr -band [IO.FileAttributes]::ReparsePoint) {
+                    $hops++
+                    if ($hops -gt 40) { return $null }
+                    $item = Get-Item -LiteralPath $next -Force -ErrorAction Stop
+                    $type = [string]$item.LinkType
+                    if ($type -ne 'SymbolicLink' -and $type -ne 'Junction') { return $null }
+                    $t = [string](@($item.Target)[0])
+                    $t = $t -replace '^(?:\\\\\?\\|\\\?\?\\)(?=[A-Za-z]:\\)', '' -replace '^(?:\\\\\?\\|\\\?\?\\)UNC\\', '\\'
+                    if ($t -match '^(?:[A-Za-z]:\\|\\\\[^\\?.])') { $p = $t }
+                    elseif ($type -eq 'SymbolicLink' -and $t -and $t -notmatch '^[\\/]|^[A-Za-z]:') { $p = $cur + '\' + $t }
+                    else { return $null }
+                    if ($i + 1 -lt $parts.Count) { $p = $p + '\' + ($parts[($i + 1)..($parts.Count - 1)] -join '\') }
+                    continue walk
+                }
+                $cur = $next
+            }
+            if ($parts.Count) { return $cur }
+            return $cur + '\'
+        }
+    } catch { return $null }
+}
+$out = @('__MARKER__')
+foreach ($b in @(__PATHS__)) {
+    try { $r = [string](Resolve-FuseReal ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)))) } catch { $r = '' }
+    if ($r -match '[\r\n]') { $r = '' }
+    $out += $r
+}
+[Console]::Out.Write(($out -join "`n") + "`n")
+[Console]::Out.Flush()
+}
+"""
+
+
 async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
     """Where each path really points on the host (symlinks followed), one
     round trip; None where it cannot be resolved. Never raises."""
+    from . import db
+    from .permissions import expand_temp
+
     marker = "__fuse_realpath__"
     script = f"printf '%s\\n' {marker}; " + "; ".join(
         # -m resolves through missing components (a write's new dirs) so a
@@ -1179,8 +1246,14 @@ async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
         for p in paths
     )
     try:
+        row = await asyncio.to_thread(
+            db.fetchone, "SELECT agent_os FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+        if row and _is_windows_row(row):
+            data = ",".join(
+                "'" + base64.b64encode(expand_temp(p, True).encode("utf-8")).decode("ascii") + "'" for p in paths)
+            script = _WIN_REALPATH_PS.replace("__MARKER__", marker).replace("__PATHS__", data)
         res = await _run_remote(user_id, host_id, script, "", 10, rate=False, login=False)
-        out = str(res.stdout or "")
+        out = str(res.stdout or "").replace("\r\n", "\n")
         # Login shells may print banners first; only what follows the marker counts.
         lines = out.split(marker + "\n", 1)[1].split("\n") if marker + "\n" in out else []
     except Exception:
