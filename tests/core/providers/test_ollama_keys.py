@@ -81,6 +81,34 @@ def test_a_rejected_personal_key_falls_back_to_the_site_keys(fresh_db, upstream)
     assert _bearers(upstream) == ["Bearer ollama-alice-key", "Bearer ollama-site-key"]
 
 
+async def _unread(body):
+    yield body
+
+
+@pytest.mark.parametrize("status,error,expected", [
+    (429, {"error": "too many requests"}, {"error": "too many requests"}),
+    (403, {"error": "this model requires a subscription"}, {"error": "This model requires a paid Ollama Cloud plan"}),
+])
+def test_a_personal_key_error_keeps_its_status_body_and_retry_after(fresh_db, upstream, status, error, expected):
+    sid, alice, _bob = _world("none")
+    # A streamed body, unread until the error branch reads it.
+    upstream.on("POST", "ollama.test/api/chat", lambda request: httpx.Response(
+        status, headers={"retry-after": "7"}, content=_unread(json.dumps(error).encode())))
+    result = _chat(sid, alice)
+    assert (result.status, result.body, result.response_headers) == (status, expected, {"Retry-After": "7"})
+
+
+def test_site_key_rotations_before_a_read_timeout_are_still_billed(fresh_db, upstream):
+    sid = source("ollama", BASE)
+    uid = quick_user()
+    key(sid, "ollama-site-key-1")
+    key(sid, "ollama-site-key-2")
+    upstream.on("POST", "ollama.test/api/chat", httpx.Response(429, json={"error": "too many requests"}),
+                httpx.ReadTimeout("slow"))
+    result = _chat(sid, uid)
+    assert result.status == 504 and [a["status"] for a in result.attempts] == [429]
+
+
 @pytest.mark.parametrize("stream", [False, True])
 def test_a_rate_limited_site_key_is_recorded_beside_the_answer_from_the_next(fresh_db, upstream, stream):
     sid = source("ollama", BASE)
