@@ -1029,6 +1029,6 @@ class NanoGPTSource:
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid)), credential_id=cid, model=model)
+        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid), cleanup=(stream.aclose,)), credential_id=cid, model=model)
         result.attempts = attempts
         return result

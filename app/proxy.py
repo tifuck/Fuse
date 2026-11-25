@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import math
 import re
@@ -9,6 +10,10 @@ import httpx
 
 
 _MAX_USAGE_VALUE = 9_000_000_000_000_000
+
+# Cancel message for a stream read abandoned because the upstream went silent:
+# the request failed, it was not cancelled by the client.
+STREAM_STALLED = "fuse: upstream stream stalled"
 
 _SECRET_PATTERNS = (
     (re.compile(r"sk-[A-Za-z0-9_-]{8,}"), "sk-***"),
@@ -218,13 +223,17 @@ class UsageStream:
     reject arbitrary attributes, so ChatResult.stream cannot hang usage on gen itself.
     """
 
-    def __init__(self, agen, usage: dict, on_close=None, hints: dict | None = None):
+    def __init__(self, agen, usage: dict, on_close=None, hints: dict | None = None, cleanup=()):
         self._agen = agen
         self.usage = usage
         # Live non-usage signals from a translating source, e.g. the name of a
         # tool call it is still assembling ("tool_call"). Never billed.
         self.hints = hints if hints is not None else {}
         self._on_close = on_close
+        # Async closers for what agen's finally releases (the upstream
+        # response, an inner stream). A generator closed before its first
+        # chunk never runs its finally, so aclose() runs these instead.
+        self._cleanup = cleanup
         self._closed = False
 
     def __aiter__(self):
@@ -248,9 +257,15 @@ class UsageStream:
 
     async def aclose(self):
         try:
+            unstarted = (inspect.isasyncgen(self._agen)
+                         and inspect.getasyncgenstate(self._agen) == inspect.AGEN_CREATED)
             close = getattr(self._agen, "aclose", None)
             if close is not None:
                 await close()
+            if unstarted:
+                for close in self._cleanup:
+                    if close is not None:
+                        await close()
         finally:
             await self._finish()
 
@@ -392,6 +407,11 @@ async def openai_chat(
 
         collected: dict = {}
 
+        async def close_upstream() -> None:
+            await resp.aclose()
+            if close_client:
+                await client.aclose()
+
         async def gen() -> AsyncIterator[bytes]:
             buf = b""
 
@@ -440,13 +460,11 @@ async def openai_chat(
                 if collected.get("stream_status") != "complete":
                     collected["stream_status"] = "failed"
             finally:
-                await resp.aclose()
-                if close_client:
-                    await client.aclose()
+                await close_upstream()
 
         # Same dict the generator mutates. Pool sources wrap this for sticky
         # cache routing; returning {} here dropped stream usage and skipped bind.
-        return 200, None, UsageStream(gen(), collected), collected, {}
+        return 200, None, UsageStream(gen(), collected, cleanup=(close_upstream,)), collected, {}
 
     try:
         content = await asyncio.to_thread(_json_body, payload)

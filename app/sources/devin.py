@@ -742,7 +742,8 @@ class DevinSource:
             hints: dict = {}
             result = ChatResult(
                 status=200,
-                stream=_stream_sse(resp, collected, model, model_uid, hints),
+                stream=UsageStream(_stream_sse(resp, collected, model, model_uid, hints), collected,
+                                   cleanup=(resp.aclose,)),
                 usage=collected,
                 credential_id=cred["id"],
                 model=model,
@@ -804,7 +805,8 @@ class DevinSource:
                         limit=quota_hit or limited,
                     )
 
-        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), hints=hints)
+        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), hints=hints,
+                              cleanup=(stream.aclose,))
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=model)
         result.attempts = attempts
         return result
