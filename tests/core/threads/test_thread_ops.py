@@ -62,6 +62,26 @@ def test_delete_cancels_live_runs_and_publishes_the_public_id(fresh_db):
     assert published[-1]["thread_id"] == thread["id"]
 
 
+def test_a_failed_cleanup_after_the_delete_neither_skips_the_rest_nor_fails_the_delete(fresh_db, monkeypatch):
+    from app import chat_runs
+
+    uid = quick_user()
+    thread = chats.create_thread(uid, model="offline")
+    chat_store.start_turn(uid, thread["id"], "busy", thread["revision"], None)
+    numeric = pk(uid, thread["id"])
+
+    def broken(_run_id):
+        raise RuntimeError("worker table busy")
+
+    stopped = []
+    monkeypatch.setattr(chat_runs, "cancel", broken)
+    monkeypatch.setattr(command_jobs, "cancel_thread", lambda uid, tid: stopped.append((uid, tid)))
+
+    assert chats.delete_thread(uid, thread["id"]) is True
+    assert chats.get_thread(uid, thread["id"]) is None
+    assert stopped == [(uid, numeric)]
+
+
 def test_deleting_a_chat_or_project_deletes_its_command_jobs_and_events(fresh_db):
     uid = make_user()
     host = make_host(uid)

@@ -7,6 +7,7 @@ subagent's result never surfaces in the main agent's thread. Runners are
 scripted (tests.core.tools._support.ScriptedRunner); the rest is real.
 """
 import asyncio
+import contextlib
 
 import pytest
 
@@ -316,6 +317,72 @@ def test_deleting_a_thread_stops_its_commands_and_monitors_only(fresh_db, wakes)
     command, watch, right_after = run_async(body())
     assert right_after == ("cancelling", "cancelling", "running")
     assert command["status"] == "cancelled" and watch["status"] == "cancelled"
+
+
+def test_the_wake_sweep_stops_jobs_whose_thread_was_deleted_without_them(fresh_db, wakes):
+    uid = quick_user()
+    _, tid = new_thread(uid)
+    _, other_tid = new_thread(uid)
+
+    async def body():
+        runners = [ScriptedRunner() for _ in range(2)]
+        orphan = await launch(uid, runners[0], thread_id=tid, kind="monitor", description="d", command="tail -f x")
+        kept = await launch(uid, runners[1], thread_id=other_tid)
+        # A delete whose cancel_thread never ran.
+        db.execute("DELETE FROM chat_threads WHERE id=?", (tid,))
+        await asyncio.to_thread(command_jobs.pending_wake_threads)
+        await wait_until_async(lambda: orphan["status"] != "running")
+        right_after = (orphan["status"], kept["status"])
+        for runner in runners:
+            runner.release()
+        for rec in (orphan, kept):
+            await settled(rec)
+        return orphan, right_after
+
+    orphan, right_after = run_async(body())
+    assert right_after[0] in ("cancelling", "cancelled") and right_after[1] == "running"
+    assert orphan["status"] == "cancelled"
+
+
+def test_a_kill_whose_database_write_fails_never_raises(fresh_db, monkeypatch):
+    uid = quick_user()
+    job_id = "stalljob0001"
+    db.execute(
+        "INSERT INTO command_jobs (id,user_id,host_id,host,command,cwd,background,timeout_ms,status,created_at,started_at)"
+        " VALUES (?,?,1,'box','make','/srv',1,60000,'running',?,?)",
+        (job_id, uid, db.now(), db.now()),
+    )
+    command_jobs.ensure_schema()
+    real_tx, failed = db.tx, []
+
+    class Refusing:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+        def execute(self, sql, *args):
+            if "status='cancelling'" in sql:
+                failed.append(sql)
+                raise RuntimeError("database unavailable")
+            return self.conn.execute(sql, *args)
+
+    @contextlib.contextmanager
+    def refusing_tx():
+        with real_tx() as conn:
+            yield Refusing(conn)
+
+    monkeypatch.setattr(command_jobs.db, "tx", refusing_tx)
+
+    async def on_the_loop():
+        _, trace = command_jobs.kill(job_id, uid)
+        await wait_until_async(lambda: failed)
+        return trace
+
+    # On the loop the write is off it; off any loop it runs inline. Neither raises.
+    assert asyncio.run(on_the_loop())["state"] == "cancelling"
+    assert command_jobs.kill(job_id, uid)[1]["state"] == "cancelling" and len(failed) == 2
 
 
 def test_jobs_are_scoped_to_their_owner_and_thread(fresh_db):
