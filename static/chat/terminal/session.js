@@ -29,10 +29,15 @@ export function createSession(info, deps) {
   term.loadAddon(new xt.WebLinksAddon((_event, uri) => openLink(uri)));
   // OSC 52: a program may set the clipboard, never read it. The provider
   // answers reads with nothing, and the handler below (asked first) swallows
-  // the read request so no reply goes out at all.
+  // the read request so no reply goes out at all. A write asks first: output
+  // (a `cat` of any file) could otherwise swap the clipboard for a command.
   term.loadAddon(new xt.ClipboardAddon(undefined, {
     readText: () => "",
-    writeText: (_selection, text) => { navigator.clipboard?.writeText(text).catch(() => {}); },
+    writeText: async (_selection, text) => {
+      const preview = text.length > 200 ? text.slice(0, 200) + "…" : text;
+      if (!text || !(await window.fuseConfirm(`A program in the terminal wants to copy this to your clipboard:\n\n${preview}`, { confirmLabel: "Copy" }))) return;
+      navigator.clipboard?.writeText(text).catch(() => {});
+    },
   }));
   term.parser.registerOscHandler(52, (data) => data.split(";")[1] === "?");
   term.open(screen);

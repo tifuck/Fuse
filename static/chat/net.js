@@ -201,7 +201,7 @@ export function createNet(ctx) {
     if (signal?.aborted) throw signal.reason;
     // Errors, redirects to sign-in and interrupted streams take the ordinary
     // request path so they surface exactly as before.
-    return unpackThread(await api("/chat/threads/" + id + "?pack=1" + queued, { signal }));
+    return unpackThread(await api("/chat/threads/" + encodeURIComponent(id) + "?pack=1" + queued, { signal }));
   }
 
     function isLive() {

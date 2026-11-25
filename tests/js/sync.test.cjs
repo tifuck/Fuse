@@ -408,3 +408,15 @@ test('the what\'s-new notice splits each change into its area and the change', (
   ]);
   assert.deepEqual(changeRows(''), []);
 });
+
+test('a corrupt or id-less queue record is dropped; the rest of the queue still reads', () => {
+  localStorage.clear();
+  const key = 'fuse.chat.queue.c.item.';
+  localStorage.setItem(key + 'a', JSON.stringify({ id: 'a', text: 'first', created: 1 }));
+  localStorage.setItem(key + 'bad', '{not json');
+  localStorage.setItem(key + 'n', JSON.stringify({ id: 7, text: 'numeric id', created: 2 }));
+  localStorage.setItem(key + 'b', JSON.stringify({ id: 'b', text: 'second', created: 3 }));
+  assert.deepEqual(readQueue('c').map((item) => item.id), ['a', 'b']);
+  localStorage.setItem('fuse.chat.queue.d', '[{');
+  assert.deepEqual(readQueue('d'), [], 'a corrupt legacy list reads as empty');
+});

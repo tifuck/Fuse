@@ -22,7 +22,7 @@ import { createDictation } from './chat/dictation.js';
 import { createHostStats } from './chat/hoststats.js';
 import { createTerminal } from './chat/terminal.js';
 import { bindPool, placePool } from './chat/poolbadge.js';
-import { parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
+import { linkMisleads, parseBlocks, parseInline, stableBoundary } from './chat/markdown.js';
 import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
 
 // Composition root. Everything that remains here is irreducible orchestration:
@@ -818,6 +818,16 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     const open = !turn.classList.contains("is-open");
     turn.classList.toggle("is-open", open);
     autoToggle.setAttribute("aria-expanded", String(open));
+  });
+
+    // A link whose text shows another site than it opens
+  // (`[https://github.com/x](https://evil.example)`) asks first, as terminal
+  // and artifact links do.
+  S.root.addEventListener("click", async (event) => {
+    const link = event.target.closest("a[href][target=_blank]");
+    if (!link || !linkMisleads(link.textContent, link.href)) return;
+    event.preventDefault();
+    if (await window.fuseConfirm(`Open this link?\n${link.href}`, { confirmLabel: "Open" })) window.open(link.href, "_blank", "noopener,noreferrer");
   });
 
     // Fuse Desktop's WebContentsView has no OS link menu, and a shipped binary
