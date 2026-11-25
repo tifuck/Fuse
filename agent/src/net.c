@@ -230,14 +230,20 @@ int tls_connect(struct tls *t, const struct url *u) {
     hints.ai_family = AF_UNSPEC;
     if (getaddrinfo(u->host, port, &hints, &res) != 0) return -1;
     int fd = -1;
-    for (rp = res; rp; rp = rp->ai_next) {
-        fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
-        if (fd < 0) continue;
-        set_nonblock(fd, 1);
-        tune_sock(fd);
-        if (connect_timeout(fd, rp->ai_addr, rp->ai_addrlen, CONNECT_TIMEOUT_MS) == 0) break;
-        close(fd);
-        fd = -1;
+    /* With several addresses, a quick pass first: a blackholed IPv6 route
+     * otherwise cost the full timeout on every reconnect. Then the full
+     * timeout for a slow link. */
+    for (int pass = res && res->ai_next ? 0 : 1; fd < 0 && pass < 2; pass++) {
+        int timeout_ms = pass ? CONNECT_TIMEOUT_MS : CONNECT_FAST_MS;
+        for (rp = res; rp; rp = rp->ai_next) {
+            fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
+            if (fd < 0) continue;
+            set_nonblock(fd, 1);
+            tune_sock(fd);
+            if (connect_timeout(fd, rp->ai_addr, rp->ai_addrlen, timeout_ms) == 0) break;
+            close(fd);
+            fd = -1;
+        }
     }
     freeaddrinfo(res);
     if (fd < 0) return -1;

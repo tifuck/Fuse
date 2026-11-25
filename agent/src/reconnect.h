@@ -10,6 +10,8 @@
 #define SUSPEND_GAP_MS 2000
 #define BACKOFF_CAP_MS 15000
 #define CONNECT_TIMEOUT_MS 10000
+/* First pass over several resolved addresses (see tls_connect). */
+#define CONNECT_FAST_MS 500
 /* Overridable so tests can exercise the write deadlines in milliseconds. */
 #ifndef IO_TIMEOUT_MS
 #define IO_TIMEOUT_MS 10000
