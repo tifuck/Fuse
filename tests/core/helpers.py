@@ -44,6 +44,15 @@ def run_async(coro):
         try:
             return await coro
         finally:
+            # A foreground join answers before the job's terminal row is
+            # saved; a live server keeps saving it, so let it land here too.
+            from app import command_jobs
+
+            saving = [rec["future"] for rec in list(command_jobs._live.values())
+                      if rec.get("settled") is not None and rec["settled"].done() and not rec["future"].done()
+                      and rec["future"].get_loop() is asyncio.get_running_loop()]
+            if saving:
+                await asyncio.wait(saving, timeout=5)
             await chat_runs.stop()
             chat_runs._stopping = False
             current = asyncio.current_task()

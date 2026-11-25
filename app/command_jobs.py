@@ -343,6 +343,9 @@ def _start_rec(
         rec["notify"] = True
     loop = asyncio.get_running_loop()
     rec["future"] = loop.create_future()
+    # Set once the terminal state is in memory, before it is saved: a
+    # foreground join need not wait on the writes to answer the model.
+    rec["settled"] = loop.create_future()
     rec["task"] = asyncio.create_task(_supervise(rec, runner))
     rec["task"].add_done_callback(lambda task: _cancelled_before_start(rec, task))
     _live[job_id] = rec
@@ -761,6 +764,9 @@ def _apply_finish(rec: dict, *, status: str, exit_code: int | None, error: str) 
             "out": (rec.get("out") or "")[-OUT_TAIL_CHARS:],
         }
     )
+    settled = rec.get("settled")
+    if settled is not None and not settled.done():
+        settled.set_result(status)
 
 
 def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str, duration: int) -> bool:
@@ -772,7 +778,7 @@ def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str
             conn.execute(
                 "UPDATE command_jobs SET status=?, exit_code=?, error=?, `out`=?, out_bytes=?,"
                 " duration_ms=?, finished_at=?, out_chars=?, output_incomplete=?, termination_confirmed=?,"
-                " event_count=?, max_events=?"
+                " event_count=?, max_events=?, background=?"
                 " WHERE id=? AND status IN ('running','cancelling','cancelled')",
                 (
                     status,
@@ -787,6 +793,7 @@ def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str
                     rec.get("termination_confirmed"),
                     int(rec.get("event_count") or 0),
                     int(rec.get("max_events") or 1),
+                    int(bool(rec.get("background"))),
                     rec["id"],
                 ),
             )
@@ -815,6 +822,9 @@ PERSIST_RETRY_DELAYS = (1.0, 3.0, 10.0, 30.0)
 
 
 async def _persist_terminal(rec: dict, *, status: str, exit_code: int | None, error: str) -> None:
+    # A foreground join may already have answered from memory (settled):
+    # until this saves, the record is the only terminal copy, so never prune it.
+    rec["unpersisted"] = True
     # Through a worker thread so the loop never blocks on the pool.
     for delay in (*PERSIST_RETRY_DELAYS, None):
         if await asyncio.to_thread(
@@ -1200,15 +1210,9 @@ def mark_notified(rec: dict) -> None:
     rec["notify"] = True
     ensure_schema()
     with db.tx() as conn:
-        conn.execute("UPDATE command_jobs SET notify=1 WHERE id=?", (str(rec["id"]),))
-
-
-def mark_background(rec: dict) -> None:
-    """A foreground command handed off past the wait window runs as background."""
-    rec["background"] = True
-    ensure_schema()
-    with db.tx() as conn:
-        conn.execute("UPDATE command_jobs SET background=1 WHERE id=?", (str(rec["id"]),))
+        # Also saves a move to the background (arm_background, on the loop).
+        conn.execute("UPDATE command_jobs SET notify=1, background=? WHERE id=?",
+                     (int(bool(rec.get("background"))), str(rec["id"])))
 
 
 def arm_background(rec: dict, limit_ms: int = BACKGROUND_DEFAULT_MS) -> None:
@@ -1226,7 +1230,6 @@ def arm_background(rec: dict, limit_ms: int = BACKGROUND_DEFAULT_MS) -> None:
             when = None
         if when is not None and (deadline.when() is None or when < deadline.when()):
             deadline.reschedule(when)
-    mark_background(rec)
 
 
 _NOT_FOUND = "job not found (command jobs only; if this is a subagent id, use get_subagent_output)"
@@ -1234,6 +1237,8 @@ _NOT_FOUND = "job not found (command jobs only; if this is a subagent id, use ge
 
 def _acknowledge(rec: dict) -> None:
     """An inline terminal receipt supersedes automatic delivery."""
+    if not rec.get("notify"):
+        return  # never queued nor woken for: nothing to supersede
     run_id = rec.get("run_id")
     if run_id:
         try:
@@ -1265,7 +1270,9 @@ async def join(job_id: str, user_id: int, wait_s: float, *, thread_id=None, run_
     wait_for = 0.0 if inspect_only else wait_s
     arrival = ""
     if rec.get("status") not in TERMINAL and wait_for > 0:
-        fut = rec.get("future")
+        # A job nothing will deliver is answered from memory; one that may
+        # be delivered waits for that, so the join can supersede it.
+        fut = rec.get("future") if rec.get("notify") else rec.get("settled") or rec.get("future")
         if fut is not None and not fut.done():
             from . import run_inbox
 
@@ -1276,7 +1283,8 @@ async def join(job_id: str, user_id: int, wait_s: float, *, thread_id=None, run_
             )
     if rec.get("status") in TERMINAL:
         # An explicit join is a delivery; suppress the automatic notification.
-        _acknowledge(rec)
+        if rec.get("notify"):
+            await asyncio.to_thread(_acknowledge, rec)
         return render(rec, tool="get_command_output")
     text, trace = render(rec, tool="get_command_output")
     if inspect_only and wait_s > 0:

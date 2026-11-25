@@ -452,6 +452,42 @@ def test_held_jobs_fail_when_the_connector_does_not_return_in_time(box):
     run_async(body())
 
 
+def test_a_new_call_during_a_hold_waits_no_longer_than_its_own_timeout(box):
+    uid, hid, token = box
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        parked = asyncio.create_task(agent_hub.call(uid, hid, "exec", {}, timeout=3600))
+        await wait_until_async(lambda: ws.jobs())
+        await _hang_up(ws, task)
+        assert (uid, hid) in agent_hub._held
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(AgentError, match="offline"):
+            await agent_hub.call(uid, hid, "read", {}, timeout=1)
+        assert asyncio.get_running_loop().time() - started < 3
+        parked.cancel()
+        await asyncio.gather(parked, return_exceptions=True)
+
+    run_async(body())
+
+
+def test_output_of_an_exec_no_call_owns_is_cancelled_once(box):
+    uid, hid, token = box
+
+    async def body():
+        ws, task = await _connect(uid, hid, token)
+        # Fuse restarted under a running exec: its chunks reach a new session.
+        for _ in range(3):
+            ws.inbox.put_nowait(_chunk("0123456789ab", "still running"))
+        await wait_until_async(lambda: ws.cancels() == ["0123456789ab"])
+        await wait_until_async(lambda: ws.inbox.empty())
+        await asyncio.sleep(0.01)
+        assert ws.cancels() == ["0123456789ab"]
+        await _hang_up(ws, task)
+
+    run_async(body())
+
+
 # -- live stats ----------------------------------------------------------------
 
 def _stat_toggles(ws):
