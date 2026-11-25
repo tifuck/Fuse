@@ -364,6 +364,20 @@ def test_completions_reuse_one_client_per_event_loop(upstream):
     assert len(upstream.requests) == 4
 
 
+def test_the_shared_client_never_carries_one_accounts_cookie_to_the_next(upstream):
+    upstream.on("POST", "/chat/completions",
+                httpx.Response(200, json=completion(), headers={"set-cookie": "session=account-a; Path=/"}))
+
+    async def two_accounts():
+        client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
+        for secret in ("sk-account-a", "sk-account-b"):
+            status, *_rest = await openai_chat(client, URL, {"Authorization": f"Bearer {secret}"},
+                                               {"model": "m", "messages": []})
+            assert status == 200
+
+    asyncio.run(two_accounts())
+    assert [h.get("cookie") for h in upstream.headers("/chat/completions")] == [None, None]
+
 
 @pytest.mark.parametrize("stream", [False, True])
 def test_the_request_goes_out_as_the_same_bytes_and_headers_json_would_send(upstream, stream):

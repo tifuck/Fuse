@@ -155,7 +155,9 @@ def _auth_client(timeout: float = 20) -> httpx.AsyncClient:
     per_loop = _auth_clients.setdefault(asyncio.get_running_loop(), {})
     found = per_loop.get((proxy, timeout))
     if found is None or found.is_closed:
-        found = per_loop[(proxy, timeout)] = httpx.AsyncClient(timeout=timeout, proxy=proxy)
+        found = per_loop[(proxy, timeout)] = httpx.AsyncClient(
+            timeout=timeout, proxy=proxy, cookies=http_pool.no_cookies()
+        )
     return found
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import weakref
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 
 import httpx
 
@@ -18,6 +19,12 @@ import httpx
 # requests behind them (the per-request clients this replaces had none).
 _LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
 _clients: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def no_cookies() -> CookieJar:
+    """A jar that keeps nothing: a shared client serves every account, so a
+    Set-Cookie from one account's upstream must never ride on the next."""
+    return CookieJar(policy=DefaultCookiePolicy(allowed_domains=[]))
 
 
 def client(timeout, *, verify=True) -> httpx.AsyncClient:
@@ -28,7 +35,9 @@ def client(timeout, *, verify=True) -> httpx.AsyncClient:
     found = per_loop.get(key)
     if found is None or found.is_closed:
         # Looked up at creation: tests patch httpx.AsyncClient per case.
-        found = per_loop[key] = httpx.AsyncClient(timeout=t, verify=verify, limits=_LIMITS)
+        found = per_loop[key] = httpx.AsyncClient(
+            timeout=t, verify=verify, limits=_LIMITS, cookies=no_cookies()
+        )
     return found
 
 
