@@ -122,6 +122,21 @@ def test_logout_closes_only_its_own_projects_sockets(web, monkeypatch):
     assert mine.closed == 4401 and other.closed is None
 
 
+def test_logout_drops_the_signing_out_devices_push_subscription(web):
+    from app import push
+
+    fcm = "https://fcm.googleapis.com/fcm/send/"
+    uid = quick_user("ada@core.test")
+    for name in ("phone", "laptop"):
+        push.save_subscription(uid, fcm + name, "k", "a")
+    sign_in(web, uid)
+    # A browser may hand the endpoint over in a form the stored one was rebuilt from.
+    res = web.post("/logout", data={"push_endpoint": "https://FCM.googleapis.com:443/fcm/send/phone"},
+                   follow_redirects=False)
+    assert res.status_code == 303
+    assert [r["endpoint"] for r in push.subscriptions_for(uid)] == [fcm + "laptop"]
+
+
 @pytest.mark.parametrize("deleted, later, code", [(False, 1801, 1012), (True, 20, 4401)])
 def test_a_chat_stream_that_never_runs_dry_still_hits_the_cap_and_the_session_check(web, monkeypatch, deleted, later,
                                                                                      code):

@@ -133,9 +133,22 @@ def emit(obj, as_json):
         print("  ".join(str(r[c]).ljust(w) for c, w in zip(cols, widths)))
 
 
+def expires_at(s, warn=True):
+    """The server's expiry label in epoch seconds; None when unset or not a number."""
+    exp = s.get("labels", {}).get(EXPIRES_KEY)
+    if not exp:
+        return None
+    try:
+        return int(exp)
+    except ValueError:
+        if warn:
+            print(f"warning: server {s['name']} ({s['id']}) has a non-numeric {EXPIRES_KEY} label {exp!r}; "
+                  "it is never reaped until 'extend' sets a new one", file=sys.stderr)
+        return None
+
+
 def server_row(s):
-    labels = s.get("labels", {})
-    exp = labels.get(EXPIRES_KEY)
+    exp = expires_at(s, warn=False)
     return {
         "id": s["id"],
         "name": s["name"],
@@ -145,7 +158,7 @@ def server_row(s):
         "ipv4": (s["public_net"].get("ipv4") or {}).get("ip") or "-",
         "ipv6": (s["public_net"].get("ipv6") or {}).get("ip") or "-",
         "created": s["created"],
-        "expires": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(int(exp))) if exp else "-",
+        "expires": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(exp)) if exp is not None else "-",
     }
 
 
@@ -243,7 +256,7 @@ def expiry_labels(labels, ttl):
 def reap(dry_run):
     now = time.time()
     servers = get_all(f"/servers?label_selector={MANAGED_KEY}%3D{MANAGED_VAL},{EXPIRES_KEY}", "servers")
-    expired = [s for s in servers if int(s["labels"][EXPIRES_KEY]) <= now]
+    expired = [s for s in servers if (exp := expires_at(s)) is not None and exp <= now]
     if not dry_run:
         for s in expired:
             delete_server(s)
@@ -403,7 +416,7 @@ def cmd_create(a):
     s = api("GET", f"/servers/{r['server']['id']}")["server"]
     out = {**server_row(s), "hourly_net": q["hourly_net"], "currency": q["currency"]}
     if r.get("root_password"):
-        out["root_password"] = r["root_password"]
+        out["root_password_file"] = str(save_root_password(s["id"], r["root_password"]))
     if not a.no_agent_key:
         out["ssh_ready"] = wait_ssh(s)
         out["ssh"] = " ".join(shlex.quote(x) for x in ssh_argv(s))
@@ -560,9 +573,26 @@ def cmd_resize(a):
     emit(server_row(api("GET", f"/servers/{s['id']}")["server"]), a.json)
 
 
+def root_password_file(server_id):
+    return CONF_DIR / "root-passwords" / str(server_id)
+
+
+def save_root_password(server_id, password):
+    """Kept out of the output, which lands in the chat transcript."""
+    path = root_password_file(server_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(password + "\n")
+    os.chmod(path, 0o600)
+    return path
+
+
 def delete_server(s):
     wait(api("DELETE", f"/servers/{s['id']}")["action"])
     known_hosts(s["id"]).unlink(missing_ok=True)
+    root_password_file(s["id"]).unlink(missing_ok=True)
 
 
 def cmd_delete(a):

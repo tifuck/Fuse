@@ -1,7 +1,10 @@
-"""Web Push: only browser push services are stored, a subscription stays with
-its account, gone subscriptions are pruned (404/410) and others kept, VAPID
+"""Web Push: only browser push services are stored, a subscription follows the
+account its browser signs in to, gone subscriptions are pruned (404/410) and
+others kept, redirects are never followed, VAPID
 keys are never regenerated over an existing file, payloads are redacted, and
 a finished turn previews its final text block."""
+import base64
+import io
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -66,16 +69,58 @@ def test_a_stored_smuggled_endpoint_is_never_posted_to():
     send.assert_not_called()
 
 
-def test_a_subscription_stays_with_its_account(fresh_db):
+def test_a_subscription_follows_the_account_its_browser_signs_in_to(fresh_db):
     owner, other = quick_user(), quick_user("other@core.test")
     with pytest.raises(ValueError):
         push.save_subscription(owner, "https://evil.test/push", "k", "a")
     subscribe(owner, "take", "k1")
-    with pytest.raises(ValueError):
-        push.save_subscription(other, FCM + "take", "k2", "a2")
-    assert push.count_for(other) == 0
     subscribe(owner, "take", "k3")  # the owner may refresh its keys
     assert [(r["endpoint"], r["p256dh"]) for r in push.subscriptions_for(owner)] == [(FCM + "take", "k3")]
+    # The browser holding it signed in to another account: it moves there.
+    push.save_subscription(other, FCM + "take", "k2", "a2")
+    assert push.count_for(owner) == 0
+    assert [(r["endpoint"], r["p256dh"]) for r in push.subscriptions_for(other)] == [(FCM + "take", "k2")]
+
+
+def test_unsubscribing_matches_the_stored_rebuilt_endpoint(fresh_db):
+    uid = quick_user()
+    subscribe(uid, "phone")
+    assert push.owns(uid, "https://fcm.googleapis.com.:443/fcm/send/phone")
+    push.remove_subscription(uid, "https://fcm.googleapis.com.:443/fcm/send/phone")
+    assert push.count_for(uid) == 0
+
+
+def test_a_redirecting_push_service_is_not_followed(monkeypatch):
+    import requests
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    sent = []
+
+    class Redirecting(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            sent.append(request.url)
+            resp = requests.Response()
+            resp.status_code, resp.url, resp.request = 307, request.url, request
+            resp.headers["Location"] = "https://10.0.0.1/internal"
+            resp.raw = io.BytesIO(b"")
+            return resp
+
+        def close(self):
+            pass
+
+    def b64(raw):
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+    device = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    server = ec.generate_private_key(ec.SECP256R1()).private_numbers().private_value.to_bytes(32, "big")
+    monkeypatch.setitem(push._session.adapters, "https://", Redirecting())
+    monkeypatch.setattr(push, "_keys", {"private_key": b64(server), "public_key": ""})
+    monkeypatch.setattr(push.settings, "public_base_url", "https://fuse.example.test")
+    row = {"id": 1, "endpoint": FCM + "device", "p256dh": b64(device), "auth": b64(b"0" * 16)}
+    assert push._send_one(row, "{}") is False
+    assert sent == [FCM + "device"]
 
 
 def test_the_newest_subscriptions_are_kept_at_the_cap(fresh_db):
@@ -91,7 +136,7 @@ def test_a_password_change_drops_every_other_device(fresh_db):
     for name in ("phone", "laptop", "tablet"):
         subscribe(uid, name)
     subscribe(other, "theirs")
-    push.remove_others(uid, keep=FCM + "laptop")
+    push.remove_others(uid, keep="https://FCM.googleapis.com:443/fcm/send/laptop")  # stored rebuilt
     assert [r["endpoint"] for r in push.subscriptions_for(uid)] == [FCM + "laptop"]
     assert push.count_for(other) == 1
 

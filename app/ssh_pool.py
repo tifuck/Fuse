@@ -181,11 +181,20 @@ async def _connect_once(user_id: int, host_id: int, *, probe: bool):
         "agent_forwarding": False,
         "keepalive_interval": 30,
         "connect_timeout": 15,
+        # Never this server's own ~/.ssh/config (ProxyCommand, IdentityFile)
+        # or ssh-agent: only the host's stored secret authenticates.
+        "config": None,
+        "agent_path": None,
+        "gss_kex": False,
+        "gss_auth": False,
+        "host_based_auth": False,
     }
     if probe:
         # Harvest the host key without authenticating: no password or key is
         # ever sent to a host that has not been pinned yet.
         captured: dict = {}
+        kwargs.update(client_keys=None, password=None, public_key_auth=False,
+                      kbdint_auth=False, password_auth=False)
 
         class _ProbeClient(asyncssh.SSHClient):
             def validate_host_public_key(self, host, addr, port, key):
@@ -269,8 +278,10 @@ async def probe(user_id: int, host_id: int) -> dict:
             await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error=exc.detail)
         raise SshError(exc.detail, exc.status_code) from exc
     except Exception as exc:
-        await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error="probe failed")
-        raise SshError("probe failed") from exc
+        # One message for refused, timed out and not-SSH alike: the probe
+        # must not tell which ports of an arbitrary address are open.
+        await asyncio.to_thread(set_host_status, user_id, host_id, ok=False, error="could not reach an SSH server")
+        raise SshError("could not reach an SSH server") from exc
     return {"algorithm": algo, "fingerprint": digest}
 
 

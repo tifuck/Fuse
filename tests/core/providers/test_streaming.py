@@ -398,6 +398,28 @@ def test_an_error_body_is_read_only_up_to_its_cap_and_reads_again_the_same():
     assert len(pulled) == http_pool.ERROR_BODY_LIMIT // 16384
 
 
+@pytest.mark.parametrize("status, stream", [(500, False), (500, True), (200, False)])
+def test_an_oversized_upstream_body_is_never_read_whole(upstream, monkeypatch, status, stream):
+    from app import proxy
+
+    pulled = []
+
+    class Huge(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(256):  # 4 MB, past both caps here
+                pulled.append(1)
+                yield b"x" * 16384
+
+    monkeypatch.setattr(proxy, "RESPONSE_BODY_MAX", 256 * 1024)
+    upstream.on("POST", "/chat/completions", httpx.Response(status, stream=Huge()))
+    got, obj, *_ = _call({"model": "m", "stream": stream, "messages": []})
+    assert len(pulled) < 256
+    if status == 200:
+        assert got == 502 and obj["error"]["message"] == "upstream response is too large"
+    else:
+        assert got == 500
+
+
 @pytest.mark.parametrize("stream", [False, True])
 def test_the_request_goes_out_as_the_same_bytes_and_headers_json_would_send(upstream, stream):
     seen = []

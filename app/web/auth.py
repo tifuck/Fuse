@@ -131,6 +131,17 @@ async def logout(request: Request):
             await terminal.close_where(uid, "vault_locked", transport="ssh")
         except Exception:
             logger.exception("terminal close on logout failed")
+        try:
+            from .. import push
+
+            # The signing-out device's push subscription (static/notifications.js
+            # adds it to the form): its alerts stop even if the browser never
+            # unsubscribes.
+            endpoint = (await request.form()).get("push_endpoint")
+            if isinstance(endpoint, str) and 0 < len(endpoint) <= 2048:
+                await asyncio.to_thread(push.remove_subscription, uid, endpoint)
+        except Exception:
+            logger.exception("push unsubscribe on logout failed")
         vault.lock(uid)
         # Connector sockets stay up: device tokens are not session credentials
         # (they reconnect at once), and dropping them cancelled jobs other

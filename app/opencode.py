@@ -350,7 +350,8 @@ def parse_config(text: str) -> dict:
     raise SystemExit("OpenCode config is not valid JSON or JSONC.")
 
 
-def existing_key(config: dict) -> str:
+def existing_key(config: dict, base_url: str) -> str:
+    """The saved key, only for the server it was saved with: never sent to another --base-url."""
     if not isinstance(config, dict):
         return ""
     provider = config.get("provider")
@@ -361,6 +362,9 @@ def existing_key(config: dict) -> str:
         return ""
     options = fuse.get("options")
     if not isinstance(options, dict):
+        return ""
+    saved_url = options.get("baseURL")
+    if not isinstance(saved_url, str) or saved_url.rstrip("/") != base_url.rstrip("/"):
         return ""
     for name in ("apiKey", "api_key"):
         value = options.get(name)
@@ -442,6 +446,14 @@ def say(msg: str) -> None:
     sys.stderr.write(msg + "\n")
 
 
+def write_private(path: Path, text: str) -> None:
+    """Owner-only before the first byte: the config holds the API key."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+    os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def config_path(explicit: str) -> Path:
     if explicit:
         return Path(explicit).expanduser()
@@ -490,7 +502,7 @@ def main(argv: list[str]) -> int:
     say("This only changes the Fuse provider. Other OpenCode settings stay as they are.")
     path = config_path(args.config)
     existing = parse_config(path.read_text(encoding="utf-8")) if path.exists() else {}
-    stored = existing_key(existing)
+    stored = existing_key(existing, args.base_url)
     explicit = (args.api_key or "").strip()
     env_key = (os.environ.get("FUSE_API_KEY") or "").strip()
     key = explicit or stored or env_key
@@ -506,7 +518,7 @@ def main(argv: list[str]) -> int:
     say(f"Fetched {len(models)} Fuse models.")
     say(f"Config: {path}")
     if path.exists():
-        say("Existing Fuse models will be replaced. The saved API key is left as-is.")
+        say("Existing Fuse models will be replaced." + (" The saved API key is left as-is." if stored and not explicit else ""))
     else:
         say("No OpenCode config yet; one will be created.")
     if not args.yes and not stored:
@@ -524,11 +536,9 @@ def main(argv: list[str]) -> int:
     if path.exists():
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = path.with_name(path.name + f".bak-{stamp}")
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        os.chmod(backup, stat.S_IRUSR | stat.S_IWUSR)
+        write_private(backup, path.read_text(encoding="utf-8"))
         say(f"Backup: {backup}")
-    path.write_text(rendered, encoding="utf-8")
-    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    write_private(path, rendered)
     say(f"Wrote {len(models)} models to {path}")
     say("Next: opencode models fuse")
     return 0
