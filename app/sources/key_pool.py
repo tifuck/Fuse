@@ -13,6 +13,8 @@ from typing import Optional
 
 import httpx
 
+from ..proxy import scrub_secrets
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -796,14 +798,14 @@ class KeyPool:
         if kind == "model_gated":
             # Paid model, not a spent key. Count the request, stay ACTIVE.
             key_state.total_requests += 1
-            logger.info("paid model key=%s model=%s body=%s", key_state.masked(), model, body_text[:200])
+            logger.info("paid model key=%s model=%s body=%s", key_state.masked(), model, scrub_secrets(body_text)[:200])
             return
 
         if kind == "bad_request":
             # Caller's fault — don't penalise the key.
             key_state.total_requests += 1
             key_state.total_errors += 1
-            logger.error("HTTP 400 bad_request key=%s body=%s", key_state.masked(), body_text[:500])
+            logger.error("HTTP 400 bad_request key=%s body=%s", key_state.masked(), scrub_secrets(body_text)[:500])
             return
 
         if kind == "account_unavailable":
@@ -824,7 +826,7 @@ class KeyPool:
             return
 
         if kind == "weekly_quota":
-            logger.warning("usage exhausted key=%s body=%s", key_state.masked(), body_text[:500])
+            logger.warning("usage exhausted key=%s body=%s", key_state.masked(), scrub_secrets(body_text)[:500])
             cooldown = self.weekly_quota
             capped = self._retry_after_capped(retry_after)
             if capped is not None and capped > cooldown:
@@ -836,7 +838,7 @@ class KeyPool:
             return
 
         if kind == "session_quota":
-            logger.warning("session quota detected key=%s body=%s", key_state.masked(), body_text)
+            logger.warning("session quota detected key=%s body=%s", key_state.masked(), scrub_secrets(body_text)[:500])
             cooldown = self.session_quota
             capped = self._retry_after_capped(retry_after)
             if capped is not None and capped > cooldown:
@@ -848,7 +850,7 @@ class KeyPool:
             return
 
         if kind == "hourly_quota":
-            logger.warning("hourly quota detected key=%s body=%s", key_state.masked(), body_text)
+            logger.warning("hourly quota detected key=%s body=%s", key_state.masked(), scrub_secrets(body_text)[:500])
             cooldown = self.hourly_quota
             capped = self._retry_after_capped(retry_after)
             if capped is not None and capped > cooldown:
