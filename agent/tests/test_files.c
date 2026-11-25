@@ -7,6 +7,7 @@
 #include "../src/outq.h"
 #include "../src/update.h"
 #include <assert.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/resource.h>
@@ -43,6 +44,31 @@ int main(void) {
     assert(read_file_slice(path, 1, 10, out, sizeof(out)) == 0);
     assert(strcmp(out, "changed\n") == 0);
     assert(read_file_slice(dir, 1, 10, out, sizeof(out)) != 0);
+    {
+        /* Through an opened parent: a symlinked folder still works, a new
+         * subfolder is made, and no temp file is left behind. */
+        char sub[64], via[64], deep[128];
+        snprintf(sub, sizeof(sub), "%s/sub", dir);
+        snprintf(via, sizeof(via), "%s/via", dir);
+        assert(mkdir(sub, 0755) == 0 && symlink(sub, via) == 0);
+        snprintf(deep, sizeof(deep), "%s/f", via);
+        assert(write_file_atomic(deep, "one\n") == 0);
+        snprintf(deep, sizeof(deep), "%s/new/g", sub);
+        assert(write_file_atomic(deep, "two\n") == 0);
+        snprintf(deep, sizeof(deep), "%s/", sub);
+        assert(write_file_atomic(deep, "x") != 0 && errno == EINVAL);
+        snprintf(deep, sizeof(deep), "%s/f", sub);
+        assert(read_file_slice(deep, 1, 10, out, sizeof(out)) == 0 && strcmp(out, "one\n") == 0);
+        DIR *d = opendir(sub);
+        assert(d);
+        for (struct dirent *e; (e = readdir(d));) assert(strncmp(e->d_name, ".fuse-", 6) != 0);
+        closedir(d);
+        assert(unlink(deep) == 0 && unlink(via) == 0);
+        snprintf(deep, sizeof(deep), "%s/new/g", sub);
+        assert(unlink(deep) == 0);
+        snprintf(deep, sizeof(deep), "%s/new", sub);
+        assert(rmdir(deep) == 0 && rmdir(sub) == 0);
+    }
     FILE *f = fopen(path, "wb");
     assert(f);
     for (int i = 0; i < 20000; i++) assert(fputs("prefix\n", f) >= 0);

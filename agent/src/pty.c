@@ -211,6 +211,14 @@ static int pty_spawn(const char *path, char *const argv[], char *const envp[], c
     return master;
 }
 
+/* Waits on this pid alone (never -1), so no other child's status is taken. */
+static void *reap_late(void *arg) {
+    pid_t pid = (pid_t)(intptr_t)arg;
+    while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {
+    }
+    return NULL;
+}
+
 /* Moves bytes until the shell is reaped and its buffered output is taken.
  * Returns 1 with status set, or 0 when a SIGKILLed shell never died. */
 static int pty_pump(struct pty *s, int master, pid_t pid, int pidfd, struct job *job, int *status) {
@@ -232,6 +240,9 @@ static int pty_pump(struct pty *s, int master, pid_t pid, int pidfd, struct job 
             /* As exec.c: a D-state shell must not hold this worker forever. */
             if (killed && now - hup_ms >= PTY_KILL_MS + 10000) {
                 fprintf(stderr, "fuse-agent: terminal shell %d unkillable after SIGKILL; abandoning\n", (int)pid);
+                /* Reap it whenever it does die instead of leaving a zombie. */
+                pthread_t th;
+                if (pthread_create(&th, NULL, reap_late, (void *)(intptr_t)pid) == 0) pthread_detach(th);
                 return 0;
             }
         }
