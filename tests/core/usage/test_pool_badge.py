@@ -330,6 +330,47 @@ def test_a_click_moves_the_chat_to_another_account_of_its_pool(fresh_db, monkeyp
     assert pool_session.peek("claude", sid) == second
 
 
+def test_a_pick_during_a_turn_survives_the_request_in_flight(fresh_db, monkeypatch):
+    from app import chat_checkpoint, chats
+
+    me = user("me@core.test")
+    first = pool_account("claude", me, _claude(70, 60))
+    second = pool_account("claude", me, _claude(5, 1))
+    src = claude.ClaudeSource({"id": pool_policy.source_id("claude"), "name": "Claude"}, {}, [])
+
+    async def pick(model, *, user_id=None, access=None, ignore_prefs=False):
+        return src, "claude-opus-5-5"
+
+    import app.sources as sources
+    monkeypatch.setattr(sources, "pick", pick)
+    monkeypatch.setattr(pool_session, "persist", False)
+    model = "claude/claude-opus-5-5"
+    thread = chats.create_thread(me, model=model)["id"]
+    sid = pool_session.related_session_id(f"thread:{thread}", user_id=me, model="claude-opus-5-5")
+    pool_session.bind("claude", sid, first)
+    chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", model))
+
+    view = asyncio.run(pool_badge.switch(me, model, thread, second, running=True))
+
+    # The turn still shows the account in use, and the pick as next.
+    assert view["id"] == first and view["next"] == {"id": second, "name": "claude"}
+    assert {a["id"]: a["status"] for a in view["accounts"]} == {first: "current", second: "next"}
+    # The request in flight ends on its account: neither its pin nor its round undoes the pick.
+    pool_session.bind("claude", sid, first)
+    stored = chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", model))
+    assert pool_session.peek("claude", sid) == second and stored["next"] == second
+    # The turn's next request takes the pick; once it serves, it is the account in use.
+    assert pool_session.lookup("claude", sid) == second
+    stored = chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, second, "claude", model))
+    assert (stored["cred"], stored["prev"], stored["next"]) == (second, first, None)
+    # Picking the account in use again cancels a pending pick.
+    asyncio.run(pool_badge.switch(me, model, thread, first, running=True))
+    assert asyncio.run(pool_badge.switch(me, model, thread, second, running=True))["next"] is None
+    # A chat not sent yet only previews the pick: nothing is pinned.
+    fresh = asyncio.run(pool_badge.switch(me, model, None, first))
+    assert fresh["id"] == first and fresh["preview"] is True
+
+
 def test_the_badge_previews_a_lazily_routed_pool_from_the_callers_accounts(fresh_db, monkeypatch):
     # Routing hands out sources._LazySource, and copying one recursed forever:
     # every /chat/pool answered 500 in production after 2026-11-24's update.

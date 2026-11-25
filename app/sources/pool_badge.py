@@ -52,24 +52,39 @@ def parse(raw) -> dict | None:
     try:
         cred = int(raw.get("cred") or 0)
         prev = int(raw.get("prev") or 0) or None
+        nxt = int(raw.get("next") or 0) or None
     except (TypeError, ValueError):
         return None
     if cred <= 0:
         return None
     reason = raw.get("reason") if raw.get("reason") in REASONS else ""
     return {"cred": cred, "source": raw["source"], "model": str(raw.get("model") or "")[:200],
-            "prev": prev, "reason": reason}
+            "prev": prev, "reason": reason, "next": nxt if nxt != cred else None}
 
 
 def state(prior, cred_id: int, kind: str, model: str) -> dict:
-    """The thread's record after a round that `cred_id` served."""
+    """The thread's record after a round that `cred_id` served. A round
+    still on the record's account keeps a pending pick (next): that request
+    was in flight when the user picked."""
     prior = parse(prior)
     cred = int(cred_id)
     if prior and prior["source"] == kind and prior["cred"] == cred:
         return {**prior, "model": model}
     switched = prior["cred"] if prior and prior["source"] == kind else None
     return {"cred": cred, "source": kind, "model": model, "prev": switched,
-            "reason": _reason(switched) if switched else ""}
+            "reason": _reason(switched) if switched else "", "next": None}
+
+
+def chose(prior, cred_id: int, kind: str, model: str, running: bool) -> dict:
+    """The thread's record after the user picks `cred_id`: current at once in
+    an idle chat; while a turn runs, its request in flight stays on the
+    account it started on, so the pick waits as next until a request uses it
+    (state). Picking the current account again cancels a pending pick."""
+    st = parse(prior)
+    cred = int(cred_id)
+    if not running or not st or st["source"] != kind:
+        return {**state(prior, cred, kind, model), "next": None}
+    return {**st, "next": None if cred == st["cred"] else cred}
 
 
 def _reason(cred_id: int) -> str:
@@ -170,15 +185,17 @@ def public(user_id: int, raw) -> dict | None:
         "windows": windows,
         "limits": _limits(billing),
         "balance": _balance(billing, bool(windows)) if own or admin else None,
-        "accounts": [_account(r, names, st["cred"], settings, user_id, admin) for r in reachable[:MAX_ACCOUNTS]],
+        "accounts": [_account(r, names, st, settings, user_id, admin) for r in reachable[:MAX_ACCOUNTS]],
         "ready": sum(1 for i in used if not pool_pick.cooling_down(i)),
         "size": len(used),
         "prefs": settings,
         "hop": {"from": names.get(st["prev"], f"another {label} account"), "reason": st["reason"]} if st["prev"] else None,
+        # The user's pick while a turn runs: its next request goes there.
+        "next": {"id": st["next"], "name": names.get(st["next"], f"another {label} account")} if st["next"] else None,
     }
 
 
-def _account(row, names: dict[int, str], current: int, settings: dict, user_id: int, admin: bool = False) -> dict:
+def _account(row, names: dict[int, str], st: dict, settings: dict, user_id: int, admin: bool = False) -> dict:
     """One line of the card's account list."""
     cid = int(row["id"])
     billing = _billing(row)
@@ -186,8 +203,10 @@ def _account(row, names: dict[int, str], current: int, settings: dict, user_id: 
     peak = max((w["percent"] for w in windows), default=None)
     own = pool_policy.donated_by(row) == int(user_id)
     until = None
-    if cid == current:
+    if cid == st["cred"]:
         status = "current"
+    elif cid == st["next"]:
+        status = "next"
     elif cid in settings["skip"]:
         status = "off"
     elif pool_pick._hard_cooldown(cid):
@@ -388,11 +407,14 @@ def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None
 
 
 
-async def switch(user_id: int, model: str, thread_id: str, cred_id: int) -> dict | None:
-    """Pin the chat to another account of its pool, as a reply served there
-    would: its next request goes to that account and starts a cold prompt
-    cache. Returns the badge for it, or None when the model is not a pool's or
-    the account is not one the caller's requests may use."""
+async def switch(user_id: int, model: str, thread_id: str | None, cred_id: int, *, running: bool = False) -> dict | None:
+    """Pin the chat to another account of its pool: its next request goes to
+    that account and starts a cold prompt cache. running: a turn is under way,
+    so the badge shows the account in use and this pick as next (chose).
+    Without a thread (a chat not sent yet) nothing is pinned: the badge
+    previews the account, and the page pins it once the chat exists.
+    Returns the badge, or None when the model is not a pool's or the account
+    is not one the caller's requests may use."""
     from . import POOL_TYPES, pick
     from .chatgpt_catalog import base_slug
 
@@ -406,13 +428,20 @@ async def switch(user_id: int, model: str, thread_id: str, cred_id: int) -> dict
     usable = await asyncio.to_thread(pool_policy.filter_credentials, rows, kind, user_id)
     if int(cred_id) not in {int(r["id"]) for r in usable}:
         return None
+    if not thread_id:
+        view = await asyncio.to_thread(public, user_id, {"cred": int(cred_id), "source": kind, "model": model})
+        if view is not None:
+            view["preview"] = True
+        return view
     scope_model = base_slug(upstream) if kind == "chatgpt" else upstream
     # The chat runtime's cache key for a conversation (chat_runtime: "thread:<id>").
-    pool_session.bind(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model), int(cred_id))
+    pool_session.bind(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model),
+                      int(cred_id), chosen=True)
     # The thread's record moves too, so the chat shows the new account before its next reply.
     from .. import chat_checkpoint
 
-    record = await asyncio.to_thread(chat_checkpoint.save_pool, user_id, thread_id, lambda prior: state(prior, cred_id, kind, model))
+    record = await asyncio.to_thread(chat_checkpoint.save_pool, user_id, thread_id,
+                                     lambda prior: chose(prior, cred_id, kind, model, running))
     return await asyncio.to_thread(public, user_id, record) if record else None
 
 

@@ -1677,7 +1677,15 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             served_by = getattr(result, "credential_id", None)
             if not is_child and served_by and src_type in POOL_TYPES:
                 try:
-                    pool_prior = pool_badge.state(pool_prior, served_by, src_type, model)
+                    def _served(prior):
+                        return pool_badge.state(prior, served_by, src_type, model)
+
+                    # Read and written under the thread's lock: the user may
+                    # pick another account mid-turn (pool_badge.switch).
+                    from .chat_checkpoint import save_pool
+
+                    pool_prior = (await asyncio.to_thread(save_pool, user["id"], thread_id, _served) if thread_id
+                                  else None) or _served(pool_prior)
                     pool_view = await asyncio.to_thread(pool_badge.public, user["id"], pool_prior)
                 except Exception:
                     logger.exception("Pool badge failed for run %s", run_id)
@@ -1691,8 +1699,6 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 cache_warned = True
                 yield _sse({"fuse": {**missed, "run_id": run_id}})
             saved_meter = {**round_meter, "cache_probe": probe} if probe else dict(round_meter)
-            if pool_view:
-                saved_meter["pool_state"] = pool_prior
             _persist_meter(saved_meter)
             if summary.get("error"):
                 raw_err = summary["error"] if isinstance(summary["error"], dict) else {"error": {"message": str(summary["error"])}}

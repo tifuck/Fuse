@@ -139,7 +139,7 @@ def pins(kind: str, session_id, affinity_id, user_id, pinned=None) -> tuple:
     (`pinned` when the caller already knows it), its affinity pin when it has
     no session pin, and the caller's primary account. Call it in one thread."""
     prefer_id = pinned if pinned is not None else lookup(kind, session_id)
-    hint_id = lookup(kind, affinity_id) if prefer_id is None and affinity_id else None
+    hint_id = lookup(kind, affinity_id, claim=False) if prefer_id is None and affinity_id else None
     return prefer_id, hint_id, pool_policy.primary_account(user_id, kind)
 
 

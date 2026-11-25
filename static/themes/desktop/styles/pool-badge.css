@@ -62,6 +62,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-pool-pct { color: var(--dk-text); font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; text-align: right; }
   & .chat-pool-meta { overflow: hidden; text-align: right; text-overflow: ellipsis; }
   & .chat-pool-line[data-status="current"] .chat-pool-meta { color: var(--dk-text); }
+  & .chat-pool-line[data-status="next"] .chat-pool-meta { color: var(--dk-link); }
+  & .chat-pool-pending .chat-pool-stop { margin: 0.25rem 0 0 -0.4rem; }
   & .chat-pool-line[data-status="limit"] .chat-pool-meta { color: var(--status-live); }
   & .chat-pool-line[data-status="full"] .chat-pool-meta { color: var(--fault); }
   & .chat-pool-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
