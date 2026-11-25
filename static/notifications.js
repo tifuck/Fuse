@@ -6,6 +6,15 @@
    driven by the live chat event socket while this app is open. */
 (() => {
   "use strict";
+  // Signing out drops queued chat messages (static/chat/turns/queue-store.js):
+  // they hold prompt text. Set before the check below, so it runs everywhere.
+  document.addEventListener("submit", (ev) => {
+    if (!(ev.target instanceof HTMLFormElement) || ev.target.getAttribute("action") !== "/logout") return;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("fuse.chat.queue.")) localStorage.removeItem(key);
+    }
+  });
   if (!("serviceWorker" in navigator)) return;
 
   const csrf = () => {

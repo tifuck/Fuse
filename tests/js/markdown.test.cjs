@@ -145,3 +145,13 @@ test('composer marks keep every character and style what the sent message render
     assert.equal(text(marksHtml(input, issues).html), input, JSON.stringify(input));
   }
 });
+
+test('a link asks first only when its text names another site than it opens', async () => {
+  const { linkMisleads } = await md();
+  assert.equal(linkMisleads('https://github.com/x', 'https://evil.example/'), true);
+  assert.equal(linkMisleads('github.com', 'https://evil.example/github.com'), true);
+  assert.equal(linkMisleads('https://github.com/x', 'https://github.com/y'), false);
+  assert.equal(linkMisleads('github.com', 'https://www.github.com/x'), false, 'www. is the same site');
+  assert.equal(linkMisleads('the docs', 'https://evil.example/'), false, 'plain words claim no site');
+  assert.equal(linkMisleads('README.md', 'https://github.com/x/README.md'), false, 'a file name is no host');
+});
