@@ -47,6 +47,15 @@ def _inline_chart(run: dict) -> bool:
                and t.get("format") == "chart" for t in tools)
 
 
+def _choices(run: dict) -> bool:
+    tools = (run.get("message") or {}).get("tools") or []
+    return any(t.get("name") == "create_artifact" and t.get("status") == "done" and t.get("format") == "choices" for t in tools)
+
+
+def _no_choices(run: dict) -> bool:
+    return not any(t.get("format") == "choices" for t in (run.get("message") or {}).get("tools") or [])
+
+
 # Shaped like a key, built in pieces (a literal one is rejected when pushed). It opens nothing.
 _EVAL_KEY = "sk-" + "proj-" + "Hd4Ws8Kp2Nx6Tb1Rv9Mq3Zc7Yf5Jg0La" + "Ue2Ow8Bn4Xt6Pk1S"
 
@@ -122,6 +131,17 @@ TASKS = {
         "about": "a direct ask for one chart is drawn inline by the chart kit",
         "turns": ["Chart these daily signups for me: Mon 12, Tue 18, Wed 15, Thu 22, Fri 30, Sat 9, Sun 7."],
         "run_check": _inline_chart,
+    },
+    "choices-title": {
+        "about": "asked for new chat titles, it offers choices and does not claim it renamed anything",
+        "turns": ["Suggest three better titles for this chat so I can pick one. This chat is about planning a garden."],
+        "run_check": _choices,
+        "avoid": [r"(?i)\bI(?:'ve| have)? (?:renamed|changed|updated|applied)\b", r"(?i)\b(?:is|has been) now (?:titled|called|named)\b"],
+    },
+    "choices-unasked": {
+        "about": "a question about a setting is answered, not turned into choices",
+        "turns": ["In one sentence: what is a chat backdrop?"],
+        "run_check": _no_choices,
     },
 }
 
