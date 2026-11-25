@@ -45,7 +45,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-pool-now-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   & .chat-pool-now-name { flex: 0 1 auto; min-width: 5ch; overflow: hidden; color: var(--dk-text); font: 600 14px/1.2 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
   & .chat-pool-now .chat-pool-who { flex: none; font: 500 12px/1 var(--sans); }
-  & .chat-pool-now-plan { flex: 0 1 auto; min-width: 6ch; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dk-mute); font: 500 12px/1 var(--sans); }
+  & .chat-pool-now-plan { flex: 0 4 auto; min-width: 6ch; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dk-mute); font: 500 12px/1 var(--sans); }
   & .chat-pool-now .chat-pool-note { padding-inline: 0.5rem; }
   /* Its few limits have the width for longer, thicker bars than the list. */
   & .chat-pool-menu .chat-pool-now > ul > .chat-pool-line { grid-template-columns: minmax(0, 1fr) 5.5rem 2.5rem 4rem; }
