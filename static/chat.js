@@ -950,7 +950,10 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       S.lastThreadScrollTop = top;
       return;
     }
-    S.stickToBottom = transcript.nearBottom() && (S.stickToBottom || (transcript.resumeFollowOnScroll && top > S.lastThreadScrollTop));
+    // A scroll toward the bottom never ends following: the transcript's own
+    // snap can be read a frame late, after the view shrank again (a dock
+    // opening under a slow frame), and look like a reader far from the end.
+    S.stickToBottom = (S.stickToBottom && top >= S.lastThreadScrollTop) || (transcript.nearBottom() && (S.stickToBottom || (transcript.resumeFollowOnScroll && top > S.lastThreadScrollTop)));
     S.lastThreadScrollTop = top;
     transcript.syncLatest();
   });
