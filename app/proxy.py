@@ -343,6 +343,10 @@ def _json_request(client: httpx.AsyncClient, url: str, content: bytes, headers: 
     return req
 
 
+# A whole (non-streamed) completion; a streamed one is read frame by frame.
+RESPONSE_BODY_MAX = 32 * 1024 * 1024
+
+
 def _chat_failure(status: int, message: str, phase: str, usage: dict | None = None) -> tuple:
     return status, {"error": {
         "message": message, "failure_phase": phase, "retryable": phase == "pre_generation",
@@ -363,6 +367,8 @@ async def openai_chat(
 
     on_response(resp) sees the upstream response as soon as its headers
     arrive, for per-request capture on a shared client."""
+    from .sources.http_pool import read_error_body
+
     payload = dict(body)
     stream = bool(payload.get("stream"))
     if stream:
@@ -394,7 +400,7 @@ async def openai_chat(
             if resp.headers.get("retry-after"):
                 safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
             try:
-                err = await resp.aread()
+                err = await read_error_body(resp)
             except httpx.TimeoutException as exc:
                 return 504, {"error": {"message": f"upstream timeout ({type(exc).__name__})"}}, None, {}, safe_headers
             except httpx.HTTPError as exc:
@@ -469,22 +475,35 @@ async def openai_chat(
     try:
         content = await asyncio.to_thread(_json_body, payload)
         try:
-            resp = await client.send(_json_request(client, url, content, headers))
+            resp = await client.send(_json_request(client, url, content, headers), stream=True)
         except httpx.TimeoutException as exc:
             return _chat_failure(504, f"upstream timeout ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, (httpx.ConnectTimeout, httpx.PoolTimeout)) else "request_sent")
         except httpx.HTTPError as exc:
             return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, httpx.ConnectError) else "request_sent")
-        if on_response is not None:
-            on_response(resp)
-        if resp.status_code != 200:
-            safe_headers = {}
-            if resp.headers.get("retry-after"):
-                safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
-            return resp.status_code, _error_object(resp.status_code, resp.content, resp.headers), None, {}, safe_headers
         try:
-            obj = resp.json()
+            if on_response is not None:
+                on_response(resp)
+            if resp.status_code != 200:
+                safe_headers = {}
+                if resp.headers.get("retry-after"):
+                    safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
+                err = await read_error_body(resp)
+                return resp.status_code, _error_object(resp.status_code, err, resp.headers), None, {}, safe_headers
+            raw = bytearray()
+            async for chunk in resp.aiter_bytes():
+                raw += chunk
+                if len(raw) > RESPONSE_BODY_MAX:
+                    return _chat_failure(502, "upstream response is too large", "response_received")
+        except httpx.TimeoutException as exc:
+            return _chat_failure(504, f"upstream timeout ({type(exc).__name__})", "request_sent")
+        except httpx.HTTPError as exc:
+            return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})", "request_sent")
+        finally:
+            await resp.aclose()
+        try:
+            obj = json.loads(raw)
         except ValueError:
             return _chat_failure(502, "upstream returned non-JSON data", "response_received")
         if not isinstance(obj, dict):
