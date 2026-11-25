@@ -58,8 +58,12 @@ def parse(raw) -> dict | None:
     if cred <= 0:
         return None
     reason = raw.get("reason") if raw.get("reason") in REASONS else ""
+    # sid: the pool session the pick is pinned on. A pick without one was
+    # never pinned where requests look (made before 2026-11-25): it is dropped.
+    sid = str(raw.get("sid") or "")[:256]
+    nxt = nxt if nxt != cred and sid else None
     return {"cred": cred, "source": raw["source"], "model": str(raw.get("model") or "")[:200],
-            "prev": prev, "reason": reason, "next": nxt if nxt != cred else None}
+            "prev": prev, "reason": reason, "next": nxt, "sid": sid if nxt else ""}
 
 
 def state(prior, cred_id: int, kind: str, model: str) -> dict:
@@ -69,13 +73,17 @@ def state(prior, cred_id: int, kind: str, model: str) -> dict:
     prior = parse(prior)
     cred = int(cred_id)
     if prior and prior["source"] == kind and prior["cred"] == cred:
+        # The pick still waits only while its pin holds: a restart or a
+        # failover may have put the session back on this account.
+        if prior["next"] and pool_session.peek(kind, prior["sid"]) != prior["next"]:
+            prior = {**prior, "next": None, "sid": ""}
         return {**prior, "model": model}
     switched = prior["cred"] if prior and prior["source"] == kind else None
     return {"cred": cred, "source": kind, "model": model, "prev": switched,
-            "reason": _reason(switched) if switched else "", "next": None}
+            "reason": _reason(switched) if switched else "", "next": None, "sid": ""}
 
 
-def chose(prior, cred_id: int, kind: str, model: str, running: bool) -> dict:
+def chose(prior, cred_id: int, kind: str, model: str, running: bool, sid: str = "") -> dict:
     """The thread's record after the user picks `cred_id`: current at once in
     an idle chat; while a turn runs, its request in flight stays on the
     account it started on, so the pick waits as next until a request uses it
@@ -83,8 +91,9 @@ def chose(prior, cred_id: int, kind: str, model: str, running: bool) -> dict:
     st = parse(prior)
     cred = int(cred_id)
     if not running or not st or st["source"] != kind:
-        return {**state(prior, cred, kind, model), "next": None}
-    return {**st, "next": None if cred == st["cred"] else cred}
+        return {**state(prior, cred, kind, model), "next": None, "sid": ""}
+    waits = cred != st["cred"]
+    return {**st, "next": cred if waits else None, "sid": sid if waits else ""}
 
 
 def _reason(cred_id: int) -> str:
@@ -450,7 +459,7 @@ async def switch(user_id: int, model: str, thread_id: str | None, cred_id: int, 
     from .. import chat_checkpoint
 
     record = await asyncio.to_thread(chat_checkpoint.save_pool, user_id, thread_id,
-                                     lambda prior: chose(prior, cred_id, kind, model, running))
+                                     lambda prior: chose(prior, cred_id, kind, model, running, session))
     return await asyncio.to_thread(public, user_id, record) if record else None
 
 
