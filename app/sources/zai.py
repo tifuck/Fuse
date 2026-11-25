@@ -549,6 +549,7 @@ def _chat_payload(body: dict) -> dict:
 
 class ZaiSource:
     type_id = "zai"
+    whole_catalog = True  # models() drops ids the provider retired
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]

@@ -525,6 +525,7 @@ def _retry_after(headers: dict | None) -> float:
 
 class MimoSource:
     type_id = "mimo"
+    whole_catalog = True  # models() drops ids the provider retired
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]

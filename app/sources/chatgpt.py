@@ -800,6 +800,7 @@ async def refresh_pool_usage(*, force: bool = False) -> None:
 
 class ChatGPTSource:
     type_id = "chatgpt"
+    whole_catalog = True  # models() drops ids the provider retired
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]

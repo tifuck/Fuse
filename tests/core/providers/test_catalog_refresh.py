@@ -11,7 +11,7 @@ import httpx
 import app.sources as sources
 from app import context_meter, db
 from app.providers import catalogs
-from app.sources import keyed
+from app.sources import chatgpt, grok, keyed
 from tests.core.helpers import quick_user, wait_until_async
 
 from ._support import completion, key, source
@@ -199,3 +199,21 @@ def test_a_restart_relearns_what_a_fetch_teaches_before_serving_the_saved_list(f
     asyncio.run(sources.get(sid).chat({"model": "qwen3-32b", "messages": []}))
     assert upstream.sent("/chat/completions")[0]["model"] == raw
     assert len(upstream.calls("/v1/models")) == 1
+
+
+def test_a_pool_that_lists_its_whole_lineup_drops_retired_ids_and_others_keep_them(fresh_db, monkeypatch):
+    listed = {"chatgpt": ["gpt-7"], "grok": ["grok-6"]}
+    ids = {}
+    for kind, module, cls in (("chatgpt", chatgpt, chatgpt.ChatGPTSource), ("grok", grok, grok.GrokSource)):
+        ids[kind] = source(kind)
+        key(ids[kind], f"{kind}-token-123456", extra={"access_token": "at"})
+        sources._store_models((ids[kind], None), [f"{kind}-kept", f"{kind}-retired"])
+
+        async def models(self, *, user_id=None, kind=kind):
+            return list(listed[kind])
+
+        monkeypatch.setattr(cls, "models", models)
+
+    asyncio.run(sources.refresh_due_catalogs())
+    assert sources._model_cache[(ids["chatgpt"], None)][1] == ["gpt-7"]
+    assert sources._model_cache[(ids["grok"], None)][1] == ["grok-6", "grok-kept", "grok-retired"]
