@@ -131,3 +131,55 @@ def test_names_resolving_to_v6_forms_of_private_v4_are_refused(monkeypatch, ip):
 
 def test_a_public_address_is_dialable():
     assert ssh_pool.resolve_public("93.184.216.34", 22) == ["93.184.216.34"]
+
+
+@pytest.fixture
+def dialed(monkeypatch):
+    """asyncssh.connect replaced by a recorder that never reaches the network."""
+    import asyncssh
+
+    calls = []
+    pub = {"hostname": "box.example.com", "port": 22, "username": "u", "auth_type": "password",
+           "fingerprint": "f" * 64, "key_algo": "ssh-ed25519"}
+    monkeypatch.setattr(ssh_pool, "_dial_target", lambda user_id, host_id: ("pw", None, pub, ["93.184.216.34"]))
+    monkeypatch.setattr(ssh_pool, "set_host_status", lambda *a, **kw: calls.append(("status", kw)))
+
+    async def connect(**kwargs):
+        calls.append(("connect", kwargs))
+        raise calls_errors.pop(0)
+
+    calls_errors: list = []
+    monkeypatch.setattr(asyncssh, "connect", connect)
+    return calls, calls_errors
+
+
+def test_a_probe_offers_no_credential_of_the_server_and_reads_no_ssh_config(dialed):
+    calls, errors = dialed
+    errors.append(ConnectionRefusedError())
+    with pytest.raises(ssh_pool.SshError):
+        asyncio.run(ssh_pool.probe(1, 2))
+    kwargs = calls[0][1]
+    assert kwargs["client_keys"] is None and kwargs["password"] is None
+    assert kwargs["agent_path"] is None and kwargs["config"] is None
+    assert not any(kwargs[k] for k in ("public_key_auth", "password_auth", "kbdint_auth", "gss_auth", "host_based_auth"))
+
+
+def test_a_pinned_connect_uses_only_the_stored_secret(dialed):
+    calls, errors = dialed
+    errors.append(OSError("down"))
+    with pytest.raises(ssh_pool.SshError):
+        asyncio.run(ssh_pool.test(1, 2))
+    kwargs = calls[0][1]
+    assert kwargs["password"] == "pw" and kwargs["client_keys"] is None
+    assert kwargs["agent_path"] is None and kwargs["config"] is None
+
+
+def test_probe_failures_read_the_same_whatever_is_on_the_port(dialed):
+    calls, errors = dialed
+    errors.extend([ConnectionRefusedError(), asyncio.TimeoutError(), ValueError("not ssh")])
+    seen = set()
+    for _ in range(3):
+        with pytest.raises(ssh_pool.SshError) as exc:
+            asyncio.run(ssh_pool.probe(1, 2))
+        seen.add(exc.value.detail)
+    assert seen == {"could not reach an SSH server"}
