@@ -57,9 +57,11 @@ def normalize_email(email: str) -> str:
 
 
 def password_fingerprint(user: dict) -> str:
-    """Bound into the session cookie; a password change rotates the stored hash,
-    which invalidates every session minted before it."""
-    return hashlib.sha256(str(user["password_hash"]).encode()).hexdigest()[:32]
+    """Bound into the session cookie: the account's security stamp, or (unset)
+    a hash of the stored password hash. A password change or reset sets a new
+    stamp, which invalidates every session minted before it; a transparent
+    rehash keeps the old value as the stamp, so sessions survive it."""
+    return user.get("session_stamp") or hashlib.sha256(str(user["password_hash"]).encode()).hexdigest()[:32]
 
 
 def _invite_hash(token: str) -> str:
@@ -294,9 +296,9 @@ def login(email: str, password: str):
             verify_password(password, _dummy_hash())
         return None
     if password_needs_rehash(stored):
-        # The session fingerprint follows the hash, so return the row as stored.
-        db.execute("UPDATE users SET password_hash=? WHERE id=? AND password_hash=?",
-                   (hash_password(password), row["id"], stored))
+        # Pin the current fingerprint as the stamp: other devices stay signed in.
+        db.execute("UPDATE users SET password_hash=?, session_stamp=? WHERE id=? AND password_hash=?",
+                   (hash_password(password), password_fingerprint(row), row["id"], stored))
         row = get_user(row["id"])
     return row
 
@@ -314,7 +316,7 @@ def reset_password(email: str, new_password: str) -> list[str]:
     """Operator recovery for a forgotten password (scripts/reset_password.py).
     The vault was wrapped with the lost password, so it is dropped and the
     next sign-in makes a new one: SSH machine secrets must be entered again.
-    Every session ends (they are stamped with the password hash) and every
+    Every session ends (a new security stamp) and every
     device's alerts stop. Returns the SSH machines that need their secret."""
     if len(new_password) < 8 or len(new_password) > 256:
         raise ValueError("password")
@@ -323,8 +325,9 @@ def reset_password(email: str, new_password: str) -> list[str]:
         if row is None:
             raise ValueError("missing")
         conn.execute(
-            "UPDATE users SET password_hash=?, vault_salt=NULL, wrapped_dek=NULL, vault_kdf=NULL WHERE id=?",
-            (hash_password(new_password), row["id"]),
+            "UPDATE users SET password_hash=?, session_stamp=?, vault_salt=NULL, wrapped_dek=NULL, vault_kdf=NULL"
+            " WHERE id=?",
+            (hash_password(new_password), secrets.token_hex(16), row["id"]),
         )
         conn.execute("DELETE FROM push_subscriptions WHERE user_id=?", (row["id"],))
         # Their DEK is gone with the vault, so this ciphertext can never be

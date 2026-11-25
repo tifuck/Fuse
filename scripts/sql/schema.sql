@@ -1086,6 +1086,7 @@ CREATE TABLE `users` (
   `chat_memory` bigint(20) NOT NULL DEFAULT 0,
   `secret_protect` bigint(20) NOT NULL DEFAULT 1,
   `secret_offer` bigint(20) NOT NULL DEFAULT 1,
+  `session_stamp` varchar(32) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `sqlite_autoindex_users_1` (`email`) USING HASH,
   KEY `users_email` (`email`(191))

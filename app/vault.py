@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import secrets
 import threading
 import time
 
@@ -287,8 +288,9 @@ def rewrap(user_id: int, old_password: str, new_password: str) -> None:
         kek2 = vault_kdf(new_password, new_salt, VAULT_KDF)
         wrapped = wrap_dek(dek, kek2)
         conn.execute(
-            "UPDATE users SET password_hash=?, vault_salt=?, wrapped_dek=?, vault_kdf=? WHERE id=?",
-            (hash_password(new_password), new_salt, wrapped, params, user_id),
+            # A new security stamp (accounts.password_fingerprint) ends every session.
+            "UPDATE users SET password_hash=?, session_stamp=?, vault_salt=?, wrapped_dek=?, vault_kdf=? WHERE id=?",
+            (hash_password(new_password), secrets.token_hex(16), new_salt, wrapped, params, user_id),
         )
     with _lock:
         rec = _vault.get(int(user_id)) or {}
