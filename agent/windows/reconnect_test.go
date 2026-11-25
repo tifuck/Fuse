@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -56,6 +57,113 @@ func TestDialAnswersServerPing(t *testing.T) {
 	case <-got:
 	case <-time.After(2 * time.Second):
 		t.Fatal("server ping was not answered")
+	}
+}
+
+func TestRedialResumesTLS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		_ = c.WriteMessage(websocket.TextMessage, []byte("hi"))
+		c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, _, _ = c.NextReader()
+	}))
+	defer srv.Close()
+	saved := tlsConfig
+	// The process-wide cache, so this checks the one production dials with.
+	tlsConfig = &tls.Config{InsecureSkipVerify: true, ClientSessionCache: saved.ClientSessionCache}
+	defer func() { tlsConfig = saved }()
+	if tlsConfig.ClientSessionCache == nil {
+		t.Fatal("no client session cache")
+	}
+	resumed := false
+	for i := 0; i < 2; i++ {
+		conn, err := dialAgent(srv.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Reading takes the TLS 1.3 ticket, which arrives after the handshake.
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatal(err)
+		}
+		resumed = conn.UnderlyingConn().(*tls.Conn).ConnectionState().DidResume
+		conn.Close()
+	}
+	if !resumed {
+		t.Fatal("reconnect did not resume the TLS session")
+	}
+}
+
+func TestWriteTimeoutScalesWithSize(t *testing.T) {
+	if got := writeTimeout(100); got < ioTimeoutMS*time.Millisecond || got > ioTimeoutMS*time.Millisecond+time.Second {
+		t.Fatalf("small frame: %v", got)
+	}
+	// A full 1 MiB frame at the minimum rate needs 64 s on top of the stall budget.
+	if got := writeTimeout(wsMax); got != ioTimeoutMS*time.Millisecond+64*time.Second {
+		t.Fatalf("1 MiB frame: %v", got)
+	}
+	if got := writeTimeout(100 << 20); got != writeMaxMS*time.Millisecond {
+		t.Fatalf("hard limit: %v", got)
+	}
+}
+
+// The pump hands pings and pongs to the writer instead of writing them
+// itself: a slow write in progress must not hold it, and the queued ping
+// goes out ahead of waiting results.
+func TestPingQueuedAheadOfResultsWithoutBlocking(t *testing.T) {
+	frames := make(chan string, 8)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		for {
+			var m map[string]any
+			if c.ReadJSON(&m) != nil {
+				return
+			}
+			frames <- fmt.Sprint(m["t"], ":", m["id"])
+		}
+	}))
+	defer srv.Close()
+	saved := tlsConfig
+	tlsConfig = &tls.Config{InsecureSkipVerify: true}
+	defer func() { tlsConfig = saved }()
+	conn, err := dialAgent(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &session{conn: conn}
+	s.ptys = newPtyHub(s.kickWriter)
+	defer s.closeConn()
+	s.sendRes("r1", true, 0, "", "", "")
+	s.writeMu.Lock() // a write stuck on a slow link
+	queued := make(chan error, 1)
+	go func() { queued <- s.sendCtrl(map[string]any{"v": 1, "t": "ping"}) }()
+	select {
+	case err := <-queued:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ping waited for the busy writer")
+	}
+	go s.writer(conn)
+	s.writeMu.Unlock()
+	for _, want := range []string{"ping:<nil>", "res:r1"} {
+		select {
+		case got := <-frames:
+			if got != want {
+				t.Fatalf("got %s want %s", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("no %s", want)
+		}
 	}
 }
 
@@ -121,17 +229,17 @@ func TestResumeAndNetwork(t *testing.T) {
 }
 
 func TestBackoff(t *testing.T) {
-	want := []int{0, 1000, 2000, 5000, 10000, 15000, 30000, 30000}
+	want := []int{0, 500, 1000, 2000, 3000, 5000, 10000, 15000, 15000}
 	for i, w := range want {
 		idx := i
-		if i == 7 {
+		if i == 8 {
 			idx = 99
 		}
 		if got := reconnectBackoffMS(idx, 0); got != w {
 			t.Fatalf("backoff %d: got %d want %d", idx, got, w)
 		}
 	}
-	j := reconnectBackoffMS(1, 100)
+	j := reconnectBackoffMS(2, 100)
 	if j < 1000 || j > 1000+250 {
 		t.Fatalf("jitter %d", j)
 	}
@@ -148,7 +256,7 @@ func TestFailIndexAfterSession(t *testing.T) {
 		frame  bool
 		want   int
 	}{
-		{0, 50, false, 1}, {6, 50, false, 6}, {4, 50, true, 0}, {4, healthySessionMS, false, 0},
+		{0, 50, false, 1}, {6, 50, false, 7}, {7, 50, false, 7}, {4, 50, true, 0}, {4, healthySessionMS, false, 0},
 	}
 	for _, c := range cases {
 		if got := failIndexAfterSession(c.idx, c.lasted, c.frame); got != c.want {

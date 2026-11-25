@@ -91,7 +91,7 @@ tests/test_jobs_pool: tests/test_jobs_pool.c $(LIB_SRC) $(HDRS)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tests/test_jobs_pool.c $(LIB_SRC) $(LIBS)
 
 tests/test_ws_tls: tests/test_ws_tls.c $(LIB_SRC) $(HDRS)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tests/test_ws_tls.c $(LIB_SRC) $(LIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -DIO_TIMEOUT_MS=300 -o $@ tests/test_ws_tls.c $(LIB_SRC) $(LIBS)
 
 tests/test_http: tests/test_http.c $(LIB_SRC) $(HDRS)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tests/test_http.c $(LIB_SRC) $(LIBS)

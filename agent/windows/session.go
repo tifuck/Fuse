@@ -28,8 +28,9 @@ const wsMax = 1024 * 1024
 var processInst = fmt.Sprintf("%016x", rand.Uint64())
 
 // Overridable so tests can trust httptest's certificate. Production keeps
-// the default verification.
-var tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+// the default verification. The session cache lives as long as the process,
+// so a reconnect resumes TLS instead of a full handshake.
+var tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12, ClientSessionCache: tls.NewLRUClientSessionCache(1)}
 
 // activeSession exposes the in-process session to other goroutines (tray
 // update admission). Atomic publication: the tray menu goroutine must read a
@@ -47,6 +48,7 @@ type session struct {
 	status        string
 	ready         bool
 	results       []jobRes
+	ctrl          []any    // pings, pongs and stats, sent by the writer ahead of results
 	refusals      []jobRes // refusals that found the queue full and no link
 	resultSeq     uint64
 	resultSpace   *sync.Cond
@@ -136,6 +138,7 @@ func dialAgent(raw string) (*websocket.Conn, error) {
 	d := websocket.Dialer{
 		HandshakeTimeout: connectTimeout * time.Millisecond,
 		TLSClientConfig:  tlsConfig,
+		WriteBufferSize:  64 << 10,
 	}
 	hdr := http.Header{}
 	hdr.Set("User-Agent", "fuse-agent/"+version)
@@ -153,17 +156,34 @@ func dialAgent(raw string) (*websocket.Conn, error) {
 	return conn, nil
 }
 
+// writeTimeout grows with the frame, so a large one on a slow uplink is not
+// cut and retried forever at the head of the queue: ioTimeoutMS plus
+// writeMinRate for the bytes, at most writeMaxMS for a peer that only
+// trickles.
+const (
+	writeMinRate = 16 << 10 // bytes per second
+	writeMaxMS   = 120000
+)
+
+func writeTimeout(n int) time.Duration {
+	return min(ioTimeoutMS*time.Millisecond+time.Duration(n)*time.Second/writeMinRate, writeMaxMS*time.Millisecond)
+}
+
 func (s *session) write(conn *websocket.Conn, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
-	return conn.WriteJSON(v)
+	conn.SetWriteDeadline(time.Now().Add(writeTimeout(len(b))))
+	return conn.WriteMessage(websocket.TextMessage, b)
 }
 
 func (s *session) writeBinary(conn *websocket.Conn, b []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
+	conn.SetWriteDeadline(time.Now().Add(writeTimeout(len(b))))
 	return conn.WriteMessage(websocket.BinaryMessage, b)
 }
 
@@ -184,6 +204,26 @@ func (s *session) sendJSON(v any) error {
 		return io.ErrClosedPipe
 	}
 	return s.write(c, v)
+}
+
+// ctrlMax bounds control frames held while the writer is busy; beyond it a
+// new one is dropped (the next ping, pong or stats tick replaces it).
+const ctrlMax = 8
+
+// sendCtrl hands a ping, pong or stats frame to the writer, so the pump
+// never waits behind a slow write and cancels and jobs keep flowing.
+func (s *session) sendCtrl(v any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn == nil {
+		return io.ErrClosedPipe
+	}
+	s.condsLocked()
+	if len(s.ctrl) < ctrlMax {
+		s.ctrl = append(s.ctrl, v)
+		s.resultReady.Signal()
+	}
+	return nil
 }
 
 // condsLocked creates the queue conditions on first use (s.mu held).
@@ -216,6 +256,16 @@ func (s *session) sendResult(res jobRes) {
 		delete(s.droppedChunks, res.ID)
 	}
 	s.enqueueLocked(res)
+}
+
+// markOutputLost flags id's coming result truncated (sendResult).
+func (s *session) markOutputLost(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.droppedChunks == nil {
+		s.droppedChunks = make(map[string]bool)
+	}
+	s.droppedChunks[id] = true
 }
 
 // sendChunk waits for room like the C connector (the command blocks on its
@@ -287,7 +337,7 @@ func (s *session) queueRefusalsLocked() {
 // and pings never wait on the network. A result popped meanwhile (the link
 // was replaced) is not popped twice.
 func (s *session) drainResults(send func(jobRes) error) error {
-	for len(s.results) > 0 {
+	for len(s.results) > 0 && len(s.ctrl) == 0 {
 		res := s.results[0]
 		s.mu.Unlock()
 		err := send(res)
@@ -317,7 +367,14 @@ func (s *session) writer(conn *websocket.Conn) {
 	for s.conn == conn {
 		var err error
 		s.queueRefusalsLocked()
-		if len(s.results) > 0 {
+		if len(s.ctrl) > 0 {
+			v := s.ctrl[0]
+			s.ctrl[0] = nil
+			s.ctrl = s.ctrl[1:]
+			s.mu.Unlock()
+			err = s.write(conn, v)
+			s.mu.Lock()
+		} else if len(s.results) > 0 {
 			err = s.drainResults(func(res jobRes) error { return s.write(conn, res.wire()) })
 		} else if s.ptys.pending() {
 			s.mu.Unlock()
@@ -372,6 +429,7 @@ func (s *session) closeConn() {
 	c := s.conn
 	s.conn = nil
 	s.ready = false
+	s.ctrl = nil
 	if s.resultReady != nil {
 		s.resultReady.Broadcast() // the writer exits
 	}
@@ -481,7 +539,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		s.setStatus("reconnecting")
 		conn, err := dialAgent(cfg.URL)
 		if err != nil {
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -511,7 +569,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		s.mu.Unlock()
 		if err := s.sendJSON(hello); err != nil {
 			s.closeConn()
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -525,7 +583,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			s.closeConn()
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -562,7 +620,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 				}
 				continue
 			}
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -712,7 +770,7 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 				}
 				return false, "server bye", gotFrame
 			case "ping":
-				_ = s.sendJSON(map[string]any{"v": 1, "t": "pong"})
+				_ = s.sendCtrl(map[string]any{"v": 1, "t": "pong"})
 			case "pong":
 			case "stats":
 				on, _ := msg["on"].(bool)
@@ -754,7 +812,7 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 				}()
 			}
 			if send {
-				if err := s.sendJSON(map[string]any{"v": 1, "t": "ping"}); err != nil {
+				if err := s.sendCtrl(map[string]any{"v": 1, "t": "ping"}); err != nil {
 					return false, "io error", gotFrame
 				}
 				connWatchSentPing(&watch, nowMonoMS())

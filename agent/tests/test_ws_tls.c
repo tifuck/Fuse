@@ -2,7 +2,10 @@
  * SSL_write (the fewest TLS records), not a header record plus a record per
  * 4 KB piece. ws_read_text reads a large server frame back.
  * tls_load_ca trusts only SSL_CERT_FILE or the listed bundles, and loads
- * nothing (so the client refuses TLS) when none of them yields a cert. */
+ * nothing (so the client refuses TLS) when none of them yields a cert.
+ * A frame larger than the socket buffers finishes on a slow but steady
+ * reader (the stall deadline restarts per record) and fails on a stalled
+ * one. Built with IO_TIMEOUT_MS=300. */
 #include "../src/agent.h"
 #include "../src/net.h"
 #include <assert.h>
@@ -12,8 +15,10 @@
 #include <openssl/x509.h>
 
 const char *tls_load_ca(SSL_CTX *ctx, const char *const *files);
+#include <fcntl.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <time.h>
 
 static const size_t sizes[] = {5, 4000, 70000};
 static int records = 0;
@@ -64,6 +69,59 @@ static void *server(void *arg) {
     assert(SSL_write(s, out, (int)(n + 10)) == (int)(n + 10));
     free(out);
     return NULL;
+}
+
+#define SLOW_FRAME 300000
+
+/* Reads one SLOW_FRAME frame 8 KB at a time, 50 ms apart: about 2 s in all,
+ * each pause well inside IO_TIMEOUT_MS. */
+static void *slow_server(void *arg) {
+    SSL *s = arg;
+    assert(SSL_accept(s) == 1);
+    unsigned char b[8192];
+    size_t left = SLOW_FRAME + 14;
+    while (left) {
+        size_t k = left < sizeof(b) ? left : sizeof(b);
+        read_n(s, b, k);
+        left -= k;
+        nanosleep(&(struct timespec){0, 50 * 1000000L}, NULL);
+    }
+    return NULL;
+}
+
+/* Handshakes, then stops reading. */
+static void *stalled_server(void *arg) {
+    assert(SSL_accept((SSL *)arg) == 1);
+    return NULL;
+}
+
+static void check_slow_write(SSL_CTX *sctx, SSL_CTX *cctx, void *(*srv)(void *), int want) {
+    int sv[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    int small = 16384;
+    setsockopt(sv[0], SOL_SOCKET, SO_SNDBUF, &small, sizeof(small));
+    setsockopt(sv[1], SOL_SOCKET, SO_RCVBUF, &small, sizeof(small));
+    SSL *ss = SSL_new(sctx);
+    SSL_set_fd(ss, sv[1]);
+    pthread_t th;
+    assert(pthread_create(&th, NULL, srv, ss) == 0);
+    struct tls t;
+    memset(&t, 0, sizeof(t));
+    t.fd = sv[0];
+    t.ssl = SSL_new(cctx);
+    SSL_set_fd(t.ssl, sv[0]);
+    assert(SSL_connect(t.ssl) == 1);
+    fcntl(sv[0], F_SETFL, fcntl(sv[0], F_GETFL) | O_NONBLOCK);
+    unsigned char *p = calloc(1, SLOW_FRAME);
+    int rc = ws_send(&t, 2, p, SLOW_FRAME);
+    if (rc != want) fprintf(stderr, "slow write: got %d want %d\n", rc, want);
+    assert(rc == want);
+    free(p);
+    pthread_join(th, NULL);
+    SSL_free(t.ssl);
+    SSL_free(ss);
+    close(sv[0]);
+    close(sv[1]);
 }
 
 static int store_count(SSL_CTX *ctx) {
@@ -143,6 +201,8 @@ int main(void) {
     assert(msg && op == 1 && n == 100000 && msg[0] == 'A' && msg[99999] == (char)('A' + 99999 % 26));
     free(msg);
     pthread_join(th, NULL);
+    check_slow_write(sctx, cctx, slow_server, 0);
+    check_slow_write(sctx, cctx, stalled_server, -1);
     puts("test_ws_tls: OK");
     return 0;
 }

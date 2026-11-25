@@ -230,14 +230,20 @@ int tls_connect(struct tls *t, const struct url *u) {
     hints.ai_family = AF_UNSPEC;
     if (getaddrinfo(u->host, port, &hints, &res) != 0) return -1;
     int fd = -1;
-    for (rp = res; rp; rp = rp->ai_next) {
-        fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
-        if (fd < 0) continue;
-        set_nonblock(fd, 1);
-        tune_sock(fd);
-        if (connect_timeout(fd, rp->ai_addr, rp->ai_addrlen, CONNECT_TIMEOUT_MS) == 0) break;
-        close(fd);
-        fd = -1;
+    /* With several addresses, a quick pass first: a blackholed IPv6 route
+     * otherwise cost the full timeout on every reconnect. Then the full
+     * timeout for a slow link. */
+    for (int pass = res && res->ai_next ? 0 : 1; fd < 0 && pass < 2; pass++) {
+        int timeout_ms = pass ? CONNECT_TIMEOUT_MS : CONNECT_FAST_MS;
+        for (rp = res; rp; rp = rp->ai_next) {
+            fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
+            if (fd < 0) continue;
+            set_nonblock(fd, 1);
+            tune_sock(fd);
+            if (connect_timeout(fd, rp->ai_addr, rp->ai_addrlen, timeout_ms) == 0) break;
+            close(fd);
+            fd = -1;
+        }
     }
     freeaddrinfo(res);
     if (fd < 0) return -1;
@@ -406,13 +412,22 @@ void tls_close(struct tls *t) {
 
 int tls_write_all(struct tls *t, const void *buf, size_t n) {
     const unsigned char *p = buf;
-    int64_t deadline = now_mono_ms() + IO_TIMEOUT_MS;
+    /* The stall deadline restarts on every record written, so a large frame
+     * on a slow uplink finishes; the hard limit still ends a peer that only
+     * trickles. One record per SSL_write: without partial-write mode a
+     * larger call shows no progress until it is done. A retry repeats the
+     * same pointer and length, as OpenSSL requires. */
+    int64_t start = now_mono_ms();
+    int64_t deadline = start + IO_TIMEOUT_MS;
     while (n) {
         if (g_wake_reason || g_stop_main) return -1;
-        int k = SSL_write(t->ssl, p, (int)n);
+        int k = SSL_write(t->ssl, p, (int)(n < 16384 ? n : 16384));
         if (k > 0) {
             p += k;
             n -= (size_t)k;
+            int64_t now = now_mono_ms();
+            deadline = now + IO_TIMEOUT_MS;
+            if (deadline > start + WRITE_MAX_MS) deadline = start + WRITE_MAX_MS;
             continue;
         }
         int err = SSL_get_error(t->ssl, k);

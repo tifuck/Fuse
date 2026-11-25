@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"io"
+	"sync/atomic"
+	"time"
 	"unicode/utf8"
 )
 
@@ -43,6 +46,76 @@ func (w *streamWriter) flush() {
 	if w.on != nil && len(w.carry) > 0 {
 		w.on(w.carry)
 		w.carry = nil
+	}
+}
+
+// pipeCopy copies a child's output pipe to w on its own goroutine (not
+// exec's: its WaitDelay cut a copy that was only waiting for room in our
+// result queue, and the output's tail was lost).
+type pipeCopy struct {
+	r       io.Closer
+	done    chan struct{}
+	blocked atomic.Int64 // ns spent inside w.Write, finished calls
+	writing atomic.Int64 // UnixNano the current w.Write began, 0 if none
+}
+
+func startCopy(r io.ReadCloser, w io.Writer) *pipeCopy {
+	c := &pipeCopy{r: r, done: make(chan struct{})}
+	go func() {
+		defer close(c.done)
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				began := time.Now().UnixNano()
+				c.writing.Store(began)
+				_, _ = w.Write(buf[:n])
+				// Added before writing clears: a reader in between counts
+				// this write twice (cuts later), never zero times.
+				c.blocked.Add(time.Now().UnixNano() - began)
+				c.writing.Store(0)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return c
+}
+
+// blockedNS reads writing before blocked (the copy updates them in the
+// other order), so a finished write is never missed.
+func (c *pipeCopy) blockedNS(now int64) int64 {
+	began := c.writing.Load()
+	b := c.blocked.Load()
+	if began != 0 {
+		b += now - began
+	}
+	return b
+}
+
+// finish joins the copy once the process has exited. A background process
+// (Start-Process, start /b) may hold the pipe open: it is cut after grace,
+// not counting time the copy spends waiting in w.Write for queue room, or
+// at limit. Returns true when it was cut, so output may be missing.
+func (c *pipeCopy) finish(grace time.Duration, limit time.Time) bool {
+	start := time.Now()
+	startBlocked := c.blockedNS(start.UnixNano())
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-c.done:
+			return false
+		case <-tick.C:
+		}
+		now := time.Now()
+		own := now.Sub(start) - time.Duration(c.blockedNS(now.UnixNano())-startBlocked)
+		if own >= grace || now.After(limit) {
+			_ = c.r.Close()
+			<-c.done
+			return true
+		}
 	}
 }
 

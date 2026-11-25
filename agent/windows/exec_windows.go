@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -64,10 +63,11 @@ func (s *swapWriter) Write(p []byte) (int, error) {
 // psProc is a started powershell waiting for its script on stdin, already in
 // its own Job Object (so the whole tree can be terminated on timeout/cancel).
 type psProc struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	out, err *swapWriter
-	job      windows.Handle
+	cmd              *exec.Cmd
+	stdin            io.WriteCloser
+	out, err         *swapWriter
+	outCopy, errCopy *pipeCopy
+	job              windows.Handle
 }
 
 // env ("NAME=value") is added to the agent's environment for this process.
@@ -80,9 +80,6 @@ func spawnPS(dir string, env []string) (*psProc, error) {
 	if len(env) > 0 {
 		ps.Env = append(os.Environ(), env...)
 	}
-	// A background process (Start-Process, start /b) may keep the inherited
-	// output pipes open: report the shell's result shortly after it exits.
-	ps.WaitDelay = 250 * time.Millisecond
 	ps.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow | createNewProcessGroup,
@@ -92,7 +89,19 @@ func spawnPS(dir string, env []string) (*psProc, error) {
 		return nil, err
 	}
 	p := &psProc{cmd: ps, stdin: stdin, out: &swapWriter{}, err: &swapWriter{}}
-	ps.Stdout, ps.Stderr = p.out, p.err
+	// Our own pipes and copies (pipeCopy): runExec decides when to stop
+	// waiting for output, not exec's WaitDelay.
+	or, ow, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	er, ew, err := os.Pipe()
+	if err != nil {
+		or.Close()
+		ow.Close()
+		return nil, err
+	}
+	ps.Stdout, ps.Stderr = ow, ew
 	// No KILL_ON_JOB_CLOSE: processes a command leaves running (a dev server
 	// via Start-Process) keep running after it finishes, as on Linux. The job
 	// only scopes TerminateJobObject on timeout and cancel.
@@ -100,12 +109,18 @@ func spawnPS(dir string, env []string) (*psProc, error) {
 	if err != nil {
 		job = 0
 	}
-	if err := ps.Start(); err != nil {
+	err = ps.Start()
+	ow.Close()
+	ew.Close()
+	if err != nil {
+		or.Close()
+		er.Close()
 		if job != 0 {
 			windows.CloseHandle(job)
 		}
 		return nil, err
 	}
+	p.outCopy, p.errCopy = startCopy(or, p.out), startCopy(er, p.err)
 	// Assigned before any script is written to stdin, so no descendant can
 	// escape the job.
 	if job != 0 {
@@ -179,12 +194,15 @@ func takeWarmPS() *psProc {
 	return p
 }
 
-func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill func(func()), onOut, onErr func([]byte), env []string) (string, string, int, error, bool, bool) {
+// The last result is true when output a background process kept open past
+// the shell's exit was abandoned, so the result may be missing some.
+func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill func(func()), onOut, onErr func([]byte), env []string) (string, string, int, error, bool, bool, bool) {
 	if timeoutMS <= 0 {
 		timeoutMS = 30000
 	}
+	started := time.Now()
 	if _, err := os.Stat(cwd); err != nil {
-		return "", fmt.Sprintf("fuse-agent: chdir %s: %v\n", cwd, err), 127, nil, false, true
+		return "", fmt.Sprintf("fuse-agent: chdir %s: %v\n", cwd, err), 127, nil, false, true, false
 	}
 	// A warm shell was started with the agent's environment: a command that
 	// carries its own gets a fresh one.
@@ -195,7 +213,7 @@ func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill fun
 	if p == nil {
 		var err error
 		if p, err = spawnPS(cwd, env); err != nil {
-			return "", "", 1, err, false, true
+			return "", "", 1, err, false, true, false
 		}
 	}
 	var stdout, stderr bytes.Buffer
@@ -245,21 +263,26 @@ func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill fun
 	if p.job != 0 {
 		windows.CloseHandle(p.job)
 	}
+	// Output still queued for the link is waited for (sendChunk gives up at
+	// the same limit); a background process (Start-Process, start /b) that
+	// holds the pipe open is cut shortly after the shell exits.
+	limit := started.Add(time.Duration(timeoutMS)*time.Millisecond + 10*time.Second)
+	cut := p.outCopy.finish(250*time.Millisecond, limit)
+	if p.errCopy.finish(250*time.Millisecond, limit) {
+		cut = true
+	}
 	outW.flush()
 	errW.flush()
 	code := 0
 	if waitErr != nil {
 		if ee, ok := waitErr.(*exec.ExitError); ok {
 			code = ee.ExitCode()
-		} else if errors.Is(waitErr, exec.ErrWaitDelay) && ps.ProcessState != nil {
-			// The shell exited but a child (Start-Process, start /b) still
-			// held the output pipe: report the shell's own exit status, not
-			// a failure, and say the output may be incomplete.
-			code = ps.ProcessState.ExitCode()
-			stderr.WriteString("\n[fuse-agent: a background process kept the output open; output may be incomplete]\n")
 		} else {
 			code = 1
 		}
+	}
+	if cut {
+		stderr.WriteString("\n[fuse-agent: a background process kept the output open; output may be incomplete]\n")
 	}
 	// Preserve overflow information until sendResFull sets the protocol flag.
 	if outW.n > outCap {
@@ -269,5 +292,5 @@ func runExec(cwd, cmd string, timeoutMS int, cancel <-chan struct{}, setKill fun
 		stderr.WriteString("\n[fuse-agent: output truncated]\n")
 	}
 	confirmed := !killed || treeKilled
-	return stdout.String(), stderr.String(), code, nil, timedOut, confirmed
+	return stdout.String(), stderr.String(), code, nil, timedOut, confirmed, cut
 }

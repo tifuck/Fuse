@@ -81,16 +81,18 @@ int main(void) {
     drop = conn_watch_tick(&w, 100, 100, WAKE_NETWORK, &send_ping);
     expect_str(drop, "network change", "network callback");
 
-    /* Backoff: immediate, 1s, 2s, 5s, 10s, 15s, cap 30s. */
+    /* Backoff: immediate, 0.5s, 1s, 2s, 3s, 5s, 10s, cap 15s. */
     expect_int(reconnect_backoff_ms(0, 0), 0, "backoff 0");
-    expect_int(reconnect_backoff_ms(1, 0), 1000, "backoff 1");
-    expect_int(reconnect_backoff_ms(2, 0), 2000, "backoff 2");
-    expect_int(reconnect_backoff_ms(3, 0), 5000, "backoff 3");
-    expect_int(reconnect_backoff_ms(4, 0), 10000, "backoff 4");
-    expect_int(reconnect_backoff_ms(5, 0), 15000, "backoff 5");
-    expect_int(reconnect_backoff_ms(6, 0), 30000, "backoff 6");
-    expect_int(reconnect_backoff_ms(99, 0), 30000, "backoff cap");
-    int j = reconnect_backoff_ms(1, 100);
+    expect_int(reconnect_backoff_ms(1, 0), 500, "backoff 1");
+    expect_int(reconnect_backoff_ms(2, 0), 1000, "backoff 2");
+    expect_int(reconnect_backoff_ms(3, 0), 2000, "backoff 3");
+    expect_int(reconnect_backoff_ms(4, 0), 3000, "backoff 4");
+    expect_int(reconnect_backoff_ms(5, 0), 5000, "backoff 5");
+    expect_int(reconnect_backoff_ms(6, 0), 10000, "backoff 6");
+    expect_int(reconnect_backoff_ms(7, 0), 15000, "backoff 7");
+    expect_int(reconnect_backoff_ms(99, 0), 15000, "backoff cap");
+    expect_int(reconnect_backoff_ms(BACKOFF_MAX_INDEX, 0), BACKOFF_CAP_MS, "max index reaches cap");
+    int j = reconnect_backoff_ms(2, 100);
     if (j < 1000 || j > 1000 + 250) {
         fprintf(stderr, "FAIL jitter range: %d\n", j);
         fail = 1;
@@ -119,7 +121,8 @@ int main(void) {
 
     /* A session closed right after hello_ok keeps backing off; a healthy one resets. */
     expect_int(fail_index_after_session(0, 50, 0), 1, "instant close backs off");
-    expect_int(fail_index_after_session(6, 50, 0), 6, "instant close capped");
+    expect_int(fail_index_after_session(6, 50, 0), 7, "instant close backs off to cap");
+    expect_int(fail_index_after_session(BACKOFF_MAX_INDEX, 50, 0), BACKOFF_MAX_INDEX, "instant close capped");
     expect_int(fail_index_after_session(4, 50, 1), 0, "frame after hello resets");
     expect_int(fail_index_after_session(4, HEALTHY_SESSION_MS, 0), 0, "long session resets");
 

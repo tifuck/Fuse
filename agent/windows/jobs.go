@@ -270,10 +270,13 @@ func (h *jobHub) run(s *session, msg map[string]any) {
 				env = append(env, k+"="+val)
 			}
 		}
-		out, errb, code, runErr, timedOut, confirmed := runExec(expandHome(cwd), cmd, timeout, cancel, nil, onOut, onErr, env)
+		out, errb, code, runErr, timedOut, confirmed, cut := runExec(expandHome(cwd), cmd, timeout, cancel, nil, onOut, onErr, env)
 		if runErr != nil {
 			s.sendRes(id, false, 1, "", "", "exec failed")
 			return
+		}
+		if cut {
+			s.markOutputLost(id)
 		}
 		errText := ""
 		if timedOut {

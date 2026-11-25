@@ -8,6 +8,7 @@
 
 #include "agent.h"
 #include "config.h"
+#include "jobs.h"
 #include "lifecycle.h"
 #include "net.h"
 #include "session.h"
@@ -42,6 +43,9 @@ static int write_unit(int system_wide, const char *bin, const char *cfg) {
                 "ExecStart=\"%s\" run --config \"%s\"\n"
                 "Restart=always\n"
                 "RestartSec=3\n"
+                "# Stopping or restarting the connector leaves processes a job\n"
+                "# detached (nohup, setsid) running.\n"
+                "KillMode=process\n"
                 "# NoNewPrivileges blocks setuid/file-capability helpers (sudo,\n"
                 "# setuid ping) inside agent jobs, by design. Do not remove lightly.\n"
                 "NoNewPrivileges=true\n"
@@ -64,6 +68,9 @@ static int write_unit(int system_wide, const char *bin, const char *cfg) {
                 "ExecStart=\"%s\" run --config \"%s\"\n"
                 "Restart=always\n"
                 "RestartSec=3\n"
+                "# Stopping or restarting the connector leaves processes a job\n"
+                "# detached (nohup, setsid) running.\n"
+                "KillMode=process\n"
                 "# NoNewPrivileges blocks setuid/file-capability helpers (sudo,\n"
                 "# setuid ping) inside agent jobs, by design. Do not remove lightly.\n"
                 "NoNewPrivileges=true\n"
@@ -289,5 +296,13 @@ int main(int argc, char **argv) {
     }
     if (!g_url[0]) die("missing --url or config url");
     if (!g_token[0] && !g_code[0]) die("missing --code/--token");
-    return session_loop();
+    int rc = session_loop();
+    /* KillMode=process leaves the unit's processes alone on stop: end the
+     * jobs still running, as a cancel would (their process groups). What a
+     * job detached into its own session (setsid) keeps running. */
+    pthread_mutex_lock(&g_job_mu);
+    for (int k = 0; k < MAX_JOBS; k++)
+        if (g_jobs[k].pid > 0) kill(-g_jobs[k].pid, SIGKILL);
+    pthread_mutex_unlock(&g_job_mu);
+    return rc;
 }
