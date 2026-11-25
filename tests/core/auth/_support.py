@@ -20,6 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import accounts
 from app.config import settings
+from app.web.deps import DEVICE_COOKIE
 
 PASSWORD = "password12"
 
@@ -99,10 +100,13 @@ def sign_in(client, user_id: int) -> dict:
     return set_session(client, data)
 
 
-def login(client, email, password=PASSWORD, next_path=""):
-    """Post the real sign-in form; returns the response. On success the
-    client's header carries the rotated CSRF token of the new session."""
+def login(client, email, password=PASSWORD, next_path="", device=None):
+    """Post the real sign-in form, from a browser holding device (a device
+    cookie) if given; returns the response. On success the client's header
+    carries the rotated CSRF token of the new session."""
     token = anonymous(client)["csrf"]
+    if device:
+        client.cookies.set(DEVICE_COOKIE, device)
     client.headers.pop("x-csrf-token", None)
     form = {"email": email, "password": password, "csrf_token": token}
     if next_path:

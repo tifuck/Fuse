@@ -1,5 +1,7 @@
 """Sign-in, sessions and their end: the login form, session rotation, server-side
 logout, password-change revocation, lifetime limits and the auth rate limits."""
+import hashlib
+import os
 import time
 from unittest.mock import patch
 
@@ -8,6 +10,7 @@ import pytest
 from app import accounts, crypto, db, vault
 from app.config import settings
 from app.security import RateLimiter, limiter
+from app.web.deps import DEVICE_COOKIE
 from tests.core.auth._support import (
     PASSWORD, anonymous, cookie, login, main_client, read_session, session_options, set_session, sign_in, sign_session,
 )
@@ -292,45 +295,100 @@ def test_login_is_rate_limited_per_address_even_for_the_right_password(web, tigh
     assert login(web, "ada@core.test").status_code == 429
 
 
-def test_guesses_from_many_addresses_hit_the_account_budget(web, tight_limit):
-    make_user("ada@core.test")
+def _addresses():
+    """Patch the client address; each next(...) is a new one, so the per-address
+    limit stays out of tests about the account and device budgets."""
     ip = {"now": ""}
-    with patch("app.web.deps.client_ip", lambda request: ip["now"]):
+    count = iter(range(1, 10_000))
+
+    def step():
+        n = next(count)
+        ip["now"] = f"10.0.{n // 250}.{n % 250 + 1}"
+        return ip["now"]
+
+    return patch("app.web.deps.client_ip", lambda request: ip["now"]), ip, step
+
+
+def test_guesses_from_many_addresses_lock_the_account_for_clients_without_a_device_cookie(web, tight_limit):
+    make_user("ada@core.test")
+    patched, ip, _ = _addresses()
+    with patched:
         for n in range(settings.auth_rate_per_minute * 3):
             ip["now"] = f"203.0.113.{n + 1}"
             assert login(web, "ada@core.test", "wrong-password").status_code == 401
-        # The account's budget is spent: an address that guessed wrong is
-        # refused, for the right password too and for any spelling of the email.
-        ip["now"] = "203.0.113.1"
-        assert login(web, "ada@core.test").status_code == 429
-        ip["now"] = "203.0.113.2"
-        assert login(web, " ADA@core.test ").status_code == 429
-        # A fresh address gets one guess; a wrong one closes it too.
-        ip["now"] = "203.0.113.200"
-        assert login(web, "ada@core.test", "wrong-password").status_code == 401
-        assert login(web, "ada@core.test").status_code == 429
-        # IPv6 counts by /64: rotating inside it is the same address.
-        ip["now"] = "2001:db8::1"
-        assert login(web, "ada@core.test", "wrong-password").status_code == 401
-        ip["now"] = "2001:db8::2"
-        assert login(web, "ada@core.test").status_code == 429
+        # The account's budget is spent: every client without a device cookie
+        # is refused, for the right password too, whether its address guessed
+        # or not, IPv6 included, and for any spelling of the email.
+        for addr, email in [("203.0.113.1", "ada@core.test"), ("203.0.113.2", " ADA@core.test "),
+                            ("198.51.100.7", "ada@core.test"), ("2001:db8::2", "ada@core.test")]:
+            ip["now"] = addr
+            assert login(web, email).status_code == 429, addr
 
 
-def test_only_failures_use_the_account_budget_and_cannot_lock_the_owner_out(web, tight_limit):
+def test_the_owners_device_cookie_signs_in_through_an_attack_and_no_other_cookie_does(web, tight_limit):
     make_user("ada@core.test")
-    ip = {"now": ""}
-    with patch("app.web.deps.client_ip", lambda request: ip["now"]):
-        # More sign-ins than the account budget: successes do not count.
-        for n in range(settings.auth_rate_per_minute * 3 + 1):
-            ip["now"] = f"198.51.100.{n + 1}"
+    make_user("bob@core.test")
+    patched, _, step = _addresses()
+    with patched:
+        # Successes do not use the account budget, and each one sets a device cookie.
+        for _ in range(settings.auth_rate_per_minute * 3 + 1):
+            step()
             assert login(web, "ada@core.test").status_code == 303
-        # An attacker spends the account's budget from a few addresses...
-        for n in range(settings.auth_rate_per_minute * 3):
-            ip["now"] = f"203.0.113.{n // settings.auth_rate_per_minute + 1}"
+        ada_device = cookie(web, DEVICE_COOKIE)
+        step()
+        assert login(web, "bob@core.test").status_code == 303
+        bob_device = cookie(web, DEVICE_COOKIE)
+        assert ada_device and bob_device and ada_device != bob_device
+        for _ in range(settings.auth_rate_per_minute * 3):
+            step()
             assert login(web, "ada@core.test", "wrong-password").status_code == 401
-        # ...and the owner, from an address that never failed, still gets in.
-        ip["now"] = "198.51.100.1"
+        # Locked for untrusted clients: none, another account's, a forged one.
+        for device in (None, bob_device, ada_device[:-2] + "xx"):
+            step()
+            assert login(web, "ada@core.test", device=device).status_code == 429, device
+        step()
+        assert login(web, "ada@core.test", device=ada_device).status_code == 303
+
+
+def test_a_device_that_keeps_guessing_wrong_locks_only_itself_out(web, tight_limit):
+    make_user("ada@core.test")
+    patched, _, step = _addresses()
+    with patched:
+        step()
         assert login(web, "ada@core.test").status_code == 303
+        device = cookie(web, DEVICE_COOKIE)
+        for _ in range(settings.auth_rate_per_minute):
+            step()
+            assert login(web, "ada@core.test", "wrong-password", device=device).status_code == 401
+        step()
+        assert login(web, "ada@core.test", device=device).status_code == 429
+        # Its guesses counted against the device, not the account.
+        step()
+        assert login(web, "ada@core.test").status_code == 303
+
+
+def test_a_transparent_rehash_keeps_sessions_and_a_password_change_or_reset_still_ends_them(web):
+    uid = make_user("ada@core.test")
+    salt = os.urandom(16)
+    legacy = salt.hex() + "$" + hashlib.scrypt(PASSWORD.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32).hex()
+    db.execute("UPDATE users SET password_hash=? WHERE id=?", (legacy, uid))
+    bystander = sign_in(web, uid)
+    assert login(web, "ada@core.test").status_code == 303
+    assert accounts.get_user(uid)["password_hash"] != legacy
+    set_session(web, bystander)
+    assert _signed_in(web)
+
+    sign_in(web, uid)
+    changed = web.post("/account/password", json={"old_password": PASSWORD, "new_password": NEW_PASSWORD})
+    assert changed.status_code == 200, changed.text
+    assert _signed_in(web)
+    set_session(web, bystander)
+    assert not _signed_in(web)
+
+    sign_in(web, uid)
+    assert _signed_in(web)
+    accounts.reset_password("ada@core.test", PASSWORD)
+    assert not _signed_in(web)
 
 
 def test_an_over_long_email_is_refused_before_the_limiter(web, tight_limit):

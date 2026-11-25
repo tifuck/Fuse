@@ -10,6 +10,7 @@ from starlette.background import BackgroundTask
 from .. import accounts, chat_events, vault
 from ..security import ensure_csrf
 from .deps import (
+    DEVICE_COOKIE,
     _auth_failed,
     _auth_limited,
     _chat_auth,
@@ -22,6 +23,7 @@ from .deps import (
     render,
     require_user,
     safe_next,
+    set_device_cookie,
 )
 
 router = APIRouter()
@@ -40,17 +42,22 @@ async def login_post(request: Request, email: str = Form(), password: str = Form
     # No account has a longer address (normalize_email), and none reaches the limiter.
     if len(email.strip()) > 254:
         return render(request, "login.html", error="Email or password is wrong.", next=target, status_code=401)
-    if _auth_limited(request, email):
+    # A device cookie counts only for the account it was issued to.
+    device_uid = None
+    if request.cookies.get(DEVICE_COOKIE):
+        known = await asyncio.to_thread(accounts.user_by_email, email)
+        device_uid = known["id"] if known else None
+    if _auth_limited(request, email, device_uid):
         return render(request, "login.html", error="Too many attempts. Try again in a minute.", next=target, status_code=429)
     # scrypt is ~300 ms of CPU: off the event loop, or every guess stalls the site.
     user = await asyncio.to_thread(accounts.login, email, password)
     if not user:
-        _auth_failed(request, email)
+        _auth_failed(request, email, device_uid)
         return render(request, "login.html", error="Email or password is wrong.", next=target, status_code=401)
     accounts.start_session(request.session, user)
     request.session.pop("csrf", None)
     ensure_csrf(request)
-    resp = RedirectResponse(target, status_code=303)
+    resp = set_device_cookie(RedirectResponse(target, status_code=303), user["id"])
     try:
         await asyncio.to_thread(vault.unlock, user["id"], password)
         await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
@@ -162,7 +169,7 @@ async def account_password(request: Request):
     user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    if _auth_limited(request, f"uid:{user['id']}"):
+    if _auth_limited(request, f"uid:{user['id']}", user["id"]):
         raise HTTPException(429, "Too many attempts. Try again in a minute.")
     raw = await _json_object(request)
     old = raw.get("old_password")
@@ -174,7 +181,7 @@ async def account_password(request: Request):
     except ValueError as exc:
         code = str(exc)
         if code == "auth":
-            _auth_failed(request, f"uid:{user['id']}")
+            _auth_failed(request, f"uid:{user['id']}", user["id"])
             raise HTTPException(401, "Current password is wrong.") from None
         if code == "password":
             raise HTTPException(400, "Password must be between 8 and 256 characters.") from None
@@ -206,7 +213,7 @@ async def account_vault_unlock(request: Request):
     user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
-    if _auth_limited(request, f"uid:{user['id']}"):
+    if _auth_limited(request, f"uid:{user['id']}", user["id"]):
         raise HTTPException(429, "Too many attempts. Try again in a minute.")
     raw = await _json_object(request)
     password = raw.get("password")
@@ -217,7 +224,7 @@ async def account_vault_unlock(request: Request):
     except ValueError as exc:
         if str(exc) == "vault":
             raise HTTPException(500, "Your account vault could not be decrypted.") from None
-        _auth_failed(request, f"uid:{user['id']}")
+        _auth_failed(request, f"uid:{user['id']}", user["id"])
         raise HTTPException(401, "Password is wrong.") from None
     resp = JSONResponse({"ok": True, "vault": "unlocked"})
     await asyncio.to_thread(_set_vault_cookie, resp, request, user["id"])
