@@ -18,7 +18,7 @@ from app.config import settings
 from app.sources import ensure_ollama_source, keyed
 from tests.core.auth._support import PASSWORD, http_routes, main_client, sign_in
 from tests.core.auth.test_route_auth import PUBLIC
-from tests.core.helpers import make_user, quick_user
+from tests.core.helpers import make_user, quick_user, wait_until
 from tests.core.threads._support import image_attachment, image_url
 
 
@@ -119,7 +119,8 @@ def test_threads_and_runs_are_private_to_their_owner(web, alice, bob):
     assert image.status_code == 200 and image.content == base64.b64decode(image_url(3).partition(",")[2])
     assert web.post(f"/chat/threads/{tid}/permissions/ask-alice", json={"action": "allow"}).status_code == 200
     assert web.post(f"/chat/threads/{tid}/jobs/job-alice/kill").status_code == 200
-    assert ask_and_job() == ("allowed", "cancelling")
+    # The kill saves its row off the event loop, right after it answers.
+    wait_until(lambda: ask_and_job() == ("allowed", "cancelling"))
 
 
 def test_chat_images_notices_and_pin_order_belong_to_their_owner(web, alice, bob, monkeypatch):

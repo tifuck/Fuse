@@ -1087,6 +1087,22 @@ def notification(rec: dict) -> str:
     return "\n".join(lines)
 
 
+def cancel_orphans() -> None:
+    """Stop live jobs whose thread is gone: retries a thread delete's
+    cancel_thread that failed or never ran (bounded by the live caps)."""
+    live = [rec for rec in list(_live.values())
+            if rec.get("thread_id") and rec.get("status") not in TERMINAL and rec.get("status") != "cancelling"]
+    ids = sorted({int(rec["thread_id"]) for rec in live})
+    if not ids:
+        return
+    present = {int(row["id"]) for row in db.fetchall(
+        f"SELECT id FROM chat_threads WHERE id IN ({','.join('?' for _ in ids)})", tuple(ids)
+    )}
+    for rec in live:
+        if int(rec["thread_id"]) not in present:
+            _kill_from_anywhere(rec)
+
+
 def pending_wake_threads() -> list[dict]:
     """Lightweight discovery for command-only capacity-deferred wakes."""
     ensure_schema()
@@ -1316,14 +1332,31 @@ def kill(job_id: str, user_id: int, *, thread_id=None) -> tuple[str, dict]:
     rec["status"] = "cancelling"
     if task is not None and not task.done():
         task.cancel()
-    ensure_schema()
-    with db.tx() as conn:
-        conn.execute(
-            "UPDATE command_jobs SET status='cancelling', error='cancellation requested'"
-            " WHERE id=? AND status='running'",
-            (str(rec["id"]),),
-        )
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _persist_cancelling(str(rec["id"]))
+    else:
+        # Off the loop: a stalled database must not block every chat. The
+        # terminal write supersedes this one whichever lands first.
+        write = loop.create_task(asyncio.to_thread(_persist_cancelling, str(rec["id"])))
+        _persisting.add(write)
+        write.add_done_callback(_persisting.discard)
     return render(rec, tool="kill_command")
+
+
+def _persist_cancelling(job_id: str) -> None:
+    try:
+        ensure_schema()
+        with db.tx() as conn:
+            conn.execute(
+                "UPDATE command_jobs SET status='cancelling', error='cancellation requested'"
+                " WHERE id=? AND status='running'",
+                (job_id,),
+            )
+    except Exception:
+        # The job's own terminal write still settles the row.
+        logger.exception("Failed to persist cancellation of command job %s", job_id)
 
 
 # command_jobs without out: list_thread_jobs polls every few seconds and

@@ -424,6 +424,26 @@ def test_a_parked_final_write_that_keeps_failing_settles_with_its_status(fresh_d
     assert run["id"] not in chat_runs._unsettled
 
 
+def test_a_forced_finish_whose_history_fails_leaves_the_transcript_and_still_ends_the_run(fresh_db):
+    from app import chat_history
+
+    uid = quick_user()
+    thread, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "half done"}))
+    stored = lambda: dict(db.fetchone(  # noqa: E731
+        "SELECT messages, revision FROM chat_threads WHERE id=?", (chats.resolve_thread_pk(uid, thread["id"]),)))
+    before = stored()
+    cursor = chat_store.cursor(uid)
+
+    with patch.object(chat_recovery, "finish_run", side_effect=RuntimeError("finish failed")), \
+            patch.object(chat_history, "finalize", side_effect=RuntimeError("history failed")):
+        chat_store.abort_active(run["id"], "cancelled")
+
+    assert run_row(run["id"])["status"] == "cancelled"
+    assert stored() == before
+    ended = [e for e in chat_store.events_after(uid, cursor) if e["type"] == "run.cancelled"]
+    assert len(ended) == 1 and ended[0]["payload"]["revision"] is None
+
+
 def test_an_abandon_that_requeues_a_pending_send_now_leaves_it_queued(fresh_db):
     from app import chat_children
 

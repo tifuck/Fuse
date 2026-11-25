@@ -411,8 +411,15 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
 
             # The code only ever holds stand-ins, so it cannot encode or
             # split a real value on its way back to the model.
-            secrets = await asyncio.to_thread(secret_guard.map_for, owner[0])
-            body = secret_guard.mask_value(secrets, body)
+            try:
+                secrets = await asyncio.to_thread(secret_guard.map_for, owner[0])
+                body = secret_guard.mask_value(secrets, body)
+            except Exception as exc:
+                # Fail closed: an unmasked result never reaches the code, and
+                # the call still gets its reply instead of waiting out the run.
+                crashed.append(exc)
+                abort.set()
+                body = {"ok": False, "error": f"{name}'s result could not be returned."}
         send({"reply": n, "body": json.dumps(body)})
         # A large reply waits for the pipe here, in this call's own task.
         with contextlib.suppress(ConnectionError):
