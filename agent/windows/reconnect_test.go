@@ -121,17 +121,17 @@ func TestResumeAndNetwork(t *testing.T) {
 }
 
 func TestBackoff(t *testing.T) {
-	want := []int{0, 1000, 2000, 5000, 10000, 15000, 30000, 30000}
+	want := []int{0, 500, 1000, 2000, 3000, 5000, 10000, 15000, 15000}
 	for i, w := range want {
 		idx := i
-		if i == 7 {
+		if i == 8 {
 			idx = 99
 		}
 		if got := reconnectBackoffMS(idx, 0); got != w {
 			t.Fatalf("backoff %d: got %d want %d", idx, got, w)
 		}
 	}
-	j := reconnectBackoffMS(1, 100)
+	j := reconnectBackoffMS(2, 100)
 	if j < 1000 || j > 1000+250 {
 		t.Fatalf("jitter %d", j)
 	}
@@ -148,7 +148,7 @@ func TestFailIndexAfterSession(t *testing.T) {
 		frame  bool
 		want   int
 	}{
-		{0, 50, false, 1}, {6, 50, false, 6}, {4, 50, true, 0}, {4, healthySessionMS, false, 0},
+		{0, 50, false, 1}, {6, 50, false, 7}, {7, 50, false, 7}, {4, 50, true, 0}, {4, healthySessionMS, false, 0},
 	}
 	for _, c := range cases {
 		if got := failIndexAfterSession(c.idx, c.lasted, c.frame); got != c.want {

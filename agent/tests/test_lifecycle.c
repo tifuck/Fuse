@@ -135,7 +135,7 @@ int main(void) {
     g_live_fd = -1;
 
     /* --- reconnect backoff contract (unchanged) --- */
-    assert(reconnect_backoff_ms(1, 0) == 1000);
+    assert(reconnect_backoff_ms(1, 0) == 500);
     assert(reconnect_backoff_ms(99, 0) == BACKOFF_CAP_MS);
 
     unlink(self);

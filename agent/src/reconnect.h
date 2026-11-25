@@ -8,7 +8,7 @@
 #define PONG_TIMEOUT_MS 15000
 #define PING_MISS_LIMIT 1
 #define SUSPEND_GAP_MS 2000
-#define BACKOFF_CAP_MS 30000
+#define BACKOFF_CAP_MS 15000
 #define CONNECT_TIMEOUT_MS 10000
 #define IO_TIMEOUT_MS 10000
 
@@ -45,7 +45,8 @@ const char *conn_watch_tick(struct conn_watch *w, int64_t mono_ms, int64_t boot_
 
 int conn_watch_wait_ms(const struct conn_watch *w, int64_t mono_ms);
 
-/* Immediate retry, then 1s, 2s, 5s, 10s, 15s, cap 30s. jitter_rand adds 0..base/4. */
+/* Immediate retry, then 0.5s, 1s, 2s, 3s, 5s, 10s, cap 15s. jitter_rand adds 0..base/4. */
+#define BACKOFF_MAX_INDEX 7
 int reconnect_backoff_ms(int fail_index, unsigned jitter_rand);
 
 /* hello_ok alone is not a healthy session: a server that closes right after

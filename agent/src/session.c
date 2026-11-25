@@ -123,7 +123,7 @@ int session_loop(void) {
         struct tls t;
         if (tls_connect(&t, &u) != 0 || ws_handshake(&t, &u) != 0) {
             tls_close(&t);
-            if (fail_index < 6) fail_index++;
+            if (fail_index < BACKOFF_MAX_INDEX) fail_index++;
             int wait_ms = reconnect_backoff_ms(fail_index, (unsigned)rand());
             fprintf(stderr, "fuse-agent: connect failed; retry in %dms\n", wait_ms);
             wait_interruptible_ms(wait_ms);
@@ -154,7 +154,7 @@ int session_loop(void) {
         if (!hs || ws_send_text(&t, hs) != 0) {
             free(hs);
             tls_close(&t);
-            if (fail_index < 6) fail_index++;
+            if (fail_index < BACKOFF_MAX_INDEX) fail_index++;
             int wait_ms = reconnect_backoff_ms(fail_index, (unsigned)rand());
             fprintf(stderr, "fuse-agent: disconnected (hello failed); reconnecting\n");
             wait_interruptible_ms(wait_ms);
@@ -164,7 +164,7 @@ int session_loop(void) {
         char *first = ws_read_text(&t, NULL, NULL);
         if (!first) {
             tls_close(&t);
-            if (fail_index < 6) fail_index++;
+            if (fail_index < BACKOFF_MAX_INDEX) fail_index++;
             int wait_ms = reconnect_backoff_ms(fail_index, (unsigned)rand());
             fprintf(stderr, "fuse-agent: disconnected (no hello reply); reconnecting\n");
             wait_interruptible_ms(wait_ms);
@@ -193,7 +193,7 @@ int session_loop(void) {
                 wait_interruptible_ms(auth_backoff * 1000);
                 continue;
             }
-            if (fail_index < 6) fail_index++;
+            if (fail_index < BACKOFF_MAX_INDEX) fail_index++;
             int wait_ms = reconnect_backoff_ms(fail_index, (unsigned)rand());
             wait_interruptible_ms(wait_ms);
             continue;

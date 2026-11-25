@@ -2,7 +2,7 @@
 
 #include <time.h>
 
-static const int k_backoff_ms[] = {0, 1000, 2000, 5000, 10000, 15000, BACKOFF_CAP_MS};
+static const int k_backoff_ms[] = {0, 500, 1000, 2000, 3000, 5000, 10000, BACKOFF_CAP_MS};
 
 static int64_t clock_ms(clockid_t id) {
     struct timespec ts;
@@ -99,7 +99,7 @@ int reconnect_backoff_ms(int fail_index, unsigned jitter_rand) {
 
 int fail_index_after_session(int fail_index, int64_t lasted_ms, int got_frame) {
     if (got_frame || lasted_ms >= HEALTHY_SESSION_MS) return 0;
-    return fail_index < 6 ? fail_index + 1 : 6;
+    return fail_index < BACKOFF_MAX_INDEX ? fail_index + 1 : BACKOFF_MAX_INDEX;
 }
 
 int64_t update_check_after_connect(int64_t next_ms, int64_t now_ms) {

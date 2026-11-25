@@ -481,7 +481,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		s.setStatus("reconnecting")
 		conn, err := dialAgent(cfg.URL)
 		if err != nil {
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -511,7 +511,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		s.mu.Unlock()
 		if err := s.sendJSON(hello); err != nil {
 			s.closeConn()
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -525,7 +525,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			s.closeConn()
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
@@ -562,7 +562,7 @@ func runSession(cfg *agentConfig, stop chan struct{}) {
 				}
 				continue
 			}
-			if failIndex < 6 {
+			if failIndex < backoffMaxIndex {
 				failIndex++
 			}
 			wait := reconnectBackoffMS(failIndex, rand.Uint32())
