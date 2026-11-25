@@ -13,11 +13,17 @@ window.fuseConfirm = function fuseConfirm(message, opts) {
     return Promise.resolve(window.confirm(message || "Are you sure?"));
   }
   if (dialog._fuseConfirmBusy) return Promise.resolve(false);
+  // options.media: a node shown above the question (what a choice looks like).
+  const media = dialog.querySelector("[data-confirm-media]");
   dialog._fuseConfirmBusy = new Promise((resolve) => {
     const label = options.confirmLabel || "Confirm";
     const previous = yes.textContent;
     let settled = false;
     text.textContent = message || "Are you sure?";
+    if (media) {
+      media.replaceChildren(...(options.media instanceof Node ? [options.media] : []));
+      media.hidden = !(options.media instanceof Node);
+    }
     yes.textContent = label;
     yes.classList.toggle("danger", Boolean(options.danger));
     const finish = (ok) => {
@@ -30,6 +36,10 @@ window.fuseConfirm = function fuseConfirm(message, opts) {
       dialog.removeEventListener("close", onClose);
       yes.textContent = previous;
       yes.classList.remove("danger");
+      if (media) {
+        media.replaceChildren();
+        media.hidden = true;
+      }
       dialog._fuseConfirmBusy = null;
       if (dialog.open) dialog.close();
       resolve(Boolean(ok));

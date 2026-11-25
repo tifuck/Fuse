@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException, Request
@@ -172,6 +173,23 @@ def artifact_source(request: Request, public_id: str):
     except artifacts.ArtifactError as exc:
         raise _artifact_http_error(exc) from None
     return artifacts.source_response(text)
+
+
+@router.get("/a/{public_id}/choices")
+def artifact_choices(request: Request, public_id: str):
+    """A choices artifact's checked options, for the chat to apply the one the
+    user clicked: the page only says which, never what."""
+    user, err = _chat_auth(request)
+    if err:
+        return err
+    row = _owned(user, public_id)
+    try:
+        text, fmt = artifacts.source_of(row, _artifact_version(request.query_params.get("v")))
+    except artifacts.ArtifactError as exc:
+        raise _artifact_http_error(exc) from None
+    if fmt != "choices":
+        raise HTTPException(404, "Not a choices artifact")
+    return JSONResponse(json.loads(text), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/a/{public_id}/diff")

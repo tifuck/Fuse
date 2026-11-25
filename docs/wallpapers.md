@@ -266,9 +266,24 @@ like every dashboard write):
 
 The frontend key of a custom backdrop is `"u-" + id`.
 
-**Artifact bridge.** Artifact pages get
+**Choices artifacts.** The model offers backdrops (and a project's logo,
+folder color or name, and the chat's title) as a `choices` artifact:
+`create_artifact` with `choices: {backdrop: [{name, scheme, html}], ...}`,
+inline by default (the customize-fuse skill has the rules). The server
+checks every option and resolves the project and chat to ones the user owns
+(`app/artifacts.py`, `_choices_text`); a kit of Fuse's own
+(`app/artifact_choices.js`) draws them in the view's style, one live
+backdrop preview (under the backdrop CSP, in a srcdoc frame) and a Use this
+button per option. A click posts only `{type: "choose", field, index}`:
+`static/chat/choices.js` reads the options from `GET /a/<id>/choices`
+(owner only), confirms with `fuseConfirm` and applies through the setting's
+own route (`/api/backdrops`, the project PATCH and logo PUT, the chat PATCH).
+It answers every card with `choices-state` (current values, what was
+applied) so options in use show as such.
+
+**Artifact bridge.** Artifact pages also get
 `window.fuse.setBackdrop({name, scheme, html})` (app/artifacts.py,
-`_BRIDGE`). It checks the types, then posts
+`_BRIDGE`), kept for pages made before choices. It checks the types, then posts
 `{fuseArtifact: 1, type: "backdrop", name, scheme, html}` to the chat's
 artifact viewer; on a standalone or shared artifact page it only logs a
 console note. The viewer acts only on a message from the artifact frame that

@@ -29,7 +29,7 @@ _XML_HELD_MAX = 450_000
 _DRAFT_TOOLS = ("create_artifact", "update_artifact", "edit_artifact")
 _DRAFT_TITLE = re.compile(r'"title"\s*:\s*"((?:[^"\\]|\\.){1,160})"')
 _DRAFT_DISPLAY = re.compile(r'"display"\s*:\s*"(inline|panel)"')
-_DRAFT_CHART = re.compile(r'"chart"\s*:')
+_DRAFT_CHART = re.compile(r'"(?:chart|choices)"\s*:')
 _DRAFT_IDENT = re.compile(r'"identifier"\s*:\s*"([A-Za-z0-9_\-/:.]{8,200})"')
 
 
@@ -407,7 +407,7 @@ class Output:
         title = _DRAFT_TITLE.search(head)
         ident = _DRAFT_IDENT.search(head)
         out = {"tool": draft["tool"], "chars": draft["chars"]}
-        # A chart is inline unless the call says panel (artifacts.execute_from_tool).
+        # A chart or choices is inline unless the call says panel (artifacts.execute_from_tool).
         display = _DRAFT_DISPLAY.search(head)
         if (display and display.group(1) == "inline") or (not display and _DRAFT_CHART.search(head)):
             out["display"] = "inline"

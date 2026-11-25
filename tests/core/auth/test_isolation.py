@@ -353,6 +353,19 @@ def test_artifacts_are_private_to_their_owner(web, alice, bob):
         assert res.status_code < 400, (method, path, res.status_code, res.text[:200])
 
 
+def test_choices_options_are_read_only_by_their_owner(web, alice, bob):
+    thread = chats.create_thread(alice, model="offline")["id"]
+    pk = chats.resolve_thread_pk(alice, thread)
+    choice = artifacts.create(alice, title="Titles", html=json.dumps({"chat_title": ["Ship 2.4"]}), fmt="choices",
+                              thread_id=pk, visibility="public")["identifier"]
+    page = artifacts.create(alice, title="Page", html="<p>x</p>")["identifier"]
+    sign_in(web, bob)
+    assert web.get(f"/a/{choice}/choices").status_code == 404
+    sign_in(web, alice)
+    assert web.get(f"/a/{choice}/choices").json() == {"chat": thread, "chat_title": ["Ship 2.4"]}
+    assert web.get(f"/a/{page}/choices").status_code == 404
+
+
 def _sandbox(res) -> list | None:
     """The sandbox flags of a response's CSP; None without a sandbox directive."""
     csp = res.headers.get("content-security-policy", "")
@@ -517,6 +530,8 @@ ISOLATED = {
     ("GET", "/projects/{project_id}/logo"), ("POST", "/hosts/{host_id}/probe"), ("POST", "/hosts/{host_id}/test"),
     ("POST", "/hosts/{host_id}/trust"), ("POST", "/hosts/{host_id}/browse"), ("POST", "/hosts/{host_id}/mkdir"),
     ("DELETE", "/hosts/pairings/{pairing_id}"),
+    # test_choices_options_are_read_only_by_their_owner
+    ("GET", "/a/{public_id}/choices"),
     # test_artifacts_are_private_to_their_owner
     ("GET", "/a/{public_id}/source"), ("GET", "/a/{public_id}/diff"), ("GET", "/a/{public_id}/download"),
     ("POST", "/a/{public_id}/visibility"), ("POST", "/a/{public_id}/title"), ("POST", "/a/{public_id}/pin"),

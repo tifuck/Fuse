@@ -696,6 +696,104 @@ def live_code_thread() -> list[dict]:
     ]
 
 
+# Choices artifacts (app/artifact_choices.js): options for the user's own
+# settings, each with a Use this button. They target "demo", a placeholder
+# project on a placeholder machine (_choices_project).
+def _logo(body: str) -> str:
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' + body + "</svg>"
+
+
+CHOICE_LOGOS = [
+    {"name": "Bracket", "svg": _logo('<rect x="4" y="4" width="56" height="56" rx="14" fill="#3E63DD"/>'
+                                     '<path d="M26 18 16 32l10 14M38 18l10 14-10 14" fill="none" stroke="#fff" stroke-width="6" '
+                                     'stroke-linecap="round" stroke-linejoin="round"/>')},
+    {"name": "Spark", "svg": _logo('<circle cx="32" cy="32" r="28" fill="#12A594"/>'
+                                   '<path d="M32 12c2 12 8 18 20 20-12 2-18 8-20 20-2-12-8-18-20-20 12-2 18-8 20-20z" fill="#fff"/>')},
+    {"name": "Stack", "svg": _logo('<path d="M32 8 58 22 32 36 6 22z" fill="#FFC53D"/>'
+                                   '<path d="M6 32l26 14 26-14" fill="none" stroke="#F76B15" stroke-width="5" stroke-linejoin="round"/>'
+                                   '<path d="M6 42l26 14 26-14" fill="none" stroke="#E5484D" stroke-width="5" stroke-linejoin="round"/>')},
+    {"name": "Monogram", "svg": _logo('<rect x="4" y="4" width="56" height="56" rx="28" fill="#8E4EC6"/>'
+                                      '<path d="M23 17h9c9 0 16 7 16 15s-7 15-16 15h-9z" fill="none" stroke="#fff" stroke-width="6" '
+                                      'stroke-linejoin="round"/>')},
+]
+CHOICE_COLORS = [{"name": "Moss", "color": "#46A758"}, {"name": "Ocean", "color": "#0090FF"},
+                 {"name": "Amber", "color": "#FFC53D"}, {"name": "Violet", "color": "#8E4EC6"}]
+
+
+def _backdrop(base: str, top: str, dot: str) -> str:
+    """A small seeded backdrop that keeps the house rules (customize-fuse)."""
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:'
+        + base + '}canvas{display:block;width:100%;height:100%}</style></head><body><canvas id="c"></canvas><script>'
+        '(function(){var c=document.getElementById("c"),x=c.getContext("2d"),d=Math.min(devicePixelRatio||1,1.5),w=0,h=0,u=0,last=0;'
+        'var still=matchMedia("(prefers-reduced-motion: reduce)").matches;'
+        'function draw(t){var g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,"' + top + '");g.addColorStop(1,"' + base + '");'
+        'x.fillStyle=g;x.fillRect(0,0,w,h);for(var i=0;i<70;i++){var px=((i*0.137)%1)*w,py=(((i*0.071)%1)*h+t*0.0003*u*(1+i%3))%h;'
+        'if(Math.abs(px-w/2)<w*0.22)continue;x.globalAlpha=0.12+0.08*(i%3);x.fillStyle="' + dot + '";'
+        'x.beginPath();x.arc(px,py,u*(0.15+0.1*(i%3)),0,7);x.fill();}x.globalAlpha=1;}'
+        'function size(){w=innerWidth;h=innerHeight;u=Math.max(6,Math.min(w,h)/80);c.width=w*d;c.height=h*d;x.setTransform(d,0,0,d,0,0);draw(last);}'
+        'function loop(t){requestAnimationFrame(loop);if(t-last<33)return;last=t;draw(t);}'
+        'addEventListener("resize",size);size();if(!still)requestAnimationFrame(loop);})();'
+        "</script></body></html>"
+    )
+
+
+CHOICE_BACKDROPS = [
+    {"name": "Night drift", "scheme": "dark", "html": _backdrop("#0b0f17", "#1b1233", "#9db4ff")},
+    {"name": "Deep teal", "scheme": "dark", "html": _backdrop("#06161a", "#0d2a30", "#6ad4c8")},
+    {"name": "Paper haze", "scheme": "light", "html": _backdrop("#f6f0e6", "#e9dfcf", "#b45c2e")},
+]
+CHOICES = (
+    ("look", "A new look for demo", {"project": "demo", "project_logo": CHOICE_LOGOS, "folder_color": CHOICE_COLORS},
+     "Give the demo project a logo, and a folder color to go with it.",
+     "Here are four logos and four folder colors for demo. Pick the ones you like."),
+    ("backdrop", "Backdrop ideas", {"backdrop": CHOICE_BACKDROPS},
+     "Make me a calm backdrop for the chat.",
+     "Three calm backdrops to try. Preview each one, then use the one you like."),
+    ("names", "Names for this chat and project", {"project": "demo", "project_name": ["demo-api", "Demo service", "Harbor"],
+                                                 "chat_title": ["Project look", "Logo and colors for demo", "Demo branding"]},
+     "Rename this chat and suggest a better name for the project.",
+     "A few names for the project and titles for this chat. Pick one of each, or none."),
+)
+
+
+def choices_thread(idents: dict) -> list[dict]:
+    out = []
+    for key, title, _spec, ask, answer in CHOICES:
+        out += [user(ask), reply(tool("create_artifact", version=1, visibility="private", display="inline", format="choices",
+                                      identifier=idents[key], title=title, host="", project_root=""), answer,
+                                 minutes_ago=15, elapsed_s=9)]
+    return out
+
+
+def _choices_project(uid: int) -> tuple[int, int]:
+    """The placeholder machine and project the choices chat changes: disabled,
+    an .invalid hostname and no token, so nothing ever connects to it."""
+    from app import db
+
+    ts = db.now()
+    host = db.fetchone("SELECT id FROM user_hosts WHERE user_id=? AND alias='qa-box'", (uid,))
+    if host is None:
+        with db.tx() as conn:
+            conn.execute("INSERT INTO user_hosts (user_id, alias, hostname, username, auth_type, secret, default_cwd, disabled,"
+                         " created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)",
+                         (uid, "qa-box", "qa-box.invalid", "qa", "agent", "", PROJECT, ts, ts))
+            host_id = int(db.last_id(conn))
+    else:
+        host_id = int(host["id"])
+    db.execute("UPDATE user_hosts SET disabled=1, device_token_hash='' WHERE id=?", (host_id,))
+    project = db.fetchone("SELECT id FROM user_projects WHERE user_id=? AND host_id=? AND remote_path=?", (uid, host_id, PROJECT))
+    if project is None:
+        with db.tx() as conn:
+            conn.execute("INSERT INTO user_projects (user_id, host_id, name, remote_path, notes, created_at, updated_at)"
+                         " VALUES (?,?,?,?,'',?,?)", (uid, host_id, "demo", PROJECT, ts, ts))
+            return host_id, int(db.last_id(conn))
+    # Back to the fixture's look: a reseed undoes what a check applied.
+    db.execute("UPDATE user_projects SET name='demo', color='', archived=0, logo_rev=-ABS(logo_rev) WHERE id=?", (project["id"],))
+    db.execute("DELETE FROM project_logos WHERE project_id=?", (project["id"],))
+    return host_id, int(project["id"])
+
+
 THREADS = [
     ("QA · Long markdown", lambda: [user("Why did the background command never report back?"), reply(MARKDOWN, minutes_ago=300, elapsed_s=48)]),
     ("QA · Summary lines", summary_thread),
@@ -706,6 +804,7 @@ THREADS = [
     ("QA · Artifacts", artifacts_thread),
     ("QA · Inline artifacts", inline_thread),
     ("QA · Inline edge cases", inline_edges_thread),
+    ("QA · Choices", choices_thread),
     ("QA · Planning and memory", planning_thread),
     ("QA · Background work", background_thread),
     ("QA · Subagents", agents_thread),
@@ -738,6 +837,15 @@ def _seed(uid: int) -> list[str]:
                               for key, title, spec in (("logins", "Logins, last 30 days", INLINE_LOGINS),
                                                        ("week", "This week vs last week", INLINE_WEEK),
                                                        ("models", "Requests by model, November", INLINE_MODELS))})
+        elif build is choices_thread:
+            host_id, project_id = _choices_project(uid)
+            made = chat_threads.create_thread(uid, model=MODEL, title=title, kind="project", host_id=host_id, project_id=project_id)
+            pk = chat_threads.resolve_thread_pk(uid, made["id"])
+            chat_threads.update_thread(uid, made["id"], messages=build({
+                key: artifacts.create(uid, title=art_title, html=json.dumps(spec), fmt="choices", display="inline", thread_id=pk)["identifier"]
+                for key, art_title, spec, _ask, _answer in CHOICES}))
+            titles.append(title)
+            continue
         elif build is planning_thread:
             messages = build(skill_proposals.create(uid, thread_id=pk, name="release-checklist", body=SKILL_BODY,
                                                     description="Steps to cut a release of the demo project.",

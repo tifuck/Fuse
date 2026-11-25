@@ -5,6 +5,7 @@ import html as html_lib
 import json
 import re
 import secrets
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,10 +29,14 @@ EDITS_MAX = 50
 READ_LINES = 2000
 READ_CHARS = 50 * 1024
 PUBLIC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
-FORMATS = ("html", "markdown", "chart")
+FORMATS = ("html", "markdown", "chart", "choices")
 DISPLAYS = ("panel", "inline")
 CHART_TYPES = ("line", "area", "bar", "column", "stacked", "stat", "table", "heatmap")
 CHART_ROWS = 5000
+# What a choices artifact may offer, in the order its card shows them.
+CHOICE_FIELDS = ("backdrop", "project_logo", "folder_color", "project_name", "chat_title")
+CHOICE_OPTIONS_MAX = 4
+LOGO_SVG_MAX = 16 * 1024
 TOOL_NAMES = ("create_artifact", "update_artifact", "read_artifact", "edit_artifact")
 _VIS = {"private", "public"}
 # The stand-in a transcript keeps for stored page text
@@ -134,6 +139,20 @@ body{{margin:0;padding:{pad};background:var(--fuse-bg);color:var(--fuse-text);fo
 </body></html>"""
 _CHART_KIT = Path(__file__).with_name("artifact_chart.js").read_text(encoding="utf-8")
 
+# Choices drawn by the built-in kit (app/artifact_choices.js): options the
+# user applies one at a time, each behind Fuse's confirm dialog.
+_CHOICES_SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>{head}
+<style>
+:root{{color-scheme:{scheme}}}
+body{{margin:0;padding:{pad};background:var(--fuse-bg);color:var(--fuse-text);font:calc(14px * var(--fuse-scale))/1.45 var(--fuse-font)}}
+#choices{{max-width:{width};margin:0 auto}}
+</style>
+</head><body><div id="choices"></div>
+<script>window.FUSE_CHOICES={spec};</script>
+<script>{kit}</script>
+</body></html>"""
+_CHOICES_KIT = Path(__file__).with_name("artifact_choices.js").read_text(encoding="utf-8")
+
 # Inline artifacts sit in the reply: no page background, margin or scrollbar
 # of their own, and the page reports its height so the chat sizes the frame
 # to it (static/chat/artifacts.js onInlineMessage).
@@ -195,8 +214,8 @@ def _format(raw) -> str:
     value = str(raw or "html").strip().lower()
     if value in ("md", "markdown"):
         return "markdown"
-    if value not in ("html", "chart"):
-        raise ArtifactError("format must be html, markdown or chart")
+    if value not in ("html", "chart", "choices"):
+        raise ArtifactError("format must be html, markdown, chart or choices")
     return value
 
 
@@ -261,8 +280,153 @@ def _chart_text(text: str) -> str:
     return json.dumps(spec, ensure_ascii=False, indent=1)
 
 
-def _check_content(text: str, fmt: str) -> str:
+_SVG = re.compile(r"^\s*(?:<\?xml[^>]*\?>\s*)?<svg[\s>][\s\S]*</svg>\s*$", re.I)
+# A logo is drawn as an image (no scripts, no loads) and stored as a PNG, so
+# these would do nothing: refusing them tells the model what a logo is.
+_SVG_REFUSED = re.compile(
+    r"<\s*(?:script|foreignObject|iframe)\b|\bon[a-z]+\s*=|(?:href|src)\s*=\s*[\"']?\s*(?:https?:|//)|url\(\s*[\"']?\s*(?:https?:|//)",
+    re.I,
+)
+
+
+def _choice_label(raw, where: str) -> str:
+    from . import backdrops
+
+    try:
+        return backdrops._name(raw)
+    except backdrops.BackdropError as exc:
+        raise ArtifactError(f"{where}: {exc.detail}") from None
+
+
+def _choice_project(raw, user_id: int | None, thread_id: int | None) -> dict:
+    """The project the project_* fields change: by name, the stored form an
+    edit keeps ({id, ...}), or this chat's project. Always one the user owns."""
+    if user_id is None:
+        raise ArtifactError("project choices need a signed-in user")
+    if isinstance(raw, dict):
+        try:
+            pid = int(raw.get("id"))
+        except (TypeError, ValueError):
+            raise ArtifactError("project must be the project's name") from None
+        row = db.fetchone("SELECT id, host_id, name FROM user_projects WHERE id=? AND user_id=?", (pid, user_id))
+        if row is None:
+            raise ArtifactError("project not found; ask the user which project they mean")
+    elif isinstance(raw, str) and raw.strip():
+        wanted = raw.strip()
+        rows = db.fetchall(
+            "SELECT p.id, p.host_id, p.name, h.alias FROM user_projects p JOIN user_hosts h ON h.id=p.host_id "
+            "WHERE p.user_id=? AND p.archived=0",
+            (user_id,),
+        )
+        hits = [r for r in rows if str(r["name"]).casefold() == wanted.casefold()]
+        if not hits:
+            raise ArtifactError(f"no project is named {wanted!r}; ask the user which project they mean")
+        if len(hits) > 1:
+            where = ", ".join(sorted(str(r["alias"]) for r in hits))
+            raise ArtifactError(f"{len(hits)} projects are named {wanted!r} (on {where}); ask the user which one")
+        row = hits[0]
+    elif raw is None:
+        row = db.fetchone(
+            "SELECT p.id, p.host_id, p.name FROM chat_threads t JOIN user_projects p ON p.id=t.project_id AND p.user_id=t.user_id "
+            "WHERE t.id=? AND t.user_id=? AND t.kind='project'",
+            (thread_id, user_id),
+        ) if thread_id else None
+        if row is None:
+            raise ArtifactError("this chat is not in a project: pass project with the project's name, or ask the user which project")
+    else:
+        raise ArtifactError("project must be the project's name")
+    return {"id": int(row["id"]), "host_id": int(row["host_id"]), "name": str(row["name"])}
+
+
+def _choice_chat(raw, user_id: int | None, thread_id: int | None) -> str:
+    """The chat chat_title renames: this one, or the stored id an edit keeps."""
+    from . import chats
+
+    if isinstance(raw, str) and raw:
+        if user_id is None or chats.resolve_thread_pk(user_id, raw) is None:
+            raise ArtifactError("chat not found")
+        return raw
+    if user_id is None or not thread_id:
+        raise ArtifactError("chat_title needs a chat: offer it from the chat whose title it changes")
+    return str(chats.public_id_for(thread_id))
+
+
+def _choice_option(field: str, raw, where: str):
+    from . import backdrops, hosts
+    from .chat_schema import TITLE_MAX
+
+    if field in ("project_name", "chat_title"):
+        text = re.sub(r"\s+", " ", raw).strip() if isinstance(raw, str) else ""
+        limit = 80 if field == "project_name" else TITLE_MAX
+        if not text or len(text) > limit or any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text):
+            raise ArtifactError(f"{where} must be text of 1-{limit} characters")
+        return text
+    if not isinstance(raw, dict):
+        raise ArtifactError(f"{where} must be an object")
+    if field == "backdrop":
+        if set(raw) - {"name", "scheme", "html"}:
+            raise ArtifactError(f"{where}: a backdrop is {{name, scheme, html}}")
+        try:
+            return {"name": backdrops._name(raw.get("name")), "scheme": backdrops._scheme(raw.get("scheme")),
+                    "html": backdrops._html(raw.get("html"))}
+        except backdrops.BackdropError as exc:
+            raise ArtifactError(f"{where}: {exc.detail}") from None
+    if field == "project_logo":
+        if set(raw) - {"name", "svg"}:
+            raise ArtifactError(f"{where}: a logo is {{name, svg}}")
+        svg = raw.get("svg")
+        if not isinstance(svg, str) or not _SVG.match(svg):
+            raise ArtifactError(f"{where}: svg must be one <svg>...</svg> document")
+        if len(svg.encode("utf-8")) > LOGO_SVG_MAX:
+            raise ArtifactError(f"{where}: svg is over {LOGO_SVG_MAX // 1024} KB; simplify the shapes")
+        if _SVG_REFUSED.search(svg):
+            raise ArtifactError(f"{where}: svg must be plain shapes: no scripts, event handlers, foreignObject or outside links")
+        return {"name": _choice_label(raw.get("name"), where), "svg": svg.strip()}
+    if set(raw) - {"name", "color"}:
+        raise ArtifactError(f"{where}: a folder color is {{name, color}}")
+    try:
+        color = hosts._color(raw.get("color"))
+    except hosts.HostError as exc:
+        raise ArtifactError(f"{where}: {exc.detail}") from None
+    return {"name": _choice_label(raw.get("name"), where), "color": color}
+
+
+def _choices_text(text: str, user_id: int | None, thread_id: int | None) -> str:
+    """Options for the choices kit (artifact_choices.js), checked and stored as
+    indented JSON so edit_artifact can change them line by line. Targets are
+    resolved here to ones the user owns: the chat applies what the card shows."""
+    shape = 'choices must be a JSON object, e.g. {"chat_title": ["Release checklist", "Ship 2.4"]}'
+    try:
+        spec = json.loads(text)
+    except (ValueError, RecursionError):
+        raise ArtifactError(shape) from None
+    if not isinstance(spec, dict):
+        raise ArtifactError(shape)
+    unknown = sorted(set(spec) - {*CHOICE_FIELDS, "project", "chat"})
+    if unknown:
+        raise ArtifactError(f"unknown choices field {unknown[0]!r}; the fields are {', '.join(CHOICE_FIELDS)}")
+    fields = [field for field in CHOICE_FIELDS if field in spec]
+    if not fields:
+        raise ArtifactError(f"choices needs at least one of {', '.join(CHOICE_FIELDS)}")
+    out: dict = {}
+    if any(field in spec for field in ("project_logo", "folder_color", "project_name")):
+        out["project"] = _choice_project(spec.get("project"), user_id, thread_id)
+    elif spec.get("project") is not None:
+        raise ArtifactError("project only goes with project_logo, folder_color or project_name")
+    if "chat_title" in spec:
+        out["chat"] = _choice_chat(spec.get("chat"), user_id, thread_id)
+    for field in fields:
+        options = spec[field]
+        if not isinstance(options, list) or not 1 <= len(options) <= CHOICE_OPTIONS_MAX:
+            raise ArtifactError(f"{field} must be a list of 1-{CHOICE_OPTIONS_MAX} options")
+        out[field] = [_choice_option(field, item, f"{field} option {i}") for i, item in enumerate(options, 1)]
+    return json.dumps(out, ensure_ascii=False, indent=1)
+
+
+def _check_content(text: str, fmt: str, *, user_id: int | None = None, thread_id: int | None = None) -> str:
     text = _check_html(text)
+    if fmt == "choices":
+        return _choices_text(text, user_id, thread_id)
     return _chart_text(text) if fmt == "chart" else text
 
 
@@ -667,7 +831,7 @@ def create(
     visibility = _visibility(visibility)
     display = _display(display)
     fmt = _format(fmt)
-    html = _check_content(html, fmt)
+    html = _check_content(html, fmt, user_id=user_id, thread_id=thread_id)
     ts = db.now()
     with db.tx() as conn:
         if _count(conn, user_id) >= MAX_PER_USER:
@@ -714,7 +878,7 @@ def update(
     new_display = _display(display) if display is not None else None
     ts = db.now()
     new_fmt = _format(fmt) if html is not None else None
-    new_html = _check_content(html, new_fmt) if html is not None else None
+    new_html = _check_content(html, new_fmt, user_id=user_id, thread_id=thread_id) if html is not None else None
     with db.tx() as conn:
         # Authoritative read inside the write transaction, row-locked: a
         # concurrent update (e.g. model tool call racing a UI toggle) commits
@@ -1023,15 +1187,17 @@ def continue_in_chat(user_id: int, public_id: str, *, model: str = "") -> dict:
 
 
 def _content_args(parsed: dict) -> tuple[str | None, str | None]:
-    """(text, format) from html=, markdown= or chart=; (None, None) when none is set."""
+    """(text, format) from html=, markdown=, chart= or choices=; (None, None) when none is set."""
     has_html = parsed.get("html") is not None
     has_md = parsed.get("markdown") is not None
     has_chart = parsed.get("chart") is not None
-    if has_html + has_md + has_chart > 1:
-        raise ArtifactError("pass one of html, markdown or chart")
-    if has_chart:
-        chart = parsed["chart"]
-        return (chart if isinstance(chart, str) else json.dumps(chart, ensure_ascii=False)), "chart"
+    has_choices = parsed.get("choices") is not None
+    if has_html + has_md + has_chart + has_choices > 1:
+        raise ArtifactError("pass one of html, markdown, chart or choices")
+    if has_chart or has_choices:
+        key = "chart" if has_chart else "choices"
+        spec = parsed[key]
+        return (spec if isinstance(spec, str) else json.dumps(spec, ensure_ascii=False)), key
     if has_md:
         return _text_arg(parsed["markdown"]), "markdown"
     if has_html:
@@ -1080,7 +1246,7 @@ def execute_from_tool(name: str, args: dict, *, user_id: int, thread_id: int | N
                 raise ArtifactError("identifier is required")
             text, fmt = _content_args(parsed)
             if text is None and title is None and icon is None and display is None:
-                raise ArtifactError("nothing to update: pass html, markdown, chart, title, icon or display")
+                raise ArtifactError("nothing to update: pass html, markdown, chart, choices, title, icon or display")
             art = update(
                 user_id,
                 ident,
@@ -1097,7 +1263,7 @@ def execute_from_tool(name: str, args: dict, *, user_id: int, thread_id: int | N
         else:
             text, fmt = _content_args(parsed)
             if text is None:
-                raise ArtifactError("html, markdown or chart is required")
+                raise ArtifactError("html, markdown, chart or choices is required")
             art = create(
                 user_id,
                 title=str(title or ""),
@@ -1106,8 +1272,8 @@ def execute_from_tool(name: str, args: dict, *, user_id: int, thread_id: int | N
                 icon=str(icon or ""),
                 note=note,
                 thread_id=thread_id,
-                # A chart is one visual: it goes in the reply unless asked otherwise.
-                display=str(display or ("inline" if fmt == "chart" else "panel")),
+                # A chart or a set of choices goes in the reply unless asked otherwise.
+                display=str(display or ("inline" if fmt in ("chart", "choices") else "panel")),
             )
             action = "created"
     except ArtifactError as exc:
@@ -1122,12 +1288,19 @@ def execute_from_tool(name: str, args: dict, *, user_id: int, thread_id: int | N
         return f"Tool error: {exc.detail}", trace
 
     fmt = (art["history"][-1]["format"] if art.get("history") else "html")
-    shown = (
-        "The chat shows it in full inside your reply, across the chat's width: introduce it in one short "
-        "sentence, without describing it at length or linking it"
-        if art["display"] == "inline"
-        else "The chat shows it as a card under your reply: refer to it by its title, without a link"
-    )
+    if fmt == "choices":
+        shown = (
+            "The chat shows these choices with a Use this button on each option; Fuse asks the user to confirm "
+            "before it changes anything, and nothing has changed yet. In one short sentence say what you offered "
+            "and that they can pick one; never say it was applied, and do not describe the options at length or link it"
+        )
+    elif art["display"] == "inline":
+        shown = (
+            "The chat shows it in full inside your reply, across the chat's width: introduce it in one short "
+            "sentence, without describing it at length or linking it"
+        )
+    else:
+        shown = "The chat shows it as a card under your reply: refer to it by its title, without a link"
     text = (
         f"Artifact {action}. identifier={art['identifier']} url={art['url']} "
         f"title={json.dumps(art['title'], ensure_ascii=False)} version={art['version']} format={fmt} "
@@ -1217,6 +1390,16 @@ def render_document(text: str, fmt: str = "html", title: str = "", theme: tuple[
             spec=text.replace("<", "\\u003c"),
             kit=_CHART_KIT,
         )
+    if fmt == "choices":
+        return _CHOICES_SHELL.format(
+            title=html_lib.escape(title or "Choices"),
+            head=snippet,
+            scheme=theme[0],
+            pad="0" if inline else "1.5rem 1.25rem",
+            width="none" if inline else "60rem",
+            spec=text.replace("<", "\\u003c"),
+            kit=_CHOICES_KIT,
+        )
     if fmt == "markdown":
         source = json.dumps(text).replace("<", "\\u003c")
         hljs, hljs_sri = _HLJS_THEMES["dark" if theme[0] == "dark" else "light"]
@@ -1267,6 +1450,7 @@ def download_response(html: str, title: str, fmt: str = "html") -> Response:
     ext, media = {
         "markdown": (".md", "text/markdown; charset=utf-8"),
         "chart": (".json", "application/json; charset=utf-8"),
+        "choices": (".json", "application/json; charset=utf-8"),
     }.get(fmt, (".html", "text/html; charset=utf-8"))
     filename = slug + ext
     headers = content_headers(framable=False)

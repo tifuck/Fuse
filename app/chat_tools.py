@@ -242,6 +242,18 @@ SCHEMAS = {
                 "Fonts. External images and other hosts are blocked: draw with inline SVG or CSS, or embed data: "
                 "URIs. Use #anchors for sections; relative links do not resolve. Storage lasts one page view. "
                 "window.fuse.sendToChat(text) puts text in the user's message box, for a 'send this back' button. "
+                "Send choices instead of html when the user asks you to change one of these Fuse settings: backdrop "
+                "(the animated picture behind the chat), project_logo (the image shown in place of a project's "
+                "folder icon; a project 'icon' or 'logo' means this), folder_color (the color of a project's folder "
+                "icon), project_name, chat_title (this chat's title). Fuse draws the options inline, each with its "
+                "own Use this button, and asks the user to confirm before anything changes. Offer only the fields "
+                "the user named or clearly meant ('rename the project' is project_name; 'rename this chat' is "
+                "chat_title; 'a new look for the project' is project_logo and folder_color), never unasked or "
+                "alongside other work, and never anything else (machine, folder, permissions, model). Shape: "
+                "{project (the project's name; omit for this chat's project), backdrop: [{name, scheme, html}], "
+                "project_logo: [{name, svg}], folder_color: [{name, color: '#RRGGBB'}], project_name: [text], "
+                "chat_title: [text]}, 1-4 options per field (2-4 to compare). Load the customize-fuse skill first "
+                "for what each option must look like. "
                 "A design system in the project instructions overrides these defaults. It starts private and only the user can share it. Never put secrets, "
                 "API keys, credentials, or other users' data in it. Encode content as a valid JSON string. "
                 "After this returns, say in a sentence or two what you made (one short sentence for inline): the chat "
@@ -259,10 +271,14 @@ SCHEMAS = {
                     },
                     "markdown": {"type": "string", "description": "A Markdown document, instead of html."},
                     "chart": {"type": "object", "description": "A chart for Fuse's kit, instead of html: {type, x, y, data, ...}."},
+                    "choices": {
+                        "type": "object",
+                        "description": "Options the user applies to Fuse with one click, instead of html: {project, backdrop, project_logo, folder_color, project_name, chat_title}.",
+                    },
                     "display": {
                         "type": "string",
                         "enum": ["inline", "panel"],
-                        "description": "inline (the default for chart): drawn in full inside the reply; use it for any one chart, set of numbers or small table the user asked to see. panel (the default for html and markdown): a card that opens a full page beside the chat.",
+                        "description": "inline (the default for chart and choices): drawn in full inside the reply; use it for any one chart, set of numbers or small table the user asked to see. panel (the default for html and markdown): a card that opens a full page beside the chat.",
                     },
                     "icon": {"type": "string", "description": "One emoji for the tab and lists, e.g. \U0001f4ca."},
                     "note": {"type": "string", "description": "Optional one-line summary of this version."},
@@ -298,6 +314,7 @@ SCHEMAS = {
                     "html": {"type": "string", "description": "Replacement HTML document."},
                     "markdown": {"type": "string", "description": "Replacement Markdown document, instead of html."},
                     "chart": {"type": "object", "description": "Replacement chart spec, instead of html."},
+                    "choices": {"type": "object", "description": "Replacement choices, instead of html."},
                     "display": {"type": "string", "enum": ["inline", "panel"], "description": "Move it into the reply (inline) or back to a card (panel)."},
                     "title": {"type": "string"},
                     "icon": {"type": "string", "description": "One emoji."},
