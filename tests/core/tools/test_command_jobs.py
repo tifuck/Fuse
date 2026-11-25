@@ -319,7 +319,7 @@ def test_deleting_a_thread_stops_its_commands_and_monitors_only(fresh_db, wakes)
     assert command["status"] == "cancelled" and watch["status"] == "cancelled"
 
 
-def test_the_wake_sweep_stops_jobs_whose_thread_was_deleted_without_them(fresh_db, wakes):
+def test_the_orphan_sweep_stops_jobs_whose_thread_was_deleted_without_them(fresh_db, wakes):
     uid = quick_user()
     _, tid = new_thread(uid)
     _, other_tid = new_thread(uid)
@@ -330,7 +330,7 @@ def test_the_wake_sweep_stops_jobs_whose_thread_was_deleted_without_them(fresh_d
         kept = await launch(uid, runners[1], thread_id=other_tid)
         # A delete whose cancel_thread never ran.
         db.execute("DELETE FROM chat_threads WHERE id=?", (tid,))
-        await asyncio.to_thread(command_jobs.pending_wake_threads)
+        await asyncio.to_thread(command_jobs.cancel_orphans)
         await wait_until_async(lambda: orphan["status"] != "running")
         right_after = (orphan["status"], kept["status"])
         for runner in runners:

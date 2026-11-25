@@ -1105,11 +1105,6 @@ def cancel_orphans() -> None:
 
 def pending_wake_threads() -> list[dict]:
     """Lightweight discovery for command-only capacity-deferred wakes."""
-    # The periodic wake sweep is this module's only maintenance tick.
-    try:
-        cancel_orphans()
-    except Exception:
-        logger.exception("Failed to cancel command jobs of deleted threads")
     ensure_schema()
     threads = {(row["user_id"], row["thread_id"]) for row in db.fetchall(
         "SELECT DISTINCT user_id,thread_id FROM command_jobs WHERE thread_id IS NOT NULL AND notify=1"
