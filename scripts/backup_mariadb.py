@@ -17,6 +17,9 @@ from app.config import settings
 
 # A partial this old belongs to a dump that was killed (its finally never ran).
 PARTIAL_MAX_AGE = 86400
+# A dump that sends nothing for this long is stalled (server hung, network
+# gone): kill it so the backup fails instead of hanging forever.
+STALL_SECONDS = 1800
 
 
 def sweep_partials(root: Path, now: float | None = None) -> None:
@@ -55,19 +58,41 @@ def backup(directory):
         stderr_buf = []
         drain = threading.Thread(target=lambda: stderr_buf.append(proc.stderr.read()), daemon=True)
         drain.start()
+        progress = [time.monotonic()]
+        stalled = threading.Event()
+        done = threading.Event()
+        def watchdog():
+            while not done.wait(30):
+                if time.monotonic() - progress[0] > STALL_SECONDS:
+                    stalled.set()
+                    proc.kill()
+                    return
+        threading.Thread(target=watchdog, daemon=True).start()
         created = False
         try:
             fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             created = True
-            with os.fdopen(fd, "wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb") as stream:
-                while block := proc.stdout.read(1024 * 1024):
-                    stream.write(block)
+            with os.fdopen(fd, "wb") as raw:
+                with gzip.GzipFile(fileobj=raw, mode="wb") as stream:
+                    while block := proc.stdout.read(1024 * 1024):
+                        progress[0] = time.monotonic()
+                        stream.write(block)
+                raw.flush()
+                os.fsync(raw.fileno())
             status = proc.wait()
             drain.join()
+            if stalled.is_set():
+                raise RuntimeError(f"MariaDB dump stalled: no output for {STALL_SECONDS} s, killed")
             if status:
-                raise RuntimeError("MariaDB dump failed: " + stderr_buf[0].decode(errors="replace"))
+                raise RuntimeError("MariaDB dump failed: " + b"".join(stderr_buf).decode(errors="replace"))
             partial.rename(target)
+            dir_fd = os.open(root, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
         finally:
+            done.set()
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
