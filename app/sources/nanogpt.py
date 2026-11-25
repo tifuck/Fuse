@@ -948,7 +948,7 @@ class NanoGPTSource:
                 # `usable` also refuses keys that cannot serve this model, so
                 # only a benched account explains more than the refusal above.
                 if not tried and any(reason in ("cooling", "held") for _, reason in why):
-                    last = explain_empty("nanogpt", why, model=upstream)
+                    last = explain_empty("nanogpt", why, model=upstream, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts

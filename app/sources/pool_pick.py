@@ -597,7 +597,21 @@ def _with_reset(body: dict, reset_at: float) -> dict:
     return {**body, "error": inner}
 
 
-def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
+def _sees_raw_error(cred, user_id: int | None) -> bool:
+    """An account's raw upstream error is its owner's (or an admin's) to read."""
+    if user_id is None:
+        return False
+    try:
+        donor = cred["donated_by"]
+    except (KeyError, IndexError, TypeError):
+        donor = None
+    if donor is not None and int(donor) == int(user_id):
+        return True
+    row = db.fetchone("SELECT is_admin FROM users WHERE id=?", (int(user_id),))
+    return bool(row and row["is_admin"])
+
+
+def explain_empty(kind: str, why: list, *, model: str = "", user_id: int | None = None) -> ChatResult:
     """The result for a request whose first pick found no account: why the
     accounts this caller can use are out, and when the first one is back.
 
@@ -605,7 +619,9 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
     that benched it (auth, permission, outage; never a limit, which
     pick_account sends back upstream), not a bare "no accounts" 503 that
     reads as a transient outage and is retried. The body is raw:
-    api.invoke_chat annotates it like any provider error.
+    api.invoke_chat annotates it like any provider error. Only the account's
+    owner (user_id) or an admin sees that raw error; anyone else gets the
+    generic cooldown with its reset.
     """
     name = provider_errors.label(kind)
     if not why:
@@ -630,7 +646,10 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
             if kept:
                 status, body, reset_at = kept
                 # A kept reset past the cooldown is the truer time (cooldowns are capped).
-                return ChatResult(status=status, body=_with_reset(body, max(reset_at or 0.0, until)), model=model)
+                until = max(reset_at or 0.0, until)
+                cred = next(c for c, _reason in why if int(c["id"]) == cid)
+                if _sees_raw_error(cred, user_id):
+                    return ChatResult(status=status, body=_with_reset(body, until), model=model)
             return ChatResult(status=503, model=model, body={"error": {
                 "message": f"Every {name} account you can use is cooling down after recent errors.",
                 "code": "service_unavailable", "resets_at": int(until)}})

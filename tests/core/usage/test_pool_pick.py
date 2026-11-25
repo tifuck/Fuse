@@ -152,6 +152,22 @@ def test_a_hard_cooldown_alone_explains_itself_with_its_reset(ids):
         assert _pick("zai", [rows[cred]]) == cred
 
 
+def test_a_kept_upstream_error_is_shown_only_to_the_accounts_owner_or_an_admin(ids):
+    cred = pool_account("zai", ids["donor"], {"api_key": "a"})
+    rows = _rows("zai")
+    raw = {"error": {"message": "account donor@x.test suspended: org-123"}}
+    pool_pick.remember_error(cred, 401, raw, {}, {"kind": "credentials"})
+    note_failure(cred, cooldown_seconds=120)
+    why = []
+    assert _pick("zai", [rows[cred]], why=why) is None
+
+    assert explain_empty("zai", why, user_id=ids["donor"]).body["error"]["message"] == raw["error"]["message"]
+    other = explain_empty("zai", why, user_id=ids["bob"])
+    assert other.status == 503 and "donor@x.test" not in str(other.body) and other.body["error"]["resets_at"]
+    db.execute("UPDATE users SET is_admin=1 WHERE id=?", (ids["bob"],))
+    assert explain_empty("zai", why, user_id=ids["bob"]).status == 401
+
+
 def test_an_off_site_hold_withholds_an_account_from_everyone_but_its_owner(ids):
     held = pool_account("grok", ids["alice"], grok_extra(10))
     other = pool_account("grok", ids["donor"], grok_extra(50))

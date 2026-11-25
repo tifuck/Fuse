@@ -610,7 +610,7 @@ class ZaiSource:
             picked = self._pick(exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
                 if not tried:
-                    last = explain_empty("zai", why)
+                    last = explain_empty("zai", why, user_id=user_id)
                 # Parity with grok/chatgpt: the final failed attempt is
                 # recorded once via the returned result; drop the duplicate.
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):

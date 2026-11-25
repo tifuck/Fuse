@@ -619,7 +619,7 @@ class DevinSource:
             picked = self._pick(exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
                 if not tried:
-                    last = explain_empty("devin", why)
+                    last = explain_empty("devin", why, user_id=user_id)
                 # Parity with grok/chatgpt/kimi/zai/mimo: the final failed
                 # attempt is reported once via the returned result; drop the
                 # duplicate so its usage is not counted twice.
