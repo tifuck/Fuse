@@ -1,10 +1,11 @@
 """Streaming parse: deltas split across provider frames land intact in the
 stored reply, the reasoning, and the tool calls the executor receives."""
+import random
 import time
 
 import pytest
 
-from app import chat_output, chats
+from app import chat_output, chat_runtime, chats
 from app.chat_generation import parsing
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
@@ -193,3 +194,97 @@ def test_streaming_and_parsing_a_long_text_tool_call_stay_linear(body):
     for make in (stream, parse):
         small, large = cpu_cost(make(12_500)), cpu_cost(make(100_000))
         assert large < 24 * max(small, 0.002), f"8x input cost {large / max(small, 1e-9):.1f}x"
+
+
+@pytest.mark.parametrize("head, unit, step", [
+    ("", "abc</think>", 16),
+    ("", "abc</think>", 10**9),
+    ("`", "abc</think>", 16),
+    ("<think>```\n", "abc</think>", 16),
+    ("<think>```\n", "abc</think>", 10**9),
+    ("", 'a `b` <tool_call>{"name": "x"}</tool_call>', 16),
+])
+def test_many_think_tags_and_tool_calls_stay_linear(head, unit, step):
+    # Each closing tag, and each chunk holding a tool call, rescanned the
+    # whole reply for code spans (40 KB of abc</think> took 0.6 s streamed,
+    # 2.7 s in one delta). Only the ratio is asserted: 8x the input costs ~8x
+    # when linear, ~64x when quadratic.
+    def stream(n):
+        text = head + unit * (n // len(unit))
+        return lambda: _stream(*({"content": text[at:at + step]} for at in range(0, len(text), step)))
+
+    small, large = cpu_cost(stream(5_000)), cpu_cost(stream(40_000))
+    assert large < 24 * max(small, 0.002), f"8x input cost {large / max(small, 1e-9):.1f}x"
+
+
+_CODE_PIECES = ["`", "``", "```", "~~~", "~", " ", "  ", "    ", "\t", "\n", "a", "b c", "<", "<x>"]
+
+
+def test_code_lookups_kept_across_edits_match_a_full_rescan():
+    # MdCode answers in_md_code from what it scanned before; between lookups
+    # the text grows, loses a piece (a dropped tag or tool call) or is cut.
+    rng = random.Random(5)
+    for _ in range(400):
+        code, text = parsing.MdCode(), ""
+        for _ in range(rng.randrange(1, 25)):
+            step = rng.random()
+            if step < 0.6 or not text:
+                text += "".join(rng.choice(_CODE_PIECES) for _ in range(rng.randrange(1, 6)))
+            elif step < 0.8:
+                at = rng.randrange(len(text) + 1)
+                text = text[:at] + text[at + rng.randrange(1, 4):]
+                if rng.random() < 0.5:
+                    code.forget(at)
+            else:
+                text = text[:rng.randrange(len(text) + 1)]
+            points = [at for at, char in enumerate(text) if char not in "`\n"]
+            points = rng.sample(points, min(len(points), 4))
+            if rng.random() < 0.7:
+                points.sort()
+            for at in points:
+                assert code.quoted(text, at) == parsing.in_md_code(text, at), (text, at)
+
+
+class _Rescan:
+    """The reference: every lookup rescans the whole text."""
+
+    def quoted(self, text, at):
+        return parsing.in_md_code(text, at)
+
+    def forget(self, at):
+        pass
+
+
+_STREAM_PIECES = [
+    "<think>", "</think>", "</thinking>", "`", "``", "```\n", "```", "~~~\n", "\n", "abc", " ", "<", "</th", "ink>",
+    "<tool_call>", "</tool_call>", '{"name": "web_search", "arguments": {"query": "x"}}', "<function=a>", "</function>",
+    "<|im_end|>", "<|e", "os|>", "<|end_of_text|>", "</s>",
+]
+
+
+def _reply(chunks):
+    out = chat_output.Output({})
+    for chunk in chunks:
+        out.apply({"choices": [{"delta": {"content": chunk}}]})
+    out.settle_tool_xml()
+    reply = out.stored(light=True)
+    return reply["content"], reply["reasoning"], [(part["type"], part.get("text")) for part in reply["segments"]]
+
+
+def test_streamed_replies_match_a_full_rescan_on_every_chunk():
+    # Think tags, tool calls, code and special tokens in random chunks: the
+    # kept code spans and the held tail stripped only where it is new give
+    # what rescanning everything on every chunk gave.
+    rng = random.Random(7)
+    streams = []
+    for _ in range(300):
+        text = "".join(rng.choice(_STREAM_PIECES) for _ in range(rng.randrange(1, 60)))
+        cuts = sorted(rng.sample(range(1, len(text)), min(len(text) - 1, rng.randrange(20))))
+        streams.append([text[lo:hi] for lo, hi in zip([0, *cuts], [*cuts, len(text)])])
+    got = [_reply(chunks) for chunks in streams]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(chat_output, "MdCode", _Rescan)
+        patch.setattr(chat_runtime, "strip_special_tokens", lambda text, clean=0: parsing.strip_special_tokens(text))
+        want = [_reply(chunks) for chunks in streams]
+    for chunks, reply, expected in zip(streams, got, want):
+        assert reply == expected, chunks
