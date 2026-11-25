@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 TERMINAL = ("completed", "timed_out", "cancelled", "interrupted", "lost")
 JOB_CAP = 64
 WS_MONITOR_CAP = 8
+# Per-user shares of the server-wide caps: one account cannot starve the rest.
+JOB_USER_CAP = 16
+WS_MONITOR_USER_CAP = 2
 WAKE_COMMAND_LIMIT = 4
 WAKE_MONITOR_LIMIT = 4
 OUT_TAIL_CHARS = 16_000
@@ -210,21 +213,26 @@ def row_elapsed_ms(row) -> int | None:
 _reserved: dict[str, dict] = {}
 
 
-def _admit(kind: str, host_id: int, source: str) -> None:
+def _admit(kind: str, host_id: int, source: str, user_id: int) -> None:
     """In-memory admission caps. Raises ValueError when a cap is hit."""
     _prune()
-    live = [*_live.values(), *_reserved.values()]
-    running = sum(1 for v in live if v.get("status") not in TERMINAL)
-    if running >= JOB_CAP:
+    running = [v for v in (*_live.values(), *_reserved.values()) if v.get("status") not in TERMINAL]
+    mine = [v for v in running if v.get("user_id") == int(user_id)]
+    if len(running) >= JOB_CAP:
         raise ValueError("too many running commands")
-    if source == "ws":
-        ws_running = sum(
-            1
-            for v in live
-            if v.get("status") not in TERMINAL and v.get("source") == "ws"
+    if len(mine) >= JOB_USER_CAP:
+        raise ValueError(
+            f"too many running commands for this user (limit {JOB_USER_CAP}); "
+            "kill_command one or wait for one to finish"
         )
-        if ws_running >= WS_MONITOR_CAP:
+    if source == "ws":
+        if sum(1 for v in running if v.get("source") == "ws") >= WS_MONITOR_CAP:
             raise ValueError("too many running websocket monitors")
+        if sum(1 for v in mine if v.get("source") == "ws") >= WS_MONITOR_USER_CAP:
+            raise ValueError(
+                f"too many running websocket monitors for this user (limit {WS_MONITOR_USER_CAP}); "
+                "kill_command one or wait for one to finish"
+            )
 
 
 def clean_description(value) -> str:
@@ -381,7 +389,7 @@ def launch(
     kind, source, background, max_events = _normalize_launch(
         kind=kind, url=url, command=command, background=background, max_events=max_events
     )
-    _admit(kind, host_id, source)
+    _admit(kind, host_id, source, user_id)
     job_id = uuid4().hex[:12]
     now = db.now()
     _insert_job_row(
@@ -414,10 +422,11 @@ async def launch_async(**kwargs) -> dict:
     )
     kwargs["background"] = background
     host_id = kwargs.get("host_id") or 0
-    _admit(kind, host_id, source)
+    _admit(kind, host_id, source, kwargs["user_id"])
     job_id = uuid4().hex[:12]
     now = db.now()
-    _reserved[job_id] = {"status": "starting", "host_id": int(host_id), "source": source}
+    _reserved[job_id] = {"status": "starting", "host_id": int(host_id), "source": source,
+                         "user_id": int(kwargs["user_id"])}
     inserted = False
 
     def insert(**row):
@@ -972,10 +981,12 @@ async def _deliver_monitor_event(rec: dict, envelope: str, seq: int) -> None:
             logger.exception("Schedule monitor wake failed for job %s", rec["id"])
 
 
-def _apply_delivery(conn, ids: list[str]):
+def _apply_delivery(conn, ids: list[str], scope: tuple[int, int] | None = None):
     """Mark ids delivered in conn's transaction. Returns the matching prune of
     live jobs' pending monitor events, to run only once that commits: pruned
-    early, a rolled-back receipt would drop events no wake ever delivers."""
+    early, a rolled-back receipt would drop events no wake ever delivers.
+    scope (user_id, thread_id) limits it to that thread's jobs: receipt ids
+    from a transcript must never acknowledge another user's job."""
     from . import monitor as monitor_mod
 
     jobs: list[str] = []
@@ -988,20 +999,23 @@ def _apply_delivery(conn, ids: list[str]):
             events[job_id] = max(events.get(job_id, 0), seq)
         elif ident:
             jobs.append(ident)
+    where, args = ("", ()) if scope is None else (" AND user_id=? AND thread_id=?", tuple(scope))
     if jobs:
         conn.executemany(
-            "UPDATE command_jobs SET delivered=1 WHERE id=?", [(i,) for i in jobs]
+            "UPDATE command_jobs SET delivered=1 WHERE id=?" + where, [(i, *args) for i in jobs]
         )
     for job_id, seq in events.items():
         conn.execute(
-            "UPDATE command_jobs SET delivered_event_seq=? WHERE id=? AND delivered_event_seq<?",
-            (int(seq), job_id, int(seq)),
+            "UPDATE command_jobs SET delivered_event_seq=? WHERE id=? AND delivered_event_seq<?" + where,
+            (int(seq), job_id, int(seq), *args),
         )
 
     def settle():
         for job_id, seq in events.items():
             rec = _live.get(job_id)
             if rec is None:
+                continue
+            if scope is not None and (rec.get("user_id"), rec.get("thread_id")) != scope:
                 continue
             rec["delivered_event_seq"] = max(int(rec.get("delivered_event_seq") or 0), int(seq))
             rec["pending_events"] = [
@@ -1012,25 +1026,27 @@ def _apply_delivery(conn, ids: list[str]):
     return settle
 
 
-def _mark_delivered(ids: list[str]) -> None:
+def _mark_delivered(ids: list[str], scope: tuple[int, int] | None = None) -> None:
     if not ids:
         return
     ensure_schema()
     with db.tx() as conn:
-        settle = _apply_delivery(conn, ids)
+        settle = _apply_delivery(conn, ids, scope)
     settle()
 
 
-def mark_delivered(ids: list[str], conn=None) -> None:
-    """Public delivery receipt for wake turns that embed envelopes in their prompt.
-    With conn (an open chat_tx.transaction) the receipt joins that transaction."""
+def mark_delivered(ids: list[str], conn=None, *, user_id: int, thread_id: int) -> None:
+    """Public delivery receipt for wake turns that embed envelopes in their prompt,
+    limited to that user's thread. With conn (an open chat_tx.transaction) the
+    receipt joins that transaction."""
+    scope = (int(user_id), int(thread_id))
     if conn is not None:
         if ids:
             from . import chat_tx
 
-            chat_tx.after_commit(_apply_delivery(conn, ids))
+            chat_tx.after_commit(_apply_delivery(conn, ids, scope))
         return
-    _mark_delivered(ids)
+    _mark_delivered(ids, scope)
 
 
 def notification(rec: dict) -> str:

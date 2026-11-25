@@ -508,7 +508,8 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         eid = chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
         from . import chat_recaps, command_jobs as command_jobs_mod
 
-        command_jobs_mod.mark_delivered([str(ident) for ident in command_receipt_ids or []], conn=conn)
+        command_jobs_mod.mark_delivered([str(ident) for ident in command_receipt_ids or []], conn=conn,
+                                        user_id=user_id, thread_id=thread_id)
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"run_id": run_id, "thread_id": thread_id})
         # run.started staled the thread's ready recaps.
         chat_recaps.attach(conn, user_id, thread_id, thread)
