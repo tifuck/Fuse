@@ -295,7 +295,7 @@ def test_a_meter_write_keeps_a_pool_record_saved_after_its_read(fresh_db, monkey
 
     uid = quick_user()
     thread = chats.create_thread(uid, model="offline")["id"]
-    pool = {"cred": 7, "source": "claude", "model": "claude/x", "prev": None, "reason": ""}
+    pool = {"cred": 7, "source": "claude", "model": "claude/x", "prev": None, "reason": "", "next": None}
     real = chat_checkpoint._compaction_row
 
     def read_then_pool_saves(conn, *args, **kwargs):
