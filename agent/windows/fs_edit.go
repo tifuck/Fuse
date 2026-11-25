@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -48,6 +49,12 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	}
 	defer pin.release()
 	tmp, err := pin.createTemp()
+	if err != nil && !os.IsPermission(err) {
+		// shortcut: the by-handle create has not run on every Windows
+		// build; fall back to a path create, still checked by inDir below.
+		log.Printf("fuse-agent: create by folder handle failed (%v); creating by path", err)
+		tmp, err = os.CreateTemp(dir, ".fuse-*.tmp")
+	}
 	if err != nil {
 		// Directory not writable but the file is: rewrite the file itself.
 		if exists && os.IsPermission(err) {
@@ -90,9 +97,20 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	// Renamed through the still open handle: on Windows that handle is
 	// what carries the rename, relative to the pinned folder.
 	if err := pin.rename(tmp, filepath.Base(path)); err != nil {
+		// Same fallback as the create: rename by path after re-checking
+		// the temp file still sits in the pinned folder.
+		log.Printf("fuse-agent: rename by folder handle failed (%v); renaming by path", err)
+		if err := pin.inDir(tmp); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return err
+		}
 		tmp.Close()
-		os.Remove(tmpName)
-		return err
+		if err := os.Rename(tmpName, path); err != nil {
+			os.Remove(tmpName)
+			return err
+		}
+		return nil
 	}
 	return tmp.Close()
 }
