@@ -65,6 +65,26 @@ def test_a_detached_session_closes_after_the_grace_and_kills_its_shell(ssh_ptys,
     assert audit(s.id)["close_reason"] == "detached"
 
 
+def test_a_failed_ssh_read_closes_the_channel(ssh_ptys):
+    uid = quick_user()
+    hid = make_host(uid)
+
+    async def body():
+        s = await terminal.open_session(uid, "login", host_id=hid)
+        pty = ssh_ptys[0]
+
+        async def broken(_n):
+            raise ConnectionResetError("channel lost")
+
+        pty.stdout.read = broken
+        pty.emit(b"$ ")  # answers the read already waiting; the next one fails
+        await wait_until_async(lambda: not s.alive)
+        return s, pty
+
+    s, pty = run_async(body())
+    assert s.reason == "offline" and pty.closed
+
+
 def test_connector_credit_follows_the_browser_and_runs_free_while_detached(fresh_db):
     uid = quick_user()
     host, token = agent_host(uid)

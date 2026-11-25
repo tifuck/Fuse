@@ -401,6 +401,13 @@ class _SshPty:
             await asyncio.wait_for(self.proc.wait_closed(), 5)
         except Exception:
             reason = "offline"
+        finally:
+            # An open channel keeps ssh_pool counting the connection busy, so
+            # it would never be reaped. Closing again is a no-op.
+            try:
+                self.proc.close()
+            except Exception:
+                logger.debug("terminal ssh close failed", exc_info=True)
         self.s.finished(self.proc.exit_status if reason == "exit" else None, reason)
 
     def ack(self, n: int) -> None:
