@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
 import logging
 import math
@@ -10,6 +9,7 @@ import secrets
 import time
 from urllib.parse import urlencode, urlsplit
 
+import itsdangerous
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -153,42 +153,71 @@ def render(request: Request, name: str, user=None, status_code: int = 200, **ext
 
 
 _AUTH_ACCOUNT_WINDOW = 900
+# OWASP "Slow Down Online Guessing Attacks with Device Cookies": a browser
+# that signed in to an account gets a signed cookie naming it, and its failed
+# guesses count against that device only, so strangers who lock the account
+# out cannot lock out its owner. Stateless: a nonce, signed with APP_SECRET.
+DEVICE_COOKIE = "fuse_device"
+_DEVICE_SECONDS = 365 * 86400
+
+
+def _device_serializer():
+    return itsdangerous.URLSafeTimedSerializer(str(settings.app_secret), salt="fuse.device-cookie")
+
+
+def set_device_cookie(response, user_id: int):
+    token = _device_serializer().dumps({"u": int(user_id), "n": secrets.token_urlsafe(16)})
+    response.set_cookie(DEVICE_COOKIE, token, max_age=_DEVICE_SECONDS, httponly=True, secure=True,
+                        samesite="lax", path="/")
+    return response
+
+
+def _device_nonce(request: Request, user_id) -> str:
+    """The nonce of a valid device cookie issued for user_id, else ""."""
+    token = request.cookies.get(DEVICE_COOKIE)
+    if not token or user_id is None or len(token) > 512:
+        return ""
+    try:
+        data = _device_serializer().loads(token, max_age=_DEVICE_SECONDS)
+    except itsdangerous.BadData:
+        return ""
+    if not isinstance(data, dict) or data.get("u") != int(user_id) or not isinstance(data.get("n"), str):
+        return ""
+    return data["n"]
 
 
 def _auth_account_key(account: str) -> str:
     return "auth-account:" + hashlib.sha256(account.strip().lower().encode()).hexdigest()
 
 
-def _auth_failure_key(request: Request) -> str:
-    ip = client_ip(request)
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return f"auth-fail:{ip}"
-    if addr.version == 6:
-        return f"auth-fail:{ipaddress.ip_network(f'{addr}/64', strict=False)}"
-    return f"auth-fail:{addr}"
+def _auth_bucket(request: Request, account: str, user_id) -> tuple[str, int]:
+    """Where a failed guess counts: the device's own bucket when it presents a
+    valid device cookie for this account, else the account's shared budget."""
+    nonce = _device_nonce(request, user_id)
+    if nonce:
+        return "auth-device:" + hashlib.sha256(nonce.encode()).hexdigest(), settings.auth_rate_per_minute
+    return _auth_account_key(account), settings.auth_rate_per_minute * 3
 
 
-def _auth_limited(request: Request, account: str = "") -> bool:
+def _auth_limited(request: Request, account: str = "", user_id=None) -> bool:
     """Per IP, and per account when one is named: failed guesses spread over
-    many addresses still use up the account's own budget. Only failures count
-    (_auth_failed), and a full budget refuses only addresses (IPv6 by /64)
-    that failed themselves, so a stranger's guesses cannot lock the owner out."""
+    many addresses still use up the account's budget, and once it is full the
+    account refuses every client without a device cookie for it until the
+    window passes. A trusted device (user_id: the account it must name) is
+    limited by its own failures only."""
     if not limiter.allow(f"auth:{client_ip(request)}", settings.auth_rate_per_minute, 60):
         return True
     if not account:
         return False
-    budget = settings.auth_rate_per_minute * 3
-    return (limiter.retry_after(_auth_account_key(account), budget, _AUTH_ACCOUNT_WINDOW) > 0
-            and limiter.retry_after(_auth_failure_key(request), 1, _AUTH_ACCOUNT_WINDOW) > 0)
+    key, budget = _auth_bucket(request, account, user_id)
+    return limiter.retry_after(key, budget, _AUTH_ACCOUNT_WINDOW) > 0
 
 
-def _auth_failed(request: Request, account: str = "") -> None:
-    """Record a wrong password against the address and the named account."""
-    limiter.allow(_auth_failure_key(request), 1, _AUTH_ACCOUNT_WINDOW)
+def _auth_failed(request: Request, account: str = "", user_id=None) -> None:
+    """Record a wrong password against the device or the named account."""
     if account:
-        limiter.allow(_auth_account_key(account), settings.auth_rate_per_minute * 3, _AUTH_ACCOUNT_WINDOW)
+        key, budget = _auth_bucket(request, account, user_id)
+        limiter.allow(key, budget, _AUTH_ACCOUNT_WINDOW)
 
 
 def _public_base(request: Request) -> str:
