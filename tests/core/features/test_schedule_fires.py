@@ -102,6 +102,16 @@ def test_concurrent_ticks_claim_a_due_slot_once(fresh_db):
     assert stored(item["id"])["firing_at"] is not None
 
 
+def test_one_failing_fire_does_not_hold_back_the_rest_of_the_batch(fresh_db):
+    uid = quick_user()
+    first, second = hourly(uid, name="a"), hourly(uid, name="b")
+    with clock("2030-03-04T07:00:05Z"), \
+            patch.object(schedules, "_fire", new=AsyncMock(side_effect=[RuntimeError("boom"), None])) as fire:
+        run_async(schedules.tick())
+    assert sorted(call.args[0]["id"] for call in fire.call_args_list) == sorted([first["id"], second["id"]])
+    assert stored(first["id"])["firing_at"] is None and stored(second["id"])["firing_at"] is None
+
+
 def test_a_slot_whose_fire_already_started_is_never_fired_again(fresh_db):
     # A crash after the fire claimed 'running' (its run may exist and resume):
     # the next tick must move past the slot, not start a second run.

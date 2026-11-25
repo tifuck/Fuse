@@ -1,12 +1,13 @@
 """Streaming parse: deltas split across provider frames land intact in the
 stored reply, the reasoning, and the tool calls the executor receives."""
+import asyncio
 import random
 import time
 
 import pytest
 
 from app import chat_output, chat_runtime, chats
-from app.chat_generation import parsing
+from app.chat_generation import parsing, stream
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, split_frames, tool_thread
@@ -288,3 +289,43 @@ def test_streamed_replies_match_a_full_rescan_on_every_chunk():
         want = [_reply(chunks) for chunks in streams]
     for chunks, reply, expected in zip(streams, got, want):
         assert reply == expected, chunks
+
+class _HeldRead:
+    """A provider stream whose pending read takes a while to unwind once cancelled."""
+
+    def __init__(self):
+        self.cancelled = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            await self.release.wait()
+            raise
+
+
+def test_a_stop_while_the_stream_read_unwinds_still_cancels_the_run():
+    async def body():
+        held = _HeldRead()
+
+        async def consume():
+            paced = stream._paced_chunks(held, 60, 60, 0.01)
+            async for kind, _ in paced:
+                assert kind == "beat"
+                break
+            await paced.aclose()
+            return "carried on"
+
+        task = asyncio.create_task(consume())
+        await asyncio.wait_for(held.cancelled.wait(), 5)
+        task.cancel()  # Stop lands while the cleanup waits on the read
+        held.release.set()
+        (outcome,) = await asyncio.gather(task, return_exceptions=True)
+        assert isinstance(outcome, asyncio.CancelledError)
+
+    asyncio.run(body())

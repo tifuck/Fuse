@@ -128,9 +128,12 @@ from .chat_generation.messages import (
 logger = logging.getLogger(__name__)
 
 # Errors a provider stream raises for upstream/transport faults (httpx and
-# socket errors, idle timeouts, malformed upstream frames). Only these are
-# resumed; other exceptions mid-round are local bugs.
-_UPSTREAM_STREAM_ERRORS = (httpx.HTTPError, OSError, EOFError, ValueError)
+# socket errors, idle timeouts). Only these are resumed; other exceptions
+# mid-round are local bugs. Malformed upstream frames never get here as a
+# ValueError: consume_round turns any failed stream read into a resumable
+# error summary, so a ValueError here is Fuse's own (CheckpointFailed,
+# ChatValidationError, mysql_compat, ...).
+_UPSTREAM_STREAM_ERRORS = (httpx.HTTPError, OSError, EOFError)
 
 
 MAX_COMPLETIONS = 6

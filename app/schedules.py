@@ -41,6 +41,8 @@ _INFLIGHT: dict[int, int] = {}
 # Held by a fire from its schedule check to its committed run, and by
 # delete_schedule: that section runs in a worker thread, off the event loop.
 _START_LOCK = threading.Lock()
+# Strong references to fire-and-forget alerts: the loop keeps only weak ones.
+_ALERT_TASKS: set = set()
 _last_reconcile = 0.0
 _BANNED_EXACT = frozenset({"secret", "password", "token", "key", "dek", "cookie", "auth"})
 _BANNED_SUFFIX = ("_secret", "_password", "_token", "_key", "_dek", "_cookie", "_auth")
@@ -1115,9 +1117,11 @@ def _alert_skipped(schedule, status, err) -> None:
 
     body = ("Skipped: sign in to Fuse to unlock this machine's saved SSH key." if status == "vault_locked"
             else f"Could not start: {err or 'error'}")
-    loop.create_task(push.notify_user(schedule["user_id"], {
+    task = loop.create_task(push.notify_user(schedule["user_id"], {
         "title": f"Fuse · {schedule.get('name') or 'Task'}"[:140], "body": body[:220], "url": "/tasks",
     }))
+    _ALERT_TASKS.add(task)
+    task.add_done_callback(_ALERT_TASKS.discard)
 
 
 def _inflight_enter(schedule_id: int) -> None:
@@ -1275,6 +1279,10 @@ async def tick() -> float:
         _inflight_enter(item["id"])
         try:
             await _fire(item, fire, consume_slot=True)
+        except Exception:
+            # The rest of the batch is claimed too: fire it now instead of
+            # leaving it to recover() once its claim goes stale.
+            logger.exception("Schedule %s fire failed", item["id"])
         finally:
             _inflight_exit(item["id"])
             await asyncio.to_thread(

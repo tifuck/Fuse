@@ -11,7 +11,6 @@ count. _with_beats / _heartbeat_sleep keep a silent wait observable."""
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import time
 
@@ -262,8 +261,21 @@ async def _paced_chunks(stream, first_s: float, gap_s: float, beat_s: float, cei
             # closing it while the read still runs fails ("already running").
             # Suppressed so the TimeoutError the caller needs is not masked.
             nxt.cancel(cancel_msg)
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await nxt
+            await _reap(nxt)
+
+
+async def _reap(future) -> None:
+    """Wait out a future this code cancelled and drop its outcome. asyncio.wait
+    raises only when the waiting task itself is cancelled (Stop, a deadline),
+    and that cancel must propagate; the future's own cancel or error must not."""
+    future.add_done_callback(_drop_outcome)
+    if not future.done():
+        await asyncio.wait({future})
+
+
+def _drop_outcome(future) -> None:
+    if not future.cancelled():
+        future.exception()
 
 
 async def _with_beats(awaitable):
@@ -283,8 +295,7 @@ async def _with_beats(awaitable):
     finally:
         if not task.done():
             task.cancel()
-        with contextlib.suppress(Exception, asyncio.CancelledError):
-            await task
+        await _reap(task)
 
 
 async def _heartbeat_sleep(delay: float):
