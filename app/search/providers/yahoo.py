@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import html as html_lib
+import asyncio
 import logging
 import re
 from urllib.parse import unquote
@@ -9,7 +9,7 @@ import httpx
 
 from ..client import read_limited
 from ..ssrf import host_of, public_http_url
-from .base import ProviderResponse, SearchHit, empty_reason, safe_get
+from .base import ProviderResponse, SearchHit, element_html, empty_reason, safe_get, strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,15 @@ _UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
-_TAG = re.compile(r"(?is)<[^>]+>")
 _BLOCK = re.compile(r'class="[^"]*algo-sr[^"]*"(.*?)(?=class="[^"]*algo-sr|$)', re.I | re.S)
 _RU = re.compile(r"RU=(https%3[aA]%2[fF]%2[fF][^/\s\"']+)")
-_TITLE = re.compile(r"<h3[^>]*>(.*?)</h3>", re.I | re.S)
-_SNIP = re.compile(r"<p class=\"fc-dustygray[^\"]*\"[^>]*>(.*?)</p>", re.I | re.S)
+# Openers and closers for base.element_html (linear on hostile pages).
+_TITLE = re.compile(r"<h3", re.I)
+_TITLE_END = re.compile(r"</h3>", re.I)
+_SNIP = re.compile(r"<p class=\"fc-dustygray[^\"]*\"", re.I)
+_SNIP_END = re.compile(r"</p>", re.I)
 
-
-def _strip(text: str) -> str:
-    text = html_lib.unescape(_TAG.sub(" ", text or ""))
-    return re.sub(r"\s+", " ", text).strip()
+_strip = strip_html
 
 
 def parse_yahoo_html(raw: str) -> list[SearchHit]:
@@ -40,9 +39,9 @@ def parse_yahoo_html(raw: str) -> list[SearchHit]:
     seen: set[str] = set()
     for block in _BLOCK.findall(raw or ""):
         title = ""
-        t = _TITLE.search(block)
-        if t:
-            title = _strip(t.group(1))
+        t = element_html(block, _TITLE, _TITLE_END)
+        if t is not None:
+            title = _strip(t)
         url = ""
         ru = _RU.search(block)
         if ru:
@@ -52,8 +51,8 @@ def parse_yahoo_html(raw: str) -> list[SearchHit]:
         if _yahoo_host_ok(url):
             continue
         seen.add(url)
-        sn = _SNIP.search(block)
-        snippet = _strip(sn.group(1))[:280] if sn else ""
+        sn = element_html(block, _SNIP, _SNIP_END)
+        snippet = _strip(sn)[:280] if sn is not None else ""
         hits.append(SearchHit(title=title[:200], url=url, snippet=snippet, provider="yahoo", rank=len(hits)))
         if len(hits) >= 8:
             break
@@ -106,7 +105,7 @@ class YahooProvider:
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("fuse.search provider=yahoo error=%s", type(exc).__name__)
             return ProviderResponse(hits=[], status=0, error="http", last_timeout=timeout)
-        hits = parse_yahoo_html(body)
+        hits = await asyncio.to_thread(parse_yahoo_html, body)
         error = None if hits else empty_reason(body, "algo-sr")
         if error:
             logger.warning("fuse.search provider=yahoo status=200 error=%s body_len=%s", error, len(body or ""))

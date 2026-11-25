@@ -7,6 +7,7 @@ scripted transport (``web``), behind the real CappedTransport.
 import asyncio
 import gzip
 import sys
+import threading
 import tracemalloc
 
 import httpcore
@@ -14,10 +15,10 @@ import httpx
 import pytest
 
 from app import skill_install
-from app.search import client, engine, ssrf
+from app.search import client, engine, extract, ssrf
 from app.search.client import CappedTransport
 from app.search.engine import fetch_url, is_fetch_cached, is_host_blocked
-from app.search.extract import FETCH_CHARS
+from app.search.extract import FETCH_CHARS, HTML_MAX_DEPTH
 from app.search.policy import save_domain_lists
 
 from ._support import Hang, run
@@ -426,6 +427,42 @@ def test_a_page_without_text_is_an_error_and_a_script_shell_is_flagged(web, dns)
     extract, wrapped, err = read("https://app.example/")
     assert not err and extract.kind == "spa"
     assert "JavaScript app" in wrapped and "do not invent" in wrapped and "bundle" not in wrapped
+
+
+def test_a_page_nested_too_deep_for_its_size_is_refused_before_it_is_parsed(web, dns, monkeypatch):
+    public(dns, "deep.example", "wide.example", "busy.example")
+    web.page("https://deep.example/", page("<div>" * (HTML_MAX_DEPTH + 1) + TEXT))
+    # Closed nesting, void and implied-end tags, SVG self-closing tags, markup
+    # inside scripts and end tags that close what they skip do not add depth.
+    busy = ("<div>" * 50 + TEXT + "</div>" * 50 + "<p>x<br>" * 1500 + "<svg>" + "<path d='M0'/>" * 1500 + "</svg>"
+            + "<script>" + "'<div>'" * 1500 + "</script>" + "<div><span>x</div>" * 1500)
+    web.page("https://busy.example/", page(busy))
+    assert read("https://deep.example/")[2].startswith("The page is too complex to read")
+    extract_, _, err = read("https://busy.example/")
+    assert not err and TEXT in extract_.text
+    monkeypatch.setattr(extract, "HTML_MAX_WORK", 10_000)
+    web.page("https://wide.example/", page("<div>" * 100 + "<span>x</span>" * 600))
+    assert read("https://wide.example/")[2].startswith("The page is too complex to read")
+
+
+def test_extraction_runs_in_its_own_small_pool_under_a_deadline(web, dns, monkeypatch):
+    public(dns, "slow.example")
+    web.page("https://slow.example/", page())
+    release = threading.Event()
+    threads = []
+
+    def stuck(*args):
+        threads.append(threading.current_thread().name)
+        release.wait(10)
+
+    monkeypatch.setattr(engine, "_parse_page", stuck)
+    monkeypatch.setattr(engine, "PARSE_DEADLINE", 0.05)
+    try:
+        extract_, _, err = read("https://slow.example/")
+    finally:
+        release.set()
+    assert extract_ is None and err.startswith("The page is too complex to read (extraction took over")
+    assert threads and threads[0].startswith("fuse-page-parse")
 
 
 def test_an_interrupted_read_raises_without_a_request(web, dns):

@@ -11,7 +11,10 @@ import time
 
 import pytest
 
-from app.search.extract import extract_page, find_windows, select_passages
+from app.search.extract import extract_page, find_windows, html_too_complex, select_passages
+from app.search.providers.bing import parse_bing_html
+from app.search.providers.ddg import parse_ddg_html
+from app.search.providers.yahoo import parse_yahoo_html
 
 FACTOR = 8
 MAX_RATIO = 24  # linear work costs ~8x, a quadratic pass ~64x
@@ -56,6 +59,21 @@ CASES = {
     "unclosed metadata tags": (
         lambda n: lambda: [extract_page(raw * (n // len(raw)))
                            for raw in ("<title>", "<meta a", "<script type='application/ld+json'>")], 50_000),
+    "complexity pre-scan of hostile markup": (
+        lambda n: lambda: [html_too_complex(piece * (n // len(piece)))
+                           for piece in ("<div ", "<!--", "<script>", "<div></span>", "<table><div></div>", "<svg><g/>", "<")],
+        25_000),
+    # Results pages can come from the user's own connector, crafted.
+    "duckduckgo page of unclosed result links": (
+        lambda n: lambda: [parse_ddg_html(piece * (n // len(piece)))
+                           for piece in ('<a href="x" ', '<a rel="nofollow" href="x" ', 'href="x" class="result__a" >',
+                                         '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example">',
+                                         'class="result__snippet">', "class='result-snippet'>", "<")], 25_000),
+    "bing and yahoo blocks of unclosed fields": (
+        lambda n: lambda: [parse(marker + piece * (n // len(piece)))
+                           for parse, marker in ((parse_bing_html, 'class="b_algo"'), (parse_yahoo_html, 'class="algo-sr"'))
+                           for piece in ("<h2>", "<h3>", "<h2><a href", "<cite>", 'class="b_lineclamp2">',
+                                         '<p class="fc-dustygray">', "<")], 25_000),
     "query and find over many paragraphs": (
         lambda n: lambda: (select_passages("needle words here.\n\n" * (n // 20), query="needle words"),
                            find_windows("needle words here.\n\n" * (n // 20), "words here")), 25_000),
