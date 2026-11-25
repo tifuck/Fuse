@@ -378,6 +378,16 @@ function group(title, aside, rows, extra = "") {
     `<span class="chat-perms-count">${aside}</span></p><ul>${rows}</ul></section>`;
 }
 
+// The account the chat is on, framed apart from the account list: what it is
+// (in use, or next before a reply), its name and plan, then all its limits.
+function now(pool, plan, rows) {
+  const who = pool.own ? '<span class="chat-pool-who">yours</span>' : "";
+  return `<section class="chat-perms-group chat-pool-now"><div class="chat-pool-now-head">` +
+    `<span class="chat-pool-now-tag">${pool.preview ? "next" : "in use"}</span>` +
+    `<b class="chat-pool-now-name" title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</b>${who}` +
+    `<span class="chat-pool-now-plan">${plan}</span></div><ul>${rows}</ul></section>`;
+}
+
 function head(title, backTo = "") {
   const back = backTo ? `<button type="button" class="chat-menu-close chat-pool-head-back" data-pool-back aria-label="Back to ${backTo}">${BACK_SVG}</button>` : "";
   return `<div class="chat-picker-head"><p>${back}${title}</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>`;
@@ -422,9 +432,7 @@ function fillUsage(pool) {
   menu.setAttribute("aria-label", `${pool.pool} ${pool.prefs ? "plan " : ""}usage`);
   menu.innerHTML = head(pool.prefs ? "Plan usage" : "Usage") +
     '<div class="chat-perms-list">' +
-    group(plan, `<span title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</span>`,
-      (windows.map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop + pending) +
-    (limits.length ? group("Model limits", "", limits.map(limit).join("")) : "") +
+    now(pool, plan, (windows.concat(limits).map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop + pending) +
     (accounts.length ? group("Accounts", `${Number(pool.ready) || 0} of ${Number(pool.size) || 0} ready`, accounts.map(acct).join("")) : "") +
     (notice ? `<p class="chat-perms-hint chat-pool-notice" role="status">${escapeHtml(notice)}</p>` : "") +
     "</div>" +
