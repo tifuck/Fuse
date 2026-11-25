@@ -42,12 +42,12 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	inDir, unpin, err := pinDir(dir)
+	pin, err := pinDir(dir)
 	if err != nil {
 		return err
 	}
-	defer unpin()
-	tmp, err := os.CreateTemp(dir, ".fuse-*.tmp")
+	defer pin.release()
+	tmp, err := pin.createTemp()
 	if err != nil {
 		// Directory not writable but the file is: rewrite the file itself.
 		if exists && os.IsPermission(err) {
@@ -56,7 +56,7 @@ func writeFileAtomicLimit(path, content string, max int) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	if err := inDir(tmp); err != nil {
+	if err := pin.inDir(tmp); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
 		return err
@@ -69,7 +69,7 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	if exists {
 		// Before any content lands: the temp file starts with the
 		// directory's inherited ACL, not the original file's.
-		if err := copyFileSecurity(path, tmpName); err != nil {
+		if err := copyFileSecurity(path, tmp); err != nil {
 			tmp.Close()
 			os.Remove(tmpName)
 			// Cannot carry the original's access over: rewrite the file
@@ -87,15 +87,14 @@ func writeFileAtomicLimit(path, content string, max int) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	// Renamed through the still open handle: on Windows that handle is
+	// what carries the rename, relative to the pinned folder.
+	if err := pin.rename(tmp, filepath.Base(path)); err != nil {
+		tmp.Close()
 		os.Remove(tmpName)
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return tmp.Close()
 }
 
 // inPlaceFile is the write handle writeInPlace needs; the var is a seam so
