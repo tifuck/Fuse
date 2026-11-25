@@ -60,3 +60,18 @@ def test_one_hop_refreshes_only_the_stalest_account_and_survives_its_failure(own
 
 def test_a_walk_without_accounts_does_nothing(fresh_db):
     assert asyncio.run(usage_walk.walk_next()) is None
+
+
+def test_a_freshly_read_pool_is_left_alone(owner):
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pool_account("zai", owner, _zai(now))
+    with patch.object(usage_walk.zai_mod, "refresh_quota", new=AsyncMock()) as refresh:
+        assert asyncio.run(usage_walk.walk_next()) is None
+    refresh.assert_not_awaited()
+
+
+def test_a_kind_without_a_refresher_fails_instead_of_passing_silently(fresh_db):
+    with pytest.raises(ValueError):
+        asyncio.run(usage_walk.refresh_one_usage("speech", {"id": 1}))
