@@ -415,13 +415,13 @@ def test_choices_resolve_to_the_users_own_project_and_chat(fresh_db):
     thread = chats.create_thread(uid, model="offline", title="t")["id"]
     pk = chats.resolve_thread_pk(uid, thread)
     db.execute("UPDATE chat_threads SET kind='project', host_id=?, project_id=? WHERE id=?", (host, api, pk))
-    spec = {"project_logo": [{"name": "Ring", "svg": LOGO}], "chat_title": ["  Ship   2.4 "]}
+    spec = {"project_logo": [{"name": "Ring", "svg": LOGO}], "chat_title": ["  Ship   2.4 ", {"name": "Cut 2.4"}]}
     text, made = artifacts.execute_from_tool("create_artifact", {"title": "Looks", "choices": spec}, user_id=uid, thread_id=pk)
     assert (made["status"], made["format"], made["display"]) == ("done", "choices", "inline")
     assert "never say it was applied" in text
     stored = json.loads(html_at(uid, made["identifier"]))
     assert stored["project"] == {"id": api, "host_id": host, "name": "api"}
-    assert (stored["chat"], stored["chat_title"]) == (thread, ["Ship 2.4"])
+    assert (stored["chat"], stored["chat_title"]) == (thread, ["Ship 2.4", "Cut 2.4"])
     # By name, from any chat; an edit keeps the resolved project and checks it again.
     named = artifacts.create(uid, title="c", fmt="choices",
                              html=json.dumps({"project": "WEB", "folder_color": [{"name": "Moss", "color": "#46a758"}]}))

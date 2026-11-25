@@ -356,10 +356,13 @@ def _choice_option(field: str, raw, where: str):
     from .chat_schema import TITLE_MAX
 
     if field in ("project_name", "chat_title"):
+        # Models often wrap the text like the other fields' options: {"name": ...}.
+        if isinstance(raw, dict) and len(raw) == 1 and next(iter(raw)) in ("name", "text", "title", "value"):
+            raw = next(iter(raw.values()))
         text = re.sub(r"\s+", " ", raw).strip() if isinstance(raw, str) else ""
         limit = 80 if field == "project_name" else TITLE_MAX
         if not text or len(text) > limit or any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text):
-            raise ArtifactError(f"{where} must be text of 1-{limit} characters")
+            raise ArtifactError(f'{where} must be text of 1-{limit} characters; {field} is a list of strings, e.g. ["Garden plan", "Spring beds"]')
         return text
     if not isinstance(raw, dict):
         raise ArtifactError(f"{where} must be an object")
