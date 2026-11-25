@@ -310,6 +310,20 @@ def test_a_failure_that_escapes_the_runner_stops_the_code_and_propagates():
     assert [args["path"] for _, args in runner.calls] == ["a"]
 
 
+def test_a_result_that_cannot_be_masked_stops_the_code_instead_of_timing_out(monkeypatch):
+    from app import secret_guard
+
+    def broken(_user_id):
+        raise RuntimeError("secret map unavailable")
+
+    monkeypatch.setattr(secret_guard, "map_for", broken)
+    runner = Runner()
+    with pytest.raises(RuntimeError, match="secret map unavailable"):
+        run_code("await write_file({path: 'a', content: 'x'});\nawait write_file({path: 'b', content: 'y'});",
+                 runner, owner=(1, 1), timeout=30000)
+    assert [args["path"] for _, args in runner.calls] == ["a"]
+
+
 def test_a_run_waits_only_so_long_for_a_free_worker(monkeypatch):
     monkeypatch.setattr(code_mode, "WORKERS", 0)
     monkeypatch.setattr(code_mode, "SLOT_WAIT_S", 0.01)
