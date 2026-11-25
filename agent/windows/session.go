@@ -48,6 +48,7 @@ type session struct {
 	status        string
 	ready         bool
 	results       []jobRes
+	ctrl          []any    // pings, pongs and stats, sent by the writer ahead of results
 	refusals      []jobRes // refusals that found the queue full and no link
 	resultSeq     uint64
 	resultSpace   *sync.Cond
@@ -205,6 +206,26 @@ func (s *session) sendJSON(v any) error {
 	return s.write(c, v)
 }
 
+// ctrlMax bounds control frames held while the writer is busy; beyond it a
+// new one is dropped (the next ping, pong or stats tick replaces it).
+const ctrlMax = 8
+
+// sendCtrl hands a ping, pong or stats frame to the writer, so the pump
+// never waits behind a slow write and cancels and jobs keep flowing.
+func (s *session) sendCtrl(v any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn == nil {
+		return io.ErrClosedPipe
+	}
+	s.condsLocked()
+	if len(s.ctrl) < ctrlMax {
+		s.ctrl = append(s.ctrl, v)
+		s.resultReady.Signal()
+	}
+	return nil
+}
+
 // condsLocked creates the queue conditions on first use (s.mu held).
 func (s *session) condsLocked() {
 	if s.resultSpace == nil {
@@ -306,7 +327,7 @@ func (s *session) queueRefusalsLocked() {
 // and pings never wait on the network. A result popped meanwhile (the link
 // was replaced) is not popped twice.
 func (s *session) drainResults(send func(jobRes) error) error {
-	for len(s.results) > 0 {
+	for len(s.results) > 0 && len(s.ctrl) == 0 {
 		res := s.results[0]
 		s.mu.Unlock()
 		err := send(res)
@@ -336,7 +357,14 @@ func (s *session) writer(conn *websocket.Conn) {
 	for s.conn == conn {
 		var err error
 		s.queueRefusalsLocked()
-		if len(s.results) > 0 {
+		if len(s.ctrl) > 0 {
+			v := s.ctrl[0]
+			s.ctrl[0] = nil
+			s.ctrl = s.ctrl[1:]
+			s.mu.Unlock()
+			err = s.write(conn, v)
+			s.mu.Lock()
+		} else if len(s.results) > 0 {
 			err = s.drainResults(func(res jobRes) error { return s.write(conn, res.wire()) })
 		} else if s.ptys.pending() {
 			s.mu.Unlock()
@@ -391,6 +419,7 @@ func (s *session) closeConn() {
 	c := s.conn
 	s.conn = nil
 	s.ready = false
+	s.ctrl = nil
 	if s.resultReady != nil {
 		s.resultReady.Broadcast() // the writer exits
 	}
@@ -731,7 +760,7 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 				}
 				return false, "server bye", gotFrame
 			case "ping":
-				_ = s.sendJSON(map[string]any{"v": 1, "t": "pong"})
+				_ = s.sendCtrl(map[string]any{"v": 1, "t": "pong"})
 			case "pong":
 			case "stats":
 				on, _ := msg["on"].(bool)
@@ -773,7 +802,7 @@ func (s *session) pump(conn *websocket.Conn, stop chan struct{}, cfg *agentConfi
 				}()
 			}
 			if send {
-				if err := s.sendJSON(map[string]any{"v": 1, "t": "ping"}); err != nil {
+				if err := s.sendCtrl(map[string]any{"v": 1, "t": "ping"}); err != nil {
 					return false, "io error", gotFrame
 				}
 				connWatchSentPing(&watch, nowMonoMS())

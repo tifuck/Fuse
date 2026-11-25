@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -107,6 +108,62 @@ func TestWriteTimeoutScalesWithSize(t *testing.T) {
 	}
 	if got := writeTimeout(100 << 20); got != writeMaxMS*time.Millisecond {
 		t.Fatalf("hard limit: %v", got)
+	}
+}
+
+// The pump hands pings and pongs to the writer instead of writing them
+// itself: a slow write in progress must not hold it, and the queued ping
+// goes out ahead of waiting results.
+func TestPingQueuedAheadOfResultsWithoutBlocking(t *testing.T) {
+	frames := make(chan string, 8)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		for {
+			var m map[string]any
+			if c.ReadJSON(&m) != nil {
+				return
+			}
+			frames <- fmt.Sprint(m["t"], ":", m["id"])
+		}
+	}))
+	defer srv.Close()
+	saved := tlsConfig
+	tlsConfig = &tls.Config{InsecureSkipVerify: true}
+	defer func() { tlsConfig = saved }()
+	conn, err := dialAgent(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &session{conn: conn}
+	s.ptys = newPtyHub(s.kickWriter)
+	defer s.closeConn()
+	s.sendRes("r1", true, 0, "", "", "")
+	s.writeMu.Lock() // a write stuck on a slow link
+	queued := make(chan error, 1)
+	go func() { queued <- s.sendCtrl(map[string]any{"v": 1, "t": "ping"}) }()
+	select {
+	case err := <-queued:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ping waited for the busy writer")
+	}
+	go s.writer(conn)
+	s.writeMu.Unlock()
+	for _, want := range []string{"ping:<nil>", "res:r1"} {
+		select {
+		case got := <-frames:
+			if got != want {
+				t.Fatalf("got %s want %s", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("no %s", want)
+		}
 	}
 }
 
