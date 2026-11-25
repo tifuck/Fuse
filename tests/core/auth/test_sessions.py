@@ -5,8 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from app import accounts, db, vault
+from app import accounts, crypto, db, vault
 from app.config import settings
+from app.security import RateLimiter, limiter
 from tests.core.auth._support import (
     PASSWORD, anonymous, cookie, login, main_client, read_session, session_options, set_session, sign_in, sign_session,
 )
@@ -260,8 +261,10 @@ def test_a_login_through_app_main_sets_the_cookie_lifetime_it_configures(fresh_d
 
 @pytest.fixture
 def tight_limit(monkeypatch):
-    # Each wrong guess costs a real scrypt: a small budget keeps these quick.
+    # Each guess costs a real scrypt: a small budget and cheap params keep these quick.
     monkeypatch.setattr(settings, "auth_rate_per_minute", 3)
+    monkeypatch.setattr(crypto, "PASSWORD_SCRYPT", (2**10, 8, 1))
+    monkeypatch.setattr(accounts, "_DUMMY_HASH", None)
 
 
 def test_login_is_rate_limited_per_address_even_for_the_right_password(web, tight_limit):
@@ -273,14 +276,72 @@ def test_login_is_rate_limited_per_address_even_for_the_right_password(web, tigh
 
 def test_guesses_from_many_addresses_hit_the_account_budget(web, tight_limit):
     make_user("ada@core.test")
-    addresses = iter(f"203.0.113.{i}" for i in range(1, 255))
-    with patch("app.web.deps.client_ip", lambda request: next(addresses)):
-        for _ in range(settings.auth_rate_per_minute * 3):
+    ip = {"now": ""}
+    with patch("app.web.deps.client_ip", lambda request: ip["now"]):
+        for n in range(settings.auth_rate_per_minute * 3):
+            ip["now"] = f"203.0.113.{n + 1}"
             assert login(web, "ada@core.test", "wrong-password").status_code == 401
-        # A fresh address per guess: only the per-account budget stops it, for
-        # the right password too and for any spelling of the address.
+        # The account's budget is spent: an address that guessed wrong is
+        # refused, for the right password too and for any spelling of the email.
+        ip["now"] = "203.0.113.1"
         assert login(web, "ada@core.test").status_code == 429
+        ip["now"] = "203.0.113.2"
         assert login(web, " ADA@core.test ").status_code == 429
+        # A fresh address gets one guess; a wrong one closes it too.
+        ip["now"] = "203.0.113.200"
+        assert login(web, "ada@core.test", "wrong-password").status_code == 401
+        assert login(web, "ada@core.test").status_code == 429
+        # IPv6 counts by /64: rotating inside it is the same address.
+        ip["now"] = "2001:db8::1"
+        assert login(web, "ada@core.test", "wrong-password").status_code == 401
+        ip["now"] = "2001:db8::2"
+        assert login(web, "ada@core.test").status_code == 429
+
+
+def test_only_failures_use_the_account_budget_and_cannot_lock_the_owner_out(web, tight_limit):
+    make_user("ada@core.test")
+    ip = {"now": ""}
+    with patch("app.web.deps.client_ip", lambda request: ip["now"]):
+        # More sign-ins than the account budget: successes do not count.
+        for n in range(settings.auth_rate_per_minute * 3 + 1):
+            ip["now"] = f"198.51.100.{n + 1}"
+            assert login(web, "ada@core.test").status_code == 303
+        # An attacker spends the account's budget from a few addresses...
+        for n in range(settings.auth_rate_per_minute * 3):
+            ip["now"] = f"203.0.113.{n // settings.auth_rate_per_minute + 1}"
+            assert login(web, "ada@core.test", "wrong-password").status_code == 401
+        # ...and the owner, from an address that never failed, still gets in.
+        ip["now"] = "198.51.100.1"
+        assert login(web, "ada@core.test").status_code == 303
+
+
+def test_an_over_long_email_is_refused_before_the_limiter(web, tight_limit):
+    long_email = "a" * 300 + "@core.test"
+    for _ in range(settings.auth_rate_per_minute * 2):
+        res = login(web, long_email, "wrong-password")
+        assert res.status_code == 401 and "Email or password is wrong." in res.text
+    token = anonymous(web)["csrf"]
+    web.headers.pop("x-csrf-token", None)
+    form = {"email": long_email, "password": PASSWORD, "csrf_token": token}
+    assert web.post("/register", data=form, follow_redirects=False).status_code == 400
+    assert not limiter._hits
+    # A normal failed sign-in keys the account by a hash, never the address itself.
+    assert login(web, "ada@core.test", "wrong-password").status_code == 401
+    assert limiter._hits and not any("ada@" in key for key in limiter._hits)
+
+
+def test_the_rate_limiter_stays_bounded(monkeypatch):
+    bounded = RateLimiter()
+    monkeypatch.setattr(bounded, "MAX_KEYS", 100)
+    for n in range(1000):
+        assert bounded.allow(f"auth-account:{n}", 3, 900)
+        assert len(bounded._hits) <= 100 and len(bounded._expires) <= 100
+    # The newest keys survive; the ones closest to expiry went first.
+    assert "auth-account:999" in bounded._hits and "auth-account:0" not in bounded._hits
+    # A key keeps at most `limit` stamps, whatever limit it was used with before.
+    for _ in range(50):
+        bounded.allow("api", 100, 60)
+    assert not bounded.allow("api", 2, 60) and len(bounded._hits["api"]) == 2
 
 
 def test_password_change_and_vault_unlock_share_the_sign_in_limit(web, tight_limit):
