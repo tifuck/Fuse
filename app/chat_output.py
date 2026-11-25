@@ -8,7 +8,7 @@ import re
 import time
 
 from . import chat_schema, chats
-from .chat_generation.parsing import HeldToolXml, in_md_code
+from .chat_generation.parsing import HeldToolXml, MdCode, special_token_free
 
 
 _THINK = re.compile(r"</?(?:think|thinking|thought|reasoning)>", re.I)
@@ -72,12 +72,17 @@ class Output:
         self.error_kind = ""  # provider_errors' kind of the failure, when it has one
         self._think_inside = False
         self._think_pending = ""
+        self._think_clean = 0  # _think_pending[:_think_clean] holds no special token
         # A think tag opens a thought only before the round's first visible
         # text; _think_from is where the open thought starts in reasoning.
         self._think_ready = True
         self._think_from = 0
         self._xml_pending = ""
         self._xml_reset()
+        # Code spans of the reply text and of the open thought, kept as they
+        # grow: looking a tag up rescanned the whole text each time.
+        self._code = {"content": MdCode(), "reasoning": MdCode()}
+        self._think_text = None
         self._last_source = None
         # Aggregates (content/reasoning) are maintained incrementally on the
         # append-only fast path; any structural rewrite (tool-xml scrub that
@@ -107,11 +112,11 @@ class Output:
             self._think_since = now - (segment.get("ms") or 0) / 1000
         segment["ms"] = min(chats.THOUGHT_MS_MAX, max(0, int((now - self._think_since) * 1000)))
 
-    def _append_text(self, kind, text, source):
+    def _append_text(self, kind, text, source, clean=0):
         if not text:
             return
         if kind in ("content", "reasoning"):
-            text = chat_runtime.strip_special_tokens(text)
+            text = chat_runtime.strip_special_tokens(text, clean)
             if not text:
                 return
         segments = self.message["segments"]
@@ -186,9 +191,9 @@ class Output:
             return True
         return self._xml_held >= max(_XML_RESCAN_MIN, len(self._xml_pending) // 4)
 
-    def _append_content(self, text, prefix=""):
+    def _append_content(self, text, prefix="", clean=0):
         text = chat_runtime.strip_special_tokens(text or "")
-        prefix = chat_runtime.strip_special_tokens(prefix or "")
+        prefix = chat_runtime.strip_special_tokens(prefix or "", clean)
         if self._xml_pending and text and self._xml_holds(prefix):
             tail = self._xml_pending[-_XML_WAKE_TAIL:] + text
             self._xml_pending += text
@@ -196,6 +201,9 @@ class Output:
             if not self._xml_rescan_due(tail, text):
                 return
             text = ""
+        # A held tail comes back on every chunk: what is known free of special
+        # tokens is not stripped again.
+        clean = 0 if self._xml_pending else special_token_free(prefix, clean)
         data = (self._xml_pending or "") + prefix + self._remove_pending() + text
         self._xml_pending = ""
         offset = 0
@@ -206,7 +214,8 @@ class Output:
                 # from the tag until its line settles.
                 self._append_tagged(data[offset:match.start()])
                 self._think_pending = data[match.start():]
-                self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged")
+                self._think_clean = max(0, clean - match.start())
+                self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged", self._think_clean)
                 return
             if not toggles:
                 continue
@@ -219,7 +228,8 @@ class Output:
         if last_lt >= 0 and ">" not in rest[last_lt:]:
             self._append_tagged(rest[:last_lt])
             self._think_pending = rest[last_lt:]
-            self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged")
+            self._think_clean = max(0, clean - offset - last_lt)
+            self._append_text("reasoning" if self._think_inside else "content", self._think_pending, "tagged", self._think_clean)
         else:
             self._append_tagged(rest)
         self._scrub_tool_xml()
@@ -241,11 +251,19 @@ class Output:
         if not closing:
             return not self._think_inside and self._think_ready and not data[offset:match.start()].strip()
         if self._think_inside:
-            head = (self.message.get("reasoning") or "")[self._think_from:]
+            source, start = self.message.get("reasoning") or "", self._think_from
         else:
             segments = self.message["segments"]
-            head = segments[-1].get("text") or "" if segments and segments[-1].get("type") == "content" else ""
-        quoted = in_md_code(head + data[offset:], len(head) + match.start() - offset)
+            source = segments[-1].get("text") or "" if segments and segments[-1].get("type") == "content" else ""
+            start = 0
+        # Tags quoted one after another leave the text unchanged: reuse it
+        # rather than copy the whole reply again for each.
+        key = self._think_text
+        if not (key and key[0] is source and key[1] == start and key[2] is data and key[3] == offset):
+            head = source[start:]
+            key = self._think_text = (source, start, data, offset, head + data[offset:], len(head))
+        code = self._code["reasoning" if self._think_inside else "content"]
+        quoted = code.quoted(key[4], key[5] + match.start() - offset)
         return None if quoted is None else not quoted
 
     def _scrub_tool_xml(self):
@@ -257,7 +275,8 @@ class Output:
             return
         text = segments[-1].get("text") or ""
         stable = min(self._scrub_stable, len(text))
-        merged, pending = chat_runtime.drop_tool_xml(text, stable)
+        merged, pending = chat_runtime.drop_tool_xml(text, stable, self._code["content"])
+        self._code["content"].forget(len(merged) if len(merged) + len(pending) == len(text) else stable)
         if not pending or len(merged) != stable:
             self._xml_reset()
         self._xml_held = 0
@@ -632,9 +651,10 @@ class Output:
             # lets a resumed stream continue the same text segment.
             while msg["segments"] and _is_notice(msg["segments"][-1]):
                 msg["segments"].pop()
+        clean = self._think_clean
         pending = self._remove_pending()
         self._append_text("reasoning", reasoning, "native")
-        self._append_content(content, pending)
+        self._append_content(content, pending, clean)
         self._ensure_aggregates()
         if max(len(msg["content"]), len(msg["reasoning"])) > chats.ASSISTANT_CONTENT_MAX:
             raise ValueError(f"Generation output safety limit reached ({chats.ASSISTANT_CONTENT_MAX:,} characters per reply field). Start a new turn to continue; this is separate from model context compaction.")
