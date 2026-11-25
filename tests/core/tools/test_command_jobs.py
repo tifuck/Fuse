@@ -86,6 +86,35 @@ def test_terminal_states_say_what_happened_not_just_that_it_ended(fresh_db):
     assert all(r["output_incomplete"] == 1 for r in (out["no_exit"], out["busy"]))
 
 
+def test_a_foreground_join_answers_before_the_terminal_row_is_saved(fresh_db, monkeypatch):
+    import threading
+
+    uid = quick_user()
+    gate = threading.Event()
+    save = command_jobs._persist_finish
+
+    def slow_save(*args, **kwargs):
+        gate.wait(5)
+        return save(*args, **kwargs)
+
+    monkeypatch.setattr(command_jobs, "_persist_finish", slow_save)
+
+    async def body():
+        runner = ScriptedRunner(out="ok\n")
+        rec = await launch(uid, runner, background=False)
+        await runner.started.wait()
+        runner.release(code=0)
+        text, trace = await asyncio.wait_for(command_jobs.join(rec["id"], uid, 30), 2)
+        assert trace["state"] == "completed" and "ok" in text
+        assert row(rec["id"])["status"] == "running"  # the save is still on its way
+        gate.set()
+        await settled(rec)
+        return rec["id"]
+
+    job_id = run_async(body())
+    assert row(job_id)["status"] == "completed"
+
+
 def test_a_moved_command_stops_at_its_background_limit(fresh_db):
     uid = quick_user()
 
@@ -190,7 +219,8 @@ def test_a_job_that_finished_inside_the_foreground_wait_is_never_delivered_again
 
     assert trace["state"] == "completed"
     assert wakes == [] and command_jobs.pending_envelopes(uid, tid) == []
-    assert row(job_id)["delivered"] == 1
+    # Never marked for delivery, so the inline answer needs no receipt write.
+    assert row(job_id)["notify"] == 0
 
 
 def test_a_subagents_job_goes_to_that_subagent_only(fresh_db, wakes):

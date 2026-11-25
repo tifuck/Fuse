@@ -28,6 +28,8 @@ exec python -m uvicorn app.main:app \
   --timeout-graceful-shutdown 8 \
   --ws-max-size 1048576 \
   --ws-max-queue 32 \
+  --ws-ping-interval 10 \
+  --ws-ping-timeout 15 \
   --proxy-headers \
   --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-127.0.0.1}" \
   --ssl-certfile "$SSL_CERT" \
