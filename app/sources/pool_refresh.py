@@ -15,7 +15,7 @@ from datetime import timedelta
 
 from .. import db
 from . import pool_policy
-from .pool_session import lookup
+from .pool_session import chosen, lookup
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +137,10 @@ async def pool_rows(source_id: int, refresh_due) -> list:
 def pins(kind: str, session_id, affinity_id, user_id, pinned=None) -> tuple:
     """A pool request's (prefer_id, hint_id, primary_id): its session pin
     (`pinned` when the caller already knows it), its affinity pin when it has
-    no session pin, and the caller's primary account. Call it in one thread."""
-    prefer_id = pinned if pinned is not None else lookup(kind, session_id)
+    no session pin, and the caller's primary account. A user's pick not yet
+    used (pool_badge.switch) beats `pinned`. Call it in one thread."""
+    keep = pinned is not None and chosen(kind, session_id) is None
+    prefer_id = pinned if keep else lookup(kind, session_id)
     hint_id = lookup(kind, affinity_id, claim=False) if prefer_id is None and affinity_id else None
     return prefer_id, hint_id, pool_policy.primary_account(user_id, kind)
 
