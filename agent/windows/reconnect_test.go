@@ -59,6 +59,44 @@ func TestDialAnswersServerPing(t *testing.T) {
 	}
 }
 
+func TestRedialResumesTLS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		_ = c.WriteMessage(websocket.TextMessage, []byte("hi"))
+		c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, _, _ = c.NextReader()
+	}))
+	defer srv.Close()
+	saved := tlsConfig
+	// The process-wide cache, so this checks the one production dials with.
+	tlsConfig = &tls.Config{InsecureSkipVerify: true, ClientSessionCache: saved.ClientSessionCache}
+	defer func() { tlsConfig = saved }()
+	if tlsConfig.ClientSessionCache == nil {
+		t.Fatal("no client session cache")
+	}
+	resumed := false
+	for i := 0; i < 2; i++ {
+		conn, err := dialAgent(srv.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Reading takes the TLS 1.3 ticket, which arrives after the handshake.
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Fatal(err)
+		}
+		resumed = conn.UnderlyingConn().(*tls.Conn).ConnectionState().DidResume
+		conn.Close()
+	}
+	if !resumed {
+		t.Fatal("reconnect did not resume the TLS session")
+	}
+}
+
 func TestPingTimeout(t *testing.T) {
 	var w connWatch
 	connWatchInit(&w, 0, 0)

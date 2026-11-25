@@ -28,8 +28,9 @@ const wsMax = 1024 * 1024
 var processInst = fmt.Sprintf("%016x", rand.Uint64())
 
 // Overridable so tests can trust httptest's certificate. Production keeps
-// the default verification.
-var tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+// the default verification. The session cache lives as long as the process,
+// so a reconnect resumes TLS instead of a full handshake.
+var tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12, ClientSessionCache: tls.NewLRUClientSessionCache(1)}
 
 // activeSession exposes the in-process session to other goroutines (tray
 // update admission). Atomic publication: the tray menu goroutine must read a
@@ -136,6 +137,7 @@ func dialAgent(raw string) (*websocket.Conn, error) {
 	d := websocket.Dialer{
 		HandshakeTimeout: connectTimeout * time.Millisecond,
 		TLSClientConfig:  tlsConfig,
+		WriteBufferSize:  64 << 10,
 	}
 	hdr := http.Header{}
 	hdr.Set("User-Agent", "fuse-agent/"+version)
