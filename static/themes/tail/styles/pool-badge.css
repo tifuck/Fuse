@@ -32,10 +32,13 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-now-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; margin-bottom: 0.25rem; padding: 0.6rem 0.5rem 0.5rem; border-bottom: 1px solid color-mix(in srgb, var(--mist) 12%, transparent); }
   & .chat-pool-now-tag { display: inline-flex; flex: none; align-items: center; gap: 0.35rem; color: var(--tl-ac); font: 0.68rem/1 var(--mono); }
   & .chat-pool-now-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  & .chat-pool-now-name { min-width: 0; overflow: hidden; color: var(--mist); font: 700 0.88rem/1.2 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-  & .chat-pool-now .chat-pool-who { flex: none; }
-  & .chat-pool-now-plan { flex: none; margin-left: auto; color: var(--mute); font: 0.72rem/1 var(--mono); }
+  & .chat-pool-now-name { flex: 0 1 auto; min-width: 5ch; overflow: hidden; color: var(--mist); font: 700 0.88rem/1.2 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+  & .chat-pool-now .chat-pool-who { flex: none; font: 0.72rem/1 var(--mono); }
+  & .chat-pool-now-plan { flex: 0 1 auto; min-width: 6ch; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); font: 0.72rem/1 var(--mono); }
   & .chat-pool-now .chat-pool-note { padding-inline: 0.5rem; }
+  /* Its few limits have the width for longer, thicker bars than the list. */
+  & .chat-pool-menu .chat-pool-now > ul > .chat-pool-line { grid-template-columns: minmax(0, 1fr) 5.5rem 2.5rem 4rem; }
+  & .chat-pool-now .chat-pool-bar { height: 6px; }
   & .chat-pool-menu .chat-pool-line {
     grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem;
     column-gap: 0.55rem;
@@ -49,9 +52,11 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   & .chat-pool-menu .chat-pool-line[data-pool-switch]:is(:hover, :focus-visible) { background: var(--tl-soft); outline: none; }
   & .chat-pool-menu .chat-pool-line:is([data-status="off"], [data-status="paused"]) { opacity: 0.5; }
   & .chat-pool-name { display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; color: var(--mist); text-overflow: ellipsis; white-space: nowrap; }
-  & .chat-pool-name b { flex: none; min-width: 1ch; font-weight: 700; }
-  & .chat-pool-who { overflow: hidden; color: var(--mute); text-overflow: ellipsis; }
-  & .chat-pool-bar { --pool-tone: var(--mute); height: 4px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--mist) 14%, transparent); }
+  & .chat-pool-name b { flex: 0 1 auto; min-width: 1ch; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+  & .chat-pool-who { flex: none; color: var(--mute); }
+  & .chat-pool-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .chat-pool-note { overflow-wrap: anywhere; }
+  & .chat-pool-bar { --pool-tone: var(--mute); height: 5px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--mist) 14%, transparent); }
   & .chat-pool-bar i { display: block; height: 100%; border-radius: inherit; background: var(--pool-tone); }
   & .chat-pool-line[data-level="mid"] .chat-pool-bar { --pool-tone: var(--mist); }
   & .chat-pool-line[data-level="warn"] .chat-pool-bar { --pool-tone: var(--status-live); }

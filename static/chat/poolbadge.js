@@ -400,7 +400,7 @@ function fillMenu(pool) {
 }
 
 function fillUsage(pool) {
-  const limit = (w) => line(escapeHtml(w.label), w.percent, w.reset_at ? escapeHtml(span(w.reset_at)) : "");
+  const limit = (w) => line(`<span class="chat-pool-label">${escapeHtml(w.label)}</span>`, w.percent, w.reset_at ? escapeHtml(span(w.reset_at)) : "");
   const plan = escapeHtml(`${pool.pool}${pool.plan ? " " + pool.plan : ""}`);
   const windows = windowsOf(pool.windows);
   const limits = windowsOf(pool.limits);
