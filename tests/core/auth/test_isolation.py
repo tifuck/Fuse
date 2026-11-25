@@ -15,7 +15,7 @@ from app import (
     skill_proposals, skills, vault,
 )
 from app.config import settings
-from app.sources import keyed
+from app.sources import ensure_ollama_source, keyed
 from tests.core.auth._support import PASSWORD, http_routes, main_client, sign_in
 from tests.core.auth.test_route_auth import PUBLIC
 from tests.core.helpers import make_user, quick_user
@@ -476,6 +476,16 @@ def test_only_the_donor_or_an_admin_can_remove_a_pool_credential(web, path, alic
         sign_in(web, admin)
         assert revoke(creds[1]).status_code == (404 if personal else 303)
     assert [disabled(c) for c in creds] == [1, 0 if personal else 1]
+
+
+def test_the_shared_revoke_route_removes_a_personal_key_and_refuses_what_it_cannot(web, alice):
+    key = accounts.add_credential(keyed.ensure_source("deepseek"), "alice", "not-a-real-secret", donated_by=alice)
+    ollama_key = accounts.add_credential(ensure_ollama_source(), "alice", "not-a-real-secret", donated_by=alice)
+    sign_in(web, alice)
+    assert web.post(f"/sources/p/deepseek/{key}/revoke", follow_redirects=False).status_code == 303
+    assert web.post(f"/sources/p/ollama/{ollama_key}/revoke", follow_redirects=False).status_code == 404
+    disabled = {r["id"]: r["disabled"] for r in db.fetchall("SELECT id, disabled FROM credentials")}
+    assert (disabled[key], disabled[ollama_key]) == (1, 0)
 
 
 # Every route that takes an account's object id from its URL, by the test
