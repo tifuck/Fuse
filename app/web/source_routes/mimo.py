@@ -4,6 +4,7 @@ add and revoke."""
 from __future__ import annotations
 
 import asyncio
+import hmac
 import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -80,7 +81,9 @@ async def mimo_callback(request: Request):
     pending = logins.get(user["id"], "mimo")
     state = str(request.query_params.get("state") or "").strip()
     blob = str(request.query_params.get("u") or "").strip()
-    if not pending or (state and state != str(pending.get("state") or "")):
+    # Xiaomi's authorize page is never sent the state (authorize_url), so a
+    # callback has none; the blob is bound to this sign-in by its key pair.
+    if not pending or (state and not hmac.compare_digest(state.encode(), str(pending.get("state") or "").encode())):
         _pool_flash[user["id"]] = ("err", "Xiaomi sign-in expired or did not match this session. Start again.", "mimo")
         return RedirectResponse("/sources", status_code=303)
     if not blob:

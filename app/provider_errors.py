@@ -596,6 +596,25 @@ def classify(provider: str, status: int, body, headers=None, *, now: float | Non
     return {"kind": kind, "message": text, "reset_at": reset_at, "retry_after": retry_after}
 
 
+def _scrubbed(body):
+    """An unclassified error body as relayed: token-shaped text scrubbed and
+    its messages capped, like a classified one's."""
+    if isinstance(body, str):
+        return scrub_secrets(body)[:500]
+    if not isinstance(body, dict):
+        return body
+    out = dict(body)
+    err = out.get("error")
+    if isinstance(err, dict) and isinstance(err.get("message"), str):
+        out["error"] = {**err, "message": scrub_secrets(err["message"])[:500]}
+    elif isinstance(err, str):
+        out["error"] = scrub_secrets(err)[:500]
+    for key in ("message", "detail"):
+        if isinstance(out.get(key), str):
+            out[key] = scrub_secrets(out[key])[:500]
+    return out
+
+
 def annotate(provider: str, status: int, body, headers=None, *, now: float | None = None) -> tuple:
     """(body, info): the error body rewritten with the classified message and
     kind, or the body unchanged when nothing is known. Idempotent. Always
@@ -608,7 +627,7 @@ def annotate(provider: str, status: int, body, headers=None, *, now: float | Non
         return body, None
     info = classify(provider, status, body, headers, now=now)
     if info is None:
-        return body, None
+        return _scrubbed(body), None
     out = dict(body) if isinstance(body, dict) else {}
     inner = dict(body["error"]) if isinstance(body, dict) and isinstance(body.get("error"), dict) else {}
     inner.update({"type": info["kind"], "fuse_kind": info["kind"]})

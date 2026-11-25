@@ -20,6 +20,7 @@ from .. import chats
 from .. import context_compact as ctxmod
 from ..chat_prompts import TITLE_MAX_TOKENS
 from ..config import settings
+from ..proxy import scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def _error_detail(body) -> str:
         error = error.get("message") or error
     if error is None and isinstance(body, dict):
         error = body.get("detail")
-    return str(error if error is not None else body or "")[:300]
+    return scrub_secrets(str(error if error is not None else body or ""))[:300]
 
 
 def clip_prompt_text(text: str, limit: int) -> str:
@@ -165,7 +166,7 @@ async def metadata_once(request, user, model, text, system, limit, parser, *, co
     except HTTPException as exc:
         logger.warning(
             "Chat title request rejected model=%s status=%s detail=%s",
-            model.strip()[:100], exc.status_code, exc.detail,
+            model.strip()[:100], exc.status_code, scrub_secrets(str(exc.detail))[:300],
         )
         return ""
     except Exception:

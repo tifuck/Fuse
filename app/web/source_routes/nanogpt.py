@@ -67,23 +67,27 @@ def _linked_message(cred_id: int) -> str:
     )
 
 
-@router.get("/sources/nanogpt/start")
+@router.post("/sources/nanogpt/start")
 async def nanogpt_start(request: Request):
-    """A link, not a form: the CSP's form-action 'self' blocks a form whose
-    redirect leaves the site. It only opens a PKCE round; nothing is linked
-    until the user approves on NanoGPT and the callback's state matches."""
+    """Open a PKCE round (replacing a pending sign-in) and answer the url to
+    go to: the page posts it from script (data-post-link), since the CSP's
+    form-action 'self' blocks a form whose redirect leaves the site. Nothing
+    is linked until the user approves on NanoGPT and the callback's state
+    matches."""
     user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
     if not limiter.allow(f"nanogpt-start:{user['id']}", 5, 60):
-        return _back(user, "err", "Too many attempts. Try again in a minute.")
+        _back(user, "err", "Too many attempts. Try again in a minute.")
+        return JSONResponse({"url": _BACK})
     uri = _redirect_uri(request)
     if not uri:
-        return _back(user, "err", "This Fuse address cannot receive NanoGPT's sign-in redirect (it needs HTTPS). Use device sign-in instead.")
+        _back(user, "err", "This Fuse address cannot receive NanoGPT's sign-in redirect (it needs HTTPS). Use device sign-in instead.")
+        return JSONResponse({"url": _BACK})
     data = nanogpt_mod.start_login(uri)
     data["_started"] = time.time()
     logins.put(user["id"], "nanogpt", data)
-    return RedirectResponse(data["auth_url"], status_code=303)
+    return JSONResponse({"url": data["auth_url"]})
 
 
 @router.get("/sources/nanogpt/callback")

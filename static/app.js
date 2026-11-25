@@ -1084,6 +1084,25 @@ document.querySelectorAll("[data-device-poll]").forEach((device) => {
   );
 });
 
+// A sign-in that leaves the site: POST the link (it changes state, so never a
+// GET) and open the url it answers. A form cannot: the CSP's form-action
+// 'self' blocks its redirect off the site.
+document.querySelectorAll("a[data-post-link]").forEach((link) => {
+  link.addEventListener("click", async (event) => {
+    event.preventDefault();
+    let url = "";
+    try {
+      const r = await fetch(link.getAttribute("href"), {
+        method: "POST",
+        headers: { Accept: "application/json", "X-CSRF-Token": csrfToken() },
+      });
+      if ((r.headers.get("content-type") || "").includes("application/json")) url = (await r.json()).url || "";
+      else if (r.redirected) url = r.url;
+    } catch {}
+    window.location.assign(url || window.location.pathname);
+  });
+});
+
 function escapeText(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")

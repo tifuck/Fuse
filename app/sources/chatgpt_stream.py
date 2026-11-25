@@ -14,6 +14,7 @@ import time
 import httpx
 
 from ..proxy import usage_from_obj
+from . import http_pool
 from .base import THINKING_MARK
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,9 @@ async def _error_body(resp: httpx.Response) -> dict:
     """Read a streamed error response. httpx.json() raises ResponseNotRead
     until the body has been pulled."""
     try:
-        await resp.aread()
+        text = (await http_pool.read_error_body(resp)).decode(resp.encoding or "utf-8", errors="replace")
     except Exception:
         return {"error": {"message": f"upstream {resp.status_code}"}}
-    text = resp.text or ""
     try:
         obj = json.loads(text)
     except json.JSONDecodeError:

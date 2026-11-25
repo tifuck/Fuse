@@ -51,7 +51,7 @@ def _keyed(p) -> ProviderSpec:
         warm=not p.per_key, claim="soft", claims=lambda model: model.startswith(p.public_prefix), upstream=p.upstream,
         scan=False, personal=True, access=lambda user_id: _m("keyed").access_states(user_id)[p.id],
         connect_copy=f"Add a {p.label} API key to use its models", keyed=p, key=p,
-        user_catalog=(lambda user_id: True) if p.per_key else None, public_id=lambda upstream: p.public_prefix + upstream,
+        user_catalog=lambda user_id: _m("keyed").user_catalog(p, user_id), public_id=lambda upstream: p.public_prefix + upstream,
         group=p.group, vendor=p.vendor, site=True, admin_anchor="/admin/sources#keyed",
     )
 

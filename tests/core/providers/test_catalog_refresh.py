@@ -11,7 +11,7 @@ import httpx
 import app.sources as sources
 from app import context_meter, db
 from app.providers import catalogs
-from app.sources import keyed
+from app.sources import chatgpt, grok, keyed
 from tests.core.helpers import quick_user, wait_until_async
 
 from ._support import completion, key, source
@@ -112,10 +112,15 @@ def test_a_key_change_during_a_fetch_drops_the_list_that_fetch_got(fresh_db, mon
     assert not [k for k in sources._model_cache if k[0] == sid]
 
 
+def _open_to_everyone(sid):
+    db.execute("UPDATE sources SET config=? WHERE id=?", (json.dumps({"site_access": "everyone"}), sid))
+
+
 def test_an_unchanged_catalog_answers_304_and_keeps_its_list(fresh_db, upstream):
     uid = quick_user()
     sid = keyed.ensure_source("deepseek")
-    key(sid, "sk-deepseek-key-123", owner=uid)
+    key(sid, "sk-deepseek-key-123")
+    _open_to_everyone(sid)
     upstream.on("GET", "api.deepseek.com/models",
                 httpx.Response(200, json=MODELS, headers={"ETag": '"v1"'}), httpx.Response(304))
 
@@ -135,7 +140,8 @@ def test_an_unchanged_catalog_answers_304_and_keeps_its_list(fresh_db, upstream)
 def test_a_restart_lists_the_saved_catalog_without_fetching(fresh_db, upstream):
     uid = quick_user()
     sid = keyed.ensure_source("deepseek")
-    key(sid, "sk-deepseek-key-123", owner=uid)
+    key(sid, "sk-deepseek-key-123")
+    _open_to_everyone(sid)
     catalogs.saved(sid, "deepseek", ["deepseek/deepseek-chat"], 21600)
     sources._seed_pool_catalogs()  # boot
     assert asyncio.run(sources.models_union(user_id=uid)) == ["deepseek/deepseek-chat"]
@@ -145,14 +151,30 @@ def test_a_restart_lists_the_saved_catalog_without_fetching(fresh_db, upstream):
 def test_one_shared_catalog_serves_every_user_with_access(fresh_db, upstream):
     alice, bob, carol = quick_user("a@core.test"), quick_user("b@core.test"), quick_user("c@core.test")
     sid = keyed.ensure_source("deepseek")
+    key(sid, "sk-deepseek-site-12")
+    db.execute("UPDATE sources SET config=? WHERE id=?", (json.dumps({"site_access": "admins"}), sid))
     key(sid, "sk-deepseek-alice-1", owner=alice)
     key(sid, "sk-deepseek-bob-123", owner=bob)
     upstream.on("GET", "api.deepseek.com/models", httpx.Response(200, json=MODELS))
     for uid in (alice, bob):
         assert asyncio.run(sources.models_union(user_id=uid)) == ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"]
     assert asyncio.run(sources.models_union(user_id=carol)) == []  # no key, no site access
-    assert len(upstream.calls("api.deepseek.com/models")) == 1
+    assert [h["authorization"] for h in upstream.headers("api.deepseek.com/models", "GET")] == [
+        "Bearer sk-deepseek-site-12"]
     assert json.loads(db.fetchone("SELECT models FROM provider_catalogs WHERE source_id=?", (sid,))["models"])
+
+
+def test_personal_keys_read_their_owners_list_and_never_the_shared_one(fresh_db, upstream):
+    alice, bob = quick_user("a@core.test"), quick_user("b@core.test")
+    sid = keyed.ensure_source("deepseek")
+    key(sid, "sk-deepseek-alice-1", owner=alice)
+    upstream.on("GET", "api.deepseek.com/models", httpx.Response(200, json=MODELS))
+
+    assert sources.due_catalogs() == []
+    assert asyncio.run(sources.models_union(user_id=alice)) == ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner"]
+    assert asyncio.run(sources.models_union(user_id=bob)) == []
+    assert len(upstream.calls("api.deepseek.com/models")) == 1
+    assert catalogs.get(sid) is None
 
 
 def test_a_restart_relearns_what_a_fetch_teaches_before_serving_the_saved_list(fresh_db, upstream):
@@ -177,3 +199,21 @@ def test_a_restart_relearns_what_a_fetch_teaches_before_serving_the_saved_list(f
     asyncio.run(sources.get(sid).chat({"model": "qwen3-32b", "messages": []}))
     assert upstream.sent("/chat/completions")[0]["model"] == raw
     assert len(upstream.calls("/v1/models")) == 1
+
+
+def test_a_pool_that_lists_its_whole_lineup_drops_retired_ids_and_others_keep_them(fresh_db, monkeypatch):
+    listed = {"chatgpt": ["gpt-7"], "grok": ["grok-6"]}
+    ids = {}
+    for kind, module, cls in (("chatgpt", chatgpt, chatgpt.ChatGPTSource), ("grok", grok, grok.GrokSource)):
+        ids[kind] = source(kind)
+        key(ids[kind], f"{kind}-token-123456", extra={"access_token": "at"})
+        sources._store_models((ids[kind], None), [f"{kind}-kept", f"{kind}-retired"])
+
+        async def models(self, *, user_id=None, kind=kind):
+            return list(listed[kind])
+
+        monkeypatch.setattr(cls, "models", models)
+
+    asyncio.run(sources.refresh_due_catalogs())
+    assert sources._model_cache[(ids["chatgpt"], None)][1] == ["gpt-7"]
+    assert sources._model_cache[(ids["grok"], None)][1] == ["grok-6", "grok-kept", "grok-retired"]

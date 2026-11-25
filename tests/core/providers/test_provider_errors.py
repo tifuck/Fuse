@@ -228,3 +228,11 @@ def test_the_chat_loop_retries_transient_kinds_and_fails_terminal_ones_at_once(f
     assert run["status"] == ("completed" if retried else "failed")
     reply = chats.get_thread(uid, thread_id)["messages"][-1]
     assert bool(reply.get("error")) is not retried
+
+
+def test_an_unclassified_error_body_is_relayed_scrubbed_and_capped():
+    body = {"error": {"message": "teapot sk-abcdefgh12345678 " + "x" * 900, "param": "p"}, "detail": "Bearer abcdefgh1234"}
+    out, info = provider_errors.annotate("openai", 418, body, now=NOW)
+    assert info is None and out["error"]["param"] == "p"
+    assert out["error"]["message"].startswith("teapot sk-*** ") and len(out["error"]["message"]) == 500
+    assert out["detail"] == "Bearer ***"

@@ -578,7 +578,7 @@ class RefuselessSource:
             )
             if not picked:
                 if not tried and any(reason == "cooling" for _, reason in why):
-                    last = explain_empty("refuseless", why, model=upstream)
+                    last = explain_empty("refuseless", why, model=upstream, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts
