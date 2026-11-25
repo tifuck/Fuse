@@ -71,6 +71,33 @@ def test_the_installer_single_quotes_the_origin():
     assert "'https://fuse.test:8443'" in script and "'https://fuse.test:8443/v1'" in script
 
 
+def _installer(monkeypatch):
+    """The installer's Python, loaded in-process (no shell, no python3 child)
+    with the catalog fetch faked."""
+    script = opencode.install_script(origin="https://fuse.test", api_base="https://fuse.test/v1")
+    ns = {"__name__": "fuse_installer"}
+    exec(compile(script.split("<<'PY'\n", 1)[1].rsplit("\nPY\n", 1)[0], "installer", "exec"), ns)
+    sent = []
+    ns["fetch_catalog"] = lambda api, key: sent.append((api, key)) or {"models": {"m1": {"name": "M1"}}}
+    ns["ask"] = lambda *a, **kw: ""
+    monkeypatch.setenv("FUSE_API_KEY", "sk-env")
+    return ns, sent
+
+
+@pytest.mark.parametrize("base_url, used", [("https://fuse.test/v1", "sk-saved"), ("https://other.test/v1", "sk-env")])
+def test_the_installer_sends_a_saved_key_only_to_the_server_it_was_saved_for(monkeypatch, tmp_path, base_url, used):
+    ns, sent = _installer(monkeypatch)
+    path = tmp_path / "opencode.json"
+    path.write_text(json.dumps({"provider": {"fuse": {"options": {
+        "baseURL": "https://fuse.test/v1/", "apiKey": "sk-saved"}}}}))
+    path.chmod(0o644)
+    assert ns["main"](["--base-url", base_url, "--config", str(path), "-y"]) == 0
+    assert sent == [(base_url, used)]
+    assert json.loads(path.read_text())["provider"]["fuse"]["options"]["apiKey"] == used
+    backups = list(tmp_path.glob("opencode.json.bak-*"))
+    assert backups and all(p.stat().st_mode & 0o777 == 0o600 for p in [path, *backups])
+
+
 def test_the_probe_of_a_compatible_server_checks_reach_models_and_one_tiny_chat(fresh_db, upstream):
     sid = source("openai", {"base_url": "https://up.test"})
     key(sid, "sk-k")
