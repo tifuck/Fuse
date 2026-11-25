@@ -41,6 +41,31 @@ def client(timeout, *, verify=True) -> httpx.AsyncClient:
     return found
 
 
+# An upstream error body is read only this far: a proxy's error page or a
+# misbehaving server can send anything, and only its start is ever shown.
+ERROR_BODY_LIMIT = 64 * 1024
+
+
+async def read_error_body(resp: httpx.Response, limit: int = ERROR_BODY_LIMIT) -> bytes:
+    """Up to `limit` bytes of a (streamed) error response's body. Reading it
+    again returns the same bytes; the caller still closes the response."""
+    kept = resp.extensions.get("fuse_error_body")
+    if kept is not None:
+        return kept
+    try:
+        data = resp.content[:limit]
+    except httpx.ResponseNotRead:
+        chunks, size = [], 0
+        async for chunk in resp.aiter_bytes():
+            chunks.append(chunk)
+            size += len(chunk)
+            if size >= limit:
+                break
+        data = b"".join(chunks)[:limit]
+    resp.extensions["fuse_error_body"] = data
+    return data
+
+
 async def aclose_all() -> None:
     """Close the running loop's clients (app shutdown)."""
     for found in _clients.pop(asyncio.get_running_loop(), {}).values():

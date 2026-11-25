@@ -320,7 +320,7 @@ class KeyedSource(OpenAICompatSource):
                 return ChatResult(status=status, body={"error": {"message": f"{label} request failed ({type(exc).__name__})"}},
                                   credential_id=cred["id"], model=public, attempts=attempts)
             if resp.status_code != 200:
-                raw = (await resp.aread()).decode("utf-8", errors="replace")
+                raw = (await http_pool.read_error_body(resp)).decode("utf-8", errors="replace")
                 retry_after = str(resp.headers.get("retry-after") or "").strip()
                 await resp.aclose()
                 detail = _error_message(raw)

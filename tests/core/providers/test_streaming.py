@@ -379,6 +379,25 @@ def test_the_shared_client_never_carries_one_accounts_cookie_to_the_next(upstrea
     assert [h.get("cookie") for h in upstream.headers("/chat/completions")] == [None, None]
 
 
+def test_an_error_body_is_read_only_up_to_its_cap_and_reads_again_the_same():
+    pulled = []
+
+    class Endless(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            while True:
+                pulled.append(1)
+                yield b"x" * 16384
+
+    async def go():
+        resp = httpx.Response(502, stream=Endless())
+        first = await http_pool.read_error_body(resp)
+        return first, await http_pool.read_error_body(resp)
+
+    first, again = asyncio.run(go())
+    assert len(first) == http_pool.ERROR_BODY_LIMIT and again == first
+    assert len(pulled) == http_pool.ERROR_BODY_LIMIT // 16384
+
+
 @pytest.mark.parametrize("stream", [False, True])
 def test_the_request_goes_out_as_the_same_bytes_and_headers_json_would_send(upstream, stream):
     seen = []

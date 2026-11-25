@@ -14,6 +14,7 @@ from typing import Optional
 import httpx
 
 from ..proxy import scrub_secrets
+from . import http_pool
 
 logger = logging.getLogger(__name__)
 
@@ -695,8 +696,7 @@ class KeyPool:
             if status == 404:
                 # Model not found — not a key problem. Treat as success for rotation.
                 key_state.mark_success(self.rest_seconds)
-                await response.aread()
-                body_text = response.text
+                body_text = (await http_pool.read_error_body(response)).decode(response.encoding or "utf-8", errors="replace")
                 await response.aclose()
                 fake = httpx.Response(
                     status, content=body_text.encode(),
@@ -708,9 +708,8 @@ class KeyPool:
                 return fake, key_state, attempt > 0
 
             # Error status — read body for classification + logging
-            await response.aread()
-            error_bytes = response.content
-            error_text = response.text
+            error_bytes = await http_pool.read_error_body(response)
+            error_text = error_bytes.decode(response.encoding or "utf-8", errors="replace")
             headers = response.headers
             await response.aclose()
 

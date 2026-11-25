@@ -723,7 +723,7 @@ class DevinSource:
             )
         if resp.status_code != 200:
             try:
-                err_body = await resp.aread()
+                err_body = await http_pool.read_error_body(resp)
             except Exception:
                 err_body = b""
             await resp.aclose()

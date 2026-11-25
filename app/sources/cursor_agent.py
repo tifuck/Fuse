@@ -667,7 +667,7 @@ class CursorRun:
             except httpx.HTTPError as exc:
                 raise TurnError(502, f"Cursor transport failure ({type(exc).__name__})") from None
             if self._resp.status_code != 200:
-                raw = await self._resp.aread()
+                raw = await http_pool.read_error_body(self._resp)
                 try:
                     obj = json.loads(raw)
                 except ValueError:

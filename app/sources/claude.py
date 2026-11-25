@@ -801,7 +801,7 @@ class ClaudeSource:
                 status = resp.status_code
                 if status == 401 and extra.get("refresh_token"):
                     # Read the reason first: a failed refresh reports it below.
-                    await resp.aread()
+                    await http_pool.read_error_body(resp)
                     await resp.aclose()
                     ok = await refresh_one(cred)
                     if ok:
@@ -817,7 +817,7 @@ class ClaudeSource:
                 # tokens: replay the full conversation into a new thread, or
                 # send it without one where threads are not available.
                 while mode and status in (400, 404):
-                    raw = (await resp.aread()).decode("utf-8", errors="replace")
+                    raw = (await http_pool.read_error_body(resp)).decode("utf-8", errors="replace")
                     retry = claude_thread.fallback(mode, status, raw, int(cred["id"]))
                     if retry is False:
                         break
@@ -826,7 +826,7 @@ class ClaudeSource:
                     resp = await self._post(client, token, send)
                     status = resp.status_code
                 if status == 400:
-                    raw = (await resp.aread()).decode("utf-8", errors="replace")
+                    raw = (await http_pool.read_error_body(resp)).decode("utf-8", errors="replace")
                     await resp.aclose()
                     message = _error_message(raw) or "Claude rejected the request"
                     if _signature_retryable(raw):
@@ -851,7 +851,7 @@ class ClaudeSource:
                     # Retry-After: the chat loop backs off on it and the user
                     # sees why the request failed, not just a status code.
                     try:
-                        raw = (await resp.aread()).decode("utf-8", errors="replace")
+                        raw = (await http_pool.read_error_body(resp)).decode("utf-8", errors="replace")
                     except Exception:
                         raw = ""
                     detail = _error_message(raw)
