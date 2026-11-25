@@ -61,6 +61,17 @@ def _anchored(uid, thread) -> bool:
     return bool(anchor) and chat_history.anchors(display)[:len(anchor)] == anchor
 
 
+def test_a_chat_whose_transcript_cannot_be_read_keeps_its_media(fresh_db):
+    uid = make_user()
+    broken = chats.create_thread(uid, model="offline")
+    _turn(uid, broken)
+    db.execute("UPDATE chat_threads SET messages='[{not json' WHERE id=?", (pk(uid, broken["id"]),))
+    _age(uid, broken, 4)
+
+    assert retention.purge_idle_media() == {"threads": 0, "images": 0}
+    assert _images(uid, broken) == 1
+
+
 def test_an_idle_chat_loses_its_media_and_keeps_its_history(fresh_db):
     uid = make_user()
     idle, recent = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
