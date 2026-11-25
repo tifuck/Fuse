@@ -6,6 +6,7 @@ import asyncio
 import base64
 import io
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -13,7 +14,7 @@ import pytest
 from PIL import Image
 
 from app.config import settings
-from app.sources import grok, grok_version, pool_policy
+from app.sources import grok, grok_version, pool_pick, pool_policy
 from tests.core.subscriptions._support import (
     account, drain, events, extra_of, fresh_billing, http, iso, row, run, set_extra, sse, text_of, user,
 )
@@ -292,3 +293,26 @@ def test_a_refresh_without_an_email_reads_it_from_userinfo_and_rotates_once(fres
     assert calls.requests[1].headers["Authorization"] == "Bearer at-2"
     extra = extra_of(cred)
     assert (extra["access_token"], extra["refresh_token"], extra["email"]) == ("at-2", "rt-2", "g@x.test")
+
+
+def test_usage_from_a_request_in_flight_at_the_last_reading_never_holds_the_account():
+    now = datetime.now(timezone.utc)
+    cred = {"id": 424242, "pool_invokes": 0, "pool_held_until": None, "last_usage_percent": None}
+    extra = {"guard": {"last_percent": 10.0, "period_start": "p1", "seen_invokes": 0,
+                       "checked_at": (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")}}
+
+    def reading(pct, at):
+        _extra, hold, _pct = grok.apply_usage_guard(cred, extra, {"credit_usage_percent": pct, "period_start": "p1"},
+                                                    now + at)
+        cred["pool_held_until"] = hold
+        return hold
+
+    # Picked: counted and in flight; the refresh it starts reads the old %.
+    pool_pick.reserve(424242)
+    cred["pool_invokes"] = 1
+    assert reading(10.0, timedelta(minutes=-20)) is None
+    # It finishes after that reading; the next one sees its usage.
+    pool_pick.release(424242)
+    assert reading(12.0, timedelta(minutes=1)) is None
+    # A rise with nothing of Fuse's running since is still someone else's.
+    assert reading(14.0, timedelta(minutes=2))

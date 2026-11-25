@@ -18,7 +18,7 @@ from ..config import settings
 from ..crypto import encrypt
 from ..proxy import UsageStream, openai_chat
 from .base import ChatResult
-from .pool_pick import Failover, explain_empty, note_failure, pick_account, release, reserve
+from .pool_pick import Failover, busy_since, explain_empty, note_failure, pick_account, release, reserve
 from . import http_pool, pool_policy, pool_refresh
 from .grok_version import current_version, force_refresh
 from .pool_session import bind, drop_cache_routing_fields
@@ -389,7 +389,9 @@ def apply_usage_guard(
     enabled: bool = True,
 ) -> tuple[dict, str | None, float | None]:
     """Compare the new x.ai % to the last reading. If it rose with no Fuse
-    invoke in this period, hold the credential out of the pool for 24h.
+    invoke in this period, hold the credential out of the pool for 24h. A
+    request in flight at the last reading, or since, counts as an invoke: its
+    usage lands after the reading that counted it.
 
     Mutates extra['guard']. Returns (extra, pool_held_until, last_usage_percent).
     """
@@ -400,7 +402,9 @@ def apply_usage_guard(
     period_start = str(parsed.get("period_start") or "")
     invokes = int(_row_get(row, "pool_invokes") or 0)
     seen_invokes = int(guard.get("seen_invokes") or 0)
-    invoked = invokes > seen_invokes
+    last_checked = _parse_ts(str(guard.get("checked_at") or ""))
+    invoked = invokes > seen_invokes or busy_since(
+        int(_row_get(row, "id") or 0), last_checked.timestamp() if last_checked else None)
     last_pct = _as_float(guard.get("last_percent"))
     if last_pct is None:
         last_pct = _as_float(_row_get(row, "last_usage_percent"))

@@ -36,6 +36,8 @@ _failure_lock = threading.Lock()
 _COOLDOWN_KINDS = ("hard", "safe", "limit")
 _cooldown_until: dict[int, dict[str, float]] = {}
 _in_flight: dict[int, int] = {}
+# When each account's last request ended (wall clock), for the usage guard.
+_last_release: dict[int, float] = {}
 # The classified upstream error that last failed each account: (status, body,
 # reset_at). A request that finds every account benched reports it instead of
 # "no accounts" (a rejected sign-in or an outage; limits are not kept).
@@ -131,6 +133,7 @@ def reset_health() -> None:
     with _failure_lock:
         _cooldown_until.clear()
         _in_flight.clear()
+        _last_release.clear()
         _auth_strikes.clear()
         _bench_errors.clear()
 
@@ -212,11 +215,21 @@ def release(cid: int) -> None:
             _in_flight[cid] = left
         else:
             _in_flight.pop(cid, None)
+        _last_release[cid] = time.time()
 
 
 def in_flight(cid: int) -> int:
     with _failure_lock:
         return _in_flight.get(cid, 0)
+
+
+def busy_since(cid: int, since: float | None) -> bool:
+    """Whether a Fuse request on this account is running now or ended at or
+    after `since` (Unix seconds): usage read since may still be landing."""
+    with _failure_lock:
+        if _in_flight.get(cid, 0) > 0:
+            return True
+        return since is not None and _last_release.get(cid, 0.0) >= since
 
 # Codex model docs: Free and Go get GPT-6 Luna; Plus and above get GPT-6 Sol.
 # Go is treated like Free. Astra stays paid-only.
