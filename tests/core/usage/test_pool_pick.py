@@ -8,7 +8,7 @@ import pytest
 
 from app import db
 from app.sources import chatgpt, grok, pool_pick, zai
-from app.sources.pool_pick import MAX_IN_FLIGHT, USAGE_BUSY, explain_empty, note_failure, pick_account
+from app.sources.pool_pick import MAX_IN_FLIGHT, USAGE_BUSY, explain_empty, note_failure, pick_account, reset_health
 from tests.core.usage._support import grok_extra, pool_account, pool_rows, user
 
 
@@ -186,7 +186,7 @@ def test_an_account_known_to_have_no_plan_is_the_last_resort(ids):
     assert zai.known_unsubscribed(rows[fresh], {"billing": {"fetched_at": "x"}})
 
 
-def test_a_subagent_starts_on_its_parents_account_only_when_it_ranks_equal(ids):
+def test_a_subagent_starts_on_its_parents_account_whenever_it_can_serve(ids):
     a = pool_account("grok", ids["donor"], grok_extra(10))
     b = pool_account("grok", ids["bob"], grok_extra(50))
     busy = pool_account("grok", ids["bob"], grok_extra(USAGE_BUSY))
@@ -196,8 +196,13 @@ def test_a_subagent_starts_on_its_parents_account_only_when_it_ranks_equal(ids):
 
     assert _pick("grok", pool, hint_id=b) == b
     assert _pick("grok", pool, prefer_id=a, hint_id=b) == a  # its own pin wins
-    assert _pick("grok", [rows[a], rows[busy]], hint_id=busy) == a
-    assert _pick("grok", pool + [rows[mine]], hint_id=b, owner_id=ids["alice"]) == mine
+    # Its chat's account (a pick of someone else's account, or a busy one)
+    # beats the caller's own accounts and lower usage.
+    assert _pick("grok", [rows[a], rows[busy]], hint_id=busy) == busy
+    assert _pick("grok", pool + [rows[mine]], hint_id=b, owner_id=ids["alice"]) == b
+    note_failure(b, cooldown_seconds=60, limit=True)
+    assert _pick("grok", pool, hint_id=b) == a
+    reset_health()
     assert _pick("grok", pool, hint_id=b, exclude={b}) == a
     _fill(b)
     assert _pick("grok", pool, hint_id=b) == a

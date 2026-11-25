@@ -431,10 +431,10 @@ def pick_account(
     own-first only decides where new or broken sessions go.
 
     hint_id is where a related session (a subagent's parent) is pinned. A new
-    session takes it when it ranks with the best choice (same health tier,
-    ownership and plan tier, under the in-flight ceiling): on a provider that
-    caches prefixes per account, the child then reuses the tools and system
-    prompt its parent already cached instead of writing them again.
+    session takes it whenever it can serve (not cooling, limited or excluded,
+    under the in-flight ceiling), ownership and usage aside: a subagent is part
+    of its chat, so it runs on the account the chat is on (the user's pick
+    included), and reuses the tools and system prompt its parent cached.
 
     An account at the in-flight ceiling is skipped unless every candidate is
     saturated, so load spreads instead of dog-piling the freshest account.
@@ -540,6 +540,10 @@ def pick_account(
         preferred = [row for row in preferred if in_flight(row[5]) < MAX_IN_FLIGHT] or preferred
         if preferred:
             return preferred[0][6], preferred[0][7]
+    if hint_id is not None:
+        for row in ready:
+            if row[5] == int(hint_id) and in_flight(row[5]) < MAX_IN_FLIGHT:
+                return row[6], row[7]
     if not ready:
         if spent:
             # Every benched account is asked once per request: a plan reset
@@ -553,10 +557,6 @@ def pick_account(
     available = [row for row in primary if in_flight(row[5]) < MAX_IN_FLIGHT] or primary
     available.sort(key=lambda row: (row[1], row[2], row[3], row[4], row[5]))
     best = available[0]
-    if hint_id is not None:
-        for row in available:
-            if row[5] == int(hint_id) and row[1:3] == best[1:3] and in_flight(row[5]) < MAX_IN_FLIGHT:
-                return row[6], row[7]
     return best[6], best[7]
 
 
