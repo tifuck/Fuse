@@ -67,6 +67,17 @@
   white-space: pre-wrap;
 }
 .modal-confirm .modal-actions { justify-content: flex-end; }
+/* What a confirm will change (fuseConfirm's media): now, then after. */
+.modal-confirm-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  margin: 0.6rem 0 0;
+}
+.modal-confirm-media[hidden] { display: none; }
+.modal-confirm-media :is(img, svg.fp-icon) { width: 3rem; height: 3rem; object-fit: contain; }
+.modal-confirm-media .confirm-media-to { color: var(--mute); }
 /* Corner close for a confirm with several answers (fuseChoose); the same
    button as the project dialog's. */
 .modal-x {

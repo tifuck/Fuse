@@ -2,6 +2,7 @@
 // source and diffs, the /artifacts list, sharing, live updates, the page
 // bridge (errors, links, copy, send to chat) and when it opens by itself.
 import { S } from './state.js';
+import { createChoices } from './choices.js';
 import { escapeHtml } from './core.js';
 import { returnFocus } from './overlays.js';
 
@@ -20,6 +21,9 @@ function artifactContentUrl(id, version, inline = false) {
   if (version) params.set("v", version);
   const theme = window.FuseChatAppearance?.artifactTheme;
   if (theme) params.set("theme", theme);
+  // The chat's view, so a kit page (choices) draws its controls like the view's.
+  const view = document.documentElement.dataset.chatView;
+  if (view) params.set("view", view);
   if (inline) {
     // The chat's reading font and text size, so the page matches the reply.
     params.set("inline", "1");
@@ -106,6 +110,8 @@ export function createArtifacts(ctx) {
   function hint(text) {
     if (picker && picker.setHint) picker.setHint(text);
   }
+
+  const choices = createChoices({ net, hint, showFailure, saveBackdrop, upsertLocal: (thread) => sidebar.upsertLocal(thread) });
 
   function artifactCalls() {
     const out = [];
@@ -782,7 +788,9 @@ export function createArtifacts(ctx) {
     const frame = inlineFrame(event.source);
     if (!frame) return;
     const clicked = !navigator.userActivation || navigator.userActivation.isActive;
-    if (data.type === "size") {
+    if (data.type === "choices-hello" || data.type === "choose") {
+      choices.onMessage(event.source, frame.dataset.id, frame.dataset.version, data, clicked);
+    } else if (data.type === "size") {
       const h = Math.max(INLINE_MIN, Math.min(INLINE_MAX, Math.round(Number(data.h) || 0)));
       inlineHeights.set(`${frame.dataset.id}:${frame.dataset.version}`, h);
       if (frame.style.height === h + "px") return;
@@ -838,6 +846,8 @@ export function createArtifacts(ctx) {
       hint("Added from the artifact to your message.");
     } else if (data.type === "backdrop" && clicked) {
       saveBackdrop(data);
+    } else if ((data.type === "choices-hello" || data.type === "choose") && cur) {
+      choices.onMessage(event.source, cur.identifier, cur.version, data, clicked);
     } else if (data.type === "scroll" && key) {
       scrolls.set(key, Math.max(0, Number(data.y) || 0));
     } else if (data.type === "ready" && key && scrolls.get(key)) {
@@ -845,9 +855,10 @@ export function createArtifacts(ctx) {
     }
   }
 
-  // window.fuse.setBackdrop in the page: store it as one of the user's
-  // backdrops (POST /api/backdrops) and draw it behind this theme at once. A
-  // full shelf first asks which of them it replaces.
+  // window.fuse.setBackdrop in the page, or a choices card's backdrop: store
+  // it as one of the user's backdrops (POST /api/backdrops) and draw it behind
+  // this theme at once. A full shelf first asks which of them it replaces.
+  // True once it is the backdrop.
   async function saveBackdrop(data) {
     const name = String(data.name || "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 40) || "Custom backdrop";
     const scheme = data.scheme === "light" ? "light" : "dark";
@@ -882,9 +893,11 @@ export function createArtifacts(ctx) {
       if (!key) throw new Error("The server sent no backdrop.");
       appearance.setBackdrop(key);
       hint(`“${saved.name}” is now your backdrop.`);
+      return true;
     } catch (error) {
       showFailure("Could not save the backdrop", error);
     }
+    return false;
   }
 
   function fixWithModel() {

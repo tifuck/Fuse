@@ -4,6 +4,7 @@ on every share), archive, owner isolation, limits, the chat/project scope,
 and the account switch frozen into each run."""
 import asyncio
 import json
+import re
 import threading
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -402,6 +403,65 @@ def test_charts_written_by_columns_are_stored_as_rows():
         stored = json.loads(artifacts._chart_text(json.dumps(spec)))
         assert (stored["x"], stored["y"]) == ("label", ["Signups"])
         assert stored["data"] == [{"label": "Mon", "Signups": 12}, {"label": "Tue", "Signups": 18}]
+
+
+LOGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="#46A758"/></svg>'
+
+
+def test_choices_resolve_to_the_users_own_project_and_chat(fresh_db):
+    uid, other = quick_user(), quick_user("other@core.test")
+    host = make_host(uid)
+    api, web = make_project(uid, host, "api"), make_project(uid, host, "web")
+    thread = chats.create_thread(uid, model="offline", title="t")["id"]
+    pk = chats.resolve_thread_pk(uid, thread)
+    db.execute("UPDATE chat_threads SET kind='project', host_id=?, project_id=? WHERE id=?", (host, api, pk))
+    spec = {"project_logo": [{"name": "Ring", "svg": LOGO}], "chat_title": ["  Ship   2.4 "]}
+    text, made = artifacts.execute_from_tool("create_artifact", {"title": "Looks", "choices": spec}, user_id=uid, thread_id=pk)
+    assert (made["status"], made["format"], made["display"]) == ("done", "choices", "inline")
+    assert "never say it was applied" in text
+    stored = json.loads(html_at(uid, made["identifier"]))
+    assert stored["project"] == {"id": api, "host_id": host, "name": "api"}
+    assert (stored["chat"], stored["chat_title"]) == (thread, ["Ship 2.4"])
+    # By name, from any chat; an edit keeps the resolved project and checks it again.
+    named = artifacts.create(uid, title="c", fmt="choices",
+                             html=json.dumps({"project": "WEB", "folder_color": [{"name": "Moss", "color": "#46a758"}]}))
+    assert json.loads(html_at(uid, named["identifier"]))["project"]["id"] == web
+    assert json.loads(html_at(uid, named["identifier"]))["folder_color"] == [{"name": "Moss", "color": "#46A758"}]
+    assert artifacts.edit(uid, named["identifier"], [{"old_string": '"Moss"', "new_string": '"Fern"'}])["version"] == 2
+    # Someone else's project or chat is never a target, even written in by hand.
+    with pytest.raises(ArtifactError, match="project not found"):
+        artifacts.create(other, title="x", html=json.dumps({"project": {"id": api}, "project_name": ["x"]}), fmt="choices")
+    with pytest.raises(ArtifactError, match="chat not found"):
+        artifacts.create(other, title="x", html=json.dumps({"chat": thread, "chat_title": ["x"]}), fmt="choices")
+
+
+def test_choices_refuse_what_they_cannot_apply(fresh_db):
+    uid = quick_user()
+    make_project(uid, make_host(uid), "api")
+    make_project(uid, make_host(uid, "box2"), "api")
+    make_project(uid, make_host(uid, "box3"), "web")
+    pk = chats.resolve_thread_pk(uid, chats.create_thread(uid, model="offline", title="t")["id"])
+    web_logo = lambda svg: {"project": "web", "project_logo": [{"name": "x", "svg": svg}]}  # noqa: E731
+    for spec, problem in (
+        ({"permission_mode": ["read_only"]}, "unknown choices field 'permission_mode'"),
+        ({}, "at least one of"),
+        ({"chat_title": []}, "1-4 options"),
+        ({"chat_title": ["a", "b", "c", "d", "e"]}, "1-4 options"),
+        ({"project_name": ["x"]}, "not in a project"),
+        ({"project": "api", "project_name": ["x"]}, "2 projects are named 'api' (on box, box2)"),
+        ({"project": "nope", "project_name": ["x"]}, "no project is named 'nope'"),
+        ({"project": "web", "chat_title": ["x"]}, "project only goes with"),
+        (web_logo("<div/>"), "one <svg>...</svg> document"),
+        (web_logo("<svg><script>alert(1)</script></svg>"), "plain shapes"),
+        (web_logo('<svg><image href="https://x.test/a.png"/></svg>'), "plain shapes"),
+        (web_logo("<svg>" + "<g/>" * 5000 + "</svg>"), "over 16 KB"),
+        ({"project": "web", "folder_color": [{"name": "x", "color": "green"}]}, "#RRGGBB"),
+        ({"backdrop": [{"name": "x", "scheme": "dim", "html": "<p>x</p>"}]}, "scheme"),
+        ({"chat_title": ["a\u202eb"]}, "1-80 characters"),
+    ):
+        with pytest.raises(ArtifactError, match=re.escape(problem)):
+            artifacts.create(uid, title="c", html=json.dumps(spec), fmt="choices", thread_id=pk)
+    assert artifacts.list_for_user(uid) == []
 
 
 def test_inline_pages_are_transparent_sized_and_in_the_chat_font():

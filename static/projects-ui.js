@@ -668,34 +668,40 @@
       // The page CSP allows data: images but not blob: ones.
       const reader = new FileReader();
       reader.onerror = () => reject(new Error("Could not read that image."));
-      reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const canvas = document.createElement("canvas");
-            canvas.width = LOGO_PX;
-            canvas.height = LOGO_PX;
-            const ctx = canvas.getContext("2d");
-            const w = img.naturalWidth || LOGO_PX;
-            const h = img.naturalHeight || LOGO_PX;
-            const scale = Math.min(LOGO_PX / w, LOGO_PX / h);
-            const dw = w * scale;
-            const dh = h * scale;
-            ctx.drawImage(img, (LOGO_PX - dw) / 2, (LOGO_PX - dh) / 2, dw, dh);
-            let data = canvas.toDataURL("image/png");
-            if (data.length * 0.75 > LOGO_MAX) data = canvas.toDataURL("image/webp", 0.85);
-            if (data.length * 0.75 > LOGO_MAX) throw new Error("That image is too detailed. Try a simpler one.");
-            resolve(data);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        img.onerror = () => reject(new Error("Could not read that image."));
-        img.src = String(reader.result || "");
-      };
+      reader.onload = () => rasterLogoUrl(String(reader.result || "")).then(resolve, reject);
       reader.readAsDataURL(file);
     });
   }
 
-  window.FuseProjects = { COLORS, icon, colorFor, logoFor, openChooser, openEditor, api, isOpen: () => Boolean(dialog && dialog.open), close: () => close(null) };
+  /* A data: image URL (a chosen file, or an SVG logo a chat offered) drawn
+     into the stored square PNG. */
+  function rasterLogoUrl(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = LOGO_PX;
+          canvas.height = LOGO_PX;
+          const ctx = canvas.getContext("2d");
+          const w = img.naturalWidth || LOGO_PX;
+          const h = img.naturalHeight || LOGO_PX;
+          const scale = Math.min(LOGO_PX / w, LOGO_PX / h);
+          const dw = w * scale;
+          const dh = h * scale;
+          ctx.drawImage(img, (LOGO_PX - dw) / 2, (LOGO_PX - dh) / 2, dw, dh);
+          let data = canvas.toDataURL("image/png");
+          if (data.length * 0.75 > LOGO_MAX) data = canvas.toDataURL("image/webp", 0.85);
+          if (data.length * 0.75 > LOGO_MAX) throw new Error("That image is too detailed. Try a simpler one.");
+          resolve(data);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error("Could not read that image."));
+      img.src = src;
+    });
+  }
+
+  window.FuseProjects = { COLORS, icon, colorFor, logoFor, rasterLogoUrl, openChooser, openEditor, api, isOpen: () => Boolean(dialog && dialog.open), close: () => close(null) };
 })();
