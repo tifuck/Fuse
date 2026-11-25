@@ -448,11 +448,24 @@ async def _tap(
             }
             yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()
             yield b"data: [DONE]\n\n"
-    except Exception:
-        # Fuse's own bug (a source adapter, this wrapper): it propagates as a
-        # local error instead of reading as a resumable upstream failure.
+    except Exception as exc:
+        # Fuse's own bug (a source adapter, this wrapper): the client still
+        # gets a terminal error frame, worded so the resume policy never
+        # retries it as an upstream failure.
+        logger.exception("Stream processing failed")
         request_status = "failed"
-        raise
+        if not saw_done:
+            error = {
+                "error": {
+                    "message": f"stream processing failed ({type(exc).__name__})",
+                    "type": "server_error",
+                    "code": 500,
+                    # Already classified: provider_errors.annotate keeps it as is.
+                    "fuse_kind": "internal",
+                }
+            }
+            yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()
+            yield b"data: [DONE]\n\n"
     finally:
         if request_status == "success" and not saw_done:
             # A stream that never reached [DONE] was truncated or errored

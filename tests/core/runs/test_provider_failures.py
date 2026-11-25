@@ -123,6 +123,7 @@ def test_a_fuse_error_while_reading_the_stream_is_not_retried_as_the_providers(f
         assert len(provider.bodies) == 1, label
         assert run["status"] == "failed", label
         assert "upstream stream failed" not in _reply(uid, thread_id)["error"], label
+        assert "stream processing failed" in _reply(uid, thread_id)["error"], label
 
 
 def test_midstream_drop_inside_a_think_block_keeps_the_reasoning_out_of_the_reply(fresh_db):
